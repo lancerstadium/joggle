@@ -265,7 +265,8 @@ assert(ir.live(tiled_body), "loop clone failed")
 ```
 
 The lists are a parallel substitution table, not a schedule description.
-Joggle verifies exact types, capture use, and dominance before editing. A loop
+Joggle verifies exact types and dominance for entries selected by the copied
+subtree; unused entries allow one accumulated table to clone a sequence. A loop
 module can therefore build new bounds and carried values, clone ordinary
 nested operations into the new structure, and then replace the old loop. The
 same primitive applies to conditions and calls and leaves the core unaware of
@@ -291,6 +292,12 @@ fn apply(m: Mod) -> bool {
 `tile.split` blocks the last range iterator, threads its carried values, and
 adds a tail guard, so bounds need not be divisible by four. It does not select
 loops or choose a factor on the user's behalf.
+
+`tile.fuse(m, producer, consumer)` uses the same explicit-selection rule. It
+accepts a current conservative slice: two one-dimensional loops over the same
+range, each carrying one tensor, where the producer stores one element and the
+consumer reads that same element at the same iterator. It rejects shifted or
+otherwise non-pointwise dependencies instead of recognizing operation names.
 
 ## Materialize a function template
 

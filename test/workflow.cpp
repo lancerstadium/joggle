@@ -1643,10 +1643,10 @@ int main(int argc, char** argv) {
   CHECK(remapped_loop.revision() == before_rejected_clone);
   remapped_loop.clear_diags();
   const std::array unused_value{remapped_params[0]};
-  CHECK(!remapped_loop.clone(loop_to_remap, loop_to_remap, unused_value,
-                             new_capture));
-  CHECK(remapped_loop.revision() == before_rejected_clone);
-  remapped_loop.clear_diags();
+  const joggle::Op extra_mapping_copy = remapped_loop.clone(
+      loop_to_remap, loop_to_remap, unused_value, new_capture);
+  CHECK(extra_mapping_copy);
+  CHECK(remapped_loop.revision() == before_rejected_clone + 1);
 
   joggle::Mod remapped_roundtrip;
   CHECK(joggle::parse(env, joggle::print(remapped_loop), remapped_roundtrip,

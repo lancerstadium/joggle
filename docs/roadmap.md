@@ -345,9 +345,13 @@ The first reusable loop transformation is now a separate `tile` module.
 preserves arbitrary carried values, and guards a dynamic partial tile using
 only public construction, capture-remapped cloning, replacement, and erasure.
 Its generated program round-trips and executes through unchanged C emission.
-This closes the structural prerequisite for scheduling experiments; loop
-reorder, unroll, producer/consumer fusion, and measured network speedups remain
-open and must not be inferred from the scalar correctness gate.
+The same module now fuses an explicitly selected same-range pointwise
+producer/consumer pair without inspecting neural-network operation names. A
+three-loop tensor chain becomes two loops, emits through unchanged C, and
+matches its unfused numerical result; shifted access is rejected. This closes
+the first structural prerequisite for scheduling experiments. Reorder, unroll,
+multi-axis fusion, profitability, and measured network speedups remain open
+and must not be inferred from the scalar correctness gates.
 
 The complementary `examples/edge` gate treats a bodyless monomorphic tensor
 function as an external C ABI contract, automatically emits its qualified

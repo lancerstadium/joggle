@@ -60,6 +60,10 @@ small embeddable compiler frameworks.
   carried state, guards partial tiles, round-trips, emits C, and matches exact
   results for negative, empty, exact, short, and partial ranges. Core and the
   emitter contain no tile case.
+- An operator-name-independent fusion function merges an explicitly selected
+  same-range pointwise producer/consumer pair. Its gate reduces a three-loop
+  tensor chain to two loops, emits strict C99 through the unchanged backend,
+  and preserves numerical output; a shifted-index consumer is rejected.
 - Default, sanitizer, ONNX, TFLite, generated-C, VM, installation, and external
   module gates exercise the same public interfaces.
 
@@ -73,7 +77,9 @@ comparable optimization settings.
 - Generated C still uses scalar untiled loops and is substantially slower than
   ONNX Runtime on the current CPU diagnostic. It is a reference backend, not
   yet evidence of efficient edge inference.
-- Elementwise activation and producer loops are not yet fused at body level.
+- The initial fusion slice is deliberately one-dimensional and conservative;
+  multi-axis dependence tests, profitability, intermediate-storage removal,
+  and network-level latency evidence remain open.
 - Extensibility needs a controlled study: implement the same custom format,
   operation, transform, and target boundary in Joggle and selected baselines;
   report changed core files, extension code, build/runtime dependencies, and
@@ -84,11 +90,11 @@ comparable optimization settings.
 
 ## Next experiment order
 
-1. Implement loop split/reorder/fuse/unroll as a removable module using the
-   now-tested clone-with-explicit-capture-remapping primitive on the existing
-   IR.
-2. Normalize fused activations to ordinary function composition and implement
-   producer/consumer loop fusion without operator-name cases.
+1. Generalize the now-executable split and pointwise fusion functions to
+   multi-axis dependence checks, intermediate-storage removal, and explicit
+   profitability policy; keep reorder and unroll removable.
+2. Apply the structural fusion path to exposed activation chains and measure
+   memory traffic and latency without introducing activation-name cases.
 3. Add vectorizable C emission facts (`restrict`, alignment, and selected
    unrolling) only through explicit module policy, then compare generated code
    and compiler optimization reports.

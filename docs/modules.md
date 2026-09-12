@@ -684,9 +684,20 @@ fn apply(m: Mod) -> bool {
 
 Generated bounds are named structural values so their `index` types survive a
 text round trip. Invalid factors, non-range iterators, malformed carried state,
-or failed rewiring abort the enclosing transform transaction. Reorder, unroll,
-multi-axis policies, and producer/consumer fusion remain follow-on functions,
-not implied behavior of `split`.
+or failed rewiring abort the enclosing transform transaction.
+
+`tile.fuse(m, producer, consumer)` is the complementary conservative fusion
+function. It merges explicitly selected one-dimensional loops only when they
+share a range, each carries one distinct type-stable tensor, the producer has
+one same-index store, and every consumer access to its result is a same-index
+load. It retains both results, so later users keep ordinary value semantics.
+The implementation inspects structural loops and built-in indexed memory
+operations, never frontend or neural-network function names. A shifted-access
+negative gate and an emitted-C numerical gate cover refusal and execution.
+Generic cleanup remains a separate composed function; fusion may leave a dead
+range declaration for `opt` or target preparation to remove. Reorder, unroll,
+multi-axis fusion policies, and profitability remain follow-on functions, not
+implied behavior of `split` or `fuse`.
 
 `ir.rename` may be applied directly to a `Blk` argument. Iterator renames are
 reflected in the loop header, while carried-value renames propagate through

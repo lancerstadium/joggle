@@ -20,3 +20,15 @@ fn named(m: Mod, name: str, factor: int) -> bool {
   }
   return false
 }
+
+fn fuse_first(m: Mod) -> bool {
+  var loops: list<Op> = []
+  for op in ir.ops(m) {
+    if ir.kind(op) == "loop" {
+      loops += [op]
+    }
+  }
+  assert(len(loops) >= 2,
+         "tile_pass.fuse_first requires two loops")
+  return tile.fuse(m, loops[0], loops[1])
+}

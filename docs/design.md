@@ -408,11 +408,12 @@ whole module's dominance before commit. The identical operations are available
 through `ir.constant`, `ir.clone`, and `ir.move`, with `ir.kind` and
 `ir.blks(op)` completing structural discovery. Named constants now remain
 named when printed instead of being silently duplicated as inline literals.
-An overload seeds the clone with parallel old/new capture lists. It accepts
-only external values used by the source subtree, requires exact type equality
-and destination dominance, rejects internal or conflicting substitutions, and
-does not advance the revision on failure. The existing clone is precisely the
-empty-substitution case. This supplies loop transformations with explicit
+An overload seeds the clone with parallel old/new capture lists. One accumulated
+mapping may contain entries unused by a particular subtree; selected entries
+require exact type equality and destination dominance, while internal or
+conflicting substitutions are rejected. Failure does not advance the revision.
+The existing clone is precisely the empty-substitution case. This supplies loop
+transformations with explicit
 induction, bound, tensor, and carried-value rewiring without adding a loop-only
 mutation API.
 
@@ -1415,6 +1416,11 @@ and a tail condition, threads every original carried value through the new
 structures, clones arbitrary nested body operations with capture remapping,
 then atomically replaces the old loop. Its executable C gate checks negative,
 empty, exact, short, and partial ranges. Core, C, VM, tensor, and NN contain no
-tile case. This is transformation infrastructure and a correctness result; it
-is not yet a performance result because no cache model, vector policy, loop
-reorder, or fusion policy has been applied.
+tile case. The same removable module can fuse a selected single-axis
+producer/consumer pair when equal ranges and exact same-index tensor accesses
+prove the dependence local to one iteration. It keeps both carried results,
+rejects shifted reads, reduces a three-stage elementwise chain by one loop, and
+passes emitted-C numerical execution. This is transformation infrastructure
+and a correctness result; it is not yet a performance result because no cache
+model, vector policy, loop reorder, broad fusion policy, or network measurement
+has been applied.

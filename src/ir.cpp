@@ -1251,12 +1251,10 @@ Op Mod::clone(Op source, Op before, std::span<const Val> old_values,
                     source.loc());
   }
 
-  std::unordered_set<std::uint32_t> external_values;
   for (const std::uint32_t id : subtree_ops) {
     for (const std::uint32_t arg : store.ops[id].data.args) {
       if (subtree_values.contains(arg))
         continue;
-      external_values.insert(arg);
       const auto mapped = substitutions.find(arg);
       const std::uint32_t value =
           mapped == substitutions.end() ? arg : mapped->second;
@@ -1265,10 +1263,6 @@ Op Mod::clone(Op source, Op before, std::span<const Val> old_values,
                       before.loc());
     }
   }
-  for (const auto& substitution : substitutions)
-    if (!external_values.contains(substitution.first))
-      return reject("clone can only substitute values captured by the source",
-                    source.loc());
 
   const std::uint32_t destination = store.ops[before.id_].data.blk;
   const std::uint32_t fn = store.blks[destination].data.fn;

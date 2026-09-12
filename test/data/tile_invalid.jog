@@ -1,0 +1,16 @@
+module tile_invalid
+use tensor
+
+fn shifted(
+  a: tensor<f32, [4]>, b: tensor<f32, [4]>
+) -> tensor<f32, [4]> {
+  var first = tensor<f32, [4]>(f32(0))
+  for i in 0..4 {
+    first[i] = a[i] + b[i]
+  }
+  var second = tensor<f32, [4]>(f32(0))
+  for j in 0..4 {
+    second[j] = first[0]
+  }
+  return second
+}

@@ -528,6 +528,9 @@ if(JOGGLE_BUILD_TESTS)
         -DCC=${JOGGLE_TEST_C_COMPILER}
         -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile.jog
         -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_main.c
+        -DFUSE_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem.jog
+        -DFUSE_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem_main.c
+        -DINVALID_FUSE_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_invalid.jog
         -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
         -DROOT=${CMAKE_CURRENT_BINARY_DIR}/tile-test
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/tile.cmake

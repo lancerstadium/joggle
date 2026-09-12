@@ -1,22 +1,6 @@
 module tile
 use ir
 
-local fn captured(op: Op, value: Val) -> bool {
-  for input in ir.args(op) {
-    if input == value {
-      return true
-    }
-  }
-  for body in ir.blks(op) {
-    for child in ir.ops(body) {
-      if captured(child, value) {
-        return true
-      }
-    }
-  }
-  return false
-}
-
 local fn mapped(value: Val, old: list<Val>, next: list<Val>) -> Val {
   for i in 0..len(old) {
     if value == old[i] {
@@ -35,25 +19,75 @@ local fn mapped(values: list<Val>, old: list<Val>, next: list<Val>)
   return out
 }
 
+local fn same_value(left: Val, right: Val) -> bool {
+  if left == right {
+    return true
+  }
+  return ir.type(left) == ir.type(right) &&
+         ir.is_const(left) && ir.is_const(right) &&
+         ir.constant(left) == ir.constant(right)
+}
+
+local fn same_range(left: Val, right: Val) -> bool {
+  if left == right {
+    return true
+  }
+  let left_op = ir.def(left)
+  let right_op = ir.def(right)
+  if !ir.live(left_op) || !ir.live(right_op) ||
+     ir.callee(left_op) != "operator .." ||
+     ir.callee(right_op) != "operator .." {
+    return false
+  }
+  let a = ir.args(left_op)
+  let b = ir.args(right_op)
+  return len(a) == 2 && len(b) == 2 &&
+         same_value(a[0], b[0]) && same_value(a[1], b[1])
+}
+
+local fn captured(op: Op, value: Val) -> bool {
+  for input in ir.args(op) {
+    if input == value {
+      return true
+    }
+  }
+  for body in ir.blks(op) {
+    for child in ir.ops(body) {
+      if captured(child, value) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+local fn pointwise(op: Op, tensor: Val, index: Val) -> bool {
+  var touches = false
+  for input in ir.args(op) {
+    if input == tensor {
+      touches = true
+    }
+  }
+  if touches {
+    let inputs = ir.args(op)
+    return ir.kind(op) == "call" && ir.callee(op) == "operator []" &&
+           len(inputs) == 2 && inputs[0] == tensor && inputs[1] == index
+  }
+  for body in ir.blks(op) {
+    for child in ir.ops(body) {
+      if !pointwise(child, tensor, index) {
+        return false
+      }
+    }
+  }
+  return true
+}
+
 local fn keep(m: Mod, value: Val, stem: str) -> Val {
   assert(ir.live(value), "tile: cannot retain an invalid value")
   assert(ir.rename(m, value, stem + "_" + text(ir.key(value))),
          "tile: cannot name a generated value")
   return value
-}
-
-local fn clone_with(
-  m: Mod, source: Op, before: Op, old: list<Val>, next: list<Val>
-) -> Op {
-  var used_old: list<Val> = []
-  var used_next: list<Val> = []
-  for i in 0..len(old) {
-    if captured(source, old[i]) {
-      used_old += [old[i]]
-      used_next += [next[i]]
-    }
-  }
-  return ir.clone(m, source, before, used_old, used_next)
 }
 
 fn split(m: Mod, source: Op, factor: int) -> bool {
@@ -210,7 +244,7 @@ fn split(m: Mod, source: Op, factor: int) -> bool {
          ir.kind(original_ops[len(original_ops) - 1]) == "yield",
          "tile.split requires a terminated loop body")
   for i in 0..len(original_ops) - 1 {
-    let copy = clone_with(m, original_ops[i], then_yield, old, next)
+    let copy = ir.clone(m, original_ops[i], then_yield, old, next)
     assert(ir.live(copy), "tile.split could not clone the loop body")
     let old_outputs = ir.outs(original_ops[i])
     let new_outputs = ir.outs(copy)
@@ -233,5 +267,113 @@ fn split(m: Mod, source: Op, factor: int) -> bool {
   }
   assert(ir.erase(m, source),
          "tile.split could not erase the original loop")
+  return true
+}
+
+fn fuse(m: Mod, producer: Op, consumer: Op) -> bool {
+  assert(ir.live(producer) && ir.live(consumer) &&
+         ir.kind(producer) == "loop" && ir.kind(consumer) == "loop" &&
+         producer != consumer && ir.blk(producer) == ir.blk(consumer),
+         "tile.fuse requires two distinct loops in one block")
+
+  var ordered = false
+  for op in ir.ops(ir.blk(producer)) {
+    if op == producer {
+      ordered = true
+    }
+    if op == consumer {
+      assert(ordered, "tile.fuse requires producer before consumer")
+    }
+  }
+
+  let producer_inputs = ir.args(producer)
+  let consumer_inputs = ir.args(consumer)
+  let producer_outputs = ir.outs(producer)
+  let consumer_outputs = ir.outs(consumer)
+  let producer_bodies = ir.blks(producer)
+  let consumer_bodies = ir.blks(consumer)
+  assert(len(producer_outputs) == 1 && len(consumer_outputs) == 1 &&
+         len(producer_bodies) == 1 && len(consumer_bodies) == 1,
+         "tile.fuse currently requires one carried tensor per loop")
+  assert(len(producer_inputs) == 2 && len(consumer_inputs) == 2,
+         "tile.fuse currently requires one iterator per loop")
+  assert(same_range(producer_inputs[0], consumer_inputs[0]),
+         "tile.fuse requires equal iteration ranges")
+  assert(ir.type(producer_outputs[0]) == ir.type(producer_inputs[1]) &&
+         ir.type(consumer_outputs[0]) == ir.type(consumer_inputs[1]) &&
+         producer_outputs[0] != consumer_inputs[1],
+         "tile.fuse requires distinct, type-stable carried tensors")
+
+  let producer_body = producer_bodies[0]
+  let consumer_body = consumer_bodies[0]
+  let producer_args = ir.args(producer_body)
+  let consumer_args = ir.args(consumer_body)
+  assert(len(producer_args) == 2 && len(consumer_args) == 2 &&
+         ir.type(producer_args[0]) == ir.type(consumer_args[0]),
+         "tile.fuse found incompatible loop bodies")
+
+  var stores: list<Op> = []
+  for op in ir.ops(producer_body) {
+    let inputs = ir.args(op)
+    if ir.callee(op) == "operator []=" && len(inputs) == 3 &&
+       inputs[0] == producer_args[1] && inputs[1] == producer_args[0] {
+      stores += [op]
+    }
+  }
+  assert(len(stores) == 1,
+         "tile.fuse requires one pointwise producer store")
+  let producer_ops = ir.ops(producer_body)
+  let consumer_ops = ir.ops(consumer_body)
+  let producer_yield = producer_ops[len(producer_ops) - 1]
+  let consumer_yield = consumer_ops[len(consumer_ops) - 1]
+  assert(ir.kind(producer_yield) == "yield" &&
+         ir.kind(consumer_yield) == "yield" &&
+         ir.args(producer_yield) == ir.outs(stores[0]),
+         "tile.fuse requires the producer store to reach its yield")
+  assert(captured(consumer, producer_outputs[0]) &&
+         pointwise(consumer, producer_outputs[0], consumer_args[0]),
+         "tile.fuse requires pointwise consumer reads")
+
+  let merged = ir.loop(
+    m, consumer, [ir.name(producer_args[0])], [producer_inputs[0]],
+    [producer_inputs[1], consumer_inputs[1]]
+  )
+  assert(ir.live(merged), "tile.fuse could not build the merged loop")
+  let merged_body = ir.blks(merged)[0]
+  let merged_args = ir.args(merged_body)
+  let merged_ops = ir.ops(merged_body)
+  let merged_yield = merged_ops[len(merged_ops) - 1]
+
+  var old: list<Val> = [producer_args[0], producer_args[1]]
+  var next: list<Val> = [merged_args[0], merged_args[1]]
+  for i in 0..len(producer_ops) - 1 {
+    let copy = ir.clone(m, producer_ops[i], merged_yield, old, next)
+    assert(ir.live(copy), "tile.fuse could not clone the producer body")
+    old += ir.outs(producer_ops[i])
+    next += ir.outs(copy)
+  }
+  let produced = mapped(ir.args(producer_yield), old, next)
+  assert(len(produced) == 1,
+         "tile.fuse found an invalid producer yield")
+  old += [producer_outputs[0], consumer_args[0], consumer_args[1]]
+  next += [produced[0], merged_args[0], merged_args[2]]
+
+  for i in 0..len(consumer_ops) - 1 {
+    let copy = ir.clone(m, consumer_ops[i], merged_yield, old, next)
+    assert(ir.live(copy), "tile.fuse could not clone the consumer body")
+    old += ir.outs(consumer_ops[i])
+    next += ir.outs(copy)
+  }
+  let consumed = mapped(ir.args(consumer_yield), old, next)
+  assert(len(consumed) == 1,
+         "tile.fuse found an invalid consumer yield")
+  assert(ir.args(m, merged_yield, [produced[0], consumed[0]]),
+         "tile.fuse could not connect the merged loop")
+  assert(ir.replace(
+           m, [producer_outputs[0], consumer_outputs[0]], ir.outs(merged)
+         ),
+         "tile.fuse could not replace the original loop results")
+  assert(ir.erase(m, [consumer, producer]),
+         "tile.fuse could not erase the original loops")
   return true
 }

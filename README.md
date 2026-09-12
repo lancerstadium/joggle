@@ -34,7 +34,8 @@ There is no pass class, generated adaptor, operator class hierarchy, or hidden
 global registry. Frontends, semantic bridges, optimizations, analyses, memory
 planners, simulators, and emitters are removable modules.
 Loop scheduling follows the same rule: the bundled `tile` module rewrites an
-ordinary selected loop and can be removed without changing core or the IR.
+ordinary selected loop or an explicitly selected pointwise producer/consumer
+pair and can be removed without changing core or the IR.
 An exported `fn` is the module API; implementation helpers use `local fn` and
 cannot be resolved or invoked through an importing module. No separate export
 manifest is generated or maintained.

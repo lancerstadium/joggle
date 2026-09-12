@@ -458,10 +458,11 @@ copied subtree:
 let copy = ir.clone(m, loop, before, [old_base], [new_base])
 ```
 
-The two lists are parallel and typed. Every old value must actually be an
-external operand of the source subtree, every replacement must have exactly
-the same type and dominate the insertion point, and values defined inside the
-source cannot be replaced through this interface. All checks precede mutation.
+The two lists are a parallel typed lookup table. Entries unused by a particular
+subtree are allowed, so one accumulated mapping can be reused while cloning a
+sequence of operations. Every replacement that is actually selected must have
+exactly the same type and dominate the insertion point; values defined inside
+the source cannot be replaced through this interface. All checks precede mutation.
 This is the small structural primitive used by removable loop split, fusion,
 reorder, and unroll modules; it does not introduce a schedule object or a
 second loop IR.
