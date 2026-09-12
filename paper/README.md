@@ -1,8 +1,14 @@
-# Paper plan
+# FSE 2027 paper workspace
 
-This directory is the evidence workspace for a possible Joggle paper. It is not
-a manuscript draft and it does not treat implemented features as validated
-research contributions.
+This directory separates the working manuscript, related-work evidence, and raw
+pilot records:
+
+- [manuscript.md](manuscript.md) is the current paper text;
+- [related-work.md](related-work.md) records source-grounded comparisons;
+- [data/](data/) contains pilot measurements and their provenance.
+
+Implemented features are not automatically treated as research contributions.
+Only frozen, reproducible measurements may enter the final Results section.
 
 ## Intended venue
 
@@ -13,6 +19,12 @@ The official deadline is October 2, 2026, Anywhere on Earth, as listed on the
 submissions use the ACM `acmsmall` format and allow 18 pages of text and
 figures plus 4 pages of references. The call encourages an anonymized,
 curated, reproducible artifact.
+
+The review is double anonymous. The submission must include a `Data
+Availability` section after the conclusion. Because AI assistance has affected
+research code and analysis, the Methods section must disclose that use in the
+specific terms required by the current ACM/FSE policy; a writing-only statement
+would be insufficient.
 
 The deadline is a decision point, not permission to overclaim. If the controlled
 evaluation below is incomplete, the project should continue toward a later
@@ -141,9 +153,11 @@ frozen.
 - TinyYOLOv3 and SSD-MobileNetV1 add negative compatibility evidence rather
   than executable-model counts. TinyYOLOv3 retains 219 unknown results after
   inference across dynamic shape and control-flow paths. SSD-MobileNetV1
-  infers all 6,790 initially unknown results but retains 1,521 source calls
-  after semantic conversion, dominated by post-processing and control flow.
-  Both models decode and round trip; neither is currently a generated-C claim.
+  infers all 6,790 initially unknown results. Mapping variadic broadcast Max
+  and Min to ordinary shared functions reduces its conversion frontier from
+  1,521 to 710 source calls without a C-emitter case. Post-processing,
+  comparison, dynamic indexing, and control flow remain. Both models decode
+  and round trip; neither is currently a generated-C claim.
 - One out-of-tree convolution implementation now changes the generated loop
   structure without an ONNX or C-emitter edit. On matched strict-C pilots it
   reduces median latency by 1.93x on MobileNetV2, 3.13x on ResNet18, 6.29x on
