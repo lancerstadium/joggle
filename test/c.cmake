@@ -97,6 +97,12 @@ if(NOT emitted MATCHES "static int64_t open_offset\\(int64_t x\\)")
   message(FATAL_ERROR
           "prepared C did not give a local helper internal linkage:\n${emitted}")
 endif()
+if(NOT emitted MATCHES "float\\* out = out_out;" OR
+   emitted MATCHES "float out\\[4\\];" OR
+   emitted MATCHES "out_out\\[[^]]+\\] = out\\[[^]]+\\]")
+  message(FATAL_ERROR
+          "prepared C did not write a returned tensor directly:\n${emitted}")
+endif()
 execute_process(
   COMMAND "${TOOL}" emit c.header "${prepared}" -M "${MODULES}"
   RESULT_VARIABLE result

@@ -192,6 +192,11 @@ results, storage slots, or escaped C keywords use the reserved `joggle_`
 prefix. An explicit `[c: {name: "..."}]` binding pins an external ABI name when
 source-derived spelling is not the desired contract.
 
+When a function has one return path and an unplanned local tensor is returned,
+the C emitter binds that tensor directly to its output pointer. It does not
+materialize a second local array or append a whole-tensor copy. Planned
+workspaces and multiple return paths retain the conservative copy boundary.
+
 `c.prepare`, `mem.plan`, and the artifact functions are independent.
 Emission never performs hidden conversion, scheduling, or storage planning.
 The deterministic `vm` module provides a second execution path and reports

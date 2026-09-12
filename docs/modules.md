@@ -257,6 +257,12 @@ Joggle is pre-1.0, source-derived spelling is not itself a stable ABI promise:
 applications that require ABI stability should use an explicit binding and
 compile the emitted header and source from the same IR.
 
+For a function with one return path, an unplanned local tensor that reaches a
+pointer result is backed directly by that result buffer. The emitter retains
+the local source name as a pointer alias, so the body stays readable without a
+second tensor allocation or a final elementwise copy. A planned workspace or
+multiple return paths use the conservative copy form.
+
 Target-specific support for a user type belongs in a small companion module.
 The `sat.c` and `sat.vm` modules illustrate this rule: `sat` owns the type
 semantics, while each companion owns only its representation at that target.

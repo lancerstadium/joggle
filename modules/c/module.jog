@@ -555,8 +555,25 @@ fn place(m: Mod, scope: str) -> bool {
   return changed
 }
 
+local fn direct_result(
+  value: Val, direct: list<str>, results: list<str>
+) -> str {
+  assert(len(direct) == len(results),
+         "c: direct result map is inconsistent")
+  if !tensor.valid(ir.type(value)) {
+    return ""
+  }
+  for i in 0..len(direct) {
+    if direct[i] != "" && label(value) == direct[i] {
+      return results[i]
+    }
+  }
+  return ""
+}
+
 local fn tensor_new(
-  m: Mod, op: Op, depth: int, blob: str, config: dict
+  m: Mod, op: Op, depth: int, blob: str, config: dict,
+  direct: list<str>, results: list<str>
 ) -> str {
   let outputs = ir.outs(op)
   let inputs = ir.args(op)
@@ -568,8 +585,14 @@ local fn tensor_new(
   let indent = pad(depth)
   var out = ""
   if !reuses(op) && !mem.planned(output) {
-    out = indent + scalar(tensor.elem(type), config) + " " + val(output) + "[" +
-          text(n) + "];\n"
+    let target = direct_result(output, direct, results)
+    if target == "" {
+      out = indent + scalar(tensor.elem(type), config) + " " + val(output) +
+            "[" + text(n) + "];\n"
+    } else {
+      out = indent + scalar(tensor.elem(type), config) + "* " + val(output) +
+            " = " + target + ";\n"
+    }
   }
   out += indent + "for (" + index_type(config) +
          " joggle_i = 0; joggle_i < " + text(n) +
@@ -657,7 +680,8 @@ local fn tensor_constant(
 }
 
 local fn copy(
-  m: Mod, op: Op, depth: int, blob: str, config: dict
+  m: Mod, op: Op, depth: int, blob: str, config: dict,
+  direct: list<str>, results: list<str>
 ) -> str {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -670,8 +694,14 @@ local fn copy(
   if tensor.valid(type) {
     var out = ""
     if !reuses(op) && !mem.planned(output) {
-      out = indent + scalar(tensor.elem(type), config) + " " + val(output) + "[" +
-            text(count(type)) + "];\n"
+      let target = direct_result(output, direct, results)
+      if target == "" {
+        out = indent + scalar(tensor.elem(type), config) + " " + val(output) +
+              "[" + text(count(type)) + "];\n"
+      } else {
+        out = indent + scalar(tensor.elem(type), config) + "* " + val(output) +
+              " = " + target + ";\n"
+      }
     }
     if val(output) != val(input) {
       out += indent + "memcpy(" + val(output) + ", " + val(input) + ", " +
@@ -684,7 +714,8 @@ local fn copy(
 }
 
 local fn call(
-  m: Mod, op: Op, depth: int, blob: str, config: dict
+  m: Mod, op: Op, depth: int, blob: str, config: dict,
+  direct: list<str>, results: list<str>
 ) -> str {
   let name = ir.callee(op)
   let inputs = ir.args(op)
@@ -695,7 +726,7 @@ local fn call(
     return ""
   }
   if name == "base.copy" {
-    return copy(m, op, depth, blob, config)
+    return copy(m, op, depth, blob, config, direct, results)
   }
   if name == "operator []" {
     assert(len(outputs) == 1 && len(inputs) >= 2,
@@ -720,7 +751,7 @@ local fn call(
   let target = ir.resolve(m, op)
   if len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
      ir.live(target) && ir.symbol(target) == "tensor.tensor" {
-    return tensor_new(m, op, depth, blob, config)
+    return tensor_new(m, op, depth, blob, config, direct, results)
   }
   let binary_op = binary(name)
   if binary_op != "" && len(inputs) == 2 && len(outputs) == 1 &&
@@ -783,8 +814,14 @@ local fn call(
       let type = ir.type(output)
       if tensor.valid(type) {
         if !mem.planned(output) {
-          out += indent + scalar(tensor.elem(type), config) + " " + val(output) +
-                 "[" + text(count(type)) + "];\n"
+          let target = direct_result(output, direct, results)
+          if target == "" {
+            out += indent + scalar(tensor.elem(type), config) + " " +
+                   val(output) + "[" + text(count(type)) + "];\n"
+          } else {
+            out += indent + scalar(tensor.elem(type), config) + "* " +
+                   val(output) + " = " + target + ";\n"
+          }
         }
       } else {
         out += indent + scalar(type, config) + " " + val(output) + ";\n"
@@ -805,8 +842,14 @@ local fn call(
     let type = ir.type(output)
     var out = ""
     if !reuses(op) && !mem.planned(output) {
-      out = indent + scalar(tensor.elem(type), config) + " " + val(output) + "[" +
-            text(count(type)) + "];\n"
+      let target = direct_result(output, direct, results)
+      if target == "" {
+        out = indent + scalar(tensor.elem(type), config) + " " + val(output) +
+              "[" + text(count(type)) + "];\n"
+      } else {
+        out = indent + scalar(tensor.elem(type), config) + "* " + val(output) +
+              " = " + target + ";\n"
+      }
     }
     if len(inputs) != 0 {
       actuals += ", "
@@ -823,7 +866,7 @@ local fn call(
 
 local fn ret(
   m: Mod, op: Op, depth: int, blob: str, config: dict,
-  results: list<str>
+  direct: list<str>, results: list<str>
 ) -> str {
   let values = ir.args(op)
   let indent = pad(depth)
@@ -843,11 +886,13 @@ local fn ret(
       iterator += "_" + text(i)
     }
     if tensor.valid(ir.type(value)) {
-      let n = count(ir.type(value))
-      out += indent + "for (" + index_type(config) + " " + iterator +
-             " = 0; " + iterator + " < " + text(n) + "; ++" + iterator +
-             ") " + output + "[" + iterator + "] = " + val(value) + "[" +
-             iterator + "];\n"
+      if direct_result(value, direct, results) != output {
+        let n = count(ir.type(value))
+        out += indent + "for (" + index_type(config) + " " + iterator +
+               " = 0; " + iterator + " < " + text(n) + "; ++" + iterator +
+               ") " + output + "[" + iterator + "] = " + val(value) + "[" +
+               iterator + "];\n"
+      }
     } else {
       out += indent + "*" + output + " = " +
              expr(m, value, blob, config) + ";\n"
@@ -879,7 +924,7 @@ local fn constant(op: Op, depth: int, config: dict) -> str {
 
 local fn loop(
   m: Mod, op: Op, depth: int, blob: str, config: dict,
-  results: list<str>
+  direct: list<str>, results: list<str>
 ) -> str {
   let bodies = ir.blks(op)
   assert(len(bodies) == 1, "c: loop must have one body")
@@ -923,7 +968,7 @@ local fn loop(
       }
     }
   }
-  out += block(m, body, depth + iterators, blob, config, results)
+  out += block(m, body, depth + iterators, blob, config, direct, results)
   for reverse in 0..iterators {
     out += pad(depth + iterators - reverse - 1) + "}\n"
   }
@@ -932,14 +977,14 @@ local fn loop(
 
 local fn branch(
   m: Mod, op: Op, depth: int, blob: str, config: dict,
-  results: list<str>
+  direct: list<str>, results: list<str>
 ) -> str {
   let bodies = ir.blks(op)
   let inputs = ir.args(op)
   assert(len(bodies) == 2 && len(inputs) >= 1,
          "c: branch structure is invalid")
-  let first = block(m, bodies[0], depth + 1, blob, config, results)
-  let second = block(m, bodies[1], depth + 1, blob, config, results)
+  let first = block(m, bodies[0], depth + 1, blob, config, direct, results)
+  let second = block(m, bodies[1], depth + 1, blob, config, direct, results)
   var out = pad(depth) + "if (" + expr(m, inputs[0], blob, config) +
             ") {\n" + first
   if second == "" {
@@ -952,24 +997,24 @@ local fn branch(
 
 local fn block(
   m: Mod, body: Blk, depth: int, blob: str, config: dict,
-  results: list<str>
+  direct: list<str>, results: list<str>
 ) -> str {
   var out = ""
   for op in ir.ops(body) {
     let kind = ir.kind(op)
     if kind == "call" {
-      out += call(m, op, depth, blob, config)
+      out += call(m, op, depth, blob, config, direct, results)
     } else {
       if kind == "loop" {
-        out += loop(m, op, depth, blob, config, results)
+        out += loop(m, op, depth, blob, config, direct, results)
       } else {
         if kind == "branch" {
           if logical(m, op, blob, config) == "" {
-            out += branch(m, op, depth, blob, config, results)
+            out += branch(m, op, depth, blob, config, direct, results)
           }
         } else {
           if kind == "return" {
-            out += ret(m, op, depth, blob, config, results)
+            out += ret(m, op, depth, blob, config, direct, results)
           } else {
             if kind == "constant" {
               if payload(op) {
@@ -984,6 +1029,44 @@ local fn block(
         }
       }
     }
+  }
+  return out
+}
+
+local fn result_values(fn: Fn) -> list<Val> {
+  var out: list<Val> = []
+  var count = 0
+  for op in ir.ops(fn) {
+    if ir.kind(op) == "return" {
+      out = ir.args(op)
+      count += 1
+    }
+  }
+  if count != 1 {
+    return []
+  }
+  return out
+}
+
+local fn direct_labels(fn: Fn) -> list<str> {
+  let types = ir.returns(fn)
+  let returned = result_values(fn)
+  var out: list<str> = []
+  for i in 0..len(types) {
+    var name = ""
+    if len(returned) == len(types) && tensor.valid(types[i]) {
+      for op in ir.ops(fn) {
+        if ir.kind(op) == "call" && !reuses(op) {
+          for value in ir.outs(op) {
+            if tensor.valid(ir.type(value)) && !mem.planned(value) &&
+               label(value) == label(returned[i]) {
+              name = label(returned[i])
+            }
+          }
+        }
+      }
+    }
+    out += [name]
   }
   return out
 }
@@ -1139,9 +1222,11 @@ local fn definition(m: Mod, fn: Fn, blob: str, config: dict) -> str {
   if blob != "" {
     data = pad(1) + "(void)" + blob + ";\n"
   }
+  let direct = direct_labels(fn)
   let results = result_names(fn, blob)
   return linkage(m, fn) + signature(m, fn, blob, config) + " {\n" +
-         data + memory + block(m, bodies[0], 1, blob, config, results) + "}\n"
+         data + memory +
+         block(m, bodies[0], 1, blob, config, direct, results) + "}\n"
 }
 
 local fn functions(m: Mod) -> list<Fn> {
