@@ -523,6 +523,19 @@ if(JOGGLE_BUILD_TESTS)
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/spatial.cmake
     )
     add_test(
+      NAME compact-example
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DTOOL=$<TARGET_FILE:joggle-tool>
+        -DCC=${JOGGLE_TEST_C_COMPILER}
+        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/spatial.jog
+        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/spatial_main.c
+        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DEXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/examples
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/compact-example
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/compact.cmake
+    )
+    add_test(
       NAME c-execution
       COMMAND
         ${CMAKE_COMMAND}

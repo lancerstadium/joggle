@@ -20,6 +20,9 @@ complexity. Each directory is a complete, runnable module or application.
 - [`spatial`](spatial) selects one portable convolution implementation family
   across compact, explicit-layout, and fused signatures. Its loop order
   exposes consecutive output columns to an optimizing C compiler.
+- [`compact`](compact) selects a lower-workspace body for biased convolution.
+  It deliberately records a memory/latency tradeoff instead of being presented
+  as a universally faster replacement.
 - [`cost`](cost) demonstrates a user-defined structural measure. The unit and
   weighting policy stay in the module rather than becoming a compiler class.
 
