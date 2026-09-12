@@ -35,12 +35,27 @@ if(invalid_result EQUAL 0 OR
           "unsafe shifted fusion was not rejected:\n${invalid_output}${invalid_error}")
 endif()
 
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.reject_mutating_unroll_policy "${MODEL}"
+          -M "${MODULES}"
+  RESULT_VARIABLE mutating_unroll_result
+  OUTPUT_VARIABLE mutating_unroll_output
+  ERROR_VARIABLE mutating_unroll_error
+)
+if(mutating_unroll_result EQUAL 0 OR
+   NOT mutating_unroll_error MATCHES "policy changed the module")
+  message(FATAL_ERROR
+          "mutating unroll policy was not rejected:\n"
+          "${mutating_unroll_output}${mutating_unroll_error}")
+endif()
+
 file(REMOVE_RECURSE "${ROOT}")
 file(MAKE_DIRECTORY "${ROOT}")
 
 set(tiled_sum "${ROOT}/tiled-sum.jog")
 set(tiled "${ROOT}/tiled.jog")
 set(unrolled_grid "${ROOT}/unrolled-grid.jog")
+set(policy_unrolled "${ROOT}/policy-unrolled.jog")
 set(prepared "${ROOT}/prepared.jog")
 set(source "${ROOT}/model.c")
 set(program "${ROOT}/model")
@@ -92,7 +107,24 @@ if(NOT unrolled_grid_text MATCHES "unroll_blocks_[0-9]+: index = 2" OR
 endif()
 
 execute_process(
-  COMMAND "${TOOL}" run c.prepare "${unrolled_grid}" -M "${MODULES}"
+  COMMAND "${TOOL}" run tile_pass.unroll_small "${unrolled_grid}"
+          --arg 3 -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${policy_unrolled}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "policy-selected unrolling failed (${result}):\n${error}")
+endif()
+file(READ "${policy_unrolled}" policy_unrolled_text)
+if(NOT policy_unrolled_text MATCHES "unroll_offset_[0-9]+: index = 2")
+  message(FATAL_ERROR
+          "policy-selected unrolling omitted a three-point loop:\n"
+          "${policy_unrolled_text}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run c.prepare "${policy_unrolled}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${prepared}"
   ERROR_VARIABLE error
@@ -312,7 +344,7 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "fused C emission failed (${result}):\n${error}")
 endif()
 file(READ "${fused_source}" fused_source_text)
-if(fused_source_text MATCHES "v_first")
+if(fused_source_text MATCHES "first\\[")
   message(FATAL_ERROR
           "fused C retained its private intermediate:\n${fused_source_text}")
 endif()
@@ -425,10 +457,10 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "activation C emission failed (${result}):\n${error}")
 endif()
 file(READ "${relu_source}" relu_source_text)
-if(relu_source_text MATCHES "v_sum" OR
-   relu_source_text MATCHES "v_normalized" OR
-   relu_source_text MATCHES "v_size_1" OR
-   NOT relu_source_text MATCHES "float v_fuse_value_")
+if(relu_source_text MATCHES "sum\\[" OR
+   relu_source_text MATCHES "normalized\\[" OR
+   relu_source_text MATCHES "size_1" OR
+   NOT relu_source_text MATCHES "float fuse_value_")
   message(FATAL_ERROR
           "activation C retained its sum tensor:\n${relu_source_text}")
 endif()

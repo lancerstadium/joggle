@@ -296,10 +296,68 @@ fn split(m: Mod, source: Op, factor: int) -> bool {
   return true
 }
 
+local fn unroll_issue(source: Op, factor: int) -> str {
+  if factor <= 0 {
+    return "requires a positive factor"
+  }
+  if !ir.live(source) || ir.kind(source) != "loop" {
+    return "requires a live loop"
+  }
+  if factor == 1 {
+    return ""
+  }
+  let bodies = ir.blks(source)
+  let inputs = ir.args(source)
+  let outputs = ir.outs(source)
+  if len(bodies) != 1 || len(inputs) <= len(outputs) {
+    return "requires a structured range loop"
+  }
+  let body = bodies[0]
+  let body_args = ir.args(body)
+  let axes = len(inputs) - len(outputs)
+  if axes <= 0 || len(body_args) != axes + len(outputs) {
+    return "found an invalid loop signature"
+  }
+  let axis = axes - 1
+  if ir.type(body_args[axis]) != ty("index") {
+    return "requires an index iterator"
+  }
+
+  let range = inputs[axis]
+  let range_op = ir.def(range)
+  if !ir.live(range_op) || ir.callee(range_op) != "operator .." {
+    return "requires the last iterator to use a range"
+  }
+  let bounds = ir.args(range_op)
+  if len(bounds) != 2 || !ir.is_const(bounds[0]) ||
+     !ir.is_const(bounds[1]) ||
+     base.kind(ir.constant(bounds[0])) != "int" ||
+     base.kind(ir.constant(bounds[1])) != "int" {
+    return "requires static integer bounds"
+  }
+  let lower = base.int(ir.constant(bounds[0]))
+  let upper = base.int(ir.constant(bounds[1]))
+  var trip = 0
+  if upper > lower {
+    trip = upper - lower
+  }
+  if trip % factor != 0 {
+    return "requires the trip count to be divisible by the factor"
+  }
+  return ""
+}
+
+fn can_unroll(m: Mod, source: Op, factor: int) -> bool {
+  let before = ir.revision(m)
+  let legal = factor > 1 && unroll_issue(source, factor) == ""
+  assert(ir.revision(m) == before,
+         "tile.can_unroll changed the module")
+  return legal
+}
+
 fn unroll(m: Mod, source: Op, factor: int) -> bool {
-  assert(factor > 0, "tile.unroll requires a positive factor")
-  assert(ir.live(source) && ir.kind(source) == "loop",
-         "tile.unroll requires a live loop")
+  let issue = unroll_issue(source, factor)
+  assert(issue == "", "tile.unroll " + issue)
   if factor == 1 {
     return false
   }
@@ -307,35 +365,19 @@ fn unroll(m: Mod, source: Op, factor: int) -> bool {
   let bodies = ir.blks(source)
   let inputs = ir.args(source)
   let outputs = ir.outs(source)
-  assert(len(bodies) == 1 && len(inputs) > len(outputs),
-         "tile.unroll requires a structured range loop")
   let body = bodies[0]
   let body_args = ir.args(body)
   let axes = len(inputs) - len(outputs)
-  assert(axes > 0 && len(body_args) == axes + len(outputs),
-         "tile.unroll found an invalid loop signature")
   let axis = axes - 1
-  assert(ir.type(body_args[axis]) == ty("index"),
-         "tile.unroll requires an index iterator")
-
   let range = inputs[axis]
   let range_op = ir.def(range)
-  assert(ir.live(range_op) && ir.callee(range_op) == "operator ..",
-         "tile.unroll requires the last iterator to use a range")
   let bounds = ir.args(range_op)
-  assert(len(bounds) == 2 && ir.is_const(bounds[0]) &&
-         ir.is_const(bounds[1]) &&
-         base.kind(ir.constant(bounds[0])) == "int" &&
-         base.kind(ir.constant(bounds[1])) == "int",
-         "tile.unroll requires static integer bounds")
   let lower = base.int(ir.constant(bounds[0]))
   let upper = base.int(ir.constant(bounds[1]))
   var trip = 0
   if upper > lower {
     trip = upper - lower
   }
-  assert(trip % factor == 0,
-         "tile.unroll requires the trip count to be divisible by the factor")
   var private_range = true
   for user in ir.users(range) {
     if user != source {
@@ -447,6 +489,43 @@ fn unroll(m: Mod, source: Op, factor: int) -> bool {
          "tile.unroll could not erase the original loop")
   opt.dce(m, [])
   return true
+}
+
+local fn unroll_all(
+  m: Mod, policy: Fn, arg: Attr, configured: bool
+) -> bool {
+  assert(ir.live(policy), "tile.unroll requires a valid policy")
+  let candidates = ir.ops(m)
+  var changed = false
+  for reverse in 0..len(candidates) {
+    let op = candidates[len(candidates) - reverse - 1]
+    if ir.live(op) && ir.kind(op) == "loop" {
+      let before = ir.revision(m)
+      var factor = 1
+      if configured {
+        factor = ir.invoke<int>(m, op, policy, arg)
+      } else {
+        factor = ir.invoke<int>(m, op, policy)
+      }
+      assert(ir.revision(m) == before,
+             "tile.unroll policy changed the module")
+      if factor > 1 {
+        let issue = unroll_issue(op, factor)
+        assert(issue == "",
+               "tile.unroll policy selected an illegal factor: " + issue)
+        changed = unroll(m, op, factor) || changed
+      }
+    }
+  }
+  return changed
+}
+
+fn unroll(m: Mod, policy: Fn) -> bool {
+  return unroll_all(m, policy, nil, false)
+}
+
+fn unroll(m: Mod, policy: Fn, arg: Attr) -> bool {
+  return unroll_all(m, policy, arg, true)
 }
 
 local fn fuse_issue(m: Mod, producer: Op, consumer: Op) -> str {

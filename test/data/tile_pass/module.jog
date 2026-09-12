@@ -1,4 +1,5 @@
 module tile_pass
+use base
 use tile
 
 fn first(m: Mod, factor: int) -> bool {
@@ -39,6 +40,47 @@ fn unroll_named(m: Mod, name: str, factor: int) -> bool {
     }
   }
   return false
+}
+
+fn small_factor(m: Mod, loop: Op, limit: int) -> int {
+  if ir.kind(loop) != "loop" {
+    return 1
+  }
+  let inputs = ir.args(loop)
+  let axes = len(inputs) - len(ir.outs(loop))
+  if axes <= 0 {
+    return 1
+  }
+  let range = ir.def(inputs[axes - 1])
+  if !ir.live(range) || ir.callee(range) != "operator .." {
+    return 1
+  }
+  let bounds = ir.args(range)
+  if len(bounds) != 2 || !ir.is_const(bounds[0]) ||
+     !ir.is_const(bounds[1]) ||
+     base.kind(ir.constant(bounds[0])) != "int" ||
+     base.kind(ir.constant(bounds[1])) != "int" {
+    return 1
+  }
+  let trip = base.int(ir.constant(bounds[1])) -
+             base.int(ir.constant(bounds[0]))
+  if trip > 1 && trip <= limit && tile.can_unroll(m, loop, trip) {
+    return trip
+  }
+  return 1
+}
+
+fn unroll_small(m: Mod, limit: int) -> bool {
+  return tile.unroll(m, ir.find("tile_pass.small_factor"), limit)
+}
+
+fn mutating_unroll_policy(m: Mod, loop: Op) -> int {
+  ir.set(m, loop, "policy.mutated", true)
+  return 2
+}
+
+fn reject_mutating_unroll_policy(m: Mod) -> bool {
+  return tile.unroll(m, ir.find("tile_pass.mutating_unroll_policy"))
 }
 
 fn fuse_first(m: Mod) -> bool {
