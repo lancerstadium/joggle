@@ -30,7 +30,7 @@ build/examples/edge/model
 
 External functions must be monomorphic and use scalar or fixed-shape tensor
 types representable by the C ABI. By default their generated symbol includes
-the module name (`edge.matmul` becomes `jog_edge_matmul`) so dependencies do
+the module name (`edge.matmul` becomes `edge_matmul`) so dependencies do
 not collide with local model functions. This example instead attaches
 `[c: {name: "edge_matmul"}]` to the declaration to bind an existing C symbol. The
 attribute is module-owned policy: core IR does not interpret it, and no C

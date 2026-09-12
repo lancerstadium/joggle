@@ -106,7 +106,7 @@ std::string harness(const Bytes& left, const Bytes& right,
       "#include <math.h>\n"
       "#include <stddef.h>\n"
       "#include <string.h>\n"
-      "void jog_main(const float*, const float*, float*);\n";
+      "void model_main(const float*, const float*, float*);\n";
   out += array("left_bytes", left);
   out += array("right_bytes", right);
   out += array("expected_bytes", expected);
@@ -116,7 +116,7 @@ std::string harness(const Bytes& left, const Bytes& right,
       "  memcpy(left, left_bytes, sizeof left);\n"
       "  memcpy(right, right_bytes, sizeof right);\n"
       "  memcpy(expected, expected_bytes, sizeof expected);\n"
-      "  jog_main(left, right, result);\n"
+      "  model_main(left, right, result);\n"
       "  for (size_t i = 0; i < 9; ++i)\n"
       "    if (fabsf(result[i] - expected[i]) >\n"
       "        1.0e-5f + 1.0e-5f * fabsf(expected[i]))\n"

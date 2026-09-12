@@ -6,7 +6,7 @@ fn twice(x: f32) -> f32 {
   return x + x
 }
 
-[c: {name: "kernel_affine"}]
+[c: {name: "affine_kernel"}]
 fn affine(x: f32) -> f32 {
   let doubled = twice(x)
   return doubled + f32(1)

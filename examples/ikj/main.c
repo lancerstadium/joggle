@@ -5,7 +5,7 @@ int main(void) {
   const float b[] = {7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   const float expected[] = {58.0f, 64.0f, 139.0f, 154.0f};
   float out[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-  jog_main(a, b, out);
+  demo_main(a, b, out);
   for (int64_t i = 0; i != 4; ++i) {
     float error = out[i] - expected[i];
     if (error < 0.0f)

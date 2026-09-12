@@ -1,8 +1,8 @@
 #include <stdint.h>
 
-int64_t jog_sum(int64_t n);
-int64_t jog_grid(int64_t rows, int64_t cols);
-int64_t jog_fixed_grid(void);
+int64_t tiled_sum(int64_t n);
+int64_t tiled_grid(int64_t rows, int64_t cols);
+int64_t tiled_fixed_grid(void);
 
 static int64_t grid(int64_t rows, int64_t cols) {
   int64_t total = 0;
@@ -14,14 +14,14 @@ static int64_t grid(int64_t rows, int64_t cols) {
 }
 
 int main(void) {
-  if (jog_sum(-3) != 0 || jog_sum(0) != 0 || jog_sum(1) != 0 ||
-      jog_sum(4) != 6 || jog_sum(5) != 10 || jog_sum(10) != 45 ||
-      jog_grid(-1, 7) != grid(-1, 7) ||
-      jog_grid(3, 1) != grid(3, 1) ||
-      jog_grid(3, 2) != grid(3, 2) ||
-      jog_grid(3, 3) != grid(3, 3) ||
-      jog_grid(3, 8) != grid(3, 8) ||
-      jog_fixed_grid() != INT64_C(12345678))
+  if (tiled_sum(-3) != 0 || tiled_sum(0) != 0 || tiled_sum(1) != 0 ||
+      tiled_sum(4) != 6 || tiled_sum(5) != 10 || tiled_sum(10) != 45 ||
+      tiled_grid(-1, 7) != grid(-1, 7) ||
+      tiled_grid(3, 1) != grid(3, 1) ||
+      tiled_grid(3, 2) != grid(3, 2) ||
+      tiled_grid(3, 3) != grid(3, 3) ||
+      tiled_grid(3, 8) != grid(3, 8) ||
+      tiled_fixed_grid() != INT64_C(12345678))
     return 1;
   return 0;
 }

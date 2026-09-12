@@ -433,10 +433,11 @@ second binary-buffer API.
 `base.ident(text)` encodes a source name as an injective ASCII identifier
 fragment. Letters, digits, and ordinary single underscores remain readable;
 `Z`, dots, reserved underscore runs, and other UTF-8 bytes use the unambiguous
-`ZZ`, `ZD`, `ZU`, and `ZXhh` escapes. Emitters add their own non-reserved
-prefix. This keeps name policy outside core IR while preventing punctuation,
-Unicode, and prior underscore replacement from silently collapsing distinct
-source names.
+`ZZ`, `ZD`, `ZU`, and `ZXhh` escapes. Emitters decide whether a role needs a
+prefix: the C emitter preserves source names and reserves `joggle_` only for
+compiler-owned names and keyword escapes. This keeps name policy outside core
+IR while preventing punctuation, Unicode, and prior underscore replacement
+from silently collapsing distinct source names.
 
 `ir.name(v)` and `ir.rename(m, v, name)` are the symmetric readable-name
 operations. They matter when one source call is decomposed into several normal

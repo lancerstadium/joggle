@@ -242,6 +242,14 @@ and external prototypes from a configuration dictionary and resolved
 signatures. `vm` emits a deterministic image and reports executed steps.
 Neither receives privileged access to the IR.
 
+By default, `c` derives public symbols from qualified function names and keeps
+valid source value names. The `joggle_` prefix is reserved for compiler-owned
+names and C-keyword escapes; it is not added to every user symbol. A module can
+pin an external name with `[c: {name: "vendor_kernel"}]`. Because Joggle is
+pre-1.0, source-derived spelling is not itself a stable ABI promise:
+applications that require ABI stability should use an explicit binding and
+compile the emitted header and source from the same IR.
+
 Target-specific support for a user type belongs in a small companion module.
 The `sat.c` and `sat.vm` modules illustrate this rule: `sat` owns the type
 semantics, while each companion owns only its representation at that target.

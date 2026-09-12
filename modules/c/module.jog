@@ -5,25 +5,43 @@ use mem
 use opt
 use tensor
 
+local fn c_name(text: str) -> str {
+  let name = base.ident(text)
+  let reserved = [
+    "alignas", "alignof", "auto", "bool", "break", "case", "char",
+    "const", "constexpr", "continue", "default", "do", "double", "else",
+    "enum", "extern", "false", "float", "for", "goto", "if", "inline",
+    "int", "long", "nullptr", "register", "restrict", "return", "short",
+    "signed", "sizeof", "static", "static_assert", "struct", "switch",
+    "thread_local", "true", "typedef", "typeof", "typeof_unqual", "union",
+    "unsigned", "void", "volatile", "while", "_Alignas", "_Alignof",
+    "_Atomic", "_Bool", "_Complex", "_Generic", "_Imaginary", "_Noreturn",
+    "_Static_assert", "_Thread_local"
+  ]
+  for keyword in reserved {
+    if name == keyword {
+      return "joggle_" + name
+    }
+  }
+  return name
+}
+
 local fn label(value: Val) -> str {
   let name = ir.name(value)
   if name == "" {
-    return "v" + text(ir.key(value))
+    return "joggle_tmp_" + text(ir.key(value))
   }
-  return base.ident(name)
+  return c_name(name)
 }
 
 local fn val(value: Val) -> str {
   if mem.planned(value) {
     let type = ir.type(value)
     assert(tensor.valid(type), "c: planned value must be a tensor")
-    return "jog_mem_" + base.ident(base.name(tensor.elem(type))) + "_" +
+    return "joggle_slot_" + c_name(base.name(tensor.elem(type))) + "_" +
            text(mem.slot(value))
   }
-  if ir.name(value) == "" {
-    return label(value)
-  }
-  return "v_" + label(value)
+  return label(value)
 }
 
 fn abi() -> dict {
@@ -313,10 +331,7 @@ local fn symbol(m: Mod, fn: Fn, config: dict) -> str {
   if bound != "" {
     return bound
   }
-  if owned(m, fn) {
-    return "jog_" + base.ident(ir.name(fn))
-  }
-  return "jog_" + base.ident(base.replace(ir.symbol(fn), ".", "_"))
+  return c_name(base.replace(ir.symbol(fn), ".", "_"))
 }
 
 local fn args(m: Mod, values: list<Val>, blob: str, config: dict) -> str {
@@ -541,8 +556,8 @@ local fn tensor_new(
           text(n) + "];\n"
   }
   out += indent + "for (" + index_type(config) +
-         " jog_i = 0; jog_i < " + text(n) +
-         "; ++jog_i) " + val(output) + "[jog_i] = " +
+         " joggle_i = 0; joggle_i < " + text(n) +
+         "; ++joggle_i) " + val(output) + "[joggle_i] = " +
          expr(m, inputs[0], blob, config) + ";\n"
   return out
 }
@@ -617,10 +632,10 @@ local fn tensor_constant(
   if bytes == 0 {
     return out
   }
-  out += indent + "static const unsigned char jog_data_" +
+  out += indent + "static const unsigned char joggle_data_" +
          label(output) +
          "[" + text(bytes) + "] = \"\\x" + base.hex(data, "\\x") +
-         "\";\n" + indent + "memcpy(" + val(output) + ", jog_data_" +
+         "\";\n" + indent + "memcpy(" + val(output) + ", joggle_data_" +
          label(output) + ", " + text(bytes) + ");\n"
   return out
 }
@@ -804,8 +819,8 @@ local fn ret(
   var out = ""
   for i in 0..len(values) {
     let value = values[i]
-    var output = "jog_out"
-    var iterator = "jog_i"
+    var output = "joggle_result"
+    var iterator = "joggle_i"
     if len(values) != 1 {
       output += "_" + text(i)
       iterator += "_" + text(i)
@@ -878,7 +893,7 @@ local fn loop(
         out += pad(depth + i) + "for (" + index_type(config) + " " + iterator +
                " = 0; " + iterator + " < 0; ++" + iterator + ") {\n"
       } else {
-        let index = "jog_i_" + base.ident(ir.name(body_args[i]))
+        let index = "joggle_i_" + c_name(ir.name(body_args[i]))
         let type = scalar(ir.type(body_args[i]), config)
         out += pad(depth + i) + "for (" + index_type(config) + " " + index +
                " = 0; " + index +
@@ -997,7 +1012,7 @@ local fn signature(m: Mod, fn: Fn, blob: str, config: dict) -> str {
       } else {
         out += scalar(type, config) + "*"
       }
-      out += " jog_out"
+      out += " joggle_result"
       if len(returns) != 1 {
         out += "_" + text(i)
       }
@@ -1029,8 +1044,8 @@ local fn definition(m: Mod, fn: Fn, blob: str, config: dict) -> str {
   }
   for slot in 0..mem.slots(fn) {
     let type = mem.type(fn, slot)
-    memory += pad(1) + storage + scalar(type, config) + " jog_mem_" +
-              base.ident(base.name(type)) + "_" + text(slot) + "[" +
+    memory += pad(1) + storage + scalar(type, config) + " joggle_slot_" +
+              c_name(base.name(type)) + "_" + text(slot) + "[" +
               text(mem.count(fn, slot)) + "];\n"
   }
   var data = ""
@@ -1213,12 +1228,12 @@ fn header(m: Mod, config: dict) -> str {
 
 fn header(m: Mod, blob: str) -> str {
   assert(blob != "", "c: external data name must not be empty")
-  return header_with(m, "jog_data_" + base.ident(blob), {})
+  return header_with(m, "joggle_data_" + c_name(blob), {})
 }
 
 fn header(m: Mod, blob: str, config: dict) -> str {
   assert(blob != "", "c: external data name must not be empty")
-  return header_with(m, "jog_data_" + base.ident(blob), config)
+  return header_with(m, "joggle_data_" + c_name(blob), config)
 }
 
 local fn data_with(m: Mod, config: dict) -> bytes {
@@ -1265,7 +1280,7 @@ fn source(m: Mod) -> str {
 
 fn source(m: Mod, blob: str) -> str {
   assert(blob != "", "c: external data name must not be empty")
-  return emit(m, "jog_data_" + base.ident(blob), {})
+  return emit(m, "joggle_data_" + c_name(blob), {})
 }
 
 fn source(m: Mod, config: dict) -> str {
@@ -1274,5 +1289,5 @@ fn source(m: Mod, config: dict) -> str {
 
 fn source(m: Mod, blob: str, config: dict) -> str {
   assert(blob != "", "c: external data name must not be empty")
-  return emit(m, "jog_data_" + base.ident(blob), config)
+  return emit(m, "joggle_data_" + c_name(blob), config)
 }

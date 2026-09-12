@@ -68,9 +68,9 @@ int main(int argc, char** argv) {
     return 4;
   }
 #ifdef JOGGLE_EXTERNAL_DATA
-  jog_main(input, data, output);
+  model_main(input, data, output);
 #else
-  jog_main(input, output);
+  model_main(input, output);
 #endif
   const size_t count = output_bytes / sizeof(float);
   float worst = 0.0f;

@@ -87,7 +87,7 @@ if(NOT result EQUAL 0)
 endif()
 
 file(READ "${source}" emitted)
-string(REGEX MATCHALL "float jog_mem_f32_[0-9]+" buffers "${emitted}")
+string(REGEX MATCHALL "float joggle_slot_f32_[0-9]+" buffers "${emitted}")
 list(LENGTH buffers buffer_count)
 if(NOT buffer_count EQUAL 2)
   message(FATAL_ERROR

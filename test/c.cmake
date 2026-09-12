@@ -88,12 +88,12 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "prepared C emission failed (${result}):\n${error}")
 endif()
 file(READ "${open_source}" emitted)
-if(emitted MATCHES "jog_math")
+if(emitted MATCHES "math_")
   message(FATAL_ERROR
           "prepared C declared a math function already emitted through libm:\n"
           "${emitted}")
 endif()
-if(NOT emitted MATCHES "static int64_t jog_offset\\(int64_t v_x\\)")
+if(NOT emitted MATCHES "static int64_t open_offset\\(int64_t x\\)")
   message(FATAL_ERROR
           "prepared C did not give a local helper internal linkage:\n${emitted}")
 endif()
@@ -107,13 +107,13 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "prepared C header emission failed (${result}):\n${error}")
 endif()
 file(READ "${open_header}" emitted_header)
-if(emitted_header MATCHES "jog_offset")
+if(emitted_header MATCHES "open_offset")
   message(FATAL_ERROR
           "prepared C header exposed an unmarked helper:\n${emitted_header}")
 endif()
-if(NOT emitted_header MATCHES "jog_carry" OR
-   NOT emitted_header MATCHES "jog_add" OR
-   NOT emitted_header MATCHES "jog_sigmoid")
+if(NOT emitted_header MATCHES "open_carry" OR
+   NOT emitted_header MATCHES "open_add" OR
+   NOT emitted_header MATCHES "open_sigmoid")
   message(FATAL_ERROR
           "prepared C header omitted a marked entry:\n${emitted_header}")
 endif()
@@ -201,9 +201,9 @@ if(NOT result EQUAL 0)
 endif()
 file(READ "${source32}" emitted_source32)
 file(READ "${header32}" emitted_header32)
-if(NOT emitted_source32 MATCHES "for \\(int32_t jog_i = 0;" OR
+if(NOT emitted_source32 MATCHES "for \\(int32_t joggle_i = 0;" OR
    NOT emitted_header32 MATCHES
-       "jog_abi_probe\\(int32_t v_i, int32_t v_n, int32_t v_x\\);")
+       "kernel_abi_probe\\(int32_t i, int32_t n, int32_t x\\);")
   message(FATAL_ERROR
           "C ABI override did not drive definitions and declarations:\n"
           "${emitted_header32}\n${emitted_source32}")
@@ -290,47 +290,47 @@ endif()
 file(READ "${blob_source}" emitted_blob_source)
 file(READ "${blob_header}" emitted_blob_header)
 if(NOT emitted_blob_source MATCHES
-   "const int8_t\\* [^\n]+ = \\(const int8_t\\*\\)\\(const void\\*\\)\\(jog_data_model \\+ 0\\);" OR
+   "const int8_t\\* [^\n]+ = \\(const int8_t\\*\\)\\(const void\\*\\)\\(joggle_data_model \\+ 0\\);" OR
    NOT emitted_blob_source MATCHES
-   "const float\\* [^\n]+ = \\(const float\\*\\)\\(const void\\*\\)\\(jog_data_model \\+ 4\\);" OR
-   emitted_blob_source MATCHES "static const unsigned char jog_data_" OR
-   emitted_blob_source MATCHES "extern const unsigned char jog_data_" OR
+   "const float\\* [^\n]+ = \\(const float\\*\\)\\(const void\\*\\)\\(joggle_data_model \\+ 4\\);" OR
+   emitted_blob_source MATCHES "static const unsigned char joggle_data_" OR
+   emitted_blob_source MATCHES "extern const unsigned char joggle_data_" OR
    NOT emitted_blob_header MATCHES
-       "jog_weights\\(const unsigned char\\* jog_data_model, float\\* jog_out\\);")
+       "kernel_weights\\(const unsigned char\\* joggle_data_model, float\\* joggle_result\\);")
   message(FATAL_ERROR
           "external-data C interface did not expose the raw blob parameter:\n"
           "${emitted_blob_header}\n${emitted_blob_source}")
 endif()
 file(READ "${header}" emitted_header)
 if(NOT emitted_header MATCHES
-   "int64_t jog_abi_probe\\(int64_t v_i, int64_t v_n, int32_t v_x\\);")
+   "int64_t kernel_abi_probe\\(int64_t i, int64_t n, int32_t x\\);")
   message(FATAL_ERROR
           "C header did not apply its scalar ABI structurally:\n${emitted_header}")
 endif()
-if(NOT emitted_header MATCHES "float kernel_affine\\(float v_x\\);" OR
-   emitted_header MATCHES "jog_affine")
+if(NOT emitted_header MATCHES "float affine_kernel\\(float x\\);" OR
+   emitted_header MATCHES "kernel_affine")
   message(FATAL_ERROR
           "C header did not honor the function-owned ABI name:\n"
           "${emitted_header}")
 endif()
 if(NOT emitted_header MATCHES
-   "void jog_split\\(int64_t v_x, int64_t\\* jog_out_0, int64_t\\* jog_out_1\\);" OR
+   "void kernel_split\\(int64_t x, int64_t\\* joggle_result_0, int64_t\\* joggle_result_1\\);" OR
    NOT emitted_header MATCHES
-   "void jog_duplicate\\(const float\\* v_x, float\\* jog_out_0, float\\* jog_out_1\\);")
+   "void kernel_duplicate\\(const float\\* x, float\\* joggle_result_0, float\\* joggle_result_1\\);")
   message(FATAL_ERROR
           "C header did not derive its multi-result ABI structurally:\n"
           "${emitted_header}")
 endif()
-if(emitted_header MATCHES "jog_noop")
+if(emitted_header MATCHES "kernel_noop")
   message(FATAL_ERROR
           "C header exposed a local zero-result helper:\n${emitted_header}")
 endif()
 file(READ "${source}" emitted_source)
-string(REGEX MATCH "int64_t jog_steps\\(void\\) \\{[^}]*\\}"
+string(REGEX MATCH "int64_t kernel_steps\\(void\\) \\{[^}]*\\}"
        steps_source "${emitted_source}")
-string(REGEX MATCH "int64_t jog_select\\(void\\) \\{[^}]*\\}"
+string(REGEX MATCH "int64_t kernel_select\\(void\\) \\{[^}]*\\}"
        select_source "${emitted_source}")
-string(REGEX MATCH "int64_t jog_captured_steps\\(void\\) \\{[^}]*\\}"
+string(REGEX MATCH "int64_t kernel_captured_steps\\(void\\) \\{[^}]*\\}"
        captured_source "${emitted_source}")
 if(steps_source STREQUAL "" OR select_source STREQUAL "" OR
    captured_source STREQUAL "" OR
@@ -342,18 +342,18 @@ if(steps_source STREQUAL "" OR select_source STREQUAL "" OR
           "${steps_source}\n${select_source}\n${captured_source}")
 endif()
 if(NOT emitted_source MATCHES "#include <math.h>" OR
-   emitted_source MATCHES "jog_round_even")
+   emitted_source MATCHES "math_round_even")
   message(FATAL_ERROR
           "C source did not use module-declared math bindings:\n"
           "${emitted_source}")
 endif()
-if(NOT emitted_source MATCHES "for \\(int64_t jog_i = 0;")
+if(NOT emitted_source MATCHES "for \\(int64_t joggle_i = 0;")
   message(FATAL_ERROR
           "C source did not use the configured index ABI for fixed storage:\n"
           "${emitted_source}")
 endif()
 string(FIND "${emitted_source}"
-       "bool jog_logical(int64_t v_a, int64_t v_b) {\n  if"
+       "bool kernel_logical(int64_t a, int64_t b) {\n  if"
        duplicate_logical)
 if(NOT duplicate_logical EQUAL -1)
   message(FATAL_ERROR

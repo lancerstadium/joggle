@@ -53,6 +53,7 @@ The C path must produce a stable baseline suitable for experiments:
 - complete static workspace planning for realistic tensor lifetimes;
 - keep weights in a deterministic external payload when requested;
 - make ABI and scalar representation configuration explicit;
+- preserve source names by default and reserve `joggle_` for generated names;
 - compare source, compiler diagnostics, binary size, workspace, and latency
   against defined baselines.
 
@@ -159,3 +160,9 @@ reveals an unnecessary concept or an unsafe contract.
 Any incompatible change must update its implementation, tests, examples, and
 the relevant reference document in one commit. Development-phase names and
 version suffixes do not belong in public module or function names.
+
+Generated C declarations and definitions are versioned together as artifacts.
+The source-derived default symbol policy may change before 1.0; explicit `c`
+bindings are the compatibility mechanism for externally fixed ABI names. The
+project does not emit legacy aliases because that would turn historical naming
+choices into permanent target behavior.

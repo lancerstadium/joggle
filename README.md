@@ -176,6 +176,13 @@ ABI spelling, widths, alignment, includes, and external scalar types come from
 a configuration dictionary. Function prototypes are derived from resolved
 signatures; adding an external kernel does not add an emitter case.
 
+Generated C preserves source names when they are valid C identifiers. A public
+function such as `model.main` is emitted as `model_main`; named parameters and
+locals keep their readable names. Only compiler-owned temporaries, anonymous
+results, storage slots, or escaped C keywords use the reserved `joggle_`
+prefix. An explicit `[c: {name: "..."}]` binding pins an external ABI name when
+source-derived spelling is not the desired contract.
+
 `c.prepare`, `mem.plan`, and the artifact functions are independent.
 Emission never performs hidden conversion, scheduling, or storage planning.
 The deterministic `vm` module provides a second execution path and reports
@@ -205,7 +212,8 @@ managed artifact directories, not in the source tree.
 - Unknown metadata survives unrelated transformations.
 - Target preparation is explicit and rejects unsupported IR.
 - Joggle does not yet promise dynamic allocation, automatic scheduling,
-  production-runtime coverage, or performance portability.
+  production-runtime coverage, competitive generated-code performance, or
+  performance portability.
 
 ## Documentation
 

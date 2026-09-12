@@ -1,6 +1,6 @@
 #include <math.h>
 
-void jog_both(
+void tile_keep_both(
     const float* a,
     const float* b,
     const float* c,
@@ -13,7 +13,7 @@ int main(void) {
   const float c[4] = {9.0f, -10.0f, 11.0f, 12.0f};
   float first[4] = {0.0f};
   float second[4] = {0.0f};
-  jog_both(a, b, c, first, second);
+  tile_keep_both(a, b, c, first, second);
   for (int i = 0; i < 4; ++i) {
     if (fabsf(first[i] - (a[i] + b[i])) > 1e-6f ||
         fabsf(second[i] - (a[i] + b[i] + c[i])) > 1e-6f)

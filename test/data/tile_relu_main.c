@@ -1,7 +1,7 @@
 #include <math.h>
 
-void jog_add_relu(const float* a, const float* b, float* out);
-void jog_batch_relu(
+void tile_relu_add_relu(const float* a, const float* b, float* out);
+void tile_relu_batch_relu(
     const float* x,
     const float* scale,
     const float* bias,
@@ -13,7 +13,7 @@ int main(void) {
   const float a[6] = {-5.0f, -2.0f, 0.0f, 1.0f, 3.0f, 8.0f};
   const float b[6] = {1.0f, 2.0f, -1.0f, 4.0f, -7.0f, 0.5f};
   float out[6] = {0.0f};
-  jog_add_relu(a, b, out);
+  tile_relu_add_relu(a, b, out);
   for (int i = 0; i < 6; ++i) {
     const float sum = a[i] + b[i];
     const float expected = sum > 0.0f ? sum : 0.0f;
@@ -27,7 +27,7 @@ int main(void) {
   const float mean[2] = {1.0f, 2.0f};
   const float variance[2] = {4.0f, 1.0f};
   float batch[8] = {0.0f};
-  jog_batch_relu(x, scale, bias, mean, variance, batch);
+  tile_relu_batch_relu(x, scale, bias, mean, variance, batch);
   for (int i = 0; i < 8; ++i) {
     const int channel = i / 4;
     const float normalized =

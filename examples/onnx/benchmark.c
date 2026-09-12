@@ -77,12 +77,12 @@ int main(int argc, char** argv) {
   }
 
   for (size_t i = 0; i < warmup; ++i)
-    jog_main(input, data, output);
+    model_main(input, data, output);
 
   puts("iteration,seconds,checksum");
   for (size_t i = 0; i < repetitions; ++i) {
     const double begin = now();
-    jog_main(input, data, output);
+    model_main(input, data, output);
     const double end = now();
     if (begin < 0.0 || end < begin) {
       free(output);
