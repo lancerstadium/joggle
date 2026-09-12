@@ -107,6 +107,16 @@ std::optional<Attr> attribute(const Item& item) {
   return Attr(std::move(out));
 }
 
+const Attr* meta(const Item& item, std::string_view key) {
+  if (const auto* fn = as<Fn>(item))
+    return fn->meta(key);
+  if (const auto* op = as<Op>(item))
+    return op->meta(key);
+  if (const auto* val = as<Val>(item))
+    return val->meta(key);
+  return nullptr;
+}
+
 std::optional<std::vector<Val>> value_handles(const Item& item) {
   const Items* items = list(item);
   if (!items)
@@ -2153,19 +2163,19 @@ private:
       if (items && key && expected) {
         Items out;
         for (const Item& item : *items) {
-          const auto* fn = as<Fn>(item);
-          if (!fn) {
-            fail("ir.where candidates must be functions", loc);
+          if (!as<Fn>(item) && !as<Op>(item) && !as<Val>(item)) {
+            fail("ir.where items must be functions, operations, or values",
+                 loc);
             return std::nullopt;
           }
-          const Attr* actual = fn->meta(*key);
+          const Attr* actual = meta(item, *key);
           bool selected = actual && *actual == *expected;
           if (actual && actual->list()) {
             for (const Attr& value : *actual->list())
               selected = value == *expected || selected;
           }
           if (selected)
-            out.emplace_back(*fn);
+            out.push_back(item);
         }
         return Items{Item(std::move(out))};
       }

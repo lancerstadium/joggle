@@ -635,10 +635,12 @@ module revision. Layout, alignment, feature, and representation constraints
 therefore stay beside the implementation module instead of becoming core
 attributes or operation-specific branches.
 
-Open function attributes can also define module-owned relations without a
-second rule language. `ir.where(fns, key, value)` filters an explicit function
-list by exact metadata; a list-valued attribute matches when it contains the
-requested value. `ir.invoke<R>(m, op, fn)` executes a selected ordinary
+Open attributes can also define module-owned relations without a second rule
+language. `ir.where(items, key, value)` filters an explicit `list<Fn>`,
+`list<Op>`, or `list<Val>` by exact metadata; a list-valued attribute matches
+when it contains the requested value. The result retains the input handle
+type, so a transform can pass selected operations or values directly to the
+safe editing API. `ir.invoke<R>(m, op, fn)` executes a selected ordinary
 `fn(Mod, Op) -> R` in the current transaction. Its four-argument overload
 passes any typed compile-time value to a matching callback; a dictionary can
 carry named policy, while a `Fn` can identify one candidate implementation

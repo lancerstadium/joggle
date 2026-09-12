@@ -612,13 +612,16 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(scripted_fn, scripted_fn_roundtrip));
   constexpr std::string_view relation_source =
       "module relation\n"
-      "fn main(x: i32) -> i32 {\n"
-      "  let y: i32 = opaque(x)\n"
+      "[mark: [\"fn\", \"entry\"]]\n"
+      "fn main([mark: \"param\"] x: i32) -> i32 {\n"
+      "  [mark: \"op\"]\n"
+      "  let [mark: \"val\"] y: i32 = opaque(x)\n"
       "  return y\n"
       "}\n";
   joggle::Mod relation;
   CHECK(joggle::parse(env, relation_source, relation, "relation.jog"));
   CHECK(relation.verify(env));
+  CHECK(joggle::run(env, "script.where_probe", relation));
   CHECK(joggle::run(env, "script.apply_rules", relation));
   CHECK(relation.verify(env));
   bool matched = false;

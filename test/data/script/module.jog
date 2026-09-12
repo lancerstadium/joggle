@@ -105,6 +105,15 @@ fn apply_rules(m: Mod) -> bool {
   return changed
 }
 
+fn where_probe(m: Mod) -> bool {
+  return len(ir.where(ir.fns(m), "mark", "fn")) == 1 &&
+         len(ir.where(ir.fns(m), "mark", "entry")) == 1 &&
+         len(ir.where(ir.ops(m), "mark", "op")) == 1 &&
+         len(ir.where(ir.ops(m), "missing", true)) == 0 &&
+         len(ir.where(ir.vals(m), "mark", "param")) == 1 &&
+         len(ir.where(ir.vals(m), "mark", "val")) == 1
+}
+
 fn configured_rule(m: Mod, op: Op, config: dict) -> bool {
   let key = str(get(config, "key"))
   return ir.set(m, op, key, get(config, "value"))
