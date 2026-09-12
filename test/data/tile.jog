@@ -1,0 +1,19 @@
+module tiled
+
+fn sum(n: int) -> int {
+  var total = 0
+  for i in 0..n {
+    total += i
+  }
+  return total
+}
+
+fn grid(rows: int, cols: int) -> int {
+  var total = 0
+  for row in 0..rows, column in 2..cols {
+    if column < cols - 1 {
+      total += row * 100 + column
+    }
+  }
+  return total
+}

@@ -659,6 +659,35 @@ argument mutator updates an existing return. Named local carried values recover
 as ordinary `var` bindings when printed, so the construction API does not leak
 an auxiliary `Blk` syntax into `.jog`.
 
+The optional `tile` module is the first consumer of the explicit capture-remap
+clone. `tile.split(m, loop, factor)` splits the last range iterator into a
+block loop and an inner point loop, carries the original mutable state through
+both, and guards the final partial tile. It supports dynamic and nonzero range
+bounds and recursively clones the original body without inspecting its
+callees. The selected operation and factor are explicit arguments; the module
+does not search by operator name, attach a schedule object, or teach core IR a
+tile kind. A project pass chooses a loop through normal reflection:
+
+```jog
+module my_schedule
+use tile
+
+fn apply(m: Mod) -> bool {
+  for op in ir.ops(m) {
+    if ir.kind(op) == "loop" {
+      return tile.split(m, op, 8)
+    }
+  }
+  return false
+}
+```
+
+Generated bounds are named structural values so their `index` types survive a
+text round trip. Invalid factors, non-range iterators, malformed carried state,
+or failed rewiring abort the enclosing transform transaction. Reorder, unroll,
+multi-axis policies, and producer/consumer fusion remain follow-on functions,
+not implied behavior of `split`.
+
 `ir.rename` may be applied directly to a `Blk` argument. Iterator renames are
 reflected in the loop header, while carried-value renames propagate through
 both arms, yields, and enclosing structured results. The operation therefore

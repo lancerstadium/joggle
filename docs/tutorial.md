@@ -271,6 +271,27 @@ nested operations into the new structure, and then replace the old loop. The
 same primitive applies to conditions and calls and leaves the core unaware of
 tiling policy.
 
+The bundled removable `tile` module turns that primitive into one complete
+loop transform. A project chooses the loop with ordinary reflection:
+
+```jog
+module my_tile
+use tile
+
+fn apply(m: Mod) -> bool {
+  for op in ir.ops(m) {
+    if ir.kind(op) == "loop" {
+      return tile.split(m, op, 4)
+    }
+  }
+  return false
+}
+```
+
+`tile.split` blocks the last range iterator, threads its carried values, and
+adds a tail guard, so bounds need not be divisible by four. It does not select
+loops or choose a factor on the user's behalf.
+
 ## Materialize a function template
 
 A module may copy a normal function into the program when a transform needs a

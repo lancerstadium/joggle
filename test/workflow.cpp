@@ -2936,6 +2936,34 @@ int main(int argc, char** argv) {
         find_argument(find_argument, op, scripted_remapped_params[2]))
       ++right_capturing_loops;
   CHECK(right_capturing_loops == 1);
+  joggle::Mod tiled_loop;
+  CHECK(joggle::parse(env, loop_source, tiled_loop, "tiled-loop.jog"));
+  const std::vector<joggle::Attr> tile_factor{
+      joggle::Attr(std::int64_t{4})};
+  const bool tiled =
+      joggle::run(env, "script.split_first_loop", tiled_loop, tile_factor);
+  if (!tiled) {
+    tiled_loop.print_diags(stderr);
+    env.print_diags(stderr);
+  }
+  CHECK(tiled);
+  CHECK(tiled_loop.verify(env));
+  std::size_t tiled_loops = 0;
+  std::size_t tail_guards = 0;
+  for (joggle::Op op : tiled_loop.ops()) {
+    if (op.kind() == joggle::Op::Kind::loop)
+      ++tiled_loops;
+    if (op.kind() == joggle::Op::Kind::branch)
+      ++tail_guards;
+  }
+  CHECK(tiled_loops == 2);
+  CHECK(tail_guards == 1);
+  CHECK(joggle::print(tiled_loop).find("i_tile") != std::string::npos);
+  joggle::Mod tiled_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(tiled_loop), tiled_roundtrip,
+                      "tiled-roundtrip.jog"));
+  CHECK(tiled_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(tiled_loop, tiled_roundtrip));
   joggle::Mod returned_constant;
   CHECK(joggle::parse(env,
                       "module returned\n"

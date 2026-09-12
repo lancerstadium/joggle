@@ -340,6 +340,15 @@ that one loop order is generally faster. The optional official ONNX MatMul gate
 applies the same module after semantic conversion and checks its result through
 both VM and compiled C against the pinned ONNX output.
 
+The first reusable loop transformation is now a separate `tile` module.
+`tile.split` rewrites the last range iterator into block and point loops,
+preserves arbitrary carried values, and guards a dynamic partial tile using
+only public construction, capture-remapped cloning, replacement, and erasure.
+Its generated program round-trips and executes through unchanged C emission.
+This closes the structural prerequisite for scheduling experiments; loop
+reorder, unroll, producer/consumer fusion, and measured network speedups remain
+open and must not be inferred from the scalar correctness gate.
+
 The complementary `examples/edge` gate treats a bodyless monomorphic tensor
 function as an external C ABI contract, automatically emits its qualified
 prototype, links a separately compiled implementation, and executes the

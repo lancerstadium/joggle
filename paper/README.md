@@ -55,6 +55,11 @@ small embeddable compiler frameworks.
   and weights. The external-data source contains 266 aligned read-only weight
   views and no per-inference weight `memcpy`; all 1,000 outputs still agree,
   with maximum absolute error `2.0980835e-05`.
+- The first operator-neutral loop transform is executable rather than a syntax
+  sketch: a removable module splits a selected dynamic range, preserves
+  carried state, guards partial tiles, round-trips, emits C, and matches exact
+  results for negative, empty, exact, short, and partial ranges. Core and the
+  emitter contain no tile case.
 - Default, sanitizer, ONNX, TFLite, generated-C, VM, installation, and external
   module gates exercise the same public interfaces.
 

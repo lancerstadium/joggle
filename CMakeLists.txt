@@ -21,7 +21,7 @@ set(JOGGLE_EXAMPLE_MOBILENET "" CACHE PATH
 set(JOGGLE_TEST_TFLITE_MODEL "" CACHE FILEPATH
     "Official TFLite model used by tests")
 
-foreach(module base bounds c ir math mem nn opt quant stat tensor vm)
+foreach(module base bounds c ir math mem nn opt quant stat tensor tile vm)
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/${module}")
   configure_file(
     "modules/${module}/module.jog"
@@ -282,6 +282,7 @@ install(
     modules/quant
     modules/stat
     modules/tensor
+    modules/tile
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules
   PATTERN .DS_Store EXCLUDE
 )
@@ -341,6 +342,12 @@ if(JOGGLE_BUILD_TESTS)
   configure_file(
     test/data/number/module.jog
     "${CMAKE_CURRENT_BINARY_DIR}/modules/number/module.jog"
+    COPYONLY
+  )
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/tile_pass")
+  configure_file(
+    test/data/tile_pass/module.jog
+    "${CMAKE_CURRENT_BINARY_DIR}/modules/tile_pass/module.jog"
     COPYONLY
   )
   add_executable(joggle-workflow-test test/workflow.cpp)
@@ -512,6 +519,18 @@ if(JOGGLE_BUILD_TESTS)
         -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
         -DROOT=${CMAKE_CURRENT_BINARY_DIR}/mem-test
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/mem.cmake
+    )
+    add_test(
+      NAME tile-execution
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DTOOL=$<TARGET_FILE:joggle-tool>
+        -DCC=${JOGGLE_TEST_C_COMPILER}
+        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile.jog
+        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_main.c
+        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/tile-test
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/tile.cmake
     )
   endif()
   add_test(

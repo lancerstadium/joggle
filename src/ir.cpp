@@ -1235,9 +1235,13 @@ Op Mod::clone(Op source, Op before, std::span<const Val> old_values,
     if (subtree_values.contains(old_value.id_))
       return reject("clone cannot substitute a value defined by the source",
                     source.loc());
-    if (old_value.type() != new_value.type())
-      return reject("clone substitutions require identical value types",
+    if (old_value.type() != new_value.type()) {
+      const std::string old_type(old_value.type().text());
+      const std::string new_type(new_value.type().text());
+      return reject("clone substitution type mismatch: " + old_type +
+                        " versus " + new_type,
                     source.loc());
+    }
     if (old_value == new_value)
       continue;
     const auto [found, inserted] =

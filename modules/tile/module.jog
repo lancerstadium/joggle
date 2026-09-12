@@ -1,0 +1,237 @@
+module tile
+use ir
+
+local fn captured(op: Op, value: Val) -> bool {
+  for input in ir.args(op) {
+    if input == value {
+      return true
+    }
+  }
+  for body in ir.blks(op) {
+    for child in ir.ops(body) {
+      if captured(child, value) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+local fn mapped(value: Val, old: list<Val>, next: list<Val>) -> Val {
+  for i in 0..len(old) {
+    if value == old[i] {
+      return next[i]
+    }
+  }
+  return value
+}
+
+local fn mapped(values: list<Val>, old: list<Val>, next: list<Val>)
+    -> list<Val> {
+  var out: list<Val> = []
+  for value in values {
+    out += [mapped(value, old, next)]
+  }
+  return out
+}
+
+local fn keep(m: Mod, value: Val, stem: str) -> Val {
+  assert(ir.live(value), "tile: cannot retain an invalid value")
+  assert(ir.rename(m, value, stem + "_" + text(ir.key(value))),
+         "tile: cannot name a generated value")
+  return value
+}
+
+local fn clone_with(
+  m: Mod, source: Op, before: Op, old: list<Val>, next: list<Val>
+) -> Op {
+  var used_old: list<Val> = []
+  var used_next: list<Val> = []
+  for i in 0..len(old) {
+    if captured(source, old[i]) {
+      used_old += [old[i]]
+      used_next += [next[i]]
+    }
+  }
+  return ir.clone(m, source, before, used_old, used_next)
+}
+
+fn split(m: Mod, source: Op, factor: int) -> bool {
+  assert(factor > 0, "tile.split requires a positive factor")
+  assert(ir.live(source) && ir.kind(source) == "loop",
+         "tile.split requires a live loop")
+
+  let bodies = ir.blks(source)
+  let inputs = ir.args(source)
+  let outputs = ir.outs(source)
+  assert(len(bodies) == 1 && len(inputs) > len(outputs),
+         "tile.split requires a structured range loop")
+  let body = bodies[0]
+  let body_args = ir.args(body)
+  let axes = len(inputs) - len(outputs)
+  assert(axes > 0 && len(body_args) == axes + len(outputs),
+         "tile.split found an invalid loop signature")
+
+  let axis = axes - 1
+  let range = inputs[axis]
+  let range_op = ir.def(range)
+  assert(ir.live(range_op) && ir.callee(range_op) == "operator ..",
+         "tile.split requires the last iterator to use a range")
+  let bounds = ir.args(range_op)
+  assert(len(bounds) == 2 && ir.type(bounds[0]) == ir.type(bounds[1]),
+         "tile.split requires matching range bounds")
+
+  let type = ty("index")
+  assert(ir.type(body_args[axis]) == type,
+         "tile.split requires an index iterator")
+  var lower = bounds[0]
+  var upper = bounds[1]
+  if ir.type(lower) != type {
+    lower = keep(
+      m, ir.call(m, source, text(type), [lower], type), "tile_begin"
+    )
+    upper = keep(
+      m, ir.call(m, source, text(type), [upper], type), "tile_end"
+    )
+  }
+  let zero = keep(m, ir.constant(m, source, 0, type), "tile_zero")
+  let one = keep(m, ir.constant(m, source, 1, type), "tile_one")
+  let width = keep(
+    m, ir.call(m, source, "operator -", [upper, lower], type),
+    "tile_width"
+  )
+  let factor_value = keep(
+    m, ir.constant(m, source, factor, type), "tile_factor"
+  )
+  let factor_less_one = keep(
+    m, ir.call(m, source, "operator -", [factor_value, one], type),
+    "tile_tail"
+  )
+  let padded = keep(
+    m, ir.call(m, source, "operator +", [width, factor_less_one], type),
+    "tile_padded"
+  )
+  let blocks = keep(
+    m, ir.call(m, source, "operator /", [padded, factor_value], type),
+    "tile_blocks"
+  )
+  let outer_range = ir.call(
+    m, source, "operator ..", [zero, blocks], ir.type(range)
+  )
+
+  var outer_sources: list<Val> = []
+  var outer_names: list<str> = []
+  for i in 0..axes {
+    if i == axis {
+      outer_sources += [outer_range]
+      outer_names += [ir.name(body_args[i]) + "_tile"]
+    } else {
+      outer_sources += [inputs[i]]
+      outer_names += [ir.name(body_args[i])]
+    }
+  }
+  var carried: list<Val> = []
+  for i in axes..len(inputs) {
+    carried += [inputs[i]]
+  }
+
+  let outer = ir.loop(m, source, outer_names, outer_sources, carried)
+  assert(ir.live(outer), "tile.split could not build the outer loop")
+  let outer_body = ir.blks(outer)[0]
+  let outer_args = ir.args(outer_body)
+  let outer_ops = ir.ops(outer_body)
+  let outer_yield = outer_ops[len(outer_ops) - 1]
+
+  let scaled = keep(
+    m,
+    ir.call(
+      m, outer_yield, "operator *", [outer_args[axis], factor_value], type
+    ),
+    "tile_scaled"
+  )
+  let base = keep(
+    m, ir.call(m, outer_yield, "operator +", [lower, scaled], type),
+    "tile_base"
+  )
+  let inner_range = ir.call(
+    m, outer_yield, "operator ..", [zero, factor_value], ir.type(range)
+  )
+  var inner_carried: list<Val> = []
+  for i in axes..len(outer_args) {
+    inner_carried += [outer_args[i]]
+  }
+  let inner = ir.loop(
+    m, outer_yield, [ir.name(body_args[axis])],
+    [inner_range], inner_carried
+  )
+  assert(ir.live(inner), "tile.split could not build the inner loop")
+  let inner_body = ir.blks(inner)[0]
+  let inner_args = ir.args(inner_body)
+  let inner_ops = ir.ops(inner_body)
+  let inner_yield = inner_ops[len(inner_ops) - 1]
+  let index = keep(
+    m, ir.call(m, inner_yield, "operator +", [base, inner_args[0]], type),
+    "tile_index"
+  )
+  let inside = keep(
+    m, ir.call(
+      m, inner_yield, "operator <", [index, upper], ty("bool")
+    ),
+    "tile_inside"
+  )
+  var guarded_carried: list<Val> = []
+  for i in 1..len(inner_args) {
+    guarded_carried += [inner_args[i]]
+  }
+  let guard = ir.branch(m, inner_yield, inside, guarded_carried)
+  assert(ir.live(guard), "tile.split could not build the tail guard")
+  let then_body = ir.blks(guard)[0]
+  let then_args = ir.args(then_body)
+  let then_ops = ir.ops(then_body)
+  let then_yield = then_ops[len(then_ops) - 1]
+
+  var old: list<Val> = []
+  var next: list<Val> = []
+  for i in 0..axes {
+    old += [body_args[i]]
+    if i == axis {
+      next += [index]
+    } else {
+      next += [outer_args[i]]
+    }
+  }
+  for i in 0..len(outputs) {
+    old += [body_args[axes + i]]
+    next += [then_args[i]]
+  }
+
+  let original_ops = ir.ops(body)
+  assert(len(original_ops) > 0 &&
+         ir.kind(original_ops[len(original_ops) - 1]) == "yield",
+         "tile.split requires a terminated loop body")
+  for i in 0..len(original_ops) - 1 {
+    let copy = clone_with(m, original_ops[i], then_yield, old, next)
+    assert(ir.live(copy), "tile.split could not clone the loop body")
+    let old_outputs = ir.outs(original_ops[i])
+    let new_outputs = ir.outs(copy)
+    assert(len(old_outputs) == len(new_outputs),
+           "tile.split cloned an inconsistent operation")
+    old += old_outputs
+    next += new_outputs
+  }
+
+  let original_yield = original_ops[len(original_ops) - 1]
+  assert(ir.args(m, then_yield, mapped(ir.args(original_yield), old, next)),
+         "tile.split could not connect the guarded body")
+  assert(ir.args(m, inner_yield, ir.outs(guard)),
+         "tile.split could not connect the inner loop")
+  assert(ir.args(m, outer_yield, ir.outs(inner)),
+         "tile.split could not connect the outer loop")
+  if len(outputs) != 0 {
+    assert(ir.replace(m, outputs, ir.outs(outer)),
+           "tile.split could not replace the original loop results")
+  }
+  assert(ir.erase(m, source),
+         "tile.split could not erase the original loop")
+  return true
+}

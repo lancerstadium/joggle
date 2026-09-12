@@ -1,0 +1,22 @@
+module tile_pass
+use tile
+
+fn first(m: Mod, factor: int) -> bool {
+  for op in ir.ops(m) {
+    if ir.kind(op) == "loop" {
+      return tile.split(m, op, factor)
+    }
+  }
+  return false
+}
+
+fn named(m: Mod, name: str, factor: int) -> bool {
+  let selected = ir.find(m, name)
+  assert(ir.live(selected), "tile_pass.named could not find the function")
+  for op in ir.ops(selected) {
+    if ir.kind(op) == "loop" {
+      return tile.split(m, op, factor)
+    }
+  }
+  return false
+}

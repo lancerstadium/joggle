@@ -2,6 +2,7 @@ module script
 use opt
 use stat
 use tensor
+use tile
 use onnx.nn
 
 local fn hidden(m: Mod) -> bool {
@@ -456,6 +457,15 @@ fn clone_remapped_loop(m: Mod) -> bool {
           return ir.live(copy)
         }
       }
+    }
+  }
+  return false
+}
+
+fn split_first_loop(m: Mod, factor: int) -> bool {
+  for op in ir.ops(m) {
+    if ir.kind(op) == "loop" {
+      return tile.split(m, op, factor)
     }
   }
   return false

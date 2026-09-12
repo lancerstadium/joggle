@@ -1399,3 +1399,22 @@ module function of type `fn(Mod, Op) -> int` through `ir.invoke<int>`, rejecting
 mutating measures by revision. A research module can therefore assign cycles,
 energy proxies, code-size weights, or resource units without a device class or
 new core intrinsic. The unit and model remain explicit experiment policy.
+
+## M12 loop-transformation slice
+
+Operation cloning now accepts an explicit parallel mapping for values captured
+outside the copied subtree. Internal results and `Blk` arguments are still
+freshened automatically; external indices, bounds, tensors, and carried values
+can be replaced only by exactly typed values that dominate the destination.
+The C++ and textual interfaces share failure-before-mutation behavior, nested
+control tests, and canonical round trips.
+
+The removable `tile` module uses only that editor surface to split the last
+range iterator. It builds an outer block range, an inner fixed-factor range,
+and a tail condition, threads every original carried value through the new
+structures, clones arbitrary nested body operations with capture remapping,
+then atomically replaces the old loop. Its executable C gate checks negative,
+empty, exact, short, and partial ranges. Core, C, VM, tensor, and NN contain no
+tile case. This is transformation infrastructure and a correctness result; it
+is not yet a performance result because no cache model, vector policy, loop
+reorder, or fusion policy has been applied.
