@@ -410,6 +410,7 @@ public:
   bool erase(std::span<const Op> ops);
   bool erase(const Env& env, Fn fn);
   bool type(Val value, Ty type);
+  bool type(std::span<const Val> values, std::span<const Ty> types);
   bool returns(Fn fn, std::span<const Ty> types);
   bool generics(const Env& env, Op call, std::span<const Ty> types);
   bool rename(const Env& env, Fn fn, std::string name);

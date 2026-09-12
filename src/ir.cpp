@@ -125,22 +125,12 @@ bool carried_arg(const detail::Store& store, std::uint32_t value) {
   return false;
 }
 
-std::unordered_set<std::uint32_t> family(const detail::Store& store,
-                                         std::uint32_t seed) {
-  std::unordered_set<std::uint32_t> values{seed};
-  bool expanded = true;
-  while (expanded) {
-    expanded = false;
-    const auto connect = [&](std::span<const std::uint32_t> ids) {
-      const bool related = std::any_of(ids.begin(), ids.end(), [&](auto id) {
-        return values.contains(id);
-      });
-      if (!related)
-        return;
-      for (const std::uint32_t id : ids)
-        if (id < store.vals.size() && store.vals[id].live)
-          expanded = values.insert(id).second || expanded;
-    };
+class ValFamilies {
+public:
+  explicit ValFamilies(const detail::Store& store)
+      : store_(store), parents_(store.vals.size()), ranks_(store.vals.size()) {
+    for (std::uint32_t id = 0; id < parents_.size(); ++id)
+      parents_[id] = id;
     for (const auto& slot : store.ops) {
       if (!slot.live || (slot.data.kind != Op::Kind::loop &&
                          slot.data.kind != Op::Kind::branch))
@@ -152,28 +142,68 @@ std::unordered_set<std::uint32_t> family(const detail::Store& store,
           op.outs.size() < op.carried_count)
         continue;
       for (std::size_t index = 0; index < op.carried_count; ++index) {
-        std::vector<std::uint32_t> ids{op.args[offset + index],
-                                       op.outs[index]};
+        const std::uint32_t seed = op.args[offset + index];
+        join(seed, op.outs[index]);
         for (const std::uint32_t blk : op.blks) {
           if (blk >= store.blks.size() || !store.blks[blk].live)
             continue;
           const detail::BlkData& body = store.blks[blk].data;
           const std::size_t arg =
               op.kind == Op::Kind::loop ? offset + index : index;
-          if (arg >= body.args.size())
-            continue;
-          ids.push_back(body.args[arg]);
+          if (arg < body.args.size())
+            join(seed, body.args[arg]);
           if (!body.ops.empty()) {
             const detail::OpData& end = store.ops[body.ops.back()].data;
             if (end.kind == Op::Kind::yield && index < end.args.size())
-              ids.push_back(end.args[index]);
+              join(seed, end.args[index]);
           }
         }
-        connect(ids);
       }
     }
   }
-  return values;
+
+  std::uint32_t root(std::uint32_t id) {
+    while (parents_[id] != id) {
+      parents_[id] = parents_[parents_[id]];
+      id = parents_[id];
+    }
+    return id;
+  }
+
+  std::unordered_set<std::uint32_t> members(std::uint32_t seed) {
+    std::unordered_set<std::uint32_t> out;
+    const std::uint32_t group = root(seed);
+    for (std::uint32_t id = 0; id < store_.vals.size(); ++id)
+      if (store_.vals[id].live && root(id) == group)
+        out.insert(id);
+    return out;
+  }
+
+private:
+  void join(std::uint32_t left, std::uint32_t right) {
+    if (left >= store_.vals.size() || right >= store_.vals.size() ||
+        !store_.vals[left].live || !store_.vals[right].live)
+      return;
+    left = root(left);
+    right = root(right);
+    if (left == right)
+      return;
+    if (ranks_[left] < ranks_[right])
+      std::swap(left, right);
+    parents_[right] = left;
+    if (ranks_[left] == ranks_[right])
+      ++ranks_[left];
+  }
+
+  const detail::Store& store_;
+  std::vector<std::uint32_t> parents_;
+  std::vector<std::uint8_t> ranks_;
+};
+
+std::unordered_set<std::uint32_t> family(const detail::Store& store,
+                                         std::uint32_t seed) {
+  ValFamilies families(store);
+  return families.members(seed);
 }
 
 bool printable_value(const detail::Store& store,
@@ -2497,20 +2527,51 @@ bool Mod::erase(const Env& env, Fn fn) {
 }
 
 bool Mod::type(Val value, Ty next) {
+  return type(std::span<const Val>(&value, 1),
+              std::span<const Ty>(&next, 1));
+}
+
+bool Mod::type(std::span<const Val> values, std::span<const Ty> types) {
   auto& store = impl_->store;
-  if (!value.valid() || value.store_ != &store || !next.valid()) {
-    detail::add_diag(store.diags,
-                     "type requires a live value and valid structural type");
+  const auto reject = [&](std::string message) {
+    detail::add_diag(store.diags, std::move(message));
     return false;
+  };
+  if (values.size() != types.size())
+    return reject("type requires one structural type per value");
+  if (values.empty())
+    return reject("type requires at least one value");
+  for (Val value : values)
+    if (!value.valid() || value.store_ != &store)
+      return reject("type requires live values in this module");
+  for (const Ty& type : types)
+    if (!type.valid())
+      return reject("type requires valid structural types");
+
+  ValFamilies families(store);
+  std::unordered_map<std::uint32_t, Ty> assignments;
+  assignments.reserve(values.size());
+  for (std::size_t index = 0; index < values.size(); ++index) {
+    const std::uint32_t group = families.root(values[index].id_);
+    const auto [found, inserted] = assignments.emplace(group, types[index]);
+    if (!inserted && found->second != types[index])
+      return reject("type assigns conflicting types to one value family");
   }
-  const std::unordered_set<std::uint32_t> related = family(store, value.id_);
+
   bool changed = false;
-  for (const std::uint32_t id : related) {
+  for (std::uint32_t id = 0; id < store.vals.size(); ++id) {
+    if (!store.vals[id].live)
+      continue;
+    const auto assigned = assignments.find(families.root(id));
+    if (assigned == assignments.end())
+      continue;
     detail::ValData& data = store.vals[id].data;
-    changed = data.type != next || changed;
-    data.type = next;
-    if (data.kind == detail::ValKind::result)
+    changed = data.type != assigned->second || changed;
+    data.type = assigned->second;
+    if (data.kind == detail::ValKind::result) {
+      changed = !data.type_annotation || changed;
       data.type_annotation = true;
+    }
   }
   if (changed)
     touch(store);
@@ -2877,61 +2938,7 @@ bool Mod::set(std::span<const Val> items, std::string key,
     if (!item.valid() || item.store_ != &store)
       return reject("set requires live values in this module");
 
-  std::vector<std::uint32_t> parents(store.vals.size());
-  std::vector<std::uint8_t> ranks(store.vals.size());
-  for (std::uint32_t id = 0; id < parents.size(); ++id)
-    parents[id] = id;
-  const auto root = [&](std::uint32_t id) {
-    while (parents[id] != id) {
-      parents[id] = parents[parents[id]];
-      id = parents[id];
-    }
-    return id;
-  };
-  const auto join = [&](std::uint32_t left, std::uint32_t right) {
-    if (left >= store.vals.size() || right >= store.vals.size() ||
-        !store.vals[left].live || !store.vals[right].live)
-      return;
-    left = root(left);
-    right = root(right);
-    if (left == right)
-      return;
-    if (ranks[left] < ranks[right])
-      std::swap(left, right);
-    parents[right] = left;
-    if (ranks[left] == ranks[right])
-      ++ranks[left];
-  };
-
-  for (const auto& slot : store.ops) {
-    if (!slot.live || (slot.data.kind != Op::Kind::loop &&
-                       slot.data.kind != Op::Kind::branch))
-      continue;
-    const detail::OpData& op = slot.data;
-    const std::size_t offset =
-        op.kind == Op::Kind::loop ? op.iter_names.size() : 1;
-    if (op.args.size() < offset + op.carried_count ||
-        op.outs.size() < op.carried_count)
-      continue;
-    for (std::size_t index = 0; index < op.carried_count; ++index) {
-      const std::uint32_t seed = op.args[offset + index];
-      join(seed, op.outs[index]);
-      for (const std::uint32_t blk : op.blks) {
-        if (blk >= store.blks.size() || !store.blks[blk].live)
-          continue;
-        const detail::BlkData& body = store.blks[blk].data;
-        const std::size_t arg =
-            op.kind == Op::Kind::loop ? offset + index : index;
-        if (arg < body.args.size())
-          join(seed, body.args[arg]);
-        if (!body.ops.empty()) {
-          const detail::OpData& end = store.ops[body.ops.back()].data;
-          if (end.kind == Op::Kind::yield && index < end.args.size())
-            join(seed, end.args[index]);
-        }
-      }
-    }
-  }
+  ValFamilies families(store);
 
   std::vector<bool> printable(store.vals.size());
   for (std::uint32_t id = 0; id < store.vals.size(); ++id) {
@@ -2948,13 +2955,13 @@ bool Mod::set(std::span<const Val> items, std::string key,
                form == Op::Form::var;
     }
     if (source)
-      printable[root(id)] = true;
+      printable[families.root(id)] = true;
   }
 
   std::unordered_map<std::uint32_t, Attr> assignments;
   assignments.reserve(items.size());
   for (std::size_t index = 0; index < items.size(); ++index) {
-    const std::uint32_t group = root(items[index].id_);
+    const std::uint32_t group = families.root(items[index].id_);
     if (!printable[group])
       return reject("cannot annotate a value without a source binding");
     const auto [found, inserted] = assignments.emplace(group, values[index]);
@@ -2966,7 +2973,7 @@ bool Mod::set(std::span<const Val> items, std::string key,
   for (std::uint32_t id = 0; id < store.vals.size(); ++id) {
     if (!store.vals[id].live)
       continue;
-    const auto assigned = assignments.find(root(id));
+    const auto assigned = assignments.find(families.root(id));
     if (assigned == assignments.end())
       continue;
     Attr::Dict& meta = store.vals[id].data.meta;

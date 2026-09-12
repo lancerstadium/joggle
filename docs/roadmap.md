@@ -386,7 +386,10 @@ caller-supplied width limits and storage types recursively retype the format,
 specialize local helpers, and preserve constructor generics. Thin `sat.c` and
 `sat.vm` bridges select different storage maps without adding a format case to
 core, C, or VM. C compiles and executes scalar and fixed-shape tensor values;
-VM independently executes the same `tensor<sat<5>, [4]>` semantics. The `vm`
+VM independently executes the same `tensor<sat<5>, [4]>` semantics. Format
+materialization now retypes every selected value with one atomic batch edit
+instead of rediscovering structured carried-value families for each value. The
+shared editor rejects conflicting family requests before mutation. The `vm`
 module establishes the independent second-target
 boundary: pure `.jog` reflection emits a deterministic image and a native
 module executes typed `i64`, `f32`, and `f64` arithmetic, structured branches

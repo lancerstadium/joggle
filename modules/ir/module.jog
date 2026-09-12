@@ -38,6 +38,7 @@ fn local(f: Fn) -> bool;
 fn key(v: Val) -> int;
 fn type(v: Val) -> Ty;
 fn type(m: Mod, v: Val, type: Ty) -> bool;
+fn type(m: Mod, values: list<Val>, types: list<Ty>) -> bool;
 fn returns(m: Mod, f: Fn, types: list<Ty>) -> bool;
 fn generics(m: Mod, op: Op, types: list<Ty>) -> bool;
 fn resolve(m: Mod, op: Op) -> Fn;

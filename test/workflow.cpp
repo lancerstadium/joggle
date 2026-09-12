@@ -1281,6 +1281,83 @@ int main(int argc, char** argv) {
   inferred_cpp.clear_diags();
   CHECK(inferred_cpp.verify(env));
 
+  constexpr std::string_view batch_type_source =
+      "module batch_type\n"
+      "fn main(n: i32) -> i32 {\n"
+      "  var x = seed_x(n)\n"
+      "  var y = seed_y(n)\n"
+      "  for i in 0..2 { x = step_x(x) }\n"
+      "  if n > 0 { y = step_y(y) }\n"
+      "  return n\n"
+      "}\n";
+  joggle::Mod batch_type_cpp;
+  joggle::Mod batch_type_script;
+  CHECK(joggle::parse(env, batch_type_source, batch_type_cpp,
+                      "batch-type-cpp.jog"));
+  CHECK(joggle::parse(env, batch_type_source, batch_type_script,
+                      "batch-type-script.jog"));
+  CHECK(batch_type_cpp.verify(env) && batch_type_script.verify(env));
+  joggle::Val seed_x;
+  joggle::Val seed_y;
+  for (joggle::Op op : batch_type_cpp.ops()) {
+    if (op.callee() == "seed_x")
+      seed_x = op.outs().front();
+    if (op.callee() == "seed_y")
+      seed_y = op.outs().front();
+  }
+  CHECK(seed_x && seed_y);
+  const std::vector<joggle::Val> type_values{seed_x, seed_y};
+  const std::vector<joggle::Ty> type_targets{joggle::Ty("i32"),
+                                              joggle::Ty("f32")};
+  const std::uint64_t before_batch_type = batch_type_cpp.revision();
+  CHECK(batch_type_cpp.type(type_values, type_targets));
+  CHECK(batch_type_cpp.revision() == before_batch_type + 1);
+  for (joggle::Val value : batch_type_cpp.vals()) {
+    if (value.name() == "x")
+      CHECK(value.type() == joggle::Ty("i32"));
+    if (value.name() == "y")
+      CHECK(value.type() == joggle::Ty("f32"));
+  }
+  CHECK(joggle::run(env, "script.type_batch", batch_type_script));
+  CHECK(batch_type_cpp.verify(env) && batch_type_script.verify(env));
+  CHECK(joggle::structurally_equal(batch_type_cpp, batch_type_script));
+  const std::string before_conflicting_type = joggle::print(batch_type_cpp);
+  const std::uint64_t before_conflicting_type_revision =
+      batch_type_cpp.revision();
+  const std::vector<joggle::Val> conflicting_values{seed_x, seed_x};
+  const std::vector<joggle::Ty> conflicting_types{joggle::Ty("i32"),
+                                                   joggle::Ty("i64")};
+  CHECK(!batch_type_cpp.type(conflicting_values, conflicting_types));
+  CHECK(batch_type_cpp.revision() == before_conflicting_type_revision);
+  CHECK(joggle::print(batch_type_cpp) == before_conflicting_type);
+  batch_type_cpp.clear_diags();
+  const std::vector<joggle::Ty> missing_type{joggle::Ty("i32")};
+  CHECK(!batch_type_cpp.type(type_values, missing_type));
+  CHECK(batch_type_cpp.revision() == before_conflicting_type_revision);
+  CHECK(joggle::print(batch_type_cpp) == before_conflicting_type);
+  batch_type_cpp.clear_diags();
+
+  joggle::Mod explicit_type;
+  CHECK(joggle::parse(env,
+                      "module explicit_type\n"
+                      "fn f(x: i32) -> i32 {\n"
+                      "  let y = x + i32(1)\n"
+                      "  return y\n"
+                      "}\n",
+                      explicit_type, "explicit-type.jog"));
+  CHECK(explicit_type.verify(env));
+  joggle::Val inferred_y;
+  for (joggle::Val value : explicit_type.find_fn("f").vals())
+    if (value.name() == "y")
+      inferred_y = value;
+  CHECK(inferred_y);
+  CHECK(inferred_y.type() == joggle::Ty("i32"));
+  const std::uint64_t before_explicit_type = explicit_type.revision();
+  CHECK(explicit_type.type(inferred_y, joggle::Ty("i32")));
+  CHECK(explicit_type.revision() == before_explicit_type + 1);
+  CHECK(joggle::print(explicit_type).find("let y: i32 = x + i32(1)") !=
+        std::string::npos);
+
   joggle::Mod precedence;
   constexpr std::string_view precedence_source =
       "module precedence\n"

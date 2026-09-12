@@ -1761,6 +1761,11 @@ private:
         return Items{Item(value->type())};
     } else if (name == "type" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
+      auto values = handles<Val>(args[1]);
+      auto result_types = types(args[2]);
+      if (mod && *mod && values && result_types)
+        return Items{
+            Item(Attr((*mod)->type(*values, *result_types)))};
       const auto* value = as<Val>(args[1]);
       const auto* type = as<Ty>(args[2]);
       if (mod && *mod && value && type)

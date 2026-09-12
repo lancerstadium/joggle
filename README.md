@@ -176,7 +176,9 @@ selected set of user functions. It is a normal transform, not parser magic or
 a target hook. Batch `ir.replace` and `ir.erase` keep large rewrites linear in
 the size of the IR instead of requiring one whole-module scan per value. The
 list form of `ir.set` similarly propagates distinct metadata values across all
-selected value families in one structural traversal.
+selected value families in one structural traversal. `ir.type` has the same
+scalar/list symmetry: `ir.type(m, values, types)` validates conflicting
+requests before applying every carried-value family in one revision commit.
 An extension may clone a normal module `fn` into the program with
 `ir.clone(m, fn, name)`, providing generated helpers and local template
 materialization without a separate kernel builder.

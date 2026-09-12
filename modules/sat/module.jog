@@ -130,18 +130,6 @@ fn helper(m: Mod, width: int, type: Ty) -> Fn {
   return created
 }
 
-fn store_value(
-  m: Mod, value: Val, limits: list<int>, types: list<Ty>
-) -> bool {
-  let before = ir.type(value)
-  let after = stored(before, limits, types)
-  if after == before {
-    return false
-  }
-  assert(ir.type(m, value, after), "sat: could not retype a value")
-  return true
-}
-
 fn materialize(m: Mod, limits: list<int>, types: list<Ty>) -> bool {
   let before = ir.revision(m)
   var additions: list<Op> = []
@@ -162,9 +150,16 @@ fn materialize(m: Mod, limits: list<int>, types: list<Ty>) -> bool {
     }
   }
 
+  var values: list<Val> = []
+  var next_types: list<Ty> = []
   for f in ir.fns(m) {
     for value in ir.vals(f) {
-      store_value(m, value, limits, types)
+      let before_type = ir.type(value)
+      let after_type = stored(before_type, limits, types)
+      if after_type != before_type {
+        values += [value]
+        next_types += [after_type]
+      }
     }
     var returns: list<Ty> = []
     var changed = false
@@ -177,6 +172,9 @@ fn materialize(m: Mod, limits: list<int>, types: list<Ty>) -> bool {
       assert(ir.returns(m, f, returns),
              "sat: could not retype function results")
     }
+  }
+  if len(values) != 0 {
+    assert(ir.type(m, values, next_types), "sat: could not retype values")
   }
 
   for op in ir.ops(m) {

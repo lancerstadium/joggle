@@ -115,9 +115,12 @@ The embedding API provides the corresponding `Ty(text)` and `Ty(name, args)`
 constructors, so a C++ extension never has to serialize nested type arguments
 just to construct a structural type.
 `ir.type(mod, value, type)` writes an inferred type back to a value and its
-structured carried-value family. `ir.returns(mod, fn, types)` edits the other
-part of a function signature, allowing a format conversion to retype parameters,
-body values, calls, and returns in one transactional transform. Verification
+structured carried-value family. Its list overload assigns one type per value,
+computes all carried families once, rejects inconsistent requests to the same
+family without mutation, and commits the batch with one revision change.
+`ir.returns(mod, fn, types)` edits the other part of a function signature,
+allowing a format conversion to retype parameters, body values, calls, and
+returns in one transactional transform. Verification
 checks every `return`, including early returns inside nested control flow. This
 is ordinary type algebra, not a separate shape-expression or data-format
 registry.
@@ -390,6 +393,12 @@ It computes loop- and branch-carried value families once, rejects conflicting
 assignments to the same family, and applies the batch atomically. Scalar
 `ir.set` remains convenient for one binding; analyses that annotate many
 bindings do not repeatedly rediscover the same structural families.
+
+`ir.type(m, values, types)` follows the identical batch contract for structural
+types. It also treats making an inferred result annotation explicit as an IR
+change even when the type tree itself is equal, because canonical source then
+changes. Revision-based analysis caches therefore never observe a silent text
+mutation.
 
 `ir.fold(m, calls, fns)` is the explicit partial-evaluation primitive. Each
 selected `Fn` must accept its corresponding call. Calls whose operands are not

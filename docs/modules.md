@@ -317,7 +317,10 @@ type tree; the `kind` overload distinguishes integer, Boolean, list, and type
 terms; `ty` reconstructs one from text, an integer term, or a constructor name
 plus child types; `str` is the explicit conversion back to canonical text.
 The overloaded `ir.type(m, value, type)` records an inferred type while keeping
-loop/condition-carried versions consistent and printable.
+loop/condition-carried versions consistent and printable. Its list form accepts
+parallel `list<Val>` and `list<Ty>` inputs, computes their structural families
+once, rejects conflicting family assignments before mutation, and advances the
+revision once for the complete batch.
 The three-argument `ir.returns(m, fn, types)` updates a function's declared
 result types. It deliberately complements value retyping instead of introducing
 a type-lowering object: the enclosing `run` transaction commits only when all

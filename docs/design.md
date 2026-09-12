@@ -788,6 +788,11 @@ Compile-time `Ty` values now use the same immutable tree as the verifier:
 functions decompose, project, serialize, and construct it. The overloaded
 `ir.type(m, value, type)` and `Mod::type` write a type through a structured
 carried-value family and participate in revision tracking and rollback.
+Their list overload computes all carried families with one disjoint-set walk,
+rejects conflicting assignments atomically, and commits all changed values in
+one revision. The scalar overload uses the same implementation. Making an
+inferred result annotation explicit is counted as a revision change because it
+changes canonical source.
 `ir.returns(m, fn, types)` supplies the corresponding function-result edit;
 the normal verifier then checks all nested returns and resolved callers before
 the surrounding transform commits.

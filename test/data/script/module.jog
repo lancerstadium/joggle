@@ -477,6 +477,22 @@ fn retype_identity(m: Mod) -> bool {
   return ir.returns(m, f, [ty("i64")])
 }
 
+fn type_batch(m: Mod) -> bool {
+  var values: list<Val> = []
+  for op in ir.ops(m) {
+    if ir.callee(op) == "seed_x" {
+      values += ir.outs(op)
+    }
+  }
+  for op in ir.ops(m) {
+    if ir.callee(op) == "seed_y" {
+      values += ir.outs(op)
+    }
+  }
+  assert(len(values) == 2, "type_batch requires two seed values")
+  return ir.type(m, values, [ty("i32"), ty("f32")])
+}
+
 fn break_identity_return(m: Mod) -> bool {
   return ir.returns(m, ir.find(m, "identity"), [ty("bool")])
 }
