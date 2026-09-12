@@ -2315,6 +2315,42 @@ int main(int argc, char** argv) {
                                  joggle::Ty("format<8>")));
   CHECK(constant_safety.verify(env));
 
+  joggle::Mod replaced_constant;
+  CHECK(joggle::parse(env,
+                      "module replaced_constant\n"
+                      "use tensor\n"
+                      "fn tensor_source() -> tensor<f32, [2]>;\n"
+                      "fn main() -> tensor<f32, [2]> {\n"
+                      "  let weight: tensor<f32, [2]> = tensor_source()\n"
+                      "  return weight\n"
+                      "}\n",
+                      replaced_constant, "replaced-constant.jog"));
+  CHECK(replaced_constant.verify(env));
+  const joggle::Op tensor_source_call =
+      replaced_constant.find_fn("main").body().ops().front();
+  const joggle::Val source_result = tensor_source_call.outs().front();
+  const std::uint64_t before_op_replace = replaced_constant.revision();
+  const joggle::Attr::Bytes weight_bytes{0, 0, 128, 63, 0, 0, 0, 64};
+  CHECK(replaced_constant.replace(tensor_source_call,
+                                  joggle::Attr(weight_bytes)));
+  CHECK(replaced_constant.revision() == before_op_replace + 1);
+  CHECK(tensor_source_call.kind() == joggle::Op::Kind::constant);
+  CHECK(tensor_source_call.args().empty() &&
+        tensor_source_call.outs().size() == 1);
+  CHECK(source_result && source_result.is_const());
+  CHECK(source_result.name() == "weight");
+  CHECK(source_result.type() == joggle::Ty("tensor<f32, [2]>"));
+  const joggle::Attr replaced_payload = source_result.constant();
+  CHECK(replaced_payload.bytes() && *replaced_payload.bytes() == weight_bytes);
+  CHECK(replaced_constant.verify(env));
+  joggle::Mod replaced_constant_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(replaced_constant),
+                      replaced_constant_roundtrip,
+                      "replaced-constant-roundtrip.jog"));
+  CHECK(replaced_constant_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(replaced_constant,
+                                   replaced_constant_roundtrip));
+
   joggle::Mod args_safety;
   CHECK(joggle::parse(env,
                       "module args_safety\n"

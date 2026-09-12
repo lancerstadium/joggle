@@ -98,6 +98,16 @@ local fn width(type: Ty, config: dict) -> int {
   return bytes
 }
 
+local fn alignment(type: Ty, config: dict) -> int {
+  let desc = spec(config, base.name(type))
+  var bytes = width(type, config)
+  if base.has(desc, "align") {
+    bytes = base.int(desc["align"])
+  }
+  assert(bytes > 0, "c: ABI alignment must be positive")
+  return bytes
+}
+
 local fn index_type(config: dict) -> str {
   return scalar(ty("index"), config)
 }
@@ -451,14 +461,6 @@ local fn accepts_with(m: Mod, op: Op, config: dict) -> bool {
      ir.live(target) && ir.symbol(target) == "tensor.tensor" {
     return supported(ir.type(outputs[0]), config)
   }
-  if len(inputs) == 1 && len(outputs) == 1 &&
-     supported(ir.type(outputs[0]), config) && ir.is_const(inputs[0]) &&
-     base.kind(ir.constant(inputs[0])) == "bytes" &&
-     ir.live(target) && ir.symbol(target) == "tensor.literal" {
-    return base.size(ir.constant(inputs[0])) ==
-           count(ir.type(outputs[0])) *
-           width(tensor.elem(ir.type(outputs[0])), config)
-  }
   if binary(name) != "" && len(inputs) == 2 && len(outputs) == 1 {
     return !tensor.valid(ir.type(outputs[0])) &&
            binary_types(name, inputs, outputs[0], config)
@@ -545,44 +547,64 @@ local fn tensor_new(
   return out
 }
 
-local fn payload(op: Op) -> bool {
-  if ir.kind(op) != "call" || ir.callee(op) != "tensor.literal" {
-    return false
+local fn payload_data(op: Op) -> Attr {
+  let outputs = ir.outs(op)
+  if ir.kind(op) == "constant" && len(outputs) == 1 &&
+     tensor.valid(ir.type(outputs[0])) &&
+     base.kind(ir.constant(outputs[0])) == "bytes" {
+    return ir.constant(outputs[0])
   }
-  let inputs = ir.args(op)
-  return len(inputs) == 1 && ir.is_const(inputs[0]) &&
-         base.kind(ir.constant(inputs[0])) == "bytes"
+  return {}
 }
 
-local fn payload_offset(m: Mod, target: Op) -> int {
+local fn payload(op: Op) -> bool {
+  return base.kind(payload_data(op)) == "bytes"
+}
+
+local fn aligned(offset: int, alignment: int) -> int {
+  return ((offset + alignment - 1) / alignment) * alignment
+}
+
+local fn payload_offset(m: Mod, target: Op, config: dict) -> int {
   var out = 0
   for op in ir.ops(m) {
+    if payload(op) {
+      let outputs = ir.outs(op)
+      out = aligned(
+        out, alignment(tensor.elem(ir.type(outputs[0])), config)
+      )
+    }
     if op == target {
       return out
     }
     if payload(op) {
-      out += base.size(ir.constant(ir.args(op)[0]))
+      out += base.size(payload_data(op))
     }
   }
-  assert(false, "c: tensor literal is outside the module")
+  assert(false, "c: tensor constant is outside the module")
   return 0
 }
 
-local fn tensor_literal(
+local fn tensor_constant(
   m: Mod, op: Op, depth: int, blob: str, config: dict
 ) -> str {
   let outputs = ir.outs(op)
-  let inputs = ir.args(op)
-  assert(len(outputs) == 1 && len(inputs) == 1 && ir.is_const(inputs[0]),
-         "c: tensor literal requires constant bytes")
+  let data = payload_data(op)
+  assert(len(outputs) == 1 && base.kind(data) == "bytes",
+         "c: tensor constant requires bytes")
   let output = outputs[0]
   let type = ir.type(output)
-  let data = ir.constant(inputs[0])
   let indent = pad(depth)
   let bytes = base.size(data)
   let elements = count(type)
   assert(bytes == elements * width(tensor.elem(type), config),
-         "c: tensor literal byte size does not match its type")
+         "c: tensor constant byte size does not match its type")
+  if blob != "" {
+    return indent + "const " + scalar(tensor.elem(type), config) + "* " +
+           val(output) + " = (const " + scalar(tensor.elem(type), config) +
+           "*)(const void*)(" + blob + " + " +
+           text(payload_offset(m, op, config)) + ");\n"
+  }
   var storage = elements
   if storage == 0 {
     storage = 1
@@ -594,10 +616,6 @@ local fn tensor_literal(
   }
   if bytes == 0 {
     return out
-  }
-  if blob != "" {
-    return out + indent + "memcpy(" + val(output) + ", " + blob + " + " +
-           text(payload_offset(m, op)) + ", " + text(bytes) + ");\n"
   }
   out += indent + "static const unsigned char jog_data_" +
          label(output) +
@@ -673,11 +691,6 @@ local fn call(
      ir.live(target) && ir.symbol(target) == "tensor.tensor" {
     return tensor_new(m, op, depth, blob, config)
   }
-  if len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
-     ir.live(target) && ir.symbol(target) == "tensor.literal" {
-    return tensor_literal(m, op, depth, blob, config)
-  }
-
   let binary_op = binary(name)
   if binary_op != "" && len(inputs) == 2 && len(outputs) == 1 &&
      !tensor.valid(ir.type(outputs[0])) {
@@ -924,7 +937,11 @@ local fn block(
             out += ret(m, op, depth, blob, config)
           } else {
             if kind == "constant" {
-              out += constant(op, depth, config)
+              if payload(op) {
+                out += tensor_constant(m, op, depth, blob, config)
+              } else {
+                out += constant(op, depth, config)
+              }
             } else {
               assert(kind == "yield", "c: unsupported operation kind " + kind)
             }
@@ -1141,12 +1158,14 @@ local fn value_headers(fns: list<Fn>, config: dict) -> list<str> {
   return out
 }
 
-local fn source_headers(m: Mod, fns: list<Fn>, config: dict) -> list<str> {
+local fn source_headers(
+  m: Mod, fns: list<Fn>, blob: str, config: dict
+) -> list<str> {
   var out = binding_headers(m, config) + type_headers(fns, config) +
             value_headers(fns, config)
   out += [type_header(ty("index"), config)]
   for op in ir.ops(m) {
-    if payload(op) ||
+    if (blob == "" && payload(op)) ||
        (ir.kind(op) == "call" && ir.callee(op) == "base.copy" &&
         len(ir.outs(op)) == 1 && tensor.valid(ir.type(ir.outs(op)[0]))) {
       out += ["string.h"]
@@ -1202,14 +1221,29 @@ fn header(m: Mod, blob: str, config: dict) -> str {
   return header_with(m, "jog_data_" + base.ident(blob), config)
 }
 
-fn data(m: Mod) -> bytes {
+local fn data_with(m: Mod, config: dict) -> bytes {
   var out = hex""
   for op in ir.ops(m) {
     if payload(op) {
-      out += ir.constant(ir.args(op)[0])
+      let outputs = ir.outs(op)
+      let offset = aligned(
+        base.size(out), alignment(tensor.elem(ir.type(outputs[0])), config)
+      )
+      for i in base.size(out)..offset {
+        out += hex"00"
+      }
+      out += payload_data(op)
     }
   }
   return out
+}
+
+fn data(m: Mod) -> bytes {
+  return data_with(m, {})
+}
+
+fn data(m: Mod, config: dict) -> bytes {
+  return data_with(m, config)
 }
 
 local fn emit(m: Mod, blob: str, config: dict) -> str {
@@ -1221,7 +1255,7 @@ local fn emit(m: Mod, blob: str, config: dict) -> str {
   for fn in fns {
     definitions += definition(m, fn, blob, config) + "\n"
   }
-  return includes(source_headers(m, declared, config)) + "\n" +
+  return includes(source_headers(m, declared, blob, config)) + "\n" +
          declarations + "\n" + definitions
 }
 

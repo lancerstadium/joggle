@@ -107,7 +107,12 @@ local fn convert_tensor(m: Mod, op: Op) -> bool {
      base.kind(ir.constant(inputs[0])) != "bytes" {
     return false
   }
-  return convert_call(m, op, "tensor.literal")
+  let data = ir.constant(inputs[0])
+  if !ir.replace(m, op, data) {
+    return false
+  }
+  ir.unset(m, op, "tflite")
+  return true
 }
 
 [phase: "cleanup", on: "tflite.model"]

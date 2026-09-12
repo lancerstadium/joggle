@@ -108,6 +108,19 @@ std::size_t calls(const joggle::Mod& mod, std::string_view callee) {
   return count;
 }
 
+std::size_t tensor_constants(const joggle::Mod& mod) {
+  std::size_t count = 0;
+  for (joggle::Op op : mod.ops()) {
+    const std::vector<joggle::Val> outputs = op.outs();
+    if (op.kind() == joggle::Op::Kind::constant && outputs.size() == 1 &&
+        outputs[0].type().name() == "tensor") {
+      const joggle::Attr value = outputs[0].constant();
+      count += value.bytes() ? 1 : 0;
+    }
+  }
+  return count;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -203,7 +216,7 @@ int main(int argc, char** argv) {
   CHECK(calls(constant, "onnx.Reshape") == 0);
   CHECK(calls(constant, "onnx.Slice") == 0);
   CHECK(calls(constant, "onnx.tensor") == 0);
-  CHECK(calls(constant, "tensor.literal") == 1);
+  CHECK(tensor_constants(constant) == 1);
   CHECK(calls(constant, "tensor.reshape") == 1);
   CHECK(calls(constant, "tensor.slice") == 1);
   joggle::Mod constant_roundtrip;

@@ -344,12 +344,15 @@ local fn tensor_literal(op: Op) -> Attr {
 }
 
 local fn tensor_data(op: Op) -> Attr {
-  if ir.callee(op) == "onnx.tensor" || ir.callee(op) == "tensor.literal" {
+  let outputs = ir.outs(op)
+  if ir.kind(op) == "constant" && len(outputs) == 1 &&
+     tensor.valid(ir.type(outputs[0])) &&
+     base.kind(ir.constant(outputs[0])) == "bytes" {
+    return ir.constant(outputs[0])
+  }
+  if ir.callee(op) == "onnx.tensor" {
     let inputs = ir.args(op)
-    var index = 2
-    if ir.callee(op) == "tensor.literal" {
-      index = 0
-    }
+    let index = 2
     if len(inputs) > index && ir.is_const(inputs[index]) {
       return ir.constant(inputs[index])
     }
@@ -2101,7 +2104,12 @@ local fn convert_tensor(m: Mod, op: Op) -> bool {
      base.kind(ir.constant(inputs[2])) != "bytes" {
     return false
   }
-  return convert_call(m, op, "tensor.literal", [inputs[2]])
+  let data = ir.constant(inputs[2])
+  if !ir.replace(m, op, data) {
+    return false
+  }
+  ir.unset(m, op, "onnx")
+  return true
 }
 
 [phase: "cleanup", on: "onnx.model"]
@@ -2414,10 +2422,8 @@ local fn convert_constant_shape(m: Mod, op: Op) -> bool {
      base.kind(literal["data"]) != "bytes" {
     return false
   }
-  let data_value = ir.constant(m, op, literal["data"], ty("bytes"))
-  let packed = ir.call(
-    m, op, "tensor.literal", [data_value],
-    shaped(tensor.elem(output), [ty(1)])
+  let packed = ir.constant(
+    m, op, literal["data"], shaped(tensor.elem(output), [ty(1)])
   )
   let values: list<Val> = [packed]
   return convert_call(m, op, "tensor.fill", values)
@@ -2432,10 +2438,11 @@ local fn convert_constant(m: Mod, op: Op) -> bool {
      expected == ty("_") || ir.type(outputs[0]) != expected {
     return false
   }
-  let inputs: list<Val> = [
-    ir.constant(m, op, literal["data"], ty("bytes"))
-  ]
-  return convert_call(m, op, "tensor.literal", inputs)
+  if !ir.replace(m, op, literal["data"]) {
+    return false
+  }
+  ir.unset(m, op, "onnx")
+  return true
 }
 
 local fn convert_unary(m: Mod, op: Op, callee: str) -> bool {

@@ -188,7 +188,7 @@ semantic matrix remains separate from that protocol claim.
 The 1.2 MB official UltraFace RFB-320 model adds a different edge-oriented,
 shape-heavy detector. Its 244 tensor constants and 242 calls move from 240 open
 results to zero, then convert, verify, and round-trip. This is implemented by
-one tensor-literal decoder shared by initializer and Constant encodings and one
+one tensor-payload decoder shared by initializer and Constant encodings and one
 Slice relation shared by attribute- and input-based ONNX schemas. Tiny-YOLOv3
 remains the explicit partial frontier; UltraFace is a complete semantic gate
 for the relations it contains.
@@ -400,12 +400,12 @@ now supplies one ordinary structural capability predicate to generic
 `opt.expose`; the same mechanism serves C with a different predicate. It folds,
 removes copies, and exposes the existing shared tensor-add body without a
 target class, operator registry, or hidden emitter lowering. ONNX initializers
-and Constant nodes plus TFLite buffers now
-retarget to one result-typed `tensor.literal(bytes)` data primitive. C and VM
-both execute its size-checked raw payload, so target modules no longer need
+and Constant nodes plus TFLite buffers now become ordinary result-typed tensor
+constants. C and VM both execute their size-checked raw payload, so target
+modules no longer need
 frontend-specific weight operations. The conversion is exercised by thirteen
 official ONNX Zoo model gates and the official TFLite MobileNet gate. Core
-gained no frontend, target, or tensor-literal case. The hash-pinned ONNX v1.19.0
+gained no frontend or target case. The hash-pinned ONNX v1.19.0
 backend MatMul case now completes binary import, conversion, dead-data cleanup,
 ordinary body expansion, and output comparison through both VM and compiled C.
 The same exposed MobileNetV2 now passes VM-owned preparation, emits a complete

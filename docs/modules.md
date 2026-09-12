@@ -257,12 +257,14 @@ exposes rejected calls with visible bodies to a bounded fixed point. A second
 call is byte-identical. `vm.image` remains read-only and never invokes
 preparation.
 
-`tensor.literal<E, S>(bytes)` is the frontend-neutral immutable tensor-data
-boundary. Its result type determines element format and shape; the payload
-retains the source bits rather than becoming a second core tensor object. The C
-module copies a size-checked payload into static storage, while VM image version
-3 carries the same hex bytes and reconstructs native-width elements. Neither
-target contains an ONNX or TFLite data-node case. The current C reference gate
+An ordinary typed constant such as
+`let weight: tensor<f32, [2]> = hex"0000803f00000040"` is the
+frontend-neutral immutable tensor-data boundary. Its result type determines
+element format and shape, while the payload retains the source bits rather
+than becoming a second core tensor object or a distinguished call. The C
+module binds an aligned view in external-data mode; VM image version 3 carries
+the same hex bytes and reconstructs native-width elements. Neither target
+contains an ONNX or TFLite data-node case. The current C reference gate
 expects the host scalar object representation to match the payload; portable
 cross-representation decoding remains target policy rather than hidden IR
 reinterpretation.
@@ -575,6 +577,10 @@ function order and structural preorder, including nested loops and conditions.
 the immediate operations of one `Blk`. `ir.replace` replaces all uses by
 default; its four-argument overload changes only uses in one named `Op`.
 Both forms check type compatibility and dominance before changing the IR.
+The `ir.replace(m, op, literal)` overload instead preserves a single-result
+definition and its result handle while changing that definition to a typed
+constant. ONNX and TFLite data normalization use this generic edit; neither
+frontend needs a shared pseudo-operation for weights.
 The list overloads batch whole-rewrite replacement and erasure, resolve
 replacement chains, and rebuild use lists only once. `opt.copy` demonstrates
 that boundary by removing any number of `base.copy` calls without a core
@@ -886,12 +892,19 @@ loops use the configured `index` spelling rather than `size_t`. Header and
 source therefore share one type contract rather than separate include tables.
 Generated files remain under the ignored build tree for inspection.
 
-`c.data(m) -> bytes` concatenates the exact payloads of emitted
-`tensor.literal` calls in deterministic structural order. The paired overloads
+`c.data(m) -> bytes` lays out immutable typed tensor constants in deterministic
+structural order, inserting only the natural alignment padding required by the
+default C ABI. `c.data(m, config)` uses the same configured scalar widths as
+emission. A scalar descriptor may provide an `align` field independently of
+`bytes`; omission uses its byte width. The paired overloads
 `c.source(m, name)` and `c.header(m, name)` replace inline byte strings with
 offsets from one explicit `const unsigned char* jog_data_<name>` argument after
 normal inputs and before output pointers. Every generated definition receives
-that argument and internal calls forward it;
+that argument and internal calls forward it. Constants bind read-only typed
+views at their aligned offsets instead of being copied into mutable workspace;
+the caller must provide a blob base aligned for the strictest configured
+scalar. Heap allocation, page-aligned mapping, and suitably declared ROM meet
+the default contract; an arbitrary byte-subspan does not.
 bodyless external bindings retain their declared ABI. The zero-argument forms
 remain self-contained. All three functions inspect the same prepared `Mod`, so
 no manifest, artifact hierarchy, or duplicated weight representation enters
@@ -1106,7 +1119,7 @@ two-argument `convert`
 overload lets a caller supply a composed relation set while retaining this
 module's dependency preparation and quantization guard. On the pinned
 MobileNetV2 this removes all 66 source compute calls and retargets all 107
-buffer payloads to `tensor.literal`. Once no operation retains TFLite semantic
+buffer payloads to typed tensor constants. Once no operation retains TFLite semantic
 metadata, the final cleanup relation erases the source model marker; partially
 converted models retain it. A second invocation is unchanged, and all 66
 converted bodies can be independently exposed and round-tripped.

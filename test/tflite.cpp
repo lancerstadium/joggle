@@ -26,6 +26,19 @@ std::size_t count(const joggle::Mod& mod, std::string_view callee) {
   return result;
 }
 
+std::size_t tensor_constants(const joggle::Mod& mod) {
+  std::size_t result = 0;
+  for (joggle::Op op : mod.ops()) {
+    const std::vector<joggle::Val> outputs = op.outs();
+    if (op.kind() == joggle::Op::Kind::constant && outputs.size() == 1 &&
+        outputs[0].type().name() == "tensor") {
+      const joggle::Attr value = outputs[0].constant();
+      result += value.bytes() ? 1 : 0;
+    }
+  }
+  return result;
+}
+
 bool integers(joggle::Val value,
               std::initializer_list<std::int64_t> expected) {
   const joggle::Op list = value.def();
@@ -145,7 +158,7 @@ int main(int argc, char** argv) {
   CHECK(semantic.verify(env));
   CHECK(count(semantic, "tflite.tensor") == 0);
   CHECK(count(semantic, "tflite.model") == 0);
-  CHECK(count(semantic, "tensor.literal") == 107);
+  CHECK(tensor_constants(semantic) == 107);
   CHECK(count(semantic, "tflite.CONV_2D") == 0);
   CHECK(count(semantic, "tflite.DEPTHWISE_CONV_2D") == 0);
   CHECK(count(semantic, "tflite.ADD") == 0);

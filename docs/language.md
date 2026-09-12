@@ -382,6 +382,13 @@ refinement uses `ir.type` explicitly. Successful edits advance
 `Mod::revision()`, while a failed run restores both the IR and its prior
 revision.
 
+`ir.replace(m, op, literal)` is the corresponding definition edit. It turns a
+single-result expression into a typed constant in place, preserving the `Op`
+and `Val` handles, result name, type, metadata, source location, and printable
+binding form. Frontend data normalization can therefore remove a source call
+without inserting a replacement value or teaching memory planning a callee
+name.
+
 The list overloads of `ir.replace` and `ir.erase` apply one checked batch edit.
 Replacement chains are collapsed before dominance checking, all uses are
 redirected in one traversal, and all selected operations are removed together.

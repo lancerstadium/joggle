@@ -320,7 +320,7 @@ int main(int argc, char** argv) {
       "module bad.literal\n"
       "use tensor\n"
       "fn main() -> tensor<f32, [2]> {\n"
-      "  let x: tensor<f32, [2]> = tensor.literal(hex\"00\")\n"
+      "  let x: tensor<f32, [2]> = hex\"00\"\n"
       "  return x\n"
       "}\n";
   joggle::Mod bad_literal;

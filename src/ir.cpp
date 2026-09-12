@@ -2237,6 +2237,46 @@ bool Mod::fuse(const Env& env, std::span<const Op> ops, std::string callee) {
   return true;
 }
 
+bool Mod::replace(Op op, Attr value) {
+  auto& store = impl_->store;
+  const auto reject = [&](std::string message, Loc loc = {}) {
+    detail::add_diag(store.diags, std::move(message), std::move(loc));
+    return false;
+  };
+  if (!op.valid() || op.store_ != &store)
+    return reject(
+        "constant replacement requires a live operation in this module");
+  auto& data = store.ops[op.id_].data;
+  if ((data.kind != Op::Kind::call && data.kind != Op::Kind::constant) ||
+      !data.blks.empty() || data.outs.size() != 1 ||
+      data.form == Op::Form::index_assign)
+    return reject("constant replacement requires a single-result expression",
+                  data.loc);
+  const std::uint32_t output = data.outs.front();
+  if (output >= store.vals.size() || !store.vals[output].live)
+    return reject("constant replacement has no live result", data.loc);
+  const Ty& type = store.vals[output].data.type;
+  if (!detail::literal_matches(value, type))
+    return reject("constant literal does not match result type '" +
+                      std::string(type.text()) + "'",
+                  data.loc);
+  if (data.kind == Op::Kind::constant && data.literal == value &&
+      data.callee.empty() && data.args.empty())
+    return false;
+
+  data.kind = Op::Kind::constant;
+  data.callee.clear();
+  data.args.clear();
+  data.blks.clear();
+  data.iter_names.clear();
+  data.carried_count = 0;
+  data.logic = detail::Logic::none;
+  data.literal = std::move(value);
+  detail::rebuild_uses(store);
+  detail::touch(store);
+  return true;
+}
+
 bool Mod::replace(Val old_value, Val new_value) {
   const std::array old_values{old_value};
   const std::array new_values{new_value};

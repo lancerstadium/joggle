@@ -262,7 +262,7 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "C data emission failed (${result}):\n${error}")
 endif()
 file(READ "${blob_data}" emitted_data HEX)
-if(NOT emitted_data STREQUAL "0000803f00000040ff007f")
+if(NOT emitted_data STREQUAL "ff007f000000803f00000040")
   message(FATAL_ERROR "C data emission changed literal bytes: ${emitted_data}")
 endif()
 
@@ -290,9 +290,9 @@ endif()
 file(READ "${blob_source}" emitted_blob_source)
 file(READ "${blob_header}" emitted_blob_header)
 if(NOT emitted_blob_source MATCHES
-   "memcpy\\([^\n]+, jog_data_model \\+ 0, 8\\);" OR
+   "const int8_t\\* [^\n]+ = \\(const int8_t\\*\\)\\(const void\\*\\)\\(jog_data_model \\+ 0\\);" OR
    NOT emitted_blob_source MATCHES
-   "memcpy\\([^\n]+, jog_data_model \\+ 8, 3\\);" OR
+   "const float\\* [^\n]+ = \\(const float\\*\\)\\(const void\\*\\)\\(jog_data_model \\+ 4\\);" OR
    emitted_blob_source MATCHES "static const unsigned char jog_data_" OR
    emitted_blob_source MATCHES "extern const unsigned char jog_data_" OR
    NOT emitted_blob_header MATCHES

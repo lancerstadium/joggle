@@ -402,6 +402,7 @@ public:
   bool move(Op op, Op before);
   bool args(const Env& env, Op op, std::span<const Val> values);
   bool fuse(const Env& env, std::span<const Op> ops, std::string callee);
+  bool replace(Op op, Attr value);
   bool replace(Val old_value, Val new_value);
   bool replace(std::span<const Val> old_values,
                std::span<const Val> new_values);

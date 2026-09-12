@@ -111,13 +111,14 @@ fn assign_literal() -> bool {
   return value
 }
 
-fn weights() -> tensor<f32, [2]> {
-  let values: tensor<f32, [2]> = tensor.literal(hex"0000803f00000040")
+fn byte_weights() -> tensor<i8, [3]> {
+  let values: tensor<i8, [3]> = hex"ff007f"
   return values
 }
 
-fn byte_weights() -> tensor<i8, [3]> {
-  return tensor.literal(hex"ff007f")
+fn weights() -> tensor<f32, [2]> {
+  let values: tensor<f32, [2]> = hex"0000803f00000040"
+  return values
 }
 
 fn data_weights() -> i64 {

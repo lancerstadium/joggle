@@ -129,6 +129,19 @@ std::size_t count_calls(const joggle::Mod& mod, std::string_view callee) {
   return count;
 }
 
+std::size_t count_tensor_constants(const joggle::Mod& mod) {
+  std::size_t count = 0;
+  for (joggle::Op op : mod.ops()) {
+    const std::vector<joggle::Val> outputs = op.outs();
+    if (op.kind() == joggle::Op::Kind::constant && outputs.size() == 1 &&
+        outputs[0].type().name() == "tensor") {
+      const joggle::Attr value = outputs[0].constant();
+      count += value.bytes() ? 1 : 0;
+    }
+  }
+  return count;
+}
+
 std::size_t count_unknown_node_outputs(const joggle::Mod& mod) {
   std::size_t count = 0;
   for (joggle::Op op : mod.ops()) {
@@ -246,7 +259,7 @@ int main(int argc, char** argv) {
   CHECK(semantic.verify(env));
   CHECK(count_calls(semantic, "onnx.tensor") == 0);
   CHECK(count_calls(semantic, "onnx.model") == 0);
-  CHECK(count_calls(semantic, "tensor.literal") == tensors);
+  CHECK(count_tensor_constants(semantic) == tensors);
   CHECK(count_calls(semantic, "onnx.Conv") == 0);
   CHECK(count_calls(semantic, "onnx.BatchNormalization") == 0);
   CHECK(count_calls(semantic, "onnx.Relu") == 0);

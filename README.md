@@ -308,7 +308,11 @@ The parameterized source and header add one explicit
 `const unsigned char* jog_data_weights` argument after normal inputs and before
 output pointers in every generated function definition, while leaving bodyless
 external bindings unchanged. Internal calls forward the same pointer, and
-tensor literals copy from deterministic offsets.
+immutable tensor constants bind aligned, read-only views at deterministic
+offsets. `c.data(m, config)` applies the same ABI widths and alignment as the
+configured source emitter; the zero-argument form uses the default C ABI.
+The blob base must satisfy the strictest alignment requested by that ABI;
+allocator-, page-, and ROM-aligned storage meet the default scalar contract.
 The application may therefore read, map, download, or point into ROM for
 `model.bin` without a linker-specific global symbol. Calling `c.source` and
 `c.header` without the argument retains the self-contained inline form.
@@ -386,8 +390,8 @@ explicit `vm.prepare` function uses `vm.accepts(Mod, Op)` through the same
 generic `opt.expose` policy, expands the shared high-level tensor `+` body, and
 executes it in the VM. Preparation is never hidden inside image emission. The
 step count is not presented as hardware cycles. Frontend bridges normalize
-ONNX and TFLite weight payloads to the shared `tensor.literal` primitive; C and
-VM both execute that primitive without knowing either frontend. The pinned official
+ONNX and TFLite weight payloads to ordinary typed tensor constants; C and VM
+both execute those constants without knowing either frontend. The pinned official
 ONNX `test_matmul_2d` case now imports, converts, expands, and matches its
 official output through both VM and compiled C. The same gate now completes on
 the official MobileNetV2 application: its 28 MB image executes 95,592,386,975

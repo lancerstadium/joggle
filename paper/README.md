@@ -4,6 +4,14 @@ Target: FSE 2027 Research Papers. The submission deadline is 2 October 2026
 AoE. The manuscript is not yet ready to draft: this directory records the
 question and evidence that must hold before prose is written.
 
+The submission contract is 18 pages of text and figures plus 4 pages of
+references, heavy double-anonymous review, and a `Data Availability` statement.
+The replication package must be curated and anonymized for review. Because AI
+tools have materially participated in research design, implementation, testing,
+and analysis, the Methods section must describe those uses in detail; no result,
+dataset, or citation may enter the paper without an independently reproducible
+artifact or source.
+
 ## Research question
 
 Can a small compiler workbench let AI software/hardware co-design researchers
@@ -42,6 +50,11 @@ small embeddable compiler frameworks.
   `98,167,456,513` to `95,592,386,975` deterministic interpreter steps.
 - Separating payloads reduces MobileNetV2 generated C from `56,911,938` to
   `246,085` bytes plus a `14,156,560`-byte raw weight blob.
+- Re-importing MobileNetV2 with typed tensor constants leaves three writable
+  C workspace arrays (`10.91 MiB`) instead of 267 arrays that mixed activations
+  and weights. The external-data source contains 266 aligned read-only weight
+  views and no per-inference weight `memcpy`; all 1,000 outputs still agree,
+  with maximum absolute error `2.0980835e-05`.
 - Default, sanitizer, ONNX, TFLite, generated-C, VM, installation, and external
   module gates exercise the same public interfaces.
 
@@ -55,9 +68,6 @@ comparable optimization settings.
 - Generated C still uses scalar untiled loops and is substantially slower than
   ONNX Runtime on the current CPU diagnostic. It is a reference backend, not
   yet evidence of efficient edge inference.
-- Read-only weights and writable workspace are not separated in the memory
-  plan, so generated functions may copy the weight blob into reusable storage
-  on every invocation.
 - Elementwise activation and producer loops are not yet fused at body level.
 - The IR editor lacks the general clone-with-value-remapping primitive needed
   for clean loop split, reorder, fuse, and unroll modules.
@@ -71,13 +81,11 @@ comparable optimization settings.
 
 ## Next experiment order
 
-1. Separate immutable data views from mutable workspace and measure per-call
-   copying, workspace bytes, and code size.
-2. Add general block cloning with explicit value remapping, then implement loop
+1. Add general block cloning with explicit value remapping, then implement loop
    split/reorder/fuse/unroll as a removable module on the existing IR.
-3. Normalize fused activations to ordinary function composition and implement
+2. Normalize fused activations to ordinary function composition and implement
    producer/consumer loop fusion without operator-name cases.
-4. Add vectorizable C emission facts (`restrict`, alignment, and selected
+3. Add vectorizable C emission facts (`restrict`, alignment, and selected
    unrolling) only through explicit module policy, then compare generated code
    and compiler optimization reports.
-5. Freeze the experimental protocol and only then draft the paper.
+4. Freeze the experimental protocol and only then draft the paper.

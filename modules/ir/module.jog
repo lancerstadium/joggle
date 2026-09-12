@@ -82,6 +82,7 @@ fn expand(m: Mod, calls: list<Op>, callees: list<Fn>) -> bool;
 fn move(m: Mod, op: Op, before: Op) -> bool;
 fn args(m: Mod, op: Op, values: list<Val>) -> bool;
 fn fuse(m: Mod, ops: list<Op>, callee: str) -> bool;
+fn replace(m: Mod, op: Op, value: Attr) -> bool;
 fn replace(m: Mod, old: Val, next: Val) -> bool;
 fn replace(m: Mod, old: list<Val>, next: list<Val>) -> bool;
 fn replace(m: Mod, old: Val, next: Val, user: Op) -> bool;

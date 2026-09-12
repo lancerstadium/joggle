@@ -178,13 +178,6 @@ fn accepts(m: Mod, op: Op) -> bool {
     return scalar(ir.type(inputs[0])) &&
            ir.type(inputs[0]) == tensor.elem(ir.type(outputs[0]))
   }
-  if len(inputs) == 1 && len(outputs) == 1 &&
-     tensor.static(ir.type(outputs[0])) && ir.is_const(inputs[0]) &&
-     base.kind(ir.constant(inputs[0])) == "bytes" && ir.live(target) &&
-     ir.symbol(target) == "tensor.literal" {
-    return base.size(ir.constant(inputs[0])) ==
-           count(ir.type(outputs[0])) * width(tensor.elem(ir.type(outputs[0])))
-  }
   if len(inputs) == 1 && len(outputs) == 1 && scalar_name(name) &&
      scalar(ir.type(inputs[0])) {
     return true
@@ -330,19 +323,6 @@ local fn call(m: Mod, op: Op) -> str {
            text(count(ir.type(result))) + " " +
            reg(inputs[0]) + "\n"
   }
-  if tensor.valid(ir.type(result)) && ir.live(target) &&
-     ir.symbol(target) == "tensor.literal" {
-    assert(len(inputs) == 1 && ir.is_const(inputs[0]) &&
-           base.kind(ir.constant(inputs[0])) == "bytes",
-           "vm: tensor literal requires constant bytes")
-    let data = ir.constant(inputs[0])
-    assert(base.size(data) == count(ir.type(result)) *
-           width(tensor.elem(ir.type(result))),
-           "vm: tensor literal byte size does not match its type")
-    return "literal " + format(tensor.elem(ir.type(result))) + " " +
-           reg(result) + " " + text(count(ir.type(result))) +
-           " " + text(data) + "\n"
-  }
   if len(inputs) == 1 && scalar_name(name) && scalar(ir.type(inputs[0])) {
     return "cast " + format(ty(name)) + " " +
            reg(result) + " " +
@@ -388,6 +368,17 @@ local fn constant(op: Op) -> str {
   let outputs = ir.outs(op)
   assert(len(outputs) == 1, "vm: constant must have one result")
   let result = outputs[0]
+  if tensor.valid(ir.type(result)) {
+    let data = ir.constant(result)
+    assert(tensor.static(ir.type(result)) &&
+           base.kind(data) == "bytes" &&
+           base.size(data) == count(ir.type(result)) *
+           width(tensor.elem(ir.type(result))),
+           "vm: tensor constant byte size does not match its type")
+    return "literal " + format(tensor.elem(ir.type(result))) + " " +
+           reg(result) + " " + text(count(ir.type(result))) +
+           " " + text(data) + "\n"
+  }
   if !scalar(ir.type(result)) {
     assert(ir.type(result) == ty("bytes") &&
            base.kind(ir.constant(result)) == "bytes",

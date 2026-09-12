@@ -2423,6 +2423,12 @@ private:
     } else if (name == "replace" &&
                (args.size() == 3 || args.size() == 4)) {
       const auto* mod = as<Mod*>(args[0]);
+      if (mod && *mod && args.size() == 3) {
+        const auto* op = as<Op>(args[1]);
+        auto value = attribute(args[2]);
+        if (op && value)
+          return Items{Item(Attr((*mod)->replace(*op, std::move(*value))))};
+      }
       const auto* old_value = as<Val>(args[1]);
       const auto* new_value = as<Val>(args[2]);
       if (mod && *mod && old_value && new_value) {
