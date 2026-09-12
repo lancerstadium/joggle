@@ -93,6 +93,21 @@ fn check_unrollable(m: Mod, factor: int, expected: int) -> bool {
   return true
 }
 
+fn check_unroll_issue(m: Mod) -> bool {
+  let before = ir.revision(m)
+  let candidates = tile.unrollable(m, 2)
+  assert(len(candidates) == 1,
+         "unroll issue check requires one candidate")
+  assert(tile.unroll_issue(candidates[0], 2) == "",
+         "legal unroll reported an issue")
+  assert(tile.unroll_issue(candidates[0], 3) ==
+         "requires the trip count to be divisible by the factor",
+         "illegal unroll reported the wrong issue")
+  assert(ir.revision(m) == before,
+         "tile.unroll_issue must be read-only")
+  return true
+}
+
 fn fuse_first(m: Mod) -> bool {
   var loops: list<Op> = []
   for op in ir.ops(m) {
@@ -149,8 +164,26 @@ fn check_fusible(m: Mod, expected: int) -> bool {
   assert(len(candidates) == expected,
          "unexpected fusion candidate count")
   for pair in candidates {
-    assert(len(pair) == 2 && tile.can_fuse(m, pair[0], pair[1]),
+    assert(len(pair) == 2 && tile.can_fuse(m, pair[0], pair[1]) &&
+           tile.fuse_issue(pair[0], pair[1]) == "",
            "tile.fusible returned an illegal pair")
   }
+  return true
+}
+
+fn check_fuse_issue(m: Mod, expected: str) -> bool {
+  let before = ir.revision(m)
+  var loops: list<Op> = []
+  for op in ir.ops(m) {
+    if ir.kind(op) == "loop" {
+      loops += [op]
+    }
+  }
+  assert(len(loops) >= 2,
+         "fusion issue check requires two loops")
+  assert(tile.fuse_issue(loops[0], loops[1]) == expected,
+         "fusion reported the wrong issue")
+  assert(ir.revision(m) == before,
+         "tile.fuse_issue must be read-only")
   return true
 }

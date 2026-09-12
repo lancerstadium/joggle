@@ -296,7 +296,7 @@ fn split(m: Mod, source: Op, factor: int) -> bool {
   return true
 }
 
-local fn unroll_issue(source: Op, factor: int) -> str {
+fn unroll_issue(source: Op, factor: int) -> str {
   if factor <= 0 {
     return "requires a positive factor"
   }
@@ -541,7 +541,7 @@ fn unroll(m: Mod, policy: Fn, arg: Attr) -> bool {
   return unroll_all(m, policy, arg, true)
 }
 
-local fn fuse_issue(m: Mod, producer: Op, consumer: Op) -> str {
+fn fuse_issue(producer: Op, consumer: Op) -> str {
   if !ir.live(producer) || !ir.live(consumer) ||
      ir.kind(producer) != "loop" || ir.kind(consumer) != "loop" ||
      producer == consumer || ir.blk(producer) != ir.blk(consumer) {
@@ -658,7 +658,7 @@ local fn fuse_issue(m: Mod, producer: Op, consumer: Op) -> str {
 
 fn can_fuse(m: Mod, producer: Op, consumer: Op) -> bool {
   let before = ir.revision(m)
-  let legal = fuse_issue(m, producer, consumer) == ""
+  let legal = fuse_issue(producer, consumer) == ""
   assert(ir.revision(m) == before,
          "tile.can_fuse changed the module")
   return legal
@@ -689,7 +689,7 @@ fn fusible(m: Mod) -> list<list<Op>> {
 }
 
 fn fuse(m: Mod, producer: Op, consumer: Op) -> bool {
-  let issue = fuse_issue(m, producer, consumer)
+  let issue = fuse_issue(producer, consumer)
   assert(issue == "", "tile.fuse " + issue)
 
   let producer_inputs = ir.args(producer)

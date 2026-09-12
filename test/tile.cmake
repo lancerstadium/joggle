@@ -23,6 +23,18 @@ if(NOT candidate_result EQUAL 0)
 endif()
 
 execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_unroll_issue "${MODEL}"
+          -M "${MODULES}"
+  RESULT_VARIABLE issue_result
+  OUTPUT_VARIABLE issue_output
+  ERROR_VARIABLE issue_error
+)
+if(NOT issue_result EQUAL 0)
+  message(FATAL_ERROR
+          "unroll issue query failed:\n${issue_output}${issue_error}")
+endif()
+
+execute_process(
   COMMAND "${TOOL}" run tile_pass.fuse_first "${EFFECT_FUSE_MODEL}"
           -M "${MODULES}"
   RESULT_VARIABLE effect_result
@@ -33,6 +45,19 @@ if(effect_result EQUAL 0 OR
    NOT effect_error MATCHES "non-setup operation")
   message(FATAL_ERROR
           "fusion crossed an observable call:\n${effect_output}${effect_error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_fuse_issue
+          "${INVALID_FUSE_MODEL}"
+          --arg "\"requires pointwise consumer reads\"" -M "${MODULES}"
+  RESULT_VARIABLE issue_result
+  OUTPUT_VARIABLE issue_output
+  ERROR_VARIABLE issue_error
+)
+if(NOT issue_result EQUAL 0)
+  message(FATAL_ERROR
+          "fusion issue query failed:\n${issue_output}${issue_error}")
 endif()
 
 execute_process(

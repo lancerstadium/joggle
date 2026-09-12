@@ -269,6 +269,11 @@ two-operation lists for fusion, so a user policy can inspect ordinary IR
 without reconstructing legality. Fusion recomputes this collection after each
 structural round and skips candidates invalidated by an earlier edit in the
 same round.
+`tile.unroll_issue(loop, factor)` and `tile.fuse_issue(producer, consumer)`
+return the same human-readable reason used by the corresponding transform; an
+empty string means the requested edit is legal. Policies can therefore count
+or report rejected alternatives without attempting a mutation and scraping a
+failed transaction.
 These modules are intentionally separate: storage and scheduling policy can be
 replaced independently and neither changes the core IR.
 
