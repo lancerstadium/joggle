@@ -256,7 +256,7 @@ local fn external(m: Mod, fn: Fn) -> bool {
 local fn symbol(m: Mod, fn: Fn) -> str {
   assert(callable(m, fn), "c: function has no representable ABI")
   let bound = binding(fn)
-  if !owned(m, fn) && bound != "" {
+  if bound != "" {
     return bound
   }
   if owned(m, fn) {
@@ -897,14 +897,17 @@ local fn binding_headers(m: Mod) -> list<str> {
   var out: list<str> = []
   for op in ir.ops(m) {
     if ir.kind(op) == "call" {
-      let name = binding_header(ir.resolve(m, op))
-      if name != "" {
-        var seen = false
-        for existing in out {
-          seen = seen || existing == name
-        }
-        if !seen {
-          out += [name]
+      let fn = ir.resolve(m, op)
+      if external(m, fn) {
+        let name = binding_header(fn)
+        if name != "" {
+          var seen = false
+          for existing in out {
+            seen = seen || existing == name
+          }
+          if !seen {
+            out += [name]
+          }
         }
       }
     }

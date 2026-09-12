@@ -1186,10 +1186,11 @@ instead of an emitter side effect.
 
 Qualified external symbols use a readable module separator in C
 (`edge.matmul` becomes `jog_edge_matmul`). The same prototype pass rejects
-collisions after normalization. A bodyless declaration may instead own an
-exact C symbol and optional system header through
-`[c: {name: "...", include: "..."}]`. Supplying `include` suppresses a
-redundant generated prototype. This same mechanism
+collisions after normalization. Any function may instead own an exact C symbol
+through `[c: {name: "..."}]`, including a local model definition that needs a
+stable application ABI. A bodyless declaration may additionally name a system
+header with `include: "..."`; supplying it suppresses a redundant generated
+prototype. This same mechanism
 binds libm and an out-of-tree external kernel, so the C module has no math- or
 kernel-name cases. `math.round_even` is an ordinary single-return function
 body built from `floor`, `fmod`, scalar algebra, and structured conditions.

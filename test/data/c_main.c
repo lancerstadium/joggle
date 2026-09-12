@@ -33,7 +33,7 @@ int main(void) {
   for (size_t i = 0; i < 4; ++i)
     if (fabsf(out[i] - expected[i]) > 1e-6f)
       return 1;
-  if (fabsf(jog_affine(3.0f) - 7.0f) > 1e-6f)
+  if (fabsf(kernel_affine(3.0f) - 7.0f) > 1e-6f)
     return 2;
   if (fabsf(jog_direct(3.0f) - 6.0f) > 1e-6f)
     return 3;

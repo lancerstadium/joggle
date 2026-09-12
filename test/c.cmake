@@ -166,6 +166,12 @@ if(NOT emitted_header MATCHES
   message(FATAL_ERROR
           "C header did not apply its scalar ABI structurally:\n${emitted_header}")
 endif()
+if(NOT emitted_header MATCHES "float kernel_affine\\(float v_x\\);" OR
+   emitted_header MATCHES "jog_affine")
+  message(FATAL_ERROR
+          "C header did not honor the function-owned ABI name:\n"
+          "${emitted_header}")
+endif()
 if(emitted_header MATCHES "size_t")
   message(FATAL_ERROR
           "C header leaked an emitter-private array counter:\n${emitted_header}")

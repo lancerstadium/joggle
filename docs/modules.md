@@ -876,9 +876,11 @@ same output-pointer convention as local functions. A single scalar result is
 returned directly; tensor and multi-result signatures use ordered trailing
 pointers, and a zero-result function is ordinary C `void`. The public header
 contains the model's definitions; dependency prototypes stay in the source
-translation unit. `[c: {name: "name"}]` replaces the qualified dependency
-symbol when binding an existing C API. An optional `include: "file.h"` field
-makes `c.source` include that system header once and omit its redundant prototype.
+translation unit. `[c: {name: "name"}]` supplies the exact C spelling for
+either a local definition or an external dependency. This lets an exported
+model present a stable application ABI without changing its Joggle name. An
+optional `include: "file.h"` field on an external dependency makes `c.source`
+include that system header once and omit its redundant prototype.
 `math` and `examples/edge` exercise the header-backed and generated-prototype
 forms respectively. This rule is structural—no callee name, operator registry,
 or per-kernel binding is required. [`examples/edge`](../examples/edge) links a
