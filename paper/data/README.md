@@ -164,9 +164,13 @@ compatibility.
 
 TinyYOLOv3-11 and SSD-MobileNetV1-12 are explicit negative rows. TinyYOLOv3
 decodes and round trips but retains 219 unknown results after inference.
-SSD-MobileNetV1 infers all result types, then retains 1,521 source-format calls
-after conversion. The Zoo gate checks both frontiers so later changes cannot
-silently relabel partial compatibility as full support.
+SSD-MobileNetV1 infers all result types, then retains 710 source-format calls
+after conversion. Ordinary variadic broadcast conversion to shared
+`nn.maximum` and `nn.minimum` functions removed the prior 360 Max and 451 Min
+calls; no target-emitter case was added. The remaining calls include comparison,
+dynamic indexing, NonZero, NonMaxSuppression, If, and Loop. The Zoo gate checks
+both frontiers so later changes cannot silently relabel partial compatibility
+as full support.
 
 `shufflenet-backend-pilot.csv` advances ShuffleNet V2 through spatial
 convolution selection, call-site instantiation, C preparation, static memory

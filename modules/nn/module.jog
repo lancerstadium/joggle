@@ -500,6 +500,62 @@ fn div<
   return a / b
 }
 
+fn maximum<E: Ty>(left: E, right: E) -> E {
+  var out = right
+  if left != left || (right == right && left > right) {
+    out = left
+  }
+  return out
+}
+
+fn maximum<E: Ty, S: list<int>>(
+  left: tensor<E, S>, right: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = maximum(left[i], right[i])
+  }
+  return out
+}
+
+fn maximum<
+  E: Ty, L: list<int>, R: list<int>, Y: list<int>
+>(
+  left: tensor<E, L>, right: tensor<E, R>
+) -> tensor<E, Y> {
+  let a: tensor<E, Y> = tensor.broadcast(left)
+  let b: tensor<E, Y> = tensor.broadcast(right)
+  return maximum(a, b)
+}
+
+fn minimum<E: Ty>(left: E, right: E) -> E {
+  var out = right
+  if left != left || (right == right && left < right) {
+    out = left
+  }
+  return out
+}
+
+fn minimum<E: Ty, S: list<int>>(
+  left: tensor<E, S>, right: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = minimum(left[i], right[i])
+  }
+  return out
+}
+
+fn minimum<
+  E: Ty, L: list<int>, R: list<int>, Y: list<int>
+>(
+  left: tensor<E, L>, right: tensor<E, R>
+) -> tensor<E, Y> {
+  let a: tensor<E, Y> = tensor.broadcast(left)
+  let b: tensor<E, Y> = tensor.broadcast(right)
+  return minimum(a, b)
+}
+
 fn pow<E: Ty, S: list<int>>(
   left: tensor<E, S>, right: tensor<E, S>
 ) -> tensor<E, S> {

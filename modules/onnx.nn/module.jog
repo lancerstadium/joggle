@@ -2648,6 +2648,66 @@ local fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
   return convert_call(m, op, callee)
 }
 
+local fn extrema_types(inputs: list<Val>) -> list<Ty> {
+  if len(inputs) == 0 {
+    return []
+  }
+  let first = ir.type(inputs[0])
+  if !tensor.valid(first) {
+    return []
+  }
+  let elem = tensor.elem(first)
+  var shape: list<Ty> = tensor.dims(first)
+  var types: list<Ty> = []
+  for i in 1..len(inputs) {
+    let right = ir.type(inputs[i])
+    if !tensor.valid(right) || tensor.elem(right) != elem {
+      return []
+    }
+    let dims: list<Ty> = tensor.dims(right)
+    let next: list<Ty> = tensor.broadcast_shape(shape, dims)
+    if !tensor.broadcastable(shape, next) ||
+       !tensor.broadcastable(dims, next) {
+      return []
+    }
+    shape = next
+    types += [shaped(elem, shape)]
+  }
+  return types
+}
+
+local fn convert_extrema(m: Mod, op: Op, callee: str) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) == 0 || len(outputs) != 1 {
+    return false
+  }
+  if len(inputs) == 1 {
+    if ir.type(inputs[0]) != ir.type(outputs[0]) {
+      return false
+    }
+    return convert_call(m, op, "base.copy")
+  }
+  let types = extrema_types(inputs)
+  if len(types) + 1 != len(inputs) ||
+     types[len(types) - 1] != ir.type(outputs[0]) {
+    return false
+  }
+  var current = inputs[0]
+  for i in 1..len(inputs) {
+    if i + 1 < len(inputs) {
+      let next = ir.call(m, op, callee, [current, inputs[i]], types[i - 1])
+      if !ir.live(next) {
+        return false
+      }
+      current = next
+    }
+  }
+  return convert_call(
+    m, op, callee, [current, inputs[len(inputs) - 1]]
+  )
+}
+
 [phase: "compute", on: "onnx.Add"]
 local fn convert_add(m: Mod, op: Op) -> bool {
   return convert_binary(m, op, "nn.add")
@@ -2671,6 +2731,16 @@ local fn convert_div(m: Mod, op: Op) -> bool {
 [phase: "compute", on: "onnx.Pow"]
 local fn convert_pow(m: Mod, op: Op) -> bool {
   return convert_binary(m, op, "nn.pow")
+}
+
+[phase: "compute", on: "onnx.Max"]
+local fn convert_max(m: Mod, op: Op) -> bool {
+  return convert_extrema(m, op, "nn.maximum")
+}
+
+[phase: "compute", on: "onnx.Min"]
+local fn convert_min(m: Mod, op: Op) -> bool {
+  return convert_extrema(m, op, "nn.minimum")
 }
 
 local fn quant_axis(op: Op, data: Ty, params: Ty) -> int {

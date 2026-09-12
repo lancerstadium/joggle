@@ -75,6 +75,11 @@ The C path must produce a stable baseline suitable for experiments:
 - compare source, compiler diagnostics, binary size, workspace, and latency
   against defined baselines.
 
+Shape specialization now removes static-rank traversal from ordinary tensor
+offset and broadcast helpers. It does not yet eliminate every resulting scalar
+temporary or materialized broadcast, and the measured convolution/layout gap
+to a production runtime remains the primary backend limitation.
+
 Every generated artifact used in evaluation must be checked against reference
 outputs with documented tolerances.
 

@@ -811,10 +811,12 @@ int main(int argc, char** argv) {
       "fn main(\n"
       "  scalar: tensor<f32, []>, left: tensor<f32, [1, 3]>,\n"
       "  right: tensor<f32, [2, 1]>\n"
-      ") -> (tensor<f32, [2, 3]>, tensor<bool, [2, 3]>) {\n"
+      ") -> (tensor<f32, [2, 3]>, tensor<f32, [2, 3]>,\n"
+      "      tensor<bool, [2, 3]>) {\n"
       "  let maximum = onnx.Max(scalar, left, right)\n"
-      "  let less = onnx.Less(maximum, right)\n"
-      "  return maximum, less\n"
+      "  let minimum = onnx.Min(right, left, scalar)\n"
+      "  let less = onnx.Less(maximum, minimum)\n"
+      "  return maximum, minimum, less\n"
       "}\n";
   joggle::Mod broadcast_relations;
   CHECK(joggle::parse(env, broadcast_relations_source, broadcast_relations,
@@ -823,11 +825,44 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "onnx.nn.infer", broadcast_relations));
   CHECK(broadcast_relations.verify(env));
   for (joggle::Op op : broadcast_relations.ops()) {
-    if (op.callee() == "onnx.Max")
+    if (op.callee() == "onnx.Max" || op.callee() == "onnx.Min")
       CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [2, 3]>"));
     if (op.callee() == "onnx.Less")
       CHECK(op.outs()[0].type() == joggle::Ty("tensor<bool, [2, 3]>"));
   }
+  CHECK(joggle::run(env, "onnx.nn.convert", broadcast_relations));
+  CHECK(broadcast_relations.verify(env));
+  std::size_t extrema = 0;
+  for (joggle::Op op : broadcast_relations.ops()) {
+    CHECK(op.callee() != "onnx.Max" && op.callee() != "onnx.Min");
+    if (op.callee() != "nn.maximum" && op.callee() != "nn.minimum")
+      continue;
+    const joggle::Fn fn = env.resolve(broadcast_relations, op);
+    CHECK(fn && env.expand(broadcast_relations, op, fn));
+    ++extrema;
+  }
+  CHECK(extrema == 4 && broadcast_relations.verify(env));
+  for (joggle::Op op : broadcast_relations.ops())
+    CHECK(op.callee() != "nn.maximum" && op.callee() != "nn.minimum");
+
+  constexpr std::string_view unary_extrema_source =
+      "module unary.extrema\n"
+      "use onnx\n"
+      "fn main(x: tensor<f32, [2, 3]>) -> _ {\n"
+      "  return onnx.Max(x)\n"
+      "}\n";
+  joggle::Mod unary_extrema;
+  CHECK(joggle::parse(env, unary_extrema_source, unary_extrema,
+                      "unary-extrema.jog"));
+  CHECK(unary_extrema.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", unary_extrema));
+  CHECK(joggle::run(env, "onnx.nn.convert", unary_extrema));
+  CHECK(unary_extrema.verify(env));
+  std::size_t unary_copies = 0;
+  for (joggle::Op op : unary_extrema.ops())
+    if (op.callee() == "base.copy")
+      ++unary_copies;
+  CHECK(unary_copies == 1);
 
   constexpr std::string_view unary_bridge_source =
       "module unary.bridge\n"

@@ -342,6 +342,12 @@ spelling is not itself a stable ABI promise: applications that require ABI
 stability should use an explicit binding and compile the emitted header and
 source from the same IR.
 
+`c.prepare` expands unsupported function bodies and specializes loops explicitly
+marked as shape bookkeeping. Static-rank traversal in tensor offsets and
+broadcasting is therefore removed before emission without teaching the C target
+about a tensor operator. Runtime element loops and data-dependent indexing
+remain visible.
+
 For a function with one return path, an unplanned local tensor that reaches a
 pointer result is backed directly by that result buffer. The emitter retains
 the local source name as a pointer alias, so the body stays readable without a

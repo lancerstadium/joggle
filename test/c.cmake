@@ -354,6 +354,12 @@ if(emitted_source MATCHES "(^|[^A-Za-z0-9_])(jog_|v_[A-Za-z0-9])")
           "generated C introduced a compiler-owned project prefix:\n"
           "${emitted_source}")
 endif()
+if(emitted_source MATCHES
+   "for \\(int64_t reverse_[0-9]+ = 0; reverse_[0-9]+ < 2;")
+  message(FATAL_ERROR
+          "generated C retained a static broadcast-rank traversal:\n"
+          "${emitted_source}")
+endif()
 if(emitted_source MATCHES "tmp_[0-9]+ = out;" OR
    NOT emitted_source MATCHES "kernel_relay\\(first, out\\);")
   message(FATAL_ERROR

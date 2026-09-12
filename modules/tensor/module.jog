@@ -681,6 +681,7 @@ fn broadcast_offset(
   var from_stride = 1
   var to_stride = 1
   let shift = len(to) - len(from)
+  [stage: "shape"]
   for reverse in 0..len(to) {
     let axis = len(to) - reverse - 1
     let source = axis - shift

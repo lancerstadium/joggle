@@ -722,7 +722,7 @@ if(JOGGLE_BUILD_TESTS)
       onnx.Constant onnx.Slice onnx.Softmax
     )
     joggle_add_onnx_zoo_case(
-      onnx-zoo-ssd-mobilenet ssd-mobilenetv1-12 --convert-frontier 1521
+      onnx-zoo-ssd-mobilenet ssd-mobilenetv1-12 --convert-frontier 710
       onnx.Loop onnx.NonMaxSuppression onnx.Resize
     )
     joggle_add_onnx_zoo_case(

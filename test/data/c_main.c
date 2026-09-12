@@ -47,6 +47,20 @@ int main(void) {
   for (size_t i = 0; i < 6; ++i)
     if (identity[i] != identity_input[i])
       return 28;
+  const float extrema_left[2] = {NAN, -4.0f};
+  const float extrema_right[3] = {1.0f, 3.0f, -5.0f};
+  const float maximum_expected[3] = {1.0f, 3.0f, -4.0f};
+  const float minimum_expected[3] = {-4.0f, -4.0f, -5.0f};
+  float maximum[6] = {0.0f};
+  float minimum[6] = {0.0f};
+  kernel_extrema(extrema_left, extrema_right, maximum, minimum);
+  for (size_t i = 0; i < 3; ++i)
+    if (!isnan(maximum[i]) || !isnan(minimum[i]))
+      return 29;
+  for (size_t i = 0; i < 3; ++i)
+    if (maximum[i + 3] != maximum_expected[i] ||
+        minimum[i + 3] != minimum_expected[i])
+      return 30;
   if (!kernel_list_branch(2) || kernel_list_branch(1))
     return 27;
 
