@@ -338,6 +338,12 @@ if(JOGGLE_BUILD_TESTS)
     "${CMAKE_CURRENT_BINARY_DIR}/modules/script/module.jog"
     COPYONLY
   )
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/alternate")
+  configure_file(
+    test/data/alternate/module.jog
+    "${CMAKE_CURRENT_BINARY_DIR}/modules/alternate/module.jog"
+    COPYONLY
+  )
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/number")
   configure_file(
     test/data/number/module.jog

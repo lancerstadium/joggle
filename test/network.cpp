@@ -159,6 +159,10 @@ int main(int argc, char** argv) {
   CHECK(count(guarded, "edge.relu4") == 1);
   CHECK(count(guarded, "relu") == 1);
   CHECK(count(guarded, "edge.relu") == 0);
+  joggle::Attr candidate_count;
+  CHECK(joggle::query(env, "script.candidate_count", implementation,
+                      candidate_count));
+  CHECK(candidate_count.integer() == 3);
   joggle::Mod mutating_guard;
   CHECK(joggle::parse(env, implementation_source, mutating_guard,
                       "mutating-guard-network.jog"));
@@ -232,6 +236,57 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(implementation,
                                    implementation_roundtrip));
 
+  joggle::Mod selected_implementation;
+  CHECK(joggle::parse(env, implementation_source, selected_implementation,
+                      "selected-implementation-network.jog"));
+  CHECK(selected_implementation.verify(env));
+  CHECK(joggle::run(env, "script.apply_selected",
+                    selected_implementation));
+  CHECK(selected_implementation.verify(env));
+  CHECK(count(selected_implementation, "relu") == 0);
+  CHECK(count(selected_implementation, "mid.relu") == 0);
+  CHECK(count(selected_implementation, "edge.relu4") == 0);
+  CHECK(count(selected_implementation, "edge.relu") == 2);
+
+  joggle::Mod declined_implementation;
+  CHECK(joggle::parse(env, implementation_source, declined_implementation,
+                      "declined-implementation-network.jog"));
+  CHECK(declined_implementation.verify(env));
+  const std::string declined_before = joggle::print(declined_implementation);
+  const std::uint64_t declined_revision =
+      declined_implementation.revision();
+  CHECK(joggle::run(env, "script.apply_none", declined_implementation));
+  CHECK(joggle::print(declined_implementation) == declined_before);
+  CHECK(declined_implementation.revision() == declined_revision);
+
+  const std::array rejected_policies{
+      std::pair{"script.apply_foreign",
+                "selected a function outside its candidates"},
+      std::pair{"script.apply_mutating_choice",
+                "policy must not mutate the module"},
+      std::pair{"script.apply_many",
+                "policy must select at most one implementation"},
+      std::pair{"script.apply_bad_policy",
+                "policy must return bool or list<Fn>"}};
+  for (const auto& [policy, message] : rejected_policies) {
+    joggle::Mod rejected_implementation;
+    CHECK(joggle::parse(env, implementation_source, rejected_implementation,
+                        "rejected-policy-network.jog"));
+    CHECK(rejected_implementation.verify(env));
+    const std::string rejected_before =
+        joggle::print(rejected_implementation);
+    const std::uint64_t rejected_revision =
+        rejected_implementation.revision();
+    CHECK(!joggle::run(env, policy, rejected_implementation));
+    CHECK(joggle::print(rejected_implementation) == rejected_before);
+    CHECK(rejected_implementation.revision() == rejected_revision);
+    bool diagnosed = false;
+    for (const joggle::Diag& diag : env.diags())
+      diagnosed = diag.message.find(message) != std::string::npos || diagnosed;
+    CHECK(diagnosed);
+    env.clear_diags();
+  }
+
   constexpr std::string_view instance_source =
       "module instance.network\n"
       "use script\n"
@@ -295,6 +350,18 @@ int main(int argc, char** argv) {
                       "automatic-instance-roundtrip.jog"));
   CHECK(instance_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(instance, instance_roundtrip));
+
+  joggle::Mod selected_instance;
+  CHECK(joggle::parse(env, instance_source, selected_instance,
+                      "selected-instance-network.jog"));
+  CHECK(selected_instance.verify(env));
+  CHECK(joggle::run(env, "script.instantiate_selected",
+                    selected_instance));
+  CHECK(selected_instance.verify(env));
+  std::size_t selected_instances = 0;
+  for (joggle::Fn fn : selected_instance.fns())
+    selected_instances += fn.meta("opt.instance") != nullptr;
+  CHECK(selected_instances == 2);
 
   constexpr std::string_view emission_source =
       "module instance.emit\n"

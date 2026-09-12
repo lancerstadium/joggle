@@ -1,0 +1,13 @@
+module alternate
+use base
+use tensor
+
+fn nn.relu<S: list<int>>(x: tensor<i8, S>) -> tensor<i8, S> {
+  return other.relu(x)
+}
+
+fn kernel.scale<S: list<int>>(
+  x: tensor<i8, S>
+) -> tensor<i8, S> {
+  return base.copy(x)
+}

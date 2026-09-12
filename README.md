@@ -179,9 +179,12 @@ Run it by adding its parent directory to the module search path:
 Functions may accept normal `Attr` parameters or another `Fn` as policy.
 An extension can therefore reuse safe IR construction, body expansion, loop
 rewrites, and target capability queries without a native binding per operator.
-`opt.apply` also accepts a read-only `fn(Mod, Op, Fn) -> bool` predicate, so an
-implementation module can guard candidates by layout, representation, or
-device features before ordinary overload selection.
+`opt.apply` also accepts either a read-only per-candidate predicate or a
+`fn(Mod, Op, list<Fn>) -> list<Fn>` selector. The latter returns zero or one
+compatible member, so an implementation module can resolve equal signatures
+by shape, layout, representation, cost, or device features without a central
+registry. `opt.candidates` exposes the unmodified compatible set for reports
+and policy development.
 
 The complete out-of-tree
 [`ikj` example](examples/ikj/module.jog) replaces matrix multiplication with

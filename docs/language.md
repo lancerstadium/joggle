@@ -627,13 +627,20 @@ external ABI declaration. Body presence is therefore the only distinction
 between inspectable replacement code and an external implementation; neither
 requires an operation registry or a target object.
 
-The guarded `opt.apply` overload accepts a normal
-`fn(Mod, Op, Fn) -> bool` predicate. It filters type-compatible candidates
-before the same specificity check, then performs the ordinary expansion or
-retarget edit. The predicate is required to be read-only and is checked by
-module revision. Layout, alignment, feature, and representation constraints
-therefore stay beside the implementation module instead of becoming core
+The policy overloads of `opt.apply` and `opt.instantiate` accept ordinary
+functions. A `fn(Mod, Op, Fn) -> bool` predicate filters each type-compatible
+candidate before the usual specificity check. A
+`fn(Mod, Op, list<Fn>) -> list<Fn>` selector instead sees the complete
+compatible set and returns zero or one member, which lets user code resolve
+equally specific implementations by shape, layout, cost, or device metadata.
+Both forms must be read-only and are checked by module revision. The selector
+result is also checked for cardinality and membership. These constraints
+therefore stay beside implementation modules instead of becoming core
 attributes or operation-specific branches.
+`opt.candidates(m, op, impls)` exposes the same symbol and type-compatible set
+for inspection without applying a policy or editing the module. Repeated
+handles are removed while distinct equal-signature implementations remain
+visible to policy.
 
 Open attributes can also define module-owned relations without a second rule
 language. `ir.where(items, key, value)` filters an explicit `list<Fn>`,

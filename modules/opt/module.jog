@@ -767,10 +767,7 @@ fn expose(m: Mod, accept: Fn, arg: Attr, limit: int) -> bool {
   return expose_with(m, accept, arg, true, limit)
 }
 
-local fn candidates(
-  m: Mod, op: Op, impls: list<Fn>, predicates: list<Fn>
-) -> list<Fn> {
-  assert(len(predicates) <= 1, "opt.apply accepts at most one predicate")
+fn candidates(m: Mod, op: Op, impls: list<Fn>) -> list<Fn> {
   var symbol = ir.callee(op)
   let source = ir.resolve(m, op)
   if ir.live(source) {
@@ -780,14 +777,11 @@ local fn candidates(
   for impl in impls {
     if (ir.name(impl) == symbol || ir.symbol(impl) == symbol) &&
        ir.accepts(op, impl) {
-      var accepted = true
-      if len(predicates) == 1 {
-        let before = ir.revision(m)
-        accepted = ir.invoke<bool>(m, op, predicates[0], impl)
-        assert(ir.revision(m) == before,
-               "opt.apply predicate must not mutate the module")
+      var seen = false
+      for prior in out {
+        seen = prior == impl || seen
       }
-      if accepted {
+      if !seen {
         out += [impl]
       }
     }
@@ -795,8 +789,54 @@ local fn candidates(
   return out
 }
 
+local fn choose(
+  m: Mod, op: Op, impls: list<Fn>, policies: list<Fn>
+) -> list<Fn> {
+  assert(len(policies) <= 1, "opt accepts at most one policy")
+  let available = candidates(m, op, impls)
+  if len(policies) == 0 || len(available) == 0 {
+    return available
+  }
+
+  let policy = policies[0]
+  let returns = ir.returns(policy)
+  assert(len(returns) == 1 &&
+         (returns[0] == ty("bool") ||
+          returns[0] == ty("list<Fn>")),
+         "opt policy must return bool or list<Fn>")
+  if returns[0] == ty("bool") {
+    var out: list<Fn> = []
+    for impl in available {
+      let before = ir.revision(m)
+      let accepted = ir.invoke<bool>(m, op, policy, impl)
+      assert(ir.revision(m) == before,
+             "opt policy must not mutate the module")
+      if accepted {
+        out += [impl]
+      }
+    }
+    return out
+  }
+
+  let before = ir.revision(m)
+  let selected = ir.invoke<list<Fn>>(m, op, policy, available)
+  assert(ir.revision(m) == before,
+         "opt policy must not mutate the module")
+  assert(len(selected) <= 1,
+         "opt policy must select at most one implementation")
+  if len(selected) == 1 {
+    var member = false
+    for impl in available {
+      member = selected[0] == impl || member
+    }
+    assert(member,
+           "opt policy selected a function outside its candidates")
+  }
+  return selected
+}
+
 local fn apply_with(
-  m: Mod, impls: list<Fn>, predicates: list<Fn>, limit: int
+  m: Mod, impls: list<Fn>, policies: list<Fn>, limit: int
 ) -> bool {
   assert(limit >= 0, "opt.apply limit must not be negative")
   var changed = false
@@ -810,7 +850,7 @@ local fn apply_with(
       var targets: list<Fn> = []
       for op in ir.ops(m) {
         if ir.live(op) && ir.kind(op) == "call" && len(ir.meta(op)) == 0 {
-          let selected = ir.match(op, candidates(m, op, impls, predicates))
+          let selected = ir.match(op, choose(m, op, impls, policies))
           if ir.live(selected) && selected != ir.resolve(m, op) {
             if len(ir.blks(selected)) == 0 {
               redirects += [op]
@@ -844,20 +884,20 @@ local fn apply_with(
 }
 
 fn apply(m: Mod, impls: list<Fn>, limit: int) -> bool {
-  let predicates: list<Fn> = []
-  return apply_with(m, impls, predicates, limit)
+  let policies: list<Fn> = []
+  return apply_with(m, impls, policies, limit)
 }
 
 fn apply(m: Mod, impls: list<Fn>) -> bool {
   return apply(m, impls, len(impls) + 1)
 }
 
-fn apply(m: Mod, impls: list<Fn>, accept: Fn, limit: int) -> bool {
-  return apply_with(m, impls, [accept], limit)
+fn apply(m: Mod, impls: list<Fn>, policy: Fn, limit: int) -> bool {
+  return apply_with(m, impls, [policy], limit)
 }
 
-fn apply(m: Mod, impls: list<Fn>, accept: Fn) -> bool {
-  return apply(m, impls, accept, len(impls) + 1)
+fn apply(m: Mod, impls: list<Fn>, policy: Fn) -> bool {
+  return apply(m, impls, policy, len(impls) + 1)
 }
 
 local fn static_value(value: Val) -> bool {
@@ -979,7 +1019,7 @@ local fn instance_name(m: Mod, template: Fn) -> str {
 }
 
 local fn instantiate_with(
-  m: Mod, impls: list<Fn>, predicates: list<Fn>, limit: int
+  m: Mod, impls: list<Fn>, policies: list<Fn>, limit: int
 ) -> bool {
   assert(limit >= 0, "opt.instantiate limit must not be negative")
   var changed = false
@@ -994,7 +1034,7 @@ local fn instantiate_with(
           let owner: Fn = ir.owner(ir.blk(op))
           if ir.live(owner) && len(ir.generics(owner)) == 0 {
             let selected = ir.match(
-              op, candidates(m, op, impls, predicates)
+              op, choose(m, op, impls, policies)
             )
             if ir.live(selected) && len(ir.generics(selected)) != 0 &&
               len(ir.blks(selected)) != 0 {
@@ -1038,8 +1078,8 @@ local fn instantiate_with(
 }
 
 fn instantiate(m: Mod, impls: list<Fn>, limit: int) -> bool {
-  let predicates: list<Fn> = []
-  return instantiate_with(m, impls, predicates, limit)
+  let policies: list<Fn> = []
+  return instantiate_with(m, impls, policies, limit)
 }
 
 fn instantiate(m: Mod, impls: list<Fn>) -> bool {
@@ -1055,14 +1095,14 @@ fn instantiate(m: Mod, module: str) -> bool {
 }
 
 fn instantiate(
-  m: Mod, impls: list<Fn>, accept: Fn, limit: int
+  m: Mod, impls: list<Fn>, policy: Fn, limit: int
 ) -> bool {
-  return instantiate_with(m, impls, [accept], limit)
+  return instantiate_with(m, impls, [policy], limit)
 }
 
-fn instantiate(m: Mod, impls: list<Fn>, accept: Fn) -> bool {
+fn instantiate(m: Mod, impls: list<Fn>, policy: Fn) -> bool {
   return instantiate(
-    m, impls, accept, len(ir.ops(m)) + len(impls) + 1
+    m, impls, policy, len(ir.ops(m)) + len(impls) + 1
   )
 }
 

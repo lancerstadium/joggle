@@ -216,10 +216,18 @@ It should not require edits to the core, the C emitter, or another frontend.
 capability function whether an operation is accepted and expands available
 bodies only where needed. `opt.apply` selects compatible ordinary functions:
 it expands a body-bearing implementation and transactionally retargets to a
-bodyless external implementation. Its guarded overload takes an ordinary
+bodyless external implementation. Its policy overload takes an ordinary
 `fn(Mod, Op, Fn) -> bool` predicate and filters candidates before overload
-selection; mutation by that predicate is rejected. This lets a module express
-layout, alignment, or device-feature constraints without a core registry.
+selection. Alternatively, a `fn(Mod, Op, list<Fn>) -> list<Fn>` selector sees
+the complete compatible set and returns zero or one member, allowing user code
+to resolve equally specific implementations. Both policies are read-only;
+selector cardinality and membership are validated before an edit. This lets a
+module express layout, alignment, cost, or device-feature choices without a
+core registry.
+`opt.candidates(m, op, impls)` returns that same symbol and type-compatible set
+without applying a policy or editing the module, so experiments can inspect
+and report their choice space directly. Duplicate handles are removed; two
+distinct implementations with equal signatures remain distinct candidates.
 `opt.basic` performs target-independent cleanup. `opt.specialize(m, key,
 value)` fully expands finite static loops carrying the selected open attribute
 and folds list projection and constant branches around dynamic values. The
@@ -235,9 +243,9 @@ The network-wide overloads `opt.instantiate(m, impls)` and
 concrete call sites. Compile-time Boolean, integer, real, string, and recursive
 list arguments are bound into private functions; tensor and byte values remain
 ordinary parameters. Structurally identical configurations reuse one instance.
-The guarded overload accepts the same read-only `fn(Mod, Op, Fn) -> bool`
-policy as `opt.apply`. No operator name, frontend schema, or target is built
-into this mechanism.
+The policy overload accepts the same predicate or selector form as
+`opt.apply`. No operator name, frontend schema, or target is built into this
+mechanism.
 
 Modules may query open metadata uniformly with `ir.where`: the same name
 filters `list<Fn>`, `list<Op>`, and `list<Val>` and returns the same handle

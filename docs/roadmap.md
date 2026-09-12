@@ -20,8 +20,8 @@ The repository currently provides:
 - reusable tensor, neural-network, quantization, and scalar-math functions;
 - capability-driven exposure instead of a central lowering table;
 - signature-matched selection of inspectable or external implementations,
-  including per-candidate predicates and call-site-derived C ABIs for generic
-  external declarations;
+  including inspectable candidate sets, per-candidate predicates, whole-set
+  selectors, and call-site-derived C ABIs for generic external declarations;
 - safe IR editing, cleanup, range analysis, measurements, static storage
   planning, and conservative loop transformations;
 - configurable C generation, generic external-call ABI derivation, and a

@@ -1,4 +1,5 @@
 module script
+use alternate
 use opt
 use stat
 use tensor
@@ -222,6 +223,15 @@ fn apply_impls(m: Mod) -> bool {
   return opt.apply(m, typed_caps())
 }
 
+fn candidate_count(m: Mod) -> int {
+  var count = 0
+  let impls = typed_caps()
+  for op in ir.ops(m) {
+    count += len(opt.candidates(m, op, impls + impls))
+  }
+  return count
+}
+
 fn concrete_impl(m: Mod, op: Op, impl: Fn) -> bool {
   return len(ir.generics(impl)) == 0
 }
@@ -230,6 +240,62 @@ fn apply_concrete(m: Mod) -> bool {
   return opt.apply(
     m, typed_caps(), ir.find("script.concrete_impl")
   )
+}
+
+fn choose_first(m: Mod, op: Op, impls: list<Fn>) -> list<Fn> {
+  if len(impls) == 0 {
+    return []
+  }
+  return [impls[0]]
+}
+
+fn choose_none(m: Mod, op: Op, impls: list<Fn>) -> list<Fn> {
+  return []
+}
+
+fn choose_foreign(m: Mod, op: Op, impls: list<Fn>) -> list<Fn> {
+  return [ir.find("script.emit_wrong_type")]
+}
+
+fn choose_mutating(m: Mod, op: Op, impls: list<Fn>) -> list<Fn> {
+  ir.set(m, op, "policy_edit", true)
+  return [impls[0]]
+}
+
+fn choose_many(m: Mod, op: Op, impls: list<Fn>) -> list<Fn> {
+  return impls
+}
+
+fn choose_bad(m: Mod, op: Op, impls: list<Fn>) -> int {
+  return len(impls)
+}
+
+fn apply_selected(m: Mod) -> bool {
+  let impls = typed_caps() + ir.fns("alternate")
+  return opt.apply(
+    m, impls, ir.find("script.choose_first")
+  )
+}
+
+fn apply_none(m: Mod) -> bool {
+  return opt.apply(m, typed_caps(), ir.find("script.choose_none"))
+}
+
+fn apply_foreign(m: Mod) -> bool {
+  return opt.apply(m, typed_caps(), ir.find("script.choose_foreign"))
+}
+
+fn apply_mutating_choice(m: Mod) -> bool {
+  return opt.apply(m, typed_caps(), ir.find("script.choose_mutating"))
+}
+
+fn apply_many(m: Mod) -> bool {
+  let impls = typed_caps() + ir.fns("alternate")
+  return opt.apply(m, impls, ir.find("script.choose_many"))
+}
+
+fn apply_bad_policy(m: Mod) -> bool {
+  return opt.apply(m, typed_caps(), ir.find("script.choose_bad"))
 }
 
 fn mutating_impl(m: Mod, op: Op, impl: Fn) -> bool {
@@ -252,13 +318,20 @@ fn instantiate_scale(m: Mod) -> bool {
   return opt.instantiate(m, [ir.find("script.kernel.scale")])
 }
 
+fn instantiate_selected(m: Mod) -> bool {
+  let impl = ir.find("script.kernel.scale")
+  let alternate = ir.find("alternate.kernel.scale")
+  return opt.instantiate(
+    m, [impl, alternate], ir.find("script.choose_first")
+  )
+}
+
 fn apply_external(m: Mod) -> bool {
   return opt.apply(m, [ir.find("script.external_select.external")])
 }
 
 fn apply_ambiguous(m: Mod) -> bool {
-  let impls = typed_caps()
-  return opt.apply(m, impls + impls)
+  return opt.apply(m, typed_caps() + ir.fns("alternate"))
 }
 
 fn apply_cycle(m: Mod) -> bool {
