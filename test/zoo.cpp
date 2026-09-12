@@ -25,6 +25,7 @@ struct Stats {
   std::size_t nodes = 0;
   std::size_t unknown = 0;
   std::set<std::string, std::less<>> calls;
+  std::map<std::string, std::size_t, std::less<>> source_calls;
   std::map<std::string, std::size_t, std::less<>> open;
   std::map<std::string, std::size_t, std::less<>> ready_open;
 };
@@ -42,6 +43,7 @@ Stats inspect(const joggle::Mod& mod) {
     if (!op.callee().starts_with("onnx.") || op.callee() == "onnx.model")
       continue;
     ++stats.nodes;
+    ++stats.source_calls[std::string(op.callee())];
     bool inputs_known = true;
     for (joggle::Val input : op.args()) {
       const joggle::Ty type = input.type();
@@ -153,17 +155,20 @@ int main(int argc, char** argv) {
   const bool roundtrip_only = std::string_view(argv[3]) == "--roundtrip";
   const bool from_signature =
       std::string_view(argv[3]) == "--frontier-from-signature";
+  const bool convert_frontier =
+      std::string_view(argv[3]) == "--convert-frontier";
   const bool frontier =
       std::string_view(argv[3]) == "--frontier" || from_signature;
-  CHECK(!frontier || argc >= 5);
+  CHECK((!frontier && !convert_frontier) || argc >= 5);
   std::size_t expected_frontier = 0;
-  if (frontier) {
+  if (frontier || convert_frontier) {
     const std::string_view text(argv[4]);
     const auto parsed = std::from_chars(text.data(), text.data() + text.size(),
                                         expected_frontier);
     CHECK(parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size());
   }
-  const int first_expected = frontier ? 5 : (roundtrip_only ? 4 : 3);
+  const int first_expected =
+      (frontier || convert_frontier) ? 5 : (roundtrip_only ? 4 : 3);
   std::ifstream input(argv[1], std::ios::binary);
   CHECK(input);
   const std::vector<unsigned char> raw{std::istreambuf_iterator<char>(input),
@@ -241,6 +246,15 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "onnx.nn.convert", model));
   CHECK(model.verify(env));
   const Stats converted = inspect(model);
+  if (converted.nodes != 0) {
+    std::printf("remaining source calls after conversion:\n");
+    for (const auto& [callee, count] : converted.source_calls)
+      std::printf("  %s: %zu\n", callee.c_str(), count);
+  }
+  if (convert_frontier) {
+    CHECK(converted.nodes == expected_frontier);
+    return 0;
+  }
   CHECK(converted.nodes == 0);
   const std::string converted_text = joggle::print(model);
   CHECK(joggle::run(env, "onnx.nn.convert", model));

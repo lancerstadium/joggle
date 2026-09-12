@@ -8,4 +8,6 @@ UltraFace-RFB-320,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000003576279,"offic
 TinyYOLOv2-8,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000166893005,"official ONNX Zoo model; symbolic batch instantiated as one; deterministic seed-0 input and ONNX Runtime 1.26.0 reference"
 ShuffleNetV2-12,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000085830689,"official ONNX Zoo model; deterministic seed-0 input and ONNX Runtime 1.26.0 reference; Split/Concat channel-shuffle path"
 DenseNet121-12,ONNX,pass,pass,pass,not_run,not_run,not_run,not_run,,"official ONNX Zoo model; 910 result types erased before inference and reconstructed to a zero frontier; semantic conversion and round trip pass"
+TinyYOLOv3-11,ONNX,pass,partial,not_run,not_run,not_run,not_run,not_run,,"official ONNX Zoo model; 280 unknown results before inference and 219 after; dynamic Shape/Slice/Tile/Resize chain and Loop subgraphs remain"
+SSD-MobileNetV1-12,ONNX,pass,pass,partial,not_run,not_run,not_run,not_run,,"official ONNX Zoo model; 6790 unknown results inferred to zero; 1521 source calls remain after conversion, dominated by Min/Max, comparison, NonZero, Slice, NonMaxSuppression, If, and Loop"
 MobileNetV2,TFLite,pass,n/a,pass,pass,not_run,not_run,not_run,,107 constants and 66 calls; all selected calls expose and round trip

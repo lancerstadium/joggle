@@ -162,6 +162,12 @@ shared semantics, verify, and round trip. DenseNet's later stages remain
 `not_run`: no generated-C or numerical claim is inferred from structural
 compatibility.
 
+TinyYOLOv3-11 and SSD-MobileNetV1-12 are explicit negative rows. TinyYOLOv3
+decodes and round trips but retains 219 unknown results after inference.
+SSD-MobileNetV1 infers all result types, then retains 1,521 source-format calls
+after conversion. The Zoo gate checks both frontiers so later changes cannot
+silently relabel partial compatibility as full support.
+
 `shufflenet-backend-pilot.csv` advances ShuffleNet V2 through spatial
 convolution selection, call-site instantiation, C preparation, static memory
 planning, external-data emission, strict C11 compilation, and execution. A

@@ -138,6 +138,12 @@ frozen.
   ShuffleNet's 1,000 outputs agree within `8.583e-6`; generated spatial C has a
   37.503 ms unisolated median versus 1.945 ms for one-thread ONNX Runtime,
   leaving a roughly 19.3x gap.
+- TinyYOLOv3 and SSD-MobileNetV1 add negative compatibility evidence rather
+  than executable-model counts. TinyYOLOv3 retains 219 unknown results after
+  inference across dynamic shape and control-flow paths. SSD-MobileNetV1
+  infers all 6,790 initially unknown results but retains 1,521 source calls
+  after semantic conversion, dominated by post-processing and control flow.
+  Both models decode and round trip; neither is currently a generated-C claim.
 - One out-of-tree convolution implementation now changes the generated loop
   structure without an ONNX or C-emitter edit. On matched strict-C pilots it
   reduces median latency by 1.93x on MobileNetV2, 3.13x on ResNet18, 6.29x on
