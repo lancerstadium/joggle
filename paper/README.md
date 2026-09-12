@@ -69,8 +69,6 @@ comparable optimization settings.
   ONNX Runtime on the current CPU diagnostic. It is a reference backend, not
   yet evidence of efficient edge inference.
 - Elementwise activation and producer loops are not yet fused at body level.
-- The IR editor lacks the general clone-with-value-remapping primitive needed
-  for clean loop split, reorder, fuse, and unroll modules.
 - Extensibility needs a controlled study: implement the same custom format,
   operation, transform, and target boundary in Joggle and selected baselines;
   report changed core files, extension code, build/runtime dependencies, and
@@ -81,8 +79,9 @@ comparable optimization settings.
 
 ## Next experiment order
 
-1. Add general block cloning with explicit value remapping, then implement loop
-   split/reorder/fuse/unroll as a removable module on the existing IR.
+1. Implement loop split/reorder/fuse/unroll as a removable module using the
+   now-tested clone-with-explicit-capture-remapping primitive on the existing
+   IR.
 2. Normalize fused activations to ordinary function composition and implement
    producer/consumer loop fusion without operator-name cases.
 3. Add vectorizable C emission facts (`restrict`, alignment, and selected

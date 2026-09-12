@@ -408,6 +408,13 @@ whole module's dominance before commit. The identical operations are available
 through `ir.constant`, `ir.clone`, and `ir.move`, with `ir.kind` and
 `ir.blks(op)` completing structural discovery. Named constants now remain
 named when printed instead of being silently duplicated as inline literals.
+An overload seeds the clone with parallel old/new capture lists. It accepts
+only external values used by the source subtree, requires exact type equality
+and destination dominance, rejects internal or conflicting substitutions, and
+does not advance the revision on failure. The existing clone is precisely the
+empty-substitution case. This supplies loop transformations with explicit
+induction, bound, tensor, and carried-value rewiring without adding a loop-only
+mutation API.
 
 Function cloning uses the same `ir.clone` name rather than adding a builder or
 template object. It copies one complete generic `Fn`, including nested

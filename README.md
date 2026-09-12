@@ -185,6 +185,9 @@ requests before applying every carried-value family in one revision commit.
 An extension may clone a normal module `fn` into the program with
 `ir.clone(m, fn, name)`, providing generated helpers and local template
 materialization without a separate kernel builder.
+Operation cloning also accepts parallel old/new `Val` lists, allowing loop and
+fusion modules to rewire captured indices, tensors, and bounds while preserving
+the same `Fn/Blk/Op/Val` structure.
 Supplying a final `list<Ty>` binds the template generics and produces a
 monomorphic function through the same operation.
 `ir.match(call, fn)` supplies those terms directly from a resolved network

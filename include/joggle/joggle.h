@@ -397,6 +397,8 @@ public:
           std::span<const Val> sources, std::span<const Val> carried);
   Op branch(Op before, Val condition, std::span<const Val> carried);
   Op clone(Op op, Op before);
+  Op clone(Op op, Op before, std::span<const Val> old_values,
+           std::span<const Val> new_values);
   Fn clone(const Env& env, Fn fn, std::string name,
            std::span<const Ty> generics = {});
   bool move(Op op, Op before);

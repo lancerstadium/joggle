@@ -446,6 +446,21 @@ fn clone_loop(m: Mod) -> bool {
   return false
 }
 
+fn clone_remapped_loop(m: Mod) -> bool {
+  for fn in ir.fns(m) {
+    let params = ir.params(fn)
+    if len(params) == 3 {
+      for op in ir.ops(fn) {
+        if ir.kind(op) == "loop" {
+          let copy = ir.clone(m, op, op, [params[1]], [params[2]])
+          return ir.live(copy)
+        }
+      }
+    }
+  }
+  return false
+}
+
 fn clone_relu(m: Mod) -> bool {
   for fn in ir.fns("nn") {
     if ir.name(fn) == "relu" {

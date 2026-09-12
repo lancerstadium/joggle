@@ -451,6 +451,20 @@ Cloning deterministically freshens a copied `let` or `var` declaration at the
 insertion scope, so the source and clone may coexist without textual capture.
 Loop and condition results keep the name of the mutable binding they update;
 their iterators and carried arguments are already nested in fresh `Blk`s.
+The five-argument overload remaps selected values captured from outside the
+copied subtree:
+
+```jog
+let copy = ir.clone(m, loop, before, [old_base], [new_base])
+```
+
+The two lists are parallel and typed. Every old value must actually be an
+external operand of the source subtree, every replacement must have exactly
+the same type and dominate the insertion point, and values defined inside the
+source cannot be replaced through this interface. All checks precede mutation.
+This is the small structural primitive used by removable loop split, fusion,
+reorder, and unroll modules; it does not introduce a schedule object or a
+second loop IR.
 
 The overload `ir.clone(m, fn, name)` copies an entire function signature,
 metadata, generics, and nested body into `m`. This is the function-level

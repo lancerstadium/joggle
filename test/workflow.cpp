@@ -1586,6 +1586,74 @@ int main(int argc, char** argv) {
   CHECK(cloned_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(cloned_loop, cloned_roundtrip));
 
+  joggle::Mod remapped_loop;
+  constexpr std::string_view remapped_loop_source =
+      "module remapped\n"
+      "fn sum(n: int, left: int, right: int) -> int {\n"
+      "  var total = 0\n"
+      "  for i in 0..n { total += left + i }\n"
+      "  return total + right\n"
+      "}\n";
+  CHECK(joggle::parse(env, remapped_loop_source, remapped_loop,
+                      "remapped-loop.jog"));
+  CHECK(remapped_loop.verify(env));
+  const joggle::Fn remapped_sum = remapped_loop.find_fn("sum");
+  const std::vector<joggle::Val> remapped_params = remapped_sum.params();
+  CHECK(remapped_params.size() == 3);
+  joggle::Op loop_to_remap;
+  for (joggle::Op op : remapped_loop.ops())
+    if (op.kind() == joggle::Op::Kind::loop)
+      loop_to_remap = op;
+  CHECK(loop_to_remap && !loop_to_remap.blks().empty());
+
+  const std::array old_capture{remapped_params[1]};
+  const std::array new_capture{remapped_params[2]};
+  const std::uint64_t before_remapped_clone = remapped_loop.revision();
+  const joggle::Op remapped_copy = remapped_loop.clone(
+      loop_to_remap, loop_to_remap, old_capture, new_capture);
+  CHECK(remapped_copy);
+  CHECK(remapped_loop.revision() == before_remapped_clone + 1);
+  bool copy_uses_right = false;
+  const auto find_argument = [&](const auto& self, joggle::Op op,
+                                 joggle::Val value) -> bool {
+    const std::vector<joggle::Val> args = op.args();
+    if (std::find(args.begin(), args.end(), value) != args.end())
+      return true;
+    for (joggle::Blk blk : op.blks())
+      for (joggle::Op child : blk.ops())
+        if (self(self, child, value))
+          return true;
+    return false;
+  };
+  copy_uses_right = find_argument(find_argument, remapped_copy,
+                                  remapped_params[2]);
+  CHECK(copy_uses_right);
+  CHECK(!find_argument(find_argument, remapped_copy, remapped_params[1]));
+  CHECK(find_argument(find_argument, loop_to_remap, remapped_params[1]));
+  CHECK(remapped_loop.verify(env));
+
+  const std::uint64_t before_rejected_clone = remapped_loop.revision();
+  CHECK(!remapped_loop.clone(loop_to_remap, loop_to_remap, old_capture,
+                             std::span<const joggle::Val>{}));
+  CHECK(remapped_loop.revision() == before_rejected_clone);
+  remapped_loop.clear_diags();
+  const std::array internal_value{loop_to_remap.blks().front().args().front()};
+  CHECK(!remapped_loop.clone(loop_to_remap, loop_to_remap, internal_value,
+                             new_capture));
+  CHECK(remapped_loop.revision() == before_rejected_clone);
+  remapped_loop.clear_diags();
+  const std::array unused_value{remapped_params[0]};
+  CHECK(!remapped_loop.clone(loop_to_remap, loop_to_remap, unused_value,
+                             new_capture));
+  CHECK(remapped_loop.revision() == before_rejected_clone);
+  remapped_loop.clear_diags();
+
+  joggle::Mod remapped_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(remapped_loop), remapped_roundtrip,
+                      "remapped-roundtrip.jog"));
+  CHECK(remapped_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(remapped_loop, remapped_roundtrip));
+
   joggle::Mod sparse_control;
   constexpr std::string_view sparse_control_source =
       "module sparse.control\n"
@@ -2854,6 +2922,20 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "script.clone_loop", scripted_loop));
   CHECK(scripted_loop.verify(env));
   CHECK(joggle::print(scripted_loop) == joggle::print(cloned_loop));
+  joggle::Mod scripted_remapped_loop;
+  CHECK(joggle::parse(env, remapped_loop_source, scripted_remapped_loop,
+                      "scripted-remapped-loop.jog"));
+  CHECK(joggle::run(env, "script.clone_remapped_loop",
+                    scripted_remapped_loop));
+  CHECK(scripted_remapped_loop.verify(env));
+  const std::vector<joggle::Val> scripted_remapped_params =
+      scripted_remapped_loop.find_fn("sum").params();
+  std::size_t right_capturing_loops = 0;
+  for (joggle::Op op : scripted_remapped_loop.ops())
+    if (op.kind() == joggle::Op::Kind::loop &&
+        find_argument(find_argument, op, scripted_remapped_params[2]))
+      ++right_capturing_loops;
+  CHECK(right_capturing_loops == 1);
   joggle::Mod returned_constant;
   CHECK(joggle::parse(env,
                       "module returned\n"

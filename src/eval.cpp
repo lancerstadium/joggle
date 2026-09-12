@@ -2267,9 +2267,21 @@ private:
           return Items{Item(result)};
       }
     } else if (name == "clone" &&
-               (args.size() == 3 || args.size() == 4)) {
+               (args.size() == 3 || args.size() == 4 || args.size() == 5)) {
       const auto* mod = as<Mod*>(args[0]);
       if (mod && *mod) {
+        if (args.size() == 5) {
+          const auto* op = as<Op>(args[1]);
+          const auto* before = as<Op>(args[2]);
+          auto old_values = value_handles(args[3]);
+          auto new_values = value_handles(args[4]);
+          if (op && before && old_values && new_values) {
+            Op result =
+                (*mod)->clone(*op, *before, *old_values, *new_values);
+            if (result)
+              return Items{Item(result)};
+          }
+        }
         if (args.size() == 3) {
           if (const auto* op = as<Op>(args[1])) {
             if (const auto* before = as<Op>(args[2])) {

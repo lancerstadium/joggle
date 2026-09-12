@@ -72,6 +72,9 @@ fn branch(
   m: Mod, before: Op, condition: Val, carried: list<Val>
 ) -> Op;
 fn clone(m: Mod, op: Op, before: Op) -> Op;
+fn clone(
+  m: Mod, op: Op, before: Op, old: list<Val>, next: list<Val>
+) -> Op;
 fn clone(m: Mod, fn: Fn, name: str) -> Fn;
 fn clone(m: Mod, fn: Fn, name: str, generics: list<Ty>) -> Fn;
 fn fold(m: Mod, call: Op, fn: Fn) -> bool;

@@ -1186,6 +1186,12 @@ Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
 }
 
 Op Mod::clone(Op source, Op before) {
+  return clone(source, before, std::span<const Val>{},
+               std::span<const Val>{});
+}
+
+Op Mod::clone(Op source, Op before, std::span<const Val> old_values,
+              std::span<const Val> new_values) {
   auto& store = impl_->store;
   const auto reject = [&](std::string message, Loc loc = {}) {
     detail::add_diag(store.diags, std::move(message), std::move(loc));
@@ -1196,6 +1202,8 @@ Op Mod::clone(Op source, Op before) {
     return reject("clone requires live operations in this module");
   if (source.kind() == Op::Kind::ret || source.kind() == Op::Kind::yield)
     return reject("clone does not duplicate Blk terminators", source.loc());
+  if (old_values.size() != new_values.size())
+    return reject("clone requires one new value per old value", source.loc());
 
   std::unordered_set<std::uint32_t> subtree_ops;
   std::unordered_set<std::uint32_t> subtree_values;
@@ -1214,14 +1222,49 @@ Op Mod::clone(Op source, Op before) {
   if (before != source && subtree_ops.contains(before.id_))
     return reject("clone insertion point cannot be inside the source",
                   before.loc());
+
+  std::unordered_map<std::uint32_t, std::uint32_t> substitutions;
+  substitutions.reserve(old_values.size());
+  for (std::size_t index = 0; index < old_values.size(); ++index) {
+    const Val old_value = old_values[index];
+    const Val new_value = new_values[index];
+    if (!old_value.valid() || !new_value.valid() ||
+        old_value.store_ != &store || new_value.store_ != &store)
+      return reject("clone substitutions require live values in this module",
+                    source.loc());
+    if (subtree_values.contains(old_value.id_))
+      return reject("clone cannot substitute a value defined by the source",
+                    source.loc());
+    if (old_value.type() != new_value.type())
+      return reject("clone substitutions require identical value types",
+                    source.loc());
+    if (old_value == new_value)
+      continue;
+    const auto [found, inserted] =
+        substitutions.emplace(old_value.id_, new_value.id_);
+    if (!inserted && found->second != new_value.id_)
+      return reject("clone has conflicting substitutions for one value",
+                    source.loc());
+  }
+
+  std::unordered_set<std::uint32_t> external_values;
   for (const std::uint32_t id : subtree_ops) {
     for (const std::uint32_t arg : store.ops[id].data.args) {
-      if (!subtree_values.contains(arg) &&
-          !detail::dominates(store, arg, before.id_))
+      if (subtree_values.contains(arg))
+        continue;
+      external_values.insert(arg);
+      const auto mapped = substitutions.find(arg);
+      const std::uint32_t value =
+          mapped == substitutions.end() ? arg : mapped->second;
+      if (!detail::dominates(store, value, before.id_))
         return reject("clone operand must dominate the insertion point",
                       before.loc());
     }
   }
+  for (const auto& substitution : substitutions)
+    if (!external_values.contains(substitution.first))
+      return reject("clone can only substitute values captured by the source",
+                    source.loc());
 
   const std::uint32_t destination = store.ops[before.id_].data.blk;
   const std::uint32_t fn = store.blks[destination].data.fn;
@@ -1248,7 +1291,7 @@ Op Mod::clone(Op source, Op before) {
     copied_names.emplace(std::string(source_name), candidate);
     return candidate;
   };
-  std::unordered_map<std::uint32_t, std::uint32_t> values;
+  std::unordered_map<std::uint32_t, std::uint32_t> values = substitutions;
   const auto copy_op = [&](const auto& self, std::uint32_t old_id,
                            std::uint32_t blk) -> std::uint32_t {
     const detail::OpData old = store.ops[old_id].data;

@@ -254,6 +254,23 @@ if (!env.load("opt") || !joggle::run(env, "opt.fold_add_zero", mod))
 `Blk`s and operations through `ir`, replaces the result of `x + 0`, and erases
 the dead call. No C++ registration is required for that transform.
 
+The same editor can copy a structured operation while explicitly rewiring
+values captured from its surrounding function:
+
+```jog
+let tiled_body = ir.clone(
+  m, original_loop, before, [old_index, old_tensor], [tile_index, tile_tensor]
+)
+assert(ir.live(tiled_body), "loop clone failed")
+```
+
+The lists are a parallel substitution table, not a schedule description.
+Joggle verifies exact types, capture use, and dominance before editing. A loop
+module can therefore build new bounds and carried values, clone ordinary
+nested operations into the new structure, and then replace the old loop. The
+same primitive applies to conditions and calls and leaves the core unaware of
+tiling policy.
+
 ## Materialize a function template
 
 A module may copy a normal function into the program when a transform needs a
