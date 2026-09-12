@@ -1418,9 +1418,12 @@ then atomically replaces the old loop. Its executable C gate checks negative,
 empty, exact, short, and partial ranges. Core, C, VM, tensor, and NN contain no
 tile case. The same removable module can fuse a selected single-axis
 producer/consumer pair when equal ranges and exact same-index tensor accesses
-prove the dependence local to one iteration. It keeps both carried results,
-rejects shifted reads, reduces a three-stage elementwise chain by one loop, and
-passes emitted-C numerical execution. This is transformation infrastructure
-and a correctness result; it is not yet a performance result because no cache
+prove the dependence local to one iteration. It forwards the produced scalar
+into the consumer, erases a private intermediate tensor and its obsolete range,
+but retains the tensor when another user needs it. Shifted reads are rejected.
+An unrelated call between the loops is also rejected rather than reordered.
+Both an elementwise chain and an `add -> relu` body with structured control
+pass emitted-C numerical execution. This is transformation infrastructure and
+a correctness result; it is not yet a performance result because no cache
 model, vector policy, loop reorder, broad fusion policy, or network measurement
 has been applied.

@@ -1,0 +1,10 @@
+module tile_relu
+use nn
+use tensor
+
+fn add_relu(
+  a: tensor<f32, [6]>, b: tensor<f32, [6]>
+) -> tensor<f32, [6]> {
+  let sum = a + b
+  return nn.relu(sum)
+}

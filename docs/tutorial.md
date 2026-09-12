@@ -298,6 +298,10 @@ accepts a current conservative slice: two one-dimensional loops over the same
 range, each carrying one tensor, where the producer stores one element and the
 consumer reads that same element at the same iterator. It rejects shifted or
 otherwise non-pointwise dependencies instead of recognizing operation names.
+If the produced tensor has no other user, its scalar value is forwarded into
+the consumer and the private tensor disappears. A live external result remains
+materialized, so scheduling does not silently change the function interface.
+An unrelated call between the loops is not crossed implicitly.
 
 ## Materialize a function template
 

@@ -1,0 +1,19 @@
+module tile_effect
+use tensor
+
+fn observe() -> ();
+
+fn interposed(
+  a: tensor<f32, [4]>, b: tensor<f32, [4]>
+) -> tensor<f32, [4]> {
+  var first = tensor<f32, [4]>(f32(0))
+  for i in 0..4 {
+    first[i] = a[i] + b[i]
+  }
+  observe()
+  var second = tensor<f32, [4]>(f32(0))
+  for j in 0..4 {
+    second[j] = first[j] + f32(1)
+  }
+  return second
+}

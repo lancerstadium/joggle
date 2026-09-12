@@ -61,6 +61,32 @@ local fn captured(op: Op, value: Val) -> bool {
   return false
 }
 
+local fn contains(root: Op, selected: Op) -> bool {
+  if root == selected {
+    return true
+  }
+  for body in ir.blks(root) {
+    for child in ir.ops(body) {
+      if contains(child, selected) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+local fn load(op: Op, tensor: Val, index: Val) -> bool {
+  let inputs = ir.args(op)
+  return ir.kind(op) == "call" && ir.callee(op) == "operator []" &&
+         len(inputs) == 2 && inputs[0] == tensor && inputs[1] == index
+}
+
+local fn constructor(op: Op) -> bool {
+  let outputs = ir.outs(op)
+  return ir.kind(op) == "call" && len(outputs) == 1 &&
+         ir.callee(op) == text(ir.type(outputs[0]))
+}
+
 local fn pointwise(op: Op, tensor: Val, index: Val) -> bool {
   var touches = false
   for input in ir.args(op) {
@@ -69,9 +95,7 @@ local fn pointwise(op: Op, tensor: Val, index: Val) -> bool {
     }
   }
   if touches {
-    let inputs = ir.args(op)
-    return ir.kind(op) == "call" && ir.callee(op) == "operator []" &&
-           len(inputs) == 2 && inputs[0] == tensor && inputs[1] == index
+    return load(op, tensor, index)
   }
   for body in ir.blks(op) {
     for child in ir.ops(body) {
@@ -324,6 +348,9 @@ fn fuse(m: Mod, producer: Op, consumer: Op) -> bool {
          "tile.fuse requires one pointwise producer store")
   let producer_ops = ir.ops(producer_body)
   let consumer_ops = ir.ops(consumer_body)
+  assert(len(producer_ops) >= 2 &&
+         producer_ops[len(producer_ops) - 2] == stores[0],
+         "tile.fuse requires a final producer store")
   let producer_yield = producer_ops[len(producer_ops) - 1]
   let consumer_yield = consumer_ops[len(consumer_ops) - 1]
   assert(ir.kind(producer_yield) == "yield" &&
@@ -334,46 +361,147 @@ fn fuse(m: Mod, producer: Op, consumer: Op) -> bool {
          pointwise(consumer, producer_outputs[0], consumer_args[0]),
          "tile.fuse requires pointwise consumer reads")
 
-  let merged = ir.loop(
-    m, consumer, [ir.name(producer_args[0])], [producer_inputs[0]],
-    [producer_inputs[1], consumer_inputs[1]]
-  )
+  var private = true
+  for user in ir.users(producer_outputs[0]) {
+    if contains(consumer, user) {
+      assert(ir.blk(user) == consumer_body &&
+             load(user, producer_outputs[0], consumer_args[0]),
+             "tile.fuse requires direct pointwise consumer reads")
+    } else {
+      private = false
+    }
+  }
+  var store_only = true
+  for user in ir.users(producer_args[1]) {
+    if user != stores[0] {
+      store_only = false
+    }
+  }
+  let producer_init = ir.def(producer_inputs[1])
+  let consumer_init = ir.def(consumer_inputs[1])
+  let consumer_range = ir.def(consumer_inputs[0])
+  var between = false
+  for op in ir.ops(ir.blk(producer)) {
+    if op == producer {
+      between = true
+    } else {
+      if op == consumer {
+        between = false
+      } else {
+        if between {
+          assert(ir.kind(op) == "constant" || constructor(op) ||
+                 ir.callee(op) == "base.list" || op == consumer_init ||
+                 op == consumer_range,
+                 "tile.fuse cannot cross non-setup operation: " +
+                 ir.kind(op) + " " + ir.callee(op))
+        }
+      }
+    }
+  }
+  var private_init = ir.live(producer_init)
+  if private_init {
+    for user in ir.users(producer_inputs[1]) {
+      if user != producer {
+        private_init = false
+      }
+    }
+  }
+  let forward = private && store_only && private_init
+  var private_range = ir.live(consumer_range) &&
+                      consumer_range != ir.def(producer_inputs[0])
+  if private_range {
+    for user in ir.users(consumer_inputs[0]) {
+      if user != consumer {
+        private_range = false
+      }
+    }
+  }
+
+  var carried: list<Val> = [consumer_inputs[1]]
+  if !forward {
+    carried = [producer_inputs[1], consumer_inputs[1]]
+  }
+  let merged = ir.loop(m, consumer, [ir.name(producer_args[0])],
+                       [producer_inputs[0]], carried)
   assert(ir.live(merged), "tile.fuse could not build the merged loop")
   let merged_body = ir.blks(merged)[0]
   let merged_args = ir.args(merged_body)
   let merged_ops = ir.ops(merged_body)
   let merged_yield = merged_ops[len(merged_ops) - 1]
 
-  var old: list<Val> = [producer_args[0], producer_args[1]]
-  var next: list<Val> = [merged_args[0], merged_args[1]]
-  for i in 0..len(producer_ops) - 1 {
+  var old: list<Val> = [producer_args[0]]
+  var next: list<Val> = [merged_args[0]]
+  var consumer_carried = merged_args[1]
+  if !forward {
+    old += [producer_args[1]]
+    next += [merged_args[1]]
+    consumer_carried = merged_args[2]
+  }
+  for i in 0..len(producer_ops) - 2 {
     let copy = ir.clone(m, producer_ops[i], merged_yield, old, next)
     assert(ir.live(copy), "tile.fuse could not clone the producer body")
     old += ir.outs(producer_ops[i])
     next += ir.outs(copy)
   }
-  let produced = mapped(ir.args(producer_yield), old, next)
-  assert(len(produced) == 1,
-         "tile.fuse found an invalid producer yield")
-  old += [producer_outputs[0], consumer_args[0], consumer_args[1]]
-  next += [produced[0], merged_args[0], merged_args[2]]
+  let store_inputs = ir.args(stores[0])
+  let scalar = mapped(store_inputs[2], old, next)
+  let scalar_op = ir.def(scalar)
+  if ir.name(scalar) == "" && ir.live(scalar_op) &&
+     ir.blk(scalar_op) == merged_body {
+    assert(ir.rename(m, scalar, "fuse_value_" + text(ir.key(scalar))),
+           "tile.fuse could not retain the forwarded scalar")
+  }
+  var produced: list<Val> = []
+  if !forward {
+    let store = ir.clone(m, stores[0], merged_yield, old, next)
+    assert(ir.live(store), "tile.fuse could not clone the producer store")
+    produced = ir.outs(store)
+    assert(len(produced) == 1,
+           "tile.fuse found an invalid producer store")
+    old += ir.outs(stores[0])
+    next += produced
+  }
+  old += [consumer_args[0], consumer_args[1]]
+  next += [merged_args[0], consumer_carried]
 
   for i in 0..len(consumer_ops) - 1 {
-    let copy = ir.clone(m, consumer_ops[i], merged_yield, old, next)
-    assert(ir.live(copy), "tile.fuse could not clone the consumer body")
-    old += ir.outs(consumer_ops[i])
-    next += ir.outs(copy)
+    if load(consumer_ops[i], producer_outputs[0], consumer_args[0]) {
+      let outputs = ir.outs(consumer_ops[i])
+      assert(len(outputs) == 1,
+             "tile.fuse found an invalid pointwise load")
+      old += outputs
+      next += [scalar]
+    } else {
+      let copy = ir.clone(m, consumer_ops[i], merged_yield, old, next)
+      assert(ir.live(copy), "tile.fuse could not clone the consumer body")
+      old += ir.outs(consumer_ops[i])
+      next += ir.outs(copy)
+    }
   }
   let consumed = mapped(ir.args(consumer_yield), old, next)
   assert(len(consumed) == 1,
          "tile.fuse found an invalid consumer yield")
-  assert(ir.args(m, merged_yield, [produced[0], consumed[0]]),
-         "tile.fuse could not connect the merged loop")
-  assert(ir.replace(
-           m, [producer_outputs[0], consumer_outputs[0]], ir.outs(merged)
-         ),
-         "tile.fuse could not replace the original loop results")
-  assert(ir.erase(m, [consumer, producer]),
-         "tile.fuse could not erase the original loops")
+  if forward {
+    assert(ir.args(m, merged_yield, consumed),
+           "tile.fuse could not connect the forwarded loop")
+    assert(ir.replace(m, consumer_outputs[0], ir.outs(merged)[0]),
+           "tile.fuse could not replace the consumer result")
+  } else {
+    assert(ir.args(m, merged_yield, [produced[0], consumed[0]]),
+           "tile.fuse could not connect the merged loop")
+    assert(ir.replace(
+             m, [producer_outputs[0], consumer_outputs[0]], ir.outs(merged)
+           ),
+           "tile.fuse could not replace the original loop results")
+  }
+  var erased: list<Op> = [consumer, producer]
+  if forward {
+    erased += [producer_init]
+  }
+  if private_range {
+    erased += [consumer_range]
+  }
+  assert(ir.erase(m, erased),
+         "tile.fuse could not erase the original structure")
   return true
 }

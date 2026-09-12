@@ -348,10 +348,14 @@ Its generated program round-trips and executes through unchanged C emission.
 The same module now fuses an explicitly selected same-range pointwise
 producer/consumer pair without inspecting neural-network operation names. A
 three-loop tensor chain becomes two loops, emits through unchanged C, and
-matches its unfused numerical result; shifted access is rejected. This closes
-the first structural prerequisite for scheduling experiments. Reorder, unroll,
-multi-axis fusion, profitability, and measured network speedups remain open
-and must not be inferred from the scalar correctness gates.
+matches its unfused numerical result. A private producer tensor is removed
+entirely through scalar forwarding, while a separately returned producer stays
+materialized. The same mechanism removes the sum tensor in an exposed
+`tensor.add -> nn.relu` chain with structured control; shifted access is
+rejected. This closes the first structural prerequisite for scheduling
+experiments. Reorder, unroll, multi-axis fusion, profitability, and measured
+network speedups remain open and must not be inferred from the correctness
+gates.
 
 The complementary `examples/edge` gate treats a bodyless monomorphic tensor
 function as an external C ABI contract, automatically emits its qualified

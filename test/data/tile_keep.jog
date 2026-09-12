@@ -1,0 +1,10 @@
+module tile_keep
+use tensor
+
+fn both(
+  a: tensor<f32, [4]>, b: tensor<f32, [4]>, c: tensor<f32, [4]>
+) -> (tensor<f32, [4]>, tensor<f32, [4]>) {
+  let first = a + b
+  let second = first + c
+  return first, second
+}

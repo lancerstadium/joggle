@@ -690,12 +690,18 @@ or failed rewiring abort the enclosing transform transaction.
 function. It merges explicitly selected one-dimensional loops only when they
 share a range, each carries one distinct type-stable tensor, the producer has
 one same-index store, and every consumer access to its result is a same-index
-load. It retains both results, so later users keep ordinary value semantics.
+load in the consumer body. When that tensor has no user outside the consumer,
+the function forwards the produced scalar, drops the tensor store and load,
+and erases its private initializer. Otherwise it retains the producer result
+while still forwarding the scalar within the merged iteration. Consumer-only
+range construction is erased with the old loops, so a following function in
+the same transaction observes clean use lists without a text round trip.
+Only constants, type/list construction, and the consumer's local setup may
+occur between the selected loops; an intervening observable call is rejected.
 The implementation inspects structural loops and built-in indexed memory
-operations, never frontend or neural-network function names. A shifted-access
-negative gate and an emitted-C numerical gate cover refusal and execution.
-Generic cleanup remains a separate composed function; fusion may leave a dead
-range declaration for `opt` or target preparation to remove. Reorder, unroll,
+operations, never frontend or neural-network function names. Shifted access,
+private-intermediate elimination, live-result retention, an `add -> relu`
+chain, and emitted-C numerical execution are regression gates. Reorder, unroll,
 multi-axis fusion policies, and profitability remain follow-on functions, not
 implied behavior of `split` or `fuse`.
 

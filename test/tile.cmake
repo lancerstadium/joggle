@@ -1,9 +1,25 @@
 if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
    NOT DEFINED HARNESS OR NOT DEFINED FUSE_MODEL OR
    NOT DEFINED FUSE_HARNESS OR NOT DEFINED INVALID_FUSE_MODEL OR
+   NOT DEFINED EFFECT_FUSE_MODEL OR
+   NOT DEFINED KEEP_MODEL OR NOT DEFINED KEEP_HARNESS OR
+   NOT DEFINED RELU_MODEL OR NOT DEFINED RELU_HARNESS OR
    NOT DEFINED MODULES OR NOT DEFINED ROOT)
   message(FATAL_ERROR
           "tile test requires TOOL, CC, both models and harnesses, MODULES, and ROOT")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.fuse_first "${EFFECT_FUSE_MODEL}"
+          -M "${MODULES}"
+  RESULT_VARIABLE effect_result
+  OUTPUT_VARIABLE effect_output
+  ERROR_VARIABLE effect_error
+)
+if(effect_result EQUAL 0 OR
+   NOT effect_error MATCHES "non-setup operation")
+  message(FATAL_ERROR
+          "fusion crossed an observable call:\n${effect_output}${effect_error}")
 endif()
 
 execute_process(
@@ -146,6 +162,12 @@ execute_process(
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "fused C preparation failed (${result}):\n${error}")
 endif()
+file(READ "${fused_ready}" fused_ready_text)
+if(fused_ready_text MATCHES "var first" OR
+   fused_ready_text MATCHES "first\\[")
+  message(FATAL_ERROR
+          "fusion retained its private intermediate:\n${fused_ready_text}")
+endif()
 
 execute_process(
   COMMAND "${TOOL}" emit c.source "${fused_ready}" -M "${MODULES}"
@@ -155,6 +177,11 @@ execute_process(
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "fused C emission failed (${result}):\n${error}")
+endif()
+file(READ "${fused_source}" fused_source_text)
+if(fused_source_text MATCHES "v_first")
+  message(FATAL_ERROR
+          "fused C retained its private intermediate:\n${fused_source_text}")
 endif()
 
 execute_process(
@@ -179,4 +206,112 @@ execute_process(
 if(NOT result EQUAL 0)
   message(FATAL_ERROR
           "fused C returned the wrong result (${result}):\n${output}${error}")
+endif()
+
+set(keep_ir "${ROOT}/keep.jog")
+set(keep_source "${ROOT}/keep.c")
+set(keep_program "${ROOT}/keep")
+execute_process(
+  COMMAND "${TOOL}" run c.prepare tile_pass.fuse_first c.prepare
+          "${KEEP_MODEL}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${keep_ir}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "retained-result fusion failed (${result}):\n${error}")
+endif()
+file(READ "${keep_ir}" keep_text)
+if(NOT keep_text MATCHES "return first, second" OR
+   NOT keep_text MATCHES "first\\[i\\] =" OR
+   keep_text MATCHES "second\\[i\\] = first\\[i\\]")
+  message(FATAL_ERROR
+          "fusion did not retain and forward the live producer:\n${keep_text}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${keep_ir}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${keep_source}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "retained-result C emission failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CC}" -std=c99 -O2 -Wall -Wextra -Wstrict-prototypes -Werror
+          "${keep_source}" "${KEEP_HARNESS}" -lm -o "${keep_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  file(READ "${keep_source}" emitted)
+  message(FATAL_ERROR
+          "retained-result C did not compile (${result}):\n${output}${error}\n${emitted}")
+endif()
+execute_process(
+  COMMAND "${keep_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "retained-result C was incorrect (${result}):\n${output}${error}")
+endif()
+
+set(relu_ir "${ROOT}/relu.jog")
+set(relu_source "${ROOT}/relu.c")
+set(relu_program "${ROOT}/relu")
+execute_process(
+  COMMAND "${TOOL}" run c.prepare tile_pass.fuse_first c.prepare
+          "${RELU_MODEL}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${relu_ir}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "activation fusion failed (${result}):\n${error}")
+endif()
+file(READ "${relu_ir}" relu_text)
+if(relu_text MATCHES "var sum" OR relu_text MATCHES "sum\\[" OR
+   NOT relu_text MATCHES "let fuse_value_")
+  message(FATAL_ERROR
+          "activation fusion retained its sum tensor:\n${relu_text}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${relu_ir}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${relu_source}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "activation C emission failed (${result}):\n${error}")
+endif()
+file(READ "${relu_source}" relu_source_text)
+if(relu_source_text MATCHES "v_sum" OR
+   NOT relu_source_text MATCHES "float v_fuse_value_")
+  message(FATAL_ERROR
+          "activation C retained its sum tensor:\n${relu_source_text}")
+endif()
+execute_process(
+  COMMAND "${CC}" -std=c99 -O2 -Wall -Wextra -Wstrict-prototypes -Werror
+          "${relu_source}" "${RELU_HARNESS}" -lm -o "${relu_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "activation C did not compile (${result}):\n${output}${error}\n${relu_source_text}")
+endif()
+execute_process(
+  COMMAND "${relu_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "activation C was incorrect (${result}):\n${output}${error}")
 endif()

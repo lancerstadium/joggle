@@ -365,8 +365,9 @@ fn relu<E: Ty, S: list<int>>(
 ) -> tensor<E, S> {
   var out = tensor<E, S>(E(0))
   for i in 0..tensor.numel<S>() {
-    if x[i] > E(0) {
-      out[i] = x[i]
+    let value = x[i]
+    if value > E(0) {
+      out[i] = value
     }
   }
   return out

@@ -62,8 +62,12 @@ small embeddable compiler frameworks.
   emitter contain no tile case.
 - An operator-name-independent fusion function merges an explicitly selected
   same-range pointwise producer/consumer pair. Its gate reduces a three-loop
-  tensor chain to two loops, emits strict C99 through the unchanged backend,
-  and preserves numerical output; a shifted-index consumer is rejected.
+  tensor chain to two loops, removes a private intermediate tensor through
+  scalar forwarding, and retains it when separately returned. The same
+  mechanism eliminates the sum tensor in an exposed `add -> relu` chain,
+  emits strict C99 through the unchanged backend, and preserves numerical
+  output; a shifted-index consumer and an intervening observable call are
+  rejected.
 - Default, sanitizer, ONNX, TFLite, generated-C, VM, installation, and external
   module gates exercise the same public interfaces.
 
@@ -78,8 +82,8 @@ comparable optimization settings.
   ONNX Runtime on the current CPU diagnostic. It is a reference backend, not
   yet evidence of efficient edge inference.
 - The initial fusion slice is deliberately one-dimensional and conservative;
-  multi-axis dependence tests, profitability, intermediate-storage removal,
-  and network-level latency evidence remain open.
+  multi-axis dependence tests, profitability, network-wide intermediate
+  removal, and latency evidence remain open.
 - Extensibility needs a controlled study: implement the same custom format,
   operation, transform, and target boundary in Joggle and selected baselines;
   report changed core files, extension code, build/runtime dependencies, and
@@ -91,10 +95,11 @@ comparable optimization settings.
 ## Next experiment order
 
 1. Generalize the now-executable split and pointwise fusion functions to
-   multi-axis dependence checks, intermediate-storage removal, and explicit
-   profitability policy; keep reorder and unroll removable.
-2. Apply the structural fusion path to exposed activation chains and measure
-   memory traffic and latency without introducing activation-name cases.
+   multi-axis dependence checks and explicit profitability policy; keep
+   reorder and unroll removable.
+2. Apply the proven activation path across conventional networks and measure
+   intermediate bytes, memory traffic, and latency without introducing
+   activation-name cases.
 3. Add vectorizable C emission facts (`restrict`, alignment, and selected
    unrolling) only through explicit module policy, then compare generated code
    and compiler optimization reports.
