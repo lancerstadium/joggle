@@ -13,5 +13,11 @@ int main(void) {
     if (error > 1.0e-5f)
       return 1;
   }
+  const float values[] = {3.0f, -2.0f, 7.0f, 1.0f};
+  float low = 0.0f;
+  float high = 0.0f;
+  jog_extrema(values, &low, &high);
+  if (low != -2.0f || high != 7.0f)
+    return 2;
   return 0;
 }

@@ -43,6 +43,36 @@ fn nearest(x: f64) -> f64 {
   return math.round_even(x)
 }
 
+fn split(x: i64) -> (i64, i64) {
+  return x / i64(2), x % i64(2)
+}
+
+fn recombine(x: i64) -> i64 {
+  let quotient, remainder = split(x)
+  return quotient * i64(2) + remainder
+}
+
+fn duplicate(
+  x: tensor<f32, [2]>
+) -> (tensor<f32, [2]>, f32) {
+  let first = x[0]
+  return x, first
+}
+
+fn duplicate_sum(x: tensor<f32, [2]>) -> f32 {
+  let copy, first = duplicate(x)
+  return copy[1] + first
+}
+
+local fn noop() -> () {
+  return
+}
+
+fn call_noop() -> i64 {
+  noop()
+  return i64(1)
+}
+
 fn abi_probe(i: index, n: int, x: i32) -> i64 {
   return i64(i) + i64(n) + i64(x)
 }

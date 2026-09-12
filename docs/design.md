@@ -662,8 +662,8 @@ entire external ABI contract. The C module derives a qualified dependency
 prototype, emits the model wrapper, and links a separately compiled kernel.
 Anonymous tensor results receive ephemeral names from their structural value
 keys, so a direct `return edge.matmul(a, b)` needs no cosmetic binding. Generic,
-dynamic-shape, multi-result, or otherwise unrepresentable declarations remain
-outside this ABI instead of being guessed. Core contains neither the `edge`
+dynamic-shape, or otherwise unrepresentable declarations remain outside this
+ABI instead of being guessed. Core contains neither the `edge`
 symbol nor an external-kernel registry.
 
 ## M8 sixth slice
@@ -1203,12 +1203,16 @@ ONNX and TFLite codecs preserve their format-defined top-level graph by marking
 that emitted function; nested source graphs are unmarked ordinary functions.
 
 Emission is deliberately closed over the exposed computation. Dynamic tensor
-shapes, multi-results, and calls whose bodies still live in a dependency fail
-with diagnostics; the emitter does not perform hidden lowering or invent
-semantics. The regression gate emits a concrete matrix multiplication and
-scalar call/branch functions, compiles the result as C99 with warnings treated
-as errors, executes it, and compares the numerical outputs. This establishes
-one portable end-to-end target while leaving dynamic allocation,
+shapes and calls whose bodies still live in a dependency fail with diagnostics;
+the emitter does not perform hidden lowering or invent semantics. One scalar
+result uses C's direct return. A tensor result, every result in a multi-result
+signature, and zero-result functions use one structural rule: `void` plus
+ordered trailing output pointers where required. The same rule handles local
+definitions, internal calls, public headers, and external declarations. The
+regression gate emits concrete matrix multiplication, scalar call/branch,
+zero-result, and mixed tensor/scalar multi-result functions, compiles them as
+C99 with warnings treated as errors, and compares the numerical outputs. This
+establishes one portable end-to-end target while leaving dynamic allocation,
 inter-function planning, and a genuinely different second target open.
 
 The companion `c.prepare` transform is explicit and uses the emitter module's

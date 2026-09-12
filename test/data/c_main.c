@@ -59,6 +59,20 @@ int main(void) {
                               jog_nearest(-0.5) == 0.0;
   if (fesetround(FE_TONEAREST) != 0 || !fixed_rounding)
     return 17;
+  int64_t quotient = 0;
+  int64_t remainder = 0;
+  jog_split(9, &quotient, &remainder);
+  if (quotient != 4 || remainder != 1 || jog_recombine(9) != 9)
+    return 18;
+  const float duplicate_input[2] = {2.0f, 5.0f};
+  float duplicate_output[2] = {0.0f, 0.0f};
+  float duplicate_first = 0.0f;
+  jog_duplicate(duplicate_input, duplicate_output, &duplicate_first);
+  if (duplicate_output[0] != 2.0f || duplicate_output[1] != 5.0f ||
+      duplicate_first != 2.0f || jog_duplicate_sum(duplicate_input) != 7.0f)
+    return 19;
+  if (jog_call_noop() != 1)
+    return 20;
   if (jog_abi_probe(2, 3, 4) != 9)
     return 15;
   if (jog_steps() != 3)

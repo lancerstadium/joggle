@@ -295,8 +295,9 @@ function name is treated specially.
 Emission never triggers hidden lowering or planning. The current C module
 supports fixed-shape tensor kernels, scalar expressions, local calls,
 structured loops and conditions, short-circuit logical expressions,
-literal-list indexing, and the standard floating-point functions declared by
-`math`; unsupported IR fails with a diagnostic. Preparation composes the
+literal-list indexing, zero- and multi-result functions, and the standard
+floating-point functions declared by `math`; unsupported IR fails with a
+diagnostic. Preparation composes the
 reusable static evaluator and copy propagation before exposing remaining
 calls. C and VM cover the same current ten-primitive `math` surface through
 exact `f32` and `f64` overloads; host-libm transcendentals are not presented as

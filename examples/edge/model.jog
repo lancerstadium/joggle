@@ -8,3 +8,9 @@ fn main(
 ) -> tensor<f32, [2, 2]> {
   return edge.matmul(a, b)
 }
+
+[entry]
+fn extrema(x: tensor<f32, [4]>) -> (f32, f32) {
+  let low, high = edge.extrema(x)
+  return low, high
+}

@@ -8,3 +8,14 @@ void jog_edge_matmul(const float* a, const float* b, float* out) {
     }
   }
 }
+
+void jog_edge_extrema(const float* x, float* low, float* high) {
+  *low = x[0];
+  *high = x[0];
+  for (int i = 1; i != 4; ++i) {
+    if (x[i] < *low)
+      *low = x[i];
+    if (x[i] > *high)
+      *high = x[i];
+  }
+}

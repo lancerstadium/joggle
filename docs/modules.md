@@ -865,10 +865,12 @@ may therefore supply a compatible overload without changing `math`, `nn`, or
 the core. C and VM canonicalize a resolved primitive to its owning symbol
 rather than matching its incidental source spelling.
 
-A resolved, bodyless, monomorphic `Fn` whose parameters and single result use
+A resolved, bodyless, monomorphic `Fn` whose parameters and results use
 representable scalar or fixed tensor types is also a C dependency declaration.
 `c.source` emits its prototype under a module-qualified symbol and uses the
-same tensor output-pointer convention as local functions. The public header
+same output-pointer convention as local functions. A single scalar result is
+returned directly; tensor and multi-result signatures use ordered trailing
+pointers, and a zero-result function is ordinary C `void`. The public header
 contains the model's definitions; dependency prototypes stay in the source
 translation unit. This rule is structural—no callee name, operator registry,
 or per-kernel binding is required. [`examples/edge`](../examples/edge) links a

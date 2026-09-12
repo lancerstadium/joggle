@@ -1,11 +1,13 @@
 # Link an external kernel
 
-[`module.jog`](module.jog) declares one monomorphic tensor function without a
-body. That ordinary `Fn` is the complete ABI contract. The portable C module
-emits a qualified prototype and calls it; no operator registration or C-emitter
-edit is required. [`kernel.c`](kernel.c) provides the implementation. The test
-harness contains no handwritten model prototype; the generated `model.h` is
-force-included for both the implementation and its callers.
+[`module.jog`](module.jog) declares monomorphic tensor functions without
+bodies. Those ordinary `Fn` signatures are the complete ABI contract. One has
+a tensor result and the other has two scalar results, exercising the same
+structural output-pointer rule used by local functions. The portable C module
+emits qualified prototypes and calls them; no operator registration or
+C-emitter edit is required. [`kernel.c`](kernel.c) provides the implementations.
+The test harness contains no handwritten model prototype; the generated
+`model.h` is force-included for both the implementation and its callers.
 
 From the repository root:
 

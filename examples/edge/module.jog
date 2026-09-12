@@ -4,3 +4,5 @@ use tensor
 fn matmul(
   a: tensor<f32, [2, 3]>, b: tensor<f32, [3, 2]>
 ) -> tensor<f32, [2, 2]>;
+
+fn extrema(x: tensor<f32, [4]>) -> (f32, f32);

@@ -159,6 +159,18 @@ if(emitted_header MATCHES "size_t")
   message(FATAL_ERROR
           "C header leaked an emitter-private array counter:\n${emitted_header}")
 endif()
+if(NOT emitted_header MATCHES
+   "void jog_split\\(int64_t v_x, int64_t\\* jog_out_0, int64_t\\* jog_out_1\\);" OR
+   NOT emitted_header MATCHES
+   "void jog_duplicate\\(const float\\* v_x, float\\* jog_out_0, float\\* jog_out_1\\);")
+  message(FATAL_ERROR
+          "C header did not derive its multi-result ABI structurally:\n"
+          "${emitted_header}")
+endif()
+if(emitted_header MATCHES "jog_noop")
+  message(FATAL_ERROR
+          "C header exposed a local zero-result helper:\n${emitted_header}")
+endif()
 file(READ "${source}" emitted_source)
 if(NOT emitted_source MATCHES "for \\(size_t jog_i = 0;")
   message(FATAL_ERROR
