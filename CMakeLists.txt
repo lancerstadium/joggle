@@ -509,6 +509,18 @@ if(JOGGLE_BUILD_TESTS)
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/c.cmake
     )
     add_test(
+      NAME quant-c-execution
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DTOOL=$<TARGET_FILE:joggle-tool>
+        -DCC=${JOGGLE_TEST_C_COMPILER}
+        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/quant_c.jog
+        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/quant_c_main.c
+        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/quant-c-test
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/quant_c.cmake
+    )
+    add_test(
       NAME mem-execution
       COMMAND
         ${CMAKE_COMMAND}

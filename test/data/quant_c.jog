@@ -1,0 +1,19 @@
+module quant_kernel
+use quant
+use tensor
+
+fn dequant_scalar(
+  x: tensor<u8, [2]>,
+  scale: tensor<f32, []>,
+  zero: tensor<u8, []>
+) -> tensor<f32, [2]> {
+  return quant.dequantize(x, scale, zero, 0)
+}
+
+fn quant_scalar(
+  x: tensor<f32, [2]>,
+  scale: tensor<f32, []>,
+  zero: tensor<u8, []>
+) -> tensor<u8, [2]> {
+  return quant.quantize(x, scale, zero, 0, 0, 255)
+}

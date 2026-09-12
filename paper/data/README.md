@@ -29,3 +29,21 @@ controls application-scale rewrite selection; it does not validate the
 example's two-feature cost model as a useful target policy. Repeat this
 experiment under the eventual frozen protocol before using latency in a paper
 claim.
+
+`mobilenetv2-backend-pilot.csv` records a later ten-run comparison on the same
+host and input. `joggle-c-strict` uses Apple Clang 17 with `-O3 -DNDEBUG`;
+`joggle-c-fast` additionally uses `-mcpu=native -ffast-math`; `onnxruntime`
+uses ONNX Runtime 1.26.0 with NumPy 2.4.4, CPUExecutionProvider, graph
+optimizations, sequential execution, and one intra/inter-op thread. Each row
+excludes loading and allocation after three warm-up calls. The run was not
+isolated or frequency-controlled, so it is a direction-setting pilot rather
+than a paper performance result.
+
+The ONNX Runtime rows can be reproduced with
+`python3 paper/bench_onnxruntime.py MODEL INPUT EXPECTED --repetitions 10` in
+an environment containing the recorded ONNX Runtime and NumPy versions. The C
+rows use `examples/onnx/benchmark.c` and the flags stated above.
+
+`model-coverage-pilot.csv` records stage-level status for checksum-pinned ONNX
+Zoo models. A row marked `compile` is not counted as numerical correctness;
+only rows with `execute=pass` used the official stored output.

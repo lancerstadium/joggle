@@ -2,19 +2,6 @@ module quant
 use tensor
 use math
 
-fn param(
-  shape: list<int>, params: list<int>, linear: int, axis: int
-) -> int {
-  if len(params) == 0 || params[0] == 1 {
-    return 0
-  }
-  var stride = 1
-  for dim in axis + 1..len(shape) {
-    stride *= shape[dim]
-  }
-  return (linear / stride) % shape[axis]
-}
-
 fn dequantize<
   Q: Ty,
   E: Ty,
@@ -28,7 +15,14 @@ fn dequantize<
 ) -> tensor<E, S> {
   var out = tensor<E, S>(E(0))
   for i in 0..tensor.numel<S>() {
-    let p = param(S, P, i, axis)
+    var p = 0
+    if tensor.numel<P>() != 1 {
+      var stride = 1
+      for dim in axis + 1..len(S) {
+        stride *= S[dim]
+      }
+      p = (i / stride) % S[axis]
+    }
     out[i] = (E(x[i]) - E(zero[p])) * scale[p]
   }
   return out
@@ -89,8 +83,15 @@ fn quantize<
 ) -> tensor<Q, S> {
   var out = tensor<Q, S>(Q(0))
   for i in 0..tensor.numel<S>() {
-    let p = param(S, P, i, axis)
-    var value = round_even(x[i] / scale[p]) + E(zero[p])
+    var p = 0
+    if tensor.numel<P>() != 1 {
+      var stride = 1
+      for dim in axis + 1..len(S) {
+        stride *= S[dim]
+      }
+      p = (i / stride) % S[axis]
+    }
+    var value: E = round_even(x[i] / scale[p]) + E(zero[p])
     if value < E(low) {
       value = E(low)
     }

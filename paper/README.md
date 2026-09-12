@@ -88,9 +88,17 @@ frozen.
 - The compiled MNIST path has matched its stored reference with maximum absolute
   error about `1.907e-05`.
 - A MobileNetV2 path has matched its reference with maximum absolute error about
-  `2.003e-05`.
+  `2.098e-05` after regeneration from the pinned original ONNX model.
 - Externalizing the MobileNetV2 weight payload reduced generated C source from
   about 56.9 MB to 246 KB, with a separate payload of about 14.2 MB.
+- On an unisolated Apple M4 pilot, strict generated C had a median MobileNetV2
+  latency of 204.630 ms, fast-math/native C 112.958 ms, and single-thread ONNX
+  Runtime 1.26.0 5.881 ms. The large gap is a blocking generated-code-quality
+  result, not a favorable performance claim.
+- Official SqueezeNet 1.1 and QDQ SqueezeNet 1.0 models now decode, refine,
+  convert, expose, emit external-weight C, and compile. They have not yet been
+  counted as numerically executed models because reference application inputs
+  and outputs were not used in this pilot.
 - A deterministic VM execution of the exposed MobileNetV2 program reported
   95,592,386,975 steps.
 - A structural fusion experiment reduced loops from 374 to 328 and tensor
