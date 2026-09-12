@@ -156,6 +156,27 @@ separate stage with that name. The TFLite MobileNet row uses the pinned model
 checked by `test/tflite.cpp`; its exposure gate validates structure and
 round-trip stability, not generated-C execution.
 
+The same matrix now includes focused partial-cache runs for ShuffleNet V2 and
+DenseNet-121. Both decode, infer to a zero unknown-result frontier, convert to
+shared semantics, verify, and round trip. DenseNet's later stages remain
+`not_run`: no generated-C or numerical claim is inferred from structural
+compatibility.
+
+`shufflenet-backend-pilot.csv` advances ShuffleNet V2 through spatial
+convolution selection, call-site instantiation, C preparation, static memory
+planning, external-data emission, strict C11 compilation, and execution. A
+seed-0 `[1, 3, 224, 224]` input produces 1,000 outputs within
+`8.5830689e-6` maximum absolute error of ONNX Runtime 1.26.0. The generated C
+is 158,829 bytes, its separate payload is 9,179,136 bytes, and four static
+workspace slots contain 785,000 `f32` elements in total. After three warm-ups,
+ten unisolated calls have a 37.503 ms median versus 1.945 ms for one-thread
+sequential ONNX Runtime, a roughly 19.3x backend gap. This is a seventh
+executed-model correctness point and a negative performance result, not a
+production-speed claim. Adding `-mcpu=native -ffast-math` changes the median
+only to 36.917 ms and retains a `7.6293945e-6` error bound, so compiler flags do
+not explain the gap; loop structure, layout, and specialized kernels remain
+the relevant backend work.
+
 `generic-kernel-pilot.csv` records a four-model follow-up using one portable
 NCHW/OIHW f32 convolution implementation selected through ordinary generic
 functions. MobileNetV2, ResNet18, UltraFace, and SqueezeNet select 54, 20, 52,

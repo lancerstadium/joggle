@@ -490,6 +490,25 @@ mkdir -p build/examples
   -M build/modules > build/examples/mobilenet.jog
 ```
 
+The download script also accepts a semicolon-separated `MODELS` subset. When
+`JOGGLE_TEST_ONNX_ZOO` names a partial cache, configure verifies every present
+model against its pinned SHA-256, registers only those cases, and prints each
+absent case as skipped. This makes a small focused gate possible without
+weakening integrity checks for the files that are used:
+
+```sh
+cmake -DOUT=.cache/onnx-zoo \
+  -DMODELS='shufflenet-v2-12;densenet-12' -P test/zoo.cmake
+cmake -S . -B build -DJOGGLE_BUILD_ONNX=ON \
+  -DJOGGLE_TEST_ONNX_ZOO=.cache/onnx-zoo
+ctest --test-dir build -R 'onnx-zoo-(shufflenet|densenet)' \
+  --output-on-failure
+```
+
+Downloading the default set still registers the complete matrix. A partial
+cache is therefore an explicit local workflow, not evidence that the omitted
+models passed.
+
 The separate backend download is small. It pins ONNX v1.19.0
 `test_matmul_2d`, including both inputs and the official output. Its execution
 gate converts the imported model, selects the out-of-tree `ikj` implementation,

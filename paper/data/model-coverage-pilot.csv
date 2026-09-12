@@ -6,4 +6,6 @@ SqueezeNet1.1-7,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000052452087,"officia
 SqueezeNet1.0-13-QDQ,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000001341105,"official ONNX Zoo model; deterministic seed-0 input and ONNX Runtime 1.26.0 reference; QDQ boundaries executed"
 UltraFace-RFB-320,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000003576279,"official ONNX Zoo model; scores error 2.9802322e-7 and boxes error 3.5762787e-7"
 TinyYOLOv2-8,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000166893005,"official ONNX Zoo model; symbolic batch instantiated as one; deterministic seed-0 input and ONNX Runtime 1.26.0 reference"
+ShuffleNetV2-12,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000085830689,"official ONNX Zoo model; deterministic seed-0 input and ONNX Runtime 1.26.0 reference; Split/Concat channel-shuffle path"
+DenseNet121-12,ONNX,pass,pass,pass,not_run,not_run,not_run,not_run,,"official ONNX Zoo model; 910 result types erased before inference and reconstructed to a zero frontier; semantic conversion and round trip pass"
 MobileNetV2,TFLite,pass,n/a,pass,pass,not_run,not_run,not_run,,107 constants and 66 calls; all selected calls expose and round trip

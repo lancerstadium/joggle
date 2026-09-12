@@ -132,6 +132,10 @@ frozen.
   outputs agree with an ONNX Runtime reference within `1.341e-7`; an
   unisolated ten-call pilot is still about 18.3x slower than the reference
   runtime.
+- ShuffleNet V2 is the seventh numerically executed ONNX model and adds
+  Split/Concat channel shuffling to the executed path. Its 1,000 outputs agree
+  within `8.583e-6`; generated spatial C has a 37.503 ms unisolated median
+  versus 1.945 ms for one-thread ONNX Runtime, leaving a roughly 19.3x gap.
 - One out-of-tree convolution implementation now changes the generated loop
   structure without an ONNX or C-emitter edit. On matched strict-C pilots it
   reduces median latency by 1.93x on MobileNetV2, 3.13x on ResNet18, 6.29x on

@@ -11,7 +11,7 @@ option(JOGGLE_BUILD_TFLITE "Build the optional TFLite module" OFF)
 option(JOGGLE_BUILD_SAT "Build the optional saturating-integer module" OFF)
 option(JOGGLE_TEST_ONNX_HEAVY "Enable slow ONNX Model Zoo gates" OFF)
 set(JOGGLE_TEST_ONNX_ZOO "" CACHE PATH
-    "Directory containing the pinned ONNX Model Zoo test set")
+    "Directory containing any subset of the pinned ONNX Model Zoo test set")
 set(JOGGLE_TEST_ONNX_BACKEND "" CACHE PATH
     "Directory containing official ONNX backend test cases")
 set(JOGGLE_EXAMPLE_MNIST "" CACHE PATH
@@ -657,6 +657,7 @@ if(JOGGLE_BUILD_TESTS)
         dfc317b56d065a3e297240a9e9b9118ff2260790b5850f4be2bc6ea1bcc65e80
       )
     endif()
+    set(onnx_zoo_available)
     list(LENGTH onnx_zoo_names onnx_zoo_count)
     math(EXPR onnx_zoo_last "${onnx_zoo_count} - 1")
     foreach(index RANGE ${onnx_zoo_last})
@@ -664,155 +665,96 @@ if(JOGGLE_BUILD_TESTS)
       list(GET onnx_zoo_hashes ${index} expected)
       set(model "${JOGGLE_TEST_ONNX_ZOO}/${name}.onnx")
       if(NOT EXISTS "${model}")
-        message(FATAL_ERROR "missing pinned ONNX Model Zoo file: ${model}")
+        message(STATUS "Skipping absent ONNX Model Zoo case: ${name}")
+        continue()
       endif()
       file(SHA256 "${model}" actual)
       if(NOT actual STREQUAL expected)
         message(FATAL_ERROR "ONNX Model Zoo hash mismatch: ${model}")
       endif()
+      list(APPEND onnx_zoo_available "${name}")
     endforeach()
     add_executable(joggle-onnx-test test/onnx.cpp)
     target_link_libraries(
       joggle-onnx-test PRIVATE Joggle::joggle joggle-onnx-proto
     )
     add_dependencies(joggle-onnx-test joggle-onnx)
-    add_test(
-      NAME onnx-zoo-mobilenet
-      COMMAND joggle-onnx-test
-              ${JOGGLE_TEST_ONNX_ZOO}/mobilenetv2-7.onnx
-              ${CMAKE_CURRENT_BINARY_DIR}/modules
+    function(joggle_add_onnx_zoo_case test_name model_name)
+      if(model_name IN_LIST onnx_zoo_available)
+        add_test(
+          NAME "${test_name}"
+          COMMAND joggle-onnx-zoo-test
+                  "${JOGGLE_TEST_ONNX_ZOO}/${model_name}.onnx"
+                  "${CMAKE_CURRENT_BINARY_DIR}/modules"
+                  ${ARGN}
+        )
+      endif()
+    endfunction()
+    if(mobilenetv2-7 IN_LIST onnx_zoo_available)
+      add_test(
+        NAME onnx-zoo-mobilenet
+        COMMAND joggle-onnx-test
+                ${JOGGLE_TEST_ONNX_ZOO}/mobilenetv2-7.onnx
+                ${CMAKE_CURRENT_BINARY_DIR}/modules
+      )
+    endif()
+    joggle_add_onnx_zoo_case(
+      onnx-zoo-mnist mnist-8 onnx.Conv onnx.MaxPool onnx.MatMul
     )
-    add_test(
-      NAME onnx-zoo-mnist
-      COMMAND joggle-onnx-zoo-test
-              ${JOGGLE_TEST_ONNX_ZOO}/mnist-8.onnx
-              ${CMAKE_CURRENT_BINARY_DIR}/modules
-              onnx.Conv
-              onnx.MaxPool
-              onnx.MatMul
+    joggle_add_onnx_zoo_case(
+      onnx-zoo-squeezenet squeezenet1.1-7 onnx.Concat onnx.Dropout
     )
-    add_test(
-      NAME onnx-zoo-squeezenet
-      COMMAND joggle-onnx-zoo-test
-              ${JOGGLE_TEST_ONNX_ZOO}/squeezenet1.1-7.onnx
-              ${CMAKE_CURRENT_BINARY_DIR}/modules
-              onnx.Concat
-              onnx.Dropout
+    joggle_add_onnx_zoo_case(
+      onnx-zoo-squeezenet-qdq squeezenet1.0-13-qdq
+      onnx.QuantizeLinear onnx.DequantizeLinear
     )
-    add_test(
-      NAME onnx-zoo-squeezenet-qdq
-      COMMAND joggle-onnx-zoo-test
-              ${JOGGLE_TEST_ONNX_ZOO}/squeezenet1.0-13-qdq.onnx
-              ${CMAKE_CURRENT_BINARY_DIR}/modules
-              onnx.QuantizeLinear
-              onnx.DequantizeLinear
+    joggle_add_onnx_zoo_case(
+      onnx-zoo-resnet resnet18-v1-7 onnx.Add onnx.Gemm
     )
-    add_test(
-      NAME onnx-zoo-resnet
-      COMMAND joggle-onnx-zoo-test
-              ${JOGGLE_TEST_ONNX_ZOO}/resnet18-v1-7.onnx
-              ${CMAKE_CURRENT_BINARY_DIR}/modules
-              onnx.Add
-              onnx.Gemm
+    joggle_add_onnx_zoo_case(
+      onnx-zoo-tinyyolo tinyyolov2-8 onnx.LeakyRelu onnx.MaxPool
     )
-    add_test(
-      NAME onnx-zoo-tinyyolo
-      COMMAND joggle-onnx-zoo-test
-              ${JOGGLE_TEST_ONNX_ZOO}/tinyyolov2-8.onnx
-              ${CMAKE_CURRENT_BINARY_DIR}/modules
-              onnx.LeakyRelu
-              onnx.MaxPool
+    joggle_add_onnx_zoo_case(
+      onnx-zoo-tinyyolov3 tiny-yolov3-11 --frontier 219 onnx.Loop
     )
-    add_test(
-      NAME onnx-zoo-tinyyolov3
-      COMMAND joggle-onnx-zoo-test
-              ${JOGGLE_TEST_ONNX_ZOO}/tiny-yolov3-11.onnx
-              ${CMAKE_CURRENT_BINARY_DIR}/modules
-              --frontier
-              219
-              onnx.Loop
+    joggle_add_onnx_zoo_case(
+      onnx-zoo-ultraface ultraface-rfb-320
+      onnx.Constant onnx.Slice onnx.Softmax
     )
-    add_test(
-      NAME onnx-zoo-ultraface
-      COMMAND joggle-onnx-zoo-test
-              ${JOGGLE_TEST_ONNX_ZOO}/ultraface-rfb-320.onnx
-              ${CMAKE_CURRENT_BINARY_DIR}/modules
-              onnx.Constant
-              onnx.Slice
-              onnx.Softmax
+    joggle_add_onnx_zoo_case(
+      onnx-zoo-ssd-mobilenet ssd-mobilenetv1-12 --frontier 0
+      onnx.Loop onnx.NonMaxSuppression onnx.Resize
     )
-    add_test(
-      NAME onnx-zoo-ssd-mobilenet
-      COMMAND joggle-onnx-zoo-test
-              ${JOGGLE_TEST_ONNX_ZOO}/ssd-mobilenetv1-12.onnx
-              ${CMAKE_CURRENT_BINARY_DIR}/modules
-              --frontier
-              0
-              onnx.Loop
-              onnx.NonMaxSuppression
-              onnx.Resize
+    joggle_add_onnx_zoo_case(
+      onnx-zoo-shufflenet shufflenet-v2-12 onnx.Split onnx.Concat
     )
-    add_test(
-      NAME onnx-zoo-shufflenet
-      COMMAND joggle-onnx-zoo-test
-              ${JOGGLE_TEST_ONNX_ZOO}/shufflenet-v2-12.onnx
-              ${CMAKE_CURRENT_BINARY_DIR}/modules
-              onnx.Split
-              onnx.Concat
+    joggle_add_onnx_zoo_case(
+      onnx-zoo-densenet densenet-12 --frontier-from-signature 0
+      onnx.Concat onnx.BatchNormalization
     )
-    add_test(
-      NAME onnx-zoo-densenet
-      COMMAND joggle-onnx-zoo-test
-              ${JOGGLE_TEST_ONNX_ZOO}/densenet-12.onnx
-              ${CMAKE_CURRENT_BINARY_DIR}/modules
-              --frontier-from-signature
-              0
-              onnx.Concat
-              onnx.BatchNormalization
+    joggle_add_onnx_zoo_case(
+      onnx-zoo-googlenet googlenet-12 --frontier-from-signature 0
+      onnx.Concat onnx.LRN onnx.Dropout
     )
-    add_test(
-      NAME onnx-zoo-googlenet
-      COMMAND joggle-onnx-zoo-test
-              ${JOGGLE_TEST_ONNX_ZOO}/googlenet-12.onnx
-              ${CMAKE_CURRENT_BINARY_DIR}/modules
-              --frontier-from-signature
-              0
-              onnx.Concat
-              onnx.LRN
-              onnx.Dropout
+    joggle_add_onnx_zoo_case(
+      onnx-zoo-efficientnet-qdq efficientnet-lite4-11-qdq
+      --frontier-from-signature 0
+      onnx.QuantizeLinear onnx.DequantizeLinear
     )
-    add_test(
-      NAME onnx-zoo-efficientnet-qdq
-      COMMAND joggle-onnx-zoo-test
-              ${JOGGLE_TEST_ONNX_ZOO}/efficientnet-lite4-11-qdq.onnx
-              ${CMAKE_CURRENT_BINARY_DIR}/modules
-              --frontier-from-signature
-              0
-              onnx.QuantizeLinear
-              onnx.DequantizeLinear
-    )
-    add_test(
-      NAME onnx-zoo-efficientnet-int8
-      COMMAND joggle-onnx-zoo-test
-              ${JOGGLE_TEST_ONNX_ZOO}/efficientnet-lite4-11-int8.onnx
-              ${CMAKE_CURRENT_BINARY_DIR}/modules
-              --frontier-from-signature
-              95
-              onnx.QLinearConv
-              onnx.QLinearMatMul
+    joggle_add_onnx_zoo_case(
+      onnx-zoo-efficientnet-int8 efficientnet-lite4-11-int8
+      --frontier-from-signature 95
+      onnx.QLinearConv onnx.QLinearMatMul
     )
     if(JOGGLE_TEST_ONNX_HEAVY)
-      add_test(
-        NAME onnx-zoo-bidaf
-        COMMAND joggle-onnx-zoo-test
-                ${JOGGLE_TEST_ONNX_ZOO}/bidaf-9.onnx
-                ${CMAKE_CURRENT_BINARY_DIR}/modules
-                --roundtrip
-                onnx.Gather
+      joggle_add_onnx_zoo_case(
+        onnx-zoo-bidaf bidaf-9 --roundtrip onnx.Gather
       )
-      set_tests_properties(
-        onnx-zoo-bidaf PROPERTIES LABELS "heavy;onnx-zoo" TIMEOUT 900
-      )
+      if(bidaf-9 IN_LIST onnx_zoo_available)
+        set_tests_properties(
+          onnx-zoo-bidaf PROPERTIES LABELS "heavy;onnx-zoo" TIMEOUT 900
+        )
+      endif()
     endif()
   endif()
   if(JOGGLE_BUILD_ONNX)
