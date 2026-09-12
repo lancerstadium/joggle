@@ -291,7 +291,16 @@ functions.
 If any concrete function carries ordinary `[entry]` metadata, `c.header`
 exports only marked entries while `c.source` retains their internal helpers.
 A module with no entry marks keeps the pre-1.0 all-functions behavior. No
-function name is treated specially.
+function name is treated specially. A function may also own its public C
+spelling without changing the Joggle symbol:
+
+```jog
+[entry, c: {name: "model_run"}]
+fn main(x: tensor<f32, [784]>) -> tensor<f32, [10]> { ... }
+```
+
+Both the generated declaration and definition then use `model_run`; the final
+symbol table is still checked for collisions.
 Emission never triggers hidden lowering or planning. The current C module
 supports fixed-shape tensor kernels, scalar expressions, local calls,
 structured loops and conditions, short-circuit logical expressions,

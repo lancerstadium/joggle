@@ -855,13 +855,22 @@ boundary. The test compiles the generated header and source together with
 strict-prototype warnings enabled. A model `local fn` is defined and declared
 `static` inside the generated translation unit and is never included in the
 public header; both spellings still come from the same signature function.
+The source is intentionally self-contained and does not guess the filename to
+which a separate `c.header` result will be written. It repeats declarations
+from that shared signature function; an application may include the header
+normally, or a build may inject it while compiling the source. The public
+header conservatively includes `stdbool.h` and `stdint.h`; the source also
+includes `stddef.h` and `string.h` for emitter-owned counts and copies. These
+are a fixed C99 support contract, not operator- or model-specific decisions.
 Generated files remain under the ignored build tree for inspection.
 
-The separate `math` module declares each current primitive as exact `f32` and
-`f64` overloads. Each bodyless primitive owns optional C name/header and VM
-opcode attributes. The consumers read those attributes from the resolved
-function; neither carries a second list of math symbols, and neither treats an
-arbitrary `Ty` as floating point. Generic
+The separate `math` module declares the current NN-required numerical surface—
+`abs`, `ceil`, `erf`, `exp`, `floor`, `fmod`, `log`, `pow`, `round_even`,
+`sqrt`, and `tanh`—as exact `f32` and `f64` overloads. It is deliberately not
+advertised as a complete mirror of C `libm`. Each bodyless primitive owns
+optional C name/header and VM opcode attributes. The consumers read those
+attributes from the resolved function; neither carries a second list of math
+symbols, and neither treats an arbitrary `Ty` as floating point. Generic
 `nn` bodies can still use the operations because dependent calls resolve only
 after their element type is specialized. The generic bodies use the normal
 unqualified overload set opened by `use math`; a custom number-format module
