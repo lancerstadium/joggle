@@ -65,3 +65,14 @@ compile-time list positions, and selects constant branches. It removes 328
 rank loops and 492 compound-list indices, reduces generated C from 244,239 to
 226,855 bytes, and preserves the official-output error bound. Median latency
 changed from 204.549 to 201.240 ms (-1.62%) on this unisolated run.
+
+`compiler-overhead-pilot.csv` is a matched release-build measurement of
+`debug.prepare` on the same 28,413,202-byte MobileNetV2 IR. The baseline is
+commit `f2a759c`; the candidate caches immutable module visibility and stores
+small compile-time frames contiguously instead of allocating one hash-table
+node per value. Both commands used the same model and module tree and emitted
+byte-identical 28,523,126-byte IR with the recorded SHA-256. One untuned run
+fell from 75.47 to 55.71 seconds (-26.18%). This is an engineering pilot, not
+a publication timing result: it has one repetition, no host isolation, and
+mixes two implementation changes that require separate ablation if compiler
+overhead becomes a paper claim.

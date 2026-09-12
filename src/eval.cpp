@@ -402,7 +402,6 @@ private:
 
     const Frame* parent = nullptr;
     std::vector<std::pair<Val, Item>> values;
-    std::unordered_map<ValueKey, std::size_t, ValueHash> index;
   };
 
   struct Site {
@@ -445,18 +444,21 @@ private:
 
   const Item* get(const Frame& frame, Val value, Loc loc = {}) {
     for (const Frame* scope = &frame; scope; scope = scope->parent) {
-      const auto found = scope->index.find({value.store_, value.id_});
-      if (found != scope->index.end())
-        return &scope->values[found->second].second;
+      for (auto found = scope->values.rbegin(); found != scope->values.rend();
+           ++found)
+        if (found->first.store_ == value.store_ &&
+            found->first.id_ == value.id_)
+          return &found->second;
     }
     fail("compile-time value is not available", std::move(loc));
     return nullptr;
   }
 
   Item* local(Frame& frame, Val value) {
-    const auto found = frame.index.find({value.store_, value.id_});
-    if (found != frame.index.end())
-      return &frame.values[found->second].second;
+    for (auto found = frame.values.rbegin(); found != frame.values.rend();
+         ++found)
+      if (found->first.store_ == value.store_ && found->first.id_ == value.id_)
+        return &found->second;
     return nullptr;
   }
 
@@ -519,14 +521,10 @@ private:
   }
 
   void put(Frame& frame, Val value, Item item) {
-    const ValueKey key{value.store_, value.id_};
-    const auto found = frame.index.find(key);
-    if (found == frame.index.end()) {
-      frame.index.emplace(key, frame.values.size());
+    if (Item* found = local(frame, value))
+      *found = std::move(item);
+    else
       frame.values.emplace_back(value, std::move(item));
-    } else {
-      frame.values[found->second].second = std::move(item);
-    }
   }
 
   void record(Fn fn, Mod& mod, std::uint64_t before,
@@ -1643,14 +1641,14 @@ private:
     for (std::size_t index = 0; index < inputs.size(); ++index)
       put(frame, inputs[index], args[index]);
 
-    std::unordered_set<ValueKey, ValueHash> local;
+    std::unordered_set<ValueKey, ValueHash> locals;
     std::function<void(Op)> collect = [&](Op nested) {
       for (Blk blk : op_blks(nested)) {
         for (Val arg : block_args(blk))
-          local.insert({arg.store_, arg.id_});
+          locals.insert({arg.store_, arg.id_});
         for (Op child : block_ops(blk)) {
           for (Val out : op_outs(child))
-            local.insert({out.store_, out.id_});
+            locals.insert({out.store_, out.id_});
           if (child.kind() == Op::Kind::loop ||
               child.kind() == Op::Kind::branch)
             collect(child);
@@ -1664,7 +1662,7 @@ private:
         for (Op child : block_ops(blk)) {
           for (Val value : op_args(child)) {
             const ValueKey key{value.store_, value.id_};
-            if (!captures || local.contains(key) || frame.index.contains(key))
+            if (!captures || locals.contains(key) || local(frame, value))
               continue;
             auto item = static_value(mod, value, visiting, allowed);
             if (!item) {

@@ -274,6 +274,8 @@ struct Env::Impl {
   std::set<std::string, std::less<>> loading;
   std::map<std::string, Native, std::less<>> natives;
   std::vector<void*> libraries;
+  mutable std::map<std::vector<std::string>, std::vector<const Mod*>>
+      visibility;
 
   ~Impl() {
     for (auto it = libraries.rbegin(); it != libraries.rend(); ++it)
@@ -332,6 +334,7 @@ bool Env::load(std::string_view name) {
       std::erase_if(env.modules, [&](const auto& item) {
         return !modules.contains(item.first);
       });
+      env.visibility.clear();
       env.loading = std::move(loading);
       env.epoch = epoch;
     }
@@ -472,6 +475,7 @@ bool Env::load_one(std::string_view name) {
     impl_->libraries.push_back(handle);
   }
   impl_->loading.erase(key);
+  impl_->visibility.clear();
   ++impl_->epoch;
   return true;
 }
@@ -533,34 +537,46 @@ std::vector<Fn> Env::resolve_fns(const detail::Store& from,
   if (symbol.starts_with(own_prefix))
     return local(symbol.substr(own_prefix.size()));
 
-  std::vector<std::string> pending = from.uses;
-  std::set<std::string, std::less<>> visited;
-  while (!pending.empty()) {
-    std::string name = std::move(pending.back());
-    pending.pop_back();
-    if (!visited.insert(name).second)
-      continue;
-    const auto dependency = impl_->modules.find(name);
-    if (dependency == impl_->modules.end())
-      continue;
-    const auto next = dependency->second->uses();
-    pending.insert(pending.end(), next.begin(), next.end());
+  auto visible = impl_->visibility.find(from.uses);
+  if (visible == impl_->visibility.end()) {
+    std::vector<std::string> pending = from.uses;
+    std::set<std::string, std::less<>> visited;
+    while (!pending.empty()) {
+      std::string name = std::move(pending.back());
+      pending.pop_back();
+      if (!visited.insert(name).second)
+        continue;
+      const auto dependency = impl_->modules.find(name);
+      if (dependency == impl_->modules.end())
+        continue;
+      const std::vector<std::string> next = dependency->second->uses();
+      pending.insert(pending.end(), next.begin(), next.end());
+    }
+    std::vector<const Mod*> modules;
+    modules.reserve(visited.size());
+    for (const std::string& name : visited) {
+      const auto module = impl_->modules.find(name);
+      if (module != impl_->modules.end())
+        modules.push_back(module->second.get());
+    }
+    visible = impl_->visibility.emplace(from.uses, std::move(modules)).first;
   }
+  const std::vector<const Mod*>& modules = visible->second;
 
   if (symbol.find('.') != std::string_view::npos) {
     std::vector<Fn> matches = find_fns(symbol);
-    if (!matches.empty() &&
-        visited.contains(std::string(matches.front().module())))
+    if (!matches.empty() && std::any_of(modules.begin(), modules.end(),
+                                       [&](const Mod* module) {
+                                         return module->name() ==
+                                                matches.front().module();
+                                       }))
       return matches;
     return {};
   }
 
   std::vector<Fn> matches = local(symbol);
-  for (const std::string& name : visited) {
-    const auto module = impl_->modules.find(name);
-    if (module == impl_->modules.end())
-      continue;
-    std::vector<Fn> candidates = module->second->find_fns(symbol);
+  for (const Mod* module : modules) {
+    std::vector<Fn> candidates = module->find_fns(symbol);
     std::erase_if(candidates, [](Fn fn) { return fn.local(); });
     matches.insert(matches.end(), candidates.begin(), candidates.end());
   }
