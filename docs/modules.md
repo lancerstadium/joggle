@@ -246,13 +246,14 @@ signatures. `vm` emits a deterministic image and reports executed steps.
 Neither receives privileged access to the IR.
 
 By default, `c` derives public symbols from qualified function names and keeps
-valid source value names. An external payload argument uses exactly the name
-passed to `c.source`/`c.header` after C identifier sanitization; a collision
-with a source parameter is rejected. The `joggle_` prefix is reserved for
-otherwise unnamed result buffers, storage slots, temporary values, and
-C-keyword escapes; it is not added to user names. A module can pin an external
-name with `[c: {name: "vendor_kernel"}]`. Because Joggle is
-pre-1.0, source-derived spelling is not itself a stable ABI promise:
+valid source value names. Named pointer results derive from the return value
+with a collision-checked `_out` suffix. An external payload argument uses
+exactly the name passed to `c.source`/`c.header` after C identifier
+sanitization; a collision with a source parameter is rejected. The `joggle_`
+prefix is reserved for otherwise unnamed result buffers, storage slots,
+temporary values, and C-keyword escapes; it is not added to user names. A
+module can pin an external name with `[c: {name: "vendor_kernel"}]`. Because
+Joggle is pre-1.0, source-derived spelling is not itself a stable ABI promise:
 applications that require ABI stability should use an explicit binding and
 compile the emitted header and source from the same IR.
 

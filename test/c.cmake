@@ -296,7 +296,7 @@ if(NOT emitted_blob_source MATCHES
    emitted_blob_source MATCHES "static const unsigned char joggle_data_" OR
    emitted_blob_source MATCHES "extern const unsigned char joggle_data_" OR
    NOT emitted_blob_header MATCHES
-       "kernel_weights\\(const unsigned char\\* model, float\\* joggle_result\\);")
+       "kernel_weights\\(const unsigned char\\* model, float\\* values_out\\);")
   message(FATAL_ERROR
           "external-data C interface did not expose the raw blob parameter:\n"
           "${emitted_blob_header}\n${emitted_blob_source}")
@@ -316,7 +316,7 @@ endif()
 if(NOT emitted_header MATCHES
    "void kernel_split\\(int64_t x, int64_t\\* joggle_result_0, int64_t\\* joggle_result_1\\);" OR
    NOT emitted_header MATCHES
-   "void kernel_duplicate\\(const float\\* x, float\\* joggle_result_0, float\\* joggle_result_1\\);")
+   "void kernel_duplicate\\(const float\\* x, float\\* x_out, float\\* first_out\\);")
   message(FATAL_ERROR
           "C header did not derive its multi-result ABI structurally:\n"
           "${emitted_header}")

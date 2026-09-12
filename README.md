@@ -110,8 +110,10 @@ Conversion, optimization, storage planning, and emission remain explicit:
 `c.prepare` also specializes the tensor library's explicitly marked shape
 bookkeeping. This removes compile-time rank traversal without teaching the C
 emitter about Conv, ONNX, or a fixed tensor rank. User and imported value names
-remain visible in generated C; only compiler-created temporaries, result
-buffers, and planned storage slots use the reserved `joggle_` prefix.
+remain visible in generated C. Pointer results derived from named return values
+use a collision-checked `_out` suffix; only anonymous compiler-created
+temporaries, result buffers, and planned storage slots use the reserved
+`joggle_` prefix.
 
 A codec preserves source-format calls and attributes. Its bridge maps supported
 calls to shared tensor and neural-network semantics. Unknown calls remain
@@ -184,7 +186,8 @@ signatures; adding an external kernel does not add an emitter case.
 
 Generated C preserves source names when they are valid C identifiers. A public
 function such as `model.main` is emitted as `model_main`; named parameters and
-locals keep their readable names. Only compiler-owned temporaries, anonymous
+locals keep their readable names. Named pointer results derive from the return
+value with an `_out` suffix. Only compiler-owned temporaries, anonymous
 results, storage slots, or escaped C keywords use the reserved `joggle_`
 prefix. An explicit `[c: {name: "..."}]` binding pins an external ABI name when
 source-derived spelling is not the desired contract.

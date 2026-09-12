@@ -45,8 +45,13 @@ an environment containing the recorded ONNX Runtime and NumPy versions. The C
 rows use `examples/onnx/benchmark.c` and the flags stated above.
 
 `model-coverage-pilot.csv` records stage-level status for checksum-pinned ONNX
-Zoo models. A row marked `compile` is not counted as numerical correctness;
-only rows with `execute=pass` used the official stored output.
+Zoo models. A row with `compile_c=pass` is not counted as numerical
+correctness; only rows with `execute=pass` used the official stored output.
+`not_run` means that the current gate stops before that stage; it must not be
+read as either support or failure. `n/a` means that the frontend has no
+separate stage with that name. The TFLite MobileNet row uses the pinned model
+checked by `test/tflite.cpp`; its exposure gate validates structure and
+round-trip stability, not generated-C execution.
 
 `mobilenetv2-unroll-pilot.csv` compares the unmodified generated C with a
 module policy that applies `tile.unroll` to legal innermost loops whose static

@@ -662,7 +662,7 @@ if(JOGGLE_BUILD_TESTS)
               ${CMAKE_CURRENT_BINARY_DIR}/modules
               onnx.Conv
               onnx.MaxPool
-              onnx.Gemm
+              onnx.MatMul
     )
     add_test(
       NAME onnx-zoo-squeezenet

@@ -822,10 +822,12 @@ local fn call(
 }
 
 local fn ret(
-  m: Mod, op: Op, depth: int, blob: str, config: dict
+  m: Mod, op: Op, depth: int, blob: str, config: dict,
+  results: list<str>
 ) -> str {
   let values = ir.args(op)
   let indent = pad(depth)
+  assert(len(values) == len(results), "c: return arity is inconsistent")
   if len(values) == 0 {
     return indent + "return;\n"
   }
@@ -835,10 +837,9 @@ local fn ret(
   var out = ""
   for i in 0..len(values) {
     let value = values[i]
-    var output = "joggle_result"
+    let output = results[i]
     var iterator = "joggle_i"
     if len(values) != 1 {
-      output += "_" + text(i)
       iterator += "_" + text(i)
     }
     if tensor.valid(ir.type(value)) {
@@ -877,7 +878,8 @@ local fn constant(op: Op, depth: int, config: dict) -> str {
 }
 
 local fn loop(
-  m: Mod, op: Op, depth: int, blob: str, config: dict
+  m: Mod, op: Op, depth: int, blob: str, config: dict,
+  results: list<str>
 ) -> str {
   let bodies = ir.blks(op)
   assert(len(bodies) == 1, "c: loop must have one body")
@@ -921,7 +923,7 @@ local fn loop(
       }
     }
   }
-  out += block(m, body, depth + iterators, blob, config)
+  out += block(m, body, depth + iterators, blob, config, results)
   for reverse in 0..iterators {
     out += pad(depth + iterators - reverse - 1) + "}\n"
   }
@@ -929,14 +931,15 @@ local fn loop(
 }
 
 local fn branch(
-  m: Mod, op: Op, depth: int, blob: str, config: dict
+  m: Mod, op: Op, depth: int, blob: str, config: dict,
+  results: list<str>
 ) -> str {
   let bodies = ir.blks(op)
   let inputs = ir.args(op)
   assert(len(bodies) == 2 && len(inputs) >= 1,
          "c: branch structure is invalid")
-  let first = block(m, bodies[0], depth + 1, blob, config)
-  let second = block(m, bodies[1], depth + 1, blob, config)
+  let first = block(m, bodies[0], depth + 1, blob, config, results)
+  let second = block(m, bodies[1], depth + 1, blob, config, results)
   var out = pad(depth) + "if (" + expr(m, inputs[0], blob, config) +
             ") {\n" + first
   if second == "" {
@@ -948,7 +951,8 @@ local fn branch(
 }
 
 local fn block(
-  m: Mod, body: Blk, depth: int, blob: str, config: dict
+  m: Mod, body: Blk, depth: int, blob: str, config: dict,
+  results: list<str>
 ) -> str {
   var out = ""
   for op in ir.ops(body) {
@@ -957,15 +961,15 @@ local fn block(
       out += call(m, op, depth, blob, config)
     } else {
       if kind == "loop" {
-        out += loop(m, op, depth, blob, config)
+        out += loop(m, op, depth, blob, config, results)
       } else {
         if kind == "branch" {
           if logical(m, op, blob, config) == "" {
-            out += branch(m, op, depth, blob, config)
+            out += branch(m, op, depth, blob, config, results)
           }
         } else {
           if kind == "return" {
-            out += ret(m, op, depth, blob, config)
+            out += ret(m, op, depth, blob, config, results)
           } else {
             if kind == "constant" {
               if payload(op) {
@@ -980,6 +984,75 @@ local fn block(
         }
       }
     }
+  }
+  return out
+}
+
+local fn result_taken(
+  fn: Fn, blob: str, prior: list<str>, name: str
+) -> bool {
+  if name == blob && blob != "" {
+    return true
+  }
+  for value in ir.vals(fn) {
+    if label(value) == name {
+      return true
+    }
+  }
+  for existing in prior {
+    if existing == name {
+      return true
+    }
+  }
+  return false
+}
+
+local fn result_names(fn: Fn, blob: str) -> list<str> {
+  let types = ir.returns(fn)
+  var out: list<str> = []
+  for i in 0..len(types) {
+    var name = ""
+    var consistent = true
+    var found = false
+    for op in ir.ops(fn) {
+      if ir.kind(op) == "return" {
+        let values = ir.args(op)
+        assert(len(values) == len(types), "c: return arity is inconsistent")
+        let source = ir.name(values[i])
+        if source == "" {
+          consistent = false
+        } else {
+          let candidate = c_name(source)
+          if found && candidate != name {
+            consistent = false
+          } else {
+            name = candidate
+          }
+        }
+        found = true
+      }
+    }
+    if found && consistent {
+      name += "_out"
+    }
+    if !found || !consistent || result_taken(fn, blob, out, name) {
+      name = ""
+      var base = "joggle_result"
+      if len(types) != 1 {
+        base += "_" + text(i)
+      }
+      for attempt in 0..len(ir.vals(fn)) + len(types) + 2 {
+        var candidate = base
+        if attempt != 0 {
+          candidate += "_" + text(attempt)
+        }
+        if name == "" && !result_taken(fn, blob, out, candidate) {
+          name = candidate
+        }
+      }
+      assert(name != "", "c: could not name a result parameter")
+    }
+    out += [name]
   }
   return out
 }
@@ -1017,6 +1090,7 @@ local fn signature(m: Mod, fn: Fn, blob: str, config: dict) -> str {
     arguments += 1
   }
   if len(returns) != 1 || tensor.valid(returns[0]) {
+    let results = result_names(fn, blob)
     for i in 0..len(returns) {
       if arguments != 0 {
         out += ", "
@@ -1028,10 +1102,7 @@ local fn signature(m: Mod, fn: Fn, blob: str, config: dict) -> str {
       } else {
         out += scalar(type, config) + "*"
       }
-      out += " joggle_result"
-      if len(returns) != 1 {
-        out += "_" + text(i)
-      }
+      out += " " + results[i]
       arguments += 1
     }
   }
@@ -1068,8 +1139,9 @@ local fn definition(m: Mod, fn: Fn, blob: str, config: dict) -> str {
   if blob != "" {
     data = pad(1) + "(void)" + blob + ";\n"
   }
+  let results = result_names(fn, blob)
   return linkage(m, fn) + signature(m, fn, blob, config) + " {\n" +
-         data + memory + block(m, bodies[0], 1, blob, config) + "}\n"
+         data + memory + block(m, bodies[0], 1, blob, config, results) + "}\n"
 }
 
 local fn functions(m: Mod) -> list<Fn> {

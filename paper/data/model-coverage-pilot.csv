@@ -3,3 +3,5 @@ MNIST-8,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000190734863,official ONNX Zo
 MobileNetV2-7,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000209808350,official ONNX Zoo input and output
 SqueezeNet1.1-7,ONNX,pass,pass,pass,pass,pass,pass,not_run,,external-weight C compiles
 SqueezeNet1.0-13-QDQ,ONNX,pass,pass,pass,pass,pass,pass,not_run,,quantize and dequantize bodies exposed; external-weight C compiles
+UltraFace-RFB-320,ONNX,pass,pass,pass,not_run,not_run,not_run,not_run,,244 constants and 242 calls; type frontier closes from 240 to zero
+MobileNetV2,TFLite,pass,n/a,pass,pass,not_run,not_run,not_run,,107 constants and 66 calls; all selected calls expose and round trip
