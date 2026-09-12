@@ -12,8 +12,9 @@ fn grid(rows: int, cols: int) -> int {
   var total = 0
   for row in 0..rows, column in 2..cols {
     let inside = column < cols - 1
+    let product = row * column
     let coordinate = row * 100 + column
-    if inside {
+    if inside || product < 0 {
       total += coordinate
     }
   }

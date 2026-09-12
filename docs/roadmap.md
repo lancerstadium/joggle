@@ -52,9 +52,11 @@ value dependence through nested blocks, and `tile.axes` projects that fact onto
 the axes of an existing loop. `tile.reads` and `tile.writes` expose grouped
 index values while following store and structured carried bindings. They are
 validated both on a small conditional grid and on the seven-axis
-spatial-convolution body. Cross-iteration memory dependence and legal
-interchange remain open; these access facts must not be presented as their
-substitute.
+spatial-convolution body. `tile.affine` now proves exact integer affine forms
+for those values and rejects nonlinear, truncating, unsupported, or
+coefficient-overflowing expressions. Cross-iteration memory dependence and
+legal interchange remain open; affine form, bounds, and grouped accesses must
+be combined before an ordering change is considered safe.
 
 The goal is not an automatic scheduler. It is a small, inspectable substrate on
 which a researcher can implement and compare scheduling policies.

@@ -301,6 +301,7 @@ loop transform. A project chooses the loop with ordinary reflection:
 
 ```jog
 let axes = tile.axes(loop, index)
+let form = tile.affine(loop, index)
 if len(axes) == 2 && axes[0] == 0 && axes[1] == 1 {
   // The index is derived from both loop axes.
 }
@@ -311,6 +312,13 @@ policy inspect which loop arguments contribute to an index or condition while
 keeping the program in the same IR. It intentionally reports value dependence,
 not a complete memory-dependence proof; a transform must still inspect loads,
 stores, aliasing, and carried results before changing order.
+
+When `form` is nonempty it is `[offset, coefficient0, coefficient1, ...]`.
+For example, an index `row * 100 + column` in a two-axis loop produces
+`[0, 100, 1]`. `tile.affine` returns an empty list for `row * column`, an
+inexact integer division, an unsupported definition, or arithmetic overflow.
+This gives a user pass a proof-oriented building block for layout and loop
+legality without introducing an affine expression object.
 
 For tensor accesses, `tile.reads(loop, tensor)` and
 `tile.writes(loop, tensor)` return `list<list<Val>>`. Each inner list is the

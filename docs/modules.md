@@ -117,7 +117,7 @@ hard-code these categories.
 | `bounds` | Conservative integer range inference and representation checks |
 | `stat` | Structural program measurements through user-supplied measurement functions |
 | `mem` | Static tensor-buffer reuse planning and inspectable slot annotations |
-| `tile` | Explicit loop splitting, unrolling, and pointwise producer/consumer fusion |
+| `tile` | Loop/access analysis plus explicit splitting, unrolling, and pointwise fusion |
 | `onnx` | ONNX binary decoding and source-format calls |
 | `onnx.nn` | ONNX type refinement and explicit conversion to shared semantics |
 | `tflite` | TFLite binary decoding and source-format calls |
@@ -269,6 +269,14 @@ depends. Both queries are read-only and operate on the existing `Val` and `Op`
 handles; they do not introduce an access descriptor or schedule object. A value
 dependence is not by itself proof that two memory accesses are independent, so
 loop rewrites must combine these facts with access and carried-value checks.
+`tile.affine(loop, value)` adds the stronger fact needed for address reasoning.
+It returns `[offset, coefficient0, coefficient1, ...]` for an integer value
+that can be proved affine in the loop axes, or an empty list when the proof is
+not available. It follows ordinary constants, copies, same-type casts, addition,
+subtraction, constant multiplication, and exact constant division. Nonlinear
+products, truncating division, unsupported control flow, and coefficient
+arithmetic overflow are rejected rather than approximated. The result is
+compile-time data over existing values, not an affine dialect or another IR.
 `tile.reads(loop, tensor)` and `tile.writes(loop, tensor)` return the existing
 index values grouped once per access. They conservatively follow tensor
 bindings through stores, branch-carried values, and loop-carried values, so a

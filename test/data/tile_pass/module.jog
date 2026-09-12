@@ -27,6 +27,7 @@ fn check_axes(m: Mod) -> bool {
 
   var inside_found = false
   var coordinate_found = false
+  var product_found = false
   for value in ir.vals(function) {
     if ir.name(value) == "inside" {
       let axes = tile.axes(loop, value)
@@ -34,6 +35,8 @@ fn check_axes(m: Mod) -> bool {
              !tile.depends(value, body_args[0]) &&
              tile.depends(value, body_args[1]),
              "condition has the wrong axis dependence")
+      assert(len(tile.affine(loop, value)) == 0,
+             "condition was incorrectly accepted as affine")
       inside_found = true
     }
     if ir.name(value) == "coordinate" {
@@ -42,10 +45,19 @@ fn check_axes(m: Mod) -> bool {
              tile.depends(value, body_args[0]) &&
              tile.depends(value, body_args[1]),
              "coordinate has the wrong axis dependence")
+      assert(tile.affine(loop, value) == [0, 100, 1],
+             "coordinate has the wrong affine form")
       coordinate_found = true
     }
+    if ir.name(value) == "product" {
+      let axes = tile.axes(loop, value)
+      assert(len(axes) == 2 && axes[0] == 0 && axes[1] == 1 &&
+             len(tile.affine(loop, value)) == 0,
+             "nonlinear product was accepted as affine")
+      product_found = true
+    }
   }
-  assert(inside_found && coordinate_found,
+  assert(inside_found && coordinate_found && product_found,
          "axis check could not find the named values")
   let body_ops = ir.ops(body)
   let yielded = ir.args(body_ops[len(body_ops) - 1])
@@ -107,6 +119,17 @@ fn check_spatial_axes(m: Mod) -> bool {
   assert(expect_axes(loop, out_reads[0][0], [0, 1, 5, 6]) &&
          expect_axes(loop, out_writes[0][0], [0, 1, 5, 6]),
          "spatial output accesses have the wrong axes")
+  assert(tile.affine(loop, x_reads[0][0]) ==
+           [0, 9, 9, 9, 3, 1, 3, 1],
+         "spatial input index has the wrong affine form")
+  assert(tile.affine(loop, weight_reads[0][0]) ==
+           [0, 0, 4, 4, 2, 1, 0, 0],
+         "spatial weight index has the wrong affine form")
+  assert(tile.affine(loop, out_reads[0][0]) ==
+           [0, 4, 4, 0, 0, 0, 2, 1] &&
+         tile.affine(loop, out_writes[0][0]) ==
+           [0, 4, 4, 0, 0, 0, 2, 1],
+         "spatial output accesses have the wrong affine form")
   assert(ir.revision(m) == before,
          "spatial axis queries changed the module")
   return true

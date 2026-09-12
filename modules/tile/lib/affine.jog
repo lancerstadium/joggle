@@ -1,0 +1,213 @@
+local fn affine_seen(value: Val, seen: list<Val>) -> bool {
+  for item in seen {
+    if item == value {
+      return true
+    }
+  }
+  return false
+}
+
+local fn affine_integer(type: Ty) -> bool {
+  let name = base.name(type)
+  return name == "int" || name == "index" ||
+         name == "i8" || name == "i16" || name == "i32" ||
+         name == "i64" || name == "u8" || name == "u16" ||
+         name == "u32" || name == "u64"
+}
+
+local fn affine_zero(axes: int) -> list<int> {
+  var out: list<int> = [0]
+  for axis in 0..axes {
+    out += [0]
+  }
+  return out
+}
+
+local fn affine_add_int(left: int, right: int) -> list<int> {
+  let low = -9223372036854775807 - 1
+  let high = 9223372036854775807
+  if (right > 0 && left > high - right) ||
+     (right < 0 && left < low - right) {
+    return []
+  }
+  return [left + right]
+}
+
+local fn affine_sub_int(left: int, right: int) -> list<int> {
+  let low = -9223372036854775807 - 1
+  let high = 9223372036854775807
+  if (right < 0 && left > high + right) ||
+     (right > 0 && left < low + right) {
+    return []
+  }
+  return [left - right]
+}
+
+local fn affine_mul_int(left: int, right: int) -> list<int> {
+  let low = -9223372036854775807 - 1
+  let high = 9223372036854775807
+  if left > 0 {
+    if (right > 0 && left > high / right) ||
+       (right < 0 && right < low / left) {
+      return []
+    }
+  } else {
+    if left < 0 {
+      if (right > 0 && left < low / right) ||
+         (right < 0 && right < high / left) {
+        return []
+      }
+    }
+  }
+  return [left * right]
+}
+
+local fn affine_add(
+  left: list<int>, right: list<int>, subtract: bool
+) -> list<int> {
+  if len(left) == 0 || len(left) != len(right) {
+    return []
+  }
+  var out: list<int> = []
+  for i in 0..len(left) {
+    var item = affine_add_int(left[i], right[i])
+    if subtract {
+      item = affine_sub_int(left[i], right[i])
+    }
+    if len(item) == 0 {
+      return []
+    }
+    out += item
+  }
+  return out
+}
+
+local fn affine_scale(value: list<int>, factor: int) -> list<int> {
+  if len(value) == 0 {
+    return []
+  }
+  var out: list<int> = []
+  for item in value {
+    let product = affine_mul_int(item, factor)
+    if len(product) == 0 {
+      return []
+    }
+    out += product
+  }
+  return out
+}
+
+local fn affine_exact(value: list<int>) -> list<int> {
+  if len(value) == 0 {
+    return []
+  }
+  for i in 1..len(value) {
+    if value[i] != 0 {
+      return []
+    }
+  }
+  return [value[0]]
+}
+
+local fn affine_divide(value: list<int>, divisor: int) -> list<int> {
+  if len(value) == 0 || divisor == 0 {
+    return []
+  }
+  let low = -9223372036854775807 - 1
+  var out: list<int> = []
+  for item in value {
+    if (item == low && divisor == -1) || item % divisor != 0 {
+      return []
+    }
+    out += [item / divisor]
+  }
+  return out
+}
+
+local fn affine_in(
+  loop: Op, value: Val, seen: list<Val>
+) -> list<int> {
+  if !affine_integer(ir.type(value)) {
+    return []
+  }
+  let inputs = ir.args(loop)
+  let outputs = ir.outs(loop)
+  let axes = len(inputs) - len(outputs)
+  let body_args = ir.args(ir.blks(loop)[0])
+
+  for axis in 0..axes {
+    if value == body_args[axis] {
+      var out = affine_zero(axes)
+      out[axis + 1] = 1
+      return out
+    }
+  }
+  if ir.is_const(value) && base.kind(ir.constant(value)) == "int" {
+    var out = affine_zero(axes)
+    out[0] = base.int(ir.constant(value))
+    return out
+  }
+  if affine_seen(value, seen) {
+    return []
+  }
+  let op = ir.def(value)
+  if !ir.live(op) || ir.kind(op) != "call" {
+    return []
+  }
+  let args = ir.args(op)
+  let name = ir.callee(op)
+  let next = seen + [value]
+  if len(args) == 1 {
+    let input = affine_in(loop, args[0], next)
+    if name == "base.copy" || name == "operator +" ||
+       (name == text(ir.type(value)) &&
+        ir.type(args[0]) == ir.type(value)) {
+      return input
+    }
+    if name == "operator -" {
+      return affine_scale(input, -1)
+    }
+    return []
+  }
+  if len(args) != 2 {
+    return []
+  }
+  let left = affine_in(loop, args[0], next)
+  let right = affine_in(loop, args[1], next)
+  if name == "operator +" {
+    return affine_add(left, right, false)
+  }
+  if name == "operator -" {
+    return affine_add(left, right, true)
+  }
+  if name == "operator *" {
+    let left_value = affine_exact(left)
+    if len(left_value) == 1 {
+      return affine_scale(right, left_value[0])
+    }
+    let right_value = affine_exact(right)
+    if len(right_value) == 1 {
+      return affine_scale(left, right_value[0])
+    }
+    return []
+  }
+  if name == "operator /" {
+    let divisor = affine_exact(right)
+    if len(divisor) == 1 {
+      return affine_divide(left, divisor[0])
+    }
+  }
+  return []
+}
+
+fn affine(loop: Op, value: Val) -> list<int> {
+  assert(ir.live(loop) && ir.kind(loop) == "loop" && ir.live(value),
+         "tile.affine requires a live loop and value")
+  let bodies = ir.blks(loop)
+  let inputs = ir.args(loop)
+  let outputs = ir.outs(loop)
+  assert(len(bodies) == 1 && len(inputs) > len(outputs) &&
+         len(ir.args(bodies[0])) == len(inputs),
+         "tile.affine requires a structured loop")
+  return affine_in(loop, value, [])
+}
