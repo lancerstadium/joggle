@@ -38,7 +38,7 @@ extent and recursive call count fit caller-provided budgets:
 
 ```sh
 ./build/joggle run cost.fuse prepared.jog \
-  --arg 65536 --arg 12 -M examples -M build/modules > selected.jog
+  --arg 65536 --arg 100 -M examples -M build/modules > selected.jog
 ```
 
 This is intentionally a policy example, not a claim that those two features
