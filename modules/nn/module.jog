@@ -314,6 +314,37 @@ fn batch_norm<E: Ty, N: int, C: int, H: int, W: int>(
   return out
 }
 
+fn lrn<E: Ty, S: list<int>>(
+  x: tensor<E, S>, size: int, alpha: f64, beta: f64, bias: f64
+) -> tensor<E, S> {
+  let channels = S[1]
+  var channel_stride = 1
+  for axis in 2..len(S) {
+    channel_stride *= S[axis]
+  }
+  let lower = (size - 1) / 2
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    let channel = i / channel_stride % channels
+    var first = channel - lower
+    if first < 0 {
+      first = 0
+    }
+    var last = channel + size - lower
+    if last > channels {
+      last = channels
+    }
+    var sum = E(0)
+    for c in first..last {
+      let value = x[i + (c - channel) * channel_stride]
+      sum += value * value
+    }
+    let scale = E(bias) + E(alpha) / E(size) * sum
+    out[i] = x[i] / pow(scale, E(beta))
+  }
+  return out
+}
+
 fn linear<E: Ty, M: int, N: int, K: int>(
   x: tensor<E, [M, K]>, weight: tensor<E, [K, N]>
 ) -> tensor<E, [M, N]> {

@@ -119,7 +119,6 @@ local fn dropout_type(m: Mod, op: Op) -> bool {
 local fn unary_rules() -> list<list<str>> {
   return [
     ["onnx.Relu", "nn.relu"],
-    ["onnx.Dropout", "base.copy"],
     ["onnx.Sqrt", "nn.sqrt"],
     ["onnx.Reciprocal", "nn.recip"],
     ["onnx.Tanh", "nn.tanh"],
@@ -2467,7 +2466,7 @@ local fn convert_unary(m: Mod, op: Op, callee: str) -> bool {
 }
 
 [phase: "compute", on: [
-  "onnx.Relu", "onnx.Dropout", "onnx.Sqrt", "onnx.Reciprocal",
+  "onnx.Relu", "onnx.Sqrt", "onnx.Reciprocal",
   "onnx.Tanh", "onnx.Exp", "onnx.Floor", "onnx.Log", "onnx.Erf",
   "onnx.Sigmoid", "onnx.Ceil", "onnx.Round"
 ]]
@@ -2479,6 +2478,38 @@ local fn convert_unary(m: Mod, op: Op) -> bool {
     }
   }
   return false
+}
+
+[phase: "compute", on: "onnx.Dropout"]
+local fn convert_dropout(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 1 || len(inputs) > 3 ||
+     len(outputs) < 1 || len(outputs) > 2 ||
+     ir.type(inputs[0]) != ir.type(outputs[0]) {
+    return false
+  }
+  if len(inputs) == 3 {
+    if !ir.is_const(inputs[2]) ||
+       base.kind(ir.constant(inputs[2])) != "bool" ||
+       ir.constant(inputs[2]) == true {
+      return false
+    }
+  }
+  if len(outputs) == 2 && len(ir.users(outputs[1])) != 0 {
+    return false
+  }
+  let copied = ir.call(
+    m, op, "base.copy", [inputs[0]], ir.type(outputs[0])
+  )
+  if !ir.live(copied) {
+    return false
+  }
+  carry(m, outputs[0], copied)
+  if !ir.replace(m, outputs[0], copied) {
+    return false
+  }
+  return ir.erase(m, op)
 }
 
 [phase: "compute", on: "onnx.LeakyRelu"]
@@ -2549,6 +2580,30 @@ local fn convert_norm(m: Mod, op: Op) -> bool {
     ir.constant(m, op, base.get(meta, "epsilon", 0.00001), ty("f64"))
   ]
   return convert_call(m, op, "nn.batch_norm", inputs)
+}
+
+[phase: "compute", on: "onnx.LRN"]
+local fn convert_lrn(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 ||
+     ir.type(inputs[0]) != ir.type(outputs[0]) ||
+     !tensor.valid(ir.type(inputs[0])) {
+    return false
+  }
+  let shape = tensor.dims(ir.type(inputs[0]))
+  let meta = attrs(op)
+  let size = base.get(meta, "size", 0)
+  if len(shape) < 2 || size <= 0 {
+    return false
+  }
+  inputs += [ir.constant(m, op, size, ty("int"))]
+  inputs += [
+    ir.constant(m, op, base.get(meta, "alpha", 0.0001), ty("f64"))
+  ]
+  inputs += [ir.constant(m, op, base.get(meta, "beta", 0.75), ty("f64"))]
+  inputs += [ir.constant(m, op, base.get(meta, "bias", 1.0), ty("f64"))]
+  return convert_call(m, op, "nn.lrn", inputs)
 }
 
 [phase: "compute", on: "onnx.Softmax"]

@@ -606,12 +606,18 @@ use immutable repository commits and SHA-256 checks. The 28 MiB
 SSD-MobileNetV1-12 detector
 is a partial semantic stress gate: 1,567 constants, 5,985 nodes, eight nested
 graphs, Resize, and NonMaxSuppression must verify and round-trip, while type
-propagation reduces 6,790 open results to the pinned frontier of 4,682. This is
-deliberately not a full execution claim. ShuffleNet V2 independently requires
+propagation resolves all 6,790 initially open results. Semantic conversion then
+stops with 710 source calls, principally post-processing, dynamic indexing, and
+control flow. This is deliberately not a full execution claim. ShuffleNet V2
+independently requires
 complete inference, conversion, verification, and round trip. DenseNet-121
 removes every imported intermediate result type before inference and requires
 all 910 to be reconstructed from the model signature and constants, preventing
-value-info-rich models from producing a false positive.
+value-info-rich models from producing a false positive. GoogLeNet adds
+local-response normalization and a two-result inference Dropout. The bridge
+removes Dropout only when training is disabled and the mask has no users;
+otherwise the source call remains visible instead of silently changing training
+semantics.
 
 ## Add a data format and primitive
 

@@ -993,8 +993,10 @@ int main(int argc, char** argv) {
       "  [onnx: {auto_pad: \"SAME_UPPER\", kernel_shape: [2, 2], "
       "strides: [2, 2]}]\n"
       "  let pooled = onnx.MaxPool(activated)\n"
+      "  [onnx: {alpha: 0.0001, beta: 0.75, bias: 1.0, size: 5}]\n"
+      "  let normalized = onnx.LRN(pooled)\n"
       "  [onnx: {ratio: 0.5}]\n"
-      "  let kept = onnx.Dropout(pooled)\n"
+      "  let kept, mask = onnx.Dropout(normalized)\n"
       "  let flat = onnx.Flatten(kept)\n"
       "  [onnx: {alpha: 1.0, beta: 1.0, transB: 1}]\n"
       "  let out = onnx.Gemm(flat, matrix, bias)\n"
@@ -1009,7 +1011,8 @@ int main(int argc, char** argv) {
   CHECK(zoo_slice.verify(env));
   const std::set<std::string, std::less<>> zoo_calls{
       "nn.conv2d",       "nn.leaky_relu", "nn.max_pool2d",
-      "base.copy",       "tensor.reshape", "nn.gemm"};
+      "nn.lrn",          "base.copy",      "tensor.reshape",
+      "nn.gemm"};
   std::set<std::string, std::less<>> seen_zoo_calls;
   for (joggle::Op op : zoo_slice.ops()) {
     CHECK(!op.callee().starts_with("onnx."));

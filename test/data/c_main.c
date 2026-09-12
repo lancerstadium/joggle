@@ -79,6 +79,13 @@ int main(void) {
   if (fabsf(kernel_relu(-2.0f)) > 1e-6f ||
       fabsf(kernel_relu(3.0f) - 3.0f) > 1e-6f)
     return 4;
+  const float lrn_input[3] = {1.0f, 2.0f, 3.0f};
+  const float lrn_expected[3] = {0.375f, 0.352941176f, 0.5625f};
+  float lrn_output[3] = {0.0f, 0.0f, 0.0f};
+  kernel_lrn(lrn_input, lrn_output);
+  for (size_t i = 0; i < 3; ++i)
+    if (fabsf(lrn_output[i] - lrn_expected[i]) > 1e-6f)
+      return 31;
   if (!kernel_logical(2, 1) || kernel_logical(2, -1) ||
       kernel_logical(-2, -2))
     return 8;
