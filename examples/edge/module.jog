@@ -108,6 +108,40 @@ fn nn.conv2d<
 [c: {name: "edge_extrema"}]
 fn model.measure(x: tensor<f32, [4]>) -> (f32, f32);
 
+local fn literal(value: Val, expected: list<int>) -> bool {
+  let source = ir.def(value)
+  if !ir.live(source) || ir.kind(source) != "call" ||
+     ir.callee(source) != "base.list" {
+    return false
+  }
+  let items = ir.args(source)
+  if len(items) != len(expected) {
+    return false
+  }
+  for i in 0..len(items) {
+    if !ir.is_const(items[i]) ||
+       base.kind(ir.constant(items[i])) != "int" ||
+       base.int(ir.constant(items[i])) != expected[i] {
+      return false
+    }
+  }
+  return true
+}
+
+fn accepts(m: Mod, op: Op, impl: Fn) -> bool {
+  if ir.symbol(impl) != "edge.nn.conv2d" {
+    return true
+  }
+  let args = ir.args(op)
+  if len(args) == 6 {
+    return true
+  }
+  return len(args) == 11 &&
+         literal(args[7], [0, 1, 2, 3]) &&
+         literal(args[8], [0, 1, 2, 3]) &&
+         literal(args[9], [0, 1, 2, 3])
+}
+
 fn apply(m: Mod) -> bool {
-  return opt.apply(m, ir.fns("edge"))
+  return opt.apply(m, ir.fns("edge"), ir.find("edge.accepts"))
 }

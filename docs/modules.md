@@ -216,8 +216,11 @@ It should not require edits to the core, the C emitter, or another frontend.
 capability function whether an operation is accepted and expands available
 bodies only where needed. `opt.apply` selects compatible ordinary functions:
 it expands a body-bearing implementation and transactionally retargets to a
-bodyless external implementation. `opt.basic` performs target-independent
-cleanup. `opt.specialize(m, key,
+bodyless external implementation. Its guarded overload takes an ordinary
+`fn(Mod, Op, Fn) -> bool` predicate and filters candidates before overload
+selection; mutation by that predicate is rejected. This lets a module express
+layout, alignment, or device-feature constraints without a core registry.
+`opt.basic` performs target-independent cleanup. `opt.specialize(m, key,
 value)` fully expands finite static loops carrying the selected open attribute
 and folds list projection and constant branches around dynamic values. The
 selection is explicit: the core never treats an attribute as behavior.

@@ -179,6 +179,14 @@ ABI from each resolved call and reject incompatible erasures of the same
 symbol. This is the connection between reusable semantic calls and user-owned
 low-level computation, not a second kernel or target IR.
 
+Type compatibility is necessary but not sufficient for many implementations.
+The guarded form of `opt.apply` invokes a normal read-only
+`fn(Mod, Op, Fn) -> bool` for each type-compatible candidate before applying
+the same specificity rule. The candidate is a live `Fn`, not a string or a
+second descriptor. A module can consequently inspect constant layout lists,
+alignment metadata, scalar formats, or declared device features without the
+core assigning meaning to any of them.
+
 Frontend conversion follows the same rule. A codec preserves the source format
 faithfully. A separate bridge performs explicit semantic conversion when the
 user requests it. ONNX and TFLite do not define canonical neural-network

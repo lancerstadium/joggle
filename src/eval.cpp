@@ -2182,7 +2182,9 @@ private:
         if (!fn->generics().empty() ||
             params.size() != (configured ? 3 : 2) ||
             params[0].type() != Ty("Mod") ||
-            (configured && !accepts_runtime(params[2].type(), args[3])) ||
+            (configured &&
+             (!accepts_runtime(params[2].type(), args[3]) ||
+              !valid_runtime_handles(args[3]))) ||
             returns.size() != 1 || returns.front() != expected) {
           fail("ir.invoke callback must match fn(Mod, subject" +
                    std::string(configured ? ", argument" : "") + ") -> " +

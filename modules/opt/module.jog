@@ -767,7 +767,36 @@ fn expose(m: Mod, accept: Fn, arg: Attr, limit: int) -> bool {
   return expose_with(m, accept, arg, true, limit)
 }
 
-fn apply(m: Mod, impls: list<Fn>, limit: int) -> bool {
+local fn candidates(
+  m: Mod, op: Op, impls: list<Fn>, predicates: list<Fn>
+) -> list<Fn> {
+  assert(len(predicates) <= 1, "opt.apply accepts at most one predicate")
+  var symbol = ir.callee(op)
+  let source = ir.resolve(m, op)
+  if ir.live(source) {
+    symbol = ir.symbol(source)
+  }
+  var out: list<Fn> = []
+  for impl in impls {
+    if ir.name(impl) == symbol && ir.accepts(op, impl) {
+      var accepted = true
+      if len(predicates) == 1 {
+        let before = ir.revision(m)
+        accepted = ir.invoke<bool>(m, op, predicates[0], impl)
+        assert(ir.revision(m) == before,
+               "opt.apply predicate must not mutate the module")
+      }
+      if accepted {
+        out += [impl]
+      }
+    }
+  }
+  return out
+}
+
+local fn apply_with(
+  m: Mod, impls: list<Fn>, predicates: list<Fn>, limit: int
+) -> bool {
   assert(limit >= 0, "opt.apply limit must not be negative")
   var changed = false
   var again = true
@@ -780,18 +809,7 @@ fn apply(m: Mod, impls: list<Fn>, limit: int) -> bool {
       var targets: list<Fn> = []
       for op in ir.ops(m) {
         if ir.live(op) && ir.kind(op) == "call" && len(ir.meta(op)) == 0 {
-          var symbol = ir.callee(op)
-          let source = ir.resolve(m, op)
-          if ir.live(source) {
-            symbol = ir.symbol(source)
-          }
-          var candidates: list<Fn> = []
-          for impl in impls {
-            if ir.name(impl) == symbol {
-              candidates += [impl]
-            }
-          }
-          let selected = ir.match(op, candidates)
+          let selected = ir.match(op, candidates(m, op, impls, predicates))
           if ir.live(selected) {
             if len(ir.blks(selected)) == 0 {
               redirects += [op]
@@ -824,8 +842,21 @@ fn apply(m: Mod, impls: list<Fn>, limit: int) -> bool {
   return changed
 }
 
+fn apply(m: Mod, impls: list<Fn>, limit: int) -> bool {
+  let predicates: list<Fn> = []
+  return apply_with(m, impls, predicates, limit)
+}
+
 fn apply(m: Mod, impls: list<Fn>) -> bool {
   return apply(m, impls, len(impls) + 1)
+}
+
+fn apply(m: Mod, impls: list<Fn>, accept: Fn, limit: int) -> bool {
+  return apply_with(m, impls, [accept], limit)
+}
+
+fn apply(m: Mod, impls: list<Fn>, accept: Fn) -> bool {
+  return apply(m, impls, accept, len(impls) + 1)
 }
 
 fn rename(m: Mod, rules: list<list<str>>) -> bool {

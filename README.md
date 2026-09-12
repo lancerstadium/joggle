@@ -164,6 +164,9 @@ Run it by adding its parent directory to the module search path:
 Functions may accept normal `Attr` parameters or another `Fn` as policy.
 An extension can therefore reuse safe IR construction, body expansion, loop
 rewrites, and target capability queries without a native binding per operator.
+`opt.apply` also accepts a read-only `fn(Mod, Op, Fn) -> bool` predicate, so an
+implementation module can guard candidates by layout, representation, or
+device features before ordinary overload selection.
 
 The complete out-of-tree
 [`ikj` example](examples/ikj/module.jog) replaces matrix multiplication with

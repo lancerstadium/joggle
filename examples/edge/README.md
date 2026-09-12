@@ -55,10 +55,9 @@ transactionally, so failure leaves neither a partial call rewrite nor a stray
 `use edge`.
 
 This portable example deliberately implements NCHW input/output and OIHW
-weights. The full convolution overload accepts the source layout arguments to
-match the shared semantic function, but is intended only for physical shapes
-matching that contract. Constant-argument guards are not yet part of
-implementation selection, so this module must not be offered as a candidate
-for a different layout. A target supporting NHWC should provide another
-ordinary overload and kernel. Adding guards is preferable to hiding a layout
-test in the core or the ONNX frontend.
+weights. Its `accepts` function receives both the semantic call and each
+type-compatible candidate. It admits the full convolution adapter only when
+all three layout lists are constant `[0, 1, 2, 3]`; another-layout probe in the
+example remains on the shared semantic implementation. A target supporting
+NHWC can provide another ordinary overload and predicate. Neither the core nor
+the ONNX frontend contains a layout-specific selection branch.

@@ -213,6 +213,26 @@ fn apply_impls(m: Mod) -> bool {
   return opt.apply(m, typed_caps())
 }
 
+fn concrete_impl(m: Mod, op: Op, impl: Fn) -> bool {
+  return len(ir.generics(impl)) == 0
+}
+
+fn apply_concrete(m: Mod) -> bool {
+  return opt.apply(
+    m, typed_caps(), ir.find("script.concrete_impl")
+  )
+}
+
+fn mutating_impl(m: Mod, op: Op, impl: Fn) -> bool {
+  return ir.set(m, op, "predicate_edit", ir.name(impl))
+}
+
+fn apply_mutating(m: Mod) -> bool {
+  return opt.apply(
+    m, typed_caps(), ir.find("script.mutating_impl")
+  )
+}
+
 fn apply_external(m: Mod) -> bool {
   return opt.apply(m, [ir.find("script.external_select.external")])
 }

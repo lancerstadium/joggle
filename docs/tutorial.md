@@ -202,6 +202,14 @@ Use `opt.apply(m, impls, limit)` when a recursive specialization needs an
 explicit bound; ambiguity or bound exhaustion restores the complete input
 module, and declaration order is never a selection policy.
 
+When types alone cannot express a constraint, pass a normal read-only
+`fn(Mod, Op, Fn) -> bool` as the third argument. It receives the semantic call
+and each type-compatible candidate before specificity is resolved. The edge
+example uses this form to select its portable Conv only for constant
+NCHW/OIHW/NCHW layout lists. The same mechanism can inspect an open format
+attribute, alignment, or a user-defined device feature; it does not assign any
+of those concepts to the core.
+
 If a selected implementation has no body, `opt.apply` retargets the call to
 that declaration instead of expanding it. The source model still calls its
 semantic function; selection transactionally adds the implementation module,

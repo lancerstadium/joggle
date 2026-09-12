@@ -149,6 +149,25 @@ int main(int argc, char** argv) {
   const joggle::Fn generic_impl =
       env.match(implementation_calls[1], relu_impls, &ambiguous);
   CHECK(generic_impl && !ambiguous && !generic_impl.generics().empty());
+  joggle::Mod guarded;
+  CHECK(joggle::parse(env, implementation_source, guarded,
+                      "guarded-implementation-network.jog"));
+  CHECK(guarded.verify(env));
+  CHECK(joggle::run(env, "script.apply_concrete", guarded));
+  CHECK(guarded.verify(env));
+  CHECK(count(guarded, "edge.relu4") == 1);
+  CHECK(count(guarded, "relu") == 1);
+  CHECK(count(guarded, "edge.relu") == 0);
+  joggle::Mod mutating_guard;
+  CHECK(joggle::parse(env, implementation_source, mutating_guard,
+                      "mutating-guard-network.jog"));
+  CHECK(mutating_guard.verify(env));
+  const std::string before_mutating_guard = joggle::print(mutating_guard);
+  const std::uint64_t before_mutating_revision = mutating_guard.revision();
+  CHECK(!joggle::run(env, "script.apply_mutating", mutating_guard));
+  CHECK(joggle::print(mutating_guard) == before_mutating_guard);
+  CHECK(mutating_guard.revision() == before_mutating_revision);
+  mutating_guard.clear_diags();
   joggle::Attr implementation_report;
   CHECK(joggle::run(env, "script.apply_impls", implementation,
                     implementation_report));

@@ -7,10 +7,32 @@ endif()
 file(REMOVE_RECURSE "${ROOT}")
 file(MAKE_DIRECTORY "${ROOT}")
 
+set(selected "${ROOT}/selected.jog")
 set(prepared "${ROOT}/model.jog")
 set(source "${ROOT}/model.c")
 set(header "${ROOT}/model.h")
 set(program "${ROOT}/model")
+
+execute_process(
+  COMMAND "${TOOL}" run edge.apply "${MODEL}"
+          -M "${EXAMPLES}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${selected}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "external kernel selection failed (${result}):\n${error}")
+endif()
+
+file(READ "${selected}" selected_text)
+string(REGEX MATCHALL " = conv2d\\(" selected_convs "${selected_text}")
+list(LENGTH selected_convs selected_conv_count)
+string(REGEX MATCHALL " = nn\\.conv2d\\(" semantic_convs "${selected_text}")
+list(LENGTH semantic_convs semantic_conv_count)
+if(NOT selected_conv_count EQUAL 3 OR NOT semantic_conv_count EQUAL 1)
+  message(FATAL_ERROR
+          "implementation guard did not preserve the other layout:\n${selected_text}")
+endif()
 
 execute_process(
   COMMAND "${TOOL}" run edge.apply c.prepare "${MODEL}"

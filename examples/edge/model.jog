@@ -57,6 +57,19 @@ fn biased_conv(
   return convolved
 }
 
+fn other_layout(
+  x: tensor<f32, [1, 1, 1, 1]>,
+  weight: tensor<f32, [1, 1, 1, 1]>,
+  bias: tensor<f32, [1]>
+) -> tensor<f32, [1, 1, 1, 1]> {
+  let convolved: tensor<f32, [1, 1, 1, 1]> = nn.conv2d(
+    x, weight, bias,
+    [1, 1], [0, 0, 0, 0], [1, 1], 1,
+    [0, 2, 3, 1], [0, 2, 3, 1], [0, 2, 3, 1], "NONE"
+  )
+  return convolved
+}
+
 [entry]
 fn extrema(x: tensor<f32, [4]>) -> (f32, f32) {
   let low, high = measure(x)

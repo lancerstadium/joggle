@@ -49,7 +49,7 @@ fn match(op: Op, fns: list<Fn>) -> Fn;
 fn match(op: Op, fn: Fn) -> list<Ty>;
 fn where(fns: list<Fn>, key: str, value: Attr) -> list<Fn>;
 fn invoke<R: Ty, S: Ty>(m: Mod, subject: S, fn: Fn) -> R;
-fn invoke<R: Ty, S: Ty>(m: Mod, subject: S, fn: Fn, arg: Attr) -> R;
+fn invoke<R: Ty, S: Ty, A: Ty>(m: Mod, subject: S, fn: Fn, arg: A) -> R;
 fn symbol(f: Fn) -> str;
 fn has(f: Fn, key: str) -> bool;
 fn has(v: Val, key: str) -> bool;

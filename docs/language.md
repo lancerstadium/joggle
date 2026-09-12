@@ -617,18 +617,27 @@ external ABI declaration. Body presence is therefore the only distinction
 between inspectable replacement code and an external implementation; neither
 requires an operation registry or a target object.
 
+The guarded `opt.apply` overload accepts a normal
+`fn(Mod, Op, Fn) -> bool` predicate. It filters type-compatible candidates
+before the same specificity check, then performs the ordinary expansion or
+retarget edit. The predicate is required to be read-only and is checked by
+module revision. Layout, alignment, feature, and representation constraints
+therefore stay beside the implementation module instead of becoming core
+attributes or operation-specific branches.
+
 Open function attributes can also define module-owned relations without a
 second rule language. `ir.where(fns, key, value)` filters an explicit function
 list by exact metadata; a list-valued attribute matches when it contains the
 requested value. `ir.invoke<R>(m, op, fn)` executes a selected ordinary
 `fn(Mod, Op) -> R` in the current transaction. Its four-argument overload
-passes one structural compile-time value to a matching callback; a dictionary
-can therefore carry named policy without an option class or wrapper function.
+passes any typed compile-time value to a matching callback; a dictionary can
+carry named policy, while a `Fn` can identify one candidate implementation
+without an option class, serialized handle, or wrapper object.
 The subject type is generic and inferred, so the same overload can invoke a
 typed relation over a whole `list<Op>` candidate, such as a
 producer/consumer pair, without encoding live handles in serializable
-metadata. Empty and nonempty lists use the same callback type; every contained
-handle must be live.
+metadata. Empty and nonempty lists use the same callback type. A handle passed
+directly, inside the subject, or inside the extra argument must be live.
 The explicit result type keeps dynamic invocation typed even though `Fn` is a
 runtime handle. It rejects
 generic or incompatible callback signatures before execution, validates the
