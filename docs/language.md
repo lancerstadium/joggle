@@ -405,7 +405,9 @@ both directions of ordinary dataflow traversal. Byte attributes remain opaque
 storage by default. `base.size(value)` and `base.byte(value, index)` provide
 checked access to small payloads, while `base.hex(value, separator)` formats a
 complete payload in one bounded linear operation. They do not add file or
-ambient-memory access.
+ambient-memory access. `bytes + bytes` concatenates immutable payloads; it is
+the same ordinary overloaded `+` used for integers, strings, and lists, not a
+second binary-buffer API.
 
 `base.ident(text)` encodes a source name as an injective ASCII identifier
 fragment. Letters, digits, and ordinary single underscores remain readable;

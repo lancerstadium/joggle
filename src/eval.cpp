@@ -1062,6 +1062,23 @@ private:
          name == "%") &&
         args.size() == 2) {
       if (name == "+") {
+        const Attr* left_attr = as<Attr>(args[0]);
+        const Attr* right_attr = as<Attr>(args[1]);
+        const Attr::Bytes* left_bytes =
+            left_attr ? left_attr->bytes() : nullptr;
+        const Attr::Bytes* right_bytes =
+            right_attr ? right_attr->bytes() : nullptr;
+        if (left_bytes && right_bytes) {
+          Attr* value = write_attr(args[0]);
+          auto* out =
+              value ? std::get_if<Attr::Bytes>(&value->data_) : nullptr;
+          if (!out) {
+            fail("bytes operator has invalid storage", loc);
+            return std::nullopt;
+          }
+          out->insert(out->end(), right_bytes->begin(), right_bytes->end());
+          return Items{std::move(args[0])};
+        }
         const auto left_text = string(args[0]);
         const auto right_text = string(args[1]);
         if (left_text && right_text) {

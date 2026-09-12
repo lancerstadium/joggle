@@ -286,6 +286,20 @@ Emitters return `str` or `bytes` through the same read-only boundary:
   -M build/modules > model.h
 ```
 
+For large immutable tensors, the same backend can keep bytes out of the C
+translation unit:
+
+```sh
+./build/joggle emit c.data planned.jog -M build/modules > model.bin
+./build/joggle emit c.source planned.jog --arg '"weights"' \
+  -M build/modules > model.c
+```
+
+The latter source declares `jog_data_weights` and copies each tensor literal
+from its deterministic byte offset. The application or target linker provides
+that symbol from `model.bin`. Calling `c.source` without the argument retains
+the self-contained inline form.
+
 `c.prepare`, `mem.plan`, `c.source`, and `c.header` are independent module
 functions.
 If any concrete function carries ordinary `[entry]` metadata, `c.header`

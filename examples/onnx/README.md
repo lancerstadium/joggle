@@ -67,3 +67,16 @@ result.txt
 only model declaration consumed by `main.c`. `bounds.json` contains proven
 integer intervals for that exact `model.jog` revision; it is evidence for later
 target policy, not an implicit change to the generated C ABI.
+
+To keep application-sized weights out of the C parser, emit a raw companion
+blob and select the explicit external-data overload:
+
+```sh
+joggle emit c.data model.jog -M modules > model.bin
+joggle emit c.source model.jog --arg '"weights"' -M modules > model-blob.c
+```
+
+`model-blob.c` expects the target to provide
+`const unsigned char jog_data_weights[]` backed by the exact contents of
+`model.bin`. The default `model.c` remains useful when a single self-contained
+translation unit matters more than compile size.

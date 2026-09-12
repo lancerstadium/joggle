@@ -107,6 +107,10 @@ fn weights() -> tensor<f32, [2]> {
   return values
 }
 
+fn byte_weights() -> tensor<i8, [3]> {
+  return tensor.literal(hex"ff007f")
+}
+
 fn int_add(
   a: tensor<i64, [2, 3]>,
   b: tensor<i64, [2, 3]>

@@ -1174,6 +1174,11 @@ indices use their signed scalar ABI, while emitter-created fixed-array loops
 use C's `size_t` without inventing an IR pseudo-type. The emitter
 also recognizes optional `mem.slot`
 metadata; no C-specific field or storage object was added to core IR.
+Large constants use the same separation: `c.data` returns their exact bytes,
+while an explicitly parameterized `c.source` overload references one external
+data symbol at deterministic offsets. Default source generation remains
+self-contained. This is ordinary `bytes` and `str` emission from one module,
+not a core artifact abstraction or an implicit filesystem side effect.
 An executable ABI probe keeps that separation observable: the public header
 maps `index`, `int`, and `i32` to fixed-width signed types and contains no
 `size_t`, while source-only loops over compile-time-sized storage use

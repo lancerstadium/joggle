@@ -4,11 +4,21 @@
 #include <stddef.h>
 #include <stdint.h>
 
+const unsigned char jog_data_weights[] = {
+    0x00, 0x00, 0x80, 0x3f, 0x00, 0x00, 0x00, 0x40,
+    0xff, 0x00, 0x7f,
+};
+
 int main(void) {
   float weights[2] = {0.0f, 0.0f};
   jog_weights(weights);
   if (weights[0] != 1.0f || weights[1] != 2.0f)
     return 7;
+  int8_t byte_weights[3] = {0};
+  jog_byte_weights(byte_weights);
+  if (byte_weights[0] != -1 || byte_weights[1] != 0 ||
+      byte_weights[2] != 127)
+    return 8;
 
   const int64_t integers_a[6] = {1, 2, 3, 4, 5, 6};
   const int64_t integers_b[6] = {7, 8, 9, 10, 11, 12};

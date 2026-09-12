@@ -433,7 +433,40 @@ local fn tensor_new(m: Mod, op: Op, depth: int) -> str {
   return out
 }
 
-local fn tensor_literal(op: Op, depth: int) -> str {
+local fn payload(op: Op) -> bool {
+  if ir.kind(op) != "call" || ir.callee(op) != "tensor.literal" {
+    return false
+  }
+  let inputs = ir.args(op)
+  return len(inputs) == 1 && ir.is_const(inputs[0]) &&
+         base.kind(ir.constant(inputs[0])) == "bytes"
+}
+
+local fn payload_size(m: Mod) -> int {
+  var out = 0
+  for op in ir.ops(m) {
+    if payload(op) {
+      out += base.size(ir.constant(ir.args(op)[0]))
+    }
+  }
+  return out
+}
+
+local fn payload_offset(m: Mod, target: Op) -> int {
+  var out = 0
+  for op in ir.ops(m) {
+    if op == target {
+      return out
+    }
+    if payload(op) {
+      out += base.size(ir.constant(ir.args(op)[0]))
+    }
+  }
+  assert(false, "c: tensor literal is outside the module")
+  return 0
+}
+
+local fn tensor_literal(m: Mod, op: Op, depth: int, blob: str) -> str {
   let outputs = ir.outs(op)
   let inputs = ir.args(op)
   assert(len(outputs) == 1 && len(inputs) == 1 && ir.is_const(inputs[0]),
@@ -457,6 +490,10 @@ local fn tensor_literal(op: Op, depth: int) -> str {
   }
   if bytes == 0 {
     return out
+  }
+  if blob != "" {
+    return out + indent + "memcpy(" + val(output) + ", " + blob + " + " +
+           text(payload_offset(m, op)) + ", " + text(bytes) + ");\n"
   }
   out += indent + "static const unsigned char jog_data_" +
          label(output) +
@@ -491,7 +528,7 @@ local fn copy(m: Mod, op: Op, depth: int) -> str {
          expr(m, input) + ";\n"
 }
 
-local fn call(m: Mod, op: Op, depth: int) -> str {
+local fn call(m: Mod, op: Op, depth: int, blob: str) -> str {
   let name = ir.callee(op)
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -530,7 +567,7 @@ local fn call(m: Mod, op: Op, depth: int) -> str {
   }
   if len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
      ir.live(target) && ir.symbol(target) == "tensor.literal" {
-    return tensor_literal(op, depth)
+    return tensor_literal(m, op, depth, blob)
   }
 
   let binary_op = binary(name)
@@ -677,7 +714,7 @@ local fn constant(op: Op, depth: int) -> str {
   return ""
 }
 
-local fn loop(m: Mod, op: Op, depth: int) -> str {
+local fn loop(m: Mod, op: Op, depth: int, blob: str) -> str {
   let bodies = ir.blks(op)
   assert(len(bodies) == 1, "c: loop must have one body")
   let body = bodies[0]
@@ -719,20 +756,20 @@ local fn loop(m: Mod, op: Op, depth: int) -> str {
       }
     }
   }
-  out += block(m, body, depth + iterators)
+  out += block(m, body, depth + iterators, blob)
   for reverse in 0..iterators {
     out += pad(depth + iterators - reverse - 1) + "}\n"
   }
   return out
 }
 
-local fn branch(m: Mod, op: Op, depth: int) -> str {
+local fn branch(m: Mod, op: Op, depth: int, blob: str) -> str {
   let bodies = ir.blks(op)
   let inputs = ir.args(op)
   assert(len(bodies) == 2 && len(inputs) >= 1,
          "c: branch structure is invalid")
-  let first = block(m, bodies[0], depth + 1)
-  let second = block(m, bodies[1], depth + 1)
+  let first = block(m, bodies[0], depth + 1, blob)
+  let second = block(m, bodies[1], depth + 1, blob)
   var out = pad(depth) + "if (" + expr(m, inputs[0]) + ") {\n" + first
   if second == "" {
     out += pad(depth) + "}\n"
@@ -742,19 +779,19 @@ local fn branch(m: Mod, op: Op, depth: int) -> str {
   return out
 }
 
-local fn block(m: Mod, body: Blk, depth: int) -> str {
+local fn block(m: Mod, body: Blk, depth: int, blob: str) -> str {
   var out = ""
   for op in ir.ops(body) {
     let kind = ir.kind(op)
     if kind == "call" {
-      out += call(m, op, depth)
+      out += call(m, op, depth, blob)
     } else {
       if kind == "loop" {
-        out += loop(m, op, depth)
+        out += loop(m, op, depth, blob)
       } else {
         if kind == "branch" {
           if logical(m, op) == "" {
-            out += branch(m, op, depth)
+            out += branch(m, op, depth, blob)
           }
         } else {
           if kind == "return" {
@@ -830,7 +867,7 @@ local fn linkage(m: Mod, fn: Fn) -> str {
   return ""
 }
 
-local fn definition(m: Mod, fn: Fn) -> str {
+local fn definition(m: Mod, fn: Fn, blob: str) -> str {
   let bodies = ir.blks(fn)
   assert(len(bodies) >= 1, "c: function has no body")
   var memory = ""
@@ -847,7 +884,7 @@ local fn definition(m: Mod, fn: Fn) -> str {
               text(mem.count(fn, slot)) + "];\n"
   }
   return linkage(m, fn) + signature(m, fn) + " {\n" +
-         memory + block(m, bodies[0], 1) + "}\n"
+         memory + block(m, bodies[0], 1, blob) + "}\n"
 }
 
 local fn functions(m: Mod) -> list<Fn> {
@@ -949,17 +986,40 @@ fn header(m: Mod) -> str {
          "\n#ifdef __cplusplus\n}\n#endif\n"
 }
 
-fn source(m: Mod) -> str {
+fn data(m: Mod) -> bytes {
+  var out = hex""
+  for op in ir.ops(m) {
+    if payload(op) {
+      out += ir.constant(ir.args(op)[0])
+    }
+  }
+  return out
+}
+
+local fn emit(m: Mod, blob: str) -> str {
   let fns = functions(m)
   assert(len(fns) != 0, "c: module has no function definitions")
   let declarations = prototypes(m, dependencies(m) + fns)
   var definitions = ""
   for fn in fns {
-    definitions += definition(m, fn) + "\n"
+    definitions += definition(m, fn, blob) + "\n"
+  }
+  var payload_decl = ""
+  if blob != "" && payload_size(m) != 0 {
+    payload_decl = "extern const unsigned char " + blob + "[];\n\n"
   }
   return includes(binding_headers(m)) +
          "#include <stdbool.h>\n#include <stddef.h>\n" +
          "#include <stdint.h>\n" +
          "#include <string.h>\n\n" +
-         declarations + "\n" + definitions
+         payload_decl + declarations + "\n" + definitions
+}
+
+fn source(m: Mod) -> str {
+  return emit(m, "")
+}
+
+fn source(m: Mod, blob: str) -> str {
+  assert(blob != "", "c: external data name must not be empty")
+  return emit(m, "jog_data_" + base.ident(blob))
 }

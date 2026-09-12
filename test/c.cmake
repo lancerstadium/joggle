@@ -129,6 +129,9 @@ endif()
 set(source "${ROOT}/model.c")
 set(header "${ROOT}/model.h")
 set(program "${ROOT}/model")
+set(blob_source "${ROOT}/model-blob.c")
+set(blob_data "${ROOT}/model.bin")
+set(blob_program "${ROOT}/model-blob")
 set(model_prepared "${ROOT}/model.jog")
 
 execute_process(
@@ -159,6 +162,43 @@ execute_process(
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "C header emission failed (${result}):\n${error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" emit c.data "${model_prepared}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${blob_data}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "C data emission failed (${result}):\n${error}")
+endif()
+file(READ "${blob_data}" emitted_data HEX)
+if(NOT emitted_data STREQUAL "0000803f00000040ff007f")
+  message(FATAL_ERROR "C data emission changed literal bytes: ${emitted_data}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${model_prepared}"
+          --arg "\"weights\"" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${blob_source}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "external-data C emission failed (${result}):\n${error}")
+endif()
+file(READ "${blob_source}" emitted_blob_source)
+if(NOT emitted_blob_source MATCHES
+   "extern const unsigned char jog_data_weights\\[\\];" OR
+   NOT emitted_blob_source MATCHES
+   "memcpy\\([^\n]+, jog_data_weights \\+ 0, 8\\);" OR
+   NOT emitted_blob_source MATCHES
+   "memcpy\\([^\n]+, jog_data_weights \\+ 8, 3\\);" OR
+   emitted_blob_source MATCHES "static const unsigned char jog_data_")
+  message(FATAL_ERROR
+          "external-data C source did not reference the raw blob:\n"
+          "${emitted_blob_source}")
 endif()
 file(READ "${header}" emitted_header)
 if(NOT emitted_header MATCHES
@@ -220,6 +260,31 @@ if(NOT result EQUAL 0)
   file(READ "${source}" emitted)
   message(FATAL_ERROR
           "generated C did not compile (${result}):\n${output}${error}\n${emitted}")
+endif()
+
+execute_process(
+  COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
+          -include "${header}" "${blob_source}" "${HARNESS}" -lm
+          -o "${blob_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "external-data C did not compile (${result}):\n${output}${error}\n"
+          "${emitted_blob_source}")
+endif()
+execute_process(
+  COMMAND "${blob_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "external-data C returned the wrong result (${result}):\n"
+          "${output}${error}")
 endif()
 
 execute_process(
