@@ -737,14 +737,21 @@ private:
     if (!expect("{"))
       return false;
     const auto body = add_blk(fn, detail::none);
-    if (!parse_blk(fn, body, scope, false) || !expect("}"))
+    std::set<std::string> declared;
+    for (const auto& [name, ignored] : scope) {
+      (void)ignored;
+      declared.insert(name);
+    }
+    if (!parse_blk(fn, body, scope, false, std::move(declared)) ||
+        !expect("}"))
       return false;
     semi();
     return true;
   }
 
   bool parse_blk(std::uint32_t fn, std::uint32_t blk, Scope& scope,
-                   bool nested) {
+                 bool nested,
+                 std::set<std::string> declared = {}) {
     while (!at_end() && !is("}")) {
       Attr::Dict meta;
       if (!parse_meta(meta))
@@ -760,6 +767,9 @@ private:
           std::string name = take_name("binding name");
           if (name.empty())
             return false;
+          if (declared.contains(name))
+            return fail("binding '" + name +
+                        "' is already declared in this scope");
           if (std::any_of(names.begin(), names.end(),
                           [&](const Decl& item) { return item.name == name; }))
             return fail("duplicate binding '" + name + "'");
@@ -817,6 +827,7 @@ private:
         for (std::size_t index = 0; index < names.size(); ++index) {
           store_.vals[outs[index]].data.name = names[index].name;
           scope[names[index].name] = {outs[index], mut};
+          declared.insert(names[index].name);
         }
         semi();
       } else if (word("for")) {
@@ -954,6 +965,10 @@ private:
       const std::string iter = take_name("loop variable");
       if (iter.empty() || !word("in"))
         return fail("expected 'in' after loop variable");
+      if (scope.contains(iter) ||
+          std::find(data.iter_names.begin(), data.iter_names.end(), iter) !=
+              data.iter_names.end())
+        return fail("loop variable '" + iter + "' is already visible");
       auto source = expression(blk, scope);
       if (source == detail::none)
         return false;
@@ -1002,7 +1017,12 @@ private:
       store_.blks[body].data.args.push_back(id);
       inner[name] = {id, true};
     }
-    if (!expect("{") || !parse_blk(fn, body, inner, true) || !expect("}"))
+    std::set<std::string> declared(
+        store_.ops[op].data.iter_names.begin(),
+        store_.ops[op].data.iter_names.end());
+    if (!expect("{") ||
+        !parse_blk(fn, body, inner, true, std::move(declared)) ||
+        !expect("}"))
       return false;
     detail::OpData yield;
     yield.kind = Op::Kind::yield;

@@ -2991,6 +2991,33 @@ int main(int argc, char** argv) {
                        duplicate_meta, "duplicate-meta.jog"));
   CHECK(!duplicate_meta.diags().empty());
 
+  joggle::Mod duplicate_binding;
+  CHECK(!joggle::parse(env,
+                       "module bad\nfn f(x: i64) -> i64 {\n"
+                       "  let y = x + i64(1)\n"
+                       "  let y = y + i64(1)\n"
+                       "  return y\n}\n",
+                       duplicate_binding, "duplicate-binding.jog"));
+  CHECK(!duplicate_binding.diags().empty());
+
+  joggle::Mod shadowed_iterator;
+  CHECK(!joggle::parse(env,
+                       "module bad\nfn f(i: i64) -> i64 {\n"
+                       "  for i in 0..2 {}\n"
+                       "  return i\n}\n",
+                       shadowed_iterator, "shadowed-iterator.jog"));
+  CHECK(!shadowed_iterator.diags().empty());
+
+  joggle::Mod scoped_bindings;
+  CHECK(joggle::parse(env,
+                      "module scoped\nfn f(x: i64, flag: bool) -> i64 {\n"
+                      "  if flag { let x = x + i64(1) }\n"
+                      "  for i in 0..2 {}\n"
+                      "  for i in 0..2 {}\n"
+                      "  return x\n}\n",
+                      scoped_bindings, "scoped-bindings.jog"));
+  CHECK(scoped_bindings.verify(env));
+
   joggle::Mod missing_return;
   CHECK(joggle::parse(env, "module bad\nfn f(x: i32) -> i32 { x + 1 }\n",
                       missing_return, "return.jog"));

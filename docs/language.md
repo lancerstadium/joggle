@@ -233,6 +233,13 @@ by the same value update; it does not add an operation kind. Tensor-like values
 may use `value[i, j] = next`, which normalizes to `operator []=` returning the
 updated value, so mutation remains explicit value flow.
 
+A name is declared at most once in one lexical block; parameters and generics
+belong to the function's entry block for this rule. Nested blocks may reuse an
+outer name because the generated target block provides a distinct scope.
+Loop variables are stricter: an iterator cannot hide a visible binding, since
+that name may also identify an implicit loop-carried value. Iterator names are
+local to their loop, so consecutive or sibling loops may both use `i`.
+
 Structured control carries only mutable bindings that an enclosed `for` or
 `if` can change. A read-only `var` use refers directly to its dominating outer
 value, and a binding forwarded unchanged by every body is omitted from the
