@@ -88,8 +88,13 @@ small embeddable compiler frameworks.
   three-parameter form. Regression gates show the same three-loop chain
   remaining unchanged under a zero budget and collapsing to one loop under a
   permissive budget.
-  The mechanism is target-neutral; a controlled study still has to supply and
-  evaluate useful target policies.
+  A removable `cost` example supplies a structural extent/call-budget policy
+  without naming neural-network operations. On the same MobileNetV2 pilot it
+  selects 17 of 46 legal pairs, produces byte-identical weights, passes all
+  1,000 outputs, and reduces the unrestricted regression from about 4.4% to
+  about 1.1% by mean while remaining slower than baseline. The mechanism is
+  therefore exercised at application scale; a controlled study still has to
+  supply and evaluate a genuinely predictive target policy.
 - Default, sanitizer, ONNX, TFLite, generated-C, VM, installation, and external
   module gates exercise the same public interfaces.
 

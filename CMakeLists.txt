@@ -537,6 +537,7 @@ if(JOGGLE_BUILD_TESTS)
         -DRELU_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_relu.jog
         -DRELU_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_relu_main.c
         -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DEXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/examples
         -DROOT=${CMAKE_CURRENT_BINARY_DIR}/tile-test
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/tile.cmake
     )

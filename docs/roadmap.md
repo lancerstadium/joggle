@@ -359,9 +359,12 @@ official MobileNetV2 body: after row-major BatchNorm exposure it removes 46
 loops and 46 private tensors, and the resulting strict C99 still agrees on all
 1,000 outputs with maximum absolute error `2.0980835e-05`. This closes the
 first application-scale structural prerequisite for scheduling experiments.
-Reorder, unroll, multi-axis fusion, profitability, and controlled network
-speed measurements remain open and must not be inferred from the correctness
-gates.
+An ordinary configured callback now supplies profitability without changing
+`tile`: the example extent/call budget selects 17 of those 46 pairs and closes
+the application-scale dispatch gate. Its local pilot remains slower than the
+unfused baseline, so predictive target policy, reorder, unroll, multi-axis
+fusion, and controlled network measurements remain open and must not be
+inferred from the correctness gates.
 
 The complementary `examples/edge` gate treats a bodyless monomorphic tensor
 function as an external C ABI contract, automatically emits its qualified

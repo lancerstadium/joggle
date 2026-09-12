@@ -1447,6 +1447,7 @@ but retains the tensor when another user needs it. Shifted reads are rejected.
 An unrelated call between the loops is also rejected rather than reordered.
 Both an elementwise chain and an `add -> relu` body with structured control
 pass emitted-C numerical execution. This is transformation infrastructure and
-a correctness result; it is not yet a performance result because no cache
-model, vector policy, loop reorder, broad fusion policy, or network measurement
-has been applied.
+a correctness result. An ordinary module callback now also selects legal pairs
+using caller-provided structural budgets; its MobileNetV2 pilot demonstrates
+application-scale policy dispatch but does not establish a performance result
+or predictive target cost model.

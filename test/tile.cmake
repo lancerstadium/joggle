@@ -4,9 +4,9 @@ if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
    NOT DEFINED EFFECT_FUSE_MODEL OR
    NOT DEFINED KEEP_MODEL OR NOT DEFINED KEEP_HARNESS OR
    NOT DEFINED RELU_MODEL OR NOT DEFINED RELU_HARNESS OR
-   NOT DEFINED MODULES OR NOT DEFINED ROOT)
+   NOT DEFINED MODULES OR NOT DEFINED EXAMPLES OR NOT DEFINED ROOT)
   message(FATAL_ERROR
-          "tile test requires TOOL, CC, both models and harnesses, MODULES, and ROOT")
+          "tile test requires TOOL, CC, models, harnesses, module roots, and ROOT")
 endif()
 
 execute_process(
@@ -147,8 +147,8 @@ if(result EQUAL 0 OR NOT error MATCHES "policy must not mutate the module")
 endif()
 
 execute_process(
-  COMMAND "${TOOL}" run tile_pass.budget "${fuse_prepared}"
-          --arg 0 -M "${MODULES}"
+  COMMAND "${TOOL}" run cost.fuse "${fuse_prepared}"
+          --arg 0 --arg 100 -M "${EXAMPLES}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${rejected_fusion}"
   ERROR_VARIABLE error
@@ -166,8 +166,8 @@ if(NOT rejected_loop_count EQUAL 3)
 endif()
 
 execute_process(
-  COMMAND "${TOOL}" run tile_pass.budget "${fuse_prepared}"
-          --arg 100 -M "${MODULES}"
+  COMMAND "${TOOL}" run cost.fuse "${fuse_prepared}"
+          --arg 100 --arg 100 -M "${EXAMPLES}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${policy_fusion}"
   ERROR_VARIABLE error

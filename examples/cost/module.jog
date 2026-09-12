@@ -2,6 +2,40 @@ module cost
 use base
 use ir
 use stat
+use tile
+
+local fn calls(op: Op) -> int {
+  var count = 0
+  if ir.kind(op) == "call" {
+    count = 1
+  }
+  for body in ir.blks(op) {
+    for child in ir.ops(body) {
+      count += calls(child)
+    }
+  }
+  return count
+}
+
+local fn extent(loop: Op) -> int {
+  let inputs = ir.args(loop)
+  if ir.kind(loop) != "loop" || len(inputs) == 0 {
+    return -1
+  }
+  let range = ir.def(inputs[0])
+  if !ir.live(range) || ir.callee(range) != "operator .." {
+    return -1
+  }
+  let bounds = ir.args(range)
+  if len(bounds) != 2 || !ir.is_const(bounds[0]) ||
+     !ir.is_const(bounds[1]) ||
+     base.kind(ir.constant(bounds[0])) != "int" ||
+     base.kind(ir.constant(bounds[1])) != "int" {
+    return -1
+  }
+  return base.int(ir.constant(bounds[1])) -
+         base.int(ir.constant(bounds[0]))
+}
 
 fn weight(m: Mod, op: Op, config: dict) -> int {
   if ir.kind(op) == "call" {
@@ -22,4 +56,21 @@ fn total(m: Mod, call: int, other: int) -> int {
   config["call"] = call
   config["other"] = other
   return stat.sum(m, ir.find("cost.weight"), config)
+}
+
+fn profitable(m: Mod, pair: list<Op>, config: dict) -> bool {
+  assert(len(pair) == 2,
+         "cost.profitable requires a producer/consumer pair")
+  let elements = extent(pair[0])
+  let work = calls(pair[0])
+  return elements >= 0 &&
+         elements <= base.int(base.get(config, "max_extent")) &&
+         work <= base.int(base.get(config, "max_calls"))
+}
+
+fn fuse(m: Mod, max_extent: int, max_calls: int) -> bool {
+  var config: dict = {}
+  config["max_extent"] = max_extent
+  config["max_calls"] = max_calls
+  return tile.fuse(m, ir.find("cost.profitable"), config)
 }

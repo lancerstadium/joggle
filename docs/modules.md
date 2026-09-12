@@ -702,8 +702,8 @@ The implementation inspects structural loops and built-in indexed memory
 operations, never frontend or neural-network function names. Shifted access,
 private-intermediate elimination, live-result retention, an `add -> relu`
 chain, and emitted-C numerical execution are regression gates. Reorder, unroll,
-multi-axis fusion policies, and profitability remain follow-on functions, not
-implied behavior of `split` or `fuse`.
+and multi-axis legality remain follow-on functions, not implied behavior of
+`split` or `fuse`.
 
 `tile.can_fuse(m, producer, consumer)` exposes the same structural legality
 test without changing the module. `tile.fuse(m)` is the policy-free convenience
@@ -720,6 +720,13 @@ compile-time argument. The pair is always a legal producer/consumer candidate;
 the callback may inspect bodies, metadata, or a target model but must not
 mutate the `Mod`. This separates reusable legality and rewriting from research
 policy without a schedule class or target case in `tile`.
+
+`examples/cost` demonstrates the configured form without creating a second
+policy API. Its structural policy bounds the producer's visible range extent
+and recursive call count, then passes the accepted legal pair back to the same
+transactional rewrite. The example is deliberately not a universal target
+model; researchers can replace those features in an ordinary module while
+keeping `tile`, core IR, and emitters unchanged.
 
 `ir.rename` may be applied directly to a `Blk` argument. Iterator renames are
 reflected in the loop header, while carried-value renames propagate through
