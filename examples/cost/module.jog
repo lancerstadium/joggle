@@ -1,14 +1,25 @@
 module cost
+use base
 use ir
 use stat
 
-fn weight(m: Mod, op: Op) -> int {
+fn weight(m: Mod, op: Op, config: dict) -> int {
   if ir.kind(op) == "call" {
-    return 4
+    return int(get(config, "call"))
   }
-  return 1
+  return int(get(config, "other"))
 }
 
 fn total(m: Mod) -> int {
-  return stat.sum(m, ir.find("cost.weight"))
+  var config: dict = {}
+  config["call"] = 4
+  config["other"] = 1
+  return stat.sum(m, ir.find("cost.weight"), config)
+}
+
+fn total(m: Mod, call: int, other: int) -> int {
+  var config: dict = {}
+  config["call"] = call
+  config["other"] = other
+  return stat.sum(m, ir.find("cost.weight"), config)
 }

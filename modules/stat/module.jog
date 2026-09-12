@@ -4,15 +4,29 @@ use ir
 use mem
 use tensor
 
-fn sum(m: Mod, measure: Fn) -> int {
+local fn sum_with(
+  m: Mod, measure: Fn, arg: Attr, configured: bool
+) -> int {
   var total = 0
   for op in ir.ops(m) {
     let before = ir.revision(m)
-    total += ir.invoke<int>(m, op, measure)
+    if configured {
+      total += ir.invoke<int>(m, op, measure, arg)
+    } else {
+      total += ir.invoke<int>(m, op, measure)
+    }
     assert(ir.revision(m) == before,
            "stat: measure function must not mutate the module")
   }
   return total
+}
+
+fn sum(m: Mod, measure: Fn) -> int {
+  return sum_with(m, measure, nil, false)
+}
+
+fn sum(m: Mod, measure: Fn, arg: Attr) -> int {
+  return sum_with(m, measure, arg, true)
 }
 
 fn summary(m: Mod) -> dict {

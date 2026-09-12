@@ -423,8 +423,11 @@ library and run through at least two targets without core operator switches.
 Status: in progress. `stat.summary` provides a deterministic, read-only
 structural snapshot through an ordinary module query. `stat.sum` can aggregate
 an external `fn(Mod, Op) -> int` measure through the typed invocation boundary,
-so cycle or resource models no longer require a core interface. The module
-still makes no timing or device-model claims of its own. The new `bounds`
+and its configured form forwards one typed structural policy value to
+`fn(Mod, Op, A) -> int`. The same callback can therefore represent a family of
+device models without generated wrappers or a core interface. Generic
+capability traversal in `opt` uses the same boundary. The module still makes no
+timing or device-model claims of its own. The new `bounds`
 module proves revision-scoped integer intervals for constants, range
 iterators, safe scalar arithmetic, branches, and unchanged loop-carried values.
 Overflow and unsupported recurrences remain unknown. This supplies evidence

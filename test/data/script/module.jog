@@ -77,6 +77,44 @@ fn apply_rules(m: Mod) -> bool {
   return changed
 }
 
+fn configured_rule(m: Mod, op: Op, config: dict) -> bool {
+  let key = str(get(config, "key"))
+  return ir.set(m, op, key, get(config, "value"))
+}
+
+fn apply_configured_rule(m: Mod) -> bool {
+  for op in ir.ops(m) {
+    if ir.kind(op) == "call" && ir.callee(op) == "opaque" {
+      return ir.invoke<bool>(
+        m, op, ir.find("script.configured_rule"),
+        {key: "configured", value: 7}
+      )
+    }
+  }
+  return false
+}
+
+fn reject_configured_rule(m: Mod) -> bool {
+  for op in ir.ops(m) {
+    if ir.kind(op) == "call" && ir.callee(op) == "opaque" {
+      return ir.invoke<bool>(
+        m, op, ir.find("script.configured_rule"), "not a dictionary"
+      )
+    }
+  }
+  return false
+}
+
+fn configured_cap(m: Mod, op: Op, config: dict) -> bool {
+  return ir.callee(op) == str(get(config, "callee"))
+}
+
+fn configured_frontier(m: Mod, callee: str) -> list<str> {
+  var config: dict = {}
+  config["callee"] = callee
+  return opt.frontier(m, ir.find("script.configured_cap"), config)
+}
+
 fn op_cost(m: Mod, op: Op) -> int {
   if ir.kind(op) == "call" {
     return 2

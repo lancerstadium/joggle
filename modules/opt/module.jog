@@ -281,12 +281,27 @@ fn supports(m: Mod, op: Op, caps: list<Fn>) -> bool {
   return false
 }
 
-fn supports(m: Mod, op: Op, accept: Fn) -> bool {
+local fn supports_with(
+  m: Mod, op: Op, accept: Fn, arg: Attr, configured: bool
+) -> bool {
   let before = ir.revision(m)
-  let result = ir.invoke<bool>(m, op, accept)
+  var result = false
+  if configured {
+    result = ir.invoke<bool>(m, op, accept, arg)
+  } else {
+    result = ir.invoke<bool>(m, op, accept)
+  }
   assert(ir.revision(m) == before,
          "opt: capability function must not mutate the module")
   return result
+}
+
+fn supports(m: Mod, op: Op, accept: Fn) -> bool {
+  return supports_with(m, op, accept, nil, false)
+}
+
+fn supports(m: Mod, op: Op, accept: Fn, arg: Attr) -> bool {
+  return supports_with(m, op, accept, arg, true)
 }
 
 fn frontier(m: Mod, caps: list<Fn>) -> list<str> {
@@ -313,11 +328,13 @@ fn frontier(m: Mod, caps: list<Fn>) -> list<str> {
   return out
 }
 
-fn frontier(m: Mod, accept: Fn) -> list<str> {
+local fn frontier_with(
+  m: Mod, accept: Fn, arg: Attr, configured: bool
+) -> list<str> {
   var out: list<str> = []
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" &&
-       !supports(m, op, accept) {
+       !supports_with(m, op, accept, arg, configured) {
       var symbol = ir.callee(op)
       let target = ir.resolve(m, op)
       if ir.live(target) {
@@ -335,6 +352,14 @@ fn frontier(m: Mod, accept: Fn) -> list<str> {
     }
   }
   return out
+}
+
+fn frontier(m: Mod, accept: Fn) -> list<str> {
+  return frontier_with(m, accept, nil, false)
+}
+
+fn frontier(m: Mod, accept: Fn, arg: Attr) -> list<str> {
+  return frontier_with(m, accept, arg, true)
 }
 
 fn legalize(m: Mod, caps: list<Fn>, limit: int) -> bool {
@@ -361,12 +386,15 @@ fn legalize(m: Mod, caps: list<Fn>, limit: int) -> bool {
   return changed
 }
 
-fn expand(m: Mod, accept: Fn) -> bool {
+local fn expand_with(
+  m: Mod, accept: Fn, arg: Attr, configured: bool
+) -> bool {
   var calls: list<Op> = []
   var bodies: list<Fn> = []
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" &&
-       !supports(m, op, accept) && len(ir.meta(op)) == 0 {
+       !supports_with(m, op, accept, arg, configured) &&
+       len(ir.meta(op)) == 0 {
       let target = ir.resolve(m, op)
       if ir.live(target) && len(ir.blks(target)) != 0 {
         calls += [op]
@@ -377,14 +405,24 @@ fn expand(m: Mod, accept: Fn) -> bool {
   return len(calls) != 0 && ir.expand(m, calls, bodies)
 }
 
-fn legalize(m: Mod, accept: Fn, limit: int) -> bool {
+fn expand(m: Mod, accept: Fn) -> bool {
+  return expand_with(m, accept, nil, false)
+}
+
+fn expand(m: Mod, accept: Fn, arg: Attr) -> bool {
+  return expand_with(m, accept, arg, true)
+}
+
+local fn legalize_with(
+  m: Mod, accept: Fn, arg: Attr, configured: bool, limit: int
+) -> bool {
   assert(limit >= 0, "opt.legalize limit must not be negative")
   var changed = false
   var again = true
   var exceeded = false
   for round in 0..(limit + 1) {
     if again {
-      again = expand(m, accept)
+      again = expand_with(m, accept, arg, configured)
       changed = again || changed
       if round == limit && again {
         exceeded = true
@@ -395,7 +433,17 @@ fn legalize(m: Mod, accept: Fn, limit: int) -> bool {
   return changed
 }
 
-fn expose(m: Mod, accept: Fn, limit: int) -> bool {
+fn legalize(m: Mod, accept: Fn, limit: int) -> bool {
+  return legalize_with(m, accept, nil, false, limit)
+}
+
+fn legalize(m: Mod, accept: Fn, arg: Attr, limit: int) -> bool {
+  return legalize_with(m, accept, arg, true, limit)
+}
+
+local fn expose_with(
+  m: Mod, accept: Fn, arg: Attr, configured: bool, limit: int
+) -> bool {
   assert(limit >= 0, "opt.expose limit must not be negative")
   var changed = false
   var again = true
@@ -405,7 +453,7 @@ fn expose(m: Mod, accept: Fn, limit: int) -> bool {
       let before = ir.revision(m)
       fold(m)
       copy(m)
-      expand(m, accept)
+      expand_with(m, accept, arg, configured)
       again = ir.revision(m) != before
       changed = again || changed
       if round == limit && again {
@@ -415,6 +463,14 @@ fn expose(m: Mod, accept: Fn, limit: int) -> bool {
   }
   assert(!exceeded, "opt.expose did not converge within its limit")
   return changed
+}
+
+fn expose(m: Mod, accept: Fn, limit: int) -> bool {
+  return expose_with(m, accept, nil, false, limit)
+}
+
+fn expose(m: Mod, accept: Fn, arg: Attr, limit: int) -> bool {
+  return expose_with(m, accept, arg, true, limit)
 }
 
 fn apply(m: Mod, impls: list<Fn>, limit: int) -> bool {

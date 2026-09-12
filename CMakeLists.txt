@@ -416,6 +416,17 @@ if(JOGGLE_BUILD_TESTS)
     cost-example PROPERTIES PASS_REGULAR_EXPRESSION "5"
   )
   add_test(
+    NAME cost-configured-example
+    COMMAND $<TARGET_FILE:joggle-tool> query cost.total
+            ${CMAKE_CURRENT_SOURCE_DIR}/examples/cost/model.jog
+            --arg 7 --arg 2
+            -M ${CMAKE_CURRENT_SOURCE_DIR}/examples
+            -M ${CMAKE_CURRENT_BINARY_DIR}/modules
+  )
+  set_tests_properties(
+    cost-configured-example PROPERTIES PASS_REGULAR_EXPRESSION "9"
+  )
+  add_test(
     NAME stat-summary
     COMMAND
       ${CMAKE_COMMAND}

@@ -1000,6 +1000,15 @@ device interpretation. `stat.sum(m, measure)` takes an ordinary
 and rejects a measure that mutates the subject. The module defines traversal
 and aggregation only; units and device assumptions belong to the supplied
 function. [`examples/cost`](../examples/cost) is a runnable custom policy.
+The overload `stat.sum(m, measure, arg)` forwards one structural configuration
+value to `fn(Mod, Op, A) -> int` while retaining the same mutation check.
+The four-argument `ir.invoke<R>(m, op, fn, arg)` form passes one structural
+configuration value to a callback with a matching third parameter. Modules can
+therefore parameterize a relation, capability predicate, or measure without
+generating one wrapper function per policy choice.
+`opt.supports`, `opt.frontier`, `opt.expand`, `opt.legalize`, and `opt.expose`
+carry the same optional value to their predicate. Configured and unconfigured
+calls share the traversal and convergence implementation.
 
 `bounds.infer(m)` performs a read-only interval analysis over integer-like
 `Val`s. `bounds.get(facts, value)` returns `[lo, hi]` when the interval is

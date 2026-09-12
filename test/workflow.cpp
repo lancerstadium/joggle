@@ -629,6 +629,33 @@ int main(int argc, char** argv) {
     }
   }
   CHECK(matched);
+  CHECK(joggle::run(env, "script.apply_configured_rule", relation));
+  bool configured = false;
+  for (joggle::Op op : relation.ops()) {
+    if (op.callee() == "opaque") {
+      const joggle::Attr* value = op.meta("configured");
+      configured = value && value->integer() == 7;
+    }
+  }
+  CHECK(configured);
+  const std::string before_bad_config = joggle::print(relation);
+  const std::uint64_t before_bad_config_revision = relation.revision();
+  CHECK(!joggle::run(env, "script.reject_configured_rule", relation));
+  CHECK(joggle::print(relation) == before_bad_config);
+  CHECK(relation.revision() == before_bad_config_revision);
+  CHECK(!env.diags().empty());
+  env.clear_diags();
+  const std::vector<joggle::Attr> accepted_callee{joggle::Attr("opaque")};
+  joggle::Attr configured_frontier;
+  CHECK(joggle::query(env, "script.configured_frontier", relation,
+                      configured_frontier, accepted_callee));
+  CHECK(configured_frontier.list() && configured_frontier.list()->empty());
+  const std::vector<joggle::Attr> rejected_callee{joggle::Attr("other")};
+  CHECK(joggle::query(env, "script.configured_frontier", relation,
+                      configured_frontier, rejected_callee));
+  CHECK(configured_frontier.list() &&
+        configured_frontier.list()->size() == 1 &&
+        configured_frontier.list()->front().string() == "opaque");
   std::int64_t expected_cost = 0;
   for (joggle::Op op : relation.ops())
     expected_cost += op.kind() == joggle::Op::Kind::call ? 2 : 1;

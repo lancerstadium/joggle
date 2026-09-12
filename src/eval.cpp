@@ -1834,7 +1834,8 @@ private:
         }
         return Items{Item(std::move(out))};
       }
-    } else if (name == "invoke" && args.size() == 3) {
+    } else if (name == "invoke" &&
+               (args.size() == 3 || args.size() == 4)) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* op = as<Op>(args[1]);
       const auto* fn = as<Fn>(args[2]);
@@ -1846,15 +1847,22 @@ private:
         const Ty& expected = generics.front();
         const std::vector<Val> params = fn->params();
         const std::vector<Ty> returns = fn->returns();
-        if (!fn->generics().empty() || params.size() != 2 ||
+        const bool configured = args.size() == 4;
+        if (!fn->generics().empty() ||
+            params.size() != (configured ? 3 : 2) ||
             params[0].type() != Ty("Mod") || params[1].type() != Ty("Op") ||
+            (configured && !accepts_runtime(params[2].type(), args[3])) ||
             returns.size() != 1 || returns.front() != expected) {
-          fail("ir.invoke callback must be fn(Mod, Op) -> " +
+          fail("ir.invoke callback must match fn(Mod, Op" +
+                   std::string(configured ? ", argument" : "") + ") -> " +
                    std::string(expected.text()),
                loc);
           return std::nullopt;
         }
-        auto result = invoke(*fn, {Item(*mod), Item(*op)});
+        Items callback_args{Item(*mod), Item(*op)};
+        if (configured)
+          callback_args.push_back(args[3]);
+        auto result = invoke(*fn, std::move(callback_args));
         if (!result)
           return std::nullopt;
         if (result->size() != 1 ||

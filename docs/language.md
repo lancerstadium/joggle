@@ -569,8 +569,11 @@ Open function attributes can also define module-owned relations without a
 second rule language. `ir.where(fns, key, value)` filters an explicit function
 list by exact metadata; a list-valued attribute matches when it contains the
 requested value. `ir.invoke<R>(m, op, fn)` executes a selected ordinary
-`fn(Mod, Op) -> R` in the current transaction. The explicit result type keeps
-dynamic invocation typed even though `Fn` is a runtime handle. It rejects
+`fn(Mod, Op) -> R` in the current transaction. Its four-argument overload
+passes one structural compile-time value to a matching callback; a dictionary
+can therefore carry named policy without an option class or wrapper function.
+The explicit result type keeps dynamic invocation typed even though `Fn` is a
+runtime handle. It rejects
 generic or incompatible callback signatures before execution, validates the
 returned value, and rolls the enclosing compile-time entry back normally on an
 error. A relation driver uses `ir.invoke<bool>`; a cost traversal can use

@@ -253,7 +253,10 @@ literals allow the same source language to collect IR handles.
 
 The same boundary now supports module-owned semantic relations. `ir.where`
 filters ordinary `Fn` values using open metadata, and `ir.invoke<R>` executes
-the uniform `fn(Mod, Op) -> R` shape inside the current transaction. Relation
+the uniform `fn(Mod, Op) -> R` shape inside the current transaction. Its
+configured overload carries one structural value to `fn(Mod, Op, A) -> R`;
+generic capability traversals forward the value without generated wrappers.
+Relation
 modules choose `R = bool`; analysis modules may select another ordinary result
 type. The evaluator knows neither the attribute key, operator vocabulary, nor
 the meaning of the returned value. The

@@ -16,3 +16,15 @@ cmake --build build
 The result is `5`: one call plus one return. Replace `cost.weight` with a
 device-specific cycle, energy, code-size, or resource model while retaining the
 same traversal and typed invocation boundary.
+
+The same callback can receive structural policy instead of requiring one
+wrapper per device configuration:
+
+```sh
+./build/joggle query cost.total examples/cost/model.jog \
+  --arg 7 --arg 2 -M examples -M build/modules
+```
+
+This returns `9`: the call weight is seven and the return weight is two. The
+configuration is forwarded by `stat.sum`; it is not stored in the model or
+interpreted by the compiler core.
