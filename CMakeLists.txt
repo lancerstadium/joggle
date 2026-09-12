@@ -881,6 +881,7 @@ if(JOGGLE_BUILD_TESTS)
           -DOUTPUT=${case}/test_data_set_0/output_0.pb
           -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
           -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/examples/onnx/main.c
+          -DBENCHMARK=${CMAKE_CURRENT_SOURCE_DIR}/examples/onnx/benchmark.c
           -DROOT=${CMAKE_CURRENT_BINARY_DIR}/examples/${name}
           -P ${CMAKE_CURRENT_SOURCE_DIR}/examples/onnx/run.cmake
       )

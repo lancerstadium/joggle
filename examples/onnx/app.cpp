@@ -146,7 +146,6 @@ int main(int argc, char** argv) {
               elapsed.count());
 
   CHECK(joggle::run(env, "c.prepare", model));
-  CHECK(joggle::run(env, "tile.fuse", model));
   CHECK(joggle::run(env, "mem.plan", model));
   const std::vector<joggle::Attr> placement{joggle::Attr("static")};
   CHECK(joggle::run(env, "c.place", model, placement));

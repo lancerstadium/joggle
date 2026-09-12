@@ -1,9 +1,9 @@
 if(NOT DEFINED APP OR NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
    NOT DEFINED INPUT OR NOT DEFINED OUTPUT OR NOT DEFINED MODULES OR
-   NOT DEFINED HARNESS OR NOT DEFINED ROOT)
+   NOT DEFINED HARNESS OR NOT DEFINED BENCHMARK OR NOT DEFINED ROOT)
   message(FATAL_ERROR
           "ONNX example requires APP, TOOL, CC, MODEL, INPUT, OUTPUT, MODULES, "
-          "HARNESS, and ROOT")
+          "HARNESS, BENCHMARK, and ROOT")
 endif()
 
 file(REMOVE_RECURSE "${ROOT}")
@@ -20,6 +20,7 @@ set(data "${ROOT}/model.bin")
 set(blob_source "${ROOT}/model-blob.c")
 set(blob_header "${ROOT}/model-blob.h")
 set(blob_program "${ROOT}/model-blob")
+set(benchmark_program "${ROOT}/benchmark")
 
 execute_process(
   COMMAND "${APP}" "${MODEL}" "${INPUT}" "${OUTPUT}"
@@ -91,6 +92,19 @@ execute_process(
 if(NOT result EQUAL 0)
   message(FATAL_ERROR
           "external-data ONNX C did not compile (${result}):\n${output}${error}")
+endif()
+
+execute_process(
+  COMMAND "${CC}" -std=c11 -O3 -Wall -Wextra -Wstrict-prototypes -Werror
+          -DJOGGLE_EXTERNAL_DATA=1 -I "${ROOT}"
+          "${blob_source}" "${BENCHMARK}" -lm -o "${benchmark_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "ONNX benchmark did not compile (${result}):\n${output}${error}")
 endif()
 
 execute_process(

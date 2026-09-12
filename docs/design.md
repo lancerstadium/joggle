@@ -1361,6 +1361,12 @@ placing workspace statically, and emitting external-data C requires no new C
 case. The generated program passes strict C99 compilation and the official
 1,000-output comparison with maximum absolute error `2.0980835e-05`. This is
 correctness and structural evidence, not yet a controlled speedup claim.
+The first process-internal timing diagnostic is intentionally retained as a
+negative result: on the local Apple M4, the fused program is about 4.4% slower
+over 30 Clang `-O3` repetitions. Optimization remarks reduce interleaving of
+the affected loops from four to one. Legality therefore belongs in `tile`,
+while target costs and profitability must remain an independently selectable
+policy rather than hidden behavior of import, exposure, or emission.
 
 ### Storage planning
 

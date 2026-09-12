@@ -58,6 +58,7 @@ model.vm
 model.c
 model-blob.c
 model-blob.h
+benchmark
 model.bin
 model.h
 bounds.json
@@ -90,3 +91,38 @@ Emit `c.header` with the same string argument to obtain the matching interface.
 The application may read, map, download, or point into ROM for `model.bin` and
 passes that pointer explicitly. The default `model.c` remains useful when a
 single self-contained translation unit matters more than compile size.
+
+## Measure generated code
+
+`benchmark.c` measures repeated calls in one process, after configurable
+warm-up, and writes one CSV row per inference. File loading, allocation, and
+checksum calculation stay outside each timed interval. It consumes the same
+single-input/single-output `f32` application ABI as the correctness harness;
+the output element count remains an explicit argument rather than a model-name
+case:
+
+```sh
+cc -std=c11 -O3 -Wall -Wextra -Wstrict-prototypes -Werror \
+  -DJOGGLE_EXTERNAL_DATA=1 -I . model-blob.c benchmark.c -lm -o benchmark
+./benchmark input.bin model.bin 1000 3 30 > timings.csv
+```
+
+The resulting fields are `iteration`, wall-clock `seconds`, and an output
+`checksum` that prevents an unused computation from masquerading as a speedup.
+Report the raw rows, compiler and flags, machine state, and a matched unfused
+baseline; a single mean from this harness is not by itself paper evidence.
+
+The application gate deliberately leaves optional transforms out of its
+baseline. A matched fusion experiment starts from its prepared `model.jog`,
+replans after the explicit rewrite, and emits a separate artifact:
+
+```sh
+joggle run tile.fuse mem.plan model.jog -M modules > fused.jog
+joggle emit c.data fused.jog -M modules > fused.bin
+joggle emit c.source fused.jog --arg '"weights"' -M modules > fused-blob.c
+```
+
+Emit the matching header, compile `fused-blob.c` with the same flags, and run
+both binaries with identical warm-up and repetition counts. Keeping the
+transform out of import, preparation, and emission is what makes the baseline
+and policy choice auditable.

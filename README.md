@@ -258,12 +258,10 @@ example to one synthetic operator. MobileNetV2 additionally exercises atomic
 network-wide body expansion and canonical round trip on the resulting
 loop-level IR. An independent, opt-in application gate executes its official
 ONNX Zoo input through both the deterministic VM and compiled C, then compares
-all 1,000 outputs with the official result. Its C path also applies the
-operator-neutral greedy loop fusion function before storage planning, so the
-application gate covers optimized IR rather than only isolated fusion tests.
-Source construction carries only
-mutable bindings actually
-changed by nested control flow, so readable `var` syntax does not replicate
+all 1,000 outputs with the official result. Optional transforms remain explicit
+so the gate is also a stable unfused baseline for matched experiments. Source
+construction carries only mutable bindings actually changed by nested control
+flow, so readable `var` syntax does not replicate
 every in-scope binding across every exposed tensor loop.
 The shared driver, generated-C harness, reproducible pipelines, and artifact
 guide live together in [`examples/onnx`](examples/onnx) rather than being

@@ -75,6 +75,14 @@ small embeddable compiler frameworks.
   `7`. The fused external-data C passes strict C99 compilation and all 1,000
   official outputs with maximum absolute error `2.0980835e-05`; its weight
   blob is byte-identical to the unfused one.
+- A repository benchmark harness now times repeated inference calls in one
+  process and records raw CSV rows plus an output checksum. A local Apple M4
+  diagnostic with Clang `-O3`, three warm-ups, and 30 repetitions found the
+  unfused mean/median at `206.480/206.939 ms` and the fused mean/median at
+  `215.612/215.927 ms`: legal fusion regressed latency by about 4.4%. Clang's
+  optimization remarks show the fused BatchNorm-ReLU loops falling from
+  interleave count four to one. This negative pilot motivates a separate,
+  target-aware profitability policy; it is not a paper benchmark.
 - Default, sanitizer, ONNX, TFLite, generated-C, VM, installation, and external
   module gates exercise the same public interfaces.
 
