@@ -104,6 +104,16 @@ frozen.
 - A structural fusion experiment reduced loops from 374 to 328 and tensor
   constructions from 155 to 109, but the broad fused variant was slower in the
   local pilot. The selected variant also did not establish a meaningful speedup.
+- A user policy expanded 72 statically bounded MobileNetV2 loops with trip
+  counts at most three. Generated C grew by about 26%, while the 20-run median
+  changed by only -0.22%, within the unisolated pilot's noise. Small-loop
+  unrolling is therefore not the next generated-code priority.
+- Mixed-stage specialization instead removed 328 rank-traversal loops and all
+  492 dynamic compound-list indices from MobileNetV2. External-weight C shrank
+  from 244,239 to 226,855 bytes. The official 1,000 outputs retained maximum
+  absolute error `2.0980835e-05`; a matched 20-run pilot changed the median from
+  204.549 to 201.240 ms (-1.62%). This is promising mechanism evidence, not a
+  broad performance claim.
 
 Raw pilot records belong in [data/](data/). Negative results must remain visible:
 they show that structural simplification is not a substitute for a cost model

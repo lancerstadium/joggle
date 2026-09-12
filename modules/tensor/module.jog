@@ -238,6 +238,7 @@ fn offset<I: Ty>(
 ) -> int {
   var out = 0
   var stride = 1
+  [stage: "shape"]
   for reverse in 0..len(shape) {
     let i = len(shape) - reverse - 1
     let axis = axes[i]
@@ -254,6 +255,7 @@ fn coord(
 ) -> int {
   var out = 0
   var stride = 1
+  [stage: "shape"]
   for reverse in 0..len(shape) {
     let i = len(shape) - reverse - 1
     if axes[i] == axis {

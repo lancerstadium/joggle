@@ -613,6 +613,15 @@ joggle emit c.source build/examples/prepared.jog \
 and stops at the C module's scalar/tensor-access/control-flow boundary. It is
 transactional and bounded; it is not run by `emit` or module loading.
 
+Shared tensor bodies contain small `[stage: "shape"]` loops for rank- and
+layout-dependent indexing. C preparation explicitly applies
+`opt.specialize(m, "stage", "shape")` after exposure. The loop bounds and list
+positions become compile-time structure, while coordinates remain ordinary
+runtime values. Thus a custom layout function can use the same readable list
+code without forcing the generated C to execute a rank loop inside every
+element access. Other targets may select this convention, another attribute,
+or no structural specialization at all.
+
 The default ABI uses signed 64-bit `int` and `index`. A target module can pass
 sparse replacement descriptors to the configured overloads. The same value
 must be used for preparation and emission because it defines both legality and

@@ -290,13 +290,13 @@ endif()
 file(READ "${blob_source}" emitted_blob_source)
 file(READ "${blob_header}" emitted_blob_header)
 if(NOT emitted_blob_source MATCHES
-   "const int8_t\\* [^\n]+ = \\(const int8_t\\*\\)\\(const void\\*\\)\\(joggle_data_model \\+ 0\\);" OR
+   "const int8_t\\* [^\n]+ = \\(const int8_t\\*\\)\\(const void\\*\\)\\(model \\+ 0\\);" OR
    NOT emitted_blob_source MATCHES
-   "const float\\* [^\n]+ = \\(const float\\*\\)\\(const void\\*\\)\\(joggle_data_model \\+ 4\\);" OR
+   "const float\\* [^\n]+ = \\(const float\\*\\)\\(const void\\*\\)\\(model \\+ 4\\);" OR
    emitted_blob_source MATCHES "static const unsigned char joggle_data_" OR
    emitted_blob_source MATCHES "extern const unsigned char joggle_data_" OR
    NOT emitted_blob_header MATCHES
-       "kernel_weights\\(const unsigned char\\* joggle_data_model, float\\* joggle_result\\);")
+       "kernel_weights\\(const unsigned char\\* model, float\\* joggle_result\\);")
   message(FATAL_ERROR
           "external-data C interface did not expose the raw blob parameter:\n"
           "${emitted_blob_header}\n${emitted_blob_source}")

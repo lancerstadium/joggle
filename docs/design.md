@@ -190,6 +190,15 @@ iteration order, carried state, and use-def consistency. `mem` annotates
 reusable tensor storage on the same values. Neither belongs to the core; other
 modules may replace either policy.
 
+`opt.specialize` is the smaller mechanism for mixed-stage structure. A module
+may mark a loop with an ordinary attribute, then explicitly ask the transform
+to expand loops carrying that key and value. Static iteration structure is
+removed while dynamic values remain `Val`s; literal-list projection and
+constant branch selection then expose direct scalar expressions. This is not
+an operator, rank, or target rewrite. The tensor library uses the convention
+`[stage: "shape"]` for layout bookkeeping, and the C preparation policy elects
+to specialize that convention before emission.
+
 ## Targets and artifacts
 
 A target module should make three things inspectable:

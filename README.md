@@ -107,6 +107,12 @@ Conversion, optimization, storage planning, and emission remain explicit:
   -M build/modules > model.c
 ```
 
+`c.prepare` also specializes the tensor library's explicitly marked shape
+bookkeeping. This removes compile-time rank traversal without teaching the C
+emitter about Conv, ONNX, or a fixed tensor rank. User and imported value names
+remain visible in generated C; only compiler-created temporaries, result
+buffers, and planned storage slots use the reserved `joggle_` prefix.
+
 A codec preserves source-format calls and attributes. Its bridge maps supported
 calls to shared tensor and neural-network semantics. Unknown calls remain
 visible and a target reports its unsupported frontier; neither stage guesses.

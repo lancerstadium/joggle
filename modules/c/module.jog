@@ -296,6 +296,19 @@ local fn owned(m: Mod, fn: Fn) -> bool {
   return false
 }
 
+local fn data_name(m: Mod, requested: str) -> str {
+  let name = c_name(requested)
+  for fn in ir.fns(m) {
+    if len(ir.blks(fn)) != 0 {
+      for param in ir.params(fn) {
+        assert(val(param) != name,
+               "c: external data name collides with parameter " + name)
+      }
+    }
+  }
+  return name
+}
+
 local fn supported(type: Ty, config: dict) -> bool {
   if tensor.valid(type) {
     return tensor.static(type) &&
@@ -503,7 +516,10 @@ local fn prepare_with(m: Mod, config: dict) -> bool {
   let accept = ir.find(
     "c.accepts", [ty("Mod"), ty("Op"), ty("dict")]
   )
-  let changed = opt.expose(m, accept, config, limit)
+  var changed = opt.expose(m, accept, config, limit)
+  if opt.specialize(m, "stage", "shape") {
+    changed = true
+  }
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" {
       assert(accepts_with(m, op, config),
@@ -1228,12 +1244,12 @@ fn header(m: Mod, config: dict) -> str {
 
 fn header(m: Mod, blob: str) -> str {
   assert(blob != "", "c: external data name must not be empty")
-  return header_with(m, "joggle_data_" + c_name(blob), {})
+  return header_with(m, data_name(m, blob), {})
 }
 
 fn header(m: Mod, blob: str, config: dict) -> str {
   assert(blob != "", "c: external data name must not be empty")
-  return header_with(m, "joggle_data_" + c_name(blob), config)
+  return header_with(m, data_name(m, blob), config)
 }
 
 local fn data_with(m: Mod, config: dict) -> bytes {
@@ -1280,7 +1296,7 @@ fn source(m: Mod) -> str {
 
 fn source(m: Mod, blob: str) -> str {
   assert(blob != "", "c: external data name must not be empty")
-  return emit(m, "joggle_data_" + c_name(blob), {})
+  return emit(m, data_name(m, blob), {})
 }
 
 fn source(m: Mod, config: dict) -> str {
@@ -1289,5 +1305,5 @@ fn source(m: Mod, config: dict) -> str {
 
 fn source(m: Mod, blob: str, config: dict) -> str {
   assert(blob != "", "c: external data name must not be empty")
-  return emit(m, "joggle_data_" + c_name(blob), config)
+  return emit(m, data_name(m, blob), config)
 }

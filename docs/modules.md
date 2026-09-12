@@ -215,7 +215,10 @@ It should not require edits to the core, the C emitter, or another frontend.
 `opt.expose` is the main connection between semantics and a target. It asks a
 capability function whether an operation is accepted and expands available
 bodies only where needed. `opt.apply` selects compatible implementations;
-`opt.basic` performs target-independent cleanup.
+`opt.basic` performs target-independent cleanup. `opt.specialize(m, key,
+value)` fully expands finite static loops carrying the selected open attribute
+and folds list projection and constant branches around dynamic values. The
+selection is explicit: the core never treats an attribute as behavior.
 
 `mem.plan` assigns reusable static slots to tensor values after lifetimes and
 shapes are known. `tile` provides conservative structural loop operations.
@@ -243,9 +246,12 @@ signatures. `vm` emits a deterministic image and reports executed steps.
 Neither receives privileged access to the IR.
 
 By default, `c` derives public symbols from qualified function names and keeps
-valid source value names. The `joggle_` prefix is reserved for compiler-owned
-names and C-keyword escapes; it is not added to every user symbol. A module can
-pin an external name with `[c: {name: "vendor_kernel"}]`. Because Joggle is
+valid source value names. An external payload argument uses exactly the name
+passed to `c.source`/`c.header` after C identifier sanitization; a collision
+with a source parameter is rejected. The `joggle_` prefix is reserved for
+otherwise unnamed result buffers, storage slots, temporary values, and
+C-keyword escapes; it is not added to user names. A module can pin an external
+name with `[c: {name: "vendor_kernel"}]`. Because Joggle is
 pre-1.0, source-derived spelling is not itself a stable ABI promise:
 applications that require ABI stability should use an explicit binding and
 compile the emitted header and source from the same IR.

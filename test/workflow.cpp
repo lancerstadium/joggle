@@ -2828,6 +2828,42 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(folded_assignment,
                                    folded_assignment_roundtrip));
 
+  constexpr std::string_view specialized_source =
+      "module specialized\n"
+      "fn work(x: int, y: int) -> int {\n"
+      "  var out = 0\n"
+      "  [stage: \"shape\"]\n"
+      "  for i in 0..2 {\n"
+      "    let values = [x, y]\n"
+      "    let enabled = [true, true]\n"
+      "    if enabled[i] {\n"
+      "      out += values[i]\n"
+      "    }\n"
+      "  }\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod specialized;
+  CHECK(joggle::parse(env, specialized_source, specialized,
+                      "specialized.jog"));
+  CHECK(specialized.verify(env));
+  const std::vector<joggle::Attr> specialize_args{
+      joggle::Attr("stage"), joggle::Attr("shape")};
+  CHECK(joggle::run(env, "opt.specialize", specialized, specialize_args));
+  CHECK(specialized.verify(env));
+  for (joggle::Op op : specialized.ops()) {
+    CHECK(op.kind() != joggle::Op::Kind::loop);
+    CHECK(op.kind() != joggle::Op::Kind::branch);
+    CHECK(op.callee() != "operator []");
+  }
+  const std::string staged_text = joggle::print(specialized);
+  CHECK(staged_text.find("out += x") != std::string::npos);
+  CHECK(staged_text.find("out += y") != std::string::npos);
+  joggle::Mod specialized_roundtrip;
+  CHECK(joggle::parse(env, staged_text, specialized_roundtrip,
+                      "specialized-roundtrip.jog"));
+  CHECK(specialized_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(specialized, specialized_roundtrip));
+
   joggle::Attr clean_report;
   CHECK(joggle::run(env, "script.clean_pure", cleaned, clean_report));
   CHECK(cleaned.verify(env));

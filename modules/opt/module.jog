@@ -1,6 +1,89 @@
 module opt
 use ir
 
+local fn mapped(value: Val, old: list<Val>, next: list<Val>) -> Val {
+  for i in 0..len(old) {
+    if value == old[i] {
+      return next[i]
+    }
+  }
+  return value
+}
+
+local fn project(m: Mod) -> bool {
+  var changed = false
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" &&
+       ir.callee(op) == "operator []" {
+      let args = ir.args(op)
+      let outs = ir.outs(op)
+      if len(args) == 2 && len(outs) == 1 && ir.is_const(args[1]) &&
+         base.kind(ir.constant(args[1])) == "int" {
+        let list = ir.def(args[0])
+        if ir.live(list) && ir.kind(list) == "call" &&
+           ir.callee(list) == "base.list" {
+          let items = ir.args(list)
+          let index = base.int(ir.constant(args[1]))
+          if index >= 0 && index < len(items) &&
+             ir.type(outs[0]) == ir.type(items[index]) {
+            changed = ir.replace(m, outs[0], items[index]) || changed
+            changed = ir.erase(m, op) || changed
+          }
+        }
+      }
+    }
+  }
+  return changed
+}
+
+local fn select(m: Mod) -> bool {
+  var changed = false
+  let candidates = ir.ops(m)
+  for branch in candidates {
+    if ir.live(branch) && ir.kind(branch) == "branch" &&
+       len(ir.meta(branch)) == 0 {
+      let inputs = ir.args(branch)
+      let outputs = ir.outs(branch)
+      let bodies = ir.blks(branch)
+      if len(inputs) > 0 && len(bodies) == 2 &&
+         ir.is_const(inputs[0]) &&
+         base.kind(ir.constant(inputs[0])) == "bool" {
+        var chosen = bodies[1]
+        if ir.constant(inputs[0]) == true {
+          chosen = bodies[0]
+        }
+        let args = ir.args(chosen)
+        let ops = ir.ops(chosen)
+        if len(args) == len(outputs) && len(inputs) == len(outputs) + 1 &&
+           len(ops) > 0 && ir.kind(ops[len(ops) - 1]) == "yield" {
+          var old = args
+          var next: list<Val> = []
+          for i in 1..len(inputs) {
+            next += [inputs[i]]
+          }
+          for i in 0..len(ops) - 1 {
+            let copy = ir.clone(m, ops[i], branch, old, next)
+            assert(ir.live(copy), "opt.fold could not select a branch")
+            old += ir.outs(ops[i])
+            next += ir.outs(copy)
+          }
+          var values: list<Val> = []
+          for value in ir.args(ops[len(ops) - 1]) {
+            values += [mapped(value, old, next)]
+          }
+          if len(outputs) != 0 {
+            assert(ir.replace(m, outputs, values),
+                   "opt.fold could not replace branch results")
+          }
+          assert(ir.erase(m, branch), "opt.fold could not erase a branch")
+          changed = true
+        }
+      }
+    }
+  }
+  return changed
+}
+
 fn fold(m: Mod, fns: list<Fn>) -> bool {
   var calls: list<Op> = []
   var bodies: list<Fn> = []
@@ -20,6 +103,8 @@ fn fold(m: Mod, fns: list<Fn>) -> bool {
     }
   }
   var changed = len(calls) != 0 && ir.fold(m, calls, bodies)
+  changed = project(m) || changed
+  changed = select(m) || changed
   for op in ir.ops(m) {
     if ir.live(op) &&
        (ir.kind(op) == "loop" || ir.kind(op) == "branch") {
@@ -31,6 +116,117 @@ fn fold(m: Mod, fns: list<Fn>) -> bool {
 
 fn fold(m: Mod) -> bool {
   return fold(m, ir.fns("base"))
+}
+
+local fn specialize_loop(m: Mod, loop: Op) -> bool {
+  let inputs = ir.args(loop)
+  let outputs = ir.outs(loop)
+  let bodies = ir.blks(loop)
+  let axes = len(inputs) - len(outputs)
+  if ir.kind(loop) != "loop" || len(bodies) != 1 || axes <= 0 {
+    return false
+  }
+  let body = bodies[0]
+  let body_args = ir.args(body)
+  let body_ops = ir.ops(body)
+  if len(body_args) != axes + len(outputs) || len(body_ops) == 0 ||
+     ir.kind(body_ops[len(body_ops) - 1]) != "yield" {
+    return false
+  }
+
+  var lower: list<int> = []
+  var sizes: list<int> = []
+  var count = 1
+  for axis in 0..axes {
+    let range = ir.def(inputs[axis])
+    if !ir.live(range) || ir.kind(range) != "call" ||
+       ir.callee(range) != "operator .." {
+      return false
+    }
+    let bounds = ir.args(range)
+    if len(bounds) != 2 || !ir.is_const(bounds[0]) ||
+       !ir.is_const(bounds[1]) ||
+       base.kind(ir.constant(bounds[0])) != "int" ||
+       base.kind(ir.constant(bounds[1])) != "int" {
+      return false
+    }
+    let begin = base.int(ir.constant(bounds[0]))
+    let end = base.int(ir.constant(bounds[1]))
+    var size = 0
+    if end > begin {
+      size = end - begin
+    }
+    lower += [begin]
+    sizes += [size]
+    count *= size
+  }
+
+  var current: list<Val> = []
+  for i in axes..len(inputs) {
+    current += [inputs[i]]
+  }
+  let yield = body_ops[len(body_ops) - 1]
+  for point in 0..count {
+    var remainder = point
+    var coords: list<int> = []
+    for axis in 0..axes {
+      coords += [0]
+    }
+    for reverse in 0..axes {
+      let axis = axes - reverse - 1
+      coords[axis] = lower[axis] + remainder % sizes[axis]
+      remainder /= sizes[axis]
+    }
+
+    var old: list<Val> = []
+    var next: list<Val> = []
+    for axis in 0..axes {
+      old += [body_args[axis]]
+      next += [ir.constant(m, loop, coords[axis], ty("index"))]
+    }
+    for i in 0..len(outputs) {
+      old += [body_args[axes + i]]
+      next += [current[i]]
+    }
+    for i in 0..len(body_ops) - 1 {
+      let copy = ir.clone(m, body_ops[i], loop, old, next)
+      assert(ir.live(copy), "opt.specialize could not clone a loop body")
+      old += ir.outs(body_ops[i])
+      next += ir.outs(copy)
+    }
+    current = []
+    for value in ir.args(yield) {
+      current += [mapped(value, old, next)]
+    }
+  }
+
+  if len(outputs) != 0 {
+    assert(ir.replace(m, outputs, current),
+           "opt.specialize could not replace loop results")
+  }
+  assert(ir.erase(m, loop), "opt.specialize could not erase a loop")
+  return true
+}
+
+fn specialize(m: Mod, key: str, value: Attr) -> bool {
+  var changed = false
+  let candidates = ir.ops(m)
+  for reverse in 0..len(candidates) {
+    let op = candidates[len(candidates) - reverse - 1]
+    if ir.live(op) && ir.kind(op) == "loop" && ir.has(op, key) &&
+       ir.meta(op, key) == value {
+      assert(specialize_loop(m, op),
+             "opt.specialize requires finite static ranges")
+      changed = true
+    }
+  }
+  if changed {
+    // Projection can make a condition static; the second fold selects it.
+    fold(m)
+    fold(m)
+    dce(m, ["base.list"])
+  }
+  return changed
 }
 
 fn copy(m: Mod) -> bool {

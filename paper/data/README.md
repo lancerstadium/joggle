@@ -47,3 +47,21 @@ rows use `examples/onnx/benchmark.c` and the flags stated above.
 `model-coverage-pilot.csv` records stage-level status for checksum-pinned ONNX
 Zoo models. A row marked `compile` is not counted as numerical correctness;
 only rows with `execute=pass` used the official stored output.
+
+`mobilenetv2-unroll-pilot.csv` compares the unmodified generated C with a
+module policy that applies `tile.unroll` to legal innermost loops whose static
+trip count is at most three. Both variants use `-std=c99 -O3 -DNDEBUG`, five
+warm-up calls, and 20 timed calls. The policy expanded 72 loops and increased
+external-weight C from 244,239 to 307,711 bytes. All outputs retained maximum
+absolute error `2.0980835e-05`; median latency changed from 206.182 to
+205.722 ms, which is not treated as a speedup on this unisolated sequential
+pilot. The result directs optimization work toward index/layout structure and
+target implementations rather than more indiscriminate unrolling.
+
+`mobilenetv2-specialize-pilot.csv` is a matched follow-up using the same
+strict C flags, input, external payload, five warm-ups, and 20 timed calls.
+The specialized variant expands only `[stage: "shape"]` loops, projects
+compile-time list positions, and selects constant branches. It removes 328
+rank loops and 492 compound-list indices, reduces generated C from 244,239 to
+226,855 bytes, and preserves the official-output error bound. Median latency
+changed from 204.549 to 201.240 ms (-1.62%) on this unisolated run.
