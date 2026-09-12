@@ -212,8 +212,10 @@ scheduler object or callback ABI.
 The bundled `tile` module demonstrates structural loop transformation. Its
 operations select explicit loops or producer/consumer pairs and preserve
 iteration order, carried state, and use-def consistency. `mem` annotates
-reusable tensor storage on the same values. Neither belongs to the core; other
-modules may replace either policy.
+reusable tensor storage on the same values. Function returns are ownership
+boundaries: the planner leaves returned tensor bindings in caller-provided
+storage rather than charging them to the callee's local workspace. Neither
+module belongs to the core; other modules may replace either policy.
 
 `opt.specialize` is the smaller mechanism for mixed-stage structure. A module
 may mark a loop with an ordinary attribute, then explicitly ask the transform

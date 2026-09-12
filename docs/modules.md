@@ -239,8 +239,11 @@ The guarded overload accepts the same read-only `fn(Mod, Op, Fn) -> bool`
 policy as `opt.apply`. No operator name, frontend schema, or target is built
 into this mechanism.
 
-`mem.plan` assigns reusable static slots to tensor values after lifetimes and
-shapes are known. `tile` provides conservative structural loop operations.
+`mem.plan` assigns reusable static slots to local tensor values after lifetimes
+and shapes are known. Parameters, constants, and returned bindings remain
+outside the local workspace, allowing an artifact target to use caller-owned
+result storage directly. `tile` provides conservative structural loop
+operations.
 These modules are intentionally separate: storage and scheduling policy can be
 replaced independently and neither changes the core IR.
 

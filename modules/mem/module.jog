@@ -18,6 +18,17 @@ fn plan(m: Mod, fn: Fn) -> bool {
   var types: list<Ty> = []
   var counts: list<int> = []
   var firsts: list<int> = []
+  var returned: dict = {}
+  for op in ops {
+    if ir.kind(op) == "return" {
+      for value in ir.args(op) {
+        let name = ir.name(value)
+        if tensor.valid(ir.type(value)) && name != "" {
+          returned[name] = true
+        }
+      }
+    }
+  }
 
   for at in 0..len(ops) {
     for value in ir.outs(ops[at]) {
@@ -25,7 +36,7 @@ fn plan(m: Mod, fn: Fn) -> bool {
       let name = ir.name(value)
       if tensor.valid(type) && tensor.static(type) && name != "" &&
          !ir.is_const(value) && !has(parameters, name) &&
-         !has(bindings, name) {
+         !has(returned, name) && !has(bindings, name) {
         bindings[name] = len(names)
         names += [name]
         types += [tensor.elem(type)]

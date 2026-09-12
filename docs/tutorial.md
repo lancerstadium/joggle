@@ -699,10 +699,13 @@ joggle emit c.source build/examples/planned.jog \
 ```
 
 `mem.plan` is an ordinary idempotent transform. It handles fixed-shape local
-tensors, excludes parameters and constants, and reuses a slot only after the
-prior binding's last real use. `c.source` reads `mem.slot` metadata if present;
-it does not run the planner. A device-specific module may instead interpret or
-replace the same open metadata with its own allocation policy.
+tensors, excludes parameters, constants, and returned bindings, and reuses a
+slot only after the prior binding's last real use. Returned bindings represent
+caller-owned storage rather than local workspace; a target may consequently
+write the last tensor computation directly into its result buffer. `c.source`
+reads `mem.slot` metadata if present; it does not run the planner. A
+device-specific module may instead interpret or replace the same open metadata
+with its own allocation policy.
 
 The parameterized `c.place(m, "static")` transform changes only the C module's
 workspace placement metadata. It is useful when a large deterministic

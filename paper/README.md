@@ -107,6 +107,12 @@ frozen.
   scalar-expanded variants. Their ten-call median latency changes are small and
   mixed, so the result is code-size reduction with performance parity rather
   than a speedup claim.
+- Treating returned tensors as caller-owned storage reduces the four models'
+  statically planned workspace elements by 63.9--86.6% and removes one full
+  result copy per private function. A paired unisolated pilot shows mixed
+  median latency changes from -0.2% to +5.8%, so this is currently a memory
+  result, not a runtime-speed claim. Safe no-alias information is the next
+  backend question exposed by the experiment.
 - On the same unisolated Apple M4 pilots, current strict C medians are 198.469,
   32.022, 188.152, and 1,193.713 ms for those four models. The recorded
   one-thread ONNX Runtime medians are 5.881, 4.342, 2.908, and 24.862 ms. The

@@ -93,6 +93,17 @@ if(NOT buffer_count EQUAL 2)
   message(FATAL_ERROR
           "planned C did not declare exactly two buffers:\n${emitted}")
 endif()
+if(emitted MATCHES "third_out\\[[^]]+\\] = slot_f32_")
+  message(FATAL_ERROR
+          "planned C copied its final tensor instead of writing the result:\n"
+          "${emitted}")
+endif()
+if(NOT emitted MATCHES "float\\* third = third_out;" OR
+   NOT emitted MATCHES "third\\[[^]]+\\] = \\(")
+  message(FATAL_ERROR
+          "planned C did not write its final computation into the result:\n"
+          "${emitted}")
+endif()
 
 execute_process(
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror

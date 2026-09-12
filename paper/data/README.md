@@ -23,10 +23,26 @@ MobileNetV2, 33.374 to 32.022 ms for UltraFace, 185.743 to 188.152 ms for
 SqueezeNet, and 1.207 to 1.194 s for ResNet18. External-data source size falls
 by 26.3%, 8.4%, 15.4%, and 21.8%, while payload size is unchanged. These small
 and mixed latency changes are treated as performance parity, not a speedup
-claim. Preparation can still take minutes
-because whole-module fixed-point scans are repeated across private functions;
-worklist-local preparation and cross-function tensor-storage forwarding are
-the next compiler experiments.
+claim. Preparation cost and cross-function tensor storage were therefore
+selected for direct measurement rather than inferred from source size.
+
+`result-storage-pilot.csv` evaluates the first storage-forwarding step on the
+same four automatic-instance models. The revised `mem.plan` treats a returned
+tensor binding as caller-owned storage instead of allocating a private local
+slot and copying the complete tensor at return. This is a function/storage
+rule, not an operator or C-emitter case. It removes 102, 125, 52, and 40 local
+slots and reduces the sum of statically allocated workspace elements by 86.6%,
+82.2%, 63.9%, and 76.8% for MobileNetV2, UltraFace, SqueezeNet, and ResNet18.
+External-data C source falls by another 4.7--5.2% and all reference error bounds
+are unchanged.
+
+The latency rows come from three alternating processes per variant, each with
+three warm-ups and ten recorded calls, under the same unisolated Apple M4 and
+strict C11 `-O3 -DNDEBUG` setup. Median changes are +2.3%, +5.8%, -0.2%, and
++0.9%, respectively. This is a substantial deterministic-workspace reduction,
+not a latency optimization. Direct caller storage can hide alias information
+from the C compiler; a safe private-call no-alias contract and an explicit
+memory/latency policy comparison are follow-up experiments.
 
 `mobilenetv2-fusion-pilot.csv` was recorded on 12 September 2026 on an Apple
 M4 running Darwin 24.6.0 with Apple Clang 17.0.0 (`clang-1700.6.3.2`). All
