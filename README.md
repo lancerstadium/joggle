@@ -115,7 +115,9 @@ use a collision-checked `_out` suffix; only anonymous compiler-created
 temporaries, result buffers, and planned storage slots use the role-based
 `tmp_`, `out`, and `slot_` stems. C keywords receive a trailing underscore.
 The full `joggle_` spelling is reserved for the installed native-module ABI,
-not generated model code.
+not generated model code. Generated artifacts never introduce abbreviated
+`jog_` or ordinal `v_` prefixes; regression tests enforce this for public
+interfaces, private helpers, and generated application harnesses.
 
 Reusable generic implementations may be specialized without registering every
 shape or operator configuration:

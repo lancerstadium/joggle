@@ -343,8 +343,9 @@ rather than emit an unused payload beside embedded data. A collision with a
 source parameter is rejected. The payload pointer is present only on functions
 that directly or transitively read external constants; unrelated public and
 private functions keep their ordinary ABI. The `joggle_` prefix is reserved
-for the native-module ABI; it is not added to generated model values. Unnamed result
-buffers, storage slots, temporary values, and payload arrays instead use the
+for the native-module ABI; it is not added to generated model values. The
+emitter also never invents abbreviated `jog_` or ordinal `v_` names. Unnamed
+result buffers, storage slots, temporary values, and payload arrays instead use the
 short role-based `out`, `slot_`, `tmp_`, and `data_` stems, while C keywords
 receive a trailing underscore. A module can pin an external name with
 `[c: {name: "vendor_kernel"}]`. Because Joggle is pre-1.0, source-derived
