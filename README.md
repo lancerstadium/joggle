@@ -223,9 +223,9 @@ structured JSON instead of parsing the generated header:
 ```
 
 Each exported function reports its exact C declaration, symbol, parameters,
-results, tensor shapes, element and byte counts, and whether it receives the
-external payload. `c.api`, `c.header`, and `c.source` share the same internal
-ABI and naming functions.
+results, C representation class, tensor shapes, element and byte counts,
+pointer passing, and whether it receives the external payload. `c.api`,
+`c.header`, and `c.source` share the same internal ABI and naming functions.
 
 ABI spelling, widths, alignment, includes, and external scalar types come from
 a configuration dictionary. Function prototypes are derived from resolved

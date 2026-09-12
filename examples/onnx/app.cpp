@@ -145,7 +145,10 @@ int main(int argc, char** argv) {
               static_cast<long long>(*vm_result[1].integer()),
               elapsed.count());
 
-  CHECK(joggle::run(env, "c.prepare", model));
+  if (!joggle::run(env, "c.prepare", model)) {
+    env.print_diags(stderr);
+    return 1;
+  }
   CHECK(joggle::run(env, "mem.plan", model));
   const std::vector<joggle::Attr> placement{joggle::Attr("static")};
   CHECK(joggle::run(env, "c.place", model, placement));

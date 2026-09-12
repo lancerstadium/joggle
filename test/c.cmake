@@ -88,7 +88,7 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "prepared C emission failed (${result}):\n${error}")
 endif()
 file(READ "${open_source}" emitted)
-if(emitted MATCHES "(^|[^A-Za-z0-9_])(jog_|v_[A-Za-z0-9])")
+if(emitted MATCHES "(^|[^A-Za-z0-9_])(joggle_|jog_|v_[A-Za-z0-9])")
   message(FATAL_ERROR
           "prepared C introduced a compiler-owned project prefix:\n${emitted}")
 endif()
@@ -144,10 +144,17 @@ string(JSON add_name GET "${api}" 1 name)
 string(JSON add_decl GET "${api}" 1 declaration)
 string(JSON add_param_bytes GET "${api}" 1 params 0 bytes)
 string(JSON add_result_bytes GET "${api}" 1 results 0 bytes)
+string(JSON add_param_kind GET "${api}" 1 params 0 kind)
+string(JSON add_result_kind GET "${api}" 1 results 0 kind)
+string(JSON add_param_pointer GET "${api}" 1 params 0 pointer)
+string(JSON add_result_pointer GET "${api}" 1 results 0 pointer)
 if(NOT add_name STREQUAL "open_add" OR
    NOT add_decl STREQUAL
        "void open_add(const float* a, const float* b, float* out_out);" OR
-   NOT add_param_bytes EQUAL 16 OR NOT add_result_bytes EQUAL 16)
+   NOT add_param_bytes EQUAL 16 OR NOT add_result_bytes EQUAL 16 OR
+   NOT add_param_kind STREQUAL "float" OR
+   NOT add_result_kind STREQUAL "float" OR
+   NOT add_param_pointer OR NOT add_result_pointer)
   message(FATAL_ERROR "C API query disagrees with its header:\n${api}")
 endif()
 execute_process(
@@ -248,8 +255,10 @@ if(NOT result EQUAL 0)
 endif()
 file(READ "${source32}" emitted_source32)
 file(READ "${header32}" emitted_header32)
-if(emitted_source32 MATCHES "(^|[^A-Za-z0-9_])(jog_|v_[A-Za-z0-9])" OR
-   emitted_header32 MATCHES "(^|[^A-Za-z0-9_])(jog_|v_[A-Za-z0-9])")
+if(emitted_source32 MATCHES
+   "(^|[^A-Za-z0-9_])(joggle_|jog_|v_[A-Za-z0-9])" OR
+   emitted_header32 MATCHES
+   "(^|[^A-Za-z0-9_])(joggle_|jog_|v_[A-Za-z0-9])")
   message(FATAL_ERROR
           "32-bit C introduced a compiler-owned project prefix:\n"
           "${emitted_header32}\n${emitted_source32}")
@@ -354,6 +363,28 @@ if(NOT result EQUAL 0 OR NOT blob_api MATCHES
           "external-data C API query disagrees with its header (${result}):\n"
           "${error}${blob_api}")
 endif()
+string(JSON blob_api_count LENGTH "${blob_api}")
+math(EXPR blob_api_last "${blob_api_count} - 1")
+set(split_api_found FALSE)
+foreach(index RANGE 0 ${blob_api_last})
+  string(JSON candidate_name GET "${blob_api}" ${index} name)
+  if(candidate_name STREQUAL "kernel_split")
+    set(split_api_found TRUE)
+    string(JSON split_result_0_pointer GET
+           "${blob_api}" ${index} results 0 pointer)
+    string(JSON split_result_1_pointer GET
+           "${blob_api}" ${index} results 1 pointer)
+    string(JSON split_result_0_kind GET "${blob_api}" ${index} results 0 kind)
+    if(NOT split_result_0_pointer OR NOT split_result_1_pointer OR
+       NOT split_result_0_kind STREQUAL "signed")
+      message(FATAL_ERROR
+              "C API did not describe multi-result scalar pointer ABI:\n${blob_api}")
+    endif()
+  endif()
+endforeach()
+if(NOT split_api_found)
+  message(FATAL_ERROR "C API omitted kernel_split:\n${blob_api}")
+endif()
 file(READ "${blob_source}" emitted_blob_source)
 file(READ "${blob_header}" emitted_blob_header)
 if(NOT emitted_blob_source MATCHES
@@ -399,8 +430,50 @@ if(emitted_header MATCHES "kernel_noop")
   message(FATAL_ERROR
           "C header exposed a local zero-result helper:\n${emitted_header}")
 endif()
+if(DEFINED PYTHON AND EXISTS "${PYTHON}" AND
+   DEFINED GENERATOR AND EXISTS "${GENERATOR}")
+  set(generated_api "${ROOT}/api.json")
+  set(generated_harness "${ROOT}/extrema-harness.c")
+  set(generated_harness_object "${ROOT}/extrema-harness.o")
+  file(WRITE "${generated_api}" "${blob_api}")
+  execute_process(
+    COMMAND "${PYTHON}" "${GENERATOR}" "${generated_api}"
+            "${generated_harness}" --entry kernel_extrema --header model.h
+    RESULT_VARIABLE result
+    OUTPUT_VARIABLE output
+    ERROR_VARIABLE error
+  )
+  if(NOT result EQUAL 0)
+    message(FATAL_ERROR
+            "multi-input/output harness generation failed (${result}):\n"
+            "${output}${error}")
+  endif()
+  file(READ "${generated_harness}" generated_harness_text)
+  if(NOT generated_harness_text MATCHES
+     "kernel_extrema\\(input_0, input_1, output_0, output_1\\);" OR
+     generated_harness_text MATCHES
+     "(^|[^A-Za-z0-9_])(joggle_|jog_|v_[A-Za-z0-9])")
+    message(FATAL_ERROR
+            "generated harness changed the structured C interface:\n"
+            "${generated_harness_text}")
+  endif()
+  execute_process(
+    COMMAND "${CC}" -std=c11 -O3 -Wall -Wextra -Wstrict-prototypes -Werror
+            -I "${ROOT}" -c "${generated_harness}"
+            -o "${generated_harness_object}"
+    RESULT_VARIABLE result
+    OUTPUT_VARIABLE output
+    ERROR_VARIABLE error
+  )
+  if(NOT result EQUAL 0)
+    message(FATAL_ERROR
+            "generated multi-input/output harness did not compile (${result}):\n"
+            "${output}${error}")
+  endif()
+endif()
 file(READ "${source}" emitted_source)
-if(emitted_source MATCHES "(^|[^A-Za-z0-9_])(jog_|v_[A-Za-z0-9])")
+if(emitted_source MATCHES
+   "(^|[^A-Za-z0-9_])(joggle_|jog_|v_[A-Za-z0-9])")
   message(FATAL_ERROR
           "generated C introduced a compiler-owned project prefix:\n"
           "${emitted_source}")

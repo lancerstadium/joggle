@@ -67,7 +67,7 @@ if(NOT result EQUAL 0)
 endif()
 
 file(READ "${source}" emitted)
-if(emitted MATCHES "(^|[^A-Za-z0-9_])(jog_|v_[A-Za-z0-9])")
+if(emitted MATCHES "(^|[^A-Za-z0-9_])(joggle_|jog_|v_[A-Za-z0-9])")
   message(FATAL_ERROR
           "external-kernel C introduced a compiler-owned project prefix:\n"
           "${emitted}")

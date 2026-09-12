@@ -1703,25 +1703,28 @@ fn header(m: Mod, blob: str, config: dict) -> str {
   return header_with(m, data_name(m, blob), config)
 }
 
-local fn api_value(type: Ty, name: str, config: dict) -> dict {
+local fn api_value(
+  type: Ty, name: str, pointer: bool, config: dict
+) -> dict {
   var out: dict = {}
   out["name"] = name
   out["type"] = text(type)
+  out["pointer"] = pointer
   if tensor.valid(type) {
     let element = tensor.elem(type)
     let elements = count(type)
     out["c"] = scalar(element, config)
+    out["kind"] = class(element, config)
     out["shape"] = tensor.shape(type)
     out["elements"] = elements
     out["bytes"] = elements * width(element, config)
-    out["pointer"] = true
     return out
   }
   out["c"] = scalar(type, config)
+  out["kind"] = class(type, config)
   out["shape"] = []
   out["elements"] = 1
   out["bytes"] = width(type, config)
-  out["pointer"] = false
   return out
 }
 
@@ -1737,7 +1740,8 @@ local fn api_with(m: Mod, blob: str, config: dict) -> list<dict> {
     assert(callable(m, fn, config), "c: function has no representable ABI")
     var params: list<dict> = []
     for param in ir.params(fn) {
-      params += [api_value(ir.type(param), val(param), config)]
+      let type = ir.type(param)
+      params += [api_value(type, val(param), tensor.valid(type), config)]
     }
     var data = ""
     if blob != "" && owned(m, fn) && has_fn(data_fns, fn) {
@@ -1748,10 +1752,11 @@ local fn api_with(m: Mod, blob: str, config: dict) -> list<dict> {
     var results: list<dict> = []
     for i in 0..len(types) {
       var name = names[i]
-      if len(types) == 1 && !tensor.valid(types[i]) {
+      let direct = len(types) == 1 && !tensor.valid(types[i])
+      if direct {
         name = ""
       }
-      results += [api_value(types[i], name, config)]
+      results += [api_value(types[i], name, !direct, config)]
     }
     var entry: dict = {}
     entry["name"] = symbol(m, fn, config)

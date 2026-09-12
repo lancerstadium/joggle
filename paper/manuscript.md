@@ -147,6 +147,18 @@ failure must not expose a half-rewritten program. Partial ONNX models are
 therefore reported by stage and remaining source calls rather than counted as
 supported end to end.
 
+### 3.5 Artifact interfaces are derived, not duplicated
+
+The C target derives public symbols from qualified source functions, preserves
+valid parameter and value names, and reserves compiler-generated stems for
+anonymous temporaries and storage slots. Its source, header, and structured API
+descriptor use the same naming and signature functions. The descriptor records
+the C representation class, shape, byte count, pointer passing, and optional
+weight payload for every exported entry. The application test generates its
+allocation, call, comparison, and timing harness from that descriptor, including
+multiple tensor inputs and outputs; it does not maintain a second model ABI in
+handwritten C.
+
 ## 4. Evaluation status
 
 The repository currently records pilots, not publication measurements. Eight
@@ -164,6 +176,12 @@ results after inference; SSD-MobileNetV1 infers all result types but retains
 710 source calls after conversion. Models absent from the configured cache are
 omitted, not counted as passes. Structural completion is kept separate from
 the eight-model numerical execution claim above.
+
+The compiled application gate now checks that generated model source, public
+header, structured API, and generated harness agree under strict C11 warnings.
+The harness mechanism has compiled for both the official MNIST application and
+a two-input/two-output interface. This establishes interface consistency, not
+broader model execution or performance.
 
 Generated C is presently the main negative result. Depending on the model, the
 recorded unisolated pilots are about 7--101 times slower than one-thread ONNX

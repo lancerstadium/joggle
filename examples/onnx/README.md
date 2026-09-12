@@ -1,7 +1,7 @@
 # ONNX application path
 
-This example runs a complete, single-input/single-output `f32` ONNX model
-through the same explicit Joggle pipeline used by applications:
+This example runs an official ONNX model through the same explicit Joggle
+pipeline used by applications:
 
 1. import the binary model;
 2. convert source calls through `onnx.nn`;
@@ -11,9 +11,12 @@ through the same explicit Joggle pipeline used by applications:
 6. plan static tensor storage;
 7. emit C and its header, compile them, and compare with the official output.
 
-The driver derives tensor sizes from the official protobuf inputs instead of
-embedding one model's names or dimensions. The C harness consumes only the
-generated header.
+The current protobuf extractor used by the two configured application gates is
+limited to one `f32` input and output. The C application boundary is not: the
+test harness is generated from `c.api`, supports any number of tensor inputs
+and outputs, checks byte counts before calling the model, and selects numerical
+comparison from each result's C representation. It never contains a model
+name, shape, declaration, or result-count table.
 
 ## Fast, inspectable case
 
@@ -58,9 +61,14 @@ model.vm
 model.c
 model-blob.c
 model-blob.h
-benchmark
 model.bin
 model.h
+api.json
+api-blob.json
+harness.c
+harness-blob.c
+model
+model-blob
 bounds.json
 input.bin
 expected.bin
@@ -70,7 +78,10 @@ result.txt
 `model.jog` is the prepared and statically planned loop-level IR consumed by
 both C forms; `model.vm` is emitted from the same converted model before the
 target-specific preparation step. `model.h` and `model-blob.h` are the
-declarations consumed by the two C executions.
+declarations consumed by the two C executions. The two JSON files are the
+matching machine-readable interfaces; the harness sources are generated from
+them and remain beside the artifacts so the exact call, allocation, comparison,
+and timing code can be inspected.
 `model.c` is the self-contained form; `model-blob.c` accepts the exact payload
 bytes in `model.bin` as an explicit read-only function argument. Both forms are
 compiled under strict warnings and checked against the official output.
@@ -94,23 +105,30 @@ single self-contained translation unit matters more than compile size.
 
 ## Measure generated code
 
-`benchmark.c` measures repeated calls in one process, after configurable
-warm-up, and writes one CSV row per inference. File loading, allocation, and
-checksum calculation stay outside each timed interval. It consumes the same
-single-input/single-output `f32` application ABI as the correctness harness;
-the output element count remains an explicit argument rather than a model-name
-case:
+`make_harness.py` consumes one exported function from `c.api`. It generates a
+strict C11 program for multiple tensor inputs and outputs, optional independent
+weights, reference comparison, warm-up, and repeated timing. File loading,
+allocation, reference comparison, and the deterministic output hash stay
+outside each timed interval. The application gate already produces
+`harness-blob.c`; it can also be regenerated without parsing a header:
 
 ```sh
+python3 make_harness.py api-blob.json harness-blob.c \
+  --header model-blob.h
 cc -std=c11 -O3 -Wall -Wextra -Wstrict-prototypes -Werror \
-  -DJOGGLE_EXTERNAL_DATA=1 -I . model-blob.c benchmark.c -lm -o benchmark
-./benchmark input.bin model.bin 1000 3 30 > timings.csv
+  -I . model-blob.c harness-blob.c -lm -o model-blob
+./model-blob input.bin model.bin expected.bin 3 30 > timings.csv
 ```
 
-The resulting fields are `iteration`, wall-clock `seconds`, and an output
-`checksum` that prevents an unused computation from masquerading as a speedup.
-Report the raw rows, compiler and flags, machine state, and a matched unfused
-baseline; a single mean from this harness is not by itself paper evidence.
+Arguments are ordered as all input files, the optional weight file, all
+reference-output files, warm-up count, and repetition count. If `c.api` exposes
+multiple public functions, `--entry` selects the C symbol. Direct scalar
+parameters and returns are rejected because this is a neural-network buffer
+harness, not a generic C FFI generator. The resulting rows contain iteration,
+wall-clock seconds, and an output hash that prevents an unused computation from
+masquerading as a speedup. Report the raw rows, compiler and flags, machine
+state, and a matched baseline; a single mean is not paper evidence. Standard
+output is CSV; numerical comparison details and failures use standard error.
 
 The application gate deliberately leaves optional transforms out of its
 baseline. A matched fusion experiment starts from its prepared `model.jog`,

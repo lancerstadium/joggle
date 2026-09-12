@@ -108,8 +108,11 @@ The baseline is the official MobileNetV2 application artifact. The `fused`
 variant applies unrestricted greedy `tile.fuse`; `selected` instead invokes
 the module-owned `cost.profitable` policy with `max_extent = 65536` and
 `max_calls = 100`. Both transforms start from the same prepared model and run
-`mem.plan` afterwards. All variants use `examples/onnx/benchmark.c`; each CSV
-checksum is identical. Clang loop-vectorization remarks showed interleave count
+`mem.plan` afterwards. These historical variants used the fixed application
+harness present at the recorded revision; each CSV checksum is identical. The
+current tree generates its application harness from `c.api` and uses an output
+byte hash, so new rows must record the new revision rather than being appended
+to this pilot. Clang loop-vectorization remarks showed interleave count
 four for the separate BatchNorm and ReLU loops and one for most fused loops.
 
 The selected policy reduces loops from 374 to 357, local tensor initializers
@@ -136,7 +139,9 @@ than a paper performance result.
 The ONNX Runtime rows can be reproduced with
 `python3 paper/bench_onnxruntime.py MODEL INPUT EXPECTED --repetitions 10` in
 an environment containing the recorded ONNX Runtime and NumPy versions. The C
-rows use `examples/onnx/benchmark.c` and the flags stated above.
+rows used the revision-matched fixed harness and the flags stated above. New
+studies use the inspectable `harness-blob.c` generated beside each model
+artifact from its structured C API.
 
 `tinyyolo-backend-pilot.csv` adds a fifth numerically executed ONNX Zoo model.
 `paper/reference.py` generated one seed-0 f32 input and the ONNX Runtime 1.26.0

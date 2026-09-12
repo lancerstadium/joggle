@@ -480,6 +480,7 @@ if(JOGGLE_BUILD_TESTS)
       -P ${CMAKE_CURRENT_SOURCE_DIR}/test/emit.cmake
   )
   find_program(JOGGLE_TEST_C_COMPILER NAMES cc clang gcc)
+  find_program(JOGGLE_TEST_PYTHON NAMES python3 python)
   if(JOGGLE_TEST_C_COMPILER)
     add_test(
       NAME ikj-example
@@ -534,6 +535,8 @@ if(JOGGLE_BUILD_TESTS)
         -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_main.c
         -DBLOB_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_blob_main.c
         -DOPEN_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_open_main.c
+        -DPYTHON=${JOGGLE_TEST_PYTHON}
+        -DGENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/examples/onnx/make_harness.py
         -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
         -DROOT=${CMAKE_CURRENT_BINARY_DIR}/c-test
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/c.cmake
@@ -750,6 +753,7 @@ if(JOGGLE_BUILD_TESTS)
   if(JOGGLE_BUILD_ONNX AND JOGGLE_TEST_C_COMPILER AND
      (NOT JOGGLE_EXAMPLE_MNIST STREQUAL "" OR
       NOT JOGGLE_EXAMPLE_MOBILENET STREQUAL ""))
+    find_program(JOGGLE_PYTHON_EXECUTABLE NAMES python3 python REQUIRED)
     add_executable(joggle-onnx-app examples/onnx/app.cpp)
     target_link_libraries(
       joggle-onnx-app PRIVATE Joggle::joggle joggle-onnx-proto
@@ -786,8 +790,8 @@ if(JOGGLE_BUILD_TESTS)
           -DINPUT=${case}/test_data_set_0/input_0.pb
           -DOUTPUT=${case}/test_data_set_0/output_0.pb
           -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-          -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/examples/onnx/main.c
-          -DBENCHMARK=${CMAKE_CURRENT_SOURCE_DIR}/examples/onnx/benchmark.c
+          -DPYTHON=${JOGGLE_PYTHON_EXECUTABLE}
+          -DGENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/examples/onnx/make_harness.py
           -DROOT=${CMAKE_CURRENT_BINARY_DIR}/examples/${name}
           -P ${CMAKE_CURRENT_SOURCE_DIR}/examples/onnx/run.cmake
       )

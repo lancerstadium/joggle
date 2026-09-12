@@ -566,7 +566,7 @@ ctest --test-dir build -R onnx-app-mobilenet --output-on-failure
 
 That test performs import, explicit semantic conversion, dead-data cleanup,
 body exposure, deterministic VM execution, static memory planning, explicit C
-storage placement, strict C99 compilation, and comparison of both targets'
+storage placement, strict C11 compilation, and comparison of both targets'
 1,000 outputs. The model, input, output, and archive hashes are checked before
 execution. Because the scalar VM path executes 95,592,386,975 instructions,
 this is intentionally a long application gate. Its inspectable `model.jog`,
@@ -699,9 +699,11 @@ joggle query c.api test/data/c.jog --arg '"weights"' -M build/modules
 
 The first command is the ordinary module introspection command; the second
 reports exact C declarations together with shapes, element and byte counts,
-result names, and payload use. Harnesses can consume this record instead of
-parsing `model.h`. Configured ABI dictionaries are accepted by the matching
-`c.api` overloads just as they are by preparation and emission.
+representation classes, pointer passing, result names, and payload use.
+Harnesses can consume this record instead of parsing `model.h`. Configured ABI
+dictionaries are accepted by the matching `c.api` overloads just as they are
+by preparation and emission. The ONNX example's `make_harness.py` is one such
+consumer; it is not part of the compiler core or another ABI definition.
 
 Passing a data name to `c.source` and `c.header` externalizes tensor constants.
 The resulting pointer parameter is propagated through the generated call graph

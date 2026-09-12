@@ -74,7 +74,7 @@ if(NOT text MATCHES
   message(FATAL_ERROR
           "spatial C did not preserve the public function and value names:\n${text}")
 endif()
-if(text MATCHES "(^|[^A-Za-z0-9_])(jog_|v_[A-Za-z0-9])")
+if(text MATCHES "(^|[^A-Za-z0-9_])(joggle_|jog_|v_[A-Za-z0-9])")
   message(FATAL_ERROR "spatial C introduced an opaque generated prefix:\n${text}")
 endif()
 execute_process(

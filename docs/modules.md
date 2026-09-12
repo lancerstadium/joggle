@@ -325,10 +325,13 @@ privileged access to the IR.
 
 `c.api` returns the exported C surface as ordinary structured data: symbol and
 declaration strings plus parameter and result descriptors containing source
-types, C scalar spellings, shapes, element counts, byte counts, pointer status,
-and the external-data argument when present. It calls the same local naming,
-signature, and payload-dependency functions as `c.header`; consumers therefore
-need not scrape C text or reproduce target ABI rules to allocate buffers.
+types, C scalar spellings and representation classes, shapes, element counts,
+byte counts, exact pointer status, and the external-data argument when present.
+It calls the same local naming, signature, and payload-dependency functions as
+`c.header`; consumers therefore need not scrape C text or reproduce target ABI
+rules to allocate buffers. In particular, a scalar is marked as a pointer when
+it is one member of a multi-result C interface, but remains a direct value when
+it is the function's sole result.
 
 By default, `c` derives public symbols from qualified function names and keeps
 valid source value names. Named pointer results derive from the return value

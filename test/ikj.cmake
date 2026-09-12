@@ -56,8 +56,10 @@ endif()
 
 file(READ "${source}" emitted_source)
 file(READ "${header}" emitted_header)
-if(emitted_source MATCHES "(^|[^A-Za-z0-9_])(jog_|v_[A-Za-z0-9])" OR
-   emitted_header MATCHES "(^|[^A-Za-z0-9_])(jog_|v_[A-Za-z0-9])")
+if(emitted_source MATCHES
+   "(^|[^A-Za-z0-9_])(joggle_|jog_|v_[A-Za-z0-9])" OR
+   emitted_header MATCHES
+   "(^|[^A-Za-z0-9_])(joggle_|jog_|v_[A-Za-z0-9])")
   message(FATAL_ERROR
           "IKJ C introduced a compiler-owned project prefix:\n"
           "${emitted_header}\n${emitted_source}")

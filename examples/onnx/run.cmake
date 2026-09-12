@@ -1,9 +1,9 @@
 if(NOT DEFINED APP OR NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
    NOT DEFINED INPUT OR NOT DEFINED OUTPUT OR NOT DEFINED MODULES OR
-   NOT DEFINED HARNESS OR NOT DEFINED BENCHMARK OR NOT DEFINED ROOT)
+   NOT DEFINED PYTHON OR NOT DEFINED GENERATOR OR NOT DEFINED ROOT)
   message(FATAL_ERROR
           "ONNX example requires APP, TOOL, CC, MODEL, INPUT, OUTPUT, MODULES, "
-          "HARNESS, BENCHMARK, and ROOT")
+          "PYTHON, GENERATOR, and ROOT")
 endif()
 
 file(REMOVE_RECURSE "${ROOT}")
@@ -20,7 +20,10 @@ set(data "${ROOT}/model.bin")
 set(blob_source "${ROOT}/model-blob.c")
 set(blob_header "${ROOT}/model-blob.h")
 set(blob_program "${ROOT}/model-blob")
-set(benchmark_program "${ROOT}/benchmark")
+set(api "${ROOT}/api.json")
+set(blob_api "${ROOT}/api-blob.json")
+set(harness "${ROOT}/harness.c")
+set(blob_harness "${ROOT}/harness-blob.c")
 
 execute_process(
   COMMAND "${APP}" "${MODEL}" "${INPUT}" "${OUTPUT}"
@@ -58,6 +61,28 @@ if(NOT result EQUAL 0)
 endif()
 
 execute_process(
+  COMMAND "${TOOL}" query c.api "${prepared}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${api}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "ONNX C API query failed (${result}):\n${error}")
+endif()
+
+execute_process(
+  COMMAND "${PYTHON}" "${GENERATOR}" "${api}" "${harness}"
+          --header model.h
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "ONNX harness generation failed (${result}):\n${output}${error}")
+endif()
+
+execute_process(
   COMMAND "${TOOL}" emit c.source "${prepared}"
           --arg "\"weights\"" -M "${MODULES}"
   RESULT_VARIABLE result
@@ -82,9 +107,34 @@ if(NOT result EQUAL 0)
 endif()
 
 execute_process(
-  COMMAND "${CC}" -std=c99 -O1 -Wall -Wextra -Wstrict-prototypes -Werror
-          -DJOGGLE_EXTERNAL_DATA=1 -I "${ROOT}"
-          "${blob_source}" "${HARNESS}" -lm -o "${blob_program}"
+  COMMAND "${TOOL}" query c.api "${prepared}"
+          --arg "\"weights\"" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${blob_api}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "ONNX external-data C API query failed (${result}):\n${error}")
+endif()
+
+execute_process(
+  COMMAND "${PYTHON}" "${GENERATOR}" "${blob_api}" "${blob_harness}"
+          --header model-blob.h
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "external-data harness generation failed (${result}):\n"
+          "${output}${error}")
+endif()
+
+execute_process(
+  COMMAND "${CC}" -std=c11 -O3 -Wall -Wextra -Wstrict-prototypes -Werror
+          -I "${ROOT}" "${blob_source}" "${blob_harness}" -lm
+          -o "${blob_program}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error
@@ -96,20 +146,7 @@ endif()
 
 execute_process(
   COMMAND "${CC}" -std=c11 -O3 -Wall -Wextra -Wstrict-prototypes -Werror
-          -DJOGGLE_EXTERNAL_DATA=1 -I "${ROOT}"
-          "${blob_source}" "${BENCHMARK}" -lm -o "${benchmark_program}"
-  RESULT_VARIABLE result
-  OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "ONNX benchmark did not compile (${result}):\n${output}${error}")
-endif()
-
-execute_process(
-  COMMAND "${CC}" -std=c99 -O1 -Wall -Wextra -Wstrict-prototypes -Werror
-          -I "${ROOT}" "${source}" "${HARNESS}" -lm -o "${program}"
+          -I "${ROOT}" "${source}" "${harness}" -lm -o "${program}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error
@@ -120,7 +157,7 @@ if(NOT result EQUAL 0)
 endif()
 
 execute_process(
-  COMMAND "${program}" "${input}" "${expected}"
+  COMMAND "${program}" "${input}" "${expected}" 0 1
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error
@@ -130,10 +167,10 @@ if(NOT result EQUAL 0)
           "generated ONNX C disagrees with the reference (${result}):\n"
           "${output}${error}")
 endif()
-set(inline_output "${output}")
+set(inline_output "${error}${output}")
 
 execute_process(
-  COMMAND "${blob_program}" "${input}" "${expected}" "${data}"
+  COMMAND "${blob_program}" "${input}" "${data}" "${expected}" 0 1
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error
@@ -144,5 +181,6 @@ if(NOT result EQUAL 0)
           "${output}${error}")
 endif()
 file(WRITE "${ROOT}/result.txt"
-     "${vm_output}inline: ${inline_output}external: ${output}")
-message(STATUS "${vm_output}inline: ${inline_output}external: ${output}")
+     "${vm_output}inline: ${inline_output}external: ${error}${output}")
+message(STATUS
+        "${vm_output}inline: ${inline_output}external: ${error}${output}")
