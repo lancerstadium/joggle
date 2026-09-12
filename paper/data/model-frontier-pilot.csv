@@ -10,3 +10,4 @@ schema,model,decode,infer,convert,tensors,nodes,nested_graphs,unknown_before,unk
 1,ssd-mobilenetv1-12,pass,pass,partial,1567,5985,8,6790,0,710
 1,shufflenet-v2-12,pass,pass,pass,282,261,0,273,0,0
 1,densenet-12,pass,pass,pass,848,910,0,910,0,0
+1,googlenet-12,pass,pass,pass,118,143,0,144,0,0

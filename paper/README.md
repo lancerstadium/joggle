@@ -88,7 +88,7 @@ blocker.
 | --- | --- | --- |
 | One IR spans graph and loop detail | Printer, verifier, semantic bodies, explicit loops, C and VM preparation tests | Model-level stage traces and comparison with multi-IR workflows |
 | Extensions are normal module functions | Source modules, `local fn`, installation tests, `ir.invoke`, body expansion, transactional external selection, four frozen extension tasks, and a generated footprint pilot | Controlled comparison using matched baseline tasks and implementation-time evidence |
-| Frontends are separate from semantics | ONNX/TFLite codecs, explicit bridge modules, one pinned Zoo declaration list, and a generated staged table for 11 official models | Frozen controlled subset, task-level accuracy, and broader non-vision evidence |
+| Frontends are separate from semantics | ONNX/TFLite codecs, explicit bridge modules, one pinned Zoo declaration list, and a generated staged table for 12 official models | Frozen controlled subset, task-level accuracy, and broader non-vision evidence |
 | Targets expose only required detail | `c.accepts`, `vm.accepts`, `opt.expose`, preparation tests | A genuinely different external target or simulator study |
 | Transform failure is safe | Transaction and rollback tests, ownership/liveness checks | Fault-injection matrix and diagnostic assessment |
 | Storage and scheduling are replaceable | `mem` and `tile` modules, policy callbacks | Multi-axis legality, meaningful workload policies, performance results |
@@ -154,6 +154,12 @@ frozen.
   ShuffleNet's 1,000 outputs agree within `8.583e-6`; generated spatial C has a
   37.503 ms unisolated median versus 1.945 ms for one-thread ONNX Runtime,
   leaving a roughly 19.3x gap.
+- GoogLeNet is the eighth application-scale numerical pilot and the ninth
+  end-to-end ONNX model including MNIST. Its Inception branches, LRN, and safe
+  inference Dropout path produce 1,000 outputs within `1.565e-7` of ONNX
+  Runtime. A generated-harness pilot records a 258.022 ms strict-C median
+  versus 13.578 ms for one-thread ONNX Runtime, leaving a roughly 19.0x gap.
+  This extends correctness coverage; it does not improve the backend claim.
 - TinyYOLOv3 and SSD-MobileNetV1 add negative compatibility evidence rather
   than executable-model counts. TinyYOLOv3 retains 219 unknown results after
   inference across dynamic shape and control-flow paths. SSD-MobileNetV1

@@ -43,9 +43,11 @@ python3 paper/collect_models.py \
 The collector first asks CTest for the exact configured
 `onnx-zoo-record` set, runs that set, validates one schema-1 record per model,
 and rejects inconsistent stage/frontier combinations. The current local pilot
-contains eleven models: nine complete semantic conversion, TinyYOLOv3 stops at
+contains twelve models: ten complete semantic conversion, TinyYOLOv3 stops at
 type inference with 219 unknown results, and SSD-MobileNetV1 stops at semantic
-conversion with 710 ONNX calls.
+conversion with 710 ONNX calls. GoogLeNet adds LRN and an inference-only
+Dropout with an unused mask result; both map to ordinary shared functions
+before the canonical round trip.
 
 These records are structural regression and compatibility evidence. They do
 not establish task accuracy, supported-operator percentage, generated-C
