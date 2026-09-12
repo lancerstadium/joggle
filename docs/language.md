@@ -510,7 +510,10 @@ was present, and `ir.params`/`ir.returns` expose its inputs and result types.
 returns the same invalid handle on absence or ambiguity. This form lets one
 module pass one of its ordinary functions to a reusable library without a
 registry or generated binding; qualification keeps that choice visible in
-source.
+source. When a symbol is overloaded, `ir.find(name, [parameter types])`
+selects the unique nongeneric declaration with that exact parameter list; the
+three-argument local form adds the edited `Mod` first. This avoids inventing
+alias names merely to pass an overloaded function as a value.
 `ir.generics(fn)` exposes the declared generic `Val`s. `ir.generics(op)` instead
 returns the explicit structural `Ty` terms written on a call, or an empty list
 when none were written. This is enough for a transport module to represent a

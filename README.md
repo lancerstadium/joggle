@@ -342,6 +342,11 @@ is an ordinary read-only function, and `opt.expose` repeatedly folds static
 work, removes copies, and exposes only calls that predicate rejects. A new
 target can supply the same one-function capability boundary without adding a
 target class, declaration catalogue, or core case.
+`c.abi()` returns the default structural scalar descriptors. The configured
+forms of `c.prepare`, `c.source`, and `c.header` take sparse replacements, so a
+deployment module can choose a 32-bit index ABI or an external scalar typedef
+once and use it consistently for legality, declarations, definitions, storage
+widths, and required headers.
 After `mem.plan`, the ordinary parameterized transform
 `c.place(m, "static")` can request static C workspace storage through open
 function metadata. Local storage remains the default. Placement is explicit:

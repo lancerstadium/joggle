@@ -1176,8 +1176,12 @@ implemented entirely in `.jog`: it traverses the same `Fn`/`Blk`/`Op`/`Val`
 structure, emits local scalar calls and structured branches/loops, flattens
 static tensor indices, and uses caller-provided storage for tensor results.
 Scalar type spelling and byte width come from one ordinary ABI dictionary
-owned by the module. The same dictionary classifies scalar arithmetic so the
-capability query rejects C-illegal operator/type pairs before emission. Fixed
+owned by the module. Each type maps to one descriptor containing its C name,
+byte width, arithmetic kind, and header. Public preparation and emission
+functions accept sparse replacement descriptors, so a deployment module can
+reuse the default while changing only representations it owns. The same
+dictionary classifies scalar arithmetic so the capability query rejects
+C-illegal operator/type pairs before emission. Fixed
 C operator spellings are likewise module data, not core cases. The dictionary
 contains only real IR scalar types. Semantic
 indices and emitter-created fixed-array loops use the same signed `index` ABI;
@@ -1191,12 +1195,14 @@ self-contained. This is ordinary `bytes` and `str` emission from one module,
 not a core artifact abstraction or an implicit filesystem side effect.
 An executable ABI probe keeps that policy observable: the public header maps
 `index`, `int`, and `i32` to fixed-width signed types, while source-only loops
-over compile-time-sized storage use the same mapped `index` type. A future
-index-width transform must therefore rewrite and prove IR
-types explicitly; changing a printer string cannot silently narrow semantics.
+over compile-time-sized storage use the same mapped `index` type. A second
+executable gate explicitly replaces the `index` and `int` descriptors with a
+32-bit representation and checks both the public signature and generated
+loops. Such an override states an ABI choice; claiming semantic preservation
+for narrowed values still requires a range proof.
 The separate `bounds` module now provides the first reusable proof input for
 that decision. It returns revision-scoped integer intervals and deliberately
-does not mutate IR or alter `c.abi`; target policy remains an explicit consumer
+does not mutate IR or select a C ABI; target policy remains an explicit consumer
 instead of an emitter side effect.
 
 Qualified external symbols use a readable module separator in C

@@ -236,7 +236,10 @@ fn type_same<T: Ty>() -> bool {
 }
 
 fn generic_probe(m: Mod) -> bool {
-  return below<4>(3) && extent<[2, 3]>() == 2 && type_same<i32>()
+  let exact = ir.find("script.probe", [ty("int")])
+  return below<4>(3) && extent<[2, 3]>() == 2 && type_same<i32>() &&
+         ir.live(exact) && len(ir.params(exact)) == 1 &&
+         ir.type(ir.params(exact)[0]) == ty("int")
 }
 
 fn tensor_type_probe(m: Mod) -> bool {

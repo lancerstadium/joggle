@@ -538,6 +538,32 @@ joggle emit c.source build/examples/prepared.jog \
 and stops at the C module's scalar/tensor-access/control-flow boundary. It is
 transactional and bounded; it is not run by `emit` or module loading.
 
+The default ABI uses signed 64-bit `int` and `index`. A target module can pass
+sparse replacement descriptors to the configured overloads. The same value
+must be used for preparation and emission because it defines both legality and
+representation:
+
+```jog
+let abi = {
+  index: {
+    name: "int32_t", bytes: 4, kind: "signed", include: "stdint.h"
+  },
+  int: {
+    name: "int32_t", bytes: 4, kind: "signed", include: "stdint.h"
+  }
+}
+let changed = c.prepare(m, abi)
+let source = c.source(m, abi)
+let header = c.header(m, abi)
+```
+
+Each descriptor is one atomic record rather than independent spelling and size
+switches. `c.header` gathers required includes from exported types;
+`c.source` also examines internal values and adds `string.h` only if emitted
+tensor copies use `memcpy`. Narrowing is an explicit ABI decision, not a range
+proof; a deployment policy that claims equivalence should check `bounds`
+facts first.
+
 Plan reusable storage only when the experiment needs it:
 
 ```sh

@@ -152,6 +152,22 @@ std::optional<std::vector<Ty>> types(const Item& item) {
   return out;
 }
 
+Fn exact_fn(std::span<const Fn> candidates, std::span<const Ty> params) {
+  Fn found;
+  for (Fn candidate : candidates) {
+    std::vector<Ty> declared;
+    for (Val param : candidate.params())
+      declared.push_back(param.type());
+    if (candidate.generics().empty() && declared.size() == params.size() &&
+        std::equal(declared.begin(), declared.end(), params.begin())) {
+      if (found)
+        return {};
+      found = candidate;
+    }
+  }
+  return found;
+}
+
 std::optional<std::vector<std::string>> strings(const Item& item) {
   const Items* items = list(item);
   if (!items)
@@ -1561,10 +1577,20 @@ private:
       if (const auto symbol = string(args[0]))
         return Items{Item(env_.find_fn(*symbol))};
     } else if (name == "find" && args.size() == 2) {
+      if (const auto symbol = string(args[0])) {
+        if (const auto params = types(args[1]))
+          return Items{Item(exact_fn(env_.find_fns(*symbol), *params))};
+      }
       const auto* mod = as<Mod*>(args[0]);
       const auto symbol = string(args[1]);
       if (mod && *mod && symbol)
         return Items{Item((*mod)->find_fn(*symbol))};
+    } else if (name == "find" && args.size() == 3) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto symbol = string(args[1]);
+      const auto params = types(args[2]);
+      if (mod && *mod && symbol && params)
+        return Items{Item(exact_fn((*mod)->find_fns(*symbol), *params))};
     } else if (name == "uses" && args.size() == 1) {
       if (const auto* mod = as<Mod*>(args[0]); mod && *mod) {
         Items out;

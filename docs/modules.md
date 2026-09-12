@@ -594,7 +594,9 @@ structural commit once, while purity and selection remain module policy.
 `ir.find(m, name)` performs exact local function lookup and returns an invalid
 `Fn` when the symbol is absent; `ir.live` is the uniform validity test.
 `ir.find(name)` performs exact loaded-symbol lookup, including qualification,
-without adding a dependency to the edited model.
+without adding a dependency to the edited model. The overload
+`ir.find(name, params)` selects one nongeneric overload by its exact parameter
+types; `ir.find(m, name, params)` does the same for a local function.
 `ir.params(f)`, `ir.returns(f)`, and `ir.generics(f)` expose the complete
 declared signature. `ir.generics(op)` exposes explicit call terms, while its
 three-argument edit overload validates replacements through ordinary call
@@ -842,9 +844,14 @@ test emits a matrix multiplication plus scalar call/branch functions, compiles
 them with a system C compiler under warnings-as-errors, and checks their
 numerical results.
 
-One `c.abi` dictionary is the source of both scalar spelling and byte width;
-it contains only actual IR scalar types and also classifies them as Boolean,
-signed, unsigned, or floating. That classification makes `c.accepts` reject
+One `c.abi` dictionary maps each scalar type name to a structural descriptor
+with `name`, `bytes`, `kind`, and `include` fields. It is the source of C
+spelling, byte width, legal operator class, and header dependencies. The
+configured overloads of `c.accepts`, `c.prepare`, `c.header`, and `c.source`
+accept a sparse dictionary of replacement descriptors; unspecified types keep
+their defaults. A custom scalar typedef or a 32-bit `index`/`int` pair can
+therefore be selected without editing the C module. That classification makes
+`c.accepts` reject
 C-illegal combinations such as floating remainder and bitwise operations
 before emission; real remainder is the explicit `math.fmod` function. `int`
 and semantic `index` currently choose signed 64-bit C storage. Emitter-created
@@ -866,9 +873,11 @@ The source is intentionally self-contained and does not guess the filename to
 which a separate `c.header` result will be written. It repeats declarations
 from that shared signature function; an application may include the header
 normally, or a build may inject it while compiling the source. The public
-header conservatively includes `stdbool.h` and `stdint.h`; the source also
-includes `stddef.h` and `string.h` for emitter-owned counts and copies. These
-are a fixed C99 support contract, not operator- or model-specific decisions.
+header collects the `include` fields required by its exported signatures. The
+source collects them across emitted definitions and external bindings, adding
+`string.h` only when byte-exact tensor copies require `memcpy`. Emitter-owned
+loops use the configured `index` spelling rather than `size_t`. Header and
+source therefore share one type contract rather than separate include tables.
 Generated files remain under the ignored build tree for inspection.
 
 `c.data(m) -> bytes` concatenates the exact payloads of emitted

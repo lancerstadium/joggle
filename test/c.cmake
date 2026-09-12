@@ -147,6 +147,13 @@ set(blob_source "${ROOT}/model-blob.c")
 set(blob_data "${ROOT}/model.bin")
 set(blob_program "${ROOT}/model-blob")
 set(model_prepared "${ROOT}/model.jog")
+string(CONCAT abi32
+    "{index: {name: \"int32_t\", bytes: 4, kind: \"signed\", include: \"stdint.h\"},"
+    " int: {name: \"int32_t\", bytes: 4, kind: \"signed\", include: \"stdint.h\"}}")
+set(model32_prepared "${ROOT}/model32.jog")
+set(source32 "${ROOT}/model32.c")
+set(header32 "${ROOT}/model32.h")
+set(program32 "${ROOT}/model32")
 
 execute_process(
   COMMAND "${TOOL}" run c.prepare "${MODEL}" -M "${MODULES}"
@@ -156,6 +163,71 @@ execute_process(
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "C model preparation failed (${result}):\n${error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run c.prepare "${MODEL}"
+          --arg "${abi32}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${model32_prepared}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "32-bit ABI preparation failed (${result}):\n${error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${model32_prepared}"
+          --arg "${abi32}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${source32}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "32-bit ABI source emission failed (${result}):\n${error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" emit c.header "${model32_prepared}"
+          --arg "${abi32}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${header32}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "32-bit ABI header emission failed (${result}):\n${error}")
+endif()
+file(READ "${source32}" emitted_source32)
+file(READ "${header32}" emitted_header32)
+if(NOT emitted_source32 MATCHES "for \\(int32_t jog_i = 0;" OR
+   NOT emitted_header32 MATCHES
+       "jog_abi_probe\\(int32_t v_i, int32_t v_n, int32_t v_x\\);")
+  message(FATAL_ERROR
+          "C ABI override did not drive definitions and declarations:\n"
+          "${emitted_header32}\n${emitted_source32}")
+endif()
+execute_process(
+  COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
+          -include "${header32}" "${source32}" "${HARNESS}" -lm
+          -o "${program32}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "32-bit ABI C did not compile (${result}):\n${output}${error}")
+endif()
+execute_process(
+  COMMAND "${program32}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "32-bit ABI C returned the wrong result (${result}):\n"
+          "${output}${error}")
 endif()
 
 execute_process(

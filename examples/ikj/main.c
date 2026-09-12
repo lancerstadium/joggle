@@ -1,4 +1,4 @@
-#include <stddef.h>
+#include <stdint.h>
 
 int main(void) {
   const float a[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -6,7 +6,7 @@ int main(void) {
   const float expected[] = {58.0f, 64.0f, 139.0f, 154.0f};
   float out[4] = {0.0f, 0.0f, 0.0f, 0.0f};
   jog_main(a, b, out);
-  for (size_t i = 0; i != 4; ++i) {
+  for (int64_t i = 0; i != 4; ++i) {
     float error = out[i] - expected[i];
     if (error < 0.0f)
       error = -error;

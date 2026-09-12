@@ -28,67 +28,78 @@ local fn val(value: Val) -> str {
 
 fn abi() -> dict {
   return {
-    "bool.c": "bool",       "bool.bytes": 1,     "bool.class": "bool",
-    "f32.c": "float",       "f32.bytes": 4,      "f32.class": "float",
-    "f64.c": "double",      "f64.bytes": 8,      "f64.class": "float",
-    "i8.c": "int8_t",       "i8.bytes": 1,       "i8.class": "signed",
-    "i16.c": "int16_t",     "i16.bytes": 2,      "i16.class": "signed",
-    "i32.c": "int32_t",     "i32.bytes": 4,      "i32.class": "signed",
-    "i64.c": "int64_t",     "i64.bytes": 8,      "i64.class": "signed",
-    "index.c": "int64_t",   "index.bytes": 8,    "index.class": "signed",
-    "int.c": "int64_t",     "int.bytes": 8,      "int.class": "signed",
-    "u8.c": "uint8_t",      "u8.bytes": 1,       "u8.class": "unsigned",
-    "u16.c": "uint16_t",    "u16.bytes": 2,      "u16.class": "unsigned",
-    "u32.c": "uint32_t",    "u32.bytes": 4,      "u32.class": "unsigned",
-    "u64.c": "uint64_t",    "u64.bytes": 8,      "u64.class": "unsigned"
+    bool: {name: "bool",     bytes: 1, kind: "bool",     include: "stdbool.h"},
+    f32: {name: "float",     bytes: 4, kind: "float",    include: ""},
+    f64: {name: "double",    bytes: 8, kind: "float",    include: ""},
+    i8: {name: "int8_t",     bytes: 1, kind: "signed",   include: "stdint.h"},
+    i16: {name: "int16_t",   bytes: 2, kind: "signed",   include: "stdint.h"},
+    i32: {name: "int32_t",   bytes: 4, kind: "signed",   include: "stdint.h"},
+    i64: {name: "int64_t",   bytes: 8, kind: "signed",   include: "stdint.h"},
+    index: {name: "int64_t", bytes: 8, kind: "signed",   include: "stdint.h"},
+    int: {name: "int64_t",   bytes: 8, kind: "signed",   include: "stdint.h"},
+    u8: {name: "uint8_t",    bytes: 1, kind: "unsigned", include: "stdint.h"},
+    u16: {name: "uint16_t",  bytes: 2, kind: "unsigned", include: "stdint.h"},
+    u32: {name: "uint32_t",  bytes: 4, kind: "unsigned", include: "stdint.h"},
+    u64: {name: "uint64_t",  bytes: 8, kind: "unsigned", include: "stdint.h"}
   }
 }
 
-local fn abi(name: str, field: str) -> Attr {
-  let layout = abi()
-  let key = name + "." + field
-  assert(has(layout, key), "c: ABI has no " + key)
-  return layout[key]
+local fn spec(config: dict, name: str) -> Attr {
+  if base.has(config, name) {
+    return config[name]
+  }
+  let defaults = abi()
+  assert(base.has(defaults, name), "c: ABI has no type " + name)
+  return defaults[name]
 }
 
-local fn scalar(type: Ty) -> str {
+local fn field(config: dict, name: str, key: str) -> Attr {
+  let type = spec(config, name)
+  assert(base.kind(type) == "dict",
+         "c: ABI type " + name + " must be a dictionary")
+  assert(base.has(type, key), "c: ABI type " + name + " has no " + key)
+  return base.get(type, key)
+}
+
+local fn scalar(type: Ty, config: dict) -> str {
+  return str(field(config, base.name(type), "name"))
+}
+
+local fn scalar_name(name: str, config: dict) -> bool {
+  return base.has(config, name) || base.has(abi(), name)
+}
+
+local fn class(type: Ty, config: dict) -> str {
   let name = base.name(type)
-  return str(abi(name, "c"))
-}
-
-local fn scalar_name(name: str) -> bool {
-  return has(abi(), name + ".c")
-}
-
-local fn class(type: Ty) -> str {
-  let name = base.name(type)
-  if !scalar_name(name) {
+  if !scalar_name(name, config) {
     return ""
   }
-  return str(abi(name, "class"))
+  return str(field(config, name, "kind"))
 }
 
-local fn number(type: Ty) -> bool {
-  let kind = class(type)
+local fn number(type: Ty, config: dict) -> bool {
+  let kind = class(type, config)
   return kind == "signed" || kind == "unsigned" || kind == "float"
 }
 
-local fn integer(type: Ty) -> bool {
-  let kind = class(type)
+local fn integer(type: Ty, config: dict) -> bool {
+  let kind = class(type, config)
   return kind == "signed" || kind == "unsigned"
 }
 
-local fn same_repr(left: Ty, right: Ty) -> bool {
-  return class(left) != "" && class(right) != "" &&
-         scalar(left) == scalar(right)
+local fn same_repr(left: Ty, right: Ty, config: dict) -> bool {
+  return class(left, config) != "" && class(right, config) != "" &&
+         scalar(left, config) == scalar(right, config)
 }
 
-local fn width(type: Ty) -> int {
-  return base.int(abi(base.name(type), "bytes"))
+local fn width(type: Ty, config: dict) -> int {
+  let bytes = base.int(field(config, base.name(type), "bytes"))
+  assert(bytes > 0, "c: ABI byte width must be positive")
+  return bytes
 }
 
-local fn index_type() -> str {
-  return scalar(ty("index"))
+local fn index_type(config: dict) -> str {
+  return scalar(ty("index"), config)
 }
 
 local fn count(type: Ty) -> int {
@@ -108,7 +119,7 @@ local fn pad(depth: int) -> str {
   return out
 }
 
-local fn logical(m: Mod, op: Op) -> str {
+local fn logical(m: Mod, op: Op, config: dict) -> str {
   if ir.kind(op) != "branch" {
     return ""
   }
@@ -137,15 +148,17 @@ local fn logical(m: Mod, op: Op) -> str {
   let first = ir.args(first_yield)[0]
   let second = ir.args(second_yield)[0]
   if second == second_args[0] && first != first_args[0] {
-    return "(" + expr(m, inputs[0]) + " && " + expr(m, first) + ")"
+    return "(" + expr(m, inputs[0], config) + " && " +
+           expr(m, first, config) + ")"
   }
   if first == first_args[0] && second != second_args[0] {
-    return "(" + expr(m, inputs[0]) + " || " + expr(m, second) + ")"
+    return "(" + expr(m, inputs[0], config) + " || " +
+           expr(m, second, config) + ")"
   }
   return ""
 }
 
-local fn expr(m: Mod, value: Val) -> str {
+local fn expr(m: Mod, value: Val, config: dict) -> str {
   if ir.is_const(value) {
     let source = ir.def(value)
     if ir.form(source) != "var" && !reuses(source) {
@@ -160,7 +173,7 @@ local fn expr(m: Mod, value: Val) -> str {
          "c: unnamed " + text(ir.type(value)) +
          " value has no definition")
   if ir.kind(op) == "branch" {
-    let out = logical(m, op)
+    let out = logical(m, op, config)
     assert(out != "", "c: unnamed branch value is not a logical expression")
     return out
   }
@@ -170,29 +183,30 @@ local fn expr(m: Mod, value: Val) -> str {
   let name = ir.callee(op)
   let inputs = ir.args(op)
   if name == "operator []" {
-    return index(m, inputs[0], inputs)
+    return index(m, inputs[0], inputs, config)
   }
   let binary_op = binary(name)
   if binary_op != "" && len(inputs) == 2 {
-    return "(" + expr(m, inputs[0]) + " " + binary_op + " " +
-           expr(m, inputs[1]) + ")"
+    return "(" + expr(m, inputs[0], config) + " " + binary_op + " " +
+           expr(m, inputs[1], config) + ")"
   }
   let unary_op = unary(name)
   if unary_op != "" && len(inputs) == 1 {
-    return "(" + unary_op + expr(m, inputs[0]) + ")"
+    return "(" + unary_op + expr(m, inputs[0], config) + ")"
   }
-  if len(inputs) == 1 && scalar_name(name) {
-    return "((" + scalar(ty(name)) + ")(" + expr(m, inputs[0]) + "))"
+  if len(inputs) == 1 && scalar_name(name, config) {
+    return "((" + scalar(ty(name), config) + ")(" +
+           expr(m, inputs[0], config) + "))"
   }
   let bound = binding(m, op)
   if bound != "" && len(ir.outs(op)) == 1 &&
      !tensor.valid(ir.type(ir.outs(op)[0])) {
-    return bound + "(" + args(m, inputs) + ")"
+    return bound + "(" + args(m, inputs, config) + ")"
   }
   let target = ir.resolve(m, op)
-  if callable(m, target) && len(ir.outs(op)) == 1 &&
+  if callable(m, target, config) && len(ir.outs(op)) == 1 &&
      len(ir.users(value)) == 1 {
-    return symbol(m, target) + "(" + args(m, inputs) + ")"
+    return symbol(m, target, config) + "(" + args(m, inputs, config) + ")"
   }
   assert(false, "c: unnamed call must be assigned or exposed: " + name)
   return ""
@@ -203,24 +217,26 @@ local fn reuses(op: Op) -> bool {
   return form == "assign" || form == "compound" || form == "index_assign"
 }
 
-local fn lhs(op: Op, output: Val) -> str {
+local fn lhs(op: Op, output: Val, config: dict) -> str {
   if reuses(op) {
     return val(output)
   }
-  return scalar(ir.type(output)) + " " + val(output)
+  return scalar(ir.type(output), config) + " " + val(output)
 }
 
-local fn index(m: Mod, value: Val, indices: list<Val>) -> str {
+local fn index(
+  m: Mod, value: Val, indices: list<Val>, config: dict
+) -> str {
   let type = ir.type(value)
   if tensor.valid(type) {
     let shape = tensor.shape(type)
     assert(len(indices) == 2 || len(indices) == len(shape) + 1,
            "c: tensor index must be linear or match its rank")
-    var out = expr(m, indices[1])
+    var out = expr(m, indices[1], config)
     if len(indices) != 2 {
       for i in 2..len(indices) {
         out = "(" + out + " * " + text(shape[i - 1]) + " + " +
-              expr(m, indices[i]) + ")"
+              expr(m, indices[i], config) + ")"
       }
     }
     return val(value) + "[" + out + "]"
@@ -231,8 +247,9 @@ local fn index(m: Mod, value: Val, indices: list<Val>) -> str {
          len(indices) == 2 &&
          ir.live(source) && ir.callee(source) == "base.list",
          "c: scalar index requires a literal list")
-  return "((const " + scalar(types[0]) + "[]){" +
-         args(m, ir.args(source)) + "})[" + expr(m, indices[1]) + "]"
+  return "((const " + scalar(types[0], config) + "[]){" +
+         args(m, ir.args(source), config) + "})[" +
+         expr(m, indices[1], config) + "]"
 }
 
 local fn owned(m: Mod, fn: Fn) -> bool {
@@ -244,36 +261,37 @@ local fn owned(m: Mod, fn: Fn) -> bool {
   return false
 }
 
-local fn supported(type: Ty) -> bool {
+local fn supported(type: Ty, config: dict) -> bool {
   if tensor.valid(type) {
-    return tensor.static(type) && scalar_name(base.name(tensor.elem(type)))
+    return tensor.static(type) &&
+           scalar_name(base.name(tensor.elem(type)), config)
   }
-  return scalar_name(base.name(type))
+  return scalar_name(base.name(type), config)
 }
 
-local fn callable(m: Mod, fn: Fn) -> bool {
+local fn callable(m: Mod, fn: Fn, config: dict) -> bool {
   if !ir.live(fn) || len(ir.generics(fn)) != 0 {
     return false
   }
   for type in ir.returns(fn) {
-    if !supported(type) {
+    if !supported(type, config) {
       return false
     }
   }
   for param in ir.params(fn) {
-    if !supported(ir.type(param)) {
+    if !supported(ir.type(param), config) {
       return false
     }
   }
   return owned(m, fn) || len(ir.blks(fn)) == 0
 }
 
-local fn external(m: Mod, fn: Fn) -> bool {
-  return callable(m, fn) && !owned(m, fn) && len(ir.blks(fn)) == 0
+local fn external(m: Mod, fn: Fn, config: dict) -> bool {
+  return callable(m, fn, config) && !owned(m, fn) && len(ir.blks(fn)) == 0
 }
 
-local fn symbol(m: Mod, fn: Fn) -> str {
-  assert(callable(m, fn), "c: function has no representable ABI")
+local fn symbol(m: Mod, fn: Fn, config: dict) -> str {
+  assert(callable(m, fn, config), "c: function has no representable ABI")
   let bound = binding(fn)
   if bound != "" {
     return bound
@@ -284,13 +302,13 @@ local fn symbol(m: Mod, fn: Fn) -> str {
   return "jog_" + base.ident(base.replace(ir.symbol(fn), ".", "_"))
 }
 
-local fn args(m: Mod, values: list<Val>) -> str {
+local fn args(m: Mod, values: list<Val>, config: dict) -> str {
   var out = ""
   for i in 0..len(values) {
     if i != 0 {
       out += ", "
     }
-    out += expr(m, values[i])
+    out += expr(m, values[i], config)
   }
   return out
 }
@@ -321,7 +339,9 @@ local fn unary(op: str) -> str {
   return ""
 }
 
-local fn binary_types(op: str, inputs: list<Val>, output: Val) -> bool {
+local fn binary_types(
+  op: str, inputs: list<Val>, output: Val, config: dict
+) -> bool {
   if len(inputs) != 2 || binary(op) == "" {
     return false
   }
@@ -329,35 +349,39 @@ local fn binary_types(op: str, inputs: list<Val>, output: Val) -> bool {
   let right = ir.type(inputs[1])
   let result = ir.type(output)
   if op == "operator &&" || op == "operator ||" {
-    return class(left) != "" && class(right) != "" && result == ty("bool")
+    return class(left, config) != "" && class(right, config) != "" &&
+           result == ty("bool")
   }
   if op == "operator ==" || op == "operator !=" ||
      op == "operator <" || op == "operator <=" ||
      op == "operator >" || op == "operator >=" {
-    return same_repr(left, right) && result == ty("bool")
+    return same_repr(left, right, config) && result == ty("bool")
   }
   if op == "operator <<" || op == "operator >>" {
-    return integer(left) && integer(right) && same_repr(result, left)
+    return integer(left, config) && integer(right, config) &&
+           same_repr(result, left, config)
   }
   if op == "operator %" || op == "operator &" ||
      op == "operator ^" || op == "operator |" {
-    return integer(left) && integer(right) && same_repr(left, right) &&
-           same_repr(result, left)
+    return integer(left, config) && integer(right, config) &&
+           same_repr(left, right, config) && same_repr(result, left, config)
   }
-  return number(left) && number(right) && same_repr(left, right) &&
-         same_repr(result, left)
+  return number(left, config) && number(right, config) &&
+         same_repr(left, right, config) && same_repr(result, left, config)
 }
 
-local fn unary_types(op: str, input: Val, output: Val) -> bool {
+local fn unary_types(
+  op: str, input: Val, output: Val, config: dict
+) -> bool {
   let source = ir.type(input)
   let result = ir.type(output)
   if op == "operator !" {
-    return class(source) != "" && result == ty("bool")
+    return class(source, config) != "" && result == ty("bool")
   }
   if op == "operator ~" {
-    return integer(source) && same_repr(result, source)
+    return integer(source, config) && same_repr(result, source, config)
   }
-  return number(source) && same_repr(result, source)
+  return number(source, config) && same_repr(result, source, config)
 }
 
 local fn binding(fn: Fn) -> str {
@@ -386,7 +410,7 @@ local fn binding_header(fn: Fn) -> str {
   return base.str(name)
 }
 
-fn accepts(m: Mod, op: Op) -> bool {
+local fn accepts_with(m: Mod, op: Op, config: dict) -> bool {
   let name = ir.callee(op)
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -396,7 +420,7 @@ fn accepts(m: Mod, op: Op) -> bool {
   if name == "base.copy" {
     return len(inputs) == 1 && len(outputs) == 1 &&
            ir.type(inputs[0]) == ir.type(outputs[0]) &&
-           supported(ir.type(outputs[0]))
+           supported(ir.type(outputs[0]), config)
   }
   if name == "operator []" {
     if len(outputs) != 1 || len(inputs) < 2 ||
@@ -404,7 +428,7 @@ fn accepts(m: Mod, op: Op) -> bool {
       return false
     }
     if tensor.valid(ir.type(inputs[0])) {
-      return supported(ir.type(inputs[0]))
+      return supported(ir.type(inputs[0]), config)
     }
     let source = ir.def(inputs[0])
     return len(inputs) == 2 && ir.live(source) &&
@@ -413,47 +437,64 @@ fn accepts(m: Mod, op: Op) -> bool {
   if name == "operator []=" {
     return len(outputs) == 1 && len(inputs) >= 3 &&
            tensor.valid(ir.type(outputs[0])) &&
-           supported(ir.type(outputs[0]))
+           supported(ir.type(outputs[0]), config)
   }
   let target = ir.resolve(m, op)
   if len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
      ir.live(target) && ir.symbol(target) == "tensor.tensor" {
-    return supported(ir.type(outputs[0]))
+    return supported(ir.type(outputs[0]), config)
   }
   if len(inputs) == 1 && len(outputs) == 1 &&
-     supported(ir.type(outputs[0])) && ir.is_const(inputs[0]) &&
+     supported(ir.type(outputs[0]), config) && ir.is_const(inputs[0]) &&
      base.kind(ir.constant(inputs[0])) == "bytes" &&
      ir.live(target) && ir.symbol(target) == "tensor.literal" {
     return base.size(ir.constant(inputs[0])) ==
-           count(ir.type(outputs[0])) * width(tensor.elem(ir.type(outputs[0])))
+           count(ir.type(outputs[0])) *
+           width(tensor.elem(ir.type(outputs[0])), config)
   }
   if binary(name) != "" && len(inputs) == 2 && len(outputs) == 1 {
     return !tensor.valid(ir.type(outputs[0])) &&
-           binary_types(name, inputs, outputs[0])
+           binary_types(name, inputs, outputs[0], config)
   }
   if unary(name) != "" && len(inputs) == 1 && len(outputs) == 1 {
     return !tensor.valid(ir.type(outputs[0])) &&
-           unary_types(name, inputs[0], outputs[0])
+           unary_types(name, inputs[0], outputs[0], config)
   }
-  if scalar_name(name) && len(inputs) == 1 && len(outputs) == 1 {
+  if scalar_name(name, config) && len(inputs) == 1 && len(outputs) == 1 {
     return !tensor.valid(ir.type(outputs[0]))
   }
-  if binding(m, op) != "" {
-    return callable(m, target)
-  }
-  return callable(m, target)
+  return callable(m, target, config)
 }
 
-fn prepare(m: Mod) -> bool {
+fn accepts(m: Mod, op: Op) -> bool {
+  return accepts_with(m, op, {})
+}
+
+fn accepts(m: Mod, op: Op, config: dict) -> bool {
+  return accepts_with(m, op, config)
+}
+
+local fn prepare_with(m: Mod, config: dict) -> bool {
   let limit = len(ir.ops(m)) + 1
-  let changed = opt.expose(m, ir.find("c.accepts"), limit)
+  let accept = ir.find(
+    "c.accepts", [ty("Mod"), ty("Op"), ty("dict")]
+  )
+  let changed = opt.expose(m, accept, config, limit)
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" {
-      assert(accepts(m, op),
+      assert(accepts_with(m, op, config),
              "c: unsupported call remains: " + ir.callee(op))
     }
   }
   return changed
+}
+
+fn prepare(m: Mod) -> bool {
+  return prepare_with(m, {})
+}
+
+fn prepare(m: Mod, config: dict) -> bool {
+  return prepare_with(m, config)
 }
 
 fn place(m: Mod, scope: str) -> bool {
@@ -474,7 +515,7 @@ fn place(m: Mod, scope: str) -> bool {
   return changed
 }
 
-local fn tensor_new(m: Mod, op: Op, depth: int) -> str {
+local fn tensor_new(m: Mod, op: Op, depth: int, config: dict) -> str {
   let outputs = ir.outs(op)
   let inputs = ir.args(op)
   assert(len(outputs) == 1 && len(inputs) == 1,
@@ -485,13 +526,13 @@ local fn tensor_new(m: Mod, op: Op, depth: int) -> str {
   let indent = pad(depth)
   var out = ""
   if !reuses(op) && !mem.planned(output) {
-    out = indent + scalar(tensor.elem(type)) + " " + val(output) + "[" +
+    out = indent + scalar(tensor.elem(type), config) + " " + val(output) + "[" +
           text(n) + "];\n"
   }
-  out += indent + "for (" + index_type() +
+  out += indent + "for (" + index_type(config) +
          " jog_i = 0; jog_i < " + text(n) +
          "; ++jog_i) " + val(output) + "[jog_i] = " +
-         expr(m, inputs[0]) + ";\n"
+         expr(m, inputs[0], config) + ";\n"
   return out
 }
 
@@ -528,7 +569,9 @@ local fn payload_offset(m: Mod, target: Op) -> int {
   return 0
 }
 
-local fn tensor_literal(m: Mod, op: Op, depth: int, blob: str) -> str {
+local fn tensor_literal(
+  m: Mod, op: Op, depth: int, blob: str, config: dict
+) -> str {
   let outputs = ir.outs(op)
   let inputs = ir.args(op)
   assert(len(outputs) == 1 && len(inputs) == 1 && ir.is_const(inputs[0]),
@@ -539,7 +582,7 @@ local fn tensor_literal(m: Mod, op: Op, depth: int, blob: str) -> str {
   let indent = pad(depth)
   let bytes = base.size(data)
   let elements = count(type)
-  assert(bytes == elements * width(tensor.elem(type)),
+  assert(bytes == elements * width(tensor.elem(type), config),
          "c: tensor literal byte size does not match its type")
   var storage = elements
   if storage == 0 {
@@ -547,7 +590,7 @@ local fn tensor_literal(m: Mod, op: Op, depth: int, blob: str) -> str {
   }
   var out = ""
   if !reuses(op) && !mem.planned(output) {
-    out = indent + scalar(tensor.elem(type)) + " " + val(output) + "[" +
+    out = indent + scalar(tensor.elem(type), config) + " " + val(output) + "[" +
           text(storage) + "];\n"
   }
   if bytes == 0 {
@@ -565,7 +608,7 @@ local fn tensor_literal(m: Mod, op: Op, depth: int, blob: str) -> str {
   return out
 }
 
-local fn copy(m: Mod, op: Op, depth: int) -> str {
+local fn copy(m: Mod, op: Op, depth: int, config: dict) -> str {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   assert(len(inputs) == 1 && len(outputs) == 1,
@@ -577,30 +620,32 @@ local fn copy(m: Mod, op: Op, depth: int) -> str {
   if tensor.valid(type) {
     var out = ""
     if !reuses(op) && !mem.planned(output) {
-      out = indent + scalar(tensor.elem(type)) + " " + val(output) + "[" +
+      out = indent + scalar(tensor.elem(type), config) + " " + val(output) + "[" +
             text(count(type)) + "];\n"
     }
     if val(output) != val(input) {
       out += indent + "memcpy(" + val(output) + ", " + val(input) + ", " +
-             text(count(type) * width(tensor.elem(type))) + ");\n"
+             text(count(type) * width(tensor.elem(type), config)) + ");\n"
     }
     return out
   }
-  return indent + lhs(op, output) + " = " +
-         expr(m, input) + ";\n"
+  return indent + lhs(op, output, config) + " = " +
+         expr(m, input, config) + ";\n"
 }
 
-local fn call(m: Mod, op: Op, depth: int, blob: str) -> str {
+local fn call(
+  m: Mod, op: Op, depth: int, blob: str, config: dict
+) -> str {
   let name = ir.callee(op)
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   let indent = pad(depth)
-  assert(accepts(m, op), "c: call must be prepared: " + name)
+  assert(accepts_with(m, op, config), "c: call must be prepared: " + name)
   if name == "base.list" || name == "operator .." {
     return ""
   }
   if name == "base.copy" {
-    return copy(m, op, depth)
+    return copy(m, op, depth, config)
   }
   if name == "operator []" {
     assert(len(outputs) == 1 && len(inputs) >= 2,
@@ -608,8 +653,8 @@ local fn call(m: Mod, op: Op, depth: int, blob: str) -> str {
     if ir.name(outputs[0]) == "" {
       return ""
     }
-    return indent + lhs(op, outputs[0]) +
-           " = " + index(m, inputs[0], inputs) + ";\n"
+    return indent + lhs(op, outputs[0], config) +
+           " = " + index(m, inputs[0], inputs, config) + ";\n"
   }
   if name == "operator []=" {
     assert(len(outputs) == 1 && len(inputs) >= 3,
@@ -618,18 +663,18 @@ local fn call(m: Mod, op: Op, depth: int, blob: str) -> str {
     for i in 1..len(inputs) - 1 {
       access += [inputs[i]]
     }
-    return indent + index(m, inputs[0], access) + " = " +
-           expr(m, inputs[len(inputs) - 1]) + ";\n"
+    return indent + index(m, inputs[0], access, config) + " = " +
+           expr(m, inputs[len(inputs) - 1], config) + ";\n"
   }
 
   let target = ir.resolve(m, op)
   if len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
      ir.live(target) && ir.symbol(target) == "tensor.tensor" {
-    return tensor_new(m, op, depth)
+    return tensor_new(m, op, depth, config)
   }
   if len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
      ir.live(target) && ir.symbol(target) == "tensor.literal" {
-    return tensor_literal(m, op, depth, blob)
+    return tensor_literal(m, op, depth, blob, config)
   }
 
   let binary_op = binary(name)
@@ -638,9 +683,9 @@ local fn call(m: Mod, op: Op, depth: int, blob: str) -> str {
     if ir.name(outputs[0]) == "" {
       return ""
     }
-    return indent + lhs(op, outputs[0]) + " = " +
-           expr(m, inputs[0]) + " " + binary_op + " " +
-           expr(m, inputs[1]) + ";\n"
+    return indent + lhs(op, outputs[0], config) + " = " +
+           expr(m, inputs[0], config) + " " + binary_op + " " +
+           expr(m, inputs[1], config) + ";\n"
   }
 
   let unary_op = unary(name)
@@ -649,17 +694,18 @@ local fn call(m: Mod, op: Op, depth: int, blob: str) -> str {
     if ir.name(outputs[0]) == "" {
       return ""
     }
-    return indent + lhs(op, outputs[0]) + " = " + unary_op +
-           expr(m, inputs[0]) + ";\n"
+    return indent + lhs(op, outputs[0], config) + " = " + unary_op +
+           expr(m, inputs[0], config) + ";\n"
   }
 
-  if len(inputs) == 1 && len(outputs) == 1 && scalar_name(name) &&
+  if len(inputs) == 1 && len(outputs) == 1 && scalar_name(name, config) &&
      !tensor.valid(ir.type(outputs[0])) {
     if ir.name(outputs[0]) == "" {
       return ""
     }
-    return indent + lhs(op, outputs[0]) + " = (" + scalar(ty(name)) + ")(" +
-           expr(m, inputs[0]) + ");\n"
+    return indent + lhs(op, outputs[0], config) + " = (" +
+           scalar(ty(name), config) + ")(" +
+           expr(m, inputs[0], config) + ");\n"
   }
 
   if len(outputs) == 1 {
@@ -668,13 +714,13 @@ local fn call(m: Mod, op: Op, depth: int, blob: str) -> str {
       if ir.name(outputs[0]) == "" {
         return ""
       }
-      return indent + lhs(op, outputs[0]) + " = " + bound + "(" +
-             args(m, inputs) + ");\n"
+      return indent + lhs(op, outputs[0], config) + " = " + bound + "(" +
+             args(m, inputs, config) + ");\n"
     }
   }
 
-  let callee = symbol(m, target)
-  var actuals = args(m, inputs)
+  let callee = symbol(m, target, config)
+  var actuals = args(m, inputs, config)
   if len(outputs) == 0 {
     return indent + callee + "(" + actuals + ");\n"
   }
@@ -686,11 +732,11 @@ local fn call(m: Mod, op: Op, depth: int, blob: str) -> str {
       let type = ir.type(output)
       if tensor.valid(type) {
         if !mem.planned(output) {
-          out += indent + scalar(tensor.elem(type)) + " " + val(output) +
+          out += indent + scalar(tensor.elem(type), config) + " " + val(output) +
                  "[" + text(count(type)) + "];\n"
         }
       } else {
-        out += indent + scalar(type) + " " + val(output) + ";\n"
+        out += indent + scalar(type, config) + " " + val(output) + ";\n"
       }
       if actuals != "" {
         actuals += ", "
@@ -708,7 +754,7 @@ local fn call(m: Mod, op: Op, depth: int, blob: str) -> str {
     let type = ir.type(output)
     var out = ""
     if !reuses(op) && !mem.planned(output) {
-      out = indent + scalar(tensor.elem(type)) + " " + val(output) + "[" +
+      out = indent + scalar(tensor.elem(type), config) + " " + val(output) + "[" +
             text(count(type)) + "];\n"
     }
     if len(inputs) != 0 {
@@ -720,18 +766,18 @@ local fn call(m: Mod, op: Op, depth: int, blob: str) -> str {
   if ir.name(output) == "" {
     return ""
   }
-  return indent + lhs(op, output) + " = " + callee + "(" +
+  return indent + lhs(op, output, config) + " = " + callee + "(" +
          actuals + ");\n"
 }
 
-local fn ret(m: Mod, op: Op, depth: int) -> str {
+local fn ret(m: Mod, op: Op, depth: int, config: dict) -> str {
   let values = ir.args(op)
   let indent = pad(depth)
   if len(values) == 0 {
     return indent + "return;\n"
   }
   if len(values) == 1 && !tensor.valid(ir.type(values[0])) {
-    return indent + "return " + expr(m, values[0]) + ";\n"
+    return indent + "return " + expr(m, values[0], config) + ";\n"
   }
   var out = ""
   for i in 0..len(values) {
@@ -744,18 +790,18 @@ local fn ret(m: Mod, op: Op, depth: int) -> str {
     }
     if tensor.valid(ir.type(value)) {
       let n = count(ir.type(value))
-      out += indent + "for (" + index_type() + " " + iterator +
+      out += indent + "for (" + index_type(config) + " " + iterator +
              " = 0; " + iterator + " < " + text(n) + "; ++" + iterator +
              ") " + output + "[" + iterator + "] = " + val(value) + "[" +
              iterator + "];\n"
     } else {
-      out += indent + "*" + output + " = " + expr(m, value) + ";\n"
+      out += indent + "*" + output + " = " + expr(m, value, config) + ";\n"
     }
   }
   return out + indent + "return;\n"
 }
 
-local fn constant(op: Op, depth: int) -> str {
+local fn constant(op: Op, depth: int, config: dict) -> str {
   let outputs = ir.outs(op)
   assert(len(outputs) == 1, "c: constant must have one result")
   let output = outputs[0]
@@ -764,7 +810,7 @@ local fn constant(op: Op, depth: int) -> str {
   }
   let form = ir.form(op)
   if form == "var" {
-    return pad(depth) + scalar(ir.type(output)) + " " + val(output) +
+    return pad(depth) + scalar(ir.type(output), config) + " " + val(output) +
            " = " + text(ir.constant(output)) + ";\n"
   }
   if reuses(op) {
@@ -776,7 +822,9 @@ local fn constant(op: Op, depth: int) -> str {
   return ""
 }
 
-local fn loop(m: Mod, op: Op, depth: int, blob: str) -> str {
+local fn loop(
+  m: Mod, op: Op, depth: int, blob: str, config: dict
+) -> str {
   let bodies = ir.blks(op)
   assert(len(bodies) == 1, "c: loop must have one body")
   let body = bodies[0]
@@ -794,45 +842,47 @@ local fn loop(m: Mod, op: Op, depth: int, blob: str) -> str {
     if ir.callee(source) == "operator .." {
       let bounds = ir.args(source)
       assert(len(bounds) == 2, "c: range must have two bounds")
-      out += pad(depth + i) + "for (" + index_type() + " " + iterator +
+      out += pad(depth + i) + "for (" + index_type(config) + " " + iterator +
              " = " +
-             expr(m, bounds[0]) + "; " + iterator + " < " +
-             expr(m, bounds[1]) +
+             expr(m, bounds[0], config) + "; " + iterator + " < " +
+             expr(m, bounds[1], config) +
              "; ++" + iterator + ") {\n"
     } else {
       assert(ir.callee(source) == "base.list",
              "c: loop source must be a range or scalar list")
       let items = ir.args(source)
       if len(items) == 0 {
-        out += pad(depth + i) + "for (" + index_type() + " " + iterator +
+        out += pad(depth + i) + "for (" + index_type(config) + " " + iterator +
                " = 0; " + iterator + " < 0; ++" + iterator + ") {\n"
       } else {
         let index = "jog_i_" + base.ident(ir.name(body_args[i]))
-        let type = scalar(ir.type(body_args[i]))
-        out += pad(depth + i) + "for (" + index_type() + " " + index +
+        let type = scalar(ir.type(body_args[i]), config)
+        out += pad(depth + i) + "for (" + index_type(config) + " " + index +
                " = 0; " + index +
                " < " + text(len(items)) + "; ++" + index + ") {\n"
         out += pad(depth + i + 1) + "const " + type + " " + iterator +
-               " = (const " + type + "[]){" + args(m, items) + "}[" + index +
+               " = (const " + type + "[]){" + args(m, items, config) + "}[" + index +
                "];\n"
       }
     }
   }
-  out += block(m, body, depth + iterators, blob)
+  out += block(m, body, depth + iterators, blob, config)
   for reverse in 0..iterators {
     out += pad(depth + iterators - reverse - 1) + "}\n"
   }
   return out
 }
 
-local fn branch(m: Mod, op: Op, depth: int, blob: str) -> str {
+local fn branch(
+  m: Mod, op: Op, depth: int, blob: str, config: dict
+) -> str {
   let bodies = ir.blks(op)
   let inputs = ir.args(op)
   assert(len(bodies) == 2 && len(inputs) >= 1,
          "c: branch structure is invalid")
-  let first = block(m, bodies[0], depth + 1, blob)
-  let second = block(m, bodies[1], depth + 1, blob)
-  var out = pad(depth) + "if (" + expr(m, inputs[0]) + ") {\n" + first
+  let first = block(m, bodies[0], depth + 1, blob, config)
+  let second = block(m, bodies[1], depth + 1, blob, config)
+  var out = pad(depth) + "if (" + expr(m, inputs[0], config) + ") {\n" + first
   if second == "" {
     out += pad(depth) + "}\n"
   } else {
@@ -841,26 +891,28 @@ local fn branch(m: Mod, op: Op, depth: int, blob: str) -> str {
   return out
 }
 
-local fn block(m: Mod, body: Blk, depth: int, blob: str) -> str {
+local fn block(
+  m: Mod, body: Blk, depth: int, blob: str, config: dict
+) -> str {
   var out = ""
   for op in ir.ops(body) {
     let kind = ir.kind(op)
     if kind == "call" {
-      out += call(m, op, depth, blob)
+      out += call(m, op, depth, blob, config)
     } else {
       if kind == "loop" {
-        out += loop(m, op, depth, blob)
+        out += loop(m, op, depth, blob, config)
       } else {
         if kind == "branch" {
-          if logical(m, op) == "" {
-            out += branch(m, op, depth, blob)
+          if logical(m, op, config) == "" {
+            out += branch(m, op, depth, blob, config)
           }
         } else {
           if kind == "return" {
-            out += ret(m, op, depth)
+            out += ret(m, op, depth, config)
           } else {
             if kind == "constant" {
-              out += constant(op, depth)
+              out += constant(op, depth, config)
             } else {
               assert(kind == "yield", "c: unsupported operation kind " + kind)
             }
@@ -872,16 +924,16 @@ local fn block(m: Mod, body: Blk, depth: int, blob: str) -> str {
   return out
 }
 
-local fn signature(m: Mod, fn: Fn) -> str {
-  assert(callable(m, fn), "c: function has no representable ABI")
+local fn signature(m: Mod, fn: Fn, config: dict) -> str {
+  assert(callable(m, fn, config), "c: function has no representable ABI")
   let returns = ir.returns(fn)
   var out = ""
   if len(returns) == 1 && !tensor.valid(returns[0]) {
-    out = scalar(returns[0])
+    out = scalar(returns[0], config)
   } else {
     out = "void"
   }
-  out += " " + symbol(m, fn) + "("
+  out += " " + symbol(m, fn, config) + "("
   let params = ir.params(fn)
   var arguments = 0
   for i in 0..len(params) {
@@ -891,9 +943,9 @@ local fn signature(m: Mod, fn: Fn) -> str {
     let type = ir.type(params[i])
     if tensor.valid(type) {
       count(type)
-      out += "const " + scalar(tensor.elem(type)) + "* " + val(params[i])
+      out += "const " + scalar(tensor.elem(type), config) + "* " + val(params[i])
     } else {
-      out += scalar(type) + " " + val(params[i])
+      out += scalar(type, config) + " " + val(params[i])
     }
     arguments += 1
   }
@@ -905,9 +957,9 @@ local fn signature(m: Mod, fn: Fn) -> str {
       let type = returns[i]
       if tensor.valid(type) {
         count(type)
-        out += scalar(tensor.elem(type)) + "*"
+        out += scalar(tensor.elem(type), config) + "*"
       } else {
-        out += scalar(type) + "*"
+        out += scalar(type, config) + "*"
       }
       out += " jog_out"
       if len(returns) != 1 {
@@ -929,7 +981,7 @@ local fn linkage(m: Mod, fn: Fn) -> str {
   return ""
 }
 
-local fn definition(m: Mod, fn: Fn, blob: str) -> str {
+local fn definition(m: Mod, fn: Fn, blob: str, config: dict) -> str {
   let bodies = ir.blks(fn)
   assert(len(bodies) >= 1, "c: function has no body")
   var memory = ""
@@ -941,12 +993,12 @@ local fn definition(m: Mod, fn: Fn, blob: str) -> str {
   }
   for slot in 0..mem.slots(fn) {
     let type = mem.type(fn, slot)
-    memory += pad(1) + storage + scalar(type) + " jog_mem_" +
+    memory += pad(1) + storage + scalar(type, config) + " jog_mem_" +
               base.ident(base.name(type)) + "_" + text(slot) + "[" +
               text(mem.count(fn, slot)) + "];\n"
   }
-  return linkage(m, fn) + signature(m, fn) + " {\n" +
-         memory + block(m, bodies[0], 1, blob) + "}\n"
+  return linkage(m, fn) + signature(m, fn, config) + " {\n" +
+         memory + block(m, bodies[0], 1, blob, config) + "}\n"
 }
 
 local fn functions(m: Mod) -> list<Fn> {
@@ -973,12 +1025,12 @@ local fn exports(m: Mod) -> list<Fn> {
   return visible
 }
 
-local fn dependencies(m: Mod) -> list<Fn> {
+local fn dependencies(m: Mod, config: dict) -> list<Fn> {
   var out: list<Fn> = []
   for op in ir.ops(m) {
     if ir.kind(op) == "call" {
       let fn = ir.resolve(m, op)
-      if external(m, fn) && binding_header(fn) == "" {
+      if external(m, fn, config) && binding_header(fn) == "" {
         var seen = false
         for existing in out {
           seen = existing == fn || seen
@@ -992,12 +1044,12 @@ local fn dependencies(m: Mod) -> list<Fn> {
   return out
 }
 
-local fn binding_headers(m: Mod) -> list<str> {
+local fn binding_headers(m: Mod, config: dict) -> list<str> {
   var out: list<str> = []
   for op in ir.ops(m) {
     if ir.kind(op) == "call" {
       let fn = ir.resolve(m, op)
-      if external(m, fn) {
+      if external(m, fn, config) {
         let name = binding_header(fn)
         if name != "" {
           var seen = false
@@ -1016,36 +1068,103 @@ local fn binding_headers(m: Mod) -> list<str> {
 
 local fn includes(names: list<str>) -> str {
   var out = ""
+  var emitted: list<str> = []
   for name in names {
-    out += "#include <" + name + ">\n"
+    if name != "" {
+      var seen = false
+      for existing in emitted {
+        seen = seen || existing == name
+      }
+      if !seen {
+        out += "#include <" + name + ">\n"
+        emitted += [name]
+      }
+    }
   }
   return out
 }
 
-local fn prototypes(m: Mod, fns: list<Fn>) -> str {
+local fn type_header(type: Ty, config: dict) -> str {
+  var scalar_type = type
+  if tensor.valid(type) {
+    scalar_type = tensor.elem(type)
+  }
+  return str(field(config, base.name(scalar_type), "include"))
+}
+
+local fn type_headers(fns: list<Fn>, config: dict) -> list<str> {
+  var out: list<str> = []
+  for fn in fns {
+    for param in ir.params(fn) {
+      out += [type_header(ir.type(param), config)]
+    }
+    for type in ir.returns(fn) {
+      out += [type_header(type, config)]
+    }
+  }
+  return out
+}
+
+local fn value_headers(fns: list<Fn>, config: dict) -> list<str> {
+  var out: list<str> = []
+  for fn in fns {
+    for value in ir.vals(fn) {
+      let type = ir.type(value)
+      if supported(type, config) {
+        out += [type_header(type, config)]
+      }
+    }
+  }
+  return out
+}
+
+local fn source_headers(m: Mod, fns: list<Fn>, config: dict) -> list<str> {
+  var out = binding_headers(m, config) + type_headers(fns, config) +
+            value_headers(fns, config)
+  out += [type_header(ty("index"), config)]
+  for op in ir.ops(m) {
+    if payload(op) ||
+       (ir.kind(op) == "call" && ir.callee(op) == "base.copy" &&
+        len(ir.outs(op)) == 1 && tensor.valid(ir.type(ir.outs(op)[0]))) {
+      out += ["string.h"]
+      return out
+    }
+  }
+  return out
+}
+
+local fn prototypes(m: Mod, fns: list<Fn>, config: dict) -> str {
   var declarations = ""
   var names: list<str> = []
   for fn in fns {
-    let name = symbol(m, fn)
+    let name = symbol(m, fn, config)
     for existing in names {
       assert(existing != name,
              "c: overloaded or colliding function name " + name)
     }
     names += [name]
-    declarations += linkage(m, fn) + signature(m, fn) + ";\n"
+    declarations += linkage(m, fn) + signature(m, fn, config) + ";\n"
   }
   return declarations
 }
 
-fn header(m: Mod) -> str {
+local fn header_with(m: Mod, config: dict) -> str {
   let fns = exports(m)
   assert(len(fns) != 0, "c: module has no function definitions")
-  let declarations = prototypes(m, fns)
+  let declarations = prototypes(m, fns, config)
   return "#pragma once\n\n" +
-         "#include <stdbool.h>\n#include <stdint.h>\n\n" +
+         includes(type_headers(fns, config)) + "\n" +
          "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n" +
          declarations +
          "\n#ifdef __cplusplus\n}\n#endif\n"
+}
+
+fn header(m: Mod) -> str {
+  return header_with(m, {})
+}
+
+fn header(m: Mod, config: dict) -> str {
+  return header_with(m, config)
 }
 
 fn data(m: Mod) -> bytes {
@@ -1058,37 +1177,43 @@ fn data(m: Mod) -> bytes {
   return out
 }
 
-local fn emit(m: Mod, blob: str) -> str {
+local fn emit(m: Mod, blob: str, config: dict) -> str {
   let fns = functions(m)
   assert(len(fns) != 0, "c: module has no function definitions")
-  let declared = dependencies(m) + fns
+  let declared = dependencies(m, config) + fns
   if blob != "" {
     for fn in declared {
-      assert(symbol(m, fn) != blob,
+      assert(symbol(m, fn, config) != blob,
              "c: external data symbol collides with function " + blob)
     }
   }
-  let declarations = prototypes(m, declared)
+  let declarations = prototypes(m, declared, config)
   var definitions = ""
   for fn in fns {
-    definitions += definition(m, fn, blob) + "\n"
+    definitions += definition(m, fn, blob, config) + "\n"
   }
   var payload_decl = ""
   if blob != "" && payload_size(m) != 0 {
     payload_decl = "extern const unsigned char " + blob + "[];\n\n"
   }
-  return includes(binding_headers(m)) +
-         "#include <stdbool.h>\n" +
-         "#include <stdint.h>\n" +
-         "#include <string.h>\n\n" +
+  return includes(source_headers(m, declared, config)) + "\n" +
          payload_decl + declarations + "\n" + definitions
 }
 
 fn source(m: Mod) -> str {
-  return emit(m, "")
+  return emit(m, "", {})
 }
 
 fn source(m: Mod, blob: str) -> str {
   assert(blob != "", "c: external data name must not be empty")
-  return emit(m, "jog_data_" + base.ident(blob))
+  return emit(m, "jog_data_" + base.ident(blob), {})
+}
+
+fn source(m: Mod, config: dict) -> str {
+  return emit(m, "", config)
+}
+
+fn source(m: Mod, blob: str, config: dict) -> str {
+  assert(blob != "", "c: external data name must not be empty")
+  return emit(m, "jog_data_" + base.ident(blob), config)
 }
