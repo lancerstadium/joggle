@@ -355,6 +355,19 @@ fn can_unroll(m: Mod, source: Op, factor: int) -> bool {
   return legal
 }
 
+fn unrollable(m: Mod, factor: int) -> list<Op> {
+  let before = ir.revision(m)
+  var out: list<Op> = []
+  for op in ir.ops(m) {
+    if can_unroll(m, op, factor) {
+      out += [op]
+    }
+  }
+  assert(ir.revision(m) == before,
+         "tile.unrollable changed the module")
+  return out
+}
+
 fn unroll(m: Mod, source: Op, factor: int) -> bool {
   let issue = unroll_issue(source, factor)
   assert(issue == "", "tile.unroll " + issue)
@@ -644,7 +657,35 @@ local fn fuse_issue(m: Mod, producer: Op, consumer: Op) -> str {
 }
 
 fn can_fuse(m: Mod, producer: Op, consumer: Op) -> bool {
-  return fuse_issue(m, producer, consumer) == ""
+  let before = ir.revision(m)
+  let legal = fuse_issue(m, producer, consumer) == ""
+  assert(ir.revision(m) == before,
+         "tile.can_fuse changed the module")
+  return legal
+}
+
+fn fusible(m: Mod) -> list<list<Op>> {
+  let before = ir.revision(m)
+  let ops = ir.ops(m)
+  var out: list<list<Op>> = []
+  for i in 0..len(ops) {
+    if ir.live(ops[i]) && ir.kind(ops[i]) == "loop" {
+      var next_loop = false
+      for j in i + 1..len(ops) {
+        if !next_loop && ir.live(ops[j]) &&
+           ir.kind(ops[j]) == "loop" &&
+           ir.blk(ops[i]) == ir.blk(ops[j]) {
+          next_loop = true
+          if can_fuse(m, ops[i], ops[j]) {
+            out += [[ops[i], ops[j]]]
+          }
+        }
+      }
+    }
+  }
+  assert(ir.revision(m) == before,
+         "tile.fusible changed the module")
+  return out
 }
 
 fn fuse(m: Mod, producer: Op, consumer: Op) -> bool {
@@ -812,39 +853,24 @@ local fn fuse_all(
   for round in 0..limit {
     if again {
       again = false
-      let ops = ir.ops(m)
-      for i in 0..len(ops) {
-        if ir.live(ops[i]) && ir.kind(ops[i]) == "loop" {
-          var next_loop = false
-          for j in i + 1..len(ops) {
-            if !next_loop && ir.live(ops[j]) &&
-               ir.kind(ops[j]) == "loop" &&
-               ir.blk(ops[i]) == ir.blk(ops[j]) {
-              next_loop = true
-              if can_fuse(m, ops[i], ops[j]) {
-                var profitable = true
-                if len(policies) == 1 {
-                  let before = ir.revision(m)
-                  if configured {
-                    profitable = ir.invoke<bool>(
-                      m, [ops[i], ops[j]], policies[0], arg
-                    )
-                  } else {
-                    profitable = ir.invoke<bool>(
-                      m, [ops[i], ops[j]], policies[0]
-                    )
-                  }
-                  assert(ir.revision(m) == before,
-                         "tile.fuse policy must not mutate the module")
-                }
-                if profitable {
-                  assert(fuse(m, ops[i], ops[j]),
-                         "tile.fuse could not apply a valid candidate")
-                  changed = true
-                  again = true
-                }
-              }
+      for pair in fusible(m) {
+        if len(pair) == 2 && ir.live(pair[0]) && ir.live(pair[1]) {
+          var profitable = true
+          if len(policies) == 1 {
+            let before = ir.revision(m)
+            if configured {
+              profitable = ir.invoke<bool>(m, pair, policies[0], arg)
+            } else {
+              profitable = ir.invoke<bool>(m, pair, policies[0])
             }
+            assert(ir.revision(m) == before,
+                   "tile.fuse policy must not mutate the module")
+          }
+          if profitable {
+            assert(fuse(m, pair[0], pair[1]),
+                   "tile.fuse could not apply a valid candidate")
+            changed = true
+            again = true
           }
         }
       }

@@ -41,7 +41,8 @@ The loop API must move from isolated demonstrations to dependable research use:
 - make dependence checks precise for nested and multi-axis loops;
 - define legality for interchange, fusion, splitting, and unrolling;
 - preserve reductions and loop-carried values under composition;
-- expose candidate enumeration and user policy as ordinary functions;
+- extend the current read-only unroll/fusion candidate enumeration and ordinary
+  function policies to interchange and other loop transforms;
 - record why a candidate was rejected;
 - separate legality, profitability, and mechanism.
 

@@ -10,6 +10,19 @@ if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
 endif()
 
 execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_unrollable "${MODEL}"
+          --arg 2 --arg 1 -M "${MODULES}"
+  RESULT_VARIABLE candidate_result
+  OUTPUT_VARIABLE candidate_output
+  ERROR_VARIABLE candidate_error
+)
+if(NOT candidate_result EQUAL 0)
+  message(FATAL_ERROR
+          "unroll candidate enumeration failed:\n"
+          "${candidate_output}${candidate_error}")
+endif()
+
+execute_process(
   COMMAND "${TOOL}" run tile_pass.fuse_first "${EFFECT_FUSE_MODEL}"
           -M "${MODULES}"
   RESULT_VARIABLE effect_result
@@ -186,6 +199,19 @@ execute_process(
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "fusion preparation failed (${result}):\n${error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_fusible "${fuse_prepared}"
+          --arg 2 -M "${MODULES}"
+  RESULT_VARIABLE candidate_result
+  OUTPUT_VARIABLE candidate_output
+  ERROR_VARIABLE candidate_error
+)
+if(NOT candidate_result EQUAL 0)
+  message(FATAL_ERROR
+          "fusion candidate enumeration failed:\n"
+          "${candidate_output}${candidate_error}")
 endif()
 
 execute_process(

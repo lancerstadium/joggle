@@ -83,6 +83,16 @@ fn reject_mutating_unroll_policy(m: Mod) -> bool {
   return tile.unroll(m, ir.find("tile_pass.mutating_unroll_policy"))
 }
 
+fn check_unrollable(m: Mod, factor: int, expected: int) -> bool {
+  let before = ir.revision(m)
+  let candidates = tile.unrollable(m, factor)
+  assert(ir.revision(m) == before,
+         "tile.unrollable must be read-only")
+  assert(len(candidates) == expected,
+         "unexpected unroll candidate count")
+  return true
+}
+
 fn fuse_first(m: Mod) -> bool {
   var loops: list<Op> = []
   for op in ir.ops(m) {
@@ -129,4 +139,18 @@ fn mutating_policy(m: Mod, pair: list<Op>) -> bool {
 
 fn reject_mutating_policy(m: Mod) -> bool {
   return tile.fuse(m, ir.find("tile_pass.mutating_policy"))
+}
+
+fn check_fusible(m: Mod, expected: int) -> bool {
+  let before = ir.revision(m)
+  let candidates = tile.fusible(m)
+  assert(ir.revision(m) == before,
+         "tile.fusible must be read-only")
+  assert(len(candidates) == expected,
+         "unexpected fusion candidate count")
+  for pair in candidates {
+    assert(len(pair) == 2 && tile.can_fuse(m, pair[0], pair[1]),
+           "tile.fusible returned an illegal pair")
+  }
+  return true
 }
