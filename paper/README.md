@@ -127,15 +127,17 @@ frozen.
   with a seed-0 ONNX Runtime reference within `1.669e-5`. Its unisolated strict
   C median is 2.285 s versus 22.587 ms for one-thread ONNX Runtime, exposing a
   roughly 101x backend gap on a larger detection input.
-- QDQ SqueezeNet 1.0 is the sixth numerically executed ONNX model and the first
-  executed model with explicit quantize/dequantize boundaries. Its 1,000
+- QDQ SqueezeNet 1.0 is the sixth application-scale numerical pilot and the
+  first executed model with explicit quantize/dequantize boundaries. Its 1,000
   outputs agree with an ONNX Runtime reference within `1.341e-7`; an
   unisolated ten-call pilot is still about 18.3x slower than the reference
   runtime.
-- ShuffleNet V2 is the seventh numerically executed ONNX model and adds
-  Split/Concat channel shuffling to the executed path. Its 1,000 outputs agree
-  within `8.583e-6`; generated spatial C has a 37.503 ms unisolated median
-  versus 1.945 ms for one-thread ONNX Runtime, leaving a roughly 19.3x gap.
+- ShuffleNet V2 is the seventh application-scale numerical pilot and adds
+  Split/Concat channel shuffling to the executed path. Including the smaller
+  MNIST gate, the coverage table now contains eight end-to-end ONNX models.
+  ShuffleNet's 1,000 outputs agree within `8.583e-6`; generated spatial C has a
+  37.503 ms unisolated median versus 1.945 ms for one-thread ONNX Runtime,
+  leaving a roughly 19.3x gap.
 - One out-of-tree convolution implementation now changes the generated loop
   structure without an ONNX or C-emitter edit. On matched strict-C pilots it
   reduces median latency by 1.93x on MobileNetV2, 3.13x on ResNet18, 6.29x on

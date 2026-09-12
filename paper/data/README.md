@@ -170,11 +170,12 @@ seed-0 `[1, 3, 224, 224]` input produces 1,000 outputs within
 is 158,829 bytes, its separate payload is 9,179,136 bytes, and four static
 workspace slots contain 785,000 `f32` elements in total. After three warm-ups,
 ten unisolated calls have a 37.503 ms median versus 1.945 ms for one-thread
-sequential ONNX Runtime, a roughly 19.3x backend gap. This is a seventh
-executed-model correctness point and a negative performance result, not a
+sequential ONNX Runtime, a roughly 19.3x backend gap. This is the seventh
+application-scale numerical pilot (the eighth end-to-end ONNX model when the
+small MNIST gate is included) and a negative performance result, not a
 production-speed claim. Adding `-mcpu=native -ffast-math` changes the median
-only to 36.917 ms and retains a `7.6293945e-6` error bound, so compiler flags do
-not explain the gap; loop structure, layout, and specialized kernels remain
+only to 36.917 ms and retains a `7.6293945e-6` error bound, so compiler flags
+do not explain the gap; loop structure, layout, and specialized kernels remain
 the relevant backend work.
 
 `generic-kernel-pilot.csv` records a four-model follow-up using one portable
