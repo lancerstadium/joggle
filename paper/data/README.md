@@ -230,6 +230,15 @@ ms median versus 13.578 ms for one-thread sequential ONNX Runtime, a roughly
 or frequency-controlled. These rows establish another numerical path and a
 negative backend result; they are not publication-grade latency evidence.
 
+The same CSV also records the separate `compact` implementation introduced at
+revision `5cc24f8`. It matches the same 1,000 reference outputs and error bound,
+but keeps biased convolution accumulation and post-processing in one function
+and result buffer. Against the staged spatial variant, its static plan falls
+from 55 to 6 slots and from 5,188,728 to 2,158,568 `f32` elements (-58.4%),
+while generated source falls from 248,869 to 219,872 bytes (-11.7%). Its
+329.017 ms median is 27.5% slower. This is an explicit workspace/latency
+tradeoff, not an optimization claim; both variants need controlled reruns.
+
 `generic-kernel-pilot.csv` records a four-model follow-up using one portable
 NCHW/OIHW f32 convolution implementation selected through ordinary generic
 functions. MobileNetV2, ResNet18, UltraFace, and SqueezeNet select 54, 20, 52,

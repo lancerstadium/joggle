@@ -160,6 +160,11 @@ frozen.
   Runtime. A generated-harness pilot records a 258.022 ms strict-C median
   versus 13.578 ms for one-thread ONNX Runtime, leaving a roughly 19.0x gap.
   This extends correctness coverage; it does not improve the backend claim.
+- A separate compact convolution body preserves GoogLeNet's output and reduces
+  its static plan from 55 to 6 slots and by 58.4% in scalar elements, but slows
+  the unisolated median by 27.5%. This is useful co-design evidence because the
+  implementation choice exposes a measurable workspace/latency tradeoff
+  without a frontend, semantic-library, planner, or emitter edit.
 - TinyYOLOv3 and SSD-MobileNetV1 add negative compatibility evidence rather
   than executable-model counts. TinyYOLOv3 retains 219 unknown results after
   inference across dynamic shape and control-flow paths. SSD-MobileNetV1
