@@ -233,6 +233,16 @@ fn apply_mutating(m: Mod) -> bool {
   )
 }
 
+fn kernel.scale<S: list<int>>(
+  x: tensor<i8, S>
+) -> tensor<i8, S> {
+  return base.copy(x)
+}
+
+fn instantiate_scale(m: Mod) -> bool {
+  return opt.instantiate(m, [ir.find("script.kernel.scale")])
+}
+
 fn apply_external(m: Mod) -> bool {
   return opt.apply(m, [ir.find("script.external_select.external")])
 }

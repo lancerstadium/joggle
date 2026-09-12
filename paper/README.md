@@ -91,14 +91,9 @@ frozen.
   `2.098e-05` after regeneration from the pinned original ONNX model.
 - UltraFace-RFB-320 now passes the complete ONNX-to-C path. Its two outputs
   match ONNX Runtime with maximum absolute errors `2.980e-7` and `3.576e-7`.
-  External weights reduce its generated C from about 5.21 MB to 258 KB. A
-  non-isolated ten-call pilot measured a 34.401 ms median versus 4.342 ms for
-  one-thread ONNX Runtime, leaving an approximately 7.9x backend gap.
+  External weights reduce its generated C from about 5.21 MB to 258 KB.
 - ResNet18-v1-7 also passes after the generic entry batch `N` is explicitly
-  instantiated as one. Maximum absolute error is `5.007e-6`; strict C has a
-  1.957 s median versus 24.862 ms for one-thread ONNX Runtime. This roughly 79x
-  gap makes optimized convolution and layout lowering the primary backend
-  requirement.
+  instantiated as one. Maximum absolute error is `5.007e-6`.
 - A model-independent external selection gate now maps the same semantic
   matrix function at two shapes through one generic target adapter and one
   external C declaration. Concrete prototypes are deduplicated after tensor
@@ -106,14 +101,20 @@ frozen.
   incompatible scalar ABIs. This is mechanism evidence, not a speedup result.
 - Externalizing the MobileNetV2 weight payload reduced generated C source from
   about 56.9 MB to 246 KB, with a separate payload of about 14.2 MB.
-- On an unisolated Apple M4 pilot, strict generated C had a median MobileNetV2
-  latency of 204.630 ms, fast-math/native C 112.958 ms, and single-thread ONNX
-  Runtime 1.26.0 5.881 ms. The large gap is a blocking generated-code-quality
-  result, not a favorable performance claim.
-- Official SqueezeNet 1.1 and QDQ SqueezeNet 1.0 models now decode, refine,
-  convert, expose, emit external-weight C, and compile. They have not yet been
-  counted as numerically executed models because reference application inputs
-  and outputs were not used in this pilot.
+- Compiler-owned call-site instances now execute MobileNetV2, UltraFace,
+  SqueezeNet 1.1, and ResNet18 with their recorded numerical error bounds. They
+  reduce external-data C source by 26.3%, 8.4%, 15.4%, and 21.8% against the
+  scalar-expanded variants. Their ten-call median latency changes are small and
+  mixed, so the result is code-size reduction with performance parity rather
+  than a speedup claim.
+- On the same unisolated Apple M4 pilots, current strict C medians are 198.469,
+  32.022, 188.152, and 1,193.713 ms for those four models. The recorded
+  one-thread ONNX Runtime medians are 5.881, 4.342, 2.908, and 24.862 ms. The
+  remaining roughly 7--65x gap is a blocking generated-code-quality result;
+  optimized convolution, layout, and cross-function storage are now more
+  important than further source compaction.
+- QDQ SqueezeNet 1.0 decodes, refines, converts, exposes, emits external-weight
+  C, and compiles, but is still not counted as numerically executed.
 - A deterministic VM execution of the exposed MobileNetV2 program reported
   95,592,386,975 steps.
 - A structural fusion experiment reduced loops from 374 to 328 and tensor

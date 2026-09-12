@@ -405,6 +405,8 @@ public:
            std::span<const Val> new_values);
   Fn clone(const Env& env, Fn fn, std::string name,
            std::span<const Ty> generics = {});
+  Fn bind(const Env& env, Op call, Fn fn, std::string name,
+          std::span<const std::size_t> params);
   bool move(Op op, Op before);
   bool args(const Env& env, Op op, std::span<const Val> values);
   bool fuse(const Env& env, std::span<const Op> ops, std::string callee);
@@ -426,6 +428,8 @@ public:
   bool retarget(const Env& env, Op call, std::string callee,
                 std::span<const Val> args);
   bool retarget(const Env& env, Op call, Fn target);
+  bool retarget(const Env& env, Op call, Fn target,
+                std::span<const Val> args);
   bool set(Fn fn, std::string key, Attr value);
   bool set(Val item, std::string key, Attr value);
   bool set(std::span<const Val> items, std::string key,

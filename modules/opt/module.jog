@@ -778,7 +778,8 @@ local fn candidates(
   }
   var out: list<Fn> = []
   for impl in impls {
-    if ir.name(impl) == symbol && ir.accepts(op, impl) {
+    if (ir.name(impl) == symbol || ir.symbol(impl) == symbol) &&
+       ir.accepts(op, impl) {
       var accepted = true
       if len(predicates) == 1 {
         let before = ir.revision(m)
@@ -810,7 +811,7 @@ local fn apply_with(
       for op in ir.ops(m) {
         if ir.live(op) && ir.kind(op) == "call" && len(ir.meta(op)) == 0 {
           let selected = ir.match(op, candidates(m, op, impls, predicates))
-          if ir.live(selected) {
+          if ir.live(selected) && selected != ir.resolve(m, op) {
             if len(ir.blks(selected)) == 0 {
               redirects += [op]
               targets += [selected]
@@ -857,6 +858,212 @@ fn apply(m: Mod, impls: list<Fn>, accept: Fn, limit: int) -> bool {
 
 fn apply(m: Mod, impls: list<Fn>, accept: Fn) -> bool {
   return apply(m, impls, accept, len(impls) + 1)
+}
+
+local fn static_value(value: Val) -> bool {
+  if ir.is_const(value) {
+    let kind = base.kind(ir.constant(value))
+    return kind == "bool" || kind == "int" || kind == "f64" ||
+           kind == "str"
+  }
+  let source = ir.def(value)
+  if !ir.live(source) || ir.kind(source) != "call" ||
+     ir.callee(source) != "base.list" {
+    return false
+  }
+  for item in ir.args(source) {
+    if !static_value(item) {
+      return false
+    }
+  }
+  return true
+}
+
+local fn static_params(op: Op) -> list<int> {
+  var out: list<int> = []
+  let args = ir.args(op)
+  for i in 0..len(args) {
+    if static_value(args[i]) {
+      out += [i]
+    }
+  }
+  return out
+}
+
+local fn selected(index: int, params: list<int>) -> bool {
+  for param in params {
+    if index == param {
+      return true
+    }
+  }
+  return false
+}
+
+local fn dynamic_args(op: Op, params: list<int>) -> list<Val> {
+  var out: list<Val> = []
+  let args = ir.args(op)
+  for i in 0..len(args) {
+    if !selected(i, params) {
+      out += [args[i]]
+    }
+  }
+  return out
+}
+
+local fn static_key(value: Val) -> Attr {
+  if ir.is_const(value) {
+    return ir.constant(value)
+  }
+  var out: list<Attr> = []
+  for item in ir.args(ir.def(value)) {
+    out += [static_key(item)]
+  }
+  return out
+}
+
+local fn instance_key(
+  template: Fn, args: list<Ty>, op: Op, params: list<int>
+) -> Attr {
+  var inputs: list<Attr> = []
+  for param in ir.params(template) {
+    inputs += [text(ir.type(param))]
+  }
+  var outputs: list<Attr> = []
+  for type in ir.returns(template) {
+    outputs += [text(type)]
+  }
+  var generics: list<Attr> = []
+  for arg in args {
+    generics += [text(arg)]
+  }
+  var values: list<Attr> = []
+  let call_args = ir.args(op)
+  for param in params {
+    var bound: dict = {}
+    bound["param"] = param
+    bound["type"] = text(ir.type(call_args[param]))
+    bound["value"] = static_key(call_args[param])
+    values += [bound]
+  }
+  var out: dict = {}
+  out["fn"] = ir.symbol(template)
+  out["params"] = inputs
+  out["returns"] = outputs
+  out["generics"] = generics
+  out["values"] = values
+  return out
+}
+
+local fn instance_name(m: Mod, template: Fn) -> str {
+  let stem = base.ident(base.replace(ir.name(template), ".", "_"))
+  var out = stem
+  for fn in ir.fns(m) {
+    if ir.name(fn) == stem {
+      out = ""
+    }
+  }
+  for attempt in 2..len(ir.fns(m)) + 3 {
+    let candidate = stem + "_" + text(attempt)
+    var taken = false
+    for fn in ir.fns(m) {
+      if ir.name(fn) == candidate {
+        taken = true
+      }
+    }
+    if out == "" && !taken {
+      out = candidate
+    }
+  }
+  assert(out != "", "opt.instantiate could not reserve an instance name")
+  return out
+}
+
+local fn instantiate_with(
+  m: Mod, impls: list<Fn>, predicates: list<Fn>, limit: int
+) -> bool {
+  assert(limit >= 0, "opt.instantiate limit must not be negative")
+  var changed = false
+  var again = true
+  var exceeded = false
+  for round in 0..(limit + 1) {
+    if again {
+      again = false
+      let ops = ir.ops(m)
+      for op in ops {
+        if ir.live(op) && ir.kind(op) == "call" && len(ir.meta(op)) == 0 {
+          let owner: Fn = ir.owner(ir.blk(op))
+          if ir.live(owner) && len(ir.generics(owner)) == 0 {
+            let selected = ir.match(
+              op, candidates(m, op, impls, predicates)
+            )
+            if ir.live(selected) && len(ir.generics(selected)) != 0 &&
+              len(ir.blks(selected)) != 0 {
+              let args = ir.match(op, selected)
+              let params = static_params(op)
+              let key = instance_key(selected, args, op, params)
+              var instance = selected
+              var found = false
+              for fn in ir.fns(m) {
+                if !found && ir.local(fn) && ir.has(fn, "opt.instance") &&
+                   ir.meta(fn, "opt.instance") == key {
+                  instance = fn
+                  found = true
+                }
+              }
+              if !found {
+                instance = ir.bind(
+                  m, op, selected, instance_name(m, selected), params
+                )
+                assert(ir.live(instance),
+                       "opt.instantiate could not bind an implementation")
+                assert(ir.set(m, instance, "opt.instance", key),
+                       "opt.instantiate could not identify an instance")
+              } else {
+                assert(ir.retarget(m, op, instance, dynamic_args(op, params)),
+                       "opt.instantiate could not reuse an instance")
+              }
+              again = true
+              changed = true
+            }
+          }
+        }
+      }
+      if round == limit && again {
+        exceeded = true
+      }
+    }
+  }
+  assert(!exceeded, "opt.instantiate did not converge within its limit")
+  return changed
+}
+
+fn instantiate(m: Mod, impls: list<Fn>, limit: int) -> bool {
+  let predicates: list<Fn> = []
+  return instantiate_with(m, impls, predicates, limit)
+}
+
+fn instantiate(m: Mod, impls: list<Fn>) -> bool {
+  return instantiate(m, impls, len(ir.ops(m)) + len(impls) + 1)
+}
+
+fn instantiate(m: Mod, module: str, limit: int) -> bool {
+  return instantiate(m, ir.fns(module), limit)
+}
+
+fn instantiate(m: Mod, module: str) -> bool {
+  return instantiate(m, ir.fns(module))
+}
+
+fn instantiate(
+  m: Mod, impls: list<Fn>, accept: Fn, limit: int
+) -> bool {
+  return instantiate_with(m, impls, [accept], limit)
+}
+
+fn instantiate(m: Mod, impls: list<Fn>, accept: Fn) -> bool {
+  return instantiate(
+    m, impls, accept, len(ir.ops(m)) + len(impls) + 1
+  )
 }
 
 fn rename(m: Mod, rules: list<list<str>>) -> bool {

@@ -65,6 +65,15 @@ fn duplicate_sum(x: tensor<f32, [2]>) -> f32 {
   return copy[1] + first
 }
 
+local fn relay(x: tensor<f32, [2]>) -> tensor<f32, [2]> {
+  return x
+}
+
+fn nested_tensor(x: tensor<f32, [2]>) -> tensor<f32, [2]> {
+  let first = relay(x)
+  return relay(first)
+}
+
 local fn noop() -> () {
   return
 }

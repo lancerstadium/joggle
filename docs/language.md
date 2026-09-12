@@ -504,6 +504,13 @@ materialized as normal constants and `base.list`; type parameters are replaced
 structurally in types and explicit call arguments. A source that attempts to
 use a type object as an ordinary runtime operand is rejected transactionally.
 Passing no generic arguments retains the generic function as described above.
+`ir.bind(m, op, fn, name, params)` is the call-aware form used by reusable
+specialization policies. It infers generic terms from `op`, clones `fn`,
+materializes the selected structural constant arguments inside the clone,
+removes their parameters, marks the clone local, and retargets the call with
+the remaining values. Indices must identify constants or recursively literal
+`base.list` values. The whole edit is atomic; it never leaves an uncalled clone
+or a partly rewritten signature.
 `ir.rename(m, fn, name)` changes a local function symbol and every call that
 resolves to that exact overload. It retains short call spelling when resolution
 stays unique and qualifies only collisions. An alpha-equivalent overload at the
@@ -579,6 +586,9 @@ retargets the call as one transaction. The selected function must be the
 unique overload for the existing arguments and results. This overload is
 suited to implementation selection because it carries a checked `Fn`, not a
 string alias or a duplicate signature test.
+The four-argument form `ir.retarget(m, op, fn, args)` performs the same exact
+function selection while replacing operands. A specialization can therefore
+reuse an existing instance after removing bound compile-time parameters.
 
 Function bodies are exposed by an explicit edit, never by loading a module.
 `ir.resolve(m, op)` applies normal import, qualification, overload, and generic

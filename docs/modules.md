@@ -230,6 +230,15 @@ metadata. Type arguments are ordinary `Ty` values in a module and strings such
 as `["1"]` at the command line. Existing call sites make the operation reject
 rather than silently retarget incompatible calls.
 
+The network-wide overloads `opt.instantiate(m, impls)` and
+`opt.instantiate(m, module)` instead specialize matching generic bodies at
+concrete call sites. Compile-time Boolean, integer, real, string, and recursive
+list arguments are bound into private functions; tensor and byte values remain
+ordinary parameters. Structurally identical configurations reuse one instance.
+The guarded overload accepts the same read-only `fn(Mod, Op, Fn) -> bool`
+policy as `opt.apply`. No operator name, frontend schema, or target is built
+into this mechanism.
+
 `mem.plan` assigns reusable static slots to tensor values after lifetimes and
 shapes are known. `tile` provides conservative structural loop operations.
 These modules are intentionally separate: storage and scheduling policy can be

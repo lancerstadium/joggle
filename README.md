@@ -117,6 +117,21 @@ temporaries, result buffers, and planned storage slots use the role-based
 The full `joggle_` spelling is reserved for the installed native-module ABI,
 not generated model code.
 
+Reusable generic implementations may be specialized without registering every
+shape or operator configuration:
+
+```sh
+./build/joggle run opt.instantiate semantic.jog \
+  --arg '"nn"' -M build/modules > instanced.jog
+```
+
+The compiler binds inferred types and literal scalar/list configuration,
+deduplicates equal instances, and preserves tensor weights as parameters. The
+first private IR helper keeps its source function stem; suffixes appear only
+for actual collisions. C function symbols remain module-qualified to avoid
+translation-unit collisions, while source and imported value names remain
+readable inside those functions.
+
 A codec preserves source-format calls and attributes. Its bridge maps supported
 calls to shared tensor and neural-network semantics. Unknown calls remain
 visible and a target reports its unsupported frontier; neither stage guesses.

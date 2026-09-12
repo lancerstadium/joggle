@@ -33,6 +33,7 @@ int main(int argc, char** argv) {
   env.path(argv[2]);
   CHECK(env.load("nn"));
   CHECK(env.load("script"));
+  CHECK(env.load("c"));
 
   constexpr std::string_view legal_source =
       "module legal.network\n"
@@ -230,6 +231,104 @@ int main(int argc, char** argv) {
   CHECK(implementation_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(implementation,
                                    implementation_roundtrip));
+
+  constexpr std::string_view instance_source =
+      "module instance.network\n"
+      "use script\n"
+      "fn generic<S: list<int>>(x: tensor<i8, S>) -> tensor<i8, S> {\n"
+      "  return kernel.scale(x)\n"
+      "}\n"
+      "fn main(a: tensor<i8, [8]>, b: tensor<i8, [8]>, "
+      "c: tensor<i8, [4]>) -> (tensor<i8, [8]>, tensor<i8, [8]>, "
+      "tensor<i8, [4]>) {\n"
+      "  let x = kernel.scale(a)\n"
+      "  let y = kernel.scale(b)\n"
+      "  let z = kernel.scale(c)\n"
+      "  return x, y, z\n"
+      "}\n";
+  joggle::Mod instance;
+  CHECK(joggle::parse(env, instance_source, instance,
+                      "automatic-instance-network.jog"));
+  CHECK(instance.verify(env));
+  joggle::Op dynamic_instance_call;
+  for (joggle::Op op : instance.ops()) {
+    if (!dynamic_instance_call && op.callee() == "kernel.scale")
+      dynamic_instance_call = op;
+  }
+  CHECK(dynamic_instance_call);
+  const joggle::Fn dynamic_instance_target =
+      env.find_fn("script.kernel.scale");
+  CHECK(dynamic_instance_target);
+  const std::uint64_t before_rejected_bind = instance.revision();
+  const std::vector<std::size_t> dynamic_param{0};
+  CHECK(!instance.bind(env, dynamic_instance_call, dynamic_instance_target,
+                       "invalid_instance", dynamic_param));
+  CHECK(instance.revision() == before_rejected_bind);
+  CHECK(!instance.diags().empty());
+  CHECK(instance.diags().back().message.find("structural constant") !=
+        std::string::npos);
+  instance.clear_diags();
+  CHECK(joggle::run(env, "script.instantiate_scale", instance));
+  CHECK(instance.verify(env));
+  std::set<std::string> instance_names;
+  for (joggle::Fn fn : instance.fns()) {
+    const joggle::Attr* key = fn.meta("opt.instance");
+    if (!key)
+      continue;
+    CHECK(fn.local() && fn.generics().empty() && key->dict());
+    instance_names.emplace(fn.name());
+  }
+  CHECK(instance_names.size() == 2);
+  std::size_t instance_calls = 0;
+  std::size_t generic_calls = 0;
+  for (joggle::Op op : instance.ops()) {
+    instance_calls += instance_names.contains(std::string(op.callee()));
+    generic_calls += op.callee() == "kernel.scale";
+  }
+  CHECK(instance_calls == 3);
+  CHECK(generic_calls == 1);
+  const std::string instance_text = joggle::print(instance);
+  CHECK(instance_text.find("local fn kernel_scale(") != std::string::npos);
+  CHECK(instance_text.find("local fn kernel_scale_2(") != std::string::npos);
+  joggle::Mod instance_roundtrip;
+  CHECK(joggle::parse(env, instance_text, instance_roundtrip,
+                      "automatic-instance-roundtrip.jog"));
+  CHECK(instance_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(instance, instance_roundtrip));
+
+  constexpr std::string_view emission_source =
+      "module instance.emit\n"
+      "use script\n"
+      "[entry]\n"
+      "fn main(a: tensor<i8, [8]>, b: tensor<i8, [8]>) "
+      "-> (tensor<i8, [8]>, tensor<i8, [8]>) {\n"
+      "  let x = kernel.scale(a)\n"
+      "  let y = kernel.scale(b)\n"
+      "  return x, y\n"
+      "}\n";
+  joggle::Mod emission;
+  CHECK(joggle::parse(env, emission_source, emission,
+                      "automatic-instance-emission.jog"));
+  CHECK(emission.verify(env));
+  const std::vector<joggle::Attr> script_module{joggle::Attr("script")};
+  CHECK(joggle::run(env, "opt.instantiate", emission, script_module));
+  CHECK(joggle::run(env, "c.prepare", emission));
+  CHECK(emission.verify(env));
+  joggle::Attr emitted_source;
+  CHECK(joggle::query(env, "c.source", emission, emitted_source));
+  CHECK(emitted_source.string());
+  const std::string helper = "static void instance_emit_kernel_scale(";
+  const std::size_t helper_first = emitted_source.string()->find(helper);
+  CHECK(helper_first != std::string::npos);
+  CHECK(emitted_source.string()->find(helper, helper_first + 1) !=
+        std::string::npos);
+  CHECK(emitted_source.string()->find("kernel_scale_2") ==
+        std::string::npos);
+  joggle::Attr emitted_header;
+  CHECK(joggle::query(env, "c.header", emission, emitted_header));
+  CHECK(emitted_header.string());
+  CHECK(emitted_header.string()->find("kernel_scale") ==
+        std::string::npos);
 
   constexpr std::string_view contextual_expand_source =
       "module contextual_expand\n"

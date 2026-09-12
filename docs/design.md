@@ -187,6 +187,15 @@ second descriptor. A module can consequently inspect constant layout lists,
 alignment metadata, scalar formats, or declared device features without the
 core assigning meaning to any of them.
 
+`opt.instantiate` provides the complementary boundary-preserving choice. Given
+a set of generic implementations, or simply a module name, it creates private
+monomorphic functions for calls in concrete owners. Inferred type terms and
+structural scalar/list arguments form the instance identity, so repeated Conv
+configurations share code while different strides, padding, axes, or activation
+modes cannot be merged accidentally. Tensor operands and byte payloads remain
+dynamic. The first instance keeps the implementation's readable name and only
+real name collisions receive a short numeric suffix.
+
 Frontend conversion follows the same rule. A codec preserves the source format
 faithfully. A separate bridge performs explicit semantic conversion when the
 user requests it. ONNX and TFLite do not define canonical neural-network

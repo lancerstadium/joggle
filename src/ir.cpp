@@ -1697,6 +1697,115 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
   return Fn(&store, next_fn_id, store.fns[next_fn_id].generation);
 }
 
+Fn Mod::bind(const Env& env, Op call, Fn source_fn, std::string name,
+             std::span<const std::size_t> selected_params) {
+  auto& store = impl_->store;
+  detail::Store backup = store;
+  const auto rollback = [&](std::string message, Loc loc = {}) {
+    std::vector<Diag> diagnostics = std::move(store.diags);
+    store = std::move(backup);
+    store.diags = std::move(diagnostics);
+    detail::add_diag(store.diags, std::move(message), std::move(loc));
+    return Fn{};
+  };
+  if (!call.valid() || call.store_ != &store ||
+      call.kind() != Op::Kind::call || !source_fn.valid() ||
+      source_fn.external() || !source_fn.body())
+    return rollback("bind requires a live call and function body");
+
+  const std::vector<Val> arguments = call.args();
+  const std::vector<Val> source_params = source_fn.params();
+  if (arguments.size() != source_params.size())
+    return rollback("bind requires one call argument per parameter",
+                    call.loc());
+  const std::vector<Ty> generic_args = env.match(call, source_fn);
+  if (source_fn.generics().size() != generic_args.size())
+    return rollback("bind function does not match the call", call.loc());
+
+  std::vector<bool> selected(arguments.size(), false);
+  for (const std::size_t index : selected_params) {
+    if (index >= selected.size() || selected[index])
+      return rollback("bind parameter indices must be unique and in range",
+                      call.loc());
+    selected[index] = true;
+  }
+
+  const auto structural = [&](const auto& self, Val value) -> bool {
+    if (!value.valid() || value.store_ != &store)
+      return false;
+    const Op definition = value.def();
+    if (!definition || definition.outs().size() != 1 ||
+        definition.outs().front() != value)
+      return false;
+    if (definition.kind() == Op::Kind::constant)
+      return true;
+    if (definition.kind() != Op::Kind::call ||
+        definition.callee() != "base.list")
+      return false;
+    for (Val item : definition.args())
+      if (!self(self, item))
+        return false;
+    return true;
+  };
+  for (std::size_t index = 0; index < selected.size(); ++index)
+    if (selected[index] && !structural(structural, arguments[index]))
+      return rollback("bind accepts only structural constant arguments",
+                      call.loc());
+
+  Fn result = clone(env, source_fn, std::move(name), generic_args);
+  if (!result)
+    return rollback("bind could not clone its function", call.loc());
+  const std::vector<Val> params = result.params();
+  if (params.size() != arguments.size())
+    return rollback("bind cloned an inconsistent parameter list",
+                    result.loc());
+  const std::vector<Blk> bodies = result.blks();
+  if (bodies.empty() || bodies.front().ops().empty())
+    return rollback("bind requires a non-empty function body", result.loc());
+  const Op before = bodies.front().ops().front();
+
+  const auto materialize = [&](const auto& self, Val value) -> Val {
+    const Op definition = value.def();
+    if (definition.kind() == Op::Kind::constant)
+      return constant(before, value.constant(), value.type());
+    std::vector<Val> items;
+    for (Val item : definition.args()) {
+      Val next = self(self, item);
+      if (!next)
+        return {};
+      items.push_back(next);
+    }
+    return this->call(before, "base.list", items, value.type());
+  };
+
+  std::vector<Val> remaining;
+  std::vector<std::uint32_t> next_params;
+  remaining.reserve(arguments.size() - selected_params.size());
+  next_params.reserve(arguments.size() - selected_params.size());
+  for (std::size_t index = 0; index < arguments.size(); ++index) {
+    if (!selected[index]) {
+      remaining.push_back(arguments[index]);
+      next_params.push_back(params[index].id_);
+      continue;
+    }
+    const Val value = materialize(materialize, arguments[index]);
+    if (!value || !replace(params[index], value))
+      return rollback("bind could not materialize a constant parameter",
+                      call.loc());
+    if (!store.vals[params[index].id_].data.users.empty())
+      return rollback("bind left a constant parameter in use", result.loc());
+    store.vals[params[index].id_].live = false;
+    ++store.vals[params[index].id_].generation;
+  }
+  store.fns[result.id_].data.params = std::move(next_params);
+  store.fns[result.id_].data.local = true;
+  detail::rebuild_uses(store);
+  detail::touch(store);
+  if (!retarget(env, call, result, remaining))
+    return rollback("bind could not retarget its call", call.loc());
+  return result;
+}
+
 bool Mod::expand(const Env& env, Op call, Fn callee,
                  std::string_view semantic) {
   auto& store = impl_->store;
@@ -2970,6 +3079,11 @@ bool Mod::retarget(const Env& env, Op call, std::string callee,
 }
 
 bool Mod::retarget(const Env& env, Op call, Fn target) {
+  return retarget(env, call, target, call ? call.args() : std::vector<Val>{});
+}
+
+bool Mod::retarget(const Env& env, Op call, Fn target,
+                   std::span<const Val> arguments) {
   auto& store = impl_->store;
   detail::Store backup = store;
   const auto rollback = [&]() {
@@ -2998,7 +3112,6 @@ bool Mod::retarget(const Env& env, Op call, Fn target) {
     }
   }
 
-  const std::vector<Val> arguments = call.args();
   if (env.resolve(*this, call, symbol, arguments) != target) {
     detail::add_diag(store.diags,
                      "retarget target does not uniquely match the call",

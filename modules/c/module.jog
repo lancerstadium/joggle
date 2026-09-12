@@ -197,6 +197,9 @@ local fn expr(m: Mod, value: Val, blob: str, config: dict) -> str {
   if ir.name(value) != "" {
     return val(value)
   }
+  if tensor.valid(ir.type(value)) {
+    return val(value)
+  }
   let op = ir.def(value)
   assert(ir.live(op),
          "c: unnamed " + text(ir.type(value)) +
@@ -234,6 +237,7 @@ local fn expr(m: Mod, value: Val, blob: str, config: dict) -> str {
   }
   let target = ir.resolve(m, op)
   if callable(m, target, config) && len(ir.outs(op)) == 1 &&
+     !tensor.valid(ir.type(value)) &&
      len(ir.users(value)) == 1 {
     var actuals = args(m, inputs, blob, config)
     if blob != "" && owned(m, target) {

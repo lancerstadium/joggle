@@ -4,6 +4,30 @@ Files in this directory are auditable engineering observations, not final
 paper measurements. They preserve negative results that determine the next
 experiment instead of presenting them as controlled performance claims.
 
+`instance-specialization-pilot.csv` records the first four-model evaluation of
+compiler-owned call-site instances. Each automatic variant starts from the
+same semantic model, invokes `opt.instantiate(m, "nn")`, prepares C, plans
+memory, selects explicit static placement, emits external-data C, and compiles
+it with Apple Clang 17 using strict C11 and `-O3 -DNDEBUG`. The compiler binds
+inferred types and literal scalar/list configuration but keeps tensor weights
+as parameters. This produces 102, 139, 70, and 40 deduplicated private
+functions for MobileNetV2, UltraFace, SqueezeNet, and ResNet18, respectively,
+without an operator-specific emitter case. ResNet18's symbolic entry batch is
+explicitly bound to one first; the pilot script accepts `ENTRY=main` and
+`ENTRY_TYPES=["1"]` to reproduce that step from its semantic model.
+
+All generated sources pass strict compilation and retain their prior reference
+error bounds. Against freshly compiled scalar-expanded sources on the same
+unisolated Apple M4, median latency changes from 201.841 to 198.469 ms for
+MobileNetV2, 33.374 to 32.022 ms for UltraFace, 185.743 to 188.152 ms for
+SqueezeNet, and 1.207 to 1.194 s for ResNet18. External-data source size falls
+by 26.3%, 8.4%, 15.4%, and 21.8%, while payload size is unchanged. These small
+and mixed latency changes are treated as performance parity, not a speedup
+claim. Preparation can still take minutes
+because whole-module fixed-point scans are repeated across private functions;
+worklist-local preparation and cross-function tensor-storage forwarding are
+the next compiler experiments.
+
 `mobilenetv2-fusion-pilot.csv` was recorded on 12 September 2026 on an Apple
 M4 running Darwin 24.6.0 with Apple Clang 17.0.0 (`clang-1700.6.3.2`). All
 three programs used `-std=c11 -O3`, the same external weight blob, three untimed

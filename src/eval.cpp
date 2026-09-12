@@ -1951,6 +1951,9 @@ private:
     } else if (name == "blk" && args.size() == 1) {
       if (const auto* op = as<Op>(args[0]); op && op->blk())
         return Items{Item(op->blk())};
+    } else if (name == "owner" && args.size() == 1) {
+      if (const auto* blk = as<Blk>(args[0]); blk && blk->fn())
+        return Items{Item(blk->fn())};
     } else if (name == "op" && args.size() == 1) {
       if (const auto* blk = as<Blk>(args[0]))
         return Items{Item(blk->op())};
@@ -2315,6 +2318,35 @@ private:
         if (result)
           return Items{Item(result)};
       }
+    } else if (name == "bind" && args.size() == 5) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* op = as<Op>(args[1]);
+      const auto* fn = as<Fn>(args[2]);
+      const auto target = string(args[3]);
+      const Items* selected = list(args[4]);
+      if (mod && *mod && op && fn && target && selected) {
+        std::vector<std::size_t> params;
+        params.reserve(selected->size());
+        bool valid = true;
+        for (const Item& item : *selected) {
+          const auto index = integer(item);
+          if (!index || *index < 0) {
+            valid = false;
+            break;
+          }
+          params.push_back(static_cast<std::size_t>(*index));
+        }
+        if (valid) {
+          const std::uint64_t before = (*mod)->revision();
+          const std::vector<Ty> generics = env_.match(*op, *fn);
+          Fn result = (*mod)->bind(env_, *op, *fn, std::string(*target),
+                                   params);
+          if (result) {
+            record_clone(**mod, *fn, result, before, generics);
+            return Items{Item(result)};
+          }
+        }
+      }
     } else if (name == "clone" &&
                (args.size() == 3 || args.size() == 4 || args.size() == 5)) {
       const auto* mod = as<Mod*>(args[0]);
@@ -2546,8 +2578,11 @@ private:
         }
       }
       if (mod && *mod && op && args.size() == 4) {
-        const auto callee = string(args[2]);
         const auto values = value_handles(args[3]);
+        if (const auto* target = as<Fn>(args[2]); target && *target && values)
+          return Items{
+              Item(Attr((*mod)->retarget(env_, *op, *target, *values)))};
+        const auto callee = string(args[2]);
         if (callee && values)
           return Items{Item(Attr((*mod)->retarget(
               env_, *op, std::string(*callee), *values)))};
