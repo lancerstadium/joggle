@@ -312,6 +312,12 @@ keeping the program in the same IR. It intentionally reports value dependence,
 not a complete memory-dependence proof; a transform must still inspect loads,
 stores, aliasing, and carried results before changing order.
 
+For tensor accesses, `tile.reads(loop, tensor)` and
+`tile.writes(loop, tensor)` return `list<list<Val>>`. Each inner list is the
+actual index vector of one access. Store updates and structured carried values
+are followed conservatively, so the query does not expose compiler-created
+versions as a second user-facing abstraction.
+
 A project can then choose a rewrite with ordinary reflection:
 
 ```jog

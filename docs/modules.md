@@ -269,6 +269,11 @@ depends. Both queries are read-only and operate on the existing `Val` and `Op`
 handles; they do not introduce an access descriptor or schedule object. A value
 dependence is not by itself proof that two memory accesses are independent, so
 loop rewrites must combine these facts with access and carried-value checks.
+`tile.reads(loop, tensor)` and `tile.writes(loop, tensor)` return the existing
+index values grouped once per access. They conservatively follow tensor
+bindings through stores, branch-carried values, and loop-carried values, so a
+policy can combine actual accesses with `tile.axes` without learning internal
+value versions.
 `tile.splittable(m, factor)` and `tile.unrollable(m, factor)` expose legal loop
 sets; `tile.fusible(m)` exposes the exact pair collection consumed by automatic
 fusion. Enumeration is read-only and returns live `Op` handles, or

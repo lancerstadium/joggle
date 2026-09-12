@@ -87,34 +87,26 @@ fn check_spatial_axes(m: Mod) -> bool {
   }
   assert(len(loops) == 1, "spatial axis check requires one seven-axis loop")
   let loop = loops[0]
-  var x_indices: list<Val> = []
-  var weight_indices: list<Val> = []
-  var out_indices: list<Val> = []
-  for op in ir.ops(function) {
-    let inputs = ir.args(op)
-    if ir.kind(op) == "call" && ir.callee(op) == "operator []" &&
-       len(inputs) == 2 {
-      if ir.name(inputs[0]) == "x" {
-        x_indices += [inputs[1]]
-      }
-      if ir.name(inputs[0]) == "weight" {
-        weight_indices += [inputs[1]]
-      }
-    }
-    if ir.kind(op) == "call" && ir.callee(op) == "operator []=" &&
-       len(inputs) == 3 && ir.name(inputs[0]) == "out" {
-      out_indices += [inputs[1]]
-    }
-  }
-  assert(len(x_indices) == 1 && len(weight_indices) == 1 &&
-         len(out_indices) == 1,
-         "spatial axis check found an unexpected access structure")
-  assert(expect_axes(loop, x_indices[0], [0, 1, 2, 3, 4, 5, 6]),
-         "spatial input index has the wrong axes")
-  assert(expect_axes(loop, weight_indices[0], [1, 2, 3, 4]),
-         "spatial weight index has the wrong axes")
-  assert(expect_axes(loop, out_indices[0], [0, 1, 5, 6]),
-         "spatial output index has the wrong axes")
+  let params = ir.params(function)
+  let body_args = ir.args(ir.blks(loop)[0])
+  assert(len(params) == 2 && len(body_args) == 8,
+         "spatial axis check found an invalid function or loop signature")
+  let x_reads = tile.reads(loop, params[0])
+  let weight_reads = tile.reads(loop, params[1])
+  let out_reads = tile.reads(loop, body_args[7])
+  let out_writes = tile.writes(loop, body_args[7])
+  assert(len(x_reads) == 1 && len(x_reads[0]) == 1 &&
+         len(weight_reads) == 1 && len(weight_reads[0]) == 1 &&
+         len(out_reads) == 1 && len(out_reads[0]) == 1 &&
+         len(out_writes) == 1 && len(out_writes[0]) == 1,
+         "spatial access query found the wrong accesses")
+  assert(expect_axes(loop, x_reads[0][0], [0, 1, 2, 3, 4, 5, 6]),
+         "spatial input access has the wrong axes")
+  assert(expect_axes(loop, weight_reads[0][0], [1, 2, 3, 4]),
+         "spatial weight access has the wrong axes")
+  assert(expect_axes(loop, out_reads[0][0], [0, 1, 5, 6]) &&
+         expect_axes(loop, out_writes[0][0], [0, 1, 5, 6]),
+         "spatial output accesses have the wrong axes")
   assert(ir.revision(m) == before,
          "spatial axis queries changed the module")
   return true

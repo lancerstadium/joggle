@@ -49,9 +49,11 @@ The loop API must move from isolated demonstrations to dependable research use:
 
 The first read-only layer is now present: `tile.depends` follows conservative
 value dependence through nested blocks, and `tile.axes` projects that fact onto
-the axes of an existing loop. It is validated both on a small conditional grid
-and on the seven-axis spatial-convolution body. Memory-access dependence and
-legal interchange remain open; the value query must not be presented as their
+the axes of an existing loop. `tile.reads` and `tile.writes` expose grouped
+index values while following store and structured carried bindings. They are
+validated both on a small conditional grid and on the seven-axis
+spatial-convolution body. Cross-iteration memory dependence and legal
+interchange remain open; these access facts must not be presented as their
 substitute.
 
 The goal is not an automatic scheduler. It is a small, inspectable substrate on

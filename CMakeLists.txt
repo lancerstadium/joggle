@@ -28,6 +28,17 @@ foreach(module base bounds c ir math mem nn opt quant stat tensor tile vm)
     "${CMAKE_CURRENT_BINARY_DIR}/modules/${module}/module.jog"
     COPYONLY
   )
+  file(GLOB module_fragments CONFIGURE_DEPENDS
+       "${CMAKE_CURRENT_SOURCE_DIR}/modules/${module}/lib/*.jog")
+  foreach(fragment IN LISTS module_fragments)
+    get_filename_component(fragment_name "${fragment}" NAME)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/${module}/lib")
+    configure_file(
+      "${fragment}"
+      "${CMAKE_CURRENT_BINARY_DIR}/modules/${module}/lib/${fragment_name}"
+      COPYONLY
+    )
+  endforeach()
 endforeach()
 
 add_library(joggle src/env.cpp src/eval.cpp src/ir.cpp src/lang.cpp)

@@ -1,0 +1,188 @@
+local fn known(value: Val, values: list<Val>) -> bool {
+  for candidate in values {
+    if candidate == value {
+      return true
+    }
+  }
+  return false
+}
+
+local fn depends_in(value: Val, source: Val, seen: list<Val>) -> bool {
+  if value == source {
+    return true
+  }
+  if known(value, seen) {
+    return false
+  }
+  let next = seen + [value]
+  let op = ir.def(value)
+  if !ir.live(op) {
+    return false
+  }
+  for input in ir.args(op) {
+    if depends_in(input, source, next) {
+      return true
+    }
+  }
+  for body in ir.blks(op) {
+    for child in ir.ops(body) {
+      for input in ir.args(child) {
+        if depends_in(input, source, next) {
+          return true
+        }
+      }
+      for output in ir.outs(child) {
+        if depends_in(output, source, next) {
+          return true
+        }
+      }
+    }
+  }
+  return false
+}
+
+fn depends(value: Val, source: Val) -> bool {
+  assert(ir.live(value) && ir.live(source),
+         "tile.depends requires live values")
+  return depends_in(value, source, [])
+}
+
+fn axes(loop: Op, value: Val) -> list<int> {
+  assert(ir.live(loop) && ir.kind(loop) == "loop" && ir.live(value),
+         "tile.axes requires a live loop and value")
+  let bodies = ir.blks(loop)
+  let inputs = ir.args(loop)
+  let outputs = ir.outs(loop)
+  assert(len(bodies) == 1 && len(inputs) > len(outputs),
+         "tile.axes requires a structured loop")
+  let body_args = ir.args(bodies[0])
+  let count = len(inputs) - len(outputs)
+  assert(len(body_args) == len(inputs),
+         "tile.axes found an invalid loop signature")
+  var out: list<int> = []
+  for i in 0..count {
+    if depends(value, body_args[i]) {
+      out += [i]
+    }
+  }
+  return out
+}
+
+local fn nested(root: Op) -> list<Op> {
+  var out: list<Op> = [root]
+  for body in ir.blks(root) {
+    for op in ir.ops(body) {
+      out += nested(op)
+    }
+  }
+  return out
+}
+
+local fn linked(values: list<Val>, left: Val, right: Val) -> list<Val> {
+  var out = values
+  if known(left, out) && !known(right, out) {
+    out += [right]
+  }
+  if known(right, out) && !known(left, out) {
+    out += [left]
+  }
+  return out
+}
+
+local fn related(root: Op, tensor: Val) -> list<Val> {
+  let ops = nested(root)
+  var out: list<Val> = [tensor]
+  var again = true
+  for round in 0..len(ops) + 1 {
+    if again {
+      let before = len(out)
+      for op in ops {
+        let inputs = ir.args(op)
+        let outputs = ir.outs(op)
+        if ir.kind(op) == "call" && ir.callee(op) == "operator []=" &&
+           len(inputs) >= 3 && len(outputs) == 1 {
+          out = linked(out, inputs[0], outputs[0])
+        }
+
+        let kind = ir.kind(op)
+        if kind == "branch" || kind == "loop" {
+          var offset = 1
+          if kind == "loop" {
+            offset = len(inputs) - len(outputs)
+          }
+          if offset >= 0 && len(inputs) == offset + len(outputs) {
+            for body in ir.blks(op) {
+              let body_args = ir.args(body)
+              var body_offset = 0
+              var body_count = len(outputs)
+              if kind == "loop" {
+                body_offset = offset
+                body_count = len(inputs)
+              }
+              if len(body_args) == body_count {
+                for i in 0..len(outputs) {
+                  out = linked(
+                    out, inputs[offset + i], body_args[body_offset + i]
+                  )
+                }
+              }
+              let body_ops = ir.ops(body)
+              if len(body_ops) != 0 {
+                let terminator = body_ops[len(body_ops) - 1]
+                if ir.kind(terminator) == "yield" {
+                  let yielded = ir.args(terminator)
+                  if len(yielded) == len(outputs) {
+                    for i in 0..len(outputs) {
+                      out = linked(out, outputs[i], yielded[i])
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      again = len(out) != before
+    }
+  }
+  return out
+}
+
+local fn accesses(loop: Op, tensor: Val, writes: bool)
+    -> list<list<Val>> {
+  assert(ir.live(loop) && ir.kind(loop) == "loop" && ir.live(tensor),
+         "tile access query requires a live loop and tensor value")
+  let aliases = related(loop, tensor)
+  var out: list<list<Val>> = []
+  for op in nested(loop) {
+    if ir.kind(op) == "call" {
+      let inputs = ir.args(op)
+      var match = ir.callee(op) == "operator []" && !writes
+      var valid = len(inputs) >= 2
+      if writes {
+        match = ir.callee(op) == "operator []="
+        valid = len(inputs) >= 3
+      }
+      if match && valid && known(inputs[0], aliases) {
+        var end = len(inputs)
+        if writes {
+          end -= 1
+        }
+        var indices: list<Val> = []
+        for i in 1..end {
+          indices += [inputs[i]]
+        }
+        out += [indices]
+      }
+    }
+  }
+  return out
+}
+
+fn reads(loop: Op, tensor: Val) -> list<list<Val>> {
+  return accesses(loop, tensor, false)
+}
+
+fn writes(loop: Op, tensor: Val) -> list<list<Val>> {
+  return accesses(loop, tensor, true)
+}
