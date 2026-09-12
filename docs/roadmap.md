@@ -47,6 +47,13 @@ The loop API must move from isolated demonstrations to dependable research use:
   future loop transforms;
 - separate legality, profitability, and mechanism.
 
+The first read-only layer is now present: `tile.depends` follows conservative
+value dependence through nested blocks, and `tile.axes` projects that fact onto
+the axes of an existing loop. It is validated both on a small conditional grid
+and on the seven-axis spatial-convolution body. Memory-access dependence and
+legal interchange remain open; the value query must not be presented as their
+substitute.
+
 The goal is not an automatic scheduler. It is a small, inspectable substrate on
 which a researcher can implement and compare scheduling policies.
 

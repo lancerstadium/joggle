@@ -262,6 +262,13 @@ complete linear or rectangular tensor domain before yielding it. This proof
 uses no neural-network operation names; partial, conditional, indirect, and
 otherwise unproven writes retain the fill. `tile` provides conservative
 structural loop operations.
+`tile.depends(value, source)` follows ordinary Def-Use edges, including values
+captured by nested blocks, and reports a conservative value dependence.
+`tile.axes(loop, value)` returns the zero-based loop-body axes on which a value
+depends. Both queries are read-only and operate on the existing `Val` and `Op`
+handles; they do not introduce an access descriptor or schedule object. A value
+dependence is not by itself proof that two memory accesses are independent, so
+loop rewrites must combine these facts with access and carried-value checks.
 `tile.splittable(m, factor)` and `tile.unrollable(m, factor)` expose legal loop
 sets; `tile.fusible(m)` exposes the exact pair collection consumed by automatic
 fusion. Enumeration is read-only and returns live `Op` handles, or

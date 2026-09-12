@@ -10,6 +10,18 @@ if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
 endif()
 
 execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_axes "${MODEL}"
+          -M "${MODULES}"
+  RESULT_VARIABLE axes_result
+  OUTPUT_VARIABLE axes_output
+  ERROR_VARIABLE axes_error
+)
+if(NOT axes_result EQUAL 0)
+  message(FATAL_ERROR
+          "axis dependence query failed:\n${axes_output}${axes_error}")
+endif()
+
+execute_process(
   COMMAND "${TOOL}" run tile_pass.check_splittable "${MODEL}"
           --arg 2 --arg 3 -M "${MODULES}"
   RESULT_VARIABLE candidate_result

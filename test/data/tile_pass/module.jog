@@ -1,6 +1,124 @@
 module tile_pass
 use base
+use ir
 use tile
+
+fn check_axes(m: Mod) -> bool {
+  let before = ir.revision(m)
+  let function = ir.find(m, "grid")
+  assert(ir.live(function), "axis check requires grid")
+  var loops: list<Op> = []
+  for op in ir.ops(function) {
+    if ir.kind(op) == "loop" {
+      loops += [op]
+    }
+  }
+  assert(len(loops) == 1, "axis check requires one loop")
+  let loop = loops[0]
+  let body = ir.blks(loop)[0]
+  let body_args = ir.args(body)
+  assert(len(body_args) == 3, "axis check found an invalid loop body")
+
+  let row_axes = tile.axes(loop, body_args[0])
+  let column_axes = tile.axes(loop, body_args[1])
+  assert(len(row_axes) == 1 && row_axes[0] == 0 &&
+         len(column_axes) == 1 && column_axes[0] == 1,
+         "loop arguments have the wrong axes")
+
+  var inside_found = false
+  var coordinate_found = false
+  for value in ir.vals(function) {
+    if ir.name(value) == "inside" {
+      let axes = tile.axes(loop, value)
+      assert(len(axes) == 1 && axes[0] == 1 &&
+             !tile.depends(value, body_args[0]) &&
+             tile.depends(value, body_args[1]),
+             "condition has the wrong axis dependence")
+      inside_found = true
+    }
+    if ir.name(value) == "coordinate" {
+      let axes = tile.axes(loop, value)
+      assert(len(axes) == 2 && axes[0] == 0 && axes[1] == 1 &&
+             tile.depends(value, body_args[0]) &&
+             tile.depends(value, body_args[1]),
+             "coordinate has the wrong axis dependence")
+      coordinate_found = true
+    }
+  }
+  assert(inside_found && coordinate_found,
+         "axis check could not find the named values")
+  let body_ops = ir.ops(body)
+  let yielded = ir.args(body_ops[len(body_ops) - 1])
+  assert(len(yielded) == 1, "axis check found an invalid loop yield")
+  let carried_axes = tile.axes(loop, yielded[0])
+  assert(len(carried_axes) == 2 && carried_axes[0] == 0 &&
+         carried_axes[1] == 1,
+         "nested branch result has the wrong axis dependence")
+  assert(ir.revision(m) == before,
+         "axis dependence queries changed the module")
+  return true
+}
+
+local fn expect_axes(loop: Op, value: Val, expected: list<int>) -> bool {
+  let actual = tile.axes(loop, value)
+  if len(actual) != len(expected) {
+    return false
+  }
+  for i in 0..len(actual) {
+    if actual[i] != expected[i] {
+      return false
+    }
+  }
+  return true
+}
+
+fn check_spatial_axes(m: Mod) -> bool {
+  let before = ir.revision(m)
+  let function = ir.find(m, "nn_conv2d")
+  assert(ir.live(function), "spatial axis check requires nn_conv2d")
+  var loops: list<Op> = []
+  for op in ir.ops(function) {
+    if ir.kind(op) == "loop" {
+      let inputs = ir.args(op)
+      if len(inputs) - len(ir.outs(op)) == 7 {
+        loops += [op]
+      }
+    }
+  }
+  assert(len(loops) == 1, "spatial axis check requires one seven-axis loop")
+  let loop = loops[0]
+  var x_indices: list<Val> = []
+  var weight_indices: list<Val> = []
+  var out_indices: list<Val> = []
+  for op in ir.ops(function) {
+    let inputs = ir.args(op)
+    if ir.kind(op) == "call" && ir.callee(op) == "operator []" &&
+       len(inputs) == 2 {
+      if ir.name(inputs[0]) == "x" {
+        x_indices += [inputs[1]]
+      }
+      if ir.name(inputs[0]) == "weight" {
+        weight_indices += [inputs[1]]
+      }
+    }
+    if ir.kind(op) == "call" && ir.callee(op) == "operator []=" &&
+       len(inputs) == 3 && ir.name(inputs[0]) == "out" {
+      out_indices += [inputs[1]]
+    }
+  }
+  assert(len(x_indices) == 1 && len(weight_indices) == 1 &&
+         len(out_indices) == 1,
+         "spatial axis check found an unexpected access structure")
+  assert(expect_axes(loop, x_indices[0], [0, 1, 2, 3, 4, 5, 6]),
+         "spatial input index has the wrong axes")
+  assert(expect_axes(loop, weight_indices[0], [1, 2, 3, 4]),
+         "spatial weight index has the wrong axes")
+  assert(expect_axes(loop, out_indices[0], [0, 1, 5, 6]),
+         "spatial output index has the wrong axes")
+  assert(ir.revision(m) == before,
+         "spatial axis queries changed the module")
+  return true
+}
 
 fn first(m: Mod, factor: int) -> bool {
   for op in ir.ops(m) {

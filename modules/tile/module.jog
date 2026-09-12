@@ -116,6 +116,76 @@ local fn keep(m: Mod, value: Val, stem: str) -> Val {
   return value
 }
 
+local fn known(value: Val, values: list<Val>) -> bool {
+  for candidate in values {
+    if candidate == value {
+      return true
+    }
+  }
+  return false
+}
+
+local fn depends_in(value: Val, source: Val, seen: list<Val>) -> bool {
+  if value == source {
+    return true
+  }
+  if known(value, seen) {
+    return false
+  }
+  let next = seen + [value]
+  let op = ir.def(value)
+  if !ir.live(op) {
+    return false
+  }
+  for input in ir.args(op) {
+    if depends_in(input, source, next) {
+      return true
+    }
+  }
+  for body in ir.blks(op) {
+    for child in ir.ops(body) {
+      for input in ir.args(child) {
+        if depends_in(input, source, next) {
+          return true
+        }
+      }
+      for output in ir.outs(child) {
+        if depends_in(output, source, next) {
+          return true
+        }
+      }
+    }
+  }
+  return false
+}
+
+fn depends(value: Val, source: Val) -> bool {
+  assert(ir.live(value) && ir.live(source),
+         "tile.depends requires live values")
+  return depends_in(value, source, [])
+}
+
+fn axes(loop: Op, value: Val) -> list<int> {
+  assert(ir.live(loop) && ir.kind(loop) == "loop" && ir.live(value),
+         "tile.axes requires a live loop and value")
+  let bodies = ir.blks(loop)
+  let inputs = ir.args(loop)
+  let outputs = ir.outs(loop)
+  assert(len(bodies) == 1 && len(inputs) > len(outputs),
+         "tile.axes requires a structured loop")
+  let body_args = ir.args(bodies[0])
+  let count = len(inputs) - len(outputs)
+  assert(len(body_args) == len(inputs),
+         "tile.axes found an invalid loop signature")
+  var out: list<int> = []
+  for i in 0..count {
+    if depends(value, body_args[i]) {
+      out += [i]
+    }
+  }
+  return out
+}
+
 fn split_issue(source: Op, factor: int) -> str {
   if factor <= 0 {
     return "requires a positive factor"

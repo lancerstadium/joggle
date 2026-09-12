@@ -300,6 +300,21 @@ The bundled removable `tile` module turns that primitive into one complete
 loop transform. A project chooses the loop with ordinary reflection:
 
 ```jog
+let axes = tile.axes(loop, index)
+if len(axes) == 2 && axes[0] == 0 && axes[1] == 1 {
+  // The index is derived from both loop axes.
+}
+```
+
+`tile.axes` follows ordinary values through calls and nested blocks. It lets a
+policy inspect which loop arguments contribute to an index or condition while
+keeping the program in the same IR. It intentionally reports value dependence,
+not a complete memory-dependence proof; a transform must still inspect loads,
+stores, aliasing, and carried results before changing order.
+
+A project can then choose a rewrite with ordinary reflection:
+
+```jog
 module my_tile
 use tile
 

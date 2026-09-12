@@ -11,8 +11,10 @@ fn sum(n: int) -> int {
 fn grid(rows: int, cols: int) -> int {
   var total = 0
   for row in 0..rows, column in 2..cols {
-    if column < cols - 1 {
-      total += row * 100 + column
+    let inside = column < cols - 1
+    let coordinate = row * 100 + column
+    if inside {
+      total += coordinate
     }
   }
   return total
