@@ -434,12 +434,13 @@ second binary-buffer API.
 fragment. Letters, digits, and ordinary single underscores remain readable;
 `Z`, dots, reserved underscore runs, and other UTF-8 bytes use the unambiguous
 `ZZ`, `ZD`, `ZU`, and `ZXhh` escapes. Emitters decide whether a role needs a
-prefix: the C emitter preserves source names and reserves `joggle_` only for
-compiler-owned names and keyword escapes. A pointer result derived from a
-named returned value uses a collision-checked `_out` suffix, leaving the
-source value itself unchanged inside the function. This keeps name policy
-outside core IR while preventing punctuation, Unicode, and prior underscore
-replacement from silently collapsing distinct source names.
+prefix: the C emitter preserves source names, gives anonymous compiler values
+short role-based names such as `tmp_`, `slot_`, and `out`, and escapes C
+keywords with a trailing underscore. A pointer result derived from a named
+returned value uses a collision-checked `_out` suffix, leaving the source value
+itself unchanged inside the function. This keeps name policy outside core IR
+while preventing punctuation, Unicode, and prior underscore replacement from
+silently collapsing distinct source names.
 
 `ir.name(v)` and `ir.rename(m, v, name)` are the symmetric readable-name
 operations. They matter when one source call is decomposed into several normal

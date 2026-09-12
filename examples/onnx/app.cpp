@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
   joggle::Attr source;
   CHECK(joggle::query(env, "c.source", model, source));
   CHECK(source.string() && source.string()->find("onnx.") == std::string::npos);
-  CHECK(source.string()->find("static float joggle_slot_f32_") !=
+  CHECK(source.string()->find("static float slot_f32_") !=
         std::string::npos);
   CHECK(write(argv[4], *source.string()));
   joggle::Attr header;

@@ -207,7 +207,7 @@ if(NOT result EQUAL 0)
 endif()
 file(READ "${source32}" emitted_source32)
 file(READ "${header32}" emitted_header32)
-if(NOT emitted_source32 MATCHES "for \\(int32_t joggle_i = 0;" OR
+if(NOT emitted_source32 MATCHES "for \\(int32_t i = 0;" OR
    NOT emitted_header32 MATCHES
        "kernel_abi_probe\\(int32_t i, int32_t n, int32_t x\\);")
   message(FATAL_ERROR
@@ -299,8 +299,8 @@ if(NOT emitted_blob_source MATCHES
    "const int8_t\\* [^\n]+ = \\(const int8_t\\*\\)\\(const void\\*\\)\\(model \\+ 0\\);" OR
    NOT emitted_blob_source MATCHES
    "const float\\* [^\n]+ = \\(const float\\*\\)\\(const void\\*\\)\\(model \\+ 4\\);" OR
-   emitted_blob_source MATCHES "static const unsigned char joggle_data_" OR
-   emitted_blob_source MATCHES "extern const unsigned char joggle_data_" OR
+   emitted_blob_source MATCHES "static const unsigned char data_" OR
+   emitted_blob_source MATCHES "extern const unsigned char data_" OR
    NOT emitted_blob_header MATCHES
        "kernel_weights\\(const unsigned char\\* model, float\\* values_out\\);")
   message(FATAL_ERROR
@@ -320,7 +320,7 @@ if(NOT emitted_header MATCHES "float affine_kernel\\(float x\\);" OR
           "${emitted_header}")
 endif()
 if(NOT emitted_header MATCHES
-   "void kernel_split\\(int64_t x, int64_t\\* joggle_result_0, int64_t\\* joggle_result_1\\);" OR
+   "void kernel_split\\(int64_t x, int64_t\\* out_0, int64_t\\* out_1\\);" OR
    NOT emitted_header MATCHES
    "void kernel_duplicate\\(const float\\* x, float\\* x_out, float\\* first_out\\);")
   message(FATAL_ERROR
@@ -353,7 +353,7 @@ if(NOT emitted_source MATCHES "#include <math.h>" OR
           "C source did not use module-declared math bindings:\n"
           "${emitted_source}")
 endif()
-if(NOT emitted_source MATCHES "for \\(int64_t joggle_i = 0;")
+if(NOT emitted_source MATCHES "for \\(int64_t i = 0;")
   message(FATAL_ERROR
           "C source did not use the configured index ABI for fixed storage:\n"
           "${emitted_source}")

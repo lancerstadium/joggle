@@ -1956,8 +1956,9 @@ bool Mod::expand(const Env& env, Op call, Fn callee,
   }
 
   for (std::size_t index = 0; index < call_outs.size(); ++index) {
-    const Attr::Dict& boundary =
-        store.vals[call_outs[index].id_].data.meta;
+    const detail::ValData& boundary_data =
+        store.vals[call_outs[index].id_].data;
+    const Attr::Dict& boundary = boundary_data.meta;
     const std::unordered_set<std::uint32_t> related =
         family(store, replacements[index]);
     for (const auto& [key, value] : boundary) {
@@ -1970,6 +1971,12 @@ bool Mod::expand(const Env& env, Op call, Fn callee,
       }
       for (const std::uint32_t id : related)
         store.vals[id].data.meta[key] = value;
+    }
+    detail::ValData& replacement = store.vals[replacements[index]].data;
+    if (boundary_data.type_annotation &&
+        replacement.kind == detail::ValKind::result) {
+      replacement.type = boundary_data.type;
+      replacement.type_annotation = true;
     }
   }
 

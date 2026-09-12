@@ -212,6 +212,46 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(implementation,
                                    implementation_roundtrip));
 
+  constexpr std::string_view contextual_expand_source =
+      "module contextual_expand\n"
+      "use tensor\n"
+      "fn source<N: int>(x: i32) -> tensor<f32, [N]>;\n"
+      "fn wrap<N: int>(x: i32) -> tensor<f32, [N]> {\n"
+      "  return source(x)\n"
+      "}\n"
+      "fn sink<N: int>(x: tensor<f32, [N]>) -> i32;\n"
+      "fn main(x: i32) -> i32 {\n"
+      "  let y: tensor<f32, [4]> = wrap(x)\n"
+      "  return sink(y)\n"
+      "}\n";
+  joggle::Mod contextual_expand;
+  CHECK(joggle::parse(env, contextual_expand_source, contextual_expand,
+                      "contextual-expand.jog"));
+  CHECK(contextual_expand.verify(env));
+  joggle::Op wrap_call;
+  for (joggle::Op op : contextual_expand.ops())
+    if (op.callee() == "wrap")
+      wrap_call = op;
+  CHECK(wrap_call);
+  const joggle::Fn wrap = env.resolve(contextual_expand, wrap_call);
+  CHECK(wrap && env.expand(contextual_expand, wrap_call, wrap));
+  CHECK(contextual_expand.verify(env));
+  joggle::Val expanded_y;
+  for (joggle::Op op : contextual_expand.ops())
+    if (op.callee() == "source")
+      expanded_y = op.outs().front();
+  CHECK(expanded_y && expanded_y.name() == "y");
+  CHECK(expanded_y.type() == joggle::Ty("tensor<f32, [4]>"));
+  const std::string contextual_text = joggle::print(contextual_expand);
+  CHECK(contextual_text.find(
+            "let y: tensor<f32, [4]> = source(x)") != std::string::npos);
+  joggle::Mod contextual_roundtrip;
+  CHECK(joggle::parse(env, contextual_text, contextual_roundtrip,
+                      "contextual-expand-roundtrip.jog"));
+  CHECK(contextual_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(contextual_expand,
+                                   contextual_roundtrip));
+
   constexpr std::string_view external_source =
       "module external_select\n"
       "fn external(x: i32) -> i32;\n"

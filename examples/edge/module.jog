@@ -1,5 +1,6 @@
 module edge
 use ir
+use nn
 use opt
 use tensor
 
@@ -16,6 +17,92 @@ fn tensor.matmul<E: Ty, M: int, N: int, K: int>(
   a: tensor<E, [M, K]>, b: tensor<E, [K, N]>
 ) -> tensor<E, [M, N]> {
   return matmul(a, b, M, N, K)
+}
+
+[c: {name: "edge_conv2d"}]
+fn conv2d<
+  X: list<int>, K: list<int>, Y: list<int>
+>(
+  x: tensor<f32, X>,
+  weight: tensor<f32, K>,
+  batch: int,
+  height: int,
+  width: int,
+  outputs: int,
+  group_channels: int,
+  kernel_height: int,
+  kernel_width: int,
+  output_height: int,
+  output_width: int,
+  stride_height: int,
+  stride_width: int,
+  pad_top: int,
+  pad_left: int,
+  dilation_height: int,
+  dilation_width: int,
+  groups: int,
+  x_n_stride: int,
+  x_c_stride: int,
+  x_h_stride: int,
+  x_w_stride: int,
+  weight_m_stride: int,
+  weight_q_stride: int,
+  weight_r_stride: int,
+  weight_s_stride: int,
+  out_n_stride: int,
+  out_m_stride: int,
+  out_h_stride: int,
+  out_w_stride: int
+) -> tensor<f32, Y>;
+
+fn nn.conv2d<
+  N: int, C: int, H: int, W: int,
+  M: int, Q: int, R: int, S: int,
+  OH: int, OW: int
+>(
+  x: tensor<f32, [N, C, H, W]>,
+  weight: tensor<f32, [M, Q, R, S]>,
+  stride: list<int>,
+  pad: list<int>,
+  dilation: list<int>,
+  groups: int
+) -> tensor<f32, [N, M, OH, OW]> {
+  return conv2d(
+    x, weight, N, H, W, M, Q, R, S, OH, OW,
+    stride[0], stride[1], pad[0], pad[1],
+    dilation[0], dilation[1], groups,
+    C * H * W, H * W, W, 1,
+    Q * R * S, R * S, S, 1,
+    M * OH * OW, OH * OW, OW, 1
+  )
+}
+
+fn nn.conv2d<
+  N: int, C: int, H: int, W: int,
+  M: int, Q: int, R: int, S: int,
+  OH: int, OW: int
+>(
+  x: tensor<f32, [N, C, H, W]>,
+  weight: tensor<f32, [M, Q, R, S]>,
+  values: tensor<f32, [M]>,
+  stride: list<int>,
+  pad: list<int>,
+  dilation: list<int>,
+  groups: int,
+  x_axes: list<int>,
+  weight_axes: list<int>,
+  out_axes: list<int>,
+  activation: str
+) -> tensor<f32, [N, M, OH, OW]> {
+  let convolved: tensor<f32, [N, M, OH, OW]> = conv2d(
+    x, weight, N, H, W, M, Q, R, S, OH, OW,
+    stride[0], stride[1], pad[0], pad[1],
+    dilation[0], dilation[1], groups,
+    C * H * W, H * W, W, 1,
+    Q * R * S, R * S, S, 1,
+    M * OH * OW, OH * OW, OW, 1
+  )
+  return nn.activate(nn.bias(convolved, values, [0, 1, 2, 3]), activation)
 }
 
 [c: {name: "edge_extrema"}]

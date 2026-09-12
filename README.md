@@ -112,8 +112,10 @@ bookkeeping. This removes compile-time rank traversal without teaching the C
 emitter about Conv, ONNX, or a fixed tensor rank. User and imported value names
 remain visible in generated C. Pointer results derived from named return values
 use a collision-checked `_out` suffix; only anonymous compiler-created
-temporaries, result buffers, and planned storage slots use the reserved
-`joggle_` prefix.
+temporaries, result buffers, and planned storage slots use the role-based
+`tmp_`, `out`, and `slot_` stems. C keywords receive a trailing underscore.
+The full `joggle_` spelling is reserved for the installed native-module ABI,
+not generated model code.
 
 A codec preserves source-format calls and attributes. Its bridge maps supported
 calls to shared tensor and neural-network semantics. Unknown calls remain
@@ -199,9 +201,11 @@ Generated C preserves source names when they are valid C identifiers. A public
 function such as `model.main` is emitted as `model_main`; named parameters and
 locals keep their readable names. Named pointer results derive from the return
 value with an `_out` suffix. Only compiler-owned temporaries, anonymous
-results, storage slots, or escaped C keywords use the reserved `joggle_`
-prefix. An explicit `[c: {name: "..."}]` binding pins an external ABI name when
-source-derived spelling is not the desired contract.
+results, payload arrays, and storage slots use `tmp_`, `out`, `data_`, and
+`slot_`; C keywords receive a trailing underscore. Generated code therefore
+does not add a project-name prefix. An explicit `[c: {name: "..."}]` binding
+pins an external ABI name when source-derived spelling is not the desired
+contract.
 
 When a function has one return path and an unplanned local tensor is returned,
 the C emitter binds that tensor directly to its output pointer. It does not

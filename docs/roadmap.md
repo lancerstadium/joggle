@@ -56,7 +56,8 @@ The C path must produce a stable baseline suitable for experiments:
 - complete static workspace planning for realistic tensor lifetimes;
 - keep weights in a deterministic external payload when requested;
 - make ABI and scalar representation configuration explicit;
-- preserve source names by default and reserve `joggle_` for generated names;
+- preserve source names by default and use short role-based names only for
+  anonymous generated values;
 - compare source, compiler diagnostics, binary size, workspace, and latency
   against defined baselines.
 

@@ -26,6 +26,8 @@ endif()
 file(READ "${prepared}" prepared_text)
 if(NOT prepared_text MATCHES "use edge" OR
    NOT prepared_text MATCHES "matmul\\(a, b, 2, 2, 3\\)" OR
+   NOT prepared_text MATCHES
+       "conv2d\\(x, weight, 1, 3, 3, 1, 1, 2, 2, 2, 2" OR
    NOT prepared_text MATCHES "edge.model.measure")
   message(FATAL_ERROR
           "external implementation selection was not preserved:\n${prepared_text}")
@@ -44,7 +46,7 @@ endif()
 
 file(READ "${source}" emitted)
 if(NOT emitted MATCHES
-   "void edge_matmul\\(const float\\* a, const float\\* b, int64_t rows, int64_t columns, int64_t inner, float\\* joggle_result\\);")
+   "void edge_matmul\\(const float\\* a, const float\\* b, int64_t rows, int64_t columns, int64_t inner, float\\* out\\);")
   message(FATAL_ERROR "external kernel prototype is absent:\n${emitted}")
 endif()
 string(REGEX MATCHALL "void edge_matmul\\(" matmul_prototypes "${emitted}")
@@ -62,7 +64,17 @@ if(NOT emitted MATCHES
   message(FATAL_ERROR "second external kernel shape is absent:\n${emitted}")
 endif()
 if(NOT emitted MATCHES
-   "void edge_extrema\\(const float\\* x, float\\* joggle_result_0, float\\* joggle_result_1\\);" OR
+   "edge_conv2d\\(x, weight, 1, 3, 3, 1, 1, 2, 2, 2, 2")
+  message(FATAL_ERROR "external convolution call is absent:\n${emitted}")
+endif()
+if(NOT emitted MATCHES
+   "edge_conv2d\\(x, weight, 1, 3, 3, 1, 1, 2, 2, 2, 2[^;]*, convolved\\);" OR
+   emitted MATCHES "edge_conv2d\\([^;]*hex\"")
+  message(FATAL_ERROR
+          "tensor constant is not named at the external boundary:\n${emitted}")
+endif()
+if(NOT emitted MATCHES
+   "void edge_extrema\\(const float\\* x, float\\* out_0, float\\* out_1\\);" OR
    NOT emitted MATCHES "edge_extrema\\(x, &low, &high\\);")
   message(FATAL_ERROR
           "external multi-result kernel boundary is absent:\n${emitted}")

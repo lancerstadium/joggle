@@ -7,6 +7,11 @@ those source functions. `edge.apply` selects them by the ordinary overload
 rules. The matrix implementation is a generic, inspectable adapter that passes
 its inferred dimensions to one generic external declaration; the
 multiple-result implementation is selected directly as a bodyless function.
+The convolution adapters use the same mechanism. One external declaration and
+one C implementation cover ordinary, grouped, and depthwise fixed-shape f32
+convolutions. A second ordinary `nn.conv2d` overload composes that declaration
+with the shared `nn.bias` and `nn.activate` functions, so models do not need a
+shape-specific registration or a C-emitter branch.
 
 The selected declarations are the complete ABI contracts. One has a tensor
 result and the other has two scalar results, exercising the same structural
@@ -28,7 +33,7 @@ mkdir -p build/examples/edge
   -M examples -M build/modules > build/examples/edge/model.c
 ./build/joggle emit c.header build/examples/edge/model.jog \
   -M examples -M build/modules > build/examples/edge/model.h
-cc -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror \
+cc -std=c11 -Wall -Wextra -Wstrict-prototypes -Werror \
   -include build/examples/edge/model.h \
   build/examples/edge/model.c examples/edge/kernel.c examples/edge/main.c \
   -o build/examples/edge/model
@@ -48,3 +53,12 @@ kernel. Omitting it restores the collision-checked qualified default.
 Selection adds the implementation module dependency and retargets the call
 transactionally, so failure leaves neither a partial call rewrite nor a stray
 `use edge`.
+
+This portable example deliberately implements NCHW input/output and OIHW
+weights. The full convolution overload accepts the source layout arguments to
+match the shared semantic function, but is intended only for physical shapes
+matching that contract. Constant-argument guards are not yet part of
+implementation selection, so this module must not be offered as a candidate
+for a different layout. A target supporting NHWC should provide another
+ordinary overload and kernel. Adding guards is preferable to hiding a layout
+test in the core or the ONNX frontend.

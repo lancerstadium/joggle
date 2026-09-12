@@ -20,7 +20,7 @@ local fn c_name(text: str) -> str {
   ]
   for keyword in reserved {
     if name == keyword {
-      return "joggle_" + name
+      return name + "_"
     }
   }
   return name
@@ -29,7 +29,7 @@ local fn c_name(text: str) -> str {
 local fn label(value: Val) -> str {
   let name = ir.name(value)
   if name == "" {
-    return "joggle_tmp_" + text(ir.key(value))
+    return "tmp_" + text(ir.key(value))
   }
   return c_name(name)
 }
@@ -38,7 +38,7 @@ local fn val(value: Val) -> str {
   if mem.planned(value) {
     let type = ir.type(value)
     assert(tensor.valid(type), "c: planned value must be a tensor")
-    return "joggle_slot_" + c_name(base.name(tensor.elem(type))) + "_" +
+    return "slot_" + c_name(base.name(tensor.elem(type))) + "_" +
            text(mem.slot(value))
   }
   return label(value)
@@ -189,7 +189,8 @@ local fn logical(m: Mod, op: Op, blob: str, config: dict) -> str {
 local fn expr(m: Mod, value: Val, blob: str, config: dict) -> str {
   if ir.is_const(value) {
     let source = ir.def(value)
-    if ir.form(source) != "var" && !reuses(source) {
+    if !tensor.valid(ir.type(value)) &&
+       ir.form(source) != "var" && !reuses(source) {
       return text(ir.constant(value))
     }
   }
@@ -626,8 +627,8 @@ local fn tensor_new(
     }
   }
   out += indent + "for (" + index_type(config) +
-         " joggle_i = 0; joggle_i < " + text(n) +
-         "; ++joggle_i) " + val(output) + "[joggle_i] = " +
+         " i = 0; i < " + text(n) +
+         "; ++i) " + val(output) + "[i] = " +
          expr(m, inputs[0], blob, config) + ";\n"
   return out
 }
@@ -702,10 +703,10 @@ local fn tensor_constant(
   if bytes == 0 {
     return out
   }
-  out += indent + "static const unsigned char joggle_data_" +
+  out += indent + "static const unsigned char data_" +
          label(output) +
          "[" + text(bytes) + "] = \"\\x" + base.hex(data, "\\x") +
-         "\";\n" + indent + "memcpy(" + val(output) + ", joggle_data_" +
+         "\";\n" + indent + "memcpy(" + val(output) + ", data_" +
          label(output) + ", " + text(bytes) + ");\n"
   return out
 }
@@ -912,7 +913,7 @@ local fn ret(
   for i in 0..len(values) {
     let value = values[i]
     let output = results[i]
-    var iterator = "joggle_i"
+    var iterator = "i"
     if len(values) != 1 {
       iterator += "_" + text(i)
     }
@@ -987,7 +988,7 @@ local fn loop(
         out += pad(depth + i) + "for (" + index_type(config) + " " + iterator +
                " = 0; " + iterator + " < 0; ++" + iterator + ") {\n"
       } else {
-        let index = "joggle_i_" + c_name(ir.name(body_args[i]))
+        let index = "index_" + c_name(ir.name(body_args[i]))
         let type = scalar(ir.type(body_args[i]), config)
         out += pad(depth + i) + "for (" + index_type(config) + " " + index +
                " = 0; " + index +
@@ -1154,7 +1155,7 @@ local fn result_names(fn: Fn, blob: str) -> list<str> {
     }
     if !found || !consistent || result_taken(fn, blob, out, name) {
       name = ""
-      var base = "joggle_result"
+      var base = "out"
       if len(types) != 1 {
         base += "_" + text(i)
       }
@@ -1279,7 +1280,7 @@ local fn external_signature(m: Mod, op: Op, config: dict) -> str {
     returns += [ir.type(outputs[i])]
     var name = ""
     for attempt in 0..len(used) + 2 {
-      var candidate = "joggle_result"
+      var candidate = "out"
       if len(outputs) != 1 {
         candidate += "_" + text(i)
       }
@@ -1364,7 +1365,7 @@ local fn definition(m: Mod, fn: Fn, blob: str, config: dict) -> str {
   }
   for slot in 0..mem.slots(fn) {
     let type = mem.type(fn, slot)
-    memory += pad(1) + storage + scalar(type, config) + " joggle_slot_" +
+    memory += pad(1) + storage + scalar(type, config) + " slot_" +
               c_name(base.name(type)) + "_" + text(slot) + "[" +
               text(mem.count(fn, slot)) + "];\n"
   }

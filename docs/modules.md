@@ -264,9 +264,11 @@ exactly the name passed to both `c.source` and `c.header` after C identifier
 sanitization; `c.data` writes the corresponding bytes. Omitting that argument
 embeds constants in the source, so an application should choose one mode
 rather than emit an unused payload beside embedded data. A collision with a
-source parameter is rejected. The `joggle_` prefix is reserved for otherwise
-unnamed result buffers, storage slots, temporary values, and C-keyword escapes;
-it is not added to user names. A module can pin an external name with
+source parameter is rejected. The `joggle_` prefix is reserved for the
+native-module ABI; it is not added to generated model values. Unnamed result
+buffers, storage slots, temporary values, and payload arrays instead use the
+short role-based `out`, `slot_`, `tmp_`, and `data_` stems, while C keywords
+receive a trailing underscore. A module can pin an external name with
 `[c: {name: "vendor_kernel"}]`. Because Joggle is pre-1.0, source-derived
 spelling is not itself a stable ABI promise: applications that require ABI
 stability should use an explicit binding and compile the emitted header and
