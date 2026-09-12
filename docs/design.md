@@ -329,9 +329,10 @@ bodies remain reusable by compatible user-defined scalar overloads.
 Function cloning and body expansion immediately revisit copied calls in
 definition order. Any result made resolvable by generic substitution is typed
 inside the same IR edit; printing and reparsing are not required to close the
-new body. C and VM recognize portable primitives through the resolved function
-symbol, so qualified and overload-extensible source spellings have identical
-target meaning.
+new body. A bodyless function may carry consumer-owned bindings such as
+`[c: {name: "sqrtf", include: "math.h"}, vm: "sqrt"]`. C and VM inspect those open
+attributes on the resolved `Fn`; neither core nor either emitter contains a
+table coupling `math.sqrt` to target spelling.
 
 The generic `sat.add<W: int>` declaration is the first module-defined
 parametric gate: inferred and explicit widths succeed, conflicting widths,
@@ -1185,11 +1186,15 @@ instead of an emitter side effect.
 
 Qualified external symbols use a readable module separator in C
 (`edge.matmul` becomes `jog_edge_matmul`). The same prototype pass rejects
-collisions after normalization. Calls mapped to standard C operators or libm
-functions are not also reported as external Joggle dependencies.
-The stronger `math.round_even` contract is implemented directly by C and VM
-instead of delegating to `nearbyint`, whose result follows mutable process
-rounding state.
+collisions after normalization. A bodyless declaration may instead own an
+exact C symbol and optional system header through
+`[c: {name: "...", include: "..."}]`. Supplying `include` suppresses a
+redundant generated prototype. This same mechanism
+binds libm and an out-of-tree external kernel, so the C module has no math- or
+kernel-name cases. `math.round_even` is an ordinary single-return function
+body built from `floor`, `fmod`, scalar algebra, and structured conditions.
+Normal preparation exposes it for both C and VM instead of delegating to
+rounding-mode-sensitive `nearbyint` or generating a target-only helper.
 
 The companion `c.header` function reuses the source emitter's checked
 prototypes and returns a C/C++-compatible header. Header generation is not an
@@ -1256,7 +1261,7 @@ instruction meanings belong entirely to the module; core contains no VM
 operation or image format.
 
 Image version 3 covers signed 64-bit arithmetic, `f32` and `f64` arithmetic and
-conversion, the current ten-function floating `math` surface, Boolean values,
+conversion, the current floating `math` surface, Boolean values,
 comparisons, bitwise
 operations, structured branches and range loops, scalar literal-list
 selection, and static tensors of those elements. Every image

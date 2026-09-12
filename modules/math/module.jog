@@ -1,22 +1,87 @@
 module math
 
+[c: {name: "fabsf", include: "math.h"}, vm: "abs"]
 fn abs(x: f32) -> f32;
+[c: {name: "fabs", include: "math.h"}, vm: "abs"]
 fn abs(x: f64) -> f64;
+
+[c: {name: "ceilf", include: "math.h"}, vm: "ceil"]
 fn ceil(x: f32) -> f32;
+[c: {name: "ceil", include: "math.h"}, vm: "ceil"]
 fn ceil(x: f64) -> f64;
+
+[c: {name: "erff", include: "math.h"}, vm: "erf"]
 fn erf(x: f32) -> f32;
+[c: {name: "erf", include: "math.h"}, vm: "erf"]
 fn erf(x: f64) -> f64;
+
+[c: {name: "expf", include: "math.h"}, vm: "exp"]
 fn exp(x: f32) -> f32;
+[c: {name: "exp", include: "math.h"}, vm: "exp"]
 fn exp(x: f64) -> f64;
+
+[c: {name: "floorf", include: "math.h"}, vm: "floor"]
 fn floor(x: f32) -> f32;
+[c: {name: "floor", include: "math.h"}, vm: "floor"]
 fn floor(x: f64) -> f64;
+
+[c: {name: "fmodf", include: "math.h"}, vm: "rem"]
+fn fmod(x: f32, y: f32) -> f32;
+[c: {name: "fmod", include: "math.h"}, vm: "rem"]
+fn fmod(x: f64, y: f64) -> f64;
+
+[c: {name: "logf", include: "math.h"}, vm: "log"]
 fn log(x: f32) -> f32;
+[c: {name: "log", include: "math.h"}, vm: "log"]
 fn log(x: f64) -> f64;
+
+[c: {name: "powf", include: "math.h"}, vm: "pow"]
 fn pow(x: f32, y: f32) -> f32;
+[c: {name: "pow", include: "math.h"}, vm: "pow"]
 fn pow(x: f64, y: f64) -> f64;
-fn round_even(x: f32) -> f32;
-fn round_even(x: f64) -> f64;
+
+[c: {name: "sqrtf", include: "math.h"}, vm: "sqrt"]
 fn sqrt(x: f32) -> f32;
+[c: {name: "sqrt", include: "math.h"}, vm: "sqrt"]
 fn sqrt(x: f64) -> f64;
+
+[c: {name: "tanhf", include: "math.h"}, vm: "tanh"]
 fn tanh(x: f32) -> f32;
+[c: {name: "tanh", include: "math.h"}, vm: "tanh"]
 fn tanh(x: f64) -> f64;
+
+fn round_even(x: f32) -> f32 {
+  let zero: f32 = 0.0
+  let half: f32 = 0.5
+  let one: f32 = 1.0
+  let two: f32 = 2.0
+  let lower = floor(x)
+  let delta = x - lower
+  var out: f32 = lower + one
+  if delta < half {
+    out = lower
+  } else {
+    if delta == half && fmod(lower, two) == zero {
+      out = lower
+    }
+  }
+  return out
+}
+
+fn round_even(x: f64) -> f64 {
+  let zero: f64 = 0.0
+  let half: f64 = 0.5
+  let one: f64 = 1.0
+  let two: f64 = 2.0
+  let lower = floor(x)
+  let delta = x - lower
+  var out: f64 = lower + one
+  if delta < half {
+    out = lower
+  } else {
+    if delta == half && fmod(lower, two) == zero {
+      out = lower
+    }
+  }
+  return out
+}

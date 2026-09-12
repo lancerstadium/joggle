@@ -120,6 +120,8 @@ int main(int argc, char** argv) {
   joggle::Mod model;
   CHECK(joggle::parse(env, source.str(), model, argv[1]));
   CHECK(model.verify(env));
+  CHECK(joggle::run(env, "vm.prepare", model));
+  CHECK(model.verify(env));
 
   joggle::Attr image;
   CHECK(joggle::query(env, "vm.image", model, image));

@@ -129,9 +129,20 @@ endif()
 set(source "${ROOT}/model.c")
 set(header "${ROOT}/model.h")
 set(program "${ROOT}/model")
+set(model_prepared "${ROOT}/model.jog")
 
 execute_process(
-  COMMAND "${TOOL}" emit c.source "${MODEL}" -M "${MODULES}"
+  COMMAND "${TOOL}" run c.prepare "${MODEL}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${model_prepared}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "C model preparation failed (${result}):\n${error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${model_prepared}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${source}"
   ERROR_VARIABLE error
@@ -141,7 +152,7 @@ if(NOT result EQUAL 0)
 endif()
 
 execute_process(
-  COMMAND "${TOOL}" emit c.header "${MODEL}" -M "${MODULES}"
+  COMMAND "${TOOL}" emit c.header "${model_prepared}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${header}"
   ERROR_VARIABLE error
@@ -172,6 +183,12 @@ if(emitted_header MATCHES "jog_noop")
           "C header exposed a local zero-result helper:\n${emitted_header}")
 endif()
 file(READ "${source}" emitted_source)
+if(NOT emitted_source MATCHES "#include <math.h>" OR
+   emitted_source MATCHES "jog_round_even")
+  message(FATAL_ERROR
+          "C source did not use module-declared math bindings:\n"
+          "${emitted_source}")
+endif()
 if(NOT emitted_source MATCHES "for \\(size_t jog_i = 0;")
   message(FATAL_ERROR
           "C source did not use an unsigned host count for fixed storage:\n"

@@ -165,9 +165,10 @@ local fn expr(m: Mod, value: Val) -> str {
   if len(inputs) == 1 && scalar_name(name) {
     return "((" + scalar(ty(name)) + ")(" + expr(m, inputs[0]) + "))"
   }
-  let math_name = math(m, op)
-  if math_name != "" && (len(inputs) == 1 || len(inputs) == 2) {
-    return math_name + "(" + args(m, inputs) + ")"
+  let bound = binding(m, op)
+  if bound != "" && len(ir.outs(op)) == 1 &&
+     !tensor.valid(ir.type(ir.outs(op)[0])) {
+    return bound + "(" + args(m, inputs) + ")"
   }
   let target = ir.resolve(m, op)
   if callable(m, target) && len(ir.outs(op)) == 1 &&
@@ -254,6 +255,10 @@ local fn external(m: Mod, fn: Fn) -> bool {
 
 local fn symbol(m: Mod, fn: Fn) -> str {
   assert(callable(m, fn), "c: function has no representable ABI")
+  let bound = binding(fn)
+  if !owned(m, fn) && bound != "" {
+    return bound
+  }
   if owned(m, fn) {
     return "jog_" + base.ident(ir.name(fn))
   }
@@ -297,74 +302,30 @@ local fn unary(op: str) -> str {
   return ""
 }
 
-local fn math(op: str, type: Ty) -> str {
-  let names = {
-    "math.abs": "fabs", "math.ceil": "ceil", "math.erf": "erf",
-    "math.exp": "exp", "math.floor": "floor", "math.log": "log",
-    "math.pow": "pow", "math.sqrt": "sqrt", "math.tanh": "tanh"
-  }
-  let name = base.name(type)
-  if op == "math.round_even" && (name == "f32" || name == "f64") {
-    return "jog_round_even_" + name
-  }
-  if base.has(names, op) && (name == "f32" || name == "f64") {
-    var suffix = ""
-    if name == "f32" {
-      suffix = "f"
-    }
-    return str(names[op]) + suffix
-  }
-  return ""
-}
-
-local fn math_support(m: Mod) -> str {
-  var need_f32 = false
-  var need_f64 = false
-  for op in ir.ops(m) {
-    if ir.kind(op) == "call" {
-      let name = math(m, op)
-      need_f32 = need_f32 || name == "jog_round_even_f32"
-      need_f64 = need_f64 || name == "jog_round_even_f64"
-    }
-  }
-  var out = ""
-  if need_f32 {
-    out += "static float jog_round_even_f32(float x) {\n" +
-           "  if (!isfinite(x) || x == 0.0f) return x;\n" +
-           "  const float lower = floorf(x);\n" +
-           "  const float delta = x - lower;\n" +
-           "  if (delta < 0.5f) return lower;\n" +
-           "  if (delta > 0.5f) return lower + 1.0f;\n" +
-           "  return fmodf(lower, 2.0f) == 0.0f ? lower : lower + 1.0f;\n" +
-           "}\n\n"
-  }
-  if need_f64 {
-    out += "static double jog_round_even_f64(double x) {\n" +
-           "  if (!isfinite(x) || x == 0.0) return x;\n" +
-           "  const double lower = floor(x);\n" +
-           "  const double delta = x - lower;\n" +
-           "  if (delta < 0.5) return lower;\n" +
-           "  if (delta > 0.5) return lower + 1.0;\n" +
-           "  return fmod(lower, 2.0) == 0.0 ? lower : lower + 1.0;\n" +
-           "}\n\n"
-  }
-  return out
-}
-
-local fn math(m: Mod, op: Op) -> str {
-  let outputs = ir.outs(op)
-  if len(outputs) != 1 {
+local fn binding(fn: Fn) -> str {
+  if !ir.live(fn) || !ir.has(fn, "c") {
     return ""
   }
-  let direct = math(ir.callee(op), ir.type(outputs[0]))
-  if direct != "" {
-    return direct
+  let spec = ir.meta(fn, "c")
+  assert(base.kind(spec) == "dict", "c: binding must be a dictionary")
+  let name = base.get(spec, "name")
+  assert(base.kind(name) == "str", "c: binding name must be a string")
+  return base.str(name)
+}
+
+local fn binding(m: Mod, op: Op) -> str {
+  return binding(ir.resolve(m, op))
+}
+
+local fn binding_header(fn: Fn) -> str {
+  if !ir.live(fn) || !ir.has(fn, "c") {
+    return ""
   }
-  let target = ir.resolve(m, op)
-  if ir.live(target) {
-    return math(ir.symbol(target), ir.type(outputs[0]))
-  }
-  return ""
+  let spec = ir.meta(fn, "c")
+  assert(base.kind(spec) == "dict", "c: binding must be a dictionary")
+  let name = base.get(spec, "include", "")
+  assert(base.kind(name) == "str", "c: binding header must be a string")
+  return base.str(name)
 }
 
 fn accepts(m: Mod, op: Op) -> bool {
@@ -415,7 +376,7 @@ fn accepts(m: Mod, op: Op) -> bool {
   if scalar_name(name) && len(inputs) == 1 && len(outputs) == 1 {
     return !tensor.valid(ir.type(outputs[0]))
   }
-  if math(m, op) != "" && (len(inputs) == 1 || len(inputs) == 2) {
+  if binding(m, op) != "" {
     return true
   }
   return callable(m, target)
@@ -603,12 +564,12 @@ local fn call(m: Mod, op: Op, depth: int) -> str {
   }
 
   if len(outputs) == 1 {
-    let math_name = math(m, op)
-    if math_name != "" && (len(inputs) == 1 || len(inputs) == 2) {
+    let bound = binding(m, op)
+    if bound != "" && !tensor.valid(ir.type(outputs[0])) {
       if ir.name(outputs[0]) == "" {
         return ""
       }
-      return indent + lhs(op, outputs[0]) + " = " + math_name + "(" +
+      return indent + lhs(op, outputs[0]) + " = " + bound + "(" +
              args(m, inputs) + ");\n"
     }
   }
@@ -918,7 +879,7 @@ local fn dependencies(m: Mod) -> list<Fn> {
   for op in ir.ops(m) {
     if ir.kind(op) == "call" {
       let fn = ir.resolve(m, op)
-      if external(m, fn) && math(m, op) == "" {
+      if external(m, fn) && binding_header(fn) == "" {
         var seen = false
         for existing in out {
           seen = existing == fn || seen
@@ -928,6 +889,33 @@ local fn dependencies(m: Mod) -> list<Fn> {
         }
       }
     }
+  }
+  return out
+}
+
+local fn binding_headers(m: Mod) -> list<str> {
+  var out: list<str> = []
+  for op in ir.ops(m) {
+    if ir.kind(op) == "call" {
+      let name = binding_header(ir.resolve(m, op))
+      if name != "" {
+        var seen = false
+        for existing in out {
+          seen = seen || existing == name
+        }
+        if !seen {
+          out += [name]
+        }
+      }
+    }
+  }
+  return out
+}
+
+local fn includes(names: list<str>) -> str {
+  var out = ""
+  for name in names {
+    out += "#include <" + name + ">\n"
   }
   return out
 }
@@ -966,8 +954,9 @@ fn source(m: Mod) -> str {
   for fn in fns {
     definitions += definition(m, fn) + "\n"
   }
-  return "#include <math.h>\n#include <stdbool.h>\n#include <stddef.h>\n" +
+  return includes(binding_headers(m)) +
+         "#include <stdbool.h>\n#include <stddef.h>\n" +
          "#include <stdint.h>\n" +
          "#include <string.h>\n\n" +
-         declarations + "\n" + math_support(m) + definitions
+         declarations + "\n" + definitions
 }

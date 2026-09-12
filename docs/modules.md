@@ -231,12 +231,14 @@ elements, typed arithmetic and conversion, comparisons, Boolean/bitwise
 operations, structured conditions and range loops, allocation/fill, and
 checked scalar-list selection and linear or multidimensional tensor indexing.
 It covers the complete current `math` surface: `abs`, `ceil`, `erf`, `exp`,
-`floor`, `log`, `pow`, `round_even`, `sqrt`, and `tanh` for both floating
+`floor`, `fmod`, `log`, `pow`, `round_even`, `sqrt`, and `tanh` for both floating
 formats. C and VM execute the same scalar conformance cases. These operations
 use the host standard library; their presence does not claim cross-platform
-bit identity for transcendentals. `round_even` is implemented explicitly in
-both targets so its tie rule does not change with the process floating-point
-rounding mode.
+bit identity for transcendentals. The bodyless primitives declare their C
+symbol/header and VM opcode through open function attributes. `round_even` is
+an ordinary Joggle body exposed during preparation, so its tie rule does not
+change with the process floating-point rounding mode and no target carries a
+private implementation of it.
 Invalid integer division, shifts, images, entries, input sizes, shapes, indices,
 or out-of-range conversions fail through the normal module diagnostic boundary.
 The native runner tokenizes and decodes the selected function once per call,
@@ -856,14 +858,16 @@ public header; both spellings still come from the same signature function.
 Generated files remain under the ignored build tree for inspection.
 
 The separate `math` module declares each current primitive as exact `f32` and
-`f64` overloads. C and VM independently state which of those primitives they
-implement; neither target treats an arbitrary `Ty` as floating point. Generic
+`f64` overloads. Each bodyless primitive owns optional C name/header and VM
+opcode attributes. The consumers read those attributes from the resolved
+function; neither carries a second list of math symbols, and neither treats an
+arbitrary `Ty` as floating point. Generic
 `nn` bodies can still use the operations because dependent calls resolve only
 after their element type is specialized. The generic bodies use the normal
 unqualified overload set opened by `use math`; a custom number-format module
 may therefore supply a compatible overload without changing `math`, `nn`, or
-the core. C and VM canonicalize a resolved primitive to its owning symbol
-rather than matching its incidental source spelling.
+the core. `round_even` demonstrates the complementary case: semantics live in
+one ordinary body and both target preparation functions expose it.
 
 A resolved, bodyless, monomorphic `Fn` whose parameters and results use
 representable scalar or fixed tensor types is also a C dependency declaration.
@@ -872,7 +876,11 @@ same output-pointer convention as local functions. A single scalar result is
 returned directly; tensor and multi-result signatures use ordered trailing
 pointers, and a zero-result function is ordinary C `void`. The public header
 contains the model's definitions; dependency prototypes stay in the source
-translation unit. This rule is structural—no callee name, operator registry,
+translation unit. `[c: {name: "name"}]` replaces the qualified dependency
+symbol when binding an existing C API. An optional `include: "file.h"` field
+makes `c.source` include that system header once and omit its redundant prototype.
+`math` and `examples/edge` exercise the header-backed and generated-prototype
+forms respectively. This rule is structural—no callee name, operator registry,
 or per-kernel binding is required. [`examples/edge`](../examples/edge) links a
 separately compiled matrix kernel through this path. Anonymous tensor results
 use their ephemeral `Val` key for an internal temporary rather than forcing a

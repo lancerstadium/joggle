@@ -36,16 +36,15 @@ endif()
 
 file(READ "${source}" emitted)
 if(NOT emitted MATCHES
-   "void jog_edge_matmul\\(const float\\* v_a, const float\\* v_b, float\\* jog_out\\);")
+   "void edge_matmul\\(const float\\* v_a, const float\\* v_b, float\\* jog_out\\);")
   message(FATAL_ERROR "external kernel prototype is absent:\n${emitted}")
 endif()
-if(NOT emitted MATCHES "jog_edge_matmul\\(v_a, v_b, v[0-9]+\\);")
+if(NOT emitted MATCHES "edge_matmul\\(v_a, v_b, v[0-9]+\\);")
   message(FATAL_ERROR "external kernel call is absent:\n${emitted}")
 endif()
 if(NOT emitted MATCHES
-   "void jog_edge_extrema\\(const float\\* v_x, float\\* jog_out_0, float\\* jog_out_1\\);" OR
-   NOT emitted MATCHES
-   "jog_edge_extrema\\(v_x, &v_low, &v_high\\);")
+   "void edge_extrema\\(const float\\* v_x, float\\* jog_out_0, float\\* jog_out_1\\);" OR
+   NOT emitted MATCHES "edge_extrema\\(v_x, &v_low, &v_high\\);")
   message(FATAL_ERROR
           "external multi-result kernel boundary is absent:\n${emitted}")
 endif()

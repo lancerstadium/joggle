@@ -1,4 +1,4 @@
-void jog_edge_matmul(const float* a, const float* b, float* out) {
+void edge_matmul(const float* a, const float* b, float* out) {
   for (int i = 0; i != 2; ++i) {
     for (int j = 0; j != 2; ++j) {
       float sum = 0.0f;
@@ -9,7 +9,7 @@ void jog_edge_matmul(const float* a, const float* b, float* out) {
   }
 }
 
-void jog_edge_extrema(const float* x, float* low, float* high) {
+void edge_extrema(const float* x, float* low, float* high) {
   *low = x[0];
   *high = x[0];
   for (int i = 1; i != 4; ++i) {

@@ -296,6 +296,9 @@ for key in keys(attrs) { inspect(key) }
 ```
 
 `attrs[key]` is strict; `get` returns `nil` or an explicit fallback when absent.
+`keys`, `has`, and `get` also accept an `Attr` whose runtime kind is `dict`.
+This lets reflected metadata such as `ir.meta(fn, "c")` keep its honest
+structural return type while modules inspect nested policy dictionaries.
 Mutable lists and dictionaries use the same indexed assignment syntax as a
 model tensor; overload resolution selects the collection or tensor meaning:
 

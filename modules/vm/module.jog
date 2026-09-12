@@ -70,8 +70,7 @@ local fn binary(name: str) -> str {
     "operator |": "or", "operator ^": "xor", "operator <<": "shl",
     "operator >>": "shr", "operator ==": "eq", "operator !=": "ne",
     "operator <": "lt", "operator <=": "le", "operator >": "gt",
-    "operator >=": "ge", "operator &&": "land", "operator ||": "lor",
-    "math.pow": "pow"
+    "operator >=": "ge", "operator &&": "land", "operator ||": "lor"
   }
   if has(ops, name) {
     return str(ops[name])
@@ -82,15 +81,21 @@ local fn binary(name: str) -> str {
 local fn unary(name: str) -> str {
   let ops = {
     "base.copy": "copy", "operator +": "copy", "operator -": "neg",
-    "operator !": "lnot", "operator ~": "bnot", "math.abs": "abs",
-    "math.ceil": "ceil", "math.erf": "erf", "math.exp": "exp",
-    "math.floor": "floor", "math.log": "log", "math.sqrt": "sqrt",
-    "math.tanh": "tanh", "math.round_even": "round_even"
+    "operator !": "lnot", "operator ~": "bnot"
   }
   if has(ops, name) {
     return str(ops[name])
   }
   return ""
+}
+
+local fn binding(fn: Fn) -> str {
+  if !ir.live(fn) || !ir.has(fn, "vm") {
+    return ""
+  }
+  let code = ir.meta(fn, "vm")
+  assert(base.kind(code) == "str", "vm: binding opcode must be a string")
+  return base.str(code)
 }
 
 local fn binary(m: Mod, op: Op) -> str {
@@ -100,7 +105,7 @@ local fn binary(m: Mod, op: Op) -> str {
   }
   let target = ir.resolve(m, op)
   if ir.live(target) {
-    return binary(ir.symbol(target))
+    return binding(target)
   }
   return ""
 }
@@ -112,7 +117,7 @@ local fn unary(m: Mod, op: Op) -> str {
   }
   let target = ir.resolve(m, op)
   if ir.live(target) {
-    return unary(ir.symbol(target))
+    return binding(target)
   }
   return ""
 }
@@ -121,12 +126,13 @@ local fn float_unary(code: str) -> bool {
   return code == "copy" || code == "neg" || code == "abs" ||
          code == "ceil" || code == "erf" || code == "exp" ||
          code == "floor" || code == "log" || code == "sqrt" ||
-         code == "tanh" || code == "round_even"
+         code == "tanh"
 }
 
 local fn float_binary(code: str) -> bool {
   return code == "add" || code == "sub" || code == "mul" ||
-         code == "div" || code == "pow" || code == "eq" || code == "ne" ||
+         code == "div" || code == "rem" || code == "pow" ||
+         code == "eq" || code == "ne" ||
          code == "lt" || code == "le" || code == "gt" || code == "ge"
 }
 
@@ -210,12 +216,32 @@ fn accepts(m: Mod, op: Op) -> bool {
   return false
 }
 
+local fn describe(op: Op) -> str {
+  var out = ir.callee(op) + "("
+  let inputs = ir.args(op)
+  for i in 0..len(inputs) {
+    if i != 0 {
+      out += ", "
+    }
+    out += text(ir.type(inputs[i]))
+  }
+  out += ") -> ("
+  let outputs = ir.outs(op)
+  for i in 0..len(outputs) {
+    if i != 0 {
+      out += ", "
+    }
+    out += text(ir.type(outputs[i]))
+  }
+  return out + ")"
+}
+
 fn prepare(m: Mod) -> bool {
   let changed = opt.expose(m, ir.find("vm.accepts"), len(ir.ops(m)) + 1)
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" {
       assert(accepts(m, op),
-             "vm: unsupported call remains: " + ir.callee(op))
+             "vm: unsupported call remains: " + describe(op))
     }
   }
   return changed

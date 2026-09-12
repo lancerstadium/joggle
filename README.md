@@ -299,10 +299,14 @@ literal-list indexing, zero- and multi-result functions, and the standard
 floating-point functions declared by `math`; unsupported IR fails with a
 diagnostic. Preparation composes the
 reusable static evaluator and copy propagation before exposing remaining
-calls. C and VM cover the same current ten-primitive `math` surface through
-exact `f32` and `f64` overloads; host-libm transcendentals are not presented as
-cross-platform bit-exact implementations. This is a defined portable subset,
-not yet a complete numerical library. Generic NN bodies defer only calls
+calls. Each bodyless math declaration owns its optional
+`[c: {name: "...", include: "..."}]` and `[vm: "..."]` bindings; emitters do not contain a
+second table of `math` names. `round_even` is an ordinary function body and is
+exposed by the same preparation path as user code. C and VM cover the same
+current `math` surface through exact `f32` and `f64` overloads; host-libm
+transcendentals are not presented as cross-platform bit-exact
+implementations. This is a defined portable subset, not yet a complete
+numerical library. Generic NN bodies defer only calls
 that depend on their element type, allowing specialization to select a precise
 built-in or user-supplied overload instead of accepting every `Ty` eagerly.
 The preparation policy is not a second target interface. `c.accepts(Mod, Op)`

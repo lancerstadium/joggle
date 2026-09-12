@@ -240,7 +240,6 @@ enum class Unary {
   log,
   sqrt,
   tanh,
-  round_even,
   lnot,
   bnot,
 };
@@ -366,19 +365,6 @@ struct State {
 };
 
 template <class T>
-T round_even(T input) {
-  if (!std::isfinite(input) || input == T{0})
-    return input;
-  const T lower = std::floor(input);
-  const T delta = input - lower;
-  if (delta < T{0.5})
-    return lower;
-  if (delta > T{0.5})
-    return lower + T{1};
-  return std::fmod(lower, T{2}) == T{0} ? lower : lower + T{1};
-}
-
-template <class T>
 bool floating_unary(Unary op, T input, Value& output, Kind kind) {
   T result{};
   if (op == Unary::neg)
@@ -399,8 +385,6 @@ bool floating_unary(Unary op, T input, Value& output, Kind kind) {
     result = std::sqrt(input);
   else if (op == Unary::tanh)
     result = std::tanh(input);
-  else if (op == Unary::round_even)
-    result = round_even(input);
   else
     return false;
   output = scalar(kind, bits(result));
@@ -435,6 +419,8 @@ bool floating_binary(Binary op, T left, T right, Value& output,
     output = scalar(kind, bits(left * right));
   else if (op == Binary::div)
     output = scalar(kind, bits(left / right));
+  else if (op == Binary::rem)
+    output = scalar(kind, bits(std::fmod(left, right)));
   else if (op == Binary::pow)
     output = scalar(kind, bits(std::pow(left, right)));
   else if (op == Binary::eq)
@@ -585,7 +571,6 @@ bool unary_code(std::string_view text, Unary& out) {
   else if (text == "log") out = Unary::log;
   else if (text == "sqrt") out = Unary::sqrt;
   else if (text == "tanh") out = Unary::tanh;
-  else if (text == "round_even") out = Unary::round_even;
   else if (text == "lnot") out = Unary::lnot;
   else if (text == "bnot") out = Unary::bnot;
   else return false;
