@@ -119,6 +119,8 @@ endif()
 
 set(fuse_prepared "${ROOT}/fuse-prepared.jog")
 set(fused "${ROOT}/fused.jog")
+set(rejected_fusion "${ROOT}/rejected-fusion.jog")
+set(policy_fusion "${ROOT}/policy-fusion.jog")
 set(fused_ready "${ROOT}/fused-ready.jog")
 set(fused_source "${ROOT}/fused.c")
 set(fused_program "${ROOT}/fused")
@@ -134,7 +136,57 @@ if(NOT result EQUAL 0)
 endif()
 
 execute_process(
-  COMMAND "${TOOL}" run tile_pass.can_first tile_pass.all "${fuse_prepared}"
+  COMMAND "${TOOL}" run tile_pass.reject_mutating_policy "${fuse_prepared}"
+          -M "${MODULES}"
+  RESULT_VARIABLE result
+  ERROR_VARIABLE error
+)
+if(result EQUAL 0 OR NOT error MATCHES "policy must not mutate the module")
+  message(FATAL_ERROR
+          "mutating fusion policy was not rejected (${result}):\n${error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.budget "${fuse_prepared}"
+          --arg 0 -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${rejected_fusion}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "fusion policy rejection failed (${result}):\n${error}")
+endif()
+file(READ "${rejected_fusion}" rejected_fusion_text)
+string(REGEX MATCHALL "for [A-Za-z_][A-Za-z0-9_]* in" rejected_loops
+       "${rejected_fusion_text}")
+list(LENGTH rejected_loops rejected_loop_count)
+if(NOT rejected_loop_count EQUAL 3)
+  message(FATAL_ERROR
+          "rejected fusion policy changed the loop chain:\n${rejected_fusion_text}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.budget "${fuse_prepared}"
+          --arg 100 -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${policy_fusion}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "configured fusion policy failed (${result}):\n${error}")
+endif()
+file(READ "${policy_fusion}" policy_fusion_text)
+string(REGEX MATCHALL "for [A-Za-z_][A-Za-z0-9_]* in" policy_loops
+       "${policy_fusion_text}")
+list(LENGTH policy_loops policy_loop_count)
+if(NOT policy_loop_count EQUAL 1)
+  message(FATAL_ERROR
+          "configured fusion policy did not collapse the chain:\n${policy_fusion_text}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.can_first tile_pass.permitted
+          "${fuse_prepared}"
           -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${fused}"

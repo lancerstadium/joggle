@@ -307,7 +307,9 @@ written by the CLI through `--report` using the public canonical `Attr` printer.
 
 Open function metadata now also supports semantic relation discovery.
 `ir.where` selects `Fn` values without reserving a relation vocabulary, and
-`ir.invoke<R>` transactionally executes a typed `fn(Mod, Op) -> R` boundary.
+`ir.invoke<R>` transactionally executes a typed callback over one `Op` or a
+`list<Op>` candidate. The latter supports module-selected fusion profitability
+without adding a schedule or target hierarchy to core.
 ONNX inference and conversion relations self-identify in their owning module,
 removing both central operator-name dispatch chains while leaving import and
 conversion explicit. Those relations are module-local implementation while

@@ -173,7 +173,7 @@ The built-in `ir` module is the complete reflection boundary:
 | `args`, `outs`, `def`, `users` | Read operation dataflow in both directions. |
 | `live`, `local`, `blk`, `op`, `kind`, `form`, `callee`, `name`, `key`, `type` | Query handle state and function visibility, bidirectional block ownership, operation kind and binding form, readable or ephemeral identity, and structural `Ty`. |
 | `resolve`, `symbol`, `accepts`, `match` | Resolve calls, identify functions, and select against explicit signatures. |
-| `where`, `invoke<R>` | Select functions by open metadata and execute an ordinary typed `fn(Mod, Op) -> R` transactionally. |
+| `where`, `invoke<R>` | Select functions by open metadata and execute an ordinary typed callback over one `Op` or a `list<Op>` transactionally. |
 | `is_const`, `constant` | Query constant IR values. |
 | `has`, `meta` | Query open function, value, or operation attributes. |
 | `call`, `constant`, `loop`, `branch` | Construct leaves and structured control flow. |
@@ -712,6 +712,14 @@ constant DCE to remove setup values made dead by the rewrite. A project that
 needs costs, limits, or a different traversal can call `can_fuse` and the
 explicit overload itself; no neural-network catalogue is hidden in either
 path.
+
+`tile.fuse(m, policy)` and `tile.fuse(m, policy, argument)` retain that
+traversal while delegating profitability to an ordinary module function. The
+callback has type `fn(Mod, list<Op>) -> bool`, or adds one structurally typed
+compile-time argument. The pair is always a legal producer/consumer candidate;
+the callback may inspect bodies, metadata, or a target model but must not
+mutate the `Mod`. This separates reusable legality and rewriting from research
+policy without a schedule class or target case in `tile`.
 
 `ir.rename` may be applied directly to a `Blk` argument. Iterator renames are
 reflected in the loop header, while carried-value renames propagate through

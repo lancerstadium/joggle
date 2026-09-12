@@ -2171,7 +2171,7 @@ Fn select_overload(std::span<const Fn> candidates,
         (!expected_returns.empty() &&
          candidate_returns.size() != expected_returns.size()) ||
         (!explicit_arguments.empty() &&
-         explicit_arguments.size() != generics.size()))
+         explicit_arguments.size() > generics.size()))
       continue;
     Bindings bindings;
     for (std::size_t index = 0; index < explicit_arguments.size(); ++index)
@@ -2451,12 +2451,12 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
                     std::to_string(candidate_returns.size()) +
                     " results, got " +
                     std::to_string(expected_returns.size());
-        else if (!explicit_args.empty() &&
-                 explicit_args.size() != generics.size())
-          message = "call to '" + std::string(op.callee) + "' expects " +
-                    std::to_string(generics.size()) +
-                    " generic arguments, got " +
-                    std::to_string(explicit_args.size());
+        else if (explicit_args.size() > generics.size())
+          message =
+              "call to '" + std::string(op.callee) + "' accepts at most " +
+              std::to_string(generics.size()) +
+              " explicit generic arguments, got " +
+              std::to_string(explicit_args.size());
         else {
           Bindings bindings;
           for (std::size_t index = 0; index < explicit_args.size(); ++index)

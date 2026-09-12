@@ -253,8 +253,10 @@ literals allow the same source language to collect IR handles.
 
 The same boundary now supports module-owned semantic relations. `ir.where`
 filters ordinary `Fn` values using open metadata, and `ir.invoke<R>` executes
-the uniform `fn(Mod, Op) -> R` shape inside the current transaction. Its
-configured overload carries one structural value to `fn(Mod, Op, A) -> R`;
+the uniform `fn(Mod, Op) -> R` or `fn(Mod, list<Op>) -> R` shape inside the
+current transaction. The list form represents a structural candidate such as
+a producer/consumer pair without putting handles in metadata. Its configured
+overload carries one structural value to either callback shape;
 generic capability traversals forward the value without generated wrappers.
 Relation
 modules choose `R = bool`; analysis modules may select another ordinary result
@@ -1417,7 +1419,10 @@ defining a built-in cost model. It traverses operations and invokes an ordinary
 module function of type `fn(Mod, Op) -> int` through `ir.invoke<int>`, rejecting
 mutating measures by revision. A research module can therefore assign cycles,
 energy proxies, code-size weights, or resource units without a device class or
-new core intrinsic. The unit and model remain explicit experiment policy.
+new core intrinsic. Multi-operation candidates use the same invocation boundary
+with `list<Op>`, which lets fusion legality remain reusable while profitability
+comes from a separately selected target policy. The unit and model remain
+explicit experiment policy.
 
 ## M12 loop-transformation slice
 

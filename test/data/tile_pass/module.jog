@@ -52,3 +52,30 @@ fn can_first(m: Mod) -> bool {
 fn all(m: Mod) -> bool {
   return tile.fuse(m)
 }
+
+fn body_limit(m: Mod, pair: list<Op>, limit: int) -> bool {
+  assert(len(pair) == 2 && ir.kind(pair[0]) == "loop" &&
+         ir.kind(pair[1]) == "loop",
+         "tile_pass.body_limit requires one loop pair")
+  return len(ir.ops(ir.blks(pair[0])[0])) <= limit
+}
+
+fn allow_pair(m: Mod, pair: list<Op>) -> bool {
+  return len(pair) == 2
+}
+
+fn permitted(m: Mod) -> bool {
+  return tile.fuse(m, ir.find("tile_pass.allow_pair"))
+}
+
+fn budget(m: Mod, limit: int) -> bool {
+  return tile.fuse(m, ir.find("tile_pass.body_limit"), limit)
+}
+
+fn mutating_policy(m: Mod, pair: list<Op>) -> bool {
+  return ir.set(m, pair[0], "policy.mutated", true)
+}
+
+fn reject_mutating_policy(m: Mod) -> bool {
+  return tile.fuse(m, ir.find("tile_pass.mutating_policy"))
+}

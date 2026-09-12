@@ -143,6 +143,11 @@ open constraint. The same structural checker validates explicit generic
 arguments, inferred bindings, and type-constructor arguments; no separate kind
 or trait registry exists. `Fn::generics()` exposes the parameter values, so
 embedding code reads both `name()` and `type()` through the normal `Val` API.
+An explicit generic list may bind a leading prefix while ordinary arguments
+infer the remainder. For example, `invoke<bool>(m, subject, policy)` fixes the
+result type and infers the subject type; supplying more explicit terms than a
+declaration owns remains an error, and any uninferred term is rejected before
+the selected function body executes.
 
 The `_` term remains open when nested in a structural argument. Consequently
 `tensor<f32, [_, 3]>` satisfies a `list<int>` shape constraint without claiming
@@ -601,6 +606,11 @@ requested value. `ir.invoke<R>(m, op, fn)` executes a selected ordinary
 `fn(Mod, Op) -> R` in the current transaction. Its four-argument overload
 passes one structural compile-time value to a matching callback; a dictionary
 can therefore carry named policy without an option class or wrapper function.
+The subject type is generic and inferred, so the same overload can invoke a
+typed relation over a whole `list<Op>` candidate, such as a
+producer/consumer pair, without encoding live handles in serializable
+metadata. Empty and nonempty lists use the same callback type; every contained
+handle must be live.
 The explicit result type keeps dynamic invocation typed even though `Fn` is a
 runtime handle. It rejects
 generic or incompatible callback signatures before execution, validates the

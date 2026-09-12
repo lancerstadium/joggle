@@ -309,6 +309,26 @@ no legal pair remains. This is convenient for inspection and baseline
 experiments; a research module remains free to own candidate selection and
 profitability while reusing the exact same legality and rewrite functions.
 
+A module can also retain the bundled traversal and supply only profitability:
+
+```jog
+module my_policy
+use tile
+
+fn small(m: Mod, pair: list<Op>, limit: int) -> bool {
+  let producer = pair[0]
+  return len(ir.ops(ir.blks(producer)[0])) <= limit
+}
+
+fn apply(m: Mod, limit: int) -> bool {
+  return tile.fuse(m, ir.find("my_policy.small"), limit)
+}
+```
+
+`tile` invokes `small` only for structurally legal adjacent pairs and rejects
+a policy that mutates the module. Replacing `small` with a target cost model
+does not change the traversal, rewrite, core IR, or emitter.
+
 ## Materialize a function template
 
 A module may copy a normal function into the program when a transform needs a

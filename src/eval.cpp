@@ -260,6 +260,25 @@ bool accepts_runtime(const Ty& expected, const Item& item) {
   return expected == actual;
 }
 
+bool valid_runtime_handles(const Item& item) {
+  if (const auto* mod = as<Mod*>(item))
+    return *mod != nullptr;
+  if (const auto* fn = as<Fn>(item))
+    return bool(*fn);
+  if (const auto* blk = as<Blk>(item))
+    return bool(*blk);
+  if (const auto* op = as<Op>(item))
+    return bool(*op);
+  if (const auto* val = as<Val>(item))
+    return bool(*val);
+  if (const Items* items = list(item)) {
+    for (const Item& value : *items)
+      if (!valid_runtime_handles(value))
+        return false;
+  }
+  return true;
+}
+
 Item::Item(Items value) {
   Ty element("_");
   if (!value.empty()) {
@@ -2129,9 +2148,8 @@ private:
     } else if (name == "invoke" &&
                (args.size() == 3 || args.size() == 4)) {
       const auto* mod = as<Mod*>(args[0]);
-      const auto* op = as<Op>(args[1]);
       const auto* fn = as<Fn>(args[2]);
-      if (mod && *mod && op && *op && fn && *fn) {
+      if (mod && *mod && fn && *fn) {
         if (generics.size() != 1) {
           fail("ir.invoke requires one explicit result type", loc);
           return std::nullopt;
@@ -2142,16 +2160,24 @@ private:
         const bool configured = args.size() == 4;
         if (!fn->generics().empty() ||
             params.size() != (configured ? 3 : 2) ||
-            params[0].type() != Ty("Mod") || params[1].type() != Ty("Op") ||
+            params[0].type() != Ty("Mod") ||
             (configured && !accepts_runtime(params[2].type(), args[3])) ||
             returns.size() != 1 || returns.front() != expected) {
-          fail("ir.invoke callback must match fn(Mod, Op" +
+          fail("ir.invoke callback must match fn(Mod, subject" +
                    std::string(configured ? ", argument" : "") + ") -> " +
                    std::string(expected.text()),
                loc);
           return std::nullopt;
         }
-        Items callback_args{Item(*mod), Item(*op)};
+        const Ty& subject_type = params[1].type();
+        if (!accepts_runtime(subject_type, args[1]) ||
+            !valid_runtime_handles(args[1])) {
+          fail("ir.invoke subject is not a valid " +
+                   std::string(subject_type.text()),
+               loc);
+          return std::nullopt;
+        }
+        Items callback_args{Item(*mod), args[1]};
         if (configured)
           callback_args.push_back(args[3]);
         auto result = invoke(*fn, std::move(callback_args));

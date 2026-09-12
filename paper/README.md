@@ -83,6 +83,13 @@ small embeddable compiler frameworks.
   optimization remarks show the fused BatchNorm-ReLU loops falling from
   interleave count four to one. This negative pilot motivates a separate,
   target-aware profitability policy; it is not a paper benchmark.
+- Dynamic invocation now accepts a typed `list<Op>` candidate, and `tile.fuse`
+  can consume an ordinary `fn(Mod, list<Op>) -> bool` policy or its configured
+  three-parameter form. Regression gates show the same three-loop chain
+  remaining unchanged under a zero budget and collapsing to one loop under a
+  permissive budget.
+  The mechanism is target-neutral; a controlled study still has to supply and
+  evaluate useful target policies.
 - Default, sanitizer, ONNX, TFLite, generated-C, VM, installation, and external
   module gates exercise the same public interfaces.
 

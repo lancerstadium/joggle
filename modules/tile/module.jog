@@ -563,7 +563,11 @@ fn fuse(m: Mod, producer: Op, consumer: Op) -> bool {
   return true
 }
 
-fn fuse(m: Mod) -> bool {
+local fn fuse_all(
+  m: Mod, policies: list<Fn>, arg: Attr, configured: bool
+) -> bool {
+  assert(len(policies) <= 1,
+         "tile.fuse accepts at most one profitability policy")
   var limit = 0
   for op in ir.ops(m) {
     if ir.kind(op) == "loop" {
@@ -585,10 +589,27 @@ fn fuse(m: Mod) -> bool {
                ir.blk(ops[i]) == ir.blk(ops[j]) {
               next_loop = true
               if can_fuse(m, ops[i], ops[j]) {
-                assert(fuse(m, ops[i], ops[j]),
-                       "tile.fuse could not apply a valid candidate")
-                changed = true
-                again = true
+                var profitable = true
+                if len(policies) == 1 {
+                  let before = ir.revision(m)
+                  if configured {
+                    profitable = ir.invoke<bool>(
+                      m, [ops[i], ops[j]], policies[0], arg
+                    )
+                  } else {
+                    profitable = ir.invoke<bool>(
+                      m, [ops[i], ops[j]], policies[0]
+                    )
+                  }
+                  assert(ir.revision(m) == before,
+                         "tile.fuse policy must not mutate the module")
+                }
+                if profitable {
+                  assert(fuse(m, ops[i], ops[j]),
+                         "tile.fuse could not apply a valid candidate")
+                  changed = true
+                  again = true
+                }
               }
             }
           }
@@ -600,4 +621,18 @@ fn fuse(m: Mod) -> bool {
     opt.dce(m, [])
   }
   return changed
+}
+
+fn fuse(m: Mod) -> bool {
+  return fuse_all(m, [], nil, false)
+}
+
+fn fuse(m: Mod, policy: Fn) -> bool {
+  assert(ir.live(policy), "tile.fuse requires a valid policy")
+  return fuse_all(m, [policy], nil, false)
+}
+
+fn fuse(m: Mod, policy: Fn, arg: Attr) -> bool {
+  assert(ir.live(policy), "tile.fuse requires a valid policy")
+  return fuse_all(m, [policy], arg, true)
 }
