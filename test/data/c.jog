@@ -151,6 +151,34 @@ fn int_matmul(
   return out
 }
 
+fn transpose(
+  x: tensor<i64, [2, 3]>
+) -> tensor<i64, [3, 2]> {
+  return tensor.permute(x, [1, 0])
+}
+
+fn broadcast_scalar(
+  x: tensor<f32, []>
+) -> tensor<f32, [2, 3]> {
+  return tensor.broadcast(x)
+}
+
+fn broadcast_identity(
+  x: tensor<f32, [2, 3]>
+) -> tensor<f32, [2, 3]> {
+  return tensor.broadcast(x)
+}
+
+fn list_branch(dim: int) -> bool {
+  var selected = false
+  for axis in [2] {
+    if axis == dim {
+      selected = true
+    }
+  }
+  return selected
+}
+
 fn matmul(
   a: tensor<f32, [2, 3]>,
   b: tensor<f32, [3, 2]>

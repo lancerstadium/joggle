@@ -101,6 +101,32 @@ std::string schema_model() {
   return model.SerializeToString(&bytes) ? bytes : std::string{};
 }
 
+std::string variadic_concat_model() {
+  jogonnx::ModelProto model;
+  model.set_ir_version(8);
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+  auto* graph = model.mutable_graph();
+  graph->set_name("variadic-concat");
+  tensor_type(graph->add_input(), "left", {1, 2});
+  tensor_type(graph->add_input(), "middle", {1, 3});
+  tensor_type(graph->add_input(), "right", {1, 4});
+  tensor_type(graph->add_output(), "joined", {1, 9});
+  auto* concat = graph->add_node();
+  concat->set_op_type("Concat");
+  concat->add_input("left");
+  concat->add_input("middle");
+  concat->add_input("right");
+  concat->add_output("joined");
+  auto* axis = concat->add_attribute();
+  axis->set_name("axis");
+  axis->set_type(jogonnx::AttributeProto::INT);
+  axis->set_i(1);
+  std::string bytes;
+  return model.SerializeToString(&bytes) ? bytes : std::string{};
+}
+
 std::size_t calls(const joggle::Mod& mod, std::string_view callee) {
   std::size_t count = 0;
   for (joggle::Op op : mod.ops())
@@ -224,5 +250,47 @@ int main(int argc, char** argv) {
                       "schema-forms-roundtrip.jog"));
   CHECK(constant_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(constant, constant_roundtrip));
+
+  const std::string concat_bytes = variadic_concat_model();
+  CHECK(!concat_bytes.empty());
+  const auto* concat_first =
+      reinterpret_cast<const std::uint8_t*>(concat_bytes.data());
+  const joggle::Attr::Bytes concat_payload(
+      concat_first, concat_first + concat_bytes.size());
+  const std::vector<joggle::Attr> concat_args{joggle::Attr(concat_payload)};
+  std::vector<joggle::Attr> concat_returns;
+  CHECK(env.call("onnx.read", concat_args, concat_returns));
+  CHECK(concat_returns.size() == 1 && concat_returns[0].string());
+  joggle::Mod concat;
+  CHECK(joggle::parse(env, *concat_returns[0].string(), concat,
+                      "variadic-concat.onnx"));
+  CHECK(joggle::run(env, "onnx.nn.convert", concat));
+  CHECK(concat.verify(env));
+  CHECK(calls(concat, "onnx.Concat") == 0);
+  CHECK(calls(concat, "tensor.concat") == 2);
+  std::vector<joggle::Ty> concat_types;
+  for (joggle::Op op : concat.ops())
+    if (op.callee() == "tensor.concat") {
+      CHECK(op.outs().size() == 1);
+      concat_types.push_back(op.outs()[0].type());
+    }
+  CHECK(concat_types.size() == 2);
+  CHECK(concat_types[0] == joggle::Ty("tensor<f32, [1, 5]>"));
+  CHECK(concat_types[1] == joggle::Ty("tensor<f32, [1, 9]>"));
+  const std::string concat_text = joggle::print(concat);
+  CHECK(concat_text.find("joined_1: tensor<f32, [1, 5]>") !=
+        std::string::npos);
+  joggle::Mod concat_roundtrip;
+  CHECK(joggle::parse(env, concat_text, concat_roundtrip,
+                      "variadic-concat-roundtrip.jog"));
+  CHECK(concat_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(concat, concat_roundtrip));
+  concat_types.clear();
+  for (joggle::Op op : concat_roundtrip.ops())
+    if (op.callee() == "tensor.concat")
+      concat_types.push_back(op.outs()[0].type());
+  CHECK(concat_types.size() == 2);
+  CHECK(concat_types[0] == joggle::Ty("tensor<f32, [1, 5]>"));
+  CHECK(concat_types[1] == joggle::Ty("tensor<f32, [1, 9]>"));
   return 0;
 }

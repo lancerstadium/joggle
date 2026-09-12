@@ -53,6 +53,28 @@ separate stage with that name. The TFLite MobileNet row uses the pinned model
 checked by `test/tflite.cpp`; its exposure gate validates structure and
 round-trip stability, not generated-C execution.
 
+The UltraFace-RFB-320 row uses the checksum-pinned ONNX Zoo model and a
+deterministic NumPy input generated with seed 0. ONNX Runtime 1.26.0 produced
+both reference outputs. Strict external-weight C was compiled with Apple Clang
+17 using `-std=c11 -O3 -DNDEBUG -Wall -Wextra -Werror -pedantic-errors` and
+matched the scores and boxes with maximum absolute errors `2.9802322e-7` and
+`3.5762787e-7`. The external-weight source is 258,279 bytes and the payload is
+1,230,688 bytes; the embedded form was about 5.21 MB. After three warm-up calls,
+ten C calls ranged from 34.186 to 35.026 ms with a 34.401 ms median. A separate
+one-thread, sequential ONNX Runtime pilot had a 4.342 ms median. These
+non-isolated measurements expose an approximately 7.9x backend latency gap;
+they are not publication performance results.
+
+The ResNet18-v1-7 row uses the checksum-pinned 45 MB ONNX Zoo model. Its
+symbolic batch `N` is explicitly instantiated as one with `opt.instantiate`
+before C preparation. The same seeded-input and strict external-weight C11
+protocol produced maximum absolute error `5.0067902e-6`. Generated C is 87,161
+bytes and the payload is 46,796,448 bytes. Ten calls after three warm-ups had a
+1.957 s median, compared with 24.862 ms for one-thread ONNX Runtime in a
+separate run, an approximately 79x gap. The much larger gap than UltraFace
+points specifically to convolution and layout code generation rather than a
+uniform frontend or call overhead.
+
 `mobilenetv2-unroll-pilot.csv` compares the unmodified generated C with a
 module policy that applies `tile.unroll` to legal innermost loops whose static
 trip count is at most three. Both variants use `-std=c99 -O3 -DNDEBUG`, five

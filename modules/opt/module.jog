@@ -72,6 +72,32 @@ local fn select(m: Mod) -> bool {
             values += [mapped(value, old, next)]
           }
           if len(outputs) != 0 {
+            for i in 0..len(outputs) {
+              let output_type = ir.type(outputs[i])
+              let value_type = ir.type(values[i])
+              if output_type == ty("_") && value_type != ty("_") {
+                assert(ir.type(m, outputs[i], value_type),
+                       "opt.fold could not refine a branch result")
+              } else {
+                if value_type == ty("_") && output_type != ty("_") {
+                  assert(ir.type(m, values[i], output_type),
+                         "opt.fold could not refine a selected value")
+                }
+              }
+              let selected_type = ir.type(values[i])
+              let result_type = ir.type(outputs[i])
+              if selected_type != result_type &&
+                 ((selected_type == ty("index") && result_type == ty("int")) ||
+                  (selected_type == ty("int") && result_type == ty("index"))) {
+                values[i] = ir.call(
+                  m, branch, text(result_type), [values[i]], result_type
+                )
+              }
+              assert(ir.type(outputs[i]) == ir.type(values[i]),
+                     "opt.fold branch type mismatch: " +
+                     text(ir.type(outputs[i])) + " and " +
+                     text(ir.type(values[i])))
+            }
             assert(ir.replace(m, outputs, values),
                    "opt.fold could not replace branch results")
           }
@@ -227,6 +253,55 @@ fn specialize(m: Mod, key: str, value: Attr) -> bool {
     dce(m, ["base.list"])
   }
   return changed
+}
+
+local fn template_name(m: Mod, name: str) -> str {
+  var out = ""
+  for attempt in 0..len(ir.fns(m)) + 2 {
+    var candidate = name + "_template"
+    if attempt != 0 {
+      candidate += "_" + text(attempt)
+    }
+    if out == "" && !ir.live(ir.find(m, candidate)) {
+      out = candidate
+    }
+  }
+  assert(out != "", "opt.instantiate could not reserve a temporary name")
+  return out
+}
+
+fn instantiate(m: Mod, name: str, args: list<Ty>) -> bool {
+  let source = ir.find(m, name)
+  if !ir.live(source) || len(ir.generics(source)) == 0 ||
+     len(ir.generics(source)) != len(args) {
+    return false
+  }
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" && ir.resolve(m, op) == source {
+      return false
+    }
+  }
+  let hidden = template_name(m, name)
+  if !ir.rename(m, source, hidden) {
+    return false
+  }
+  let instance = ir.clone(m, source, name, args)
+  if !ir.live(instance) {
+    assert(ir.rename(m, source, name),
+           "opt.instantiate could not restore the source name")
+    return false
+  }
+  assert(ir.erase(m, source),
+         "opt.instantiate could not remove the generic source")
+  return true
+}
+
+fn instantiate(m: Mod, name: str, args: list<str>) -> bool {
+  var types: list<Ty> = []
+  for arg in args {
+    types += [ty(arg)]
+  }
+  return instantiate(m, name, types)
 }
 
 fn copy(m: Mod) -> bool {
@@ -609,20 +684,18 @@ fn legalize(m: Mod, caps: list<Fn>, limit: int) -> bool {
 local fn expand_with(
   m: Mod, accept: Fn, arg: Attr, configured: bool
 ) -> bool {
-  var calls: list<Op> = []
-  var bodies: list<Fn> = []
+  var changed = false
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" &&
        !supports_with(m, op, accept, arg, configured) &&
        len(ir.meta(op)) == 0 {
       let target = ir.resolve(m, op)
       if ir.live(target) && len(ir.blks(target)) != 0 {
-        calls += [op]
-        bodies += [target]
+        changed = ir.expand(m, op, target) || changed
       }
     }
   }
-  return len(calls) != 0 && ir.expand(m, calls, bodies)
+  return changed
 }
 
 fn expand(m: Mod, accept: Fn) -> bool {

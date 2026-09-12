@@ -2864,6 +2864,33 @@ int main(int argc, char** argv) {
   CHECK(specialized_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(specialized, specialized_roundtrip));
 
+  constexpr std::string_view generic_entry_source =
+      "module generic_entry\n"
+      "use tensor\n"
+      "[entry]\n"
+      "fn main<N: int>(x: tensor<f32, [N, 2]>) -> "
+      "tensor<f32, [N, 2]> {\n"
+      "  return x\n"
+      "}\n";
+  joggle::Mod generic_entry;
+  CHECK(joggle::parse(env, generic_entry_source, generic_entry,
+                      "generic-entry.jog"));
+  CHECK(generic_entry.verify(env));
+  const joggle::Attr::List batch_one{joggle::Attr("1")};
+  const std::vector<joggle::Attr> instantiate_args{
+      joggle::Attr("main"), joggle::Attr(batch_one)};
+  CHECK(joggle::run(env, "opt.instantiate", generic_entry,
+                    instantiate_args));
+  CHECK(generic_entry.verify(env));
+  const joggle::Fn entry_instance = generic_entry.find_fn("main");
+  CHECK(entry_instance && entry_instance.generics().empty());
+  CHECK(entry_instance.params().size() == 1);
+  CHECK(entry_instance.params()[0].type() ==
+        joggle::Ty("tensor<f32, [1, 2]>"));
+  CHECK(entry_instance.returns() ==
+        std::vector<joggle::Ty>{joggle::Ty("tensor<f32, [1, 2]>")});
+  CHECK(!generic_entry.find_fn("main_template"));
+
   joggle::Attr clean_report;
   CHECK(joggle::run(env, "script.clean_pure", cleaned, clean_report));
   CHECK(cleaned.verify(env));

@@ -219,6 +219,11 @@ bodies only where needed. `opt.apply` selects compatible implementations;
 value)` fully expands finite static loops carrying the selected open attribute
 and folds list projection and constant branches around dynamic values. The
 selection is explicit: the core never treats an attribute as behavior.
+`opt.instantiate(m, name, args)` replaces one explicitly named generic root
+function with a concrete instance while preserving its original name and
+metadata. Type arguments are ordinary `Ty` values in a module and strings such
+as `["1"]` at the command line. Existing call sites make the operation reject
+rather than silently retarget incompatible calls.
 
 `mem.plan` assigns reusable static slots to tensor values after lifetimes and
 shapes are known. `tile` provides conservative structural loop operations.
@@ -248,14 +253,17 @@ Neither receives privileged access to the IR.
 By default, `c` derives public symbols from qualified function names and keeps
 valid source value names. Named pointer results derive from the return value
 with a collision-checked `_out` suffix. An external payload argument uses
-exactly the name passed to `c.source`/`c.header` after C identifier
-sanitization; a collision with a source parameter is rejected. The `joggle_`
-prefix is reserved for otherwise unnamed result buffers, storage slots,
-temporary values, and C-keyword escapes; it is not added to user names. A
-module can pin an external name with `[c: {name: "vendor_kernel"}]`. Because
-Joggle is pre-1.0, source-derived spelling is not itself a stable ABI promise:
-applications that require ABI stability should use an explicit binding and
-compile the emitted header and source from the same IR.
+exactly the name passed to both `c.source` and `c.header` after C identifier
+sanitization; `c.data` writes the corresponding bytes. Omitting that argument
+embeds constants in the source, so an application should choose one mode
+rather than emit an unused payload beside embedded data. A collision with a
+source parameter is rejected. The `joggle_` prefix is reserved for otherwise
+unnamed result buffers, storage slots, temporary values, and C-keyword escapes;
+it is not added to user names. A module can pin an external name with
+`[c: {name: "vendor_kernel"}]`. Because Joggle is pre-1.0, source-derived
+spelling is not itself a stable ABI promise: applications that require ABI
+stability should use an explicit binding and compile the emitted header and
+source from the same IR.
 
 For a function with one return path, an unplanned local tensor that reaches a
 pointer result is backed directly by that result buffer. The emitter retains

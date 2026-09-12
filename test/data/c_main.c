@@ -29,6 +29,26 @@ int main(void) {
   for (size_t i = 0; i < 4; ++i)
     if (product[i] != product_expected[i])
       return 6;
+  const int64_t transpose_expected[6] = {1, 4, 2, 5, 3, 6};
+  int64_t transposed[6] = {0};
+  kernel_transpose(integers_a, transposed);
+  for (size_t i = 0; i < 6; ++i)
+    if (transposed[i] != transpose_expected[i])
+      return 25;
+  const float scalar[1] = {2.5f};
+  float broadcast[6] = {0.0f};
+  kernel_broadcast_scalar(scalar, broadcast);
+  for (size_t i = 0; i < 6; ++i)
+    if (broadcast[i] != 2.5f)
+      return 26;
+  const float identity_input[6] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  float identity[6] = {0.0f};
+  kernel_broadcast_identity(identity_input, identity);
+  for (size_t i = 0; i < 6; ++i)
+    if (identity[i] != identity_input[i])
+      return 28;
+  if (!kernel_list_branch(2) || kernel_list_branch(1))
+    return 27;
 
   const float a[6] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   const float b[6] = {7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};

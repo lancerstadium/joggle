@@ -339,7 +339,7 @@ int main(int argc, char** argv) {
     CHECK(op.callee() != "nn.add" && op.callee() != "tensor.broadcast");
     loops += op.kind() == joggle::Op::Kind::loop ? 1 : 0;
   }
-  CHECK(loops == 2);
+  CHECK(loops == 4);
   joggle::Mod broadcast_roundtrip;
   CHECK(joggle::parse(env, joggle::print(broadcast), broadcast_roundtrip,
                       "broadcast-roundtrip.jog"));

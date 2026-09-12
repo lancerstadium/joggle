@@ -89,6 +89,16 @@ frozen.
   error about `1.907e-05`.
 - A MobileNetV2 path has matched its reference with maximum absolute error about
   `2.098e-05` after regeneration from the pinned original ONNX model.
+- UltraFace-RFB-320 now passes the complete ONNX-to-C path. Its two outputs
+  match ONNX Runtime with maximum absolute errors `2.980e-7` and `3.576e-7`.
+  External weights reduce its generated C from about 5.21 MB to 258 KB. A
+  non-isolated ten-call pilot measured a 34.401 ms median versus 4.342 ms for
+  one-thread ONNX Runtime, leaving an approximately 7.9x backend gap.
+- ResNet18-v1-7 also passes after the generic entry batch `N` is explicitly
+  instantiated as one. Maximum absolute error is `5.007e-6`; strict C has a
+  1.957 s median versus 24.862 ms for one-thread ONNX Runtime. This roughly 79x
+  gap makes optimized convolution and layout lowering the primary backend
+  requirement.
 - Externalizing the MobileNetV2 weight payload reduced generated C source from
   about 56.9 MB to 246 KB, with a separate payload of about 14.2 MB.
 - On an unisolated Apple M4 pilot, strict generated C had a median MobileNetV2

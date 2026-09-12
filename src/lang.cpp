@@ -12,6 +12,7 @@
 #include <set>
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace joggle {
@@ -1756,6 +1757,40 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
   }
 }
 
+detail::Store printable_store(const detail::Store& source) {
+  detail::Store store = source;
+  std::unordered_set<std::string> names;
+  for (const auto& slot : store.vals)
+    if (slot.live && !slot.data.name.empty())
+      names.insert(slot.data.name);
+  for (std::uint32_t id = 0; id < store.ops.size(); ++id) {
+    auto& slot = store.ops[id];
+    detail::OpData& op = slot.data;
+    if (!slot.live || op.kind != Op::Kind::call ||
+        op.form != Op::Form::hidden || op.callee != "base.list" ||
+        op.outs.size() != 1)
+      continue;
+    detail::ValData& value = store.vals[op.outs.front()].data;
+    if (!value.type_annotation || value.type.name() != "list" ||
+        value.type.args().size() != 1)
+      continue;
+    const Ty element = value.type.args().front();
+    bool needs_annotation = op.args.empty();
+    for (const std::uint32_t arg : op.args)
+      needs_annotation =
+          needs_annotation || store.vals[arg].data.type != element;
+    if (!needs_annotation)
+      continue;
+    std::string name = "list_" + std::to_string(op.outs.front());
+    while (names.contains(name))
+      name += '_';
+    names.insert(name);
+    value.name = std::move(name);
+    op.form = Op::Form::let;
+  }
+  return store;
+}
+
 }  // namespace
 
 bool parse(Env& env, std::string_view source, Mod& out, std::string_view file) {
@@ -1781,7 +1816,8 @@ bool print(std::FILE* file, const Attr& value) {
 }
 
 std::string print(const Mod& mod) {
-  const detail::Store& store = mod.impl_->store;
+  const detail::Store printable = printable_store(mod.impl_->store);
+  const detail::Store& store = printable;
   std::ostringstream out;
   out << "module " << store.name << '\n';
   for (const std::string& use : store.uses)

@@ -1562,6 +1562,7 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
       detail::ValData result;
       result.type = type;
       result.def = op_id;
+      result.type_annotation = true;
       const auto result_id = static_cast<std::uint32_t>(store.vals.size());
       store.vals.push_back({std::move(result), 1, true});
       store.ops[op_id].data.outs.push_back(result_id);

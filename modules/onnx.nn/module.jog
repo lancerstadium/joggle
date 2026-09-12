@@ -2264,9 +2264,17 @@ local fn convert_concat(m: Mod, op: Op) -> bool {
       tensor.dims(type), tensor.dims(right), axis
     )
     type = shaped(tensor.elem(type), dims)
-    value = ir.call(
+    let next = ir.call(
       m, op, "tensor.concat", [value, inputs[i], axis_value], type
     )
+    if !ir.live(next) || !ir.type(m, next, type) {
+      return false
+    }
+    if i + 1 < len(inputs) &&
+       !ir.rename(m, next, ir.name(outputs[0]) + "_" + text(i)) {
+      return false
+    }
+    value = next
   }
   carry(m, outputs[0], value)
   carry(m, op, ir.def(value))

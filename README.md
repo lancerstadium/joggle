@@ -171,12 +171,22 @@ packaging, discovery, lifecycle, and every bundled module.
 
 ## Artifacts and weights
 
-The C module can emit a source file, public header, and deterministic external
-weight payload:
+The C module can emit a source file, public header, and deterministic weight
+payload. Without a data-name argument, constants are embedded in the source:
 
 ```sh
 ./build/joggle emit c.source prepared.jog -M build/modules > model.c
 ./build/joggle emit c.header prepared.jog -M build/modules > model.h
+```
+
+Pass the same data name to source and header emission to keep weights in a
+separate file:
+
+```sh
+./build/joggle emit c.source prepared.jog --arg '"weights"' \
+  -M build/modules > model.c
+./build/joggle emit c.header prepared.jog --arg '"weights"' \
+  -M build/modules > model.h
 ./build/joggle emit c.data prepared.jog -M build/modules > model.bin
 ```
 

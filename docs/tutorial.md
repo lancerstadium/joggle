@@ -511,8 +511,12 @@ and never occur during configure or build. The pinned 1.2 MB UltraFace RFB-320
 adds a shape-heavy edge detector rather than another classifier: its 244 tensor
 constants and 242 calls infer from 240 open results to zero, then convert,
 verify, and round-trip. It covers both tensor-valued Constant nodes and the
-legacy attribute-form Slice schema. All GitHub-hosted models use immutable
-repository commits and SHA-256 checks. The 28 MiB SSD-MobileNetV1-12 detector
+legacy attribute-form Slice schema. The evidence matrix additionally prepares,
+plans, emits, strictly compiles, and numerically checks both UltraFace outputs.
+ResNet-18 exercises the separate symbolic-entry path: `opt.instantiate` binds
+its generic batch before the same static C pipeline. All GitHub-hosted models
+use immutable repository commits and SHA-256 checks. The 28 MiB
+SSD-MobileNetV1-12 detector
 is a partial semantic stress gate: 1,567 constants, 5,985 nodes, eight nested
 graphs, Resize, and NonMaxSuppression must verify and round-trip, while type
 propagation reduces 6,790 open results to the pinned frontier of 4,682. This is
@@ -621,6 +625,18 @@ runtime values. Thus a custom layout function can use the same readable list
 code without forcing the generated C to execute a rank loop inside every
 element access. Other targets may select this convention, another attribute,
 or no structural specialization at all.
+
+A symbolic model entry can be bound before static target preparation without
+changing the frontend. For example, instantiate batch `N` as one while keeping
+the public function name `main`:
+
+```sh
+joggle run opt.instantiate semantic.jog \
+  --arg '"main"' --arg '["1"]' -M modules > static.jog
+```
+
+Arguments follow the generic declaration order. Choosing a deployment shape is
+therefore explicit user or target policy, not an ONNX decoding rule.
 
 The default ABI uses signed 64-bit `int` and `index`. A target module can pass
 sparse replacement descriptors to the configured overloads. The same value

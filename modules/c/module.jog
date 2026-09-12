@@ -1009,7 +1009,10 @@ local fn block(
         out += loop(m, op, depth, blob, config, direct, results)
       } else {
         if kind == "branch" {
-          if logical(m, op, blob, config) == "" {
+          let logic = logical(m, op, blob, config)
+          let outputs = ir.outs(op)
+          if logic == "" ||
+             (len(outputs) == 1 && ir.name(outputs[0]) != "") {
             out += branch(m, op, depth, blob, config, direct, results)
           }
         } else {

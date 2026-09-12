@@ -576,25 +576,21 @@ fn concatenated(
 fn permute<E: Ty, S: list<int>, T: list<int>>(
   x: tensor<E, S>, axes: list<int>
 ) -> tensor<E, T> {
-  var inverse: list<int> = []
-  var identity: list<int> = []
-  for input_axis in 0..len(S) {
-    var output_axis = -1
-    for candidate in 0..len(axes) {
-      if axes[candidate] == input_axis {
-        output_axis = candidate
-      }
-    }
-    inverse += [output_axis]
-    identity += [input_axis]
-  }
   var out = tensor<E, T>(E(0))
   for i in 0..numel<T>() {
-    var coords: list<int> = []
-    for axis in 0..len(T) {
-      coords += [coord(T, identity, i, axis)]
+    var source = 0
+    var output_stride = 1
+    for reverse_output in 0..len(T) {
+      let output_axis = len(T) - reverse_output - 1
+      let input_axis = axes[output_axis]
+      var source_stride = 1
+      for trailing in input_axis + 1..len(S) {
+        source_stride *= S[trailing]
+      }
+      source += i / output_stride % T[output_axis] * source_stride
+      output_stride *= T[output_axis]
     }
-    out[i] = x[offset(S, inverse, coords)]
+    out[i] = x[source]
   }
   return out
 }
@@ -703,8 +699,14 @@ fn broadcast<E: Ty, S: list<int>, T: list<int>>(
   x: tensor<E, S>
 ) -> tensor<E, T> {
   var out = tensor<E, T>(E(0))
-  for i in 0..numel<T>() {
-    out[i] = x[broadcast_offset(S, T, i)]
+  if len(S) == 0 {
+    for i in 0..numel<T>() {
+      out[i] = x[0]
+    }
+  } else {
+    for i in 0..numel<T>() {
+      out[i] = x[broadcast_offset(S, T, i)]
+    }
   }
   return out
 }
