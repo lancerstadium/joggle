@@ -2,12 +2,8 @@ module sat.vm
 use sat
 use vm
 
-fn lower(m: Mod) -> bool {
-  return sat.materialize(m, [63], [ty("i64")])
-}
-
 fn prepare(m: Mod) -> bool {
-  var changed = lower(m)
+  var changed = sat.materialize(m, [63], [ty("i64")])
   changed = vm.prepare(m) || changed
   return changed
 }

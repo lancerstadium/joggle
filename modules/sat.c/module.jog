@@ -2,14 +2,10 @@ module sat.c
 use c
 use sat
 
-fn lower(m: Mod) -> bool {
-  return sat.materialize(
+fn prepare(m: Mod) -> bool {
+  var changed = sat.materialize(
     m, [8, 16, 32, 63], [ty("i8"), ty("i16"), ty("i32"), ty("i64")]
   )
-}
-
-fn prepare(m: Mod) -> bool {
-  var changed = lower(m)
   changed = c.prepare(m) || changed
   return changed
 }

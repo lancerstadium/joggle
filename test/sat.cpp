@@ -196,7 +196,7 @@ int main(int argc, char** argv) {
   CHECK(collision.verify(env));
   const std::string before_collision = joggle::print(collision);
   const std::uint64_t before_collision_revision = collision.revision();
-  CHECK(!joggle::run(env, "sat.c.lower", collision));
+  CHECK(!joggle::run(env, "sat.c.prepare", collision));
   CHECK(joggle::print(collision) == before_collision);
   CHECK(collision.revision() == before_collision_revision);
 
@@ -211,14 +211,14 @@ int main(int argc, char** argv) {
   CHECK(joggle::parse(env, nested_format_source, nested_format,
                       "nested-format.jog"));
   CHECK(nested_format.verify(env));
-  CHECK(joggle::run(env, "sat.c.lower", nested_format));
+  CHECK(joggle::run(env, "sat.c.prepare", nested_format));
   CHECK(nested_format.verify(env));
   const joggle::Fn keep = nested_format.find_fn("keep");
   const joggle::Ty lowered_tensor("tensor<i8, [2]>");
   CHECK(keep.params().front().type() == lowered_tensor);
   CHECK(keep.returns() == std::vector<joggle::Ty>{lowered_tensor});
   const std::string once_lowered = joggle::print(nested_format);
-  CHECK(joggle::run(env, "sat.c.lower", nested_format));
+  CHECK(joggle::run(env, "sat.c.prepare", nested_format));
   CHECK(joggle::print(nested_format) == once_lowered);
 
   CHECK(env.load("sat.vm"));
