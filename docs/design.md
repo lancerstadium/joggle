@@ -1175,8 +1175,8 @@ static tensor indices, and uses caller-provided storage for tensor results.
 Scalar type spelling and byte width come from one ordinary ABI dictionary
 owned by the module; fixed C operator spellings are likewise module data, not
 core cases. The dictionary contains only real IR scalar types. Semantic
-indices use their signed scalar ABI, while emitter-created fixed-array loops
-use C's `size_t` without inventing an IR pseudo-type. The emitter
+indices and emitter-created fixed-array loops use the same signed `index` ABI;
+there is no second counter-type policy or synthetic IR pseudo-type. The emitter
 also recognizes optional `mem.slot`
 metadata; no C-specific field or storage object was added to core IR.
 Large constants use the same separation: `c.data` returns their exact bytes,
@@ -1184,10 +1184,10 @@ while an explicitly parameterized `c.source` overload references one external
 data symbol at deterministic offsets. Default source generation remains
 self-contained. This is ordinary `bytes` and `str` emission from one module,
 not a core artifact abstraction or an implicit filesystem side effect.
-An executable ABI probe keeps that separation observable: the public header
-maps `index`, `int`, and `i32` to fixed-width signed types and contains no
-`size_t`, while source-only loops over compile-time-sized storage use
-`size_t`. A future index-width transform must therefore rewrite and prove IR
+An executable ABI probe keeps that policy observable: the public header maps
+`index`, `int`, and `i32` to fixed-width signed types, while source-only loops
+over compile-time-sized storage use the same mapped `index` type. A future
+index-width transform must therefore rewrite and prove IR
 types explicitly; changing a printer string cannot silently narrow semantics.
 The separate `bounds` module now provides the first reusable proof input for
 that decision. It returns revision-scoped integer intervals and deliberately

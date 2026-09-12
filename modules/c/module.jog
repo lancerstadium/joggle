@@ -64,10 +64,6 @@ local fn width(type: Ty) -> int {
   return base.int(abi(base.name(type), "bytes"))
 }
 
-local fn count_type() -> str {
-  return "size_t"
-}
-
 local fn index_type() -> str {
   return scalar(ty("index"))
 }
@@ -426,7 +422,7 @@ local fn tensor_new(m: Mod, op: Op, depth: int) -> str {
     out = indent + scalar(tensor.elem(type)) + " " + val(output) + "[" +
           text(n) + "];\n"
   }
-  out += indent + "for (" + count_type() +
+  out += indent + "for (" + index_type() +
          " jog_i = 0; jog_i < " + text(n) +
          "; ++jog_i) " + val(output) + "[jog_i] = " +
          expr(m, inputs[0]) + ";\n"
@@ -682,7 +678,7 @@ local fn ret(m: Mod, op: Op, depth: int) -> str {
     }
     if tensor.valid(ir.type(value)) {
       let n = count(ir.type(value))
-      out += indent + "for (" + count_type() + " " + iterator +
+      out += indent + "for (" + index_type() + " " + iterator +
              " = 0; " + iterator + " < " + text(n) + "; ++" + iterator +
              ") " + output + "[" + iterator + "] = " + val(value) + "[" +
              iterator + "];\n"
@@ -747,7 +743,7 @@ local fn loop(m: Mod, op: Op, depth: int, blob: str) -> str {
       } else {
         let index = "jog_i_" + base.ident(ir.name(body_args[i]))
         let type = scalar(ir.type(body_args[i]))
-        out += pad(depth + i) + "for (" + count_type() + " " + index +
+        out += pad(depth + i) + "for (" + index_type() + " " + index +
                " = 0; " + index +
                " < " + text(len(items)) + "; ++" + index + ") {\n"
         out += pad(depth + i + 1) + "const " + type + " " + iterator +
@@ -1016,7 +1012,7 @@ local fn emit(m: Mod, blob: str) -> str {
     payload_decl = "extern const unsigned char " + blob + "[];\n\n"
   }
   return includes(binding_headers(m)) +
-         "#include <stdbool.h>\n#include <stddef.h>\n" +
+         "#include <stdbool.h>\n" +
          "#include <stdint.h>\n" +
          "#include <string.h>\n\n" +
          payload_decl + declarations + "\n" + definitions

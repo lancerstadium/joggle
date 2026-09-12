@@ -226,10 +226,6 @@ if(NOT emitted_header MATCHES "float kernel_affine\\(float v_x\\);" OR
           "C header did not honor the function-owned ABI name:\n"
           "${emitted_header}")
 endif()
-if(emitted_header MATCHES "size_t")
-  message(FATAL_ERROR
-          "C header leaked an emitter-private array counter:\n${emitted_header}")
-endif()
 if(NOT emitted_header MATCHES
    "void jog_split\\(int64_t v_x, int64_t\\* jog_out_0, int64_t\\* jog_out_1\\);" OR
    NOT emitted_header MATCHES
@@ -249,9 +245,9 @@ if(NOT emitted_source MATCHES "#include <math.h>" OR
           "C source did not use module-declared math bindings:\n"
           "${emitted_source}")
 endif()
-if(NOT emitted_source MATCHES "for \\(size_t jog_i = 0;")
+if(NOT emitted_source MATCHES "for \\(int64_t jog_i = 0;")
   message(FATAL_ERROR
-          "C source did not use an unsigned host count for fixed storage:\n"
+          "C source did not use the configured index ABI for fixed storage:\n"
           "${emitted_source}")
 endif()
 string(FIND "${emitted_source}"
