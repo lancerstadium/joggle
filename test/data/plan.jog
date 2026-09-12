@@ -1,0 +1,26 @@
+module chain
+use tensor
+
+fn add3(
+  a: tensor<f32, [4]>,
+  b: tensor<f32, [4]>,
+  c: tensor<f32, [4]>,
+  d: tensor<f32, [4]>
+) -> tensor<f32, [4]> {
+  let first = a + b
+  let second = first + c
+  let third = second + d
+  return third
+}
+
+fn filled() -> tensor<f32, [4]> {
+  return tensor<f32, [4]>(f32(7))
+}
+
+fn grid(x: tensor<f32, [2, 3]>) -> tensor<f32, [2, 3]> {
+  var out = tensor<f32, [2, 3]>(f32(0))
+  for i in 0..2, j in 0..3 {
+    out[i, j] = x[i, j]
+  }
+  return out
+}

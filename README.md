@@ -230,6 +230,14 @@ the C emitter binds that tensor directly to its output pointer. It does not
 materialize a second local array or append a whole-tensor copy. Planned
 workspaces and multiple return paths retain the conservative copy boundary.
 
+`mem.plan` also proves a narrow full-overwrite case from ordinary IR structure.
+If a tensor constructor feeds one loop, the loop covers either every linear
+element or the complete rectangular shape, and its carried tensor is written
+unconditionally at the corresponding indices before it is yielded, the plan
+marks the constructor fill as dead. Targets may honor that fact; the C module
+omits the redundant fill loop. A constructor with any unproven coverage keeps
+its original fill, so users do not need an unsafe allocation primitive.
+
 `c.prepare`, `mem.plan`, and the artifact functions are independent.
 Emission never performs hidden conversion, scheduling, or storage planning.
 The deterministic `vm` module provides a second execution path and reports

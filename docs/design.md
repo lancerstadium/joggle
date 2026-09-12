@@ -216,6 +216,10 @@ reusable tensor storage on the same values. Function returns are ownership
 boundaries: the planner leaves returned tensor bindings in caller-provided
 storage rather than charging them to the callee's local workspace. Neither
 module belongs to the core; other modules may replace either policy.
+The same storage pass can attach a target-readable dead-fill fact after proving
+complete loop coverage from the ordinary `Blk/Op/Val` structure. The proof is
+deliberately independent of semantic function names and remains conservative
+when control flow or addressing obscures coverage.
 
 `opt.specialize` is the smaller mechanism for mixed-stage structure. A module
 may mark a loop with an ordinary attribute, then explicitly ask the transform

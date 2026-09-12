@@ -3,8 +3,119 @@ use base
 use ir
 use tensor
 
+local fn elements(type: Ty) -> int {
+  var out = 1
+  for extent in tensor.shape(type) {
+    out *= extent
+  }
+  return out
+}
+
+local fn full_range(source: Val, count: int) -> bool {
+  let range = ir.def(source)
+  if !ir.live(range) || ir.kind(range) != "call" ||
+     ir.callee(range) != "operator .." {
+    return false
+  }
+  let bounds = ir.args(range)
+  return len(bounds) == 2 && ir.is_const(bounds[0]) &&
+         ir.is_const(bounds[1]) && ir.constant(bounds[0]) == 0 &&
+         ir.constant(bounds[1]) == count
+}
+
+local fn full_overwrite(m: Mod, init: Op) -> bool {
+  if ir.kind(init) != "call" {
+    return false
+  }
+  let outputs = ir.outs(init)
+  if len(outputs) != 1 || !tensor.valid(ir.type(outputs[0])) ||
+     !tensor.static(ir.type(outputs[0])) {
+    return false
+  }
+  let target = ir.resolve(m, init)
+  if !ir.live(target) || ir.symbol(target) != "tensor.tensor" {
+    return false
+  }
+
+  let users = ir.users(outputs[0])
+  if len(users) != 1 || ir.kind(users[0]) != "loop" {
+    return false
+  }
+  let loop = users[0]
+  let inputs = ir.args(loop)
+  let results = ir.outs(loop)
+  let bodies = ir.blks(loop)
+  let shape = tensor.shape(ir.type(outputs[0]))
+  let iterators = len(inputs) - 1
+  if iterators <= 0 || inputs[iterators] != outputs[0] || len(results) != 1 ||
+     len(bodies) != 1 {
+    return false
+  }
+
+  var covers = false
+  if iterators == 1 && full_range(inputs[0], elements(ir.type(outputs[0]))) {
+    covers = true
+  }
+  if iterators == len(shape) {
+    var rectangular = true
+    for i in 0..iterators {
+      if !full_range(inputs[i], shape[i]) {
+        rectangular = false
+      }
+    }
+    covers = covers || rectangular
+  }
+  if !covers {
+    return false
+  }
+
+  let args = ir.args(bodies[0])
+  if len(args) != len(inputs) {
+    return false
+  }
+  let carried = args[iterators]
+  let carried_users = ir.users(carried)
+  if len(carried_users) != 1 || ir.kind(carried_users[0]) != "call" ||
+     ir.callee(carried_users[0]) != "operator []=" {
+    return false
+  }
+  let store = carried_users[0]
+  let store_args = ir.args(store)
+  let store_outs = ir.outs(store)
+  if len(store_args) != iterators + 2 || store_args[0] != carried ||
+     len(store_outs) != 1 {
+    return false
+  }
+  for i in 0..iterators {
+    if store_args[i + 1] != args[i] {
+      return false
+    }
+  }
+  let stored_users = ir.users(store_outs[0])
+  return len(stored_users) == 1 && ir.kind(stored_users[0]) == "yield" &&
+         len(ir.args(stored_users[0])) == 1 &&
+         ir.args(stored_users[0])[0] == store_outs[0]
+}
+
+local fn fills(m: Mod, fn: Fn) -> bool {
+  var changed = false
+  for op in ir.ops(fn) {
+    if ir.kind(op) == "call" {
+      if full_overwrite(m, op) {
+        changed = ir.set(m, op, "mem.fill", false) || changed
+      } else {
+        if ir.has(op, "mem.fill") {
+          changed = ir.unset(m, op, "mem.fill") || changed
+        }
+      }
+    }
+  }
+  return changed
+}
+
 fn plan(m: Mod, fn: Fn) -> bool {
   let before = ir.revision(m)
+  fills(m, fn)
   let ops = ir.ops(fn)
   let params = ir.params(fn)
   var parameters: dict = {}
@@ -40,11 +151,7 @@ fn plan(m: Mod, fn: Fn) -> bool {
         bindings[name] = len(names)
         names += [name]
         types += [tensor.elem(type)]
-        var count = 1
-        for extent in tensor.shape(type) {
-          count *= extent
-        }
-        counts += [count]
+        counts += [elements(type)]
         firsts += [at]
       }
     }

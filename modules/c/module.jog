@@ -630,10 +630,12 @@ local fn tensor_new(
             " = " + target + ";\n"
     }
   }
-  out += indent + "for (" + index_type(config) +
-         " i = 0; i < " + text(n) +
-         "; ++i) " + val(output) + "[i] = " +
-         expr(m, inputs[0], blob, config) + ";\n"
+  if !ir.has(op, "mem.fill") || ir.meta(op, "mem.fill") != false {
+    out += indent + "for (" + index_type(config) +
+           " i = 0; i < " + text(n) +
+           "; ++i) " + val(output) + "[i] = " +
+           expr(m, inputs[0], blob, config) + ";\n"
+  }
   return out
 }
 

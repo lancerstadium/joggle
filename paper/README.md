@@ -111,9 +111,13 @@ frozen.
   statically planned workspace elements by 63.9--86.6% and removes one full
   result copy per private function. A paired unisolated pilot shows mixed
   median latency changes from -0.2% to +5.8%, so this is currently a memory
-  result, not a runtime-speed claim. Safe no-alias information is the next
-  backend question exposed by the experiment.
-- On the same unisolated Apple M4 pilots, current strict C medians are 198.469,
+  result, not a runtime-speed claim.
+- A generic full-overwrite proof subsequently removes 34.4--55.0% of tensor
+  fill loops across four models without operation-name cases. It preserves all
+  recorded error bounds and reduces external-data C by 0.9--3.0%. Unisolated
+  timing did not show a stable speed effect, so this is dead-work elimination,
+  not a latency claim.
+- On the same unisolated Apple M4 pilots, recorded strict C medians are 198.469,
   32.022, 188.152, and 1,193.713 ms for those four models. The recorded
   one-thread ONNX Runtime medians are 5.881, 4.342, 2.908, and 24.862 ms. The
   remaining roughly 7--65x gap is a blocking generated-code-quality result;
@@ -121,6 +125,10 @@ frozen.
   important than further source compaction.
 - QDQ SqueezeNet 1.0 decodes, refines, converts, exposes, emits external-weight
   C, and compiles, but is still not counted as numerically executed.
+- TinyYOLOv2 is the fifth numerically executed ONNX model: 21,125 outputs agree
+  with a seed-0 ONNX Runtime reference within `1.669e-5`. Its unisolated strict
+  C median is 2.285 s versus 22.587 ms for one-thread ONNX Runtime, exposing a
+  roughly 101x backend gap on a larger detection input.
 - A deterministic VM execution of the exposed MobileNetV2 program reported
   95,592,386,975 steps.
 - A structural fusion experiment reduced loops from 374 to 328 and tensor

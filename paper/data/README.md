@@ -40,9 +40,17 @@ The latency rows come from three alternating processes per variant, each with
 three warm-ups and ten recorded calls, under the same unisolated Apple M4 and
 strict C11 `-O3 -DNDEBUG` setup. Median changes are +2.3%, +5.8%, -0.2%, and
 +0.9%, respectively. This is a substantial deterministic-workspace reduction,
-not a latency optimization. Direct caller storage can hide alias information
-from the C compiler; a safe private-call no-alias contract and an explicit
-memory/latency policy comparison are follow-up experiments.
+not a latency optimization.
+
+`dead-fill-pilot.csv` records the next storage/code-quality step. `mem.plan`
+proves from Def-Use and loop structure that a constructor is followed by an
+unconditional full linear or rectangular overwrite. The C target then omits
+that constructor's fill loop. No operator name participates in the proof.
+Across MobileNetV2, UltraFace, SqueezeNet, ResNet18, and TinyYOLOv2 it removes
+25/70, 105/191, 21/61, 11/30, and 22/37 fills, respectively; source size falls
+by 0.9--3.0%. Reference error bounds are unchanged. The table intentionally
+contains no latency column because the first unisolated runs did not establish
+a stable speed effect.
 
 `mobilenetv2-fusion-pilot.csv` was recorded on 12 September 2026 on an Apple
 M4 running Darwin 24.6.0 with Apple Clang 17.0.0 (`clang-1700.6.3.2`). All
@@ -83,6 +91,16 @@ The ONNX Runtime rows can be reproduced with
 `python3 paper/bench_onnxruntime.py MODEL INPUT EXPECTED --repetitions 10` in
 an environment containing the recorded ONNX Runtime and NumPy versions. The C
 rows use `examples/onnx/benchmark.c` and the flags stated above.
+
+`tinyyolo-backend-pilot.csv` adds a fifth numerically executed ONNX Zoo model.
+`paper/reference.py` generated one seed-0 f32 input and the ONNX Runtime 1.26.0
+reference for explicit shape `1,3,416,416`; the model's symbolic batch was
+instantiated as one before target preparation. Strict generated C agrees over
+21,125 outputs with maximum absolute error `1.6689301e-5`. Its ten-call median
+is 2.285 s versus 22.587 ms for one-thread sequential ONNX Runtime, roughly a
+101x gap. This unisolated pilot is a blocking code-generation result, not a
+competitive performance claim. Both reference and benchmark scripts accept an
+explicit `--shape` for dynamic input signatures.
 
 `model-coverage-pilot.csv` records stage-level status for checksum-pinned ONNX
 Zoo models. A row with `compile_c=pass` is not counted as numerical

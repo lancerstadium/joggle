@@ -104,6 +104,16 @@ if(NOT emitted MATCHES "float\\* third = third_out;" OR
           "planned C did not write its final computation into the result:\n"
           "${emitted}")
 endif()
+string(REGEX MATCHALL "= \\(\\(float\\)\\(0\\)\\);" zero_fills "${emitted}")
+list(LENGTH zero_fills zero_fill_count)
+if(NOT zero_fill_count EQUAL 0)
+  message(FATAL_ERROR
+          "planned C retained dead tensor fills:\n${emitted}")
+endif()
+if(NOT emitted MATCHES "= \\(\\(float\\)\\(7\\)\\);")
+  message(FATAL_ERROR
+          "planned C removed a live tensor fill:\n${emitted}")
+endif()
 
 execute_process(
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror

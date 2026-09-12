@@ -5,4 +5,5 @@ ResNet18-v1-7,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000050067902,official O
 SqueezeNet1.1-7,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000052452087,"official ONNX Zoo model; deterministic seed-0 input and ONNX Runtime 1.26.0 reference"
 SqueezeNet1.0-13-QDQ,ONNX,pass,pass,pass,pass,pass,pass,not_run,,quantize and dequantize bodies exposed; external-weight C compiles
 UltraFace-RFB-320,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000003576279,"official ONNX Zoo model; scores error 2.9802322e-7 and boxes error 3.5762787e-7"
+TinyYOLOv2-8,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000166893005,"official ONNX Zoo model; symbolic batch instantiated as one; deterministic seed-0 input and ONNX Runtime 1.26.0 reference"
 MobileNetV2,TFLite,pass,n/a,pass,pass,not_run,not_run,not_run,,107 constants and 66 calls; all selected calls expose and round trip

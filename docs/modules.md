@@ -242,8 +242,12 @@ into this mechanism.
 `mem.plan` assigns reusable static slots to local tensor values after lifetimes
 and shapes are known. Parameters, constants, and returned bindings remain
 outside the local workspace, allowing an artifact target to use caller-owned
-result storage directly. `tile` provides conservative structural loop
-operations.
+result storage directly. The same pass marks a constructor fill as removable
+only when Def-Use structure proves that one loop unconditionally writes the
+complete linear or rectangular tensor domain before yielding it. This proof
+uses no neural-network operation names; partial, conditional, indirect, and
+otherwise unproven writes retain the fill. `tile` provides conservative
+structural loop operations.
 These modules are intentionally separate: storage and scheduling policy can be
 replaced independently and neither changes the core IR.
 
