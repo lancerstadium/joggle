@@ -157,6 +157,14 @@ models, stored maximum absolute differences range from approximately
 `1.34e-7` to `2.10e-5`. These checks establish numerical paths, not task-level
 accuracy.
 
+The structural compatibility table is now generated directly from eleven
+pinned Zoo tests rather than transcribed from test output. Nine models complete
+semantic conversion and canonical round trip. TinyYOLOv3 retains 219 unknown
+results after inference; SSD-MobileNetV1 infers all result types but retains
+710 source calls after conversion. Models absent from the configured cache are
+omitted, not counted as passes. Structural completion is kept separate from
+the eight-model numerical execution claim above.
+
 Generated C is presently the main negative result. Depending on the model, the
 recorded unisolated pilots are about 7--101 times slower than one-thread ONNX
 Runtime. An out-of-tree spatial convolution body improves five matched C

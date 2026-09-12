@@ -523,6 +523,14 @@ revision, path, SHA-256, structural gate, and optional application archive.
 Adding a model therefore does not require synchronizing a second name/hash
 table in the top-level build. All registered matrix cases carry the
 `onnx-zoo` label; the separately opted-in BiDAF case also carries `heavy`.
+The consistent structural cases additionally carry `onnx-zoo-record`. They
+emit one machine-readable stage record that can be collected without parsing
+human diagnostics:
+
+```sh
+python3 paper/collect_models.py --build build \
+  --output paper/data/model-frontier-pilot.csv
+```
 
 The separate backend download is small. It pins ONNX v1.19.0
 `test_matmul_2d`, including both inputs and the official output. Its execution

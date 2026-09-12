@@ -656,7 +656,7 @@ if(JOGGLE_BUILD_TESTS)
           COMMAND joggle-onnx-zoo-test "${model}"
                   "${CMAKE_CURRENT_BINARY_DIR}/modules" ${MODEL_ARGS}
         )
-        set(labels "onnx-zoo")
+        set(labels "onnx-zoo;onnx-zoo-record")
         if(MODEL_HEAVY)
           list(APPEND labels heavy)
           set_tests_properties("${MODEL_TEST}" PROPERTIES TIMEOUT 900)
@@ -668,12 +668,14 @@ if(JOGGLE_BUILD_TESTS)
     include("${CMAKE_CURRENT_SOURCE_DIR}/test/models.cmake")
     if(mobilenetv2-7 IN_LIST onnx_zoo_available)
       add_test(
-        NAME onnx-zoo-mobilenet
+        NAME onnx-zoo-mobilenet-contract
         COMMAND joggle-onnx-test
                 ${JOGGLE_TEST_ONNX_ZOO}/mobilenetv2-7.onnx
                 ${CMAKE_CURRENT_BINARY_DIR}/modules
       )
-      set_tests_properties(onnx-zoo-mobilenet PROPERTIES LABELS "onnx-zoo")
+      set_tests_properties(
+        onnx-zoo-mobilenet-contract PROPERTIES LABELS "onnx-zoo"
+      )
     endif()
   endif()
   if(JOGGLE_BUILD_ONNX)

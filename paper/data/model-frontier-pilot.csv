@@ -1,0 +1,12 @@
+schema,model,decode,infer,convert,tensors,nodes,nested_graphs,unknown_before,unknown_after,source_calls_after
+1,mnist-8,pass,pass,pass,8,12,0,0,0,0
+1,mobilenetv2-7,pass,pass,pass,267,155,0,154,0,0
+1,squeezenet1.1-7,pass,pass,pass,53,66,0,65,0,0
+1,squeezenet1.0-13-qdq,pass,pass,pass,229,171,0,167,0,0
+1,resnet18-v1-7,pass,pass,pass,102,69,0,68,0,0
+1,tinyyolov2-8,pass,pass,pass,44,33,0,32,0,0
+1,tiny-yolov3-11,pass,partial,not_run,269,291,4,280,219,na
+1,ultraface-rfb-320,pass,pass,pass,244,242,0,240,0,0
+1,ssd-mobilenetv1-12,pass,pass,partial,1567,5985,8,6790,0,710
+1,shufflenet-v2-12,pass,pass,pass,282,261,0,273,0,0
+1,densenet-12,pass,pass,pass,848,910,0,910,0,0

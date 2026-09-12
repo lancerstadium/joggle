@@ -17,6 +17,8 @@ joggle_onnx_model(
   NAME mobilenetv2-7
   SOURCE validated/vision/classification/mobilenet/model/mobilenetv2-7.onnx
   SHA256 c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f
+  TEST onnx-zoo-mobilenet
+  ARGS onnx.Conv
   APP_SOURCE validated/vision/classification/mobilenet/model/mobilenetv2-7.tar.gz
   APP_TOP mobilenetv2-7
   APP_SHA256 b463ad62dae99f13afd88549ca7d43e9bda6876614f3592ebb41177e1db0fcc5

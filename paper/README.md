@@ -7,6 +7,8 @@ pilot records:
 - [related-work.md](related-work.md) records source-grounded comparisons;
 - [extension-study.md](extension-study.md) freezes the RQ2 tasks and collection
   protocol;
+- [model-study.md](model-study.md) defines staged conventional-model
+  compatibility and its generated frontier table;
 - [data/](data/) contains pilot measurements and their provenance.
 
 Implemented features are not automatically treated as research contributions.
@@ -86,7 +88,7 @@ blocker.
 | --- | --- | --- |
 | One IR spans graph and loop detail | Printer, verifier, semantic bodies, explicit loops, C and VM preparation tests | Model-level stage traces and comparison with multi-IR workflows |
 | Extensions are normal module functions | Source modules, `local fn`, installation tests, `ir.invoke`, body expansion, transactional external selection, four frozen extension tasks, and a generated footprint pilot | Controlled comparison using matched baseline tasks and implementation-time evidence |
-| Frontends are separate from semantics | ONNX/TFLite codecs, explicit bridge modules, one pinned Zoo declaration list, and staged records for 11 official models | Frozen controlled subset, task-level accuracy, and broader non-vision evidence |
+| Frontends are separate from semantics | ONNX/TFLite codecs, explicit bridge modules, one pinned Zoo declaration list, and a generated staged table for 11 official models | Frozen controlled subset, task-level accuracy, and broader non-vision evidence |
 | Targets expose only required detail | `c.accepts`, `vm.accepts`, `opt.expose`, preparation tests | A genuinely different external target or simulator study |
 | Transform failure is safe | Transaction and rollback tests, ownership/liveness checks | Fault-injection matrix and diagnostic assessment |
 | Storage and scheduling are replaceable | `mem` and `tile` modules, policy callbacks | Multi-axis legality, meaningful workload policies, performance results |

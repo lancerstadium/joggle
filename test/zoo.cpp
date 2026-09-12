@@ -148,6 +148,40 @@ void print_ready_open(const joggle::Mod& mod) {
   }
 }
 
+std::string model_name(std::string path) {
+  const std::size_t slash = path.find_last_of("/\\");
+  if (slash != std::string::npos)
+    path.erase(0, slash + 1);
+  constexpr std::string_view suffix = ".onnx";
+  if (path.ends_with(suffix))
+    path.erase(path.size() - suffix.size());
+  return path;
+}
+
+void print_record(std::string_view path, std::string_view infer,
+                  std::string_view convert, const Stats& source,
+                  const Stats* inferred, const Stats* converted,
+                  const GraphRefs& graphs) {
+  const std::string name = model_name(std::string(path));
+  std::printf(
+      "joggle-zoo schema=1 model=%s decode=pass infer=%.*s convert=%.*s "
+      "tensors=%zu nodes=%zu nested_graphs=%zu unknown_before=%zu "
+      "unknown_after=",
+      name.c_str(), static_cast<int>(infer.size()), infer.data(),
+      static_cast<int>(convert.size()), convert.data(), source.tensors,
+      source.nodes, graphs.count, source.unknown);
+  if (inferred)
+    std::printf("%zu", inferred->unknown);
+  else
+    std::fputs("na", stdout);
+  std::fputs(" source_calls_after=", stdout);
+  if (converted)
+    std::printf("%zu", converted->nodes);
+  else
+    std::fputs("na", stdout);
+  std::fputc('\n', stdout);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -217,6 +251,8 @@ int main(int argc, char** argv) {
   if (roundtrip_only) {
     std::printf("%s: %zu tensors, %zu nodes, %zu nested graphs\n", argv[1],
                 source.tensors, source.nodes, graphs.count);
+    print_record(argv[1], "not_run", "not_run", source, nullptr, nullptr,
+                 graphs);
     return 0;
   }
 
@@ -239,7 +275,11 @@ int main(int argc, char** argv) {
   CHECK(inferred.nodes == source.nodes);
   if (frontier) {
     CHECK(inferred.unknown == expected_frontier);
-    return 0;
+    if (expected_frontier != 0) {
+      print_record(argv[1], "partial", "not_run", source, &inferred,
+                   nullptr, graphs);
+      return 0;
+    }
   }
   CHECK(inferred.unknown == 0);
 
@@ -253,7 +293,11 @@ int main(int argc, char** argv) {
   }
   if (convert_frontier) {
     CHECK(converted.nodes == expected_frontier);
-    return 0;
+    if (expected_frontier != 0) {
+      print_record(argv[1], "pass", "partial", source, &inferred,
+                   &converted, graphs);
+      return 0;
+    }
   }
   CHECK(converted.nodes == 0);
   const std::string converted_text = joggle::print(model);
@@ -266,6 +310,9 @@ int main(int argc, char** argv) {
   if (!converted_roundtrip.verify(env))
     return converted_roundtrip.print_diags(stderr);
   CHECK(joggle::structurally_equal(model, converted_roundtrip));
+
+  print_record(argv[1], "pass", "pass", source, &inferred, &converted,
+               graphs);
 
   return 0;
 }
