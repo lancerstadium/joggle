@@ -22,6 +22,51 @@ fn named(m: Mod, name: str, factor: int) -> bool {
   return false
 }
 
+fn check_splittable(m: Mod, factor: int, expected: int) -> bool {
+  let before = ir.revision(m)
+  let candidates = tile.splittable(m, factor)
+  assert(ir.revision(m) == before,
+         "tile.splittable must be read-only")
+  assert(len(candidates) == expected,
+         "unexpected split candidate count")
+  for loop in candidates {
+    assert(tile.can_split(m, loop, factor) &&
+           tile.split_issue(loop, factor) == "",
+           "tile.splittable returned an illegal loop")
+  }
+  return true
+}
+
+fn check_split_issue(m: Mod) -> bool {
+  let before = ir.revision(m)
+  let candidates = tile.splittable(m, 2)
+  assert(len(candidates) > 0,
+         "split issue check requires a candidate")
+  assert(tile.split_issue(candidates[0], 2) == "",
+         "legal split reported an issue")
+  assert(tile.split_issue(candidates[0], 0) ==
+         "requires a positive factor",
+         "illegal split reported the wrong issue")
+  assert(ir.revision(m) == before,
+         "tile.split_issue must be read-only")
+  return true
+}
+
+fn check_split_noop(m: Mod) -> bool {
+  for op in ir.ops(m) {
+    if ir.kind(op) == "loop" {
+      let before = ir.revision(m)
+      assert(!tile.split(m, op, 1),
+             "factor-one split reported a change")
+      assert(ir.revision(m) == before,
+             "factor-one split changed the module")
+      return true
+    }
+  }
+  assert(false, "split no-op check requires a loop")
+  return false
+}
+
 fn unroll_first(m: Mod, factor: int) -> bool {
   for op in ir.ops(m) {
     if ir.kind(op) == "loop" {

@@ -262,18 +262,19 @@ complete linear or rectangular tensor domain before yielding it. This proof
 uses no neural-network operation names; partial, conditional, indirect, and
 otherwise unproven writes retain the fill. `tile` provides conservative
 structural loop operations.
-`tile.unrollable(m, factor)` exposes the legal loop set for one factor;
-`tile.fusible(m)` exposes the exact pair collection consumed by automatic
+`tile.splittable(m, factor)` and `tile.unrollable(m, factor)` expose legal loop
+sets; `tile.fusible(m)` exposes the exact pair collection consumed by automatic
 fusion. Enumeration is read-only and returns live `Op` handles, or
 two-operation lists for fusion, so a user policy can inspect ordinary IR
 without reconstructing legality. Fusion recomputes this collection after each
 structural round and skips candidates invalidated by an earlier edit in the
-same round.
-`tile.unroll_issue(loop, factor)` and `tile.fuse_issue(producer, consumer)`
-return the same human-readable reason used by the corresponding transform; an
+same round. The matching `split_issue`, `unroll_issue`, and `fuse_issue`
+functions return the same human-readable reason used by each transform; an
 empty string means the requested edit is legal. Policies can therefore count
 or report rejected alternatives without attempting a mutation and scraping a
 failed transaction.
+Factor one is a legal no-op for split and unroll and is therefore omitted from
+their candidate collections.
 These modules are intentionally separate: storage and scheduling policy can be
 replaced independently and neither changes the core IR.
 

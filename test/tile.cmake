@@ -10,6 +10,57 @@ if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
 endif()
 
 execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_splittable "${MODEL}"
+          --arg 2 --arg 3 -M "${MODULES}"
+  RESULT_VARIABLE candidate_result
+  OUTPUT_VARIABLE candidate_output
+  ERROR_VARIABLE candidate_error
+)
+if(NOT candidate_result EQUAL 0)
+  message(FATAL_ERROR
+          "split candidate enumeration failed:\n"
+          "${candidate_output}${candidate_error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_split_issue "${MODEL}"
+          -M "${MODULES}"
+  RESULT_VARIABLE issue_result
+  OUTPUT_VARIABLE issue_output
+  ERROR_VARIABLE issue_error
+)
+if(NOT issue_result EQUAL 0)
+  message(FATAL_ERROR
+          "split issue query failed:\n${issue_output}${issue_error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_split_noop "${MODEL}"
+          -M "${MODULES}"
+  RESULT_VARIABLE split_result
+  OUTPUT_VARIABLE split_output
+  ERROR_VARIABLE split_error
+)
+if(NOT split_result EQUAL 0)
+  message(FATAL_ERROR
+          "factor-one split changed the model:\n"
+          "${split_output}${split_error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.first "${MODEL}"
+          --arg 0 -M "${MODULES}"
+  RESULT_VARIABLE split_result
+  OUTPUT_VARIABLE split_output
+  ERROR_VARIABLE split_error
+)
+if(split_result EQUAL 0 OR
+   NOT split_error MATCHES "requires a positive factor")
+  message(FATAL_ERROR
+          "invalid split was not rejected:\n${split_output}${split_error}")
+endif()
+
+execute_process(
   COMMAND "${TOOL}" run tile_pass.check_unrollable "${MODEL}"
           --arg 2 --arg 1 -M "${MODULES}"
   RESULT_VARIABLE candidate_result

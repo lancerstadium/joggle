@@ -116,34 +116,85 @@ local fn keep(m: Mod, value: Val, stem: str) -> Val {
   return value
 }
 
+fn split_issue(source: Op, factor: int) -> str {
+  if factor <= 0 {
+    return "requires a positive factor"
+  }
+  if !ir.live(source) || ir.kind(source) != "loop" {
+    return "requires a live loop"
+  }
+  let bodies = ir.blks(source)
+  let inputs = ir.args(source)
+  let outputs = ir.outs(source)
+  if len(bodies) != 1 || len(inputs) <= len(outputs) {
+    return "requires a structured range loop"
+  }
+  let body = bodies[0]
+  let body_args = ir.args(body)
+  let axes = len(inputs) - len(outputs)
+  if axes <= 0 || len(body_args) != axes + len(outputs) {
+    return "found an invalid loop signature"
+  }
+  let axis = axes - 1
+  let range_op = ir.def(inputs[axis])
+  if !ir.live(range_op) || ir.callee(range_op) != "operator .." {
+    return "requires the last iterator to use a range"
+  }
+  let bounds = ir.args(range_op)
+  if len(bounds) != 2 || ir.type(bounds[0]) != ir.type(bounds[1]) {
+    return "requires matching range bounds"
+  }
+  if ir.type(body_args[axis]) != ty("index") {
+    return "requires an index iterator"
+  }
+  let ops = ir.ops(body)
+  if len(ops) == 0 || ir.kind(ops[len(ops) - 1]) != "yield" {
+    return "requires a terminated loop body"
+  }
+  return ""
+}
+
+fn can_split(m: Mod, source: Op, factor: int) -> bool {
+  let before = ir.revision(m)
+  let legal = factor > 1 && split_issue(source, factor) == ""
+  assert(ir.revision(m) == before,
+         "tile.can_split changed the module")
+  return legal
+}
+
+fn splittable(m: Mod, factor: int) -> list<Op> {
+  let before = ir.revision(m)
+  var out: list<Op> = []
+  for op in ir.ops(m) {
+    if can_split(m, op, factor) {
+      out += [op]
+    }
+  }
+  assert(ir.revision(m) == before,
+         "tile.splittable changed the module")
+  return out
+}
+
 fn split(m: Mod, source: Op, factor: int) -> bool {
-  assert(factor > 0, "tile.split requires a positive factor")
-  assert(ir.live(source) && ir.kind(source) == "loop",
-         "tile.split requires a live loop")
+  let issue = split_issue(source, factor)
+  assert(issue == "", "tile.split " + issue)
+  if factor == 1 {
+    return false
+  }
 
   let bodies = ir.blks(source)
   let inputs = ir.args(source)
   let outputs = ir.outs(source)
-  assert(len(bodies) == 1 && len(inputs) > len(outputs),
-         "tile.split requires a structured range loop")
   let body = bodies[0]
   let body_args = ir.args(body)
   let axes = len(inputs) - len(outputs)
-  assert(axes > 0 && len(body_args) == axes + len(outputs),
-         "tile.split found an invalid loop signature")
 
   let axis = axes - 1
   let range = inputs[axis]
   let range_op = ir.def(range)
-  assert(ir.live(range_op) && ir.callee(range_op) == "operator ..",
-         "tile.split requires the last iterator to use a range")
   let bounds = ir.args(range_op)
-  assert(len(bounds) == 2 && ir.type(bounds[0]) == ir.type(bounds[1]),
-         "tile.split requires matching range bounds")
 
   let type = ty("index")
-  assert(ir.type(body_args[axis]) == type,
-         "tile.split requires an index iterator")
   var lower = bounds[0]
   var upper = bounds[1]
   if ir.type(lower) != type {
@@ -266,9 +317,6 @@ fn split(m: Mod, source: Op, factor: int) -> bool {
   }
 
   let original_ops = ir.ops(body)
-  assert(len(original_ops) > 0 &&
-         ir.kind(original_ops[len(original_ops) - 1]) == "yield",
-         "tile.split requires a terminated loop body")
   for i in 0..len(original_ops) - 1 {
     let copy = ir.clone(m, original_ops[i], then_yield, old, next)
     assert(ir.live(copy), "tile.split could not clone the loop body")

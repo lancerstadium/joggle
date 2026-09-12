@@ -41,10 +41,10 @@ The loop API must move from isolated demonstrations to dependable research use:
 - make dependence checks precise for nested and multi-axis loops;
 - define legality for interchange, fusion, splitting, and unrolling;
 - preserve reductions and loop-carried values under composition;
-- extend the current read-only unroll/fusion candidate enumeration and ordinary
-  function policies to interchange and other loop transforms;
-- extend the current unroll/fusion rejection reasons to split, interchange,
-  and future loop transforms;
+- extend the current read-only split/unroll/fusion candidate enumeration and
+  ordinary function policies to interchange and other loop transforms;
+- extend the current split/unroll/fusion rejection reasons to interchange and
+  future loop transforms;
 - separate legality, profitability, and mechanism.
 
 The goal is not an automatic scheduler. It is a small, inspectable substrate on
