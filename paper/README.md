@@ -86,7 +86,7 @@ blocker.
 | --- | --- | --- |
 | One IR spans graph and loop detail | Printer, verifier, semantic bodies, explicit loops, C and VM preparation tests | Model-level stage traces and comparison with multi-IR workflows |
 | Extensions are normal module functions | Source modules, `local fn`, installation tests, `ir.invoke`, body expansion, transactional external selection, four frozen extension tasks, and a generated footprint pilot | Controlled comparison using matched baseline tasks and implementation-time evidence |
-| Frontends are separate from semantics | ONNX/TFLite codecs and explicit bridge modules | Broader official-model coverage and unsupported-frontier accounting |
+| Frontends are separate from semantics | ONNX/TFLite codecs, explicit bridge modules, one pinned Zoo declaration list, and staged records for 11 official models | Frozen controlled subset, task-level accuracy, and broader non-vision evidence |
 | Targets expose only required detail | `c.accepts`, `vm.accepts`, `opt.expose`, preparation tests | A genuinely different external target or simulator study |
 | Transform failure is safe | Transaction and rollback tests, ownership/liveness checks | Fault-injection matrix and diagnostic assessment |
 | Storage and scheduling are replaceable | `mem` and `tile` modules, policy callbacks | Multi-axis legality, meaningful workload policies, performance results |
@@ -302,7 +302,8 @@ they enter the manuscript.
 - Complete the extension study instead of inferring ease of use from examples.
 - Complete the claim-oriented related-work matrix with verified primary
   citations.
-- Run a representative model suite through execution and accuracy checks.
+- Freeze a controlled subset of the pinned model declarations and run
+  task-level accuracy, artifact, and isolated performance measurements.
 - Improve or honestly bound loop legality and generated-code quality.
 - Store raw timing, memory, accuracy, build, and artifact-size data.
 - Generate every table and figure from those raw records.

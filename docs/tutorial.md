@@ -492,7 +492,7 @@ cmake -S . -B build -DJOGGLE_BUILD_ONNX=ON \
   -DJOGGLE_TEST_ONNX_ZOO=.cache/onnx-zoo \
   -DJOGGLE_TEST_ONNX_BACKEND=.cache/onnx-backend
 cmake --build build
-ctest --test-dir build --output-on-failure
+ctest --test-dir build -L onnx-zoo --output-on-failure
 mkdir -p build/examples
 ./build/joggle read onnx.read .cache/onnx-zoo/mobilenetv2-7.onnx \
   -M build/modules > build/examples/mobilenet.jog
@@ -516,6 +516,13 @@ ctest --test-dir build -R 'onnx-zoo-(shufflenet|densenet)' \
 Downloading the default set still registers the complete matrix. A partial
 cache is therefore an explicit local workflow, not evidence that the omitted
 models passed.
+
+[`test/models.cmake`](../test/models.cmake) is the single model declaration
+list used by both download and CTest registration. It pins the upstream
+revision, path, SHA-256, structural gate, and optional application archive.
+Adding a model therefore does not require synchronizing a second name/hash
+table in the top-level build. All registered matrix cases carry the
+`onnx-zoo` label; the separately opted-in BiDAF case also carries `heavy`.
 
 The separate backend download is small. It pins ONNX v1.19.0
 `test_matmul_2d`, including both inputs and the official output. Its execution

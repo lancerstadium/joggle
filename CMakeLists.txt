@@ -619,77 +619,53 @@ if(JOGGLE_BUILD_TESTS)
     )
   endif()
   if(JOGGLE_BUILD_ONNX AND NOT JOGGLE_TEST_ONNX_ZOO STREQUAL "")
-    set(onnx_zoo_names
-      mnist-8
-      mobilenetv2-7
-      squeezenet1.1-7
-      squeezenet1.0-13-qdq
-      resnet18-v1-7
-      tinyyolov2-8
-      tiny-yolov3-11
-      ultraface-rfb-320
-      ssd-mobilenetv1-12
-      shufflenet-v2-12
-      densenet-12
-      googlenet-12
-      efficientnet-lite4-11-int8
-      efficientnet-lite4-11-qdq
-    )
-    set(onnx_zoo_hashes
-      2f06e72de813a8635c9bc0397ac447a601bdbfa7df4bebc278723b958831c9bf
-      c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f
-      1eeff551a67ae8d565ca33b572fc4b66e3ef357b0eb2863bb9ff47a918cc4088
-      4a567dd7542ef440890d57268fabf47211174c593d7a1837bd7f16a1067169e7
-      4e8f8653e7a2222b3904cc3fe8e304cd8b339ce1d05fd24688162f86fb6df52c
-      583fb7fdc948435ceac9fa82efc7708701efe8382a859a3dd46526b155f5f2ae
-      f715cc2d99740d22d312777e20d9de2b2ecdc250155be8fd3752ce7e8b823521
-      34cd7e60aeff28744c657de7a3dc64e872d506741de66987f3426f2b79f88017
-      b8fba5e404077d4048d27fcd1667e85e27e192eb9bf51e696c46a3acd7d21058
-      ea69821b4dd374ae2f33f9710dd1229ac263d0ee5b5a46ca3521f6483e1ba035
-      0294e7e88e5b3360de9b0fdc321baf9e6ef18b7f058c4536caae3b9f18ed9ed5
-      c99c507058eaf41de8723408fdda7db8325cb57f0a89f2ee07a716d6e963e14e
-      2b3cbb5077262b20df565dacddecb3724c0976c35029a87e512d13aa4eff04a2
-      6837d0b19625d4aff8266d7197a7f3775afd82a8c40f9fd0283d52db4955566f
-    )
-    if(JOGGLE_TEST_ONNX_HEAVY)
-      list(APPEND onnx_zoo_names bidaf-9)
-      list(APPEND onnx_zoo_hashes
-        dfc317b56d065a3e297240a9e9b9118ff2260790b5850f4be2bc6ea1bcc65e80
-      )
-    endif()
-    set(onnx_zoo_available)
-    list(LENGTH onnx_zoo_names onnx_zoo_count)
-    math(EXPR onnx_zoo_last "${onnx_zoo_count} - 1")
-    foreach(index RANGE ${onnx_zoo_last})
-      list(GET onnx_zoo_names ${index} name)
-      list(GET onnx_zoo_hashes ${index} expected)
-      set(model "${JOGGLE_TEST_ONNX_ZOO}/${name}.onnx")
-      if(NOT EXISTS "${model}")
-        message(STATUS "Skipping absent ONNX Model Zoo case: ${name}")
-        continue()
-      endif()
-      file(SHA256 "${model}" actual)
-      if(NOT actual STREQUAL expected)
-        message(FATAL_ERROR "ONNX Model Zoo hash mismatch: ${model}")
-      endif()
-      list(APPEND onnx_zoo_available "${name}")
-    endforeach()
     add_executable(joggle-onnx-test test/onnx.cpp)
     target_link_libraries(
       joggle-onnx-test PRIVATE Joggle::joggle joggle-onnx-proto
     )
     add_dependencies(joggle-onnx-test joggle-onnx)
-    function(joggle_add_onnx_zoo_case test_name model_name)
-      if(model_name IN_LIST onnx_zoo_available)
+
+    set(onnx_zoo_available)
+    function(joggle_onnx_model)
+      cmake_parse_arguments(
+        MODEL "HEAVY"
+        "NAME;SOURCE;SHA256;TEST;APP_SOURCE;APP_TOP;APP_SHA256" "ARGS" ${ARGN}
+      )
+      foreach(field NAME SOURCE SHA256)
+        if("${MODEL_${field}}" STREQUAL "")
+          message(FATAL_ERROR "invalid ONNX model declaration: missing ${field}")
+        endif()
+      endforeach()
+      if(MODEL_HEAVY AND NOT JOGGLE_TEST_ONNX_HEAVY)
+        return()
+      endif()
+      set(model "${JOGGLE_TEST_ONNX_ZOO}/${MODEL_NAME}.onnx")
+      if(NOT EXISTS "${model}")
+        message(STATUS "Skipping absent ONNX Model Zoo case: ${MODEL_NAME}")
+        return()
+      endif()
+      file(SHA256 "${model}" actual)
+      if(NOT "${actual}" STREQUAL "${MODEL_SHA256}")
+        message(FATAL_ERROR "ONNX Model Zoo hash mismatch: ${model}")
+      endif()
+      list(APPEND onnx_zoo_available "${MODEL_NAME}")
+      set(onnx_zoo_available "${onnx_zoo_available}" PARENT_SCOPE)
+      if(NOT "${MODEL_TEST}" STREQUAL "")
         add_test(
-          NAME "${test_name}"
-          COMMAND joggle-onnx-zoo-test
-                  "${JOGGLE_TEST_ONNX_ZOO}/${model_name}.onnx"
-                  "${CMAKE_CURRENT_BINARY_DIR}/modules"
-                  ${ARGN}
+          NAME "${MODEL_TEST}"
+          COMMAND joggle-onnx-zoo-test "${model}"
+                  "${CMAKE_CURRENT_BINARY_DIR}/modules" ${MODEL_ARGS}
         )
+        set(labels "onnx-zoo")
+        if(MODEL_HEAVY)
+          list(APPEND labels heavy)
+          set_tests_properties("${MODEL_TEST}" PROPERTIES TIMEOUT 900)
+        endif()
+        set_tests_properties("${MODEL_TEST}" PROPERTIES LABELS "${labels}")
       endif()
     endfunction()
+
+    include("${CMAKE_CURRENT_SOURCE_DIR}/test/models.cmake")
     if(mobilenetv2-7 IN_LIST onnx_zoo_available)
       add_test(
         NAME onnx-zoo-mobilenet
@@ -697,64 +673,7 @@ if(JOGGLE_BUILD_TESTS)
                 ${JOGGLE_TEST_ONNX_ZOO}/mobilenetv2-7.onnx
                 ${CMAKE_CURRENT_BINARY_DIR}/modules
       )
-    endif()
-    joggle_add_onnx_zoo_case(
-      onnx-zoo-mnist mnist-8 onnx.Conv onnx.MaxPool onnx.MatMul
-    )
-    joggle_add_onnx_zoo_case(
-      onnx-zoo-squeezenet squeezenet1.1-7 onnx.Concat onnx.Dropout
-    )
-    joggle_add_onnx_zoo_case(
-      onnx-zoo-squeezenet-qdq squeezenet1.0-13-qdq
-      onnx.QuantizeLinear onnx.DequantizeLinear
-    )
-    joggle_add_onnx_zoo_case(
-      onnx-zoo-resnet resnet18-v1-7 onnx.Add onnx.Gemm
-    )
-    joggle_add_onnx_zoo_case(
-      onnx-zoo-tinyyolo tinyyolov2-8 onnx.LeakyRelu onnx.MaxPool
-    )
-    joggle_add_onnx_zoo_case(
-      onnx-zoo-tinyyolov3 tiny-yolov3-11 --frontier 219 onnx.Loop
-    )
-    joggle_add_onnx_zoo_case(
-      onnx-zoo-ultraface ultraface-rfb-320
-      onnx.Constant onnx.Slice onnx.Softmax
-    )
-    joggle_add_onnx_zoo_case(
-      onnx-zoo-ssd-mobilenet ssd-mobilenetv1-12 --convert-frontier 710
-      onnx.Loop onnx.NonMaxSuppression onnx.Resize
-    )
-    joggle_add_onnx_zoo_case(
-      onnx-zoo-shufflenet shufflenet-v2-12 onnx.Split onnx.Concat
-    )
-    joggle_add_onnx_zoo_case(
-      onnx-zoo-densenet densenet-12 --frontier-from-signature 0
-      onnx.Concat onnx.BatchNormalization
-    )
-    joggle_add_onnx_zoo_case(
-      onnx-zoo-googlenet googlenet-12 --frontier-from-signature 0
-      onnx.Concat onnx.LRN onnx.Dropout
-    )
-    joggle_add_onnx_zoo_case(
-      onnx-zoo-efficientnet-qdq efficientnet-lite4-11-qdq
-      --frontier-from-signature 0
-      onnx.QuantizeLinear onnx.DequantizeLinear
-    )
-    joggle_add_onnx_zoo_case(
-      onnx-zoo-efficientnet-int8 efficientnet-lite4-11-int8
-      --frontier-from-signature 95
-      onnx.QLinearConv onnx.QLinearMatMul
-    )
-    if(JOGGLE_TEST_ONNX_HEAVY)
-      joggle_add_onnx_zoo_case(
-        onnx-zoo-bidaf bidaf-9 --roundtrip onnx.Gather
-      )
-      if(bidaf-9 IN_LIST onnx_zoo_available)
-        set_tests_properties(
-          onnx-zoo-bidaf PROPERTIES LABELS "heavy;onnx-zoo" TIMEOUT 900
-        )
-      endif()
+      set_tests_properties(onnx-zoo-mobilenet PROPERTIES LABELS "onnx-zoo")
     endif()
   endif()
   if(JOGGLE_BUILD_ONNX)
