@@ -1,138 +1,237 @@
-# Joggle paper
+# Paper plan
 
-Target: FSE 2027 Research Papers. The submission deadline is 2 October 2026
-AoE. The manuscript is not yet ready to draft: this directory records the
-question and evidence that must hold before prose is written.
+This directory is the evidence workspace for a possible Joggle paper. It is not
+a manuscript draft and it does not treat implemented features as validated
+research contributions.
 
-The submission contract is 18 pages of text and figures plus 4 pages of
-references, heavy double-anonymous review, and a `Data Availability` statement.
-The replication package must be curated and anonymized for review. Because AI
-tools have materially participated in research design, implementation, testing,
-and analysis, the Methods section must describe those uses in detail; no result,
-dataset, or citation may enter the paper without an independently reproducible
-artifact or source.
+## Intended venue
 
-## Research question
+The current target is the
+[FSE 2027 Research Papers track](https://conf.researchr.org/track/fse-2027/fse-2027-papers).
+The official deadline is October 2, 2026, Anywhere on Earth, as listed on the
+[FSE 2027 dates page](https://conf.researchr.org/dates/fse-2027). Initial
+submissions use the ACM `acmsmall` format and allow 18 pages of text and
+figures plus 4 pages of references. The call encourages an anonymized,
+curated, reproducible artifact.
 
-Can a small compiler workbench let AI software/hardware co-design researchers
-move a conventional neural network from imported graph calls to explicit loops,
-storage, custom formats, target execution, and emitted code while retaining one
-inspectable function IR and user-defined transformation mechanism?
+The deadline is a decision point, not permission to overclaim. If the controlled
+evaluation below is incomplete, the project should continue toward a later
+venue.
 
-This is a software-engineering question about extensibility, semantic coverage,
-and research iteration cost. It is not currently a claim that the reference C
-emitter outperforms production inference compilers.
+## Working thesis
+
+Researchers exploring neural-network software/hardware co-design should be able
+to change semantic implementations, loop structure, storage, data
+representation, and artifact generation without building a new compiler stack
+or editing a central lowering registry.
+
+Joggle tests one design response: keep imported calls, reusable semantics,
+explicit loops, storage annotations, and target preparation in a single typed
+function IR, and make each extension an ordinary distributable module function.
+
+This is the claim to evaluate. “Small,” “easy,” “fast,” and “extensible” are not
+paper claims until they have operational definitions and comparative evidence.
+
+## Research questions
+
+**RQ1 — Progressive representation.** Can conventional inference models be
+imported, refined, converted, exposed, transformed, and emitted while remaining
+in one readable function IR?
+
+**RQ2 — Extension cost.** What code, coupling, dependencies, and core changes
+are required to add a data representation, semantic implementation,
+transformation policy, frontend, or artifact target?
+
+**RQ3 — Composition and safety.** Can independently defined module functions be
+composed with deterministic output, transactional failure, useful unsupported
+frontiers, and no hidden pipeline state?
+
+**RQ4 — Artifact quality.** What correctness, code-size, workspace, compile-time,
+and latency results does the approach produce on resource-constrained inference
+workloads, and can user-defined policies improve them without core edits?
 
 ## Candidate contributions
 
-1. One `Fn/Blk/Op/Val` representation covers graph calls, function
-   composition, structured control, explicit tensor computation, and target
-   calls. Frontends and targets do not introduce durable secondary IRs.
-2. Import, analysis, transformation, planning, simulation, and emission are
-   ordinary typed module functions. They share transactional editing,
-   reflection, overload resolution, and revision-scoped queries instead of a
-   pass class hierarchy or generated extension headers.
-3. Progressive exposure lets an experiment retain a high-level call, replace it
-   with a user implementation, or expose its existing body down to loops under
-   one explicit capability predicate.
+The paper may claim at most three contributions:
 
-These remain candidate claims until the related-work comparison and controlled
-extension study distinguish them from TVM, TileLang, IREE, ONNX-MLIR, MLIR, and
-small embeddable compiler frameworks.
+1. A function-oriented compiler workbench in which graph calls, semantic
+   bodies, structured loops, storage decisions, and target preparation coexist
+   in one typed IR.
+2. A module boundary that uses ordinary functions for decoding, conversion,
+   analysis, transformation, capability queries, and artifact generation,
+   including capability-driven progressive exposure.
+3. A controlled evaluation of extension cost, composition, correctness, and
+   generated artifacts on conventional neural-network models.
 
-## Evidence already reproduced
+The third contribution is currently incomplete and is the main submission
+blocker.
 
-- Official ONNX MNIST: VM, inline-data C, and external-data C agree on all 10
-  outputs; maximum absolute error is `1.90734863e-05`.
-- Official ONNX MobileNetV2: the same three paths agree on all 1,000 outputs;
-  maximum absolute error is `2.00271606e-05`.
-- Pure static structured control reduces MobileNetV2 VM work from
-  `98,167,456,513` to `95,592,386,975` deterministic interpreter steps.
-- Separating payloads reduces MobileNetV2 generated C from `56,911,938` to
-  `246,085` bytes plus a `14,156,560`-byte raw weight blob.
-- Re-importing MobileNetV2 with typed tensor constants leaves three writable
-  C workspace arrays (`10.91 MiB`) instead of 267 arrays that mixed activations
-  and weights. The external-data source contains 266 aligned read-only weight
-  views and no per-inference weight `memcpy`; all 1,000 outputs still agree,
-  with maximum absolute error `2.0980835e-05`.
-- The first operator-neutral loop transform is executable rather than a syntax
-  sketch: a removable module splits a selected dynamic range, preserves
-  carried state, guards partial tiles, round-trips, emits C, and matches exact
-  results for negative, empty, exact, short, and partial ranges. Core and the
-  emitter contain no tile case.
-- The same module sequentially unrolls an exactly divisible static innermost
-  range without target pragmas or a new IR form. An order-sensitive multi-axis
-  recurrence and a tensor update compile as strict C99 and preserve results;
-  dynamic and non-divisible ranges fail before mutation.
-- An operator-name-independent fusion function merges an explicitly selected
-  same-range pointwise producer/consumer pair. Its gate reduces a three-loop
-  tensor chain to two loops, removes a private intermediate tensor through
-  scalar forwarding, and retains it when separately returned. The same
-  mechanism eliminates the sum tensor in an exposed `add -> relu` chain,
-  emits strict C99 through the unchanged backend, and preserves numerical
-  output; a shifted-index consumer and an intervening observable call are
-  rejected.
-- The same legality and rewrite functions support a greedy adjacent-loop
-  traversal without adding a model or operator catalogue. On the pinned
-  MobileNetV2 expanded body it reduces loops from `374` to `328`, local tensor
-  initializers from `155` to `109`, and BatchNorm intermediates from `53` to
-  `7`. The fused external-data C passes strict C99 compilation and all 1,000
-  official outputs with maximum absolute error `2.0980835e-05`; its weight
-  blob is byte-identical to the unfused one.
-- A repository benchmark harness now times repeated inference calls in one
-  process and records raw CSV rows plus an output checksum. A local Apple M4
-  diagnostic with Clang `-O3`, three warm-ups, and 30 repetitions found the
-  unfused mean/median at `206.480/206.939 ms` and the fused mean/median at
-  `215.612/215.927 ms`: legal fusion regressed latency by about 4.4%. Clang's
-  optimization remarks show the fused BatchNorm-ReLU loops falling from
-  interleave count four to one. This negative pilot motivates a separate,
-  target-aware profitability policy; it is not a paper benchmark.
-- Dynamic invocation now accepts a typed `list<Op>` candidate, and `tile.fuse`
-  can consume an ordinary `fn(Mod, list<Op>) -> bool` policy or its configured
-  three-parameter form. Regression gates show the same three-loop chain
-  remaining unchanged under a zero budget and collapsing to one loop under a
-  permissive budget.
-  A removable `cost` example supplies a structural extent/call-budget policy
-  without naming neural-network operations. On the same MobileNetV2 pilot it
-  selects 17 of 46 legal pairs, produces byte-identical weights, passes all
-  1,000 outputs, and reduces the unrestricted regression from about 4.4% to
-  about 1.1% by mean while remaining slower than baseline. The mechanism is
-  therefore exercised at application scale; a controlled study still has to
-  supply and evaluate a genuinely predictive target policy.
-- Default, sanitizer, ONNX, TFLite, generated-C, VM, installation, and external
-  module gates exercise the same public interfaces.
+## Evidence ledger
 
-The timings above and in local build output are engineering diagnostics, not
-paper measurements. The benchmark protocol still needs isolated machines,
-warm-up, repeated trials, confidence intervals, pinned toolchains, and
-comparable optimization settings.
+| Candidate claim | Current repository evidence | Missing evidence |
+| --- | --- | --- |
+| One IR spans graph and loop detail | Printer, verifier, semantic bodies, explicit loops, C and VM preparation tests | Model-level stage traces and comparison with multi-IR workflows |
+| Extensions are normal module functions | Source modules, `local fn`, installation tests, `ir.invoke`, out-of-tree examples | Controlled implementation study with independent tasks and baselines |
+| Frontends are separate from semantics | ONNX/TFLite codecs and explicit bridge modules | Broader official-model coverage and unsupported-frontier accounting |
+| Targets expose only required detail | `c.accepts`, `vm.accepts`, `opt.expose`, preparation tests | A genuinely different external target or simulator study |
+| Transform failure is safe | Transaction and rollback tests, ownership/liveness checks | Fault-injection matrix and diagnostic assessment |
+| Storage and scheduling are replaceable | `mem` and `tile` modules, policy callbacks | Multi-axis legality, meaningful workload policies, performance results |
+| C artifacts are usable | Compiled examples, independent weight payload, numerical checks | Standardized model suite, accuracy table, latency distribution, workspace and binary comparisons |
+| VM execution is deterministic | Stable image format, output and step-count tests | Defined use case and overhead comparison |
 
-## Blocking evidence
+## Current engineering observations
 
-- Generated C still uses scalar untiled loops and is substantially slower than
-  ONNX Runtime on the current CPU diagnostic. It is a reference backend, not
-  yet evidence of efficient edge inference.
-- The fusion slice is deliberately one-dimensional and conservative. Its
-  application-scale structural and correctness gates are closed, but
-  multi-axis dependence tests, profitability, and controlled latency and
-  memory-traffic evidence remain open.
-- Extensibility needs a controlled study: implement the same custom format,
-  operation, transform, and target boundary in Joggle and selected baselines;
-  report changed core files, extension code, build/runtime dependencies, and
-  failure diagnostics.
-- Performance evaluation needs conventional edge models, multiple shapes and
-  formats, peak workspace, code and payload size, compile time, latency, and
-  deterministic-output checks against production baselines.
+These numbers are useful for debugging and experiment design. They are not yet
+paper results because the protocol, baselines, and repetition plan are not
+frozen.
 
-## Next experiment order
+- The compiled MNIST path has matched its stored reference with maximum absolute
+  error about `1.907e-05`.
+- A MobileNetV2 path has matched its reference with maximum absolute error about
+  `2.003e-05`.
+- Externalizing the MobileNetV2 weight payload reduced generated C source from
+  about 56.9 MB to 246 KB, with a separate payload of about 14.2 MB.
+- A deterministic VM execution of the exposed MobileNetV2 program reported
+  95,592,386,975 steps.
+- A structural fusion experiment reduced loops from 374 to 328 and tensor
+  constructions from 155 to 109, but the broad fused variant was slower in the
+  local pilot. The selected variant also did not establish a meaningful speedup.
 
-1. Measure the proven MobileNetV2 path with an isolated repeated-run protocol,
-   recording intermediate bytes, memory traffic, workspace, and latency while
-   retaining the unfused model as a matched baseline.
-2. Generalize the executable split and pointwise fusion functions to
-   multi-axis dependence checks and explicit profitability policy; keep
-   reorder and unroll removable.
-3. Add vectorizable C emission facts (`restrict`, alignment, and selected
-   unrolling) only through explicit module policy, then compare generated code
-   and compiler optimization reports.
-4. Freeze the experimental protocol and only then draft the paper.
+Raw pilot records belong in [data/](data/). Negative results must remain visible:
+they show that structural simplification is not a substitute for a cost model
+or target-aware measurement.
+
+## Evaluation design
+
+### Study A: extension effort
+
+Implement representative tasks in Joggle and selected comparison systems using
+their documented extension paths:
+
+- one parametric scalar or packed data representation;
+- one neural-network semantic implementation with an inspectable body;
+- one loop or fusion policy;
+- one artifact target or deterministic simulator.
+
+Record changed files, source lines, generated code, core modifications,
+dependencies, clean build time, implementation time, and failure diagnostics.
+Task specifications and stopping rules must be fixed before measurement.
+Repository size or line count alone is not a usability result.
+
+### Study B: model coverage and correctness
+
+Use checksum-pinned, licensed models from authoritative ONNX and TFLite sources.
+The initial suite should cover at least image classification, an audio or
+sequence workload, and a model with partial or dynamic shape computation.
+
+For every model, report these stages independently:
+
+1. decode;
+2. verify and refine types;
+3. convert to shared semantics;
+4. expose to the selected target boundary;
+5. emit and compile;
+6. execute and compare with a reference runtime.
+
+Report maximum absolute and relative error, task-level accuracy where
+applicable, unsupported calls, compilation time, and artifact size. A decoded
+model is not counted as an executable model.
+
+### Study C: artifact quality
+
+Compare unmodified Joggle output, user-defined policies, and appropriate
+reference runtimes or compilers on named hardware. Record:
+
+- end-to-end and kernel latency with warm-up and repeated trials;
+- median, dispersion, and run count;
+- peak or statically planned workspace;
+- source, object, executable, and weight-payload size;
+- host compilation time and generated compiler diagnostics;
+- numerical agreement and task accuracy;
+- deterministic hashes for IR and artifacts.
+
+Use generated C as a transparent experimental baseline, not as a claim to
+replace a production runtime. Inspect generated loops and compiler reports when
+a transformation loses performance.
+
+### Study D: safety and composition
+
+Construct module sequences that succeed, reject an unsupported frontier, fail
+mid-transaction, load malformed input, upgrade incompatibly, and retain unknown
+metadata. Verify rollback, deterministic diagnostics, and stable output hashes.
+Repeat the sequences through both the CLI and embedding API.
+
+## Baseline selection
+
+Comparisons should answer a specific question:
+
+- ONNX Runtime or TensorFlow Lite for reference correctness and deployment
+  context;
+- TVM or IREE for established compiler workflows;
+- ONNX-MLIR for an ONNX-to-compiled-artifact workflow;
+- TileLang only when comparing user control over generated kernels;
+- a small direct C implementation when isolating abstraction overhead.
+
+The paper must not claim that all of these systems solve the same problem.
+Versions, configurations, target flags, and unavailable features must be
+recorded.
+
+## Related-work audit
+
+Before drafting prose, build a claim-oriented matrix from primary papers and
+official documentation for MLIR, TVM/Relax/TIR, IREE, ONNX-MLIR, TileLang,
+Lift/Rise, and representative edge-inference compilers. For each system record:
+
+- its user-facing extension unit;
+- the representations crossed by a new operation or target;
+- how semantics, legality, scheduling, and code generation are separated;
+- which steps require generated code, native registration, or core changes;
+- its intended deployment scope and evaluation subjects.
+
+The purpose is to identify the narrow difference that the evaluation actually
+tests, not to declare every adjacent system a competitor. Bibliographic
+metadata and quotations must be verified against the primary source before
+they enter the manuscript.
+
+## Planned paper structure
+
+1. **Introduction:** the co-design iteration problem, thesis, and measured
+   contributions.
+2. **Motivating study:** one change spanning data representation, semantic
+   implementation, scheduling, and artifact generation.
+3. **Design:** one IR, structural types, function resolution, modules,
+   transactions, and progressive exposure.
+4. **Implementation:** core/runtime boundary, codecs, bridges, semantic
+   libraries, analyses, transforms, and targets.
+5. **Evaluation:** research questions, subjects, baselines, protocols, results,
+   and negative findings.
+6. **Related work:** compiler infrastructures, tensor compilers, scheduling
+   languages, deployment compilers, and extensible systems.
+7. **Limitations and threats:** coverage, manual policy, C quality, dynamic
+   shapes, measurement bias, and external validity.
+8. **Conclusion:** only conclusions supported by the evidence ledger.
+
+## Submission blockers
+
+- Freeze the comparison systems and version-pinned experimental protocol.
+- Complete the extension study instead of inferring ease of use from examples.
+- Complete the claim-oriented related-work matrix with verified primary
+  citations.
+- Run a representative model suite through execution and accuracy checks.
+- Improve or honestly bound loop legality and generated-code quality.
+- Store raw timing, memory, accuracy, build, and artifact-size data.
+- Generate every table and figure from those raw records.
+- Create a clean, anonymized artifact and reproduce it on a second machine.
+- Run an internal claim-to-evidence and citation audit.
+
+## Research integrity
+
+The manuscript will distinguish design intent, implemented capability, pilot
+observation, and controlled result. Every factual claim about related work
+requires a verified primary citation. Every empirical claim requires a script,
+raw record, environment description, and derivation.
+
+The final package must include data and artifact availability, author
+contributions, funding, conflicts of interest, limitations, ethics where
+applicable, and a truthful AI-assistance disclosure consistent with the venue
+policy.

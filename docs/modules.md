@@ -1,1251 +1,266 @@
 # Modules
 
-A module is the only extension and distribution unit. A module directory is:
+Modules are Joggle's only extension unit. They define types, semantics,
+analyses, transformations, codecs, and artifact generation with the same
+`.jog` functions used by application code.
+
+This document explains module boundaries and the bundled module set. Function
+signatures in `module.jog` are the authoritative API.
+
+## Package layout
+
+A source-only module needs one file:
 
 ```text
-example/
+my_module/
   module.jog
-  lib/*.jog
-  native/joggle_example.*   # optional
-  test/*
 ```
 
-The directory is a distribution form, not a second IR object. Loading its
-sources produces ordinary declarations visible in an `Env`; parsing a model
-produces an ordinary `Mod`.
+Larger modules may add sorted source fragments and one native library:
 
-An ordinary `fn` is part of the module's callable surface. `local fn` keeps an
-implementation helper inside its declaring module without creating a class,
-manifest export list, or naming convention. Explicit reflection may still
-inspect local functions, which is necessary for data-driven rule discovery,
-but cross-module resolution, direct invocation, `module info`, and upgrade
-compatibility operate on exported declarations only. The bundled C and VM
-modules use this boundary so their emitters no longer publish every formatting
-helper as user API.
+```text
+my_module/
+  module.jog
+  lib/
+    shapes.jog
+    transforms.jog
+  native/
+    libmy_module.dylib
+```
 
-Pure `.jog` modules need no compiler toolchain. Native modules have one stable C
-entry point and attach callbacks to body-less function declarations. C++ STL
-containers, exceptions, RTTI, and virtual tables do not cross that boundary.
+`module.jog` begins with a module name and optional dependencies:
 
 ```jog
-module sample
+module my_module
+use ir
+use tensor
 
-[role: "example"]
-fn ping(x: i32) -> i32;
-```
+local fn helper(op: Op) -> bool {
+  return ir.callee(op) == "nn.relu"
+}
 
-```cpp
-JOGGLE_MODULE_EXPORT bool joggle_module(const jog_api* api,
-                                        jog_module* module) {
-  return joggle::compatible(api) &&
-         api->bind(module, "sample.ping", ping, nullptr);
+fn apply(m: Mod) -> bool {
+  var changed = false
+  for op in ir.ops(m) {
+    if helper(op) {
+      changed = ir.set(m, op, "implementation", "lut") || changed
+    }
+  }
+  return changed
 }
 ```
 
-`role` above is ordinary module-defined metadata and may be omitted. The native
-binding itself requires only a matching external declaration. This keeps model
-primitives, native implementations, and textual functions in one function
-model.
+Top-level `fn` declarations are public. `local fn` declarations are
+implementation details. No generated header, export list, registration
+routine, or version suffix in a symbol name is required.
 
-The callback receives one call frame for arguments, returns, and diagnostics.
-The API record carries its ABI version and byte size, hidden behind
-`joggle::compatible`; neither the entry symbol nor public C type names contain a
-version suffix. Loading rejects bindings outside the declaring module, bindings
-to unknown or body-bearing functions, duplicate bindings, missing entries, and
-ABI mismatches reported by the module. Calls validate scalar arguments and
-returns against the `.jog` declaration. Scalars include length-delimited `str`
-and `bytes`; embedded zero bytes are preserved.
+## Discovery and lifecycle
 
-The standard modules are deliberately narrow. `base` declares scalar/list/dict
-fundamentals, `ir` is universal reflection and editing, `opt` contains reusable
-textual transforms, `math` names scalar math primitives, `tensor` defines
-storage-neutral tensor computation, `quant` makes quantization policy explicit,
-and `nn` contains network semantics. `mem` assigns static tensor lifetimes to
-target-neutral reusable slots, `stat` returns deterministic structural
-measurements, and `bounds` proves integer intervals without selecting a target.
-`c` is a removable first execution module and an optional
-consumer of memory metadata, not a target interface in core. `vm` is an
-independent deterministic execution module: its textual half emits an image
-through IR reflection and its native half interprets that image. The optional
-`onnx` module only transports a binary model. MLIR, JIT, simulation, hardware
-description, and additional target experiments remain removable modules.
-
-Version 0.1 searches explicit local paths. The CLI exposes that same local
-model directly:
+Module roots are supplied with repeatable `-M` options. Resolution is by
+module name, and `use` dependencies close transitively. Commands operate on
+the same public surface used by embedding code:
 
 ```sh
 joggle module list -M modules
-joggle module info example -M modules
-joggle module check example -M modules
-joggle module install path/to/example local-modules -M modules
-joggle module upgrade path/to/example local-modules -M modules
-joggle module uninstall example local-modules
+joggle module info tensor -M modules
+joggle module check tensor -M modules
+joggle module install path/to/source installed-modules -M modules
+joggle module upgrade path/to/source installed-modules -M modules
+joggle module uninstall my_module installed-modules
 ```
 
-Uninstall scans the same installation root and refuses to remove a module that
-another installed module directly uses. Remove those dependents first; a
-refused uninstall leaves every directory unchanged.
+Installation and upgrade validate the candidate and its dependency closure
+before replacing an installed module. Source-only modules remain readable and
+portable. A native boundary is optional and should be used only for facilities
+that cannot be expressed economically in `.jog`, such as binary decoding or
+executing a host artifact.
 
-`list` is deterministic across the supplied roots, with the first root taking
-precedence for duplicate names. `info` performs a real load, then reports the
-selected path, dependencies, source fragments, native library files, and every
-exported callable declaration in source order. Its `fn` lines use normal Joggle syntax,
-so overloads, generics, and structural types remain visible without a generated
-header or second interface description.
-`check` loads and verifies the full dependency closure.
-Self-dependencies and duplicate `use` declarations are invalid rather than
-being normalized differently by source loading and embedding code.
+## Composition
 
-Installation validates the source tree: symbolic links and special files are
-rejected, an existing target is never overwritten, and the copy is loaded from
-a same-filesystem staging directory before an atomic rename makes it visible.
-Upgrade reads the installed and replacement declarations, alpha-normalizes
-generic parameter names, and requires the replacement to retain every existing
-function signature. New functions and overloads are compatible. A compatible
-replacement is then copied and fully loaded from staging, including its
-dependency closure and optional native ABI. Only after validation does the CLI
-detach the old directory and commit the replacement; a failed commit restores
-the old directory.
-Uninstallation first parses the installed declaration and refuses to remove it
-when its declared name differs from the requested name. There is no registry
-database or generated manifest to become stale. `info`, `check`, and `install`
-and `upgrade` load an optional native entry, so native modules are executable
-code and must come from a trusted source. Native libraries remain loaded for
-the lifetime of an `Env`. Network package resolution, lockfiles, dependency
-solving, and in-process hot unloading are out of scope.
+There is no built-in pipeline object. Users compose module functions explicitly:
 
-The bundled declarations install under `share/joggle/modules`. Applications
-choose their module roots explicitly with `Env::path`; the core does not depend
-on a process-global environment variable or a compile-time installation path.
+```sh
+joggle read onnx.read model.onnx -M modules > model.jog
 
-Loading a module parses and verifies its declarations after loading
-dependencies.
-It never runs a transform as a side effect. The caller selects an ordinary
-function with `joggle::run` or `joggle run`; this keeps module installation,
-function definition, and execution as three separate operations.
-The embedding overload of `joggle::run` accepts `Attr` arguments after the
-mutable `Mod`. Overload resolution uses their structural runtime types, failure
-restores the exact input module, and a successful step records those arguments
-in its canonical report. Parameterized textual functions therefore need no
-C++ option structure or one-argument wrapper. Ad hoc CLI sequences remain the
-same function model and receive repeatable canonical `--arg` values.
+joggle run onnx.nn.convert opt.basic model.jog \
+  -M modules > semantic.jog
 
-Qualified and imported calls resolve through the explicit and transitive `use`
-closure. Local and imported declarations form one deterministic visible
-overload set, allowing a specialized overload to reuse less-specific imported
-algebra in its own body. Merely loading another module into the same `Env` does
-not make its declarations visible, and missing `use` edges are diagnosed.
-Resolution from a `Fn` handle uses the function's owning `Mod` directly, so a
-parsed module need not be installed or loaded under its own name first.
-Resolution checks arity and structural types, infers generic arguments, ranks
-specificity, and computes result types.
-`Env::load` commits the requested module and its transitive dependencies as one
-transaction. Failure after a dependency or native library has loaded removes
-only state introduced by that request, restores the prior environment epoch,
-and retains diagnostics. Previously loaded modules and bindings are untouched;
-a failed load therefore does not invalidate reusable query-cache entries.
-It is independent of native binding: a declaration may define model semantics,
-a textual transform, or a native compile-time service. Unknown calls are
-preserved deliberately for frontend transport, but code that needs a
-declaration must load or invoke an explicit semantic bridge.
+joggle run c.prepare mem.plan semantic.jog \
+  -M modules > prepared.jog
 
-A native binding names an external function family. At invocation, scalar
-argument types must select exactly one declaration before the callback runs;
-the selected result signature is checked afterward. Thus overload support does
-not change the stable C entry or expose C++ containers across the ABI. When
-several native overloads cannot be distinguished from the dynamically supplied
-scalar values, the call fails as ambiguous instead of choosing by declaration
-order.
+joggle emit c.source prepared.jog -M modules > model.c
+```
 
-Type constructors use this same boundary. A module named `format` can export
-`fn format<P: Attr>() -> Ty;`; consumers write `use format` and then
-`format<...>`. The function's generic list defines arity and ordinary parameter
-types constrain compile-time arguments (`int` widths, `Ty` element types, or
-`list<int>` shapes). Its `Ty` result identifies it as a constructor without a
-second declaration system or kind registry. A qualified constructor name may
-target any visible constructor function when the module and type names differ.
+Several `run` functions form one transaction. If a later function fails, all
+earlier mutations in that invocation are rolled back. `query` and `emit`
+use the same resolver but do not establish separate analysis or backend
+registries.
 
-The built-in `ir` module is the complete reflection boundary:
+Functions can also accept a function handle. For example, a loop-fusion policy
+is an ordinary `fn` selected with `ir.find` and invoked by `ir.invoke`.
+This allows an experiment to replace policy without modifying the mechanism.
 
-| Function | Meaning |
+## Responsibility map
+
+The bundled modules are grouped here for explanation only. The runtime does not
+hard-code these categories.
+
+| Module | Public responsibility |
 | --- | --- |
-| `fns`, `find`, `params`, `returns`, `generics`, `blks`, `ops`, `vals`, `uses` | Find local or exactly qualified loaded functions and traverse signatures, explicit call terms, structure, runtime values, and dependencies. |
-| `args`, `outs`, `def`, `users` | Read operation dataflow in both directions. |
-| `live`, `local`, `blk`, `op`, `kind`, `form`, `callee`, `name`, `key`, `type` | Query handle state and function visibility, bidirectional block ownership, operation kind and binding form, readable or ephemeral identity, and structural `Ty`. |
-| `resolve`, `symbol`, `accepts`, `match` | Resolve calls, identify functions, and select against explicit signatures. |
-| `where`, `invoke<R>` | Select functions by open metadata and execute an ordinary typed callback over one `Op` or a `list<Op>` transactionally. |
-| `is_const`, `constant` | Query constant IR values. |
-| `has`, `meta` | Query open function, value, or operation attributes. |
-| `call`, `constant`, `loop`, `branch` | Construct leaves and structured control flow. |
-| `clone`, `expand`, `move`, `args` | Copy, substitute a function body, place, or reconnect IR. |
-| `retarget` | Atomically change one call and its operands after normal overload resolution. |
-| `replace`, `erase`, `rename` | Rewrite dataflow, ownership, and readable names. |
-| `set`, `unset` | Edit a function, value, or operation attribute. |
-| `use` | Add an already-loaded module as an idempotent, cycle-checked dependency. |
+| `base` | Compile-time collections, structural type construction, text utilities, assertions, and scalar operator declarations |
+| `ir` | Reflection, resolution, safe editing, cloning, expansion, replacement, and function invocation |
+| `tensor` | Tensor type constructor, shape algebra, indexing, broadcasting, reductions, reshaping, and inspectable tensor bodies |
+| `nn` | Frontend-neutral neural-network semantics expressed in terms of tensor and scalar functions |
+| `quant` | Quantization, dequantization, and quantized tensor computation |
+| `math` | Portable scalar mathematical functions |
+| `opt` | General simplification, dead-code elimination, common-subexpression elimination, exposure, implementation selection, and call fusion |
+| `bounds` | Conservative integer range inference and representation checks |
+| `stat` | Structural program measurements through user-supplied measurement functions |
+| `mem` | Static tensor-buffer reuse planning and inspectable slot annotations |
+| `tile` | Explicit loop splitting, unrolling, and pointwise producer/consumer fusion |
+| `onnx` | ONNX binary decoding and source-format calls |
+| `onnx.nn` | ONNX type refinement and explicit conversion to shared semantics |
+| `tflite` | TFLite binary decoding and source-format calls |
+| `tflite.nn` | TFLite type refinement and explicit conversion to shared semantics |
+| `c` | C capability checks, preparation, ABI description, header/data generation, and source emission |
+| `vm` | Deterministic VM capability checks, preparation, image emission, and execution |
+| `sat` | Example parametric saturating type, overloads, selection, and materialization |
+| `sat.c` | C-specific representation of `sat` |
+| `sat.vm` | VM-specific representation of `sat` |
 
-These functions operate on generic handles and contain no NN operator names.
-Adding an importer, optimization, or target module therefore does not extend
-the reflection ABI or add a parser case.
+## Foundational modules
 
-`ir.vals(f)` returns every runtime value owned by a function in deterministic
-groups: parameters, nested block arguments, then operation results. Generic
-parameters are compile-time bindings and remain available only through
-`ir.generics(f)`. `ir.vals(m)` concatenates that view for local functions. This
-single traversal keeps analyses and transforms from rebuilding subtly different
-notions of a function's value set.
+### `base`
 
-`ir.blk(op)` returns the block containing an operation; `ir.op(blk)` returns
-the loop or branch owning a nested block. A function's root block has no owner
-operation and therefore yields an invalid handle detectable with `ir.live`.
-This makes structural ascent as complete as structural descent without a
-parent scan in every extension.
+`base` is the compile-time standard library. It supplies collection and
+attribute operations, structural type constructors, canonical text utilities,
+and the generic operator declarations used by overload resolution. It should
+not acquire neural-network or target knowledge.
 
-`Op::kind()` / `ir.kind` describe computation structure (`call`, `constant`,
-`loop`, branch, return, or yield); `Op::form()` / `ir.form` describe how a call
-or constant is bound (`let`, `var`, assignment, compound assignment,
-expression, or hidden intermediate). This distinction is semantic for mutable
-source bindings. C++ and textual extensions observe the same enum-backed fact,
-and emitters consume it directly instead of guessing declaration or update
-behavior from repeated value names.
+### `ir`
 
-### Deterministic VM boundary
+`ir` is the sole program-editing surface for `.jog` modules. Its API exposes:
 
-`vm.image(m)` and `vm.image(m, entry)` are ordinary read-only module functions.
-The first emits every executable function; the second selects one exact local
-entry, so unrelated functions need not satisfy the VM contract. Both produce
-canonical text beginning with `joggle-vm 3`; unsupported types or structural
-operations are diagnosed during emission. The version is image data, not a
-versioned source symbol. The core does not parse this format and has no VM
-instruction enum.
+- collections such as `ir.fns`, `ir.blks`, `ir.ops`, and `ir.vals`;
+- symbol and type queries such as `ir.find`, `ir.resolve`, and `ir.type`;
+- metadata queries that preserve extension-owned keys;
+- construction and editing through `ir.call`, `ir.constant`, `ir.loop`,
+  `ir.branch`, `ir.clone`, `ir.move`, `ir.replace`, and `ir.args`;
+- body reuse through `ir.expand` and `ir.fold`;
+- policy invocation through `ir.invoke`.
 
-`vm.run(image, entry, input)` is the matching native function. Image version 3
-tags each value as `i64`, `f32`, or `f64`. `bool`, `index`, and `int` use the
-`i64` representation; floating values retain their IEEE binary width. Input
-elements are little endian, tensor parameters are concatenated in signature
-order, and tensor results use row-major order.
-Its second result counts executed VM instructions, including loop conditions
-and selected control flow. The count is deterministic for one image and input,
-but it is not a wall-clock time or a hardware cycle estimate. The contract
-covers `bool`, `i64`, `index`, `int`, `f32`, and `f64`, static tensors of those
-elements, typed arithmetic and conversion, comparisons, Boolean/bitwise
-operations, structured conditions and range loops, allocation/fill, and
-checked scalar-list selection and linear or multidimensional tensor indexing.
-It covers the complete current `math` surface: `abs`, `ceil`, `erf`, `exp`,
-`floor`, `fmod`, `log`, `pow`, `round_even`, `sqrt`, and `tanh` for both floating
-formats. C and VM execute the same scalar conformance cases. These operations
-use the host standard library; their presence does not claim cross-platform
-bit identity for transcendentals. The bodyless primitives declare their C
-symbol/header and VM opcode through open function attributes. `round_even` is
-an ordinary Joggle body exposed during preparation, so its tie rule does not
-change with the process floating-point rounding mode and no target carries a
-private implementation of it.
-Invalid integer division, shifts, images, entries, input sizes, shapes, indices,
-or out-of-range conversions fail through the normal module diagnostic boundary.
-The native runner tokenizes and decodes the selected function once per call,
-interns textual registers into compact slots, precomputes branch and loop
-bounds, and then dispatches typed instructions. This is an implementation
-detail of the VM module, not a second core IR or a public target hierarchy.
-Local function calls, dynamic tensors, module-defined storage formats, and
-format-aware costs are still open. A bit-reproducible approximation must remain
-an explicitly selected implementation module rather than silently replacing a
-`math` call in the VM.
+All mutations are checked against handle ownership and take part in the caller's
+transaction. A higher-level module should build on these operations instead of
+requiring a new native binding for each transformation.
 
-`vm.prepare(m)` is the explicit target-policy function. Its ordinary
-`vm.accepts(m, op)` predicate recognizes exactly the calls the image emitter
-can encode; generic `opt.expose` folds static helpers, removes copies, and
-exposes rejected calls with visible bodies to a bounded fixed point. A second
-call is byte-identical. `vm.image` remains read-only and never invokes
-preparation.
+## Semantic modules
 
-An ordinary typed constant such as
-`let weight: tensor<f32, [2]> = hex"0000803f00000040"` is the
-frontend-neutral immutable tensor-data boundary. Its result type determines
-element format and shape, while the payload retains the source bits rather
-than becoming a second core tensor object or a distinguished call. The C
-module binds an aligned view in external-data mode; VM image version 3 carries
-the same hex bytes and reconstructs native-width elements. Neither target
-contains an ONNX or TFLite data-node case. The current C reference gate
-expects the host scalar object representation to match the payload; portable
-cross-representation decoding remains target policy rather than hidden IR
-reinterpretation.
+### `tensor`
 
-This split is the target-extension test: source code owns selection and
-emission policy, native code owns execution, and neither requires a target
-abstraction in core. The C and VM tests consume the same ordinary integer and
-floating-point nested-loop matrix-multiplication functions. Both parameterized
-`opt.expand` and capability-driven `vm.prepare` expose the shared tensor `+`
-body for VM execution. A later VM extension must consume explicit
-module-defined format policy rather than introduce NN operator cases.
-The pinned ONNX v1.19.0 `test_matmul_2d` backend case exercises the same
-boundary without handwritten Joggle input: its model and TensorProto data are
-hash-checked, the bridge removes all ONNX computation, the out-of-tree
-`ikj.apply` module supplies the `tensor.matmul` body, and VM plus compiled C are
-checked against the official output tolerance. The VM result and instruction
-count are also repeatable.
-The opt-in official MobileNetV2 gate extends that evidence to a complete
-network and checks all 1,000 outputs through both targets. Its deterministic VM
-count is 95,592,386,975 steps; that number is evidence for retaining and
-transforming higher-level computation before target execution, not a cycle
-estimate or a performance claim for scalar interpretation.
+`tensor` owns the `tensor<E, S>` constructor and reusable tensor algebra.
+Shapes and element types remain structural values. Indexing, reshape, broadcast,
+permutation, concatenation, reduction, and matrix multiplication have ordinary
+function signatures; inspectable bodies can be expanded when a target needs
+lower-level computation.
 
-The `base.size` and `base.byte` functions provide bounds-checked inspection of
-an `Attr` byte payload. `base.hex` formats a complete payload with a chosen
-separator in one bounded linear operation, which lets text emitters avoid an
-interpreted loop and repeated string copies. Frontends can still decode compact
-integer constants without copying bulk tensors into a second core
-representation.
+This is the common substrate for imported networks and user kernels. It is not
+an ONNX or TFLite operator catalogue.
 
-General compile-time values live in `base`, not `ir`. `len` covers statically
-typed lists, dictionaries, and dynamically obtained `Attr` containers;
-`keys`, `has`, and `get` expose deterministic dictionary access; and
-`attrs["key"]` or `items[index]` is the strict indexing form. `int` and `str`
-project a checked attribute leaf when a transform needs a statically typed
-value. These are enough for an
-explicit bridge function to interpret frontend attributes without adding an
-ONNX/TFLite field API or string-key cases to core. A missing strict key is a
-diagnostic, while the three-argument `get` supplies a caller-chosen fallback.
-`assert(condition, message)` lets any module reject an invalid policy or a
-bounded computation that did not converge; failure is located and rolls back
-the enclosing compile-time transaction.
+### `nn`
 
-Mutable lists and dictionaries also implement `[]=` through `base`. A module
-can update a typed work list or assemble a structured report with ordinary
-`items[index] = value` syntax; no builder object or report-specific host API is
-needed. List updates are bounds checked, while dictionary updates insert or
-replace a string key and retain value semantics.
+`nn` gives frontend-neutral names and bodies to common inference operations:
+convolution, bias and activation, pooling, normalization, linear algebra,
+elementwise functions, and softmax. Overloads capture layout, shape, and
+optional parameters without creating operation classes.
 
-`Ty` is also a normal compile-time value. `name`, `args`, and `int` decompose a
-type tree; the `kind` overload distinguishes integer, Boolean, list, and type
-terms; `ty` reconstructs one from text, an integer term, or a constructor name
-plus child types; `str` is the explicit conversion back to canonical text.
-The overloaded `ir.type(m, value, type)` records an inferred type while keeping
-loop/condition-carried versions consistent and printable. Its list form accepts
-parallel `list<Val>` and `list<Ty>` inputs, computes their structural families
-once, rejects conflicting family assignments before mutation, and advances the
-revision once for the complete batch.
-The three-argument `ir.returns(m, fn, types)` updates a function's declared
-result types. It deliberately complements value retyping instead of introducing
-a type-lowering object: the enclosing `run` transaction commits only when all
-edited signatures, call results, and nested returns verify together.
-Typed empty lists retain their explicit element type, so module functions can
-build structural shapes incrementally. Lists retrieved from `Attr`
-dictionaries or IR metadata are ordinary iterable compile-time lists; callers
-do not need a frontend-specific projection primitive.
+An `nn` call may remain compact for graph rewrites or be exposed into tensor
+and scalar computation. New implementations may be added as overloads or
+selected through open metadata; a target consumes the resolved call rather
+than a hard-coded neural-network enum.
 
-### Tensor and network semantics
+### `quant` and `math`
 
-`tensor` defines `tensor<E, S>`, structural `elem`/`shape`/`dims`/`type` helpers,
-linear, two-dimensional, and four-dimensional indexing, `numel`, elementwise
-addition, subtraction, multiplication, and matrix multiplication. `valid`
-recognizes the structural constructor without projecting it; `static` further
-requires integer-literal extents. `shape` deliberately projects only such
-concrete shapes to `list<int>`; `dims` retains every extent as a `Ty` term.
-The latter lets a relation preserve caller generics such as `N` without adding
-a symbolic-expression class. `permutation`, `permuted`, and the inspectable
-`permute` body provide rank-generic axis reordering. `product` proves a
-partition extent when it is concrete or contains one unscaled symbolic term;
-otherwise it returns `_` instead of inventing an expression language.
-`quotient` cancels equal symbolic factors and exact integer factors, while
-`inserted`, `replaced`, and `gathered` perform reusable structural dimension
-edits. `refined` fills only `_` tensor holes and rejects a conflicting element,
-rank, or dimension. These relations are ordinary module functions and are
-available to any frontend or research transform.
-The bodyless `literal<E, S>(bytes)` declaration is a low-level data capability,
-not a frontend codec. Result-type generic inference gives the payload its
-tensor type, and consumers validate its byte count against the selected
-representation. ONNX and TFLite bridges retarget their distinct source data
-nodes to this one operation before computation conversion; value metadata and
-names remain attached to the existing result.
-`broadcast_shape` and `broadcastable` are overloaded for concrete shapes and
-raw dimension terms. They express trailing-axis compatibility by exact term
-equality and singleton expansion, while `broadcast_offset` and `broadcast`
-provide the inspectable index and copy semantics for an exposed static body.
-`tensor.matmul` keeps a more specific two-dimensional overload and adds one
-rank-generic body for operands of rank two or greater. Leading dimensions use
-the same broadcast relation; `matmul_offset` maps an output batch coordinate
-back into either operand without a layout or attention-specific operation. A
-second overload makes last-two-axis transposition and scalar scaling explicit
-values while retaining the same batched computation; vendor fused calls do not
-become permanent operator families. `tensor.cast` is likewise an ordinary
-element loop.
-`extent`, `offset`, and `coord` interpret
-a physical shape through an explicit logical-axis list. Each physical dimension
-names its logical axis; `-1` denotes a fixed singleton dimension. Thus NCHW is
-`[0, 1, 2, 3]`, NHWC is `[0, 2, 3, 1]`, and TFLite's depthwise `[1,H,W,O]`
-weight is `[-1, 2, 3, 0]`. These are ordinary values, not layout classes or
-registered compiler cases. The computations have normal `.jog` bodies with
-loops and explicit value updates; they are not opaque operator records.
-`quant.quantize` and `quant.dequantize` operate on a generic real element type,
-a generic stored element type, and either scalar or one-axis parameter tensors.
-The parameter axis, saturation bounds, and round-to-nearest-even primitive are
-visible in the function body. The module therefore fixes mathematical behavior
-without fixing a bit width, storage class, or target implementation.
-`quant.dynamic` returns values, scale, and zero point through the normal
-multi-result function model. `quant.matmul` accumulates differing integer input
-types into `i32` and accepts scalar, per-row, and per-column zero points.
-Runtime tensor structure uses the same model. `tensor.shape`, `tensor.gather`,
-`tensor.slice`, `tensor.one_hot`, and `tensor.fill` have inspectable bodies.
-`tensor.concat` is deliberately binary: a bridge folds any source arity into a
-chain, while a source Split is a set of slices. This small algebra avoids both
-variadic operation machinery and declarations specialized to a frontend's
-input or result count.
-`nn.linear` composes matrix
-multiplication with an optional bias loop, while `nn.relu` is a loop and
-condition over the same tensor primitives. The general `nn.conv2d` overload
-takes three logical-axis lists, so grouped convolution and depthwise
-convolution share one loop body across activation and weight layouts. The terse
-NCHW overload delegates to it. Bias and fused activation are ordinary composed
-functions rather than hidden operator fields. `nn.avg_pool2d`, dilation-aware
-`nn.max_pool2d`, broadcast-aware `nn.add`/`nn.sub`/`nn.mul`, and axis-explicit
-and axis-list `nn.softmax` overloads provide the remaining shared semantics
-needed by the second real-network gate. `tensor.line_offset` enumerates all lines orthogonal
-to an axis, while `tensor.reduce_offset` separates ordinary and reduced
-coordinates for any unique axis set. The inspectable `tensor.mean` body uses
-that relation for single- or multi-axis reduction without a transpose or
-rank-specific case; output singleton dimensions are a type relation rather
-than a second computation. `nn.global_avg_pool2d` is a normal NCHW
-specialization.
-The two-operand `nn.add`, `nn.sub`, `nn.mul`, and `nn.div` overloads express
-plain broadcasting. Separate three-operand Add/Sub/Mul overloads retain a
-frontend's fused activation only when one actually exists. `nn.pow`, `nn.sqrt`,
-`nn.recip`, `nn.abs`, `nn.floor`, `nn.log`, `nn.erf`, `nn.tanh`, `nn.exp`,
-`nn.sigmoid`, `nn.ceil`, and `nn.round_even` expose scalar `math` calls inside
-their loops, so normalization, GELU, activation, and shape-derived arithmetic
-remain visible to later transforms. The shared `math` declarations are exact
-`f32`/`f64` overloads; a module-defined format joins the same open overload set
-instead of being admitted by an unconstrained numeric wildcard.
-The ONNX bridge keeps the same-signature unary subset in one data-driven
-source/destination table; adding one relation does not add another inference
-branch.
-Both spatial pool functions use explicit kernel, stride, pad, dilation, and
-logical-axis values, so ONNX NCHW and TFLite NHWC calls share the same bodies.
-`nn.batch_norm` exposes inference-time channel
-normalization down to scalar algebra and the single `math.sqrt` primitive;
-`tensor.reshape` is a linear element copy whose result shape comes from the
-annotated call. Transforms can therefore keep a network call
-abstract or expose one function body at a time using the same
-`Fn/Blk/Op/Val` representation.
+`quant` expresses quantized values and conversions with tensor functions.
+`math` supplies scalar operations required by exposed neural-network bodies.
+Keeping both independent prevents a frontend schema or target emitter from
+becoming the semantic definition.
 
-`ir.resolve(m, op)` returns the declaration selected by the same structural
-overload rules used by verification. `ir.expand(m, op, fn)` then substitutes
-that normal function body, including nested loops and conditions. Generic
-type, shape, and integer bindings are specialized at the call site; visible
-result names and structured carried bindings remain printable. The C++ pair
-`env.resolve(mod, op)` and `env.expand(mod, op, fn)` performs the identical
-edit. When a shape generic contains a caller's integer generic, expansion
-materializes one ordinary `list<int>` value containing that existing binding.
-This keeps bodies such as symbolic reshape, matrix multiplication, and
-permutation representable instead of requiring dimensions to be frozen before
-body exposure.
-`opt.expand` is only a policy helper over an explicit list of callees, not a
-built-in lowering stage.
+## Frontends
 
-The overload `ir.expand(m, calls, bodies)` accepts aligned handle lists. It is
-the transactional, network-scale form of the same edit: all pairs succeed or
-the module is restored, and reports still contain one event per call. `opt`
-and target preparation functions use this overload internally, so extension
-authors select policy while the core owns snapshot, ordering, and dominance
-validation.
+A frontend is deliberately split into transport and meaning:
 
-These definitions specify computation but deliberately do not choose layout,
-memory space, vector width, tiling, device, or instruction. Such choices belong
-to separately loaded research modules and can use open attributes or explicit
-function arguments. The ONNX codec does not import `nn`; conversion between a
-frontend schema and these functions must remain an explicit user-selected
-module function.
+- `onnx.read` and `tflite.read` decode bytes into faithful source-format
+  calls and typed constants;
+- `onnx.nn.convert` and `tflite.nn.convert` explicitly map those calls to
+  shared functions.
 
-The optional `onnx.nn` module is that relationship, not another IR layer.
-The transport module's `onnx.opset(m, domain)` query reads the ordinary
-`onnx.model` descriptor, giving every relationship module one version source
-without versioned function names or parser state.
-`onnx.nn.infer` propagates tensor types through quantization boundaries,
-convolution, normalization point algebra, broadcast arithmetic, pooling,
-matrix operations, tensor rearrangement, and shape dataflow. It repeats a
-deterministic source-order sweep until the module revision stops changing and
-rejects a relation set that cannot converge within a graph-derived bound.
-Quantization nodes contribute only their provable shape and element type here.
-Compatible three-input QuantizeLinear and DequantizeLinear calls are then
-converted through `quant`; unsupported parameter layouts or element formats
-remain source calls.
-Nested graph interfaces use the same relation: lexical capture operands and
-Loop iteration, condition, and carried operands refine ordinary child `Fn`
-parameters. The complete capture map is validated before any type changes. No
-graph-specific IR is introduced, so normal relations continue inside the child
-function.
-Softmax conversion follows the schema boundary explicitly. Before opset 13,
-the selected axis begins a flattened suffix, so the bridge supplies that suffix
-to the axis-list overload. From opset 13 onward it supplies one axis. A model
-without an opset declaration stays at the source boundary rather than adopting
-the current schema by accident.
-Its structural conversion phase runs only after shape-dependent Reshape
-relations have been derived. It then maps compatible Shape, Gather, Slice,
-Squeeze/Unsqueeze, Concat, Split, OneHot, Identity, Cast, and
-ConstantOfShape computations into the shared tensor algebra. Decompositions
-copy readable result names and all non-frontend operation attributes; the
-`onnx` operation descriptor is removed only after its values are materialized.
-Unsupported ranks and malformed spatial attributes are left unchanged rather
-than guessed. `NOTSET`, `VALID`, `SAME_UPPER`, and `SAME_LOWER` padding share
-one explicit two-dimensional padding relation used by both convolution and
-pooling. Open intermediate types are likewise retained instead of causing an
-unsafe projection. Named symbolic extents now flow through Add/Sub/Mul,
-Flatten, rank-two-or-higher MatMul, Gemm, and Transpose when equality,
-singleton broadcasting, permutation, or a directly representable partition
-product proves the result; ambiguous symbolic arithmetic remains at the ONNX
-frontier.
-Schema-only result facts remain usable under partial information: NonZero
-preserves its rank-by-count matrix, NonMaxSuppression preserves its three-column
-index result, and Range preserves a known scalar element type. Expand, Tile,
-TopK, Resize-by-`sizes`, symbolic equal Split, and Squeeze contribute shapes
-when their constant operands or selected axes prove them. Resize-by-runtime
-`scales` and arithmetic over unrelated symbolic extents intentionally remain
-open.
-Each ONNX inference and conversion relation is an ordinary function carrying
-open attributes owned by `onnx.nn`. The driver discovers those functions with
-`ir.fns`, selects them with `ir.where`, and executes them with `ir.invoke`.
-The relation functions and their supporting calculations are `local fn`s:
-explicit reflection by their owning module can still discover the metadata,
-but importing code and `module info` see only the supported `infer`, `convert`,
-and shape-query surface. This keeps automatic relation discovery without
-turning every schema rule into a public API or maintaining a second registry.
-Conversion relations use `phase` only to preserve the module's explicit
-compute-then-shape order. `onnx.nn.convert(m, rules)` executes an explicitly
-provided relation set, selecting its inference and ordered conversion phases
-internally. Another module can therefore append both a type relation and a
-conversion relation without editing or copying this module; `convert(m)` uses
-the built-in functions as the complete default set. Import remains a separate
-codec operation.
-Convolution and pooling preserve symbolic batch or channel terms while
-requiring only the spatial extents used by their arithmetic to be integer
-literals. Conv accepts its schema's optional one-dimensional bias and maps it
-through the existing layout-explicit `nn.conv2d` composition. A mismatched bias,
-channel relation, nonpositive stride/dilation, or malformed automatic padding
-keeps the source call intact.
-`onnx.nn.convert` first runs that deterministic source-order propagation, then
-maps static and dynamic quantization, integer and scaled
-transposed MatMul, Cast, Conv, BatchNormalization, ReLU, LeakyReLU, inference
-Dropout, Add/Sub/Mul/Div/Pow, Gemm,
-Sqrt/Reciprocal/Tanh, AveragePool, MaxPool, GlobalAveragePool, ReduceMean,
-Softmax, Reshape, Flatten, rank-two-or-higher MatMul, and Transpose. Flatten
-reuses `tensor.reshape`; MatMul reuses `tensor.matmul`; Transpose reuses
-`tensor.permute`; Gemm reuses a general `nn.gemm` body with transpose flags,
-alpha/beta scaling, and broadcast bias. The relation materializes schema
-attributes as ordinary operands and removes schema-only shape inputs. `infer`
-remains separately callable when a researcher wants to inspect or transform the
-typed source graph,
-but the common conversion path needs only one explicit function call and never
-runs during import or module loading. `ir.retarget` accepts each prospective
-call through the ordinary resolver before committing it, so partial or
-anonymous shapes retain only the unsupported source call. On the pinned
-MobileNetV2, SqueezeNet 1.1, QDQ SqueezeNet 1.0, ResNet-18, and Tiny-YOLOv2
-suite this covers every compute node; unsupported calls in other models remain
-untouched. Tiny-YOLOv3 pins its current incomplete type frontier so new
-relations cannot silently regress complex control-flow graphs. UltraFace is a
-full semantic gate: initializer and Constant tensor literals share one decoder,
-and old attribute-form and current input-form Slice share one relation before
-conversion to explicit operands.
-The larger SSD-MobileNetV1 fixture is a partial semantic gate. Its eight nested
-graphs and nearly six thousand calls validate transport, graph-interface type
-flow, and conservative partial shapes. The pinned frontier falls from 6,790 to
-4,682 unknown results; unsupported relations remain measurable source calls.
-ShuffleNet V2 is a full inference/conversion gate. DenseNet-121 adds an
-inference-from-signature gate that erases all 910 intermediate annotations and
-requires the module to recover every one from inputs and constants.
-Softmax conversion accepts an explicit, in-range ONNX axis and normalizes a
-negative value before calling the shared body. An omitted axis stays in the
-source namespace because its default depends on the imported opset.
-After a successful mapping, source metadata is removed because its semantic
-fields are now explicit operands and the readable result binding already
-preserves node identity. Consequently the normal `ir.expand` operation can
-expose any converted function body without a special metadata exception.
+The split preserves source attributes for inspection and allows a user to run
+format-specific checks before conversion. It also keeps multiple frontends
+from duplicating canonical tensor and neural-network bodies.
 
-`ir.call` inserts an arbitrary call immediately before an existing operation.
-A `Ty` result-type argument returns the single `Val` convenience form; a
-`list<Ty>` returns the created `Op`, whose values are available through
-`ir.outs`; an empty list creates a visible zero-result call. `ir.rename` is
-likewise overloaded for a call target or a result name. The insertion point
-makes order explicit and lets the core reject non-dominating operands without
-a stateful builder object. For example, a
-module can select functions carrying `[rewrite: "my.fused"]`, inspect their
-calls, create `my.fused(...)`, redirect uses, and erase the old calls. The same
-metadata mechanism can describe entry points, optimization stages, target
-capabilities, cost hints, provenance, or test groups; their interpretation
-belongs entirely to the module that queries them.
+Adding a frontend should require:
 
-`ir.ops(m)` is the concise default traversal: it returns all operations in
-function order and structural preorder, including nested loops and conditions.
-`ir.ops(f)` restricts that walk to one function, while `ir.ops(b)` returns only
-the immediate operations of one `Blk`. `ir.replace` replaces all uses by
-default; its four-argument overload changes only uses in one named `Op`.
-Both forms check type compatibility and dominance before changing the IR.
-The `ir.replace(m, op, literal)` overload instead preserves a single-result
-definition and its result handle while changing that definition to a typed
-constant. ONNX and TFLite data normalization use this generic edit; neither
-frontend needs a shared pseudo-operation for weights.
-The list overloads batch whole-rewrite replacement and erasure, resolve
-replacement chains, and rebuild use lists only once. `opt.copy` demonstrates
-that boundary by removing any number of `base.copy` calls without a core
-operator case or repeated whole-module scans.
-The list overload of `ir.set` performs the analogous operation for value
-metadata: each selected value receives its corresponding item, while carried
-aliases are discovered in one pass and conflicting requests fail before any
-edit. `mem.plan` uses this form to commit all slot assignments together.
+1. one codec function returning `.jog` text;
+2. schema-local type refinement where the external format requires it;
+3. a conversion function built from `ir` edits and shared semantics;
+4. conformance tests against authoritative models and reference outputs.
 
-Partial evaluation is likewise selected by a module. `ir.fold` pairs calls with
-ordinary `Fn` handles, executes only calls whose operands are statically
-materializable, and replaces representable scalar results in one batch.
-`opt.fold(m)` supplies the `base` functions; `opt.fold(m, fns)` lets a format or
-target module nominate its own pure helpers. Its structured overload evaluates
-a loop or condition only when all incoming values and every nested call belong
-to that static closure. It preserves output types and source bindings, refuses
-annotated structure, and leaves runtime-dependent control unchanged. The core
-implements execution and structural commit once, while purity and selection
-remain module policy.
+It should not require edits to the core, the C emitter, or another frontend.
 
-`ir.find(m, name)` performs exact local function lookup and returns an invalid
-`Fn` when the symbol is absent; `ir.live` is the uniform validity test.
-`ir.find(name)` performs exact loaded-symbol lookup, including qualification,
-without adding a dependency to the edited model. The overload
-`ir.find(name, params)` selects one nongeneric overload by its exact parameter
-types; `ir.find(m, name, params)` does the same for a local function.
-`ir.params(f)`, `ir.returns(f)`, and `ir.generics(f)` expose the complete
-declared signature. `ir.generics(op)` exposes explicit call terms, while its
-three-argument edit overload validates replacements through ordinary call
-resolution. Together they let format modules reflect nested source graphs and
-rewrite structural type applications without a format-specific handle or
-callee-string parser.
+## Analyses and transformations
 
-Every valid `Blk` ends in `return` or internal `yield`, so an existing `Op` is
-also a complete insertion position; no ambient builder or special append state
-is needed. `ir.constant` and `ir.call` insert leaves. `ir.clone` recursively
-copies a call, constant, loop, or condition, creates fresh `Blk`s/results, and
-remaps values defined inside the copied subtree. `ir.move` reorders an operation
-within its `Blk` atomically and rejects the change if any use would lose
-dominance. `ir.kind` and `ir.blks(op)` make structural selection explicit.
-The overload `ir.clone(m, fn, name)` instead copies a complete generic function
-into the edited module. It uses the existing dependency graph for cross-module
-templates, qualifies only call collisions, and retargets recursion to the new
-function. Research modules can therefore materialize helpers or local template
-copies without a generated header, function builder, or kernel-specific core
-API.
-The overload with a final `list<Ty>` binds all generics and emits a monomorphic
-copy. It substitutes structural types and explicit generic calls throughout the
-body; integer, Boolean, and recursively typed list values used as operands are
-materialized in the entry `Blk`. The ordinary call resolver checks generic
-constraints, and the resulting concrete overload is checked before commit.
-Calls that depended on the source function's generic terms are intentionally
-not tied to one overload in the template. After substitution they participate
-in normal resolution, so an exact scalar implementation can be selected without
-a universal declaration or function-name case.
-Newly resolvable copied calls also receive their result types during cloning or
-expansion. This keeps a transform's returned `Mod` immediately consumable by a
-capability predicate or emitter instead of relying on a serialize/reparse step
-to rerun type inference.
-The `Fn` overloads of `ir.rename` and `ir.erase` support the rest of that
-lifecycle. Rename follows resolved calls rather than raw spelling and respects
-overload collisions. Erase refuses live callers and invalidates the whole owned
-body, so stale handles fail `ir.live` instead of observing detached IR.
-Intrinsic constant types are checked against their attribute representation;
-custom types keep module-defined literal semantics. Both `ir.constant` and
-`ir.call` accept structural `Ty` values, so a transform can reuse a reflected
-or computed type without a text round trip.
-Call construction and retargeting reject callee spellings that the language
-cannot print and parse back.
+`bounds` and `stat` return ordinary compile-time data. `opt`, `mem`, and
+`tile` edit the same function bodies that users inspect.
 
-`ir.loop` creates iterator and carried `Blk` arguments plus an initial
-forwarding yield. `ir.branch` creates two initially forwarding arms. A module
-populates either structure by inserting ordinary calls or constants before its
-yield, then reconnects the terminator with `ir.args(m, op, values)`. The same
-argument mutator updates an existing return. Named local carried values recover
-as ordinary `var` bindings when printed, so the construction API does not leak
-an auxiliary `Blk` syntax into `.jog`.
+`opt.expose` is the main connection between semantics and a target. It asks a
+capability function whether an operation is accepted and expands available
+bodies only where needed. `opt.apply` selects compatible implementations;
+`opt.basic` performs target-independent cleanup.
 
-The optional `tile` module is the first consumer of the explicit capture-remap
-clone. `tile.split(m, loop, factor)` splits the last range iterator into a
-block loop and an inner point loop, carries the original mutable state through
-both, and guards the final partial tile. It supports dynamic and nonzero range
-bounds and recursively clones the original body without inspecting its
-callees. The selected operation and factor are explicit arguments; the module
-does not search by operator name, attach a schedule object, or teach core IR a
-tile kind. A project pass chooses a loop through normal reflection:
+`mem.plan` assigns reusable static slots to tensor values after lifetimes and
+shapes are known. `tile` provides conservative structural loop operations.
+These modules are intentionally separate: storage and scheduling policy can be
+replaced independently and neither changes the core IR.
+
+## Target modules
+
+A useful target module exposes:
 
 ```jog
-module my_schedule
-use tile
-
-fn apply(m: Mod) -> bool {
-  for op in ir.ops(m) {
-    if ir.kind(op) == "loop" {
-      return tile.split(m, op, 8)
-    }
-  }
-  return false
-}
+fn accepts(m: Mod, op: Op) -> bool
+fn prepare(m: Mod) -> bool
+fn source(m: Mod) -> str  // or another artifact function
 ```
 
-Generated bounds are named structural values so their `index` types survive a
-text round trip. Invalid factors, non-range iterators, malformed carried state,
-or failed rewiring abort the enclosing transform transaction.
+The names are conventions, not interfaces baked into the runtime.
+`accepts` defines a testable boundary. `prepare` explicitly exposes or
+rewrites unsupported calls. Artifact functions return text or bytes and must
+reject programs outside their advertised boundary.
 
-`tile.unroll(m, loop, factor)` expands a statically bounded innermost range in
-the same module. It requires a positive factor that exactly divides the trip
-count, keeps every outer-axis iteration in place, and threads each cloned
-iteration's carried results into the next. Empty ranges remain empty and a
-factor of one is a no-op. Dynamic or non-divisible ranges are rejected before
-mutation rather than receiving a hidden cleanup loop. The regression exercises
-an order-sensitive multi-axis recurrence and a tensor update through strict
-C99 generation and execution.
+`c` derives scalar spelling, alignment, index type, headers, payload layout,
+and external prototypes from a configuration dictionary and resolved
+signatures. `vm` emits a deterministic image and reports executed steps.
+Neither receives privileged access to the IR.
 
-`tile.fuse(m, producer, consumer)` is the complementary conservative fusion
-function. It merges explicitly selected one-dimensional loops only when they
-share a range, each carries one distinct type-stable tensor, the producer has
-one same-index store, and every consumer access to its result is a same-index
-load in the consumer body. When that tensor has no user outside the consumer,
-the function forwards the produced scalar, drops the tensor store and load,
-and erases its private initializer. Otherwise it retains the producer result
-while still forwarding the scalar within the merged iteration. Consumer-only
-range construction is erased with the old loops, so a following function in
-the same transaction observes clean use lists without a text round trip.
-Only constants, type/list construction, and the consumer's local setup may
-occur between the selected loops; an intervening observable call is rejected.
-The implementation inspects structural loops and built-in indexed memory
-operations, never frontend or neural-network function names. Shifted access,
-private-intermediate elimination, live-result retention, an `add -> relu`
-chain, and emitted-C numerical execution are regression gates. Reorder and
-multi-axis legality remain follow-on functions, not implied behavior of
-`split` or `fuse`.
+Target-specific support for a user type belongs in a small companion module.
+The `sat.c` and `sat.vm` modules illustrate this rule: `sat` owns the type
+semantics, while each companion owns only its representation at that target.
 
-`tile.can_fuse(m, producer, consumer)` exposes the same structural legality
-test without changing the module. `tile.fuse(m)` is the policy-free convenience
-overload: it repeatedly fuses adjacent legal loops and then invokes ordinary
-constant DCE to remove setup values made dead by the rewrite. A project that
-needs costs, limits, or a different traversal can call `can_fuse` and the
-explicit overload itself; no neural-network catalogue is hidden in either
-path.
+## Extension checklist
 
-`tile.fuse(m, policy)` and `tile.fuse(m, policy, argument)` retain that
-traversal while delegating profitability to an ordinary module function. The
-callback has type `fn(Mod, list<Op>) -> bool`, or adds one structurally typed
-compile-time argument. The pair is always a legal producer/consumer candidate;
-the callback may inspect bodies, metadata, or a target model but must not
-mutate the `Mod`. This separates reusable legality and rewriting from research
-policy without a schedule class or target case in `tile`.
+A module is ready to share when:
 
-`examples/cost` demonstrates the configured form without creating a second
-policy API. Its structural policy bounds the producer's visible range extent
-and recursive call count, then passes the accepted legal pair back to the same
-transactional rewrite. The example is deliberately not a universal target
-model; researchers can replace those features in an ordinary module while
-keeping `tile`, core IR, and emitters unchanged.
+- its name and public functions describe concepts rather than a development
+  phase or version;
+- public behavior is visible in `module.jog`, with helpers marked `local`;
+- dependencies are explicit and minimal;
+- unknown metadata is preserved;
+- failure is transactional and diagnostics identify the rejected operation;
+- output is deterministic;
+- at least one out-of-tree use works without modifying core files;
+- examples show both invocation and resulting IR or artifact;
+- claims about numerical correctness or speed are backed by stored inputs,
+  reference outputs, commands, and measurements.
 
-`ir.rename` may be applied directly to a `Blk` argument. Iterator renames are
-reflected in the loop header, while carried-value renames propagate through
-both arms, yields, and enclosing structured results. The operation therefore
-preserves printable lexical bindings rather than changing only one internal
-handle label.
-
-### Optimization functions
-
-The bundled `opt` module demonstrates composition without a pass hierarchy.
-`opt.unresolved` returns the distinct unresolved call names in structural order,
-so a frontend bridge or target can audit semantic coverage without a registry
-or a built-in operator catalogue. The hidden `base.list` normalization used by
-list literals is language structure and is not reported as an external call.
-`fold_identity` applies an explicit binary identity, `cse` merges structurally
-identical same-`Blk` calls, and `dce` removes unused calls. The latter two take
-a list of callees the caller asserts are pure; no unknown computation is
-silently treated as removable. Dead mutable initializers are removed only when
-no surviving assignment still needs their lexical declaration. `fix` composes
-these transforms for at most the requested number of rounds, while `basic`
-supplies a small algebra-only entry point. A research module can call the
-individual functions or wrap `fix` with its own purity policy using normal
-`.jog` code.
-
-`opt.expand(m, callees)` exposes one level of the named function bodies. A
-snapshot traversal deliberately does not recurse into calls created by the
-same invocation, so the caller controls abstraction: one step may expose
-`nn.linear` as `tensor.matmul` plus a bias loop, and a later step may expose
-`tensor.matmul` as explicit nested loops.
-
-`opt.legalize(m, caps, limit)` is the capability-driven form. `caps` is a
-`list<Fn>` owned by the consumer. A call is retained only when its resolved
-semantic symbol matches a declaration's local name and `ir.accepts` proves its
-argument and result types satisfy that declaration's generic signature. Every
-other metadata-free call with a visible body is expanded, one layer per round.
-The caller bounds recursion with `limit`. Calls with no visible body and calls
-carrying operation metadata remain intact because guessing either an
-implementation or a metadata distribution policy would change semantics.
-
-`opt.frontier(m, caps)` returns the distinct remaining calls not covered by the
-same capability list. It is a read-only query, so `len(opt.frontier(...)) == 0`
-is a simple readiness test. A target experiment can describe its accepted
-computation with ordinary functions:
-
-```jog
-module edge
-use opt
-use ir
-use tensor
-
-fn tensor.matmul<M: int, N: int, K: int>(
-  a: tensor<i8, [M, K]>, b: tensor<i8, [K, N]>
-) -> tensor<i8, [M, N]>;
-
-fn caps() -> list<Fn> {
-  return ir.fns("edge")
-}
-
-fn prepare(m: Mod) -> bool {
-  return opt.legalize(m, caps(), 16)
-}
-```
-
-There is no capability registry or target base class. `ir.fns("edge")`
-enumerates the loaded module without importing it into the model; unrelated
-helper functions cannot match a source symbol and are ignored. Renaming or
-selecting retained calls remains another normal module function. `base.list`,
-the language's internal materialization of list literals, is structural and is
-ignored by capability checks.
-
-For a structural target boundary, `opt.expose(m, accept, limit)` takes one
-ordinary `fn(Mod, Op) -> bool` instead of a declaration list. Each round
-composes static folding, copy removal, and one layer of body exposure until
-every remaining call is accepted or no progress is possible. The predicate
-must leave the module revision unchanged; mutation is diagnosed and the outer
-transform restores the exact input. `opt.frontier(m, accept)` reports calls
-rejected by the same predicate, while `opt.legalize(m, accept, limit)` provides
-body exposure without folding or copy removal.
-
-```jog
-module edge
-use ir
-use opt
-
-fn accepts(m: Mod, op: Op) -> bool {
-  return ir.callee(op) == "edge.dot"
-}
-
-fn prepare(m: Mod) -> bool {
-  return opt.expose(m, ir.find("edge.accepts"), len(ir.ops(m)) + 1)
-}
-```
-
-The predicate may inspect types, shapes, metadata, or module-owned format
-functions. It does not register operators or force each retained computation
-to have a duplicate declaration. Declaration-list legalization remains useful
-when accepted signatures themselves are the desired capability description.
-Run reports record the resulting edits and explicit body-expansion events, not
-each read-only predicate invocation.
-
-A body-bearing declaration is also an alternative implementation. `opt.apply`
-groups declarations by the resolved source symbol, asks `ir.match` to choose
-the most specific compatible overload, and expands that body to a fixed point.
-Passing the chosen `Fn` rather than a list back to `ir.match` returns its
-inferred generic terms. A module may pass those terms directly to `ir.clone` to
-retain a named monomorphic function for later transforms or emission.
-The default bound is derived from the number of supplied implementations;
-`opt.apply(m, impls, limit)` makes it explicit for recursive specialization.
-One extra convergence probe detects a still-changing final round; failure
-diagnoses the bound and rolls the complete invocation back. Bodyless
-declarations are ignored by `apply` and remain useful to `legalize`. If an
-implementation module is not visible from the model, the environment adds one
-`use` edge before expansion so unqualified helper calls in the copied body keep
-their defining visibility. Dependency insertion and expansion are one
-transaction; a mismatch or unrepresentable generic restores the original IR
-and revision. Metadata-bearing calls remain explicit until the owning module
-chooses how their tags should be distributed.
-
-```jog
-module edge
-use tensor
-use opt
-use ir
-
-fn dot<M: int, N: int, K: int>(
-  a: tensor<i8, [M, K]>, b: tensor<i8, [K, N]>
-) -> tensor<i8, [M, N]>;
-
-fn tensor.matmul<M: int, N: int, K: int>(
-  a: tensor<i8, [M, K]>, b: tensor<i8, [K, N]>
-) -> tensor<i8, [M, N]> {
-  return dot(a, b)
-}
-
-fn prepare(m: Mod) -> bool {
-  return opt.apply(m, ir.fns("edge"))
-}
-```
-
-More-specific overloads can describe a fixed vector width, tile shape, number
-format, or fused implementation while a generic overload remains the fallback.
-Generic arguments written on the source call constrain implementation matching
-through the same structural rules as ordinary call resolution.
-The resulting calls are still ordinary `Op`s in ordinary `Fn` bodies; `dot`
-has no built-in target meaning.
-
-`opt.rename(m, rules)` applies exact call-name pairs supplied as
-`list<list<str>>`. It knows no frontend or network names. A bridge first calls
-`ir.use` for its destination library, then supplies a relation such as
-`[["onnx.Relu", "nn.relu"]]`. A visible destination is checked against the
-call signature before the name changes; an unknown destination remains open.
-Rules that need operand reordering, attribute interpretation, or new constants
-remain ordinary bridge code rather than hidden behavior in this simple relation
-helper.
-
-The C++ embedding API can call the same function as
-`run(env, "module.fn", mod)` or request a structural report with
-`run(env, "module.fn", mod, report)`. Reports are `Attr` dictionaries, so tools
-can serialize or extend them without linking to a report-class ABI. They expose
-the returned change claim separately from the observed revision delta and
-include nested transform completions. Entries use `kind: "fn"`; successful
-`ir.expand` edits additionally contribute `kind: "expand"` entries containing
-`source`, `impl`, `params`, `returns`, and the exact revision interval. This is
-enough to audit overload selection without an implementation-plan object or a
-second dry-run algorithm.
-Function materialization uses `kind: "clone"` with `source`, `copy`, `generics`,
-`params`, `returns`, and the same revision fields, so generated helpers are
-equally auditable without a new reporting interface.
-`joggle run module.fn model.jog --report run.attr -M modules` writes that same
-structural report separately while preserving the transformed module on
-standard output. The implementation reuses the public `print(Attr)` overload,
-so the CLI does not own a second serialization schema.
-Several names may precede the model path:
-`joggle run bridge.convert opt.basic mem.plan model.jog`. They execute in order
-as one transaction and the report retains the separate result of every normal
-function; no wrapper file or pipeline format is required.
-`joggle query module.fn model.jog -M modules` invokes an analysis and writes its
-canonical `Attr` result; repeatable `--arg` values select parameterized
-overloads. `opt.unresolved` reports calls
-without a visible declaration; the complementary `opt.untyped` reports calls
-whose outputs still have the open `_` type. The distinction separates symbol
-coverage from type-propagation coverage.
-`joggle emit module.fn model.jog -M modules` invokes the same read-only function
-but requires `str` or `bytes` and writes the payload verbatim. A module can
-therefore expose source, HDL, assembly, or a binary image without implementing
-an emitter interface or changing the CLI for its artifact kind.
-
-`c.source` demonstrates the complete path in pure `.jog`. It reflects local
-functions, maps scalar types and fixed C operators from ordinary dictionaries,
-prints local calls and structured control flow, flattens statically shaped
-tensor indexing, and returns C99 text. Static tensor results become explicit
-caller-owned output pointers. A non-local call is not implicitly lowered:
-the module reports that it must be exposed first. Overloads or sanitized names
-that would collide in C are rejected before text is returned. The execution
-test emits a matrix multiplication plus scalar call/branch functions, compiles
-them with a system C compiler under warnings-as-errors, and checks their
-numerical results.
-
-One `c.abi` dictionary maps each scalar type name to a structural descriptor
-with `name`, `bytes`, `kind`, and `include` fields. It is the source of C
-spelling, byte width, legal operator class, and header dependencies. The
-configured overloads of `c.accepts`, `c.prepare`, `c.header`, and `c.source`
-accept a sparse dictionary of replacement descriptors; unspecified types keep
-their defaults. A custom scalar typedef or a 32-bit `index`/`int` pair can
-therefore be selected without editing the C module. That classification makes
-`c.accepts` reject
-C-illegal combinations such as floating remainder and bitwise operations
-before emission; real remainder is the explicit `math.fmod` function. `int`
-and semantic `index` currently choose signed 64-bit C storage. Emitter-created
-loops over fixed array storage use that same `index` mapping, so generated code
-has no second counter-type policy or synthetic Joggle type. These are C-module
-policies, not core types.
-The executable ABI regression exposes `index`, `int`, and `i32` in one normal
-function and requires the generated prototype to use `int64_t`, `int64_t`, and
-`int32_t` respectively. Fixed-storage loops must use the same `int64_t` index
-mapping. This prevents an incidental emitter-only counter policy from drifting
-away from the model's explicit index semantics.
-`c.header` emits the same checked prototypes
-as `c.source`, wrapped for C++ linkage, through the ordinary read-only emit
-boundary. The test compiles the generated header and source together with
-strict-prototype warnings enabled. A model `local fn` is defined and declared
-`static` inside the generated translation unit and is never included in the
-public header; both spellings still come from the same signature function.
-The source is intentionally self-contained and does not guess the filename to
-which a separate `c.header` result will be written. It repeats declarations
-from that shared signature function; an application may include the header
-normally, or a build may inject it while compiling the source. The public
-header collects the `include` fields required by its exported signatures. The
-source collects them across emitted definitions and external bindings, adding
-`string.h` only when byte-exact tensor copies require `memcpy`. Emitter-owned
-loops use the configured `index` spelling rather than `size_t`. Header and
-source therefore share one type contract rather than separate include tables.
-Generated files remain under the ignored build tree for inspection.
-
-`c.data(m) -> bytes` lays out immutable typed tensor constants in deterministic
-structural order, inserting only the natural alignment padding required by the
-default C ABI. `c.data(m, config)` uses the same configured scalar widths as
-emission. A scalar descriptor may provide an `align` field independently of
-`bytes`; omission uses its byte width. The paired overloads
-`c.source(m, name)` and `c.header(m, name)` replace inline byte strings with
-offsets from one explicit `const unsigned char* jog_data_<name>` argument after
-normal inputs and before output pointers. Every generated definition receives
-that argument and internal calls forward it. Constants bind read-only typed
-views at their aligned offsets instead of being copied into mutable workspace;
-the caller must provide a blob base aligned for the strictest configured
-scalar. Heap allocation, page-aligned mapping, and suitably declared ROM meet
-the default contract; an arbitrary byte-subspan does not.
-bodyless external bindings retain their declared ABI. The zero-argument forms
-remain self-contained. All three functions inspect the same prepared `Mod`, so
-no manifest, artifact hierarchy, or duplicated weight representation enters
-core IR. The executable gates check byte identity and both inline and
-external-data execution, including an official ONNX model. On the official
-MobileNetV2 artifact, this reduces generated C from 56,911,938 bytes to 246,085
-bytes and emits a separate 14,156,560-byte blob. The application may read,
-memory-map, download, or point into ROM for that blob; storage and transport
-remain explicit application or target policy rather than a linker convention.
-
-The separate `math` module declares the current NN-required numerical surface—
-`abs`, `ceil`, `erf`, `exp`, `floor`, `fmod`, `log`, `pow`, `round_even`,
-`sqrt`, and `tanh`—as exact `f32` and `f64` overloads. It is deliberately not
-advertised as a complete mirror of C `libm`. Each bodyless primitive owns
-optional C name/header and VM opcode attributes. The consumers read those
-attributes from the resolved function; neither carries a second list of math
-symbols, and neither treats an arbitrary `Ty` as floating point. Generic
-`nn` bodies can still use the operations because dependent calls resolve only
-after their element type is specialized. The generic bodies use the normal
-unqualified overload set opened by `use math`; a custom number-format module
-may therefore supply a compatible overload without changing `math`, `nn`, or
-the core. `round_even` demonstrates the complementary case: semantics live in
-one ordinary body and both target preparation functions expose it.
-
-A resolved, bodyless, monomorphic `Fn` whose parameters and results use
-representable scalar or fixed tensor types is also a C dependency declaration.
-`c.source` emits its prototype under a module-qualified symbol and uses the
-same output-pointer convention as local functions. A single scalar result is
-returned directly; tensor and multi-result signatures use ordered trailing
-pointers, and a zero-result function is ordinary C `void`. The public header
-contains the model's definitions; dependency prototypes stay in the source
-translation unit. `[c: {name: "name"}]` supplies the exact C spelling for
-either a local definition or an external dependency. This lets an exported
-model present a stable application ABI without changing its Joggle name. An
-optional `include: "file.h"` field on an external dependency makes `c.source`
-include that system header once and omit its redundant prototype.
-`math` and `examples/edge` exercise the header-backed and generated-prototype
-forms respectively. This rule is structural—no callee name, operator registry,
-or per-kernel binding is required. [`examples/edge`](../examples/edge) links a
-separately compiled matrix kernel through this path. Anonymous tensor results
-use their ephemeral `Val` key for an internal temporary rather than forcing a
-source-level `let` solely for C emission.
-
-`c.prepare` is a separate, explicitly selected transform. It asks the same
-ordinary `c.accepts(Mod, Op)` predicate whether a call is directly printable and
-expands unsupported calls only when their ordinary resolved function has a
-body and carries no unhandled metadata. The bounded fixed point is
-transactional and a second preparation is byte-identical. In the execution
-gate, a high-level tensor addition expands
-through the shared `tensor` body into a constructor, scalar-list shape loop,
-range loop, indexing, and scalar addition; that prepared model is then emitted,
-compiled, and executed. `c.source` does not invoke the transform.
-Each preparation round first composes `opt.fold` and `opt.copy`, so exposed
-static shape expressions are simplified without erasing nested assignments
-that the readable surface form must retain. The C module reads `ir.form` for
-declarations and updates; it does not infer mutation from callee names or
-dataflow coincidences. It directly prints remaining scalar or tensor copies
-and otherwise owns only actual C
-capabilities: scalar/list and
-tensor access, standard floating-point math calls, structured control, and
-fixed tensor storage. Structured short-circuit branches are recovered as C
-logical expressions from their forwarding arm and are not also emitted as
-empty statement-level branches, without a parser or core special case. Large
-byte literals use `base.hex` rather than an interpreted
-loop per byte.
-
-C symbols and locals use the shared injective `base.ident` fragment encoding
-rather than a chain of punctuation replacements. The emitter's `jog_`, `v_`,
-and `jog_mem_` prefixes keep whole identifiers outside reserved namespaces;
-the `ZZ`, `ZD`, `ZU`, and `ZXhh` escapes keep dots, underscore runs, arbitrary
-punctuation, and UTF-8 bytes distinct. Collision checks still run on final
-emitted function symbols.
-
-When `mem.plan` has attached target-neutral reusable slots, `c.place(m,
-"static")` records an explicit C-only workspace choice on each emitted
-function; `"local"` removes it. The emitter reads this open metadata but never
-runs either transform. Static placement avoids a large call stack at the cost
-of reentrancy, so it is an opt-in policy rather than a core storage class.
-
-A read-only module function is invoked with `query(env, "module.fn", mod,
-result, args, cached)`. It is still declared with ordinary `fn` syntax. The
-call mode evaluates a verified snapshot, rejects attempted edits, and caches
-the single structural result using the module revision, environment load
-epoch, function specialization, and explicit `Attr` arguments. For example,
-`opt.count(m, callee)` counts live calls without introducing an analysis class
-or metadata convention.
-
-Embedding code that chooses steps dynamically may pass a
-`span<const string_view>` to `run`. The overload executes the named functions
-in order, returns their ordinary reports in a `steps` list, and treats the
-whole sequence as one transaction with one rollback snapshot. Verification is
-still performed after each function, but sequence length does not multiply the
-cost of copying the input IR. This is the host-side equivalent of writing a
-normal `.jog` wrapper function. The CLI exposes the same overload by accepting
-several function names before the input file; neither path registers, owns, or
-serializes a pipeline object.
-
-The optional five-argument C++ overload returns a `chrono::nanoseconds` value
-for one function or an ordered vector for a host sequence. This is observation,
-not module semantics: durations are never inserted into the deterministic
-`Attr` report, and a failed sequence returns no partial timings.
-
-The bracket syntax is not a `host` special case. Any module may define its own
-keys and attach them to a function, value binding, or operation statement.
-Version and ABI information remains in package/API data; it is not encoded in
-function names or required in module source.
-
-`ir.fuse` is likewise operator-neutral. It accepts an ordered `list<Op>`,
-derives unique live-ins and the single live-out, inserts the requested call,
-and removes the region transactionally. It rejects mixed `Blk`s, reordered or
-duplicate operations, multiple live-outs, invalid dominance, and fusion across
-an unselected executable operation. If the requested callee is visible, its
-ordinary argument, generic, and result signature must match the region
-boundary; an unknown callee remains an open call for a later research module to
-define. `opt.fuse` is a normal `.jog` helper that finds a single-use call chain
-from a user-supplied list of callee names; a frontend bridge can invoke it
-explicitly without registering operator classes or modifying the core.
-
-### Measurements
-
-`stat.summary(m)` returns a stable structural dictionary without assigning a
-device interpretation. `stat.sum(m, measure)` takes an ordinary
-`fn(Mod, Op) -> int`, invokes it once per operation through `ir.invoke<int>`,
-and rejects a measure that mutates the subject. The module defines traversal
-and aggregation only; units and device assumptions belong to the supplied
-function. [`examples/cost`](../examples/cost) is a runnable custom policy.
-The overload `stat.sum(m, measure, arg)` forwards one structural configuration
-value to `fn(Mod, Op, A) -> int` while retaining the same mutation check.
-The four-argument `ir.invoke<R>(m, op, fn, arg)` form passes one structural
-configuration value to a callback with a matching third parameter. Modules can
-therefore parameterize a relation, capability predicate, or measure without
-generating one wrapper function per policy choice.
-`opt.supports`, `opt.frontier`, `opt.expand`, `opt.legalize`, and `opt.expose`
-carry the same optional value to their predicate. Configured and unconfigured
-calls share the traversal and convergence implementation.
-
-`bounds.infer(m)` performs a read-only interval analysis over integer-like
-`Val`s. `bounds.get(facts, value)` returns `[lo, hi]` when the interval is
-known, and `bounds.fits(facts, value, type)` tests it against the representable
-range of another scalar type. `bounds.report(m)` is the printable summary.
-Facts use stable `ir.key` values and belong to the exact `Mod` revision that was
-analysed; callers should query them through `get` rather than persist the
-dictionary as IR metadata.
-
-The current transfer functions cover integer constants, range iterators,
-overflow-checked `+`, `-`, and `*`, safe scalar conversions, Boolean results,
-branch joins, and unchanged loop-carried values. Unsupported arithmetic,
-overflow, and modified recurrences remain unknown. The implementation makes
-one structural preorder traversal after constant initialization and keeps
-dictionary state; it does not rescan every value against every operation.
-Crucially, it does not rewrite types or choose C's index width. A later custom
-format, address-generation, WCET, or emitter policy can require a proof and
-then perform an explicit transformation.
-
-### Binary codecs
-
-`joggle read module.function input` is the common frontend boundary. It reads
-the input as `bytes`, invokes a bound native function returning `str`, then
-parses and verifies that string as an ordinary `Mod`. The optional ONNX module
-implements `onnx.read` with generated Protobuf Lite code. Protobuf is linked only
-into `joggle_onnx`; the core library and normal build remain dependency-free.
-
-The current codec accepts dense ONNX tensors, tensor-shaped graph values,
-scalar/list/tensor/graph node attributes, arbitrary node result counts, and
-multiple graph outputs. Every graph-valued attribute becomes an ordinary local
-`Fn`. Values read from an enclosing ONNX graph become explicit trailing
-parameters, and the graph reference records their positions in the owning
-call's operands. Recursive captures propagate through nested functions, so no
-frontend-only region tree is required. Types from graph inputs, outputs,
-intermediate `value_info`, and initializers become explicit result annotations
-where available. Missing
-optional node outputs retain their result position through an unused binding.
-Each distinct ONNX `dim_param` becomes an `int` generic on the imported
-function, so repeated symbolic dimensions retain identity across inputs,
-intermediates, and outputs. Sanitized name collisions are resolved once and
-value bindings cannot shadow those generics. An unnamed dynamic dimension is
-the ordinary open term `_`.
-Unsupported sparse, string, and external-data forms fail with a diagnostic
-rather than being dropped. Operator names and attributes are
-transported generically; their semantics belong to later modules. Data inputs
-remain call operands. Node names and schema attributes live on the `Op`, while
-each nonempty original value name lives on its `Val` under the same open
-`onnx` key. This preserves source identity through identifier normalization
-without changing a call's semantic arity.
-
-The optional `tflite` codec is a second implementation of the same boundary.
-It emits every subgraph as a function, tensors as typed values, buffer-backed
-tensors as payload calls, and operators as open `tflite.*` calls. FlatBuffers
-mini-reflection transports every schema-known option table into the operation's
-`tflite` metadata dictionary without dispatching on operator names. Optional
-input slots remain `nil`, and multiple outputs remain ordinary call results.
-Every source tensor attaches its index and original name to the corresponding
-`Val`; nonzero buffer identity and optional quantization, sparsity, and variable
-state are included when present. Types do not repeat in metadata. Thus a bridge
-or target can inspect data semantics independently of producer opcode.
-Negative extents in `shape_signature` become `_`, which now satisfies the same
-open integer-term rule as an anonymous ONNX dimension.
-The checked-in schema is upstream source; its large generated C++ interface is
-private build output. As with ONNX, mapping those source calls to `nn` is the
-responsibility of a separately selected relationship module.
-
-That relationship is the pure `.jog` module `tflite.nn`. Its `convert`
-function materializes padding, stride, dilation, groups, logical axes, fused
-activation, and softmax axis/scale as normal operands. Standard and depthwise Conv,
-Add/Sub/Mul, average/max pool, reshape, and softmax then resolve to shared
-functions. Each mapping is an ordinary function selected by its module-owned
-`on` attribute through the same `ir.where`/`ir.invoke` boundary as ONNX; there
-is no frontend-wide operator dispatch chain. These relation implementations
-are likewise module-local and remain visible to the owning module's explicit
-reflection, while `convert` is the bridge's small public surface. Its
-two-argument `convert`
-overload lets a caller supply a composed relation set while retaining this
-module's dependency preparation and quantization guard. On the pinned
-MobileNetV2 this removes all 66 source compute calls and retargets all 107
-buffer payloads to typed tensor constants. Once no operation retains TFLite semantic
-metadata, the final cleanup relation erases the source model marker; partially
-converted models retain it. A second invocation is unchanged, and all 66
-converted bodies can be independently exposed and round-tripped.
-Each successful mapping uses the same atomic `ir.retarget` operation as the
-ONNX bridge, so adding layout, padding, activation, or axis operands cannot
-expose an intermediate call with the source callee and target arguments.
-
-The same bridge maps unquantized Add, Sub, and Mul through the shared broadcast
-semantics. Before any conversion it checks every operand and result for
-nonempty scale and zero-point metadata. Quantized calls are deliberately left
-intact: their rescaling, rounding, and saturation must be made explicit by a
-quantization module rather than approximated by raw integer arithmetic.
-
-### A hardware extension
-
-`sat` is a complete, intentionally small module for signed saturating integers.
-It keeps the related pieces a hardware experiment commonly needs together
-without turning them into separate plugin kinds:
-
-| Function | Role |
-| --- | --- |
-| `sat.add<W>` | Primitive over the module-defined `sat<W>` format. |
-| `sat.supports` | Structural `Ty` predicate used by selection policy. |
-| `sat.select` | Textual transform from matching `operator +` calls. |
-| `sat.materialize` | Retype the format through a caller-supplied storage map and specialize its implementation. |
-| `sat.sim` | Bit-exact scalar reference semantics. |
-| `sat.emit` | SystemVerilog text for the selected-width primitive. |
-
-Build it with `JOGGLE_BUILD_SAT=ON`. The declaration, transformation policy,
-type predicate, reference semantics, and emitted representation stay together
-in the module;
-the core knows none of their names. A research module can replace any or all of
-these functions without adopting a target class hierarchy.
-
-The format-owned `sat.materialize` function recursively rewrites structural
-types, so `sat<W>` is handled equally as a scalar or a tensor element. Its two
-ordinary arguments describe ordered width limits and their storage `Ty`s. It
-retypes values and function contracts, specializes one generic saturating-add
-body through `ir.clone`, and retargets resolved format calls. The thin `sat.c`
-bridge supplies `[8,16,32,63]` and `[i8,i16,i32,i64]` before invoking unchanged
-C preparation; generated C is checked at 5-, 8-, and 12-bit boundaries. The
-thin `sat.vm` bridge supplies `[63]` and `[i64]`, then executes a
-`tensor<sat<5>, [4]>` through the unchanged deterministic VM. Both paths are
-byte-identical when repeated, and neither target module contains a format case.
-The C harness includes the generated header rather than duplicating the
-materialized narrow integer signatures by hand.
-
-`module.jog` contains the module header and imports. Files in `lib/*.jog` are
-appended in lexical path order and contain further declarations without another
-module header. This gives one deterministic in-memory `Mod`, not one IR per
-source file.
+See [tutorial.md](tutorial.md) for guided examples and
+[design.md](design.md) for the invariants behind these rules.

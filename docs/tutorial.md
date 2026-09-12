@@ -294,7 +294,7 @@ adds a tail guard, so bounds need not be divisible by four. It does not select
 loops or choose a factor on the user's behalf.
 
 `tile.fuse(m, producer, consumer)` uses the same explicit-selection rule. It
-accepts a current conservative slice: two one-dimensional loops over the same
+accepts a conservative case: two one-dimensional loops over the same
 range, each carrying one tensor, where the producer stores one element and the
 consumer reads that same element at the same iterator. It rejects shifted or
 otherwise non-pointwise dependencies instead of recognizing operation names.
