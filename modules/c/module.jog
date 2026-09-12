@@ -607,6 +607,11 @@ local fn direct_result(
   return ""
 }
 
+local fn returned_only(value: Val) -> bool {
+  let users = ir.users(value)
+  return len(users) == 1 && ir.kind(users[0]) == "return"
+}
+
 local fn tensor_new(
   m: Mod, op: Op, depth: int, blob: str, config: dict,
   direct: list<str>, results: list<str>
@@ -879,20 +884,25 @@ local fn call(
   if tensor.valid(ir.type(output)) {
     let type = ir.type(output)
     var out = ""
+    var destination = val(output)
     if !reuses(op) && !mem.planned(output) {
       let target = direct_result(output, direct, results)
       if target == "" {
         out = indent + scalar(tensor.elem(type), config) + " " + val(output) +
               "[" + text(count(type)) + "];\n"
       } else {
-        out = indent + scalar(tensor.elem(type), config) + "* " + val(output) +
-              " = " + target + ";\n"
+        if returned_only(output) {
+          destination = target
+        } else {
+          out = indent + scalar(tensor.elem(type), config) + "* " +
+                val(output) + " = " + target + ";\n"
+        }
       }
     }
     if len(inputs) != 0 {
       actuals += ", "
     }
-    out += indent + callee + "(" + actuals + val(output) + ");\n"
+    out += indent + callee + "(" + actuals + destination + ");\n"
     return out
   }
   if ir.name(output) == "" {

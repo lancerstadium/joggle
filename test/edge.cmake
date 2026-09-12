@@ -67,6 +67,11 @@ if(NOT result EQUAL 0)
 endif()
 
 file(READ "${source}" emitted)
+if(emitted MATCHES "(^|[^A-Za-z0-9_])(jog_|v_[A-Za-z0-9])")
+  message(FATAL_ERROR
+          "external-kernel C introduced a compiler-owned project prefix:\n"
+          "${emitted}")
+endif()
 if(NOT emitted MATCHES
    "void edge_matmul\\(const float\\* a, const float\\* b, int64_t rows, int64_t columns, int64_t inner, float\\* out\\);")
   message(FATAL_ERROR "external kernel prototype is absent:\n${emitted}")
@@ -78,11 +83,11 @@ if(NOT matmul_prototype_count EQUAL 1)
           "external kernel prototype was not deduplicated:\n${emitted}")
 endif()
 if(NOT emitted MATCHES
-   "edge_matmul\\(a, b, 2, 2, 3, product\\);")
+   "edge_matmul\\(a, b, 2, 2, 3, product_out\\);")
   message(FATAL_ERROR "external kernel call is absent:\n${emitted}")
 endif()
 if(NOT emitted MATCHES
-   "edge_matmul\\(a, b, 1, 4, 3, product\\);")
+   "edge_matmul\\(a, b, 1, 4, 3, product_out\\);")
   message(FATAL_ERROR "second external kernel shape is absent:\n${emitted}")
 endif()
 if(NOT emitted MATCHES
@@ -90,7 +95,7 @@ if(NOT emitted MATCHES
   message(FATAL_ERROR "external convolution call is absent:\n${emitted}")
 endif()
 if(NOT emitted MATCHES
-   "edge_conv2d\\(x, weight, 1, 3, 3, 1, 1, 2, 2, 2, 2[^;]*, convolved\\);" OR
+   "edge_conv2d\\(x, weight, 1, 3, 3, 1, 1, 2, 2, 2, 2[^;]*, convolved(_out|_[0-9]+)\\);" OR
    emitted MATCHES "edge_conv2d\\([^;]*hex\"")
   message(FATAL_ERROR
           "tensor constant is not named at the external boundary:\n${emitted}")

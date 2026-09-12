@@ -6,9 +6,9 @@ loops, storage decisions, and target preparation in one readable function IR.
 Extensions are ordinary distributable modules rather than new compiler
 subsystems.
 
-Joggle is pre-1.0 research software. It can import and execute selected ONNX
-and TFLite models through generated C and a deterministic VM, but it is not yet
-a production inference runtime.
+Joggle is pre-1.0 research software. It can import selected ONNX and TFLite
+models and execute selected ONNX models through generated C and a deterministic
+VM, but it is not yet a production inference runtime.
 
 ## Why Joggle
 
@@ -231,7 +231,9 @@ contract.
 When a function has one return path and an unplanned local tensor is returned,
 the C emitter binds that tensor directly to its output pointer. It does not
 materialize a second local array or append a whole-tensor copy. Planned
-workspaces and multiple return paths retain the conservative copy boundary.
+workspaces and multiple return paths retain the conservative copy boundary. A
+return-only tensor call also receives the output pointer directly, so anonymous
+results do not introduce a numbered pointer alias solely for the return.
 
 `mem.plan` also proves a narrow full-overwrite case from ordinary IR structure.
 If a tensor constructor feeds one loop, the loop covers either every linear

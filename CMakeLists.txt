@@ -671,9 +671,6 @@ if(JOGGLE_BUILD_TESTS)
               ${JOGGLE_TEST_ONNX_ZOO}/mobilenetv2-7.onnx
               ${CMAKE_CURRENT_BINARY_DIR}/modules
     )
-    add_executable(joggle-onnx-zoo-test test/zoo.cpp)
-    target_link_libraries(joggle-onnx-zoo-test PRIVATE Joggle::joggle)
-    add_dependencies(joggle-onnx-zoo-test joggle-onnx)
     add_test(
       NAME onnx-zoo-mnist
       COMMAND joggle-onnx-zoo-test
@@ -808,6 +805,9 @@ if(JOGGLE_BUILD_TESTS)
     endif()
   endif()
   if(JOGGLE_BUILD_ONNX)
+    add_executable(joggle-onnx-zoo-test test/zoo.cpp)
+    target_link_libraries(joggle-onnx-zoo-test PRIVATE Joggle::joggle)
+    add_dependencies(joggle-onnx-zoo-test joggle-onnx)
     add_executable(joggle-onnx-codec-test test/onnx_codec.cpp)
     target_link_libraries(
       joggle-onnx-codec-test PRIVATE Joggle::joggle joggle-onnx-proto

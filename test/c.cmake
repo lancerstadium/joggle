@@ -88,6 +88,10 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "prepared C emission failed (${result}):\n${error}")
 endif()
 file(READ "${open_source}" emitted)
+if(emitted MATCHES "(^|[^A-Za-z0-9_])(jog_|v_[A-Za-z0-9])")
+  message(FATAL_ERROR
+          "prepared C introduced a compiler-owned project prefix:\n${emitted}")
+endif()
 if(emitted MATCHES "math_")
   message(FATAL_ERROR
           "prepared C declared a math function already emitted through libm:\n"
@@ -207,6 +211,12 @@ if(NOT result EQUAL 0)
 endif()
 file(READ "${source32}" emitted_source32)
 file(READ "${header32}" emitted_header32)
+if(emitted_source32 MATCHES "(^|[^A-Za-z0-9_])(jog_|v_[A-Za-z0-9])" OR
+   emitted_header32 MATCHES "(^|[^A-Za-z0-9_])(jog_|v_[A-Za-z0-9])")
+  message(FATAL_ERROR
+          "32-bit C introduced a compiler-owned project prefix:\n"
+          "${emitted_header32}\n${emitted_source32}")
+endif()
 if(NOT emitted_source32 MATCHES "for \\(int32_t i = 0;" OR
    NOT emitted_header32 MATCHES
        "kernel_abi_probe\\(int32_t i, int32_t n, int32_t x\\);")
@@ -332,6 +342,17 @@ if(emitted_header MATCHES "kernel_noop")
           "C header exposed a local zero-result helper:\n${emitted_header}")
 endif()
 file(READ "${source}" emitted_source)
+if(emitted_source MATCHES "(^|[^A-Za-z0-9_])(jog_|v_[A-Za-z0-9])")
+  message(FATAL_ERROR
+          "generated C introduced a compiler-owned project prefix:\n"
+          "${emitted_source}")
+endif()
+if(emitted_source MATCHES "tmp_[0-9]+ = out;" OR
+   NOT emitted_source MATCHES "kernel_relay\\(first, out\\);")
+  message(FATAL_ERROR
+          "generated C retained a return-only tensor alias:\n"
+          "${emitted_source}")
+endif()
 string(REGEX MATCH "int64_t kernel_steps\\(void\\) \\{[^}]*\\}"
        steps_source "${emitted_source}")
 string(REGEX MATCH "int64_t kernel_select\\(void\\) \\{[^}]*\\}"

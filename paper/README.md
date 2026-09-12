@@ -123,12 +123,15 @@ frozen.
   remaining roughly 7--65x gap is a blocking generated-code-quality result;
   optimized convolution, layout, and cross-function storage are now more
   important than further source compaction.
-- QDQ SqueezeNet 1.0 decodes, refines, converts, exposes, emits external-weight
-  C, and compiles, but is still not counted as numerically executed.
 - TinyYOLOv2 is the fifth numerically executed ONNX model: 21,125 outputs agree
   with a seed-0 ONNX Runtime reference within `1.669e-5`. Its unisolated strict
   C median is 2.285 s versus 22.587 ms for one-thread ONNX Runtime, exposing a
   roughly 101x backend gap on a larger detection input.
+- QDQ SqueezeNet 1.0 is the sixth numerically executed ONNX model and the first
+  executed model with explicit quantize/dequantize boundaries. Its 1,000
+  outputs agree with an ONNX Runtime reference within `1.341e-7`; an
+  unisolated ten-call pilot is still about 18.3x slower than the reference
+  runtime.
 - One out-of-tree convolution implementation now changes the generated loop
   structure without an ONNX or C-emitter edit. On matched strict-C pilots it
   reduces median latency by 1.93x on MobileNetV2, 3.13x on ResNet18, 6.29x on

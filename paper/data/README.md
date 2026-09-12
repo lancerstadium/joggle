@@ -127,6 +127,26 @@ is 2.285 s versus 22.587 ms for one-thread sequential ONNX Runtime, roughly a
 competitive performance claim. Both reference and benchmark scripts accept an
 explicit `--shape` for dynamic input signatures.
 
+`qdq-backend-pilot.csv` adds the sixth numerically executed ONNX Zoo model and
+the first model whose graph contains explicit quantize/dequantize boundaries.
+The checksum-pinned SqueezeNet 1.0-13 QDQ model uses one deterministic seed-0
+`f32` input of shape `[1, 3, 224, 224]`; ONNX Runtime 1.26.0 produced the
+1,000-element reference. The same ordinary `onnx.nn` conversion, out-of-tree
+spatial convolution selection, call-site instantiation, C preparation, static
+memory planning, and external-data emission path produced 173,461 bytes of C
+and a 1,298,888-byte payload. The current plan reports 44 slots and 7,428,640
+scalar elements across 19 emitted functions; this is deterministic but still
+too large to support a low-resource deployment claim. Apple Clang 17 compiled
+it with strict C11,
+`-O3 -DNDEBUG`, and warnings as errors. All outputs agree with maximum absolute
+error `1.3411045e-7`.
+
+After three warm-ups, ten calls in one unisolated process have a 46.021 ms
+median. A separate one-thread sequential ONNX Runtime process has a 2.514 ms
+median, leaving an approximately 18.3x gap. These raw rows extend correctness
+and operator-boundary coverage; their latency is a direction-setting pilot,
+not publication evidence.
+
 `model-coverage-pilot.csv` records stage-level status for checksum-pinned ONNX
 Zoo models. A row with `compile_c=pass` is not counted as numerical
 correctness; only rows with `execute=pass` used the official stored output.

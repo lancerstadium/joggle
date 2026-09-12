@@ -54,6 +54,20 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "IKJ C header emission failed (${result}):\n${error}")
 endif()
 
+file(READ "${source}" emitted_source)
+file(READ "${header}" emitted_header)
+if(emitted_source MATCHES "(^|[^A-Za-z0-9_])(jog_|v_[A-Za-z0-9])" OR
+   emitted_header MATCHES "(^|[^A-Za-z0-9_])(jog_|v_[A-Za-z0-9])")
+  message(FATAL_ERROR
+          "IKJ C introduced a compiler-owned project prefix:\n"
+          "${emitted_header}\n${emitted_source}")
+endif()
+if(NOT emitted_source MATCHES
+   "void demo_main\\(const float\\* a, const float\\* b, float\\* out_out\\)")
+  message(FATAL_ERROR
+          "IKJ C did not preserve its source-derived names:\n${emitted_source}")
+endif()
+
 execute_process(
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
           -include "${header}" "${source}" "${HARNESS}" -o "${program}"
