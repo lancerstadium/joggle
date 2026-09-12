@@ -332,6 +332,18 @@ joggle query opt.untyped model.jog -M modules
 joggle emit c.source model.jog -M modules > model.c
 ```
 
+Parameterized module functions use repeatable `--arg` options. Each value is a
+normal attribute literal, parsed by the same implementation as module metadata:
+
+```sh
+joggle query opt.count model.jog --arg '"operator +"' -M modules
+joggle run c.place model.jog --arg '"static"' -M modules
+```
+
+The embedding equivalent is `parse(env, text, attr)` followed by the existing
+`run` or `query` overload taking `span<const Attr>`. There is no target-specific
+option registry or second configuration grammar.
+
 Calls inside that function remain ordinary calls. Compile-time execution
 supports structured `for` and `if`, scalar operators, lists, and the universal
 `Mod`, `Fn`, `Blk`, `Op`, and `Val` handles exposed by `ir`. Failed execution is

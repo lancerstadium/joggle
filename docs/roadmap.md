@@ -111,7 +111,9 @@ steady-clock durations separately, leaving canonical reports deterministic.
 Single embedding runs also accept typed `Attr` arguments after `Mod`, resolve
 the matching ordinary overload, record the arguments in the structural report,
 and retain whole-transform rollback. This makes parameterized policy functions
-directly usable without generated option objects or wrapper passes.
+directly usable without generated option objects or wrapper passes. The same
+canonical literals are available from `run`, `query`, and `emit` through
+repeatable CLI `--arg` options; source parsing and configuration do not diverge.
 
 - Compose ordinary transform functions into pipelines without a pass class or
   new surface keyword.
@@ -205,7 +207,7 @@ pins its still-unsupported QLinear boundary instead of guessing it. An optional
 heavy BiDAF round-trip gate isolates large-attribute parser scalability from
 the normal semantic matrix.
 The frontend-neutral `opt.untyped` query exposes the remaining type frontier,
-and the CLI can invoke any no-extra-argument analysis through the same cached,
+and the CLI can invoke parameterized analyses through the same cached,
 read-only `query` boundary used by embedding code. A data-driven unary relation
 now covers Exp, Sigmoid, Ceil, and round-to-even in addition to the existing
 normalization primitives, with ordinary inspectable function bodies.

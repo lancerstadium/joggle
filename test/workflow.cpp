@@ -2501,6 +2501,16 @@ int main(int argc, char** argv) {
                      joggle::Attr(std::int64_t{2}),
                      joggle::Attr(std::int64_t{3}),
                      joggle::Attr(std::int64_t{5})})}};
+  joggle::Attr parsed_attr;
+  CHECK(joggle::parse(
+      env, R"({"axis": 2, "mode": "nearest", "values": [2, 3, 5]})",
+      parsed_attr, "<test-argument>"));
+  CHECK(parsed_attr == joggle::Attr(attr_map));
+  CHECK(joggle::print(parsed_attr) ==
+        R"({"axis": 2, "mode": "nearest", "values": [2, 3, 5]})");
+  CHECK(!joggle::parse(env, "{broken", parsed_attr, "<test-argument>"));
+  CHECK(parsed_attr.empty() && !env.diags().empty());
+  env.clear_diags();
   const std::vector<joggle::Attr> attr_args{joggle::Attr(attr_map)};
   CHECK(joggle::query(env, "script.attr_query", cleaned, count, attr_args));
   CHECK(count.integer() == 2);

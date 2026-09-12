@@ -365,6 +365,7 @@ private:
   friend class Parser;
   friend class Mod;
   friend class detail::Eval;
+  friend bool parse(Env&, std::string_view, Attr&, std::string_view);
   friend bool query(Env&, std::string_view, const Mod&, Attr&,
                     std::span<const Attr>, bool*);
 };
@@ -448,6 +449,8 @@ private:
 
 bool parse(Env& env, std::string_view source, Mod& out,
            std::string_view file = {});
+bool parse(Env& env, std::string_view source, Attr& out,
+           std::string_view file = {});
 std::string print(const Mod& mod);
 bool print(std::FILE* file, const Mod& mod);
 std::string print(const Attr& value);
@@ -465,7 +468,11 @@ bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
          std::span<const Attr> args, std::chrono::nanoseconds& elapsed);
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod);
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
+         std::span<const Attr> args);
+bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
          Attr& report);
+bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
+         Attr& report, std::span<const Attr> args);
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
          Attr& report, std::vector<std::chrono::nanoseconds>& elapsed);
 bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,

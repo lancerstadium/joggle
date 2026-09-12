@@ -21,11 +21,11 @@ int usage() {
                "  joggle check <file.jog> [-M <module-dir>]...\n"
                "  joggle read <module.fn> <file> [-M <module-dir>]...\n"
                "  joggle run <module.fn>... <file.jog> "
-               "[--report <file>] [-M <module-dir>]...\n"
+               "[--arg <Attr>]... [--report <file>] [-M <module-dir>]...\n"
                "  joggle query <module.fn> <file.jog> "
-               "[-M <module-dir>]...\n"
+               "[--arg <Attr>]... [-M <module-dir>]...\n"
                "  joggle emit <module.fn> <file.jog> "
-               "[-M <module-dir>]...\n"
+               "[--arg <Attr>]... [-M <module-dir>]...\n"
                "  joggle module list [-M <module-dir>]...\n"
                "  joggle module info <name> [-M <module-dir>]...\n"
                "  joggle module check <name> [-M <module-dir>]...\n"
@@ -38,8 +38,9 @@ int usage() {
 }
 
 bool options(int argc, char** argv, int first, bool allow_report,
-             std::vector<fs::path>& roots,
-             std::optional<fs::path>& report) {
+             bool allow_args, std::vector<fs::path>& roots,
+             std::optional<fs::path>& report,
+             std::vector<std::string>& args) {
   for (int index = first; index < argc; index += 2) {
     if (index + 1 >= argc)
       return false;
@@ -48,6 +49,8 @@ bool options(int argc, char** argv, int first, bool allow_report,
       roots.emplace_back(argv[index + 1]);
     } else if (allow_report && option == "--report" && !report) {
       report.emplace(argv[index + 1]);
+    } else if (allow_args && option == "--arg") {
+      args.emplace_back(argv[index + 1]);
     } else {
       return false;
     }
@@ -88,7 +91,8 @@ int process(int argc, char** argv) {
     int positional_end = 2;
     while (positional_end < argc &&
            std::string_view(argv[positional_end]) != "-M" &&
-           std::string_view(argv[positional_end]) != "--report")
+           std::string_view(argv[positional_end]) != "--report" &&
+           std::string_view(argv[positional_end]) != "--arg")
       ++positional_end;
     if (positional_end < 4)
       return usage();
@@ -106,7 +110,10 @@ int process(int argc, char** argv) {
   }
   std::vector<fs::path> roots;
   std::optional<fs::path> report_file;
-  if (!options(argc, argv, first_option, execute, roots, report_file))
+  std::vector<std::string> argument_sources;
+  if (!options(argc, argv, first_option, execute,
+               execute || inspect || emit, roots, report_file,
+               argument_sources))
     return usage();
 
   std::ifstream input(file, std::ios::binary);
@@ -121,6 +128,17 @@ int process(int argc, char** argv) {
   joggle::Env env;
   for (const fs::path& root : roots)
     env.path(root.string());
+
+  std::vector<joggle::Attr> arguments;
+  arguments.reserve(argument_sources.size());
+  for (const std::string& text : argument_sources) {
+    joggle::Attr argument;
+    if (!joggle::parse(env, text, argument, "<argument>")) {
+      env.print_diags(stderr);
+      return 1;
+    }
+    arguments.push_back(std::move(argument));
+  }
   if (selects_function) {
     for (const std::string& function : functions) {
       const std::size_t dot = function.rfind('.');
@@ -160,7 +178,7 @@ int process(int argc, char** argv) {
     return mod.print_diags(stderr);
   if (inspect || emit) {
     joggle::Attr result;
-    if (!joggle::query(env, function, mod, result)) {
+    if (!joggle::query(env, function, mod, result, arguments)) {
       env.print_diags(stderr);
       return 1;
     }
@@ -183,15 +201,15 @@ int process(int argc, char** argv) {
   if (execute) {
     bool ran = false;
     if (functions.size() == 1) {
-      ran = report_file ? joggle::run(env, function, mod, report)
-                        : joggle::run(env, function, mod);
+      ran = report_file ? joggle::run(env, function, mod, report, arguments)
+                        : joggle::run(env, function, mod, arguments);
     } else {
       std::vector<std::string_view> names;
       names.reserve(functions.size());
       for (const std::string& name : functions)
         names.emplace_back(name);
-      ran = report_file ? joggle::run(env, names, mod, report)
-                        : joggle::run(env, names, mod);
+      ran = report_file ? joggle::run(env, names, mod, report, arguments)
+                        : joggle::run(env, names, mod, arguments);
     }
     if (!ran) {
       mod.print_diags(stderr);

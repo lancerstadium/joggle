@@ -128,7 +128,7 @@ mutable `Mod`. Overload resolution uses their structural runtime types, failure
 restores the exact input module, and a successful step records those arguments
 in its canonical report. Parameterized textual functions therefore need no
 C++ option structure or one-argument wrapper. Ad hoc CLI sequences remain the
-simple no-extra-argument form.
+same function model and receive repeatable canonical `--arg` values.
 
 Qualified and imported calls resolve through the explicit and transitive `use`
 closure. Local and imported declarations form one deterministic visible
@@ -815,8 +815,9 @@ Several names may precede the model path:
 `joggle run bridge.convert opt.basic mem.plan model.jog`. They execute in order
 as one transaction and the report retains the separate result of every normal
 function; no wrapper file or pipeline format is required.
-`joggle query module.fn model.jog -M modules` invokes a no-extra-argument
-analysis and writes its canonical `Attr` result. `opt.unresolved` reports calls
+`joggle query module.fn model.jog -M modules` invokes an analysis and writes its
+canonical `Attr` result; repeatable `--arg` values select parameterized
+overloads. `opt.unresolved` reports calls
 without a visible declaration; the complementary `opt.untyped` reports calls
 whose outputs still have the open `_` type. The distinction separates symbol
 coverage from type-propagation coverage.

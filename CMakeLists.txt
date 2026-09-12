@@ -395,6 +395,17 @@ if(JOGGLE_BUILD_TESTS)
     cli-query PROPERTIES PASS_REGULAR_EXPRESSION "\\[\\]"
   )
   add_test(
+    NAME cli-args
+    COMMAND
+      ${CMAKE_COMMAND}
+      -DTOOL=$<TARGET_FILE:joggle-tool>
+      -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
+      -DC_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c.jog
+      -DVM_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/vm.jog
+      -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/args.cmake
+  )
+  add_test(
     NAME cost-example
     COMMAND $<TARGET_FILE:joggle-tool> query cost.total
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/cost/model.jog

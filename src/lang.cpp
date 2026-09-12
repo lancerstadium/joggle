@@ -332,6 +332,20 @@ public:
     return store_.diags.empty();
   }
 
+  bool attr(Attr& out) {
+    store_ = {};
+    out = Attr{};
+    Ty ignored;
+    auto value = attr_literal(ignored);
+    if (!value)
+      return false;
+    semi();
+    if (!at_end())
+      return fail("unexpected token after attribute literal");
+    out = std::move(*value);
+    return true;
+  }
+
 private:
   const Token& peek(std::size_t ahead = 0) const {
     const std::size_t at = std::min(pos_ + ahead, tokens_.size() - 1);
@@ -1726,6 +1740,17 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
 
 bool parse(Env& env, std::string_view source, Mod& out, std::string_view file) {
   return Parser(env, source, out, file).run();
+}
+
+bool parse(Env& env, std::string_view source, Attr& out,
+           std::string_view file) {
+  env.clear_diags();
+  Mod scratch;
+  if (Parser(env, source, scratch, file).attr(out))
+    return true;
+  for (const Diag& diag : scratch.diags())
+    env.error(diag.message, diag.loc);
+  return false;
 }
 
 std::string print(const Attr& value) { return attr_text(value); }

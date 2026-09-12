@@ -2478,6 +2478,16 @@ bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
 }
 
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
+         Attr& report, std::span<const Attr> args) {
+  return detail::Eval::sequence(env, functions, mod, &report, args, nullptr);
+}
+
+bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
+         std::span<const Attr> args) {
+  return detail::Eval::sequence(env, functions, mod, nullptr, args, nullptr);
+}
+
+bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
          Attr& report, std::vector<std::chrono::nanoseconds>& elapsed) {
   return detail::Eval::sequence(env, functions, mod, &report, {}, &elapsed);
 }

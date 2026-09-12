@@ -552,10 +552,13 @@ clears the module-local cache, and loading another source/native module advances
 the environment epoch, so cached overload resolution cannot survive a changed
 function environment. `opt.count` is a small reusable example rather than a
 privileged analysis primitive.
-The command line exposes the no-extra-argument subset through
-`joggle query module.fn model.jog`. It prints the same canonical `Attr` as the
-embedding overload. `opt.untyped` uses this path to report distinct calls with
-open result types, complementing the symbol-oriented `opt.unresolved` query.
+The command line exposes the same inputs through repeatable
+`--arg <Attr>` options on `run`, `query`, and `emit`. The public
+`parse(env, text, attr)` overload and the CLI both reuse module attribute
+literal syntax; there is no JSON library, target option registry, or second
+configuration grammar. `opt.untyped` uses the zero-argument form to report
+distinct calls with open result types, complementing the symbol-oriented
+`opt.unresolved` query.
 
 `joggle emit module.fn model.jog` deliberately reuses this query boundary. It
 accepts only `str` or `bytes` and writes the payload verbatim, so text and

@@ -156,6 +156,16 @@ Embedding code may also pass ordinary `Attr` arguments to a transform through
 `joggle::run`. This exposes parameterized functions such as
 `opt.expand(m, callees)` directly, with the supplied arguments recorded in the
 deterministic run report; no wrapper pass or generated option class is needed.
+The CLI accepts the same canonical literals with repeatable `--arg` options:
+
+```sh
+joggle query opt.count model.jog --arg '"operator +"' -M modules
+joggle run c.place model.jog --arg '"static"' -M modules
+```
+
+Booleans, integers, reals, strings, `hex"..."` bytes, lists, dictionaries, and
+`nil` use exactly the `.jog` attribute-literal syntax. `query`, `emit`, and each
+function in an ad hoc `run` sequence receive the same ordered arguments.
 
 Compile-time execution is transactional. If the function fails or produces an
 invalid module, Joggle restores the input. C++ and `.jog` functions edit the
