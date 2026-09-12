@@ -16,10 +16,12 @@ int main(void) {
     return 1;
   if (bytes[0] != -1 || bytes[1] != 0 || bytes[2] != 127)
     return 2;
-  if (kernel_direct(3.0f, blob.data) != 6.0f)
+  if (kernel_direct(3.0f) != 6.0f)
     return 3;
   const float input[2] = {2.0f, 5.0f};
-  if (kernel_duplicate_sum(input, blob.data) != 7.0f)
+  if (kernel_duplicate_sum(input) != 7.0f)
     return 4;
+  if (kernel_forwarded_weight(blob.data) != 2.0f)
+    return 5;
   return 0;
 }

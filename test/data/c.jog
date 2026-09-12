@@ -130,6 +130,11 @@ fn weights() -> tensor<f32, [2]> {
   return values
 }
 
+fn forwarded_weight() -> f32 {
+  let values = weights()
+  return values[1]
+}
+
 fn data_weights() -> i64 {
   return i64(0)
 }

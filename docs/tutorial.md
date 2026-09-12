@@ -675,6 +675,12 @@ tensor results use an output-pointer parameter. If a `tensor` or `nn` call has
 not been exposed, emission fails and names that call rather than performing an
 implicit lowering.
 
+Passing a data name to `c.source` and `c.header` externalizes tensor constants.
+The resulting pointer parameter is propagated through the generated call graph
+only where a function directly or transitively reads that data. A scalar helper
+that does not use model constants therefore keeps the same C signature in
+embedded-data and external-data modes.
+
 When the shared function bodies are the desired implementation, preparation is
 another explicit function call:
 

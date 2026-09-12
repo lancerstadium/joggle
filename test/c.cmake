@@ -311,8 +311,15 @@ if(NOT emitted_blob_source MATCHES
    "const float\\* [^\n]+ = \\(const float\\*\\)\\(const void\\*\\)\\(model \\+ 4\\);" OR
    emitted_blob_source MATCHES "static const unsigned char data_" OR
    emitted_blob_source MATCHES "extern const unsigned char data_" OR
+   emitted_blob_source MATCHES "\\(void\\)model;" OR
+   emitted_blob_header MATCHES
+       "kernel_direct\\(float x, const unsigned char\\* model\\)" OR
+   emitted_blob_header MATCHES
+       "kernel_duplicate_sum\\(const float\\* x, const unsigned char\\* model\\)" OR
    NOT emitted_blob_header MATCHES
-       "kernel_weights\\(const unsigned char\\* model, float\\* values_out\\);")
+       "kernel_weights\\(const unsigned char\\* model, float\\* values_out\\);" OR
+   NOT emitted_blob_header MATCHES
+       "kernel_forwarded_weight\\(const unsigned char\\* model\\);")
   message(FATAL_ERROR
           "external-data C interface did not expose the raw blob parameter:\n"
           "${emitted_blob_header}\n${emitted_blob_source}")

@@ -330,8 +330,10 @@ exactly the name passed to both `c.source` and `c.header` after C identifier
 sanitization; `c.data` writes the corresponding bytes. Omitting that argument
 embeds constants in the source, so an application should choose one mode
 rather than emit an unused payload beside embedded data. A collision with a
-source parameter is rejected. The `joggle_` prefix is reserved for the
-native-module ABI; it is not added to generated model values. Unnamed result
+source parameter is rejected. The payload pointer is present only on functions
+that directly or transitively read external constants; unrelated public and
+private functions keep their ordinary ABI. The `joggle_` prefix is reserved
+for the native-module ABI; it is not added to generated model values. Unnamed result
 buffers, storage slots, temporary values, and payload arrays instead use the
 short role-based `out`, `slot_`, `tmp_`, and `data_` stems, while C keywords
 receive a trailing underscore. A module can pin an external name with
