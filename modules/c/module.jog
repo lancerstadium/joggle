@@ -999,7 +999,14 @@ fn data(m: Mod) -> bytes {
 local fn emit(m: Mod, blob: str) -> str {
   let fns = functions(m)
   assert(len(fns) != 0, "c: module has no function definitions")
-  let declarations = prototypes(m, dependencies(m) + fns)
+  let declared = dependencies(m) + fns
+  if blob != "" {
+    for fn in declared {
+      assert(symbol(m, fn) != blob,
+             "c: external data symbol collides with function " + blob)
+    }
+  }
+  let declarations = prototypes(m, declared)
   var definitions = ""
   for fn in fns {
     definitions += definition(m, fn, blob) + "\n"

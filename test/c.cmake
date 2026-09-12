@@ -180,7 +180,7 @@ endif()
 
 execute_process(
   COMMAND "${TOOL}" emit c.source "${model_prepared}"
-          --arg "\"weights\"" -M "${MODULES}"
+          --arg "\"model\"" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${blob_source}"
   ERROR_VARIABLE error
@@ -190,15 +190,29 @@ if(NOT result EQUAL 0)
 endif()
 file(READ "${blob_source}" emitted_blob_source)
 if(NOT emitted_blob_source MATCHES
-   "extern const unsigned char jog_data_weights\\[\\];" OR
+   "extern const unsigned char jog_data_model\\[\\];" OR
    NOT emitted_blob_source MATCHES
-   "memcpy\\([^\n]+, jog_data_weights \\+ 0, 8\\);" OR
+   "memcpy\\([^\n]+, jog_data_model \\+ 0, 8\\);" OR
    NOT emitted_blob_source MATCHES
-   "memcpy\\([^\n]+, jog_data_weights \\+ 8, 3\\);" OR
+   "memcpy\\([^\n]+, jog_data_model \\+ 8, 3\\);" OR
    emitted_blob_source MATCHES "static const unsigned char jog_data_")
   message(FATAL_ERROR
           "external-data C source did not reference the raw blob:\n"
           "${emitted_blob_source}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${model_prepared}"
+          --arg "\"weights\"" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(result EQUAL 0 OR
+   NOT error MATCHES "external data symbol collides with function")
+  message(FATAL_ERROR
+          "C emission accepted a data/function collision (${result}):\n"
+          "${output}${error}")
 endif()
 file(READ "${header}" emitted_header)
 if(NOT emitted_header MATCHES

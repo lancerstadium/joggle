@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-const unsigned char jog_data_weights[] = {
+const unsigned char jog_data_model[] = {
     0x00, 0x00, 0x80, 0x3f, 0x00, 0x00, 0x00, 0x40,
     0xff, 0x00, 0x7f,
 };
