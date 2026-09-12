@@ -47,6 +47,10 @@ fn power(x: f64, y: f64) -> f64 {
   return math.pow(x, y)
 }
 
+fn nearest(x: f64) -> f64 {
+  return math.round_even(x)
+}
+
 fn pick(at: index) -> int {
   let values = [3, 5, 8]
   return values[at]

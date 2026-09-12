@@ -297,10 +297,12 @@ local fn math(op: str, type: Ty) -> str {
   let names = {
     "math.abs": "fabs", "math.ceil": "ceil", "math.erf": "erf",
     "math.exp": "exp", "math.floor": "floor", "math.log": "log",
-    "math.pow": "pow", "math.round_even": "nearbyint",
-    "math.sqrt": "sqrt", "math.tanh": "tanh"
+    "math.pow": "pow", "math.sqrt": "sqrt", "math.tanh": "tanh"
   }
   let name = base.name(type)
+  if op == "math.round_even" && (name == "f32" || name == "f64") {
+    return "jog_round_even_" + name
+  }
   if base.has(names, op) && (name == "f32" || name == "f64") {
     var suffix = ""
     if name == "f32" {
@@ -309,6 +311,40 @@ local fn math(op: str, type: Ty) -> str {
     return str(names[op]) + suffix
   }
   return ""
+}
+
+local fn math_support(m: Mod) -> str {
+  var need_f32 = false
+  var need_f64 = false
+  for op in ir.ops(m) {
+    if ir.kind(op) == "call" {
+      let name = math(m, op)
+      need_f32 = need_f32 || name == "jog_round_even_f32"
+      need_f64 = need_f64 || name == "jog_round_even_f64"
+    }
+  }
+  var out = ""
+  if need_f32 {
+    out += "static float jog_round_even_f32(float x) {\n" +
+           "  if (!isfinite(x) || x == 0.0f) return x;\n" +
+           "  const float lower = floorf(x);\n" +
+           "  const float delta = x - lower;\n" +
+           "  if (delta < 0.5f) return lower;\n" +
+           "  if (delta > 0.5f) return lower + 1.0f;\n" +
+           "  return fmodf(lower, 2.0f) == 0.0f ? lower : lower + 1.0f;\n" +
+           "}\n\n"
+  }
+  if need_f64 {
+    out += "static double jog_round_even_f64(double x) {\n" +
+           "  if (!isfinite(x) || x == 0.0) return x;\n" +
+           "  const double lower = floor(x);\n" +
+           "  const double delta = x - lower;\n" +
+           "  if (delta < 0.5) return lower;\n" +
+           "  if (delta > 0.5) return lower + 1.0;\n" +
+           "  return fmod(lower, 2.0) == 0.0 ? lower : lower + 1.0;\n" +
+           "}\n\n"
+  }
+  return out
 }
 
 local fn math(m: Mod, op: Op) -> str {
@@ -875,5 +911,5 @@ fn source(m: Mod) -> str {
   return "#include <math.h>\n#include <stdbool.h>\n#include <stddef.h>\n" +
          "#include <stdint.h>\n" +
          "#include <string.h>\n\n" +
-         declarations + "\n" + definitions
+         declarations + "\n" + math_support(m) + definitions
 }

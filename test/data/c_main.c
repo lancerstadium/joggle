@@ -1,4 +1,5 @@
 #include <math.h>
+#include <fenv.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -51,6 +52,13 @@ int main(void) {
     return 12;
   if (jog_power(2.0, 5.0) != 32.0)
     return 13;
+  if (fesetround(FE_UPWARD) != 0)
+    return 16;
+  const bool fixed_rounding = jog_nearest(2.5) == 2.0 &&
+                              jog_nearest(1.5) == 2.0 &&
+                              jog_nearest(-0.5) == 0.0;
+  if (fesetround(FE_TONEAREST) != 0 || !fixed_rounding)
+    return 17;
   if (jog_abi_probe(2, 3, 4) != 9)
     return 15;
   if (jog_steps() != 3)

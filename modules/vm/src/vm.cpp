@@ -366,6 +366,19 @@ struct State {
 };
 
 template <class T>
+T round_even(T input) {
+  if (!std::isfinite(input) || input == T{0})
+    return input;
+  const T lower = std::floor(input);
+  const T delta = input - lower;
+  if (delta < T{0.5})
+    return lower;
+  if (delta > T{0.5})
+    return lower + T{1};
+  return std::fmod(lower, T{2}) == T{0} ? lower : lower + T{1};
+}
+
+template <class T>
 bool floating_unary(Unary op, T input, Value& output, Kind kind) {
   T result{};
   if (op == Unary::neg)
@@ -387,7 +400,7 @@ bool floating_unary(Unary op, T input, Value& output, Kind kind) {
   else if (op == Unary::tanh)
     result = std::tanh(input);
   else if (op == Unary::round_even)
-    result = std::nearbyint(input);
+    result = round_even(input);
   else
     return false;
   output = scalar(kind, bits(result));

@@ -1,6 +1,7 @@
 #include "joggle/joggle.h"
 
 #include <bit>
+#include <cfenv>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -183,6 +184,16 @@ int main(int argc, char** argv) {
   CHECK(execute_bytes(env, std::string(*image.string()), "power",
                       std::move(power_input), result, power_steps));
   CHECK(real(result) == 32.0 && power_steps > 0);
+
+  CHECK(std::fesetround(FE_UPWARD) == 0);
+  joggle::Attr::Bytes nearest_input;
+  append(nearest_input, 2.5);
+  std::int64_t nearest_steps = 0;
+  CHECK(execute_bytes(env, std::string(*image.string()), "nearest",
+                      std::move(nearest_input), result, nearest_steps));
+  const bool fixed_rounding = real(result) == 2.0;
+  CHECK(std::fesetround(FE_TONEAREST) == 0);
+  CHECK(fixed_rounding && nearest_steps > 0);
 
   std::int64_t shift_steps = 0;
   CHECK(execute(env, std::string(*image.string()), "shift", {-8, 2}, result,

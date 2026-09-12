@@ -1184,6 +1184,9 @@ Qualified external symbols use a readable module separator in C
 (`edge.matmul` becomes `jog_edge_matmul`). The same prototype pass rejects
 collisions after normalization. Calls mapped to standard C operators or libm
 functions are not also reported as external Joggle dependencies.
+The stronger `math.round_even` contract is implemented directly by C and VM
+instead of delegating to `nearbyint`, whose result follows mutable process
+rounding state.
 
 The companion `c.header` function reuses the source emitter's checked
 prototypes and returns a C/C++-compatible header. Header generation is not an

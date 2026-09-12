@@ -234,7 +234,9 @@ It covers the complete current `math` surface: `abs`, `ceil`, `erf`, `exp`,
 `floor`, `log`, `pow`, `round_even`, `sqrt`, and `tanh` for both floating
 formats. C and VM execute the same scalar conformance cases. These operations
 use the host standard library; their presence does not claim cross-platform
-bit identity for transcendentals.
+bit identity for transcendentals. `round_even` is implemented explicitly in
+both targets so its tie rule does not change with the process floating-point
+rounding mode.
 Invalid integer division, shifts, images, entries, input sizes, shapes, indices,
 or out-of-range conversions fail through the normal module diagnostic boundary.
 The native runner tokenizes and decodes the selected function once per call,
