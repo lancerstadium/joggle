@@ -462,6 +462,25 @@ fn clone_remapped_loop(m: Mod) -> bool {
   return false
 }
 
+fn reject_internal_clone(m: Mod) -> bool {
+  for fn in ir.fns(m) {
+    let params = ir.params(fn)
+    if len(params) >= 3 {
+      for op in ir.ops(fn) {
+        if ir.kind(op) == "loop" {
+          let args = ir.args(ir.blks(op)[0])
+          if len(args) != 0 {
+            let before = ir.revision(m)
+            let copy = ir.clone(m, op, op, [args[0]], [params[2]])
+            return !ir.live(copy) && ir.revision(m) == before
+          }
+        }
+      }
+    }
+  }
+  return false
+}
+
 fn split_first_loop(m: Mod, factor: int) -> bool {
   for op in ir.ops(m) {
     if ir.kind(op) == "loop" {

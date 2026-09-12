@@ -352,9 +352,13 @@ matches its unfused numerical result. A private producer tensor is removed
 entirely through scalar forwarding, while a separately returned producer stays
 materialized. The same mechanism removes the sum tensor in an exposed
 `tensor.add -> nn.relu` chain with structured control; shifted access is
-rejected. This closes the first structural prerequisite for scheduling
-experiments. Reorder, unroll, multi-axis fusion, profitability, and measured
-network speedups remain open and must not be inferred from the correctness
+rejected. A greedy overload now uses the same structural predicate across the
+official MobileNetV2 body: after row-major BatchNorm exposure it removes 46
+loops and 46 private tensors, and the resulting strict C99 still agrees on all
+1,000 outputs with maximum absolute error `2.0980835e-05`. This closes the
+first application-scale structural prerequisite for scheduling experiments.
+Reorder, unroll, multi-axis fusion, profitability, and controlled network
+speed measurements remain open and must not be inferred from the correctness
 gates.
 
 The complementary `examples/edge` gate treats a bodyless monomorphic tensor

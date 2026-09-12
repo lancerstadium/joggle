@@ -705,6 +705,14 @@ chain, and emitted-C numerical execution are regression gates. Reorder, unroll,
 multi-axis fusion policies, and profitability remain follow-on functions, not
 implied behavior of `split` or `fuse`.
 
+`tile.can_fuse(m, producer, consumer)` exposes the same structural legality
+test without changing the module. `tile.fuse(m)` is the policy-free convenience
+overload: it repeatedly fuses adjacent legal loops and then invokes ordinary
+constant DCE to remove setup values made dead by the rewrite. A project that
+needs costs, limits, or a different traversal can call `can_fuse` and the
+explicit overload itself; no neural-network catalogue is hidden in either
+path.
+
 `ir.rename` may be applied directly to a `Blk` argument. Iterator renames are
 reflected in the loop header, while carried-value renames propagate through
 both arms, yields, and enclosing structured results. The operation therefore

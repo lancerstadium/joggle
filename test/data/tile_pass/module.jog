@@ -32,3 +32,23 @@ fn fuse_first(m: Mod) -> bool {
          "tile_pass.fuse_first requires two loops")
   return tile.fuse(m, loops[0], loops[1])
 }
+
+fn can_first(m: Mod) -> bool {
+  var loops: list<Op> = []
+  for op in ir.ops(m) {
+    if ir.kind(op) == "loop" {
+      loops += [op]
+    }
+  }
+  assert(len(loops) >= 2,
+         "tile_pass.can_first requires two loops")
+  let before = ir.revision(m)
+  let result = tile.can_fuse(m, loops[0], loops[1])
+  assert(ir.revision(m) == before,
+         "tile.can_fuse changed the module")
+  return result
+}
+
+fn all(m: Mod) -> bool {
+  return tile.fuse(m)
+}

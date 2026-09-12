@@ -134,7 +134,7 @@ if(NOT result EQUAL 0)
 endif()
 
 execute_process(
-  COMMAND "${TOOL}" run tile_pass.fuse_first "${fuse_prepared}"
+  COMMAND "${TOOL}" run tile_pass.can_first tile_pass.all "${fuse_prepared}"
           -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${fused}"
@@ -148,9 +148,9 @@ file(READ "${fused}" fused_text)
 string(REGEX MATCHALL "for [A-Za-z_][A-Za-z0-9_]* in" fused_loops
        "${fused_text}")
 list(LENGTH fused_loops fused_loop_count)
-if(NOT fused_loop_count EQUAL 2)
+if(NOT fused_loop_count EQUAL 1)
   message(FATAL_ERROR
-          "fusion did not reduce three pointwise loops to two:\n${fused_text}")
+          "fusion did not collapse the pointwise chain:\n${fused_text}")
 endif()
 
 execute_process(
@@ -264,7 +264,7 @@ set(relu_ir "${ROOT}/relu.jog")
 set(relu_source "${ROOT}/relu.c")
 set(relu_program "${ROOT}/relu")
 execute_process(
-  COMMAND "${TOOL}" run c.prepare tile_pass.fuse_first c.prepare
+  COMMAND "${TOOL}" run c.prepare tile_pass.all c.prepare
           "${RELU_MODEL}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${relu_ir}"
@@ -275,6 +275,9 @@ if(NOT result EQUAL 0)
 endif()
 file(READ "${relu_ir}" relu_text)
 if(relu_text MATCHES "var sum" OR relu_text MATCHES "sum\\[" OR
+   relu_text MATCHES "var normalized" OR
+   relu_text MATCHES "normalized\\[" OR
+   relu_text MATCHES "var size_1" OR
    NOT relu_text MATCHES "let fuse_value_")
   message(FATAL_ERROR
           "activation fusion retained its sum tensor:\n${relu_text}")
@@ -290,6 +293,8 @@ if(NOT result EQUAL 0)
 endif()
 file(READ "${relu_source}" relu_source_text)
 if(relu_source_text MATCHES "v_sum" OR
+   relu_source_text MATCHES "v_normalized" OR
+   relu_source_text MATCHES "v_size_1" OR
    NOT relu_source_text MATCHES "float v_fuse_value_")
   message(FATAL_ERROR
           "activation C retained its sum tensor:\n${relu_source_text}")

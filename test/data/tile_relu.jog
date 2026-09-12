@@ -8,3 +8,12 @@ fn add_relu(
   let sum = a + b
   return nn.relu(sum)
 }
+
+fn batch_relu(
+  x: tensor<f32, [1, 2, 2, 2]>,
+  scale: tensor<f32, [2]>, bias: tensor<f32, [2]>,
+  mean: tensor<f32, [2]>, variance: tensor<f32, [2]>
+) -> tensor<f32, [1, 2, 2, 2]> {
+  let normalized = nn.batch_norm(x, scale, bias, mean, variance, 0.0)
+  return nn.relu(normalized)
+}

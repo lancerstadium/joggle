@@ -462,7 +462,11 @@ The two lists are a parallel typed lookup table. Entries unused by a particular
 subtree are allowed, so one accumulated mapping can be reused while cloning a
 sequence of operations. Every replacement that is actually selected must have
 exactly the same type and dominate the insertion point; values defined inside
-the source cannot be replaced through this interface. All checks precede mutation.
+the source cannot be replaced through this interface. All checks precede
+mutation. A checked operation-clone rejection returns an invalid `Op` to
+textual code, so a module can inspect it with `ir.live` and issue its own
+diagnostic; it never becomes a half-created operation. Argument type or arity
+errors remain compile-time call errors rather than invalid handles.
 This is the small structural primitive used by removable loop split, fusion,
 reorder, and unroll modules; it does not introduce a schedule object or a
 second loop IR.

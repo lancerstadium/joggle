@@ -303,6 +303,12 @@ the consumer and the private tensor disappears. A live external result remains
 materialized, so scheduling does not silently change the function interface.
 An unrelated call between the loops is not crossed implicitly.
 
+For a default greedy traversal, call `tile.fuse(m)`. It considers adjacent
+loops only, uses the same read-only `tile.can_fuse` predicate, and repeats until
+no legal pair remains. This is convenient for inspection and baseline
+experiments; a research module remains free to own candidate selection and
+profitability while reusing the exact same legality and rewrite functions.
+
 ## Materialize a function template
 
 A module may copy a normal function into the program when a transform needs a

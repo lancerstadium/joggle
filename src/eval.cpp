@@ -2278,16 +2278,14 @@ private:
           if (op && before && old_values && new_values) {
             Op result =
                 (*mod)->clone(*op, *before, *old_values, *new_values);
-            if (result)
-              return Items{Item(result)};
+            return Items{Item(result)};
           }
         }
         if (args.size() == 3) {
           if (const auto* op = as<Op>(args[1])) {
             if (const auto* before = as<Op>(args[2])) {
               Op result = (*mod)->clone(*op, *before);
-              if (result)
-                return Items{Item(result)};
+              return Items{Item(result)};
             }
           }
         }

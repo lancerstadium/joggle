@@ -68,6 +68,13 @@ small embeddable compiler frameworks.
   emits strict C99 through the unchanged backend, and preserves numerical
   output; a shifted-index consumer and an intervening observable call are
   rejected.
+- The same legality and rewrite functions support a greedy adjacent-loop
+  traversal without adding a model or operator catalogue. On the pinned
+  MobileNetV2 expanded body it reduces loops from `374` to `328`, local tensor
+  initializers from `155` to `109`, and BatchNorm intermediates from `53` to
+  `7`. The fused external-data C passes strict C99 compilation and all 1,000
+  official outputs with maximum absolute error `2.0980835e-05`; its weight
+  blob is byte-identical to the unfused one.
 - Default, sanitizer, ONNX, TFLite, generated-C, VM, installation, and external
   module gates exercise the same public interfaces.
 
@@ -81,9 +88,10 @@ comparable optimization settings.
 - Generated C still uses scalar untiled loops and is substantially slower than
   ONNX Runtime on the current CPU diagnostic. It is a reference backend, not
   yet evidence of efficient edge inference.
-- The initial fusion slice is deliberately one-dimensional and conservative;
-  multi-axis dependence tests, profitability, network-wide intermediate
-  removal, and latency evidence remain open.
+- The fusion slice is deliberately one-dimensional and conservative. Its
+  application-scale structural and correctness gates are closed, but
+  multi-axis dependence tests, profitability, and controlled latency and
+  memory-traffic evidence remain open.
 - Extensibility needs a controlled study: implement the same custom format,
   operation, transform, and target boundary in Joggle and selected baselines;
   report changed core files, extension code, build/runtime dependencies, and
@@ -94,12 +102,12 @@ comparable optimization settings.
 
 ## Next experiment order
 
-1. Generalize the now-executable split and pointwise fusion functions to
+1. Measure the proven MobileNetV2 path with an isolated repeated-run protocol,
+   recording intermediate bytes, memory traffic, workspace, and latency while
+   retaining the unfused model as a matched baseline.
+2. Generalize the executable split and pointwise fusion functions to
    multi-axis dependence checks and explicit profitability policy; keep
    reorder and unroll removable.
-2. Apply the proven activation path across conventional networks and measure
-   intermediate bytes, memory traffic, and latency without introducing
-   activation-name cases.
 3. Add vectorizable C emission facts (`restrict`, alignment, and selected
    unrolling) only through explicit module policy, then compare generated code
    and compiler optimization reports.

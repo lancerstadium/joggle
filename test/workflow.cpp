@@ -1642,6 +1642,9 @@ int main(int argc, char** argv) {
                              new_capture));
   CHECK(remapped_loop.revision() == before_rejected_clone);
   remapped_loop.clear_diags();
+  CHECK(joggle::run(env, "script.reject_internal_clone", remapped_loop));
+  CHECK(remapped_loop.revision() == before_rejected_clone);
+  remapped_loop.clear_diags();
   const std::array unused_value{remapped_params[0]};
   const joggle::Op extra_mapping_copy = remapped_loop.clone(
       loop_to_remap, loop_to_remap, unused_value, new_capture);
