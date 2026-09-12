@@ -214,6 +214,19 @@ separate file:
 ./build/joggle emit c.data prepared.jog -M build/modules > model.bin
 ```
 
+Applications and experiment harnesses can obtain the same interface as
+structured JSON instead of parsing the generated header:
+
+```sh
+./build/joggle query c.api prepared.jog --arg '"weights"' \
+  -M build/modules
+```
+
+Each exported function reports its exact C declaration, symbol, parameters,
+results, tensor shapes, element and byte counts, and whether it receives the
+external payload. `c.api`, `c.header`, and `c.source` share the same internal
+ABI and naming functions.
+
 ABI spelling, widths, alignment, includes, and external scalar types come from
 a configuration dictionary. Function prototypes are derived from resolved
 signatures; adding an external kernel does not add an emitter case.

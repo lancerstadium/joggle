@@ -690,6 +690,19 @@ tensor results use an output-pointer parameter. If a `tensor` or `nn` call has
 not been exposed, emission fails and names that call rather than performing an
 implicit lowering.
 
+The corresponding application interface is available as structured JSON:
+
+```sh
+joggle query c.api build/examples/prepared.jog -M build/modules
+joggle query c.api test/data/c.jog --arg '"weights"' -M build/modules
+```
+
+The first command is the ordinary module introspection command; the second
+reports exact C declarations together with shapes, element and byte counts,
+result names, and payload use. Harnesses can consume this record instead of
+parsing `model.h`. Configured ABI dictionaries are accepted by the matching
+`c.api` overloads just as they are by preparation and emission.
+
 Passing a data name to `c.source` and `c.header` externalizes tensor constants.
 The resulting pointer parameter is propagated through the generated call graph
 only where a function directly or transitively reads that data. A scalar helper

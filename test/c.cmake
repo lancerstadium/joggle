@@ -128,6 +128,29 @@ if(NOT emitted_header MATCHES "open_carry" OR
           "prepared C header omitted a marked entry:\n${emitted_header}")
 endif()
 execute_process(
+  COMMAND "${TOOL}" query c.api "${prepared}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE api
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "C API query failed (${result}):\n${error}")
+endif()
+string(JSON api_count LENGTH "${api}")
+if(NOT api_count EQUAL 3)
+  message(FATAL_ERROR "C API query reported ${api_count} entries:\n${api}")
+endif()
+string(JSON add_name GET "${api}" 1 name)
+string(JSON add_decl GET "${api}" 1 declaration)
+string(JSON add_param_bytes GET "${api}" 1 params 0 bytes)
+string(JSON add_result_bytes GET "${api}" 1 results 0 bytes)
+if(NOT add_name STREQUAL "open_add" OR
+   NOT add_decl STREQUAL
+       "void open_add(const float* a, const float* b, float* out_out);" OR
+   NOT add_param_bytes EQUAL 16 OR NOT add_result_bytes EQUAL 16)
+  message(FATAL_ERROR "C API query disagrees with its header:\n${api}")
+endif()
+execute_process(
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
           -include "${open_header}"
           "${open_source}" "${OPEN_HARNESS}" -lm -o "${open_program}"
@@ -186,6 +209,20 @@ execute_process(
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "32-bit ABI preparation failed (${result}):\n${error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" query c.api "${model32_prepared}"
+          --arg "${abi32}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE api32
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0 OR NOT api32 MATCHES
+   "int64_t kernel_abi_probe\\(int32_t i, int32_t n, int32_t x\\);")
+  message(FATAL_ERROR
+          "configured C API query disagrees with its ABI (${result}):\n"
+          "${error}${api32}")
 endif()
 
 execute_process(
@@ -302,6 +339,20 @@ execute_process(
 if(NOT result EQUAL 0)
   message(FATAL_ERROR
           "external-data C header emission failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" query c.api "${model_prepared}"
+          --arg "\"model\"" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE blob_api
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0 OR NOT blob_api MATCHES
+   "void kernel_weights\\(const unsigned char\\* model, float\\* values_out\\);" OR
+   NOT blob_api MATCHES "\"data\": \"model\"")
+  message(FATAL_ERROR
+          "external-data C API query disagrees with its header (${result}):\n"
+          "${error}${blob_api}")
 endif()
 file(READ "${blob_source}" emitted_blob_source)
 file(READ "${blob_header}" emitted_blob_header)

@@ -1703,6 +1703,85 @@ fn header(m: Mod, blob: str, config: dict) -> str {
   return header_with(m, data_name(m, blob), config)
 }
 
+local fn api_value(type: Ty, name: str, config: dict) -> dict {
+  var out: dict = {}
+  out["name"] = name
+  out["type"] = text(type)
+  if tensor.valid(type) {
+    let element = tensor.elem(type)
+    let elements = count(type)
+    out["c"] = scalar(element, config)
+    out["shape"] = tensor.shape(type)
+    out["elements"] = elements
+    out["bytes"] = elements * width(element, config)
+    out["pointer"] = true
+    return out
+  }
+  out["c"] = scalar(type, config)
+  out["shape"] = []
+  out["elements"] = 1
+  out["bytes"] = width(type, config)
+  out["pointer"] = false
+  return out
+}
+
+local fn api_with(m: Mod, blob: str, config: dict) -> list<dict> {
+  let fns = exports(m)
+  assert(len(fns) != 0, "c: module has no function definitions")
+  var data_fns: list<Fn> = []
+  if blob != "" {
+    data_fns = data_functions(m)
+  }
+  var out: list<dict> = []
+  for fn in fns {
+    assert(callable(m, fn, config), "c: function has no representable ABI")
+    var params: list<dict> = []
+    for param in ir.params(fn) {
+      params += [api_value(ir.type(param), val(param), config)]
+    }
+    var data = ""
+    if blob != "" && owned(m, fn) && has_fn(data_fns, fn) {
+      data = blob
+    }
+    let types = ir.returns(fn)
+    let names = result_names(fn, data)
+    var results: list<dict> = []
+    for i in 0..len(types) {
+      var name = names[i]
+      if len(types) == 1 && !tensor.valid(types[i]) {
+        name = ""
+      }
+      results += [api_value(types[i], name, config)]
+    }
+    var entry: dict = {}
+    entry["name"] = symbol(m, fn, config)
+    entry["declaration"] = signature(m, fn, blob, data_fns, config) + ";"
+    entry["params"] = params
+    entry["results"] = results
+    entry["data"] = data
+    out += [entry]
+  }
+  return out
+}
+
+fn api(m: Mod) -> list<dict> {
+  return api_with(m, "", {})
+}
+
+fn api(m: Mod, config: dict) -> list<dict> {
+  return api_with(m, "", config)
+}
+
+fn api(m: Mod, blob: str) -> list<dict> {
+  assert(blob != "", "c: external data name must not be empty")
+  return api_with(m, data_name(m, blob), {})
+}
+
+fn api(m: Mod, blob: str, config: dict) -> list<dict> {
+  assert(blob != "", "c: external data name must not be empty")
+  return api_with(m, data_name(m, blob), config)
+}
+
 local fn data_with(m: Mod, config: dict) -> bytes {
   var out = hex""
   for op in ir.ops(m) {

@@ -122,7 +122,7 @@ hard-code these categories.
 | `onnx.nn` | ONNX type refinement and explicit conversion to shared semantics |
 | `tflite` | TFLite binary decoding and source-format calls |
 | `tflite.nn` | TFLite type refinement and explicit conversion to shared semantics |
-| `c` | C capability checks, preparation, ABI description, header/data generation, and source emission |
+| `c` | C capability checks, preparation, ABI/API description, header/data generation, and source emission |
 | `vm` | Deterministic VM capability checks, preparation, image emission, and execution |
 | `sat` | Example parametric saturating type, overloads, selection, and materialization |
 | `sat.c` | C-specific representation of `sat` |
@@ -322,6 +322,13 @@ one external symbol are rejected. This lets an adapter pass inferred shape or
 format terms as normal scalar arguments without declaring every model shape.
 `vm` emits a deterministic image and reports executed steps. Neither receives
 privileged access to the IR.
+
+`c.api` returns the exported C surface as ordinary structured data: symbol and
+declaration strings plus parameter and result descriptors containing source
+types, C scalar spellings, shapes, element counts, byte counts, pointer status,
+and the external-data argument when present. It calls the same local naming,
+signature, and payload-dependency functions as `c.header`; consumers therefore
+need not scrape C text or reproduce target ABI rules to allocate buffers.
 
 By default, `c` derives public symbols from qualified function names and keeps
 valid source value names. Named pointer results derive from the return value

@@ -92,7 +92,7 @@ blocker.
 | Targets expose only required detail | `c.accepts`, `vm.accepts`, `opt.expose`, preparation tests | A genuinely different external target or simulator study |
 | Transform failure is safe | Transaction and rollback tests, ownership/liveness checks | Fault-injection matrix and diagnostic assessment |
 | Storage and scheduling are replaceable | `mem` and `tile` modules, policy callbacks | Multi-axis legality, meaningful workload policies, performance results |
-| C artifacts are usable | Compiled examples, independent weight payload, numerical checks | Standardized model suite, accuracy table, latency distribution, workspace and binary comparisons |
+| C artifacts are usable | Compiled examples, independent weight payload, structured ABI descriptors, and numerical checks | Frozen execution suite, accuracy table, latency distribution, workspace and binary comparisons |
 | VM execution is deterministic | Stable image format, output and step-count tests | Defined use case and overhead comparison |
 
 ## Current engineering observations
