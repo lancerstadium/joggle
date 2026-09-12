@@ -1,4 +1,8 @@
+#ifdef JOGGLE_EXTERNAL_DATA
+#include "model-blob.h"
+#else
 #include "model.h"
+#endif
 
 #include <math.h>
 #include <stddef.h>
@@ -27,25 +31,47 @@ static void* read(const char* path, size_t* bytes) {
 }
 
 int main(int argc, char** argv) {
+#ifdef JOGGLE_EXTERNAL_DATA
+  if (argc != 4)
+#else
   if (argc != 3)
+#endif
     return 2;
   size_t input_bytes = 0;
   size_t output_bytes = 0;
   float* input = read(argv[1], &input_bytes);
   float* expected = read(argv[2], &output_bytes);
+#ifdef JOGGLE_EXTERNAL_DATA
+  size_t data_bytes = 0;
+  unsigned char* data = read(argv[3], &data_bytes);
+#endif
   if (!input || !expected || input_bytes % sizeof(float) != 0 ||
-      output_bytes % sizeof(float) != 0) {
+      output_bytes % sizeof(float) != 0
+#ifdef JOGGLE_EXTERNAL_DATA
+      || !data || data_bytes == 0
+#endif
+  ) {
+#ifdef JOGGLE_EXTERNAL_DATA
+    free(data);
+#endif
     free(expected);
     free(input);
     return 3;
   }
   float* output = malloc(output_bytes);
   if (!output) {
+#ifdef JOGGLE_EXTERNAL_DATA
+    free(data);
+#endif
     free(expected);
     free(input);
     return 4;
   }
+#ifdef JOGGLE_EXTERNAL_DATA
+  jog_main(input, data, output);
+#else
   jog_main(input, output);
+#endif
   const size_t count = output_bytes / sizeof(float);
   float worst = 0.0f;
   size_t worst_at = 0;
@@ -69,6 +95,9 @@ int main(int argc, char** argv) {
     printf("%zu outputs agree; maximum absolute error %.9g at %zu\n", count,
            worst, worst_at);
   free(output);
+#ifdef JOGGLE_EXTERNAL_DATA
+  free(data);
+#endif
   free(expected);
   free(input);
   return status;

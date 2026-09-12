@@ -1189,10 +1189,12 @@ there is no second counter-type policy or synthetic IR pseudo-type. The emitter
 also recognizes optional `mem.slot`
 metadata; no C-specific field or storage object was added to core IR.
 Large constants use the same separation: `c.data` returns their exact bytes,
-while an explicitly parameterized `c.source` overload references one external
-data symbol at deterministic offsets. Default source generation remains
-self-contained. This is ordinary `bytes` and `str` emission from one module,
-not a core artifact abstraction or an implicit filesystem side effect.
+while explicitly parameterized `c.source` and `c.header` overloads add one
+read-only blob-pointer argument and reference deterministic offsets from it.
+Generated calls forward the pointer; external bodyless bindings are not
+silently changed. Default source generation remains self-contained. This is
+ordinary `bytes` and `str` emission from one module, not a core artifact
+abstraction, linker-global convention, or implicit filesystem side effect.
 An executable ABI probe keeps that policy observable: the public header maps
 `index`, `int`, and `i32` to fixed-width signed types, while source-only loops
 over compile-time-sized storage use the same mapped `index` type. A second

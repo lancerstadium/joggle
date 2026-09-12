@@ -297,12 +297,18 @@ translation unit:
 ./build/joggle emit c.data planned.jog -M build/modules > model.bin
 ./build/joggle emit c.source planned.jog --arg '"weights"' \
   -M build/modules > model.c
+./build/joggle emit c.header planned.jog --arg '"weights"' \
+  -M build/modules > model.h
 ```
 
-The latter source declares `jog_data_weights` and copies each tensor literal
-from its deterministic byte offset. The application or target linker provides
-that symbol from `model.bin`. Calling `c.source` without the argument retains
-the self-contained inline form.
+The parameterized source and header add one explicit
+`const unsigned char* jog_data_weights` argument after normal inputs and before
+output pointers in every generated function definition, while leaving bodyless
+external bindings unchanged. Internal calls forward the same pointer, and
+tensor literals copy from deterministic offsets.
+The application may therefore read, map, download, or point into ROM for
+`model.bin` without a linker-specific global symbol. Calling `c.source` and
+`c.header` without the argument retains the self-contained inline form.
 
 `c.prepare`, `mem.plan`, `c.source`, and `c.header` are independent module
 functions.

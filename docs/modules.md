@@ -881,17 +881,20 @@ source therefore share one type contract rather than separate include tables.
 Generated files remain under the ignored build tree for inspection.
 
 `c.data(m) -> bytes` concatenates the exact payloads of emitted
-`tensor.literal` calls in deterministic structural order. The overload
-`c.source(m, name)` replaces inline byte strings with offsets from the external
-symbol `jog_data_<name>`; the zero-argument form remains self-contained. Both
-functions inspect the same prepared `Mod`, so no manifest, artifact hierarchy,
-or duplicated weight representation enters core IR. The small executable gate
-checks byte identity and both inline and external-data execution. On the
-official MobileNetV2 artifact, this reduces generated C from 57,027,216 bytes
-to 412,875 bytes and emits a separate 14,156,560-byte blob; the external source
-also compiles cleanly under warnings-as-errors. Supplying that symbol from a
-linker section, flash image, loader, or generated object remains an explicit
-application/target decision.
+`tensor.literal` calls in deterministic structural order. The paired overloads
+`c.source(m, name)` and `c.header(m, name)` replace inline byte strings with
+offsets from one explicit `const unsigned char* jog_data_<name>` argument after
+normal inputs and before output pointers. Every generated definition receives
+that argument and internal calls forward it;
+bodyless external bindings retain their declared ABI. The zero-argument forms
+remain self-contained. All three functions inspect the same prepared `Mod`, so
+no manifest, artifact hierarchy, or duplicated weight representation enters
+core IR. The executable gates check byte identity and both inline and
+external-data execution, including an official ONNX model. On the official
+MobileNetV2 artifact, this reduces generated C from 57,014,197 bytes to 348,344
+bytes and emits a separate 14,156,560-byte blob. The application may read,
+memory-map, download, or point into ROM for that blob; storage and transport
+remain explicit application or target policy rather than a linker convention.
 
 The separate `math` module declares the current NN-required numerical surface—
 `abs`, `ceil`, `erf`, `exp`, `floor`, `fmod`, `log`, `pow`, `round_even`,

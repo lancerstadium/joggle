@@ -57,6 +57,7 @@ model.jog
 model.vm
 model.c
 model-blob.c
+model-blob.h
 model.bin
 model.h
 bounds.json
@@ -65,10 +66,14 @@ expected.bin
 result.txt
 ```
 
-`model.jog` is the loop-level IR consumed by both targets. `model.h` is the
-only model declaration consumed by `main.c`. `model.c` is the self-contained
-form; `model-blob.c` is also compiled under strict warnings and references the
-exact payload bytes in `model.bin`. `bounds.json` contains proven
+`model.jog` is the prepared and statically planned loop-level IR consumed by
+both C forms; `model.vm` is emitted from the same converted model before the
+target-specific preparation step. `model.h` and `model-blob.h` are the
+declarations consumed by the two C executions.
+`model.c` is the self-contained form; `model-blob.c` accepts the exact payload
+bytes in `model.bin` as an explicit read-only function argument. Both forms are
+compiled under strict warnings and checked against the official output.
+`bounds.json` contains proven
 integer intervals for that exact `model.jog` revision; it is evidence for later
 target policy, not an implicit change to the generated C ABI.
 
@@ -81,7 +86,7 @@ joggle emit c.data model.jog -M modules > model.bin
 joggle emit c.source model.jog --arg '"weights"' -M modules > model-blob.c
 ```
 
-`model-blob.c` expects the target to provide
-`const unsigned char jog_data_weights[]` backed by the exact contents of
-`model.bin`. The default `model.c` remains useful when a single self-contained
-translation unit matters more than compile size.
+Emit `c.header` with the same string argument to obtain the matching interface.
+The application may read, map, download, or point into ROM for `model.bin` and
+passes that pointer explicitly. The default `model.c` remains useful when a
+single self-contained translation unit matters more than compile size.

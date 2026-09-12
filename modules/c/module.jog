@@ -119,7 +119,7 @@ local fn pad(depth: int) -> str {
   return out
 }
 
-local fn logical(m: Mod, op: Op, config: dict) -> str {
+local fn logical(m: Mod, op: Op, blob: str, config: dict) -> str {
   if ir.kind(op) != "branch" {
     return ""
   }
@@ -148,17 +148,17 @@ local fn logical(m: Mod, op: Op, config: dict) -> str {
   let first = ir.args(first_yield)[0]
   let second = ir.args(second_yield)[0]
   if second == second_args[0] && first != first_args[0] {
-    return "(" + expr(m, inputs[0], config) + " && " +
-           expr(m, first, config) + ")"
+    return "(" + expr(m, inputs[0], blob, config) + " && " +
+           expr(m, first, blob, config) + ")"
   }
   if first == first_args[0] && second != second_args[0] {
-    return "(" + expr(m, inputs[0], config) + " || " +
-           expr(m, second, config) + ")"
+    return "(" + expr(m, inputs[0], blob, config) + " || " +
+           expr(m, second, blob, config) + ")"
   }
   return ""
 }
 
-local fn expr(m: Mod, value: Val, config: dict) -> str {
+local fn expr(m: Mod, value: Val, blob: str, config: dict) -> str {
   if ir.is_const(value) {
     let source = ir.def(value)
     if ir.form(source) != "var" && !reuses(source) {
@@ -173,7 +173,7 @@ local fn expr(m: Mod, value: Val, config: dict) -> str {
          "c: unnamed " + text(ir.type(value)) +
          " value has no definition")
   if ir.kind(op) == "branch" {
-    let out = logical(m, op, config)
+    let out = logical(m, op, blob, config)
     assert(out != "", "c: unnamed branch value is not a logical expression")
     return out
   }
@@ -183,30 +183,37 @@ local fn expr(m: Mod, value: Val, config: dict) -> str {
   let name = ir.callee(op)
   let inputs = ir.args(op)
   if name == "operator []" {
-    return index(m, inputs[0], inputs, config)
+    return index(m, inputs[0], inputs, blob, config)
   }
   let binary_op = binary(name)
   if binary_op != "" && len(inputs) == 2 {
-    return "(" + expr(m, inputs[0], config) + " " + binary_op + " " +
-           expr(m, inputs[1], config) + ")"
+    return "(" + expr(m, inputs[0], blob, config) + " " + binary_op + " " +
+           expr(m, inputs[1], blob, config) + ")"
   }
   let unary_op = unary(name)
   if unary_op != "" && len(inputs) == 1 {
-    return "(" + unary_op + expr(m, inputs[0], config) + ")"
+    return "(" + unary_op + expr(m, inputs[0], blob, config) + ")"
   }
   if len(inputs) == 1 && scalar_name(name, config) {
     return "((" + scalar(ty(name), config) + ")(" +
-           expr(m, inputs[0], config) + "))"
+           expr(m, inputs[0], blob, config) + "))"
   }
   let bound = binding(m, op)
   if bound != "" && len(ir.outs(op)) == 1 &&
      !tensor.valid(ir.type(ir.outs(op)[0])) {
-    return bound + "(" + args(m, inputs, config) + ")"
+    return bound + "(" + args(m, inputs, blob, config) + ")"
   }
   let target = ir.resolve(m, op)
   if callable(m, target, config) && len(ir.outs(op)) == 1 &&
      len(ir.users(value)) == 1 {
-    return symbol(m, target, config) + "(" + args(m, inputs, config) + ")"
+    var actuals = args(m, inputs, blob, config)
+    if blob != "" && owned(m, target) {
+      if actuals != "" {
+        actuals += ", "
+      }
+      actuals += blob
+    }
+    return symbol(m, target, config) + "(" + actuals + ")"
   }
   assert(false, "c: unnamed call must be assigned or exposed: " + name)
   return ""
@@ -225,18 +232,18 @@ local fn lhs(op: Op, output: Val, config: dict) -> str {
 }
 
 local fn index(
-  m: Mod, value: Val, indices: list<Val>, config: dict
+  m: Mod, value: Val, indices: list<Val>, blob: str, config: dict
 ) -> str {
   let type = ir.type(value)
   if tensor.valid(type) {
     let shape = tensor.shape(type)
     assert(len(indices) == 2 || len(indices) == len(shape) + 1,
            "c: tensor index must be linear or match its rank")
-    var out = expr(m, indices[1], config)
+    var out = expr(m, indices[1], blob, config)
     if len(indices) != 2 {
       for i in 2..len(indices) {
         out = "(" + out + " * " + text(shape[i - 1]) + " + " +
-              expr(m, indices[i], config) + ")"
+              expr(m, indices[i], blob, config) + ")"
       }
     }
     return val(value) + "[" + out + "]"
@@ -248,8 +255,8 @@ local fn index(
          ir.live(source) && ir.callee(source) == "base.list",
          "c: scalar index requires a literal list")
   return "((const " + scalar(types[0], config) + "[]){" +
-         args(m, ir.args(source), config) + "})[" +
-         expr(m, indices[1], config) + "]"
+         args(m, ir.args(source), blob, config) + "})[" +
+         expr(m, indices[1], blob, config) + "]"
 }
 
 local fn owned(m: Mod, fn: Fn) -> bool {
@@ -302,13 +309,13 @@ local fn symbol(m: Mod, fn: Fn, config: dict) -> str {
   return "jog_" + base.ident(base.replace(ir.symbol(fn), ".", "_"))
 }
 
-local fn args(m: Mod, values: list<Val>, config: dict) -> str {
+local fn args(m: Mod, values: list<Val>, blob: str, config: dict) -> str {
   var out = ""
   for i in 0..len(values) {
     if i != 0 {
       out += ", "
     }
-    out += expr(m, values[i], config)
+    out += expr(m, values[i], blob, config)
   }
   return out
 }
@@ -515,7 +522,9 @@ fn place(m: Mod, scope: str) -> bool {
   return changed
 }
 
-local fn tensor_new(m: Mod, op: Op, depth: int, config: dict) -> str {
+local fn tensor_new(
+  m: Mod, op: Op, depth: int, blob: str, config: dict
+) -> str {
   let outputs = ir.outs(op)
   let inputs = ir.args(op)
   assert(len(outputs) == 1 && len(inputs) == 1,
@@ -532,7 +541,7 @@ local fn tensor_new(m: Mod, op: Op, depth: int, config: dict) -> str {
   out += indent + "for (" + index_type(config) +
          " jog_i = 0; jog_i < " + text(n) +
          "; ++jog_i) " + val(output) + "[jog_i] = " +
-         expr(m, inputs[0], config) + ";\n"
+         expr(m, inputs[0], blob, config) + ";\n"
   return out
 }
 
@@ -543,16 +552,6 @@ local fn payload(op: Op) -> bool {
   let inputs = ir.args(op)
   return len(inputs) == 1 && ir.is_const(inputs[0]) &&
          base.kind(ir.constant(inputs[0])) == "bytes"
-}
-
-local fn payload_size(m: Mod) -> int {
-  var out = 0
-  for op in ir.ops(m) {
-    if payload(op) {
-      out += base.size(ir.constant(ir.args(op)[0]))
-    }
-  }
-  return out
 }
 
 local fn payload_offset(m: Mod, target: Op) -> int {
@@ -608,7 +607,9 @@ local fn tensor_literal(
   return out
 }
 
-local fn copy(m: Mod, op: Op, depth: int, config: dict) -> str {
+local fn copy(
+  m: Mod, op: Op, depth: int, blob: str, config: dict
+) -> str {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   assert(len(inputs) == 1 && len(outputs) == 1,
@@ -630,7 +631,7 @@ local fn copy(m: Mod, op: Op, depth: int, config: dict) -> str {
     return out
   }
   return indent + lhs(op, output, config) + " = " +
-         expr(m, input, config) + ";\n"
+         expr(m, input, blob, config) + ";\n"
 }
 
 local fn call(
@@ -645,7 +646,7 @@ local fn call(
     return ""
   }
   if name == "base.copy" {
-    return copy(m, op, depth, config)
+    return copy(m, op, depth, blob, config)
   }
   if name == "operator []" {
     assert(len(outputs) == 1 && len(inputs) >= 2,
@@ -654,7 +655,7 @@ local fn call(
       return ""
     }
     return indent + lhs(op, outputs[0], config) +
-           " = " + index(m, inputs[0], inputs, config) + ";\n"
+           " = " + index(m, inputs[0], inputs, blob, config) + ";\n"
   }
   if name == "operator []=" {
     assert(len(outputs) == 1 && len(inputs) >= 3,
@@ -663,14 +664,14 @@ local fn call(
     for i in 1..len(inputs) - 1 {
       access += [inputs[i]]
     }
-    return indent + index(m, inputs[0], access, config) + " = " +
-           expr(m, inputs[len(inputs) - 1], config) + ";\n"
+    return indent + index(m, inputs[0], access, blob, config) + " = " +
+           expr(m, inputs[len(inputs) - 1], blob, config) + ";\n"
   }
 
   let target = ir.resolve(m, op)
   if len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
      ir.live(target) && ir.symbol(target) == "tensor.tensor" {
-    return tensor_new(m, op, depth, config)
+    return tensor_new(m, op, depth, blob, config)
   }
   if len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
      ir.live(target) && ir.symbol(target) == "tensor.literal" {
@@ -684,8 +685,8 @@ local fn call(
       return ""
     }
     return indent + lhs(op, outputs[0], config) + " = " +
-           expr(m, inputs[0], config) + " " + binary_op + " " +
-           expr(m, inputs[1], config) + ";\n"
+           expr(m, inputs[0], blob, config) + " " + binary_op + " " +
+           expr(m, inputs[1], blob, config) + ";\n"
   }
 
   let unary_op = unary(name)
@@ -695,7 +696,7 @@ local fn call(
       return ""
     }
     return indent + lhs(op, outputs[0], config) + " = " + unary_op +
-           expr(m, inputs[0], config) + ";\n"
+           expr(m, inputs[0], blob, config) + ";\n"
   }
 
   if len(inputs) == 1 && len(outputs) == 1 && scalar_name(name, config) &&
@@ -705,7 +706,7 @@ local fn call(
     }
     return indent + lhs(op, outputs[0], config) + " = (" +
            scalar(ty(name), config) + ")(" +
-           expr(m, inputs[0], config) + ");\n"
+           expr(m, inputs[0], blob, config) + ");\n"
   }
 
   if len(outputs) == 1 {
@@ -715,12 +716,18 @@ local fn call(
         return ""
       }
       return indent + lhs(op, outputs[0], config) + " = " + bound + "(" +
-             args(m, inputs, config) + ");\n"
+             args(m, inputs, blob, config) + ");\n"
     }
   }
 
   let callee = symbol(m, target, config)
-  var actuals = args(m, inputs, config)
+  var actuals = args(m, inputs, blob, config)
+  if blob != "" && owned(m, target) {
+    if actuals != "" {
+      actuals += ", "
+    }
+    actuals += blob
+  }
   if len(outputs) == 0 {
     return indent + callee + "(" + actuals + ");\n"
   }
@@ -770,14 +777,16 @@ local fn call(
          actuals + ");\n"
 }
 
-local fn ret(m: Mod, op: Op, depth: int, config: dict) -> str {
+local fn ret(
+  m: Mod, op: Op, depth: int, blob: str, config: dict
+) -> str {
   let values = ir.args(op)
   let indent = pad(depth)
   if len(values) == 0 {
     return indent + "return;\n"
   }
   if len(values) == 1 && !tensor.valid(ir.type(values[0])) {
-    return indent + "return " + expr(m, values[0], config) + ";\n"
+    return indent + "return " + expr(m, values[0], blob, config) + ";\n"
   }
   var out = ""
   for i in 0..len(values) {
@@ -795,7 +804,8 @@ local fn ret(m: Mod, op: Op, depth: int, config: dict) -> str {
              ") " + output + "[" + iterator + "] = " + val(value) + "[" +
              iterator + "];\n"
     } else {
-      out += indent + "*" + output + " = " + expr(m, value, config) + ";\n"
+      out += indent + "*" + output + " = " +
+             expr(m, value, blob, config) + ";\n"
     }
   }
   return out + indent + "return;\n"
@@ -844,8 +854,8 @@ local fn loop(
       assert(len(bounds) == 2, "c: range must have two bounds")
       out += pad(depth + i) + "for (" + index_type(config) + " " + iterator +
              " = " +
-             expr(m, bounds[0], config) + "; " + iterator + " < " +
-             expr(m, bounds[1], config) +
+             expr(m, bounds[0], blob, config) + "; " + iterator + " < " +
+             expr(m, bounds[1], blob, config) +
              "; ++" + iterator + ") {\n"
     } else {
       assert(ir.callee(source) == "base.list",
@@ -861,7 +871,8 @@ local fn loop(
                " = 0; " + index +
                " < " + text(len(items)) + "; ++" + index + ") {\n"
         out += pad(depth + i + 1) + "const " + type + " " + iterator +
-               " = (const " + type + "[]){" + args(m, items, config) + "}[" + index +
+               " = (const " + type + "[]){" +
+               args(m, items, blob, config) + "}[" + index +
                "];\n"
       }
     }
@@ -882,7 +893,8 @@ local fn branch(
          "c: branch structure is invalid")
   let first = block(m, bodies[0], depth + 1, blob, config)
   let second = block(m, bodies[1], depth + 1, blob, config)
-  var out = pad(depth) + "if (" + expr(m, inputs[0], config) + ") {\n" + first
+  var out = pad(depth) + "if (" + expr(m, inputs[0], blob, config) +
+            ") {\n" + first
   if second == "" {
     out += pad(depth) + "}\n"
   } else {
@@ -904,12 +916,12 @@ local fn block(
         out += loop(m, op, depth, blob, config)
       } else {
         if kind == "branch" {
-          if logical(m, op, config) == "" {
+          if logical(m, op, blob, config) == "" {
             out += branch(m, op, depth, blob, config)
           }
         } else {
           if kind == "return" {
-            out += ret(m, op, depth, config)
+            out += ret(m, op, depth, blob, config)
           } else {
             if kind == "constant" {
               out += constant(op, depth, config)
@@ -924,7 +936,7 @@ local fn block(
   return out
 }
 
-local fn signature(m: Mod, fn: Fn, config: dict) -> str {
+local fn signature(m: Mod, fn: Fn, blob: str, config: dict) -> str {
   assert(callable(m, fn, config), "c: function has no representable ABI")
   let returns = ir.returns(fn)
   var out = ""
@@ -947,6 +959,13 @@ local fn signature(m: Mod, fn: Fn, config: dict) -> str {
     } else {
       out += scalar(type, config) + " " + val(params[i])
     }
+    arguments += 1
+  }
+  if blob != "" && owned(m, fn) {
+    if arguments != 0 {
+      out += ", "
+    }
+    out += "const unsigned char* " + blob
     arguments += 1
   }
   if len(returns) != 1 || tensor.valid(returns[0]) {
@@ -997,8 +1016,12 @@ local fn definition(m: Mod, fn: Fn, blob: str, config: dict) -> str {
               base.ident(base.name(type)) + "_" + text(slot) + "[" +
               text(mem.count(fn, slot)) + "];\n"
   }
-  return linkage(m, fn) + signature(m, fn, config) + " {\n" +
-         memory + block(m, bodies[0], 1, blob, config) + "}\n"
+  var data = ""
+  if blob != "" {
+    data = pad(1) + "(void)" + blob + ";\n"
+  }
+  return linkage(m, fn) + signature(m, fn, blob, config) + " {\n" +
+         data + memory + block(m, bodies[0], 1, blob, config) + "}\n"
 }
 
 local fn functions(m: Mod) -> list<Fn> {
@@ -1133,7 +1156,9 @@ local fn source_headers(m: Mod, fns: list<Fn>, config: dict) -> list<str> {
   return out
 }
 
-local fn prototypes(m: Mod, fns: list<Fn>, config: dict) -> str {
+local fn prototypes(
+  m: Mod, fns: list<Fn>, blob: str, config: dict
+) -> str {
   var declarations = ""
   var names: list<str> = []
   for fn in fns {
@@ -1143,15 +1168,15 @@ local fn prototypes(m: Mod, fns: list<Fn>, config: dict) -> str {
              "c: overloaded or colliding function name " + name)
     }
     names += [name]
-    declarations += linkage(m, fn) + signature(m, fn, config) + ";\n"
+    declarations += linkage(m, fn) + signature(m, fn, blob, config) + ";\n"
   }
   return declarations
 }
 
-local fn header_with(m: Mod, config: dict) -> str {
+local fn header_with(m: Mod, blob: str, config: dict) -> str {
   let fns = exports(m)
   assert(len(fns) != 0, "c: module has no function definitions")
-  let declarations = prototypes(m, fns, config)
+  let declarations = prototypes(m, fns, blob, config)
   return "#pragma once\n\n" +
          includes(type_headers(fns, config)) + "\n" +
          "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n" +
@@ -1160,11 +1185,21 @@ local fn header_with(m: Mod, config: dict) -> str {
 }
 
 fn header(m: Mod) -> str {
-  return header_with(m, {})
+  return header_with(m, "", {})
 }
 
 fn header(m: Mod, config: dict) -> str {
-  return header_with(m, config)
+  return header_with(m, "", config)
+}
+
+fn header(m: Mod, blob: str) -> str {
+  assert(blob != "", "c: external data name must not be empty")
+  return header_with(m, "jog_data_" + base.ident(blob), {})
+}
+
+fn header(m: Mod, blob: str, config: dict) -> str {
+  assert(blob != "", "c: external data name must not be empty")
+  return header_with(m, "jog_data_" + base.ident(blob), config)
 }
 
 fn data(m: Mod) -> bytes {
@@ -1181,23 +1216,13 @@ local fn emit(m: Mod, blob: str, config: dict) -> str {
   let fns = functions(m)
   assert(len(fns) != 0, "c: module has no function definitions")
   let declared = dependencies(m, config) + fns
-  if blob != "" {
-    for fn in declared {
-      assert(symbol(m, fn, config) != blob,
-             "c: external data symbol collides with function " + blob)
-    }
-  }
-  let declarations = prototypes(m, declared, config)
+  let declarations = prototypes(m, declared, blob, config)
   var definitions = ""
   for fn in fns {
     definitions += definition(m, fn, blob, config) + "\n"
   }
-  var payload_decl = ""
-  if blob != "" && payload_size(m) != 0 {
-    payload_decl = "extern const unsigned char " + blob + "[];\n\n"
-  }
   return includes(source_headers(m, declared, config)) + "\n" +
-         payload_decl + declarations + "\n" + definitions
+         declarations + "\n" + definitions
 }
 
 fn source(m: Mod) -> str {

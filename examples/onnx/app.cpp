@@ -123,7 +123,6 @@ int main(int argc, char** argv) {
   CHECK(model.verify(env));
   CHECK(joggle::run(env, "vm.prepare", model));
   CHECK(model.verify(env));
-  CHECK(write(argv[8], joggle::print(model)));
 
   joggle::Attr image;
   if (!joggle::query(env, "vm.image", model, image)) {
@@ -151,6 +150,7 @@ int main(int argc, char** argv) {
   const std::vector<joggle::Attr> placement{joggle::Attr("static")};
   CHECK(joggle::run(env, "c.place", model, placement));
   CHECK(model.verify(env));
+  CHECK(write(argv[8], joggle::print(model)));
   joggle::Attr source;
   CHECK(joggle::query(env, "c.source", model, source));
   CHECK(source.string() && source.string()->find("onnx.") == std::string::npos);

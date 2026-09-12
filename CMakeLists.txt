@@ -495,6 +495,7 @@ if(JOGGLE_BUILD_TESTS)
         -DOPEN_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_open.jog
         -DCOLLISION_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_collision.jog
         -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_main.c
+        -DBLOB_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_blob_main.c
         -DOPEN_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_open_main.c
         -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
         -DROOT=${CMAKE_CURRENT_BINARY_DIR}/c-test

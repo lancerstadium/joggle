@@ -18,7 +18,8 @@ set(image "${ROOT}/model.vm")
 set(bounds "${ROOT}/bounds.json")
 set(data "${ROOT}/model.bin")
 set(blob_source "${ROOT}/model-blob.c")
-set(blob_object "${ROOT}/model-blob.o")
+set(blob_header "${ROOT}/model-blob.h")
+set(blob_program "${ROOT}/model-blob")
 
 execute_process(
   COMMAND "${APP}" "${MODEL}" "${INPUT}" "${OUTPUT}"
@@ -68,8 +69,21 @@ if(NOT result EQUAL 0)
 endif()
 
 execute_process(
+  COMMAND "${TOOL}" emit c.header "${prepared}"
+          --arg "\"weights\"" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${blob_header}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "ONNX external-data header emission failed (${result}):\n${error}")
+endif()
+
+execute_process(
   COMMAND "${CC}" -std=c99 -O1 -Wall -Wextra -Wstrict-prototypes -Werror
-          -I "${ROOT}" -c "${blob_source}" -o "${blob_object}"
+          -DJOGGLE_EXTERNAL_DATA=1 -I "${ROOT}"
+          "${blob_source}" "${HARNESS}" -lm -o "${blob_program}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error
@@ -102,5 +116,19 @@ if(NOT result EQUAL 0)
           "generated ONNX C disagrees with the reference (${result}):\n"
           "${output}${error}")
 endif()
-file(WRITE "${ROOT}/result.txt" "${vm_output}${output}")
-message(STATUS "${vm_output}${output}")
+set(inline_output "${output}")
+
+execute_process(
+  COMMAND "${blob_program}" "${input}" "${expected}" "${data}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "external-data ONNX C disagrees with the reference (${result}):\n"
+          "${output}${error}")
+endif()
+file(WRITE "${ROOT}/result.txt"
+     "${vm_output}inline: ${inline_output}external: ${output}")
+message(STATUS "${vm_output}inline: ${inline_output}external: ${output}")

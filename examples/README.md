@@ -7,8 +7,9 @@ complexity. Each directory is a complete, runnable module or application.
   imports, converts, exposes, executes in the VM, plans storage, emits C and a
   public header, compiles the C, and checks all outputs. MobileNetV2 runs the
   same driver at application scale. Both leave the transformed `model.jog`,
-  self-contained `model.c`, external-weight `model-blob.c` plus `model.bin`, VM
-  image, analysis report, and numerical result in the build tree.
+  self-contained `model.c`, executable external-weight `model-blob.c` plus
+  `model-blob.h` and `model.bin`, VM image, analysis report, and numerical
+  result in the build tree.
 - [`ikj`](ikj) is the smallest complete user-defined implementation module. It
   replaces the shared generic matrix-multiplication body with a different loop
   order and then uses the unchanged C path. Its source is intentionally short

@@ -1,7 +1,8 @@
 if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
    NOT DEFINED INVALID_MODEL OR
    NOT DEFINED OPEN_MODEL OR NOT DEFINED COLLISION_MODEL OR
-   NOT DEFINED HARNESS OR NOT DEFINED OPEN_HARNESS OR
+   NOT DEFINED HARNESS OR NOT DEFINED BLOB_HARNESS OR
+   NOT DEFINED OPEN_HARNESS OR
    NOT DEFINED MODULES OR NOT DEFINED ROOT)
   message(FATAL_ERROR
           "C execution test requires TOOL, CC, models, harnesses, MODULES, ROOT")
@@ -144,6 +145,7 @@ set(source "${ROOT}/model.c")
 set(header "${ROOT}/model.h")
 set(program "${ROOT}/model")
 set(blob_source "${ROOT}/model-blob.c")
+set(blob_header "${ROOT}/model-blob.h")
 set(blob_data "${ROOT}/model.bin")
 set(blob_program "${ROOT}/model-blob")
 set(model_prepared "${ROOT}/model.jog")
@@ -274,31 +276,30 @@ execute_process(
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "external-data C emission failed (${result}):\n${error}")
 endif()
+execute_process(
+  COMMAND "${TOOL}" emit c.header "${model_prepared}"
+          --arg "\"model\"" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${blob_header}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "external-data C header emission failed (${result}):\n${error}")
+endif()
 file(READ "${blob_source}" emitted_blob_source)
+file(READ "${blob_header}" emitted_blob_header)
 if(NOT emitted_blob_source MATCHES
-   "extern const unsigned char jog_data_model\\[\\];" OR
-   NOT emitted_blob_source MATCHES
    "memcpy\\([^\n]+, jog_data_model \\+ 0, 8\\);" OR
    NOT emitted_blob_source MATCHES
    "memcpy\\([^\n]+, jog_data_model \\+ 8, 3\\);" OR
-   emitted_blob_source MATCHES "static const unsigned char jog_data_")
+   emitted_blob_source MATCHES "static const unsigned char jog_data_" OR
+   emitted_blob_source MATCHES "extern const unsigned char jog_data_" OR
+   NOT emitted_blob_header MATCHES
+       "jog_weights\\(const unsigned char\\* jog_data_model, float\\* jog_out\\);")
   message(FATAL_ERROR
-          "external-data C source did not reference the raw blob:\n"
-          "${emitted_blob_source}")
-endif()
-
-execute_process(
-  COMMAND "${TOOL}" emit c.source "${model_prepared}"
-          --arg "\"weights\"" -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(result EQUAL 0 OR
-   NOT error MATCHES "external data symbol collides with function")
-  message(FATAL_ERROR
-          "C emission accepted a data/function collision (${result}):\n"
-          "${output}${error}")
+          "external-data C interface did not expose the raw blob parameter:\n"
+          "${emitted_blob_header}\n${emitted_blob_source}")
 endif()
 file(READ "${header}" emitted_header)
 if(NOT emitted_header MATCHES
@@ -360,7 +361,7 @@ endif()
 
 execute_process(
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
-          -include "${header}" "${blob_source}" "${HARNESS}" -lm
+          -I "${ROOT}" "${blob_source}" "${BLOB_HARNESS}" -lm
           -o "${blob_program}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
