@@ -53,6 +53,30 @@ separate stage with that name. The TFLite MobileNet row uses the pinned model
 checked by `test/tflite.cpp`; its exposure gate validates structure and
 round-trip stability, not generated-C execution.
 
+`generic-kernel-pilot.csv` records a four-model follow-up using one portable
+NCHW/OIHW f32 convolution implementation selected through ordinary generic
+functions. MobileNetV2, ResNet18, UltraFace, and SqueezeNet select 54, 20, 52,
+and 26 convolution calls respectively without adding a C-emitter or frontend
+case. Their external-weight sources are 85,762, 36,665, 119,688, and 46,310
+bytes, compared with the corresponding scalar sources of 223,627, 87,161,
+258,279, and 114,057 bytes. All four preserve their recorded numerical error
+bounds; SqueezeNet extends the executed coverage with maximum absolute error
+`5.2452087e-6` against an ONNX Runtime 1.26.0 reference generated from a seed-0
+input.
+
+The same Apple M4, Clang 17, three-warm-up, ten-call pilot was compiled either
+as separate translation units or with `-flto`; all other strict C11 flags were
+identical. Median latencies in separate/LTO form were 1030.117/333.830 ms for
+MobileNetV2, 2035.626/1430.333 ms for ResNet18, 194.961/58.356 ms for
+UltraFace, and 475.761/206.846 ms for SqueezeNet. LTO therefore recovers a
+large part of the lost constant propagation, but the generic runtime-stride
+kernel remains slower than the earlier scalar C baseline on MobileNetV2 and
+UltraFace and is about 71x slower than the 2.908 ms SqueezeNet ONNX Runtime
+median. This is a negative, direction-setting result: one user definition is
+compact and compatible, but Joggle still needs compiler-owned deduplicated
+specialization by concrete call signature. Neither the latency nor source-size
+observations are publication claims.
+
 The UltraFace-RFB-320 row uses the checksum-pinned ONNX Zoo model and a
 deterministic NumPy input generated with seed 0. ONNX Runtime 1.26.0 produced
 both reference outputs. Strict external-weight C was compiled with Apple Clang
