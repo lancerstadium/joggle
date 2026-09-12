@@ -5,6 +5,8 @@ pilot records:
 
 - [manuscript.md](manuscript.md) is the current paper text;
 - [related-work.md](related-work.md) records source-grounded comparisons;
+- [extension-study.md](extension-study.md) freezes the RQ2 tasks and collection
+  protocol;
 - [data/](data/) contains pilot measurements and their provenance.
 
 Implemented features are not automatically treated as research contributions.
@@ -83,7 +85,7 @@ blocker.
 | Candidate claim | Current repository evidence | Missing evidence |
 | --- | --- | --- |
 | One IR spans graph and loop detail | Printer, verifier, semantic bodies, explicit loops, C and VM preparation tests | Model-level stage traces and comparison with multi-IR workflows |
-| Extensions are normal module functions | Source modules, `local fn`, installation tests, `ir.invoke`, body expansion, transactional external selection, and out-of-tree examples | Controlled implementation study with independent tasks and baselines |
+| Extensions are normal module functions | Source modules, `local fn`, installation tests, `ir.invoke`, body expansion, transactional external selection, four frozen extension tasks, and a generated footprint pilot | Controlled comparison using matched baseline tasks and implementation-time evidence |
 | Frontends are separate from semantics | ONNX/TFLite codecs and explicit bridge modules | Broader official-model coverage and unsupported-frontier accounting |
 | Targets expose only required detail | `c.accepts`, `vm.accepts`, `opt.expose`, preparation tests | A genuinely different external target or simulator study |
 | Transform failure is safe | Transaction and rollback tests, ownership/liveness checks | Fault-injection matrix and diagnostic assessment |

@@ -4,6 +4,19 @@ Files in this directory are auditable engineering observations, not final
 paper measurements. They preserve negative results that determine the next
 experiment instead of presenting them as controlled performance claims.
 
+`extension-footprint-pilot.csv` is generated from the frozen task manifest by
+`paper/measure_extensions.py`. It validates the named modules and tests, then
+records only mechanically observable footprint: source files, nonblank
+non-comment source lines, bytes, declared dependencies, and public functions.
+The three out-of-tree tasks range from 20 source lines for an alternative
+matrix body to 210 source lines for a generic external-kernel adapter plus its
+C implementation. The bundled parametric numeric-format task contains 284
+source lines across its semantic module, native binding, and two target
+companions. These counts do not measure development time, comprehension, or
+usability and therefore do not answer RQ2 without controlled baselines.
+Each row also stores a digest over the measured relative paths and source bytes
+so regeneration cannot silently measure a different implementation.
+
 `instance-specialization-pilot.csv` records the first four-model evaluation of
 compiler-owned call-site instances. Each automatic variant starts from the
 same semantic model, invokes `opt.instantiate(m, "nn")`, prepares C, plans

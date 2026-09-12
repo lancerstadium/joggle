@@ -1,0 +1,5 @@
+schema,task,scope,modules,source_files,source_sloc,source_bytes,declared_dependencies,public_functions,validation,source_sha256
+1,implementation,out-of-tree source module,1,1,20,449,3,3,pass,30fa8824043a45c6f6193621f996dd7883654db41bb756339d3d17ca70e577e7
+1,policy,out-of-tree source module,1,1,69,1881,4,5,pass,ecc8f0e4bd3eee5ec8dec56de147c644b43b8a0384b8ec57cfbe14b882fd1348
+1,external-kernel,out-of-tree source module and C implementation,1,2,210,6506,4,8,pass,f419d88d1f23b75bb5c1e61711e5a9aca17efea759498fd2215e2c3c8855ad03
+1,numeric-format,bundled optional source/native module,3,4,284,8863,4,15,pass,7771ad88e403676d7b7892a3e8f06a3e6c3370f5f74b5b1d4250d8de01aa1617

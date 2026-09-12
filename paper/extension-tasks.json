@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "tasks": [
+    {
+      "id": "implementation",
+      "description": "Replace a shared tensor implementation with an inspectable loop body.",
+      "scope": "out-of-tree source module",
+      "modules": ["ikj"],
+      "sources": ["examples/ikj/module.jog"],
+      "tests": ["ikj-example"]
+    },
+    {
+      "id": "policy",
+      "description": "Define a structural cost measure and fusion profitability policy.",
+      "scope": "out-of-tree source module",
+      "modules": ["cost"],
+      "sources": ["examples/cost/module.jog"],
+      "tests": ["cost-example", "cost-configured-example"]
+    },
+    {
+      "id": "external-kernel",
+      "description": "Select generic external matrix and convolution kernels through inferred signatures.",
+      "scope": "out-of-tree source module and C implementation",
+      "modules": ["edge"],
+      "sources": ["examples/edge/module.jog", "examples/edge/kernel.c"],
+      "tests": ["edge-example"]
+    },
+    {
+      "id": "numeric-format",
+      "description": "Add a parametric saturating integer type with C and VM representations.",
+      "scope": "bundled optional source/native module",
+      "modules": ["sat", "sat.c", "sat.vm"],
+      "sources": [
+        "modules/sat/module.jog",
+        "modules/sat/src/sat.cpp",
+        "modules/sat.c/module.jog",
+        "modules/sat.vm/module.jog"
+      ],
+      "tests": ["sat", "sat-c-execution"]
+    }
+  ]
+}
