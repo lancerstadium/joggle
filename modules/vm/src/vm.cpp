@@ -20,12 +20,12 @@ namespace {
 
 using Line = std::vector<std::string_view>;
 
-bool fail(jog_call* call, std::string message) {
+bool fail(joggle_call* call, std::string message) {
   return call->api->fail(call, message.c_str());
 }
 
-bool argument(const jog_call* call, std::size_t index, jog_value_kind kind,
-              jog_value& out) {
+bool argument(const joggle_call* call, std::size_t index, joggle_value_kind kind,
+              joggle_value& out) {
   return call->api->arg(call, index, &out) && out.kind == kind;
 }
 
@@ -1064,14 +1064,14 @@ bool execute(const Program& program, std::size_t first, std::size_t last,
   return true;
 }
 
-bool run_image(jog_call* call) {
-  jog_value image{};
-  jog_value entry{};
-  jog_value input{};
+bool run_image(joggle_call* call) {
+  joggle_value image{};
+  joggle_value entry{};
+  joggle_value input{};
   if (call->api->arg_count(call) != 3 ||
-      !argument(call, 0, JOG_STR, image) ||
-      !argument(call, 1, JOG_STR, entry) ||
-      !argument(call, 2, JOG_BYTES, input))
+      !argument(call, 0, JOGGLE_STR, image) ||
+      !argument(call, 1, JOGGLE_STR, entry) ||
+      !argument(call, 2, JOGGLE_BYTES, input))
     return fail(call, "expected image, entry name, and input bytes");
   const std::string_view source(image.data.string.data,
                                 image.data.string.size);
@@ -1154,19 +1154,19 @@ bool run_image(jog_call* call) {
     output.reserve(width(state.result.kind));
     store_value(output, state.result.kind, state.result.bits);
   }
-  jog_value result{};
-  result.kind = JOG_BYTES;
+  joggle_value result{};
+  result.kind = JOGGLE_BYTES;
   result.data.bytes = {reinterpret_cast<const char*>(output.data()),
                        output.size()};
   if (!call->api->ret(call, 0, &result))
     return false;
-  jog_value steps{};
-  steps.kind = JOG_I64;
+  joggle_value steps{};
+  steps.kind = JOGGLE_I64;
   steps.data.integer = state.steps;
   return call->api->ret(call, 1, &steps);
 }
 
-bool run(jog_call* call, void*) {
+bool run(joggle_call* call, void*) {
   try {
     return run_image(call);
   } catch (const std::bad_alloc&) {
@@ -1180,8 +1180,8 @@ bool run(jog_call* call, void*) {
 
 }  // namespace
 
-JOGGLE_MODULE_EXPORT bool joggle_module(const jog_api* api,
-                                        jog_module* module) {
+JOGGLE_MODULE_EXPORT bool joggle_module(const joggle_api* api,
+                                        joggle_module* module) {
   return joggle::compatible(api) &&
          api->bind(module, "vm.run", run, nullptr);
 }

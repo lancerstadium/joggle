@@ -7,29 +7,29 @@
 
 namespace {
 
-bool integer(const jog_call* call, std::size_t index, std::int64_t& out) {
-  jog_value value{};
-  if (!call->api->arg(call, index, &value) || value.kind != JOG_I64)
+bool integer(const joggle_call* call, std::size_t index, std::int64_t& out) {
+  joggle_value value{};
+  if (!call->api->arg(call, index, &value) || value.kind != JOGGLE_I64)
     return false;
   out = value.data.integer;
   return true;
 }
 
-bool result(jog_call* call, std::int64_t value) {
-  jog_value out{};
-  out.kind = JOG_I64;
+bool result(joggle_call* call, std::int64_t value) {
+  joggle_value out{};
+  out.kind = JOGGLE_I64;
   out.data.integer = value;
   return call->api->ret(call, 0, &out);
 }
 
-bool result(jog_call* call, std::string_view value) {
-  jog_value out{};
-  out.kind = JOG_STR;
+bool result(joggle_call* call, std::string_view value) {
+  joggle_value out{};
+  out.kind = JOGGLE_STR;
   out.data.string = {value.data(), value.size()};
   return call->api->ret(call, 0, &out);
 }
 
-bool sim(jog_call* call, void*) {
+bool sim(joggle_call* call, void*) {
   std::int64_t bits = 0;
   std::int64_t left = 0;
   std::int64_t right = 0;
@@ -49,7 +49,7 @@ bool sim(jog_call* call, void*) {
   return result(call, left + right);
 }
 
-bool emit(jog_call* call, void*) {
+bool emit(joggle_call* call, void*) {
   std::int64_t bits = 0;
   if (call->api->arg_count(call) != 1 || !integer(call, 0, bits) || bits < 2 ||
       bits > 63)
@@ -76,8 +76,8 @@ bool emit(jog_call* call, void*) {
 
 }  // namespace
 
-JOGGLE_MODULE_EXPORT bool joggle_module(const jog_api* api,
-                                        jog_module* module) {
+JOGGLE_MODULE_EXPORT bool joggle_module(const joggle_api* api,
+                                        joggle_module* module) {
   return joggle::compatible(api) &&
          api->bind(module, "sat.sim", sim, nullptr) &&
          api->bind(module, "sat.emit", emit, nullptr);

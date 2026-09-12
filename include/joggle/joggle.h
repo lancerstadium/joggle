@@ -16,53 +16,56 @@
 
 extern "C" {
 
-struct jog_api;
-struct jog_module;
+struct joggle_api;
+struct joggle_module;
 
-enum jog_value_kind : std::uint32_t {
-  JOG_NIL,
-  JOG_BOOL,
-  JOG_I64,
-  JOG_F64,
-  JOG_STR,
-  JOG_HANDLE,
-  JOG_BYTES
+enum joggle_value_kind : std::uint32_t {
+  JOGGLE_NIL,
+  JOGGLE_BOOL,
+  JOGGLE_I64,
+  JOGGLE_F64,
+  JOGGLE_STR,
+  JOGGLE_HANDLE,
+  JOGGLE_BYTES
 };
 
-struct jog_slice {
+struct joggle_slice {
   const char* data;
   std::size_t size;
 };
 
-struct jog_value {
-  jog_value_kind kind;
+struct joggle_value {
+  joggle_value_kind kind;
   union {
     bool boolean;
     std::int64_t integer;
     double real;
-    jog_slice string;
-    jog_slice bytes;
+    joggle_slice string;
+    joggle_slice bytes;
     void* handle;
   } data;
 };
 
-struct jog_call {
-  const jog_api* api;
+struct joggle_call {
+  const joggle_api* api;
   void* state;
 };
 
-using jog_fn = bool (*)(jog_call* call, void* data);
-using jog_module_entry = bool (*)(const jog_api* api, jog_module* module);
+using joggle_fn = bool (*)(joggle_call* call, void* data);
+using joggle_module_entry =
+    bool (*)(const joggle_api* api, joggle_module* module);
 
-struct jog_api {
+struct joggle_api {
   std::uint32_t version;
   std::uint32_t size;
-  bool (*bind)(jog_module* module, const char* symbol, jog_fn function,
+  bool (*bind)(joggle_module* module, const char* symbol, joggle_fn function,
                void* data);
-  std::size_t (*arg_count)(const jog_call* call);
-  bool (*arg)(const jog_call* call, std::size_t index, jog_value* value);
-  bool (*ret)(jog_call* call, std::size_t index, const jog_value* value);
-  bool (*fail)(jog_call* call, const char* message);
+  std::size_t (*arg_count)(const joggle_call* call);
+  bool (*arg)(const joggle_call* call, std::size_t index,
+              joggle_value* value);
+  bool (*ret)(joggle_call* call, std::size_t index,
+              const joggle_value* value);
+  bool (*fail)(joggle_call* call, const char* message);
 };
 }
 
@@ -79,8 +82,9 @@ inline constexpr unsigned version_minor = 1;
 inline constexpr unsigned version_patch = 0;
 inline constexpr std::uint32_t abi_version = 1;
 
-inline bool compatible(const jog_api* api) noexcept {
-  return api && api->version == abi_version && api->size >= sizeof(jog_api);
+inline bool compatible(const joggle_api* api) noexcept {
+  return api && api->version == abi_version &&
+         api->size >= sizeof(joggle_api);
 }
 
 enum class Severity : std::uint8_t { note, warning, error };

@@ -16,7 +16,7 @@
 #include <dlfcn.h>
 #endif
 
-struct jog_module {
+struct joggle_module {
   void* state;
 };
 
@@ -30,7 +30,7 @@ std::uint64_t next_env_id() {
 }
 
 struct Native {
-  jog_fn function = nullptr;
+  joggle_fn function = nullptr;
   void* data = nullptr;
   std::vector<Fn> declarations;
 };
@@ -76,16 +76,16 @@ void* open_library(const std::filesystem::path& path, std::string& error) {
   return handle;
 }
 
-jog_module_entry entry(void* handle) {
+joggle_module_entry entry(void* handle) {
 #if defined(_WIN32)
-  return reinterpret_cast<jog_module_entry>(
+  return reinterpret_cast<joggle_module_entry>(
       GetProcAddress(static_cast<HMODULE>(handle), "joggle_module"));
 #else
-  return reinterpret_cast<jog_module_entry>(dlsym(handle, "joggle_module"));
+  return reinterpret_cast<joggle_module_entry>(dlsym(handle, "joggle_module"));
 #endif
 }
 
-bool bind_native(jog_module* opaque, const char* symbol, jog_fn function,
+bool bind_native(joggle_module* opaque, const char* symbol, joggle_fn function,
                  void* data) {
   if (!opaque || !opaque->state || !symbol || !function)
     return false;
@@ -115,30 +115,30 @@ bool bind_native(jog_module* opaque, const char* symbol, jog_fn function,
   return true;
 }
 
-std::size_t call_arg_count(const jog_call* call) {
+std::size_t call_arg_count(const joggle_call* call) {
   if (!call || !call->state)
     return 0;
   return static_cast<const CallState*>(call->state)->args.size();
 }
 
-bool encode(const Attr& input, jog_value& output) {
+bool encode(const Attr& input, joggle_value& output) {
   if (input.empty()) {
-    output.kind = JOG_NIL;
+    output.kind = JOGGLE_NIL;
     output.data.handle = nullptr;
   } else if (const auto value = input.boolean()) {
-    output.kind = JOG_BOOL;
+    output.kind = JOGGLE_BOOL;
     output.data.boolean = *value;
   } else if (const auto value = input.integer()) {
-    output.kind = JOG_I64;
+    output.kind = JOGGLE_I64;
     output.data.integer = *value;
   } else if (const auto value = input.real()) {
-    output.kind = JOG_F64;
+    output.kind = JOGGLE_F64;
     output.data.real = *value;
   } else if (const auto value = input.string()) {
-    output.kind = JOG_STR;
+    output.kind = JOGGLE_STR;
     output.data.string = {value->data(), value->size()};
   } else if (const auto* value = input.bytes()) {
-    output.kind = JOG_BYTES;
+    output.kind = JOGGLE_BYTES;
     output.data.bytes = {reinterpret_cast<const char*>(value->data()),
                          value->size()};
   } else
@@ -146,28 +146,28 @@ bool encode(const Attr& input, jog_value& output) {
   return true;
 }
 
-bool decode(const jog_value& input, Attr& output) {
+bool decode(const joggle_value& input, Attr& output) {
   switch (input.kind) {
-  case JOG_NIL:
+  case JOGGLE_NIL:
     output = Attr{};
     return true;
-  case JOG_BOOL:
+  case JOGGLE_BOOL:
     output = Attr(input.data.boolean);
     return true;
-  case JOG_I64:
+  case JOGGLE_I64:
     output = Attr(input.data.integer);
     return true;
-  case JOG_F64:
+  case JOGGLE_F64:
     output = Attr(input.data.real);
     return true;
-  case JOG_STR:
+  case JOGGLE_STR:
     if (!input.data.string.data && input.data.string.size)
       return false;
     output = Attr(std::string(input.data.string.data, input.data.string.size));
     return true;
-  case JOG_HANDLE:
+  case JOGGLE_HANDLE:
     return false;
-  case JOG_BYTES:
+  case JOGGLE_BYTES:
     if (!input.data.bytes.data && input.data.bytes.size)
       return false;
     if (!input.data.bytes.size) {
@@ -182,14 +182,14 @@ bool decode(const jog_value& input, Attr& output) {
   return false;
 }
 
-bool call_arg(const jog_call* call, std::size_t index, jog_value* value) {
+bool call_arg(const joggle_call* call, std::size_t index, joggle_value* value) {
   if (!call || !call->state || !value)
     return false;
   const auto& state = *static_cast<const CallState*>(call->state);
   return index < state.args.size() && encode(state.args[index], *value);
 }
 
-bool call_ret(jog_call* call, std::size_t index, const jog_value* value) {
+bool call_ret(joggle_call* call, std::size_t index, const joggle_value* value) {
   if (!call || !call->state || !value)
     return false;
   auto& state = *static_cast<CallState*>(call->state);
@@ -200,7 +200,7 @@ bool call_ret(jog_call* call, std::size_t index, const jog_value* value) {
   return true;
 }
 
-bool call_fail(jog_call* call, const char* message) {
+bool call_fail(joggle_call* call, const char* message) {
   if (!call || !call->state || !message)
     return false;
   auto& state = *static_cast<CallState*>(call->state);
@@ -210,9 +210,9 @@ bool call_fail(jog_call* call, const char* message) {
   return false;
 }
 
-const jog_api native_api{abi_version,    sizeof(jog_api), bind_native,
-                         call_arg_count, call_arg,        call_ret,
-                         call_fail};
+const joggle_api native_api{abi_version,    sizeof(joggle_api), bind_native,
+                            call_arg_count, call_arg,           call_ret,
+                            call_fail};
 
 bool scalar_matches(const Ty& type, const Attr& value) {
   const std::string_view name = type.text();
@@ -446,7 +446,7 @@ bool Env::load_one(std::string_view name) {
       impl_->loading.erase(key);
       return false;
     }
-    const jog_module_entry init = entry(handle);
+    const joggle_module_entry init = entry(handle);
     if (!init) {
       impl_->diags.push_back(
           {Severity::error,
@@ -458,7 +458,7 @@ bool Env::load_one(std::string_view name) {
       return false;
     }
     LoadState state{&impl_->natives, &impl_->diags, module_ptr, key};
-    jog_module opaque{&state};
+    joggle_module opaque{&state};
     const std::size_t diag_count = impl_->diags.size();
     if (!init(&native_api, &opaque) || impl_->diags.size() != diag_count) {
       const std::string prefix = key + ".";
@@ -817,7 +817,7 @@ bool Env::call(std::string_view symbol, std::span<const Attr> args,
                   &impl_->diags,
                   std::string(symbol),
                   false};
-  jog_call call{&native_api, &state};
+  joggle_call call{&native_api, &state};
   if (!native.function(&call, native.data) || state.failed)
     return false;
   if (std::find(state.written.begin(), state.written.end(), false) !=

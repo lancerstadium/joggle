@@ -698,10 +698,10 @@ std::string emit(const jogonnx::ModelProto& model) {
   return Emitter{}.emit(model);
 }
 
-bool read(jog_call* call, void*) {
-  jog_value input{};
+bool read(joggle_call* call, void*) {
+  joggle_value input{};
   if (call->api->arg_count(call) != 1 || !call->api->arg(call, 0, &input) ||
-      input.kind != JOG_BYTES)
+      input.kind != JOGGLE_BYTES)
     return call->api->fail(call, "expected serialized ONNX bytes");
   try {
     jogonnx::ModelProto model;
@@ -711,8 +711,8 @@ bool read(jog_call* call, void*) {
                               static_cast<int>(input.data.bytes.size)))
       return call->api->fail(call, "invalid ONNX ModelProto");
     const std::string source = emit(model);
-    jog_value output{};
-    output.kind = JOG_STR;
+    joggle_value output{};
+    output.kind = JOGGLE_STR;
     output.data.string = {source.data(), source.size()};
     return call->api->ret(call, 0, &output);
   } catch (const std::exception& error) {
@@ -722,8 +722,8 @@ bool read(jog_call* call, void*) {
 
 }  // namespace
 
-JOGGLE_MODULE_EXPORT bool joggle_module(const jog_api* api,
-                                        jog_module* module) {
+JOGGLE_MODULE_EXPORT bool joggle_module(const joggle_api* api,
+                                        joggle_module* module) {
   return joggle::compatible(api) &&
          api->bind(module, "onnx.read", read, nullptr);
 }
