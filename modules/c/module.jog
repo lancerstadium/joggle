@@ -334,12 +334,43 @@ local fn callable(m: Mod, fn: Fn, config: dict) -> bool {
   return owned(m, fn) || len(ir.blks(fn)) == 0
 }
 
-local fn external(m: Mod, fn: Fn, config: dict) -> bool {
-  return callable(m, fn, config) && !owned(m, fn) && len(ir.blks(fn)) == 0
+local fn external_call(m: Mod, op: Op, config: dict) -> bool {
+  if !ir.live(op) || ir.kind(op) != "call" {
+    return false
+  }
+  let name = ir.callee(op)
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  let fn = ir.resolve(m, op)
+  if !ir.live(fn) || owned(m, fn) || len(ir.blks(fn)) != 0 ||
+     !ir.accepts(op, fn) {
+    return false
+  }
+  if name == "base.list" || name == "operator .." ||
+     name == "base.copy" || name == "operator []" ||
+     name == "operator []=" ||
+     (len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
+      ir.symbol(fn) == "tensor.tensor") ||
+     (binary(name) != "" && len(inputs) == 2 && len(outputs) == 1) ||
+     (unary(name) != "" && len(inputs) == 1 && len(outputs) == 1) ||
+     (scalar_name(name, config) && len(inputs) == 1 && len(outputs) == 1) {
+    return false
+  }
+  for value in inputs {
+    if !supported(ir.type(value), config) {
+      return false
+    }
+  }
+  for value in outputs {
+    if !supported(ir.type(value), config) {
+      return false
+    }
+  }
+  return true
 }
 
 local fn symbol(m: Mod, fn: Fn, config: dict) -> str {
-  assert(callable(m, fn, config), "c: function has no representable ABI")
+  assert(ir.live(fn), "c: function has no symbol")
   let bound = binding(fn)
   if bound != "" {
     return bound
@@ -500,7 +531,7 @@ local fn accepts_with(m: Mod, op: Op, config: dict) -> bool {
   if scalar_name(name, config) && len(inputs) == 1 && len(outputs) == 1 {
     return !tensor.valid(ir.type(outputs[0]))
   }
-  return callable(m, target, config)
+  return callable(m, target, config) || external_call(m, op, config)
 }
 
 fn accepts(m: Mod, op: Op) -> bool {
@@ -1143,32 +1174,37 @@ local fn result_names(fn: Fn, blob: str) -> list<str> {
   return out
 }
 
-local fn signature(m: Mod, fn: Fn, blob: str, config: dict) -> str {
-  assert(callable(m, fn, config), "c: function has no representable ABI")
-  let returns = ir.returns(fn)
-  var out = ""
+local fn signature_text(
+  name: str,
+  params: list<Ty>,
+  names: list<str>,
+  returns: list<Ty>,
+  results: list<str>,
+  blob: str,
+  config: dict
+) -> str {
+  assert(len(params) == len(names) && len(returns) == len(results),
+         "c: signature names do not match its types")
+  var out = "void"
   if len(returns) == 1 && !tensor.valid(returns[0]) {
     out = scalar(returns[0], config)
-  } else {
-    out = "void"
   }
-  out += " " + symbol(m, fn, config) + "("
-  let params = ir.params(fn)
+  out += " " + name + "("
   var arguments = 0
   for i in 0..len(params) {
     if arguments != 0 {
       out += ", "
     }
-    let type = ir.type(params[i])
+    let type = params[i]
     if tensor.valid(type) {
       count(type)
-      out += "const " + scalar(tensor.elem(type), config) + "* " + val(params[i])
+      out += "const " + scalar(tensor.elem(type), config) + "* " + names[i]
     } else {
-      out += scalar(type, config) + " " + val(params[i])
+      out += scalar(type, config) + " " + names[i]
     }
     arguments += 1
   }
-  if blob != "" && owned(m, fn) {
+  if blob != "" {
     if arguments != 0 {
       out += ", "
     }
@@ -1176,7 +1212,6 @@ local fn signature(m: Mod, fn: Fn, blob: str, config: dict) -> str {
     arguments += 1
   }
   if len(returns) != 1 || tensor.valid(returns[0]) {
-    let results = result_names(fn, blob)
     for i in 0..len(returns) {
       if arguments != 0 {
         out += ", "
@@ -1189,6 +1224,118 @@ local fn signature(m: Mod, fn: Fn, blob: str, config: dict) -> str {
         out += scalar(type, config) + "*"
       }
       out += " " + results[i]
+      arguments += 1
+    }
+  }
+  if arguments == 0 {
+    out += "void"
+  }
+  return out + ")"
+}
+
+local fn signature(m: Mod, fn: Fn, blob: str, config: dict) -> str {
+  assert(callable(m, fn, config), "c: function has no representable ABI")
+  var types: list<Ty> = []
+  var names: list<str> = []
+  for param in ir.params(fn) {
+    types += [ir.type(param)]
+    names += [val(param)]
+  }
+  var data = ""
+  if owned(m, fn) {
+    data = blob
+  }
+  return signature_text(
+    symbol(m, fn, config), types, names, ir.returns(fn),
+    result_names(fn, blob), data, config
+  )
+}
+
+local fn external_signature(m: Mod, op: Op, config: dict) -> str {
+  assert(external_call(m, op, config),
+         "c: external call has no representable ABI")
+  let fn = ir.resolve(m, op)
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  let params = ir.params(fn)
+  assert(len(params) == len(inputs),
+         "c: external call parameter count mismatch")
+  var types: list<Ty> = []
+  var names: list<str> = []
+  var used: list<str> = []
+  for i in 0..len(inputs) {
+    let name = c_name(ir.name(params[i]))
+    for existing in used {
+      assert(existing != name,
+             "c: external parameters collide after normalization")
+    }
+    names += [name]
+    used += [name]
+    types += [ir.type(inputs[i])]
+  }
+  var returns: list<Ty> = []
+  var results: list<str> = []
+  for i in 0..len(outputs) {
+    returns += [ir.type(outputs[i])]
+    var name = ""
+    for attempt in 0..len(used) + 2 {
+      var candidate = "joggle_result"
+      if len(outputs) != 1 {
+        candidate += "_" + text(i)
+      }
+      for suffix in 0..attempt {
+        candidate += "_"
+      }
+      var taken = false
+      for existing in used {
+        taken = existing == candidate || taken
+      }
+      if name == "" && !taken {
+        name = candidate
+      }
+    }
+    assert(name != "", "c: could not name an external result")
+    used += [name]
+    results += [name]
+  }
+  return signature_text(
+    symbol(m, fn, config), types, names, returns, results, "", config
+  )
+}
+
+local fn external_abi(m: Mod, op: Op, config: dict) -> str {
+  assert(external_call(m, op, config),
+         "c: external call has no representable ABI")
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  var out = "void("
+  if len(outputs) == 1 && !tensor.valid(ir.type(outputs[0])) {
+    out = scalar(ir.type(outputs[0]), config) + "("
+  }
+  var arguments = 0
+  for value in inputs {
+    if arguments != 0 {
+      out += ","
+    }
+    let type = ir.type(value)
+    if tensor.valid(type) {
+      out += "const " + scalar(tensor.elem(type), config) + "*"
+    } else {
+      out += scalar(type, config)
+    }
+    arguments += 1
+  }
+  if len(outputs) != 1 || tensor.valid(ir.type(outputs[0])) {
+    for value in outputs {
+      if arguments != 0 {
+        out += ","
+      }
+      let type = ir.type(value)
+      if tensor.valid(type) {
+        out += scalar(tensor.elem(type), config) + "*"
+      } else {
+        out += scalar(type, config) + "*"
+      }
       arguments += 1
     }
   }
@@ -1256,18 +1403,31 @@ local fn exports(m: Mod) -> list<Fn> {
   return visible
 }
 
-local fn dependencies(m: Mod, config: dict) -> list<Fn> {
-  var out: list<Fn> = []
+local fn dependencies(m: Mod, config: dict) -> list<Op> {
+  var out: list<Op> = []
+  var seen_calls: list<Op> = []
   for op in ir.ops(m) {
-    if ir.kind(op) == "call" {
+    if external_call(m, op, config) {
       let fn = ir.resolve(m, op)
-      if external(m, fn, config) && binding_header(fn) == "" {
-        var seen = false
-        for existing in out {
-          seen = existing == fn || seen
+      var seen = false
+      for existing in seen_calls {
+        let prior_fn = ir.resolve(m, existing)
+        if symbol(m, prior_fn, config) == symbol(m, fn, config) {
+          let prior_abi = external_abi(m, existing, config)
+          let current_abi = external_abi(m, op, config)
+          assert(prior_abi == current_abi,
+                 "c: external symbol " + symbol(m, fn, config) +
+                 " has incompatible call ABIs: " + prior_abi + " and " +
+                 current_abi)
+          assert(binding_header(prior_fn) == binding_header(fn),
+                 "c: one external symbol has conflicting headers")
+          seen = true
         }
-        if !seen {
-          out += [fn]
+      }
+      if !seen {
+        seen_calls += [op]
+        if binding_header(fn) == "" {
+          out += [op]
         }
       }
     }
@@ -1278,18 +1438,16 @@ local fn dependencies(m: Mod, config: dict) -> list<Fn> {
 local fn binding_headers(m: Mod, config: dict) -> list<str> {
   var out: list<str> = []
   for op in ir.ops(m) {
-    if ir.kind(op) == "call" {
+    if external_call(m, op, config) {
       let fn = ir.resolve(m, op)
-      if external(m, fn, config) {
-        let name = binding_header(fn)
-        if name != "" {
-          var seen = false
-          for existing in out {
-            seen = seen || existing == name
-          }
-          if !seen {
-            out += [name]
-          }
+      let name = binding_header(fn)
+      if name != "" {
+        var seen = false
+        for existing in out {
+          seen = seen || existing == name
+        }
+        if !seen {
+          out += [name]
         }
       }
     }
@@ -1355,22 +1513,43 @@ local fn source_headers(
   var out = binding_headers(m, config) + type_headers(fns, config) +
             value_headers(fns, config)
   out += [type_header(ty("index"), config)]
+  var needs_string = false
   for op in ir.ops(m) {
+    if external_call(m, op, config) {
+      for value in ir.args(op) {
+        out += [type_header(ir.type(value), config)]
+      }
+      for value in ir.outs(op) {
+        out += [type_header(ir.type(value), config)]
+      }
+    }
     if (blob == "" && payload(op)) ||
        (ir.kind(op) == "call" && ir.callee(op) == "base.copy" &&
         len(ir.outs(op)) == 1 && tensor.valid(ir.type(ir.outs(op)[0]))) {
-      out += ["string.h"]
-      return out
+      needs_string = true
     }
+  }
+  if needs_string {
+    out += ["string.h"]
   }
   return out
 }
 
 local fn prototypes(
-  m: Mod, fns: list<Fn>, blob: str, config: dict
+  m: Mod, fns: list<Fn>, calls: list<Op>, blob: str, config: dict
 ) -> str {
   var declarations = ""
   var names: list<str> = []
+  for op in calls {
+    let fn = ir.resolve(m, op)
+    let name = symbol(m, fn, config)
+    for existing in names {
+      assert(existing != name,
+             "c: overloaded or colliding function name " + name)
+    }
+    names += [name]
+    declarations += external_signature(m, op, config) + ";\n"
+  }
   for fn in fns {
     let name = symbol(m, fn, config)
     for existing in names {
@@ -1386,7 +1565,8 @@ local fn prototypes(
 local fn header_with(m: Mod, blob: str, config: dict) -> str {
   let fns = exports(m)
   assert(len(fns) != 0, "c: module has no function definitions")
-  let declarations = prototypes(m, fns, blob, config)
+  let calls: list<Op> = []
+  let declarations = prototypes(m, fns, calls, blob, config)
   return "#pragma once\n\n" +
          includes(type_headers(fns, config)) + "\n" +
          "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n" +
@@ -1440,13 +1620,13 @@ fn data(m: Mod, config: dict) -> bytes {
 local fn emit(m: Mod, blob: str, config: dict) -> str {
   let fns = functions(m)
   assert(len(fns) != 0, "c: module has no function definitions")
-  let declared = dependencies(m, config) + fns
-  let declarations = prototypes(m, declared, blob, config)
+  let calls = dependencies(m, config)
+  let declarations = prototypes(m, fns, calls, blob, config)
   var definitions = ""
   for fn in fns {
     definitions += definition(m, fn, blob, config) + "\n"
   }
-  return includes(source_headers(m, declared, blob, config)) + "\n" +
+  return includes(source_headers(m, fns, blob, config)) + "\n" +
          declarations + "\n" + definitions
 }
 

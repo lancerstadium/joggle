@@ -13,6 +13,16 @@ int main(void) {
     if (error > 1.0e-5f)
       return 1;
   }
+  const float wide_a[] = {1.0f, 2.0f, 3.0f};
+  const float wide_b[] = {1.0f,  2.0f,  3.0f,  4.0f,
+                          5.0f,  6.0f,  7.0f,  8.0f,
+                          9.0f, 10.0f, 11.0f, 12.0f};
+  const float wide_expected[] = {38.0f, 44.0f, 50.0f, 56.0f};
+  float wide[4] = {0.0f};
+  model_wide(wide_a, wide_b, wide);
+  for (int64_t i = 0; i != 4; ++i)
+    if (wide[i] != wide_expected[i])
+      return 3;
   const float values[] = {3.0f, -2.0f, 7.0f, 1.0f};
   float low = 0.0f;
   float high = 0.0f;

@@ -2962,6 +2962,47 @@ bool Mod::retarget(const Env& env, Op call, std::string callee,
   return true;
 }
 
+bool Mod::retarget(const Env& env, Op call, Fn target) {
+  auto& store = impl_->store;
+  detail::Store backup = store;
+  const auto rollback = [&]() {
+    std::vector<Diag> diagnostics = std::move(store.diags);
+    store = std::move(backup);
+    store.diags = std::move(diagnostics);
+    return false;
+  };
+  if (!call.valid() || call.store_ != &store ||
+      call.kind() != Op::Kind::call || !target.valid()) {
+    detail::add_diag(store.diags,
+                     "retarget requires a live call and target function");
+    return rollback();
+  }
+
+  std::string symbol(target.name());
+  if (target.store_ != &store) {
+    symbol = std::string(target.module()) + "." + std::string(target.name());
+    const std::vector<Fn> visible = env.resolve_fns(*this, symbol);
+    if (std::find(visible.begin(), visible.end(), target) == visible.end() &&
+        !use(env, std::string(target.module()))) {
+      detail::add_diag(store.diags,
+                       "retarget could not make the target module visible",
+                       call.loc());
+      return rollback();
+    }
+  }
+
+  const std::vector<Val> arguments = call.args();
+  if (env.resolve(*this, call, symbol, arguments) != target) {
+    detail::add_diag(store.diags,
+                     "retarget target does not uniquely match the call",
+                     call.loc());
+    return rollback();
+  }
+  if (!retarget(env, call, std::move(symbol), arguments))
+    return rollback();
+  return true;
+}
+
 bool Mod::set(Fn fn, std::string key, Attr value) {
   auto& store = impl_->store;
   if (!fn.valid() || fn.store_ != &store || key.empty()) {

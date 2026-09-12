@@ -14,9 +14,9 @@ complexity. Each directory is a complete, runnable module or application.
   replaces the shared generic matrix-multiplication body with a different loop
   order and then uses the unchanged C path. Its source is intentionally short
   enough to read in one screen.
-- [`edge`](edge) demonstrates an external tensor kernel contract. A normal
-  bodyless `fn` declaration produces the prototype and call; the C emitter has
-  no knowledge of the kernel name.
+- [`edge`](edge) demonstrates external tensor kernel selection. A generic
+  adapter forwards inferred dimensions to one bodyless `fn`; the C emitter
+  derives and checks the concrete call ABI without knowing the kernel name.
 - [`cost`](cost) demonstrates a user-defined structural measure. The unit and
   weighting policy stay in the module rather than becoming a compiler class.
 

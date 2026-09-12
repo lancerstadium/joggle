@@ -177,8 +177,8 @@ symbolic dimensions; other `tensor.matmul` calls remain visible or expand.
 The same form can describe `nn.conv2d` or a custom function, so Joggle does not
 prescribe an abstraction level.
 
-To provide an implementation instead of only retaining the call, give that
-same declaration a normal body and apply the module's functions:
+To provide an inspectable implementation, give that same declaration a normal
+body and apply the module's functions:
 
 ```jog
 fn dot<M: int, N: int, K: int>(
@@ -201,6 +201,22 @@ implementations. Newly exposed matching calls are applied to a fixed point.
 Use `opt.apply(m, impls, limit)` when a recursive specialization needs an
 explicit bound; ambiguity or bound exhaustion restores the complete input
 module, and declaration order is never a selection policy.
+
+If a selected implementation has no body, `opt.apply` retargets the call to
+that declaration instead of expanding it. The source model still calls its
+semantic function; selection transactionally adds the implementation module,
+and a later artifact module derives the external ABI from the selected
+signature. [`examples/edge`](../examples/edge) exercises tensor and
+multiple-result kernels this way. Adding another external implementation does
+not change the model, core, or C emitter.
+
+An external declaration may be generic even though emitted C is not. Each
+actual call must contain concrete, representable argument and result types.
+The C module erases tensor extents to pointer types, emits equal concrete
+prototypes once, and rejects a shared C symbol if two call sites imply
+different scalar or pointer ABIs. The edge matrix adapter passes `M`, `N`, and
+`K` as ordinary scalar arguments, so one external kernel declaration safely
+covers multiple static shapes rather than requiring one declaration per shape.
 
 The repository's [`examples/ikj/module.jog`](../examples/ikj/module.jog) turns
 that mechanism into an executable kernel customization. Its alternative

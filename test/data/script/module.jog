@@ -29,6 +29,11 @@ fn loop.relu<S: list<int>>(x: tensor<i8, S>) -> tensor<i8, S> {
   return loop.relu(x)
 }
 
+fn external_select.external(x: i32) -> i32;
+
+[c: {name: "mixed_external"}]
+fn mixed<T: Ty, N: int>(x: tensor<T, [N]>) -> tensor<T, [N]>;
+
 fn typed_caps() -> list<Fn> {
   return ir.fns("script")
 }
@@ -206,6 +211,10 @@ fn typed_legalize(m: Mod) -> bool {
 
 fn apply_impls(m: Mod) -> bool {
   return opt.apply(m, typed_caps())
+}
+
+fn apply_external(m: Mod) -> bool {
+  return opt.apply(m, [ir.find("script.external_select.external")])
 }
 
 fn apply_ambiguous(m: Mod) -> bool {

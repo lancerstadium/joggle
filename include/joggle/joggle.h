@@ -425,6 +425,7 @@ public:
   bool rename(const Env& env, Op call, std::string callee);
   bool retarget(const Env& env, Op call, std::string callee,
                 std::span<const Val> args);
+  bool retarget(const Env& env, Op call, Fn target);
   bool set(Fn fn, std::string key, Attr value);
   bool set(Val item, std::string key, Attr value);
   bool set(std::span<const Val> items, std::string key,

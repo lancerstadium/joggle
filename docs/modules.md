@@ -214,8 +214,10 @@ It should not require edits to the core, the C emitter, or another frontend.
 
 `opt.expose` is the main connection between semantics and a target. It asks a
 capability function whether an operation is accepted and expands available
-bodies only where needed. `opt.apply` selects compatible implementations;
-`opt.basic` performs target-independent cleanup. `opt.specialize(m, key,
+bodies only where needed. `opt.apply` selects compatible ordinary functions:
+it expands a body-bearing implementation and transactionally retargets to a
+bodyless external implementation. `opt.basic` performs target-independent
+cleanup. `opt.specialize(m, key,
 value)` fully expands finite static loops carrying the selected open attribute
 and folds list projection and constant branches around dynamic values. The
 selection is explicit: the core never treats an attribute as behavior.
@@ -247,8 +249,13 @@ reject programs outside their advertised boundary.
 
 `c` derives scalar spelling, alignment, index type, headers, payload layout,
 and external prototypes from a configuration dictionary and resolved
-signatures. `vm` emits a deterministic image and reports executed steps.
-Neither receives privileged access to the IR.
+signatures. A bodyless external declaration may remain generic when every
+concrete call has a representable ABI. Prototypes are derived from call-site
+types, identical erased signatures are emitted once, and incompatible uses of
+one external symbol are rejected. This lets an adapter pass inferred shape or
+format terms as normal scalar arguments without declaring every model shape.
+`vm` emits a deterministic image and reports executed steps. Neither receives
+privileged access to the IR.
 
 By default, `c` derives public symbols from qualified function names and keeps
 valid source value names. Named pointer results derive from the return value

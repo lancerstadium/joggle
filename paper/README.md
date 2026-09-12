@@ -71,7 +71,7 @@ blocker.
 | Candidate claim | Current repository evidence | Missing evidence |
 | --- | --- | --- |
 | One IR spans graph and loop detail | Printer, verifier, semantic bodies, explicit loops, C and VM preparation tests | Model-level stage traces and comparison with multi-IR workflows |
-| Extensions are normal module functions | Source modules, `local fn`, installation tests, `ir.invoke`, out-of-tree examples | Controlled implementation study with independent tasks and baselines |
+| Extensions are normal module functions | Source modules, `local fn`, installation tests, `ir.invoke`, body expansion, transactional external selection, and out-of-tree examples | Controlled implementation study with independent tasks and baselines |
 | Frontends are separate from semantics | ONNX/TFLite codecs and explicit bridge modules | Broader official-model coverage and unsupported-frontier accounting |
 | Targets expose only required detail | `c.accepts`, `vm.accepts`, `opt.expose`, preparation tests | A genuinely different external target or simulator study |
 | Transform failure is safe | Transaction and rollback tests, ownership/liveness checks | Fault-injection matrix and diagnostic assessment |
@@ -99,6 +99,11 @@ frozen.
   1.957 s median versus 24.862 ms for one-thread ONNX Runtime. This roughly 79x
   gap makes optimized convolution and layout lowering the primary backend
   requirement.
+- A model-independent external selection gate now maps the same semantic
+  matrix function at two shapes through one generic target adapter and one
+  external C declaration. Concrete prototypes are deduplicated after tensor
+  extent erasure, while a negative gate rejects one symbol used with
+  incompatible scalar ABIs. This is mechanism evidence, not a speedup result.
 - Externalizing the MobileNetV2 weight payload reduced generated C source from
   about 56.9 MB to 246 KB, with a separate payload of about 14.2 MB.
 - On an unisolated Apple M4 pilot, strict generated C had a median MobileNetV2

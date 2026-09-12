@@ -171,6 +171,14 @@ reports the unsupported frontier. A target therefore needs no central lowering
 table, and a new semantic implementation can become usable without editing
 target code.
 
+`opt.apply` handles an explicit alternative-function set with the same
+overload resolver. A body-bearing function is expanded; a bodyless function
+retargets the call and introduces its module dependency atomically. A generic
+external declaration remains one `Fn`: artifact modules may derive a concrete
+ABI from each resolved call and reject incompatible erasures of the same
+symbol. This is the connection between reusable semantic calls and user-owned
+low-level computation, not a second kernel or target IR.
+
 Frontend conversion follows the same rule. A codec preserves the source format
 faithfully. A separate bridge performs explicit semantic conversion when the
 user requests it. ONNX and TFLite do not define canonical neural-network

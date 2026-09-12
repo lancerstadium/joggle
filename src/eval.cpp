@@ -571,6 +571,29 @@ private:
     trace_->emplace_back(std::move(event));
   }
 
+  void record_retarget(std::string source, Fn target,
+                       std::uint64_t before, std::uint64_t after) {
+    if (!trace_)
+      return;
+    Attr::List params;
+    for (Val param : target.params())
+      params.emplace_back(std::string(param.type().text()));
+    Attr::List returns;
+    for (const Ty& type : target.returns())
+      returns.emplace_back(std::string(type.text()));
+    Attr::Dict event;
+    event["kind"] = Attr("retarget");
+    event["source"] = Attr(std::move(source));
+    event["target"] =
+        Attr(std::string(target.module()) + "." + std::string(target.name()));
+    event["params"] = Attr(std::move(params));
+    event["returns"] = Attr(std::move(returns));
+    event["before"] = Attr(static_cast<std::int64_t>(before));
+    event["after"] = Attr(static_cast<std::int64_t>(after));
+    event["edits"] = Attr(static_cast<std::int64_t>(after - before));
+    trace_->emplace_back(std::move(event));
+  }
+
   void record_clone(Mod& mod, Fn source, Fn copy, std::uint64_t before,
                     std::span<const Ty> generics = {}) {
     if (!trace_)
@@ -2502,14 +2525,31 @@ private:
       if (mod && *mod && op && applied_types)
         return Items{
             Item(Attr((*mod)->generics(env_, *op, *applied_types)))};
-    } else if (name == "retarget" && args.size() == 4) {
+    } else if (name == "retarget" &&
+               (args.size() == 3 || args.size() == 4)) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* op = as<Op>(args[1]);
-      const auto callee = string(args[2]);
-      const auto values = value_handles(args[3]);
-      if (mod && *mod && op && callee && values)
-        return Items{Item(Attr((*mod)->retarget(
-            env_, *op, std::string(*callee), *values)))};
+      if (mod && *mod && op && args.size() == 3) {
+        if (const auto* target = as<Fn>(args[2]); target && *target) {
+          std::string source(op->callee());
+          if (const Fn resolved = env_.resolve(**mod, *op))
+            source = std::string(resolved.module()) + "." +
+                     std::string(resolved.name());
+          const std::uint64_t before = (*mod)->revision();
+          const bool changed = (*mod)->retarget(env_, *op, *target);
+          if (changed && (*mod)->revision() != before)
+            record_retarget(std::move(source), *target, before,
+                            (*mod)->revision());
+          return Items{Item(Attr(changed))};
+        }
+      }
+      if (mod && *mod && op && args.size() == 4) {
+        const auto callee = string(args[2]);
+        const auto values = value_handles(args[3]);
+        if (callee && values)
+          return Items{Item(Attr((*mod)->retarget(
+              env_, *op, std::string(*callee), *values)))};
+      }
     } else if (name == "rename" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
       const auto value = string(args[2]);

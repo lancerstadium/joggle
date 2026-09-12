@@ -1,16 +1,26 @@
 module model
-use edge
 use tensor
+
+fn measure(x: tensor<f32, [4]>) -> (f32, f32);
 
 [entry]
 fn main(
   a: tensor<f32, [2, 3]>, b: tensor<f32, [3, 2]>
 ) -> tensor<f32, [2, 2]> {
-  return edge.matmul(a, b)
+  let product = tensor.matmul(a, b)
+  return product
+}
+
+[entry]
+fn wide(
+  a: tensor<f32, [1, 3]>, b: tensor<f32, [3, 4]>
+) -> tensor<f32, [1, 4]> {
+  let product = tensor.matmul(a, b)
+  return product
 }
 
 [entry]
 fn extrema(x: tensor<f32, [4]>) -> (f32, f32) {
-  let low, high = edge.extrema(x)
+  let low, high = measure(x)
   return low, high
 }

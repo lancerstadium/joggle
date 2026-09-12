@@ -19,9 +19,12 @@ The repository currently provides:
 - ONNX and TFLite codecs separated from explicit semantic conversion;
 - reusable tensor, neural-network, quantization, and scalar-math functions;
 - capability-driven exposure instead of a central lowering table;
+- signature-matched selection of inspectable or external implementations,
+  including call-site-derived C ABIs for generic external declarations;
 - safe IR editing, cleanup, range analysis, measurements, static storage
   planning, and conservative loop transformations;
-- configurable C generation and a deterministic VM;
+- configurable C generation, generic external-call ABI derivation, and a
+  deterministic VM;
 - an out-of-tree custom kernel and a parametric number format spanning semantic
   and target modules.
 

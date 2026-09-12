@@ -165,8 +165,9 @@ rewrites, and target capability queries without a native binding per operator.
 
 The complete out-of-tree
 [`ikj` example](examples/ikj/module.jog) replaces matrix multiplication with
-an inspectable loop body. The [`edge` example](examples/edge) shows a
-bodyless external kernel ABI. [Module documentation](docs/modules.md) covers
+an inspectable loop body. The [`edge` example](examples/edge) selects a generic
+external kernel while the unchanged model continues to call its semantic
+functions. [Module documentation](docs/modules.md) covers
 packaging, discovery, lifecycle, and every bundled module.
 
 ## Artifacts and weights

@@ -572,6 +572,13 @@ failed match returns `false` with the original call intact. Bridge modules can
 therefore try a semantic function without constructing a parallel legality
 system or relying on whole-pipeline rollback.
 
+`ir.retarget(m, op, fn)` selects an already resolved function directly. When
+the function belongs to another module, the edit adds that dependency and
+retargets the call as one transaction. The selected function must be the
+unique overload for the existing arguments and results. This overload is
+suited to implementation selection because it carries a checked `Fn`, not a
+string alias or a duplicate signature test.
+
 Function bodies are exposed by an explicit edit, never by loading a module.
 `ir.resolve(m, op)` applies normal import, qualification, overload, and generic
 resolution to a call and returns an invalid `Fn` when the call remains open.
@@ -601,6 +608,13 @@ back both changes on failure. The dependency and substituted body form one
 revision commit. Thus an unqualified source call and a module-supplied
 implementation still use ordinary symbol resolution rather than a string alias
 table.
+
+The same matching rule can select a bodyless implementation. In that case
+`opt.apply` uses `ir.retarget` rather than `ir.expand`: the high-level model
+keeps calling its semantic function, while the selected module supplies the
+external ABI declaration. Body presence is therefore the only distinction
+between inspectable replacement code and an external implementation; neither
+requires an operation registry or a target object.
 
 Open function attributes can also define module-owned relations without a
 second rule language. `ir.where(fns, key, value)` filters an explicit function

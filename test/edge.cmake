@@ -13,7 +13,7 @@ set(header "${ROOT}/model.h")
 set(program "${ROOT}/model")
 
 execute_process(
-  COMMAND "${TOOL}" run c.prepare "${MODEL}"
+  COMMAND "${TOOL}" run edge.apply c.prepare "${MODEL}"
           -M "${EXAMPLES}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${prepared}"
@@ -21,6 +21,14 @@ execute_process(
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "external kernel preparation failed (${result}):\n${error}")
+endif()
+
+file(READ "${prepared}" prepared_text)
+if(NOT prepared_text MATCHES "use edge" OR
+   NOT prepared_text MATCHES "matmul\\(a, b, 2, 2, 3\\)" OR
+   NOT prepared_text MATCHES "edge.model.measure")
+  message(FATAL_ERROR
+          "external implementation selection was not preserved:\n${prepared_text}")
 endif()
 
 execute_process(
@@ -36,12 +44,22 @@ endif()
 
 file(READ "${source}" emitted)
 if(NOT emitted MATCHES
-   "void edge_matmul\\(const float\\* a, const float\\* b, float\\* joggle_result\\);")
+   "void edge_matmul\\(const float\\* a, const float\\* b, int64_t rows, int64_t columns, int64_t inner, float\\* joggle_result\\);")
   message(FATAL_ERROR "external kernel prototype is absent:\n${emitted}")
 endif()
+string(REGEX MATCHALL "void edge_matmul\\(" matmul_prototypes "${emitted}")
+list(LENGTH matmul_prototypes matmul_prototype_count)
+if(NOT matmul_prototype_count EQUAL 1)
+  message(FATAL_ERROR
+          "external kernel prototype was not deduplicated:\n${emitted}")
+endif()
 if(NOT emitted MATCHES
-   "edge_matmul\\(a, b, joggle_tmp_[0-9]+\\);")
+   "edge_matmul\\(a, b, 2, 2, 3, product\\);")
   message(FATAL_ERROR "external kernel call is absent:\n${emitted}")
+endif()
+if(NOT emitted MATCHES
+   "edge_matmul\\(a, b, 1, 4, 3, product\\);")
+  message(FATAL_ERROR "second external kernel shape is absent:\n${emitted}")
 endif()
 if(NOT emitted MATCHES
    "void edge_extrema\\(const float\\* x, float\\* joggle_result_0, float\\* joggle_result_1\\);" OR

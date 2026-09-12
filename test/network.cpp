@@ -211,6 +211,107 @@ int main(int argc, char** argv) {
   CHECK(implementation_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(implementation,
                                    implementation_roundtrip));
+
+  constexpr std::string_view external_source =
+      "module external_select\n"
+      "fn external(x: i32) -> i32;\n"
+      "fn main(x: i32) -> i32 {\n"
+      "  return external(x)\n"
+      "}\n";
+  joggle::Mod external;
+  CHECK(joggle::parse(env, external_source, external,
+                      "external-select.jog"));
+  CHECK(external.verify(env));
+  joggle::Attr external_report;
+  CHECK(joggle::run(env, "script.apply_external", external,
+                    external_report));
+  CHECK(external.verify(env));
+  CHECK(count(external, "external") == 0);
+  CHECK(count(external, "script.external_select.external") == 1);
+  const std::vector<std::string> external_uses = external.uses();
+  CHECK(std::find(external_uses.begin(), external_uses.end(), "script") !=
+        external_uses.end());
+  const joggle::Attr::Dict* external_summary = external_report.dict();
+  CHECK(external_summary);
+  const joggle::Attr::List* external_steps =
+      external_summary->at("steps").list();
+  CHECK(external_steps);
+  std::size_t retarget_events = 0;
+  for (const joggle::Attr& step : *external_steps) {
+    const joggle::Attr::Dict* event = step.dict();
+    if (!event || event->at("kind").string() != "retarget")
+      continue;
+    ++retarget_events;
+    CHECK(event->at("source").string() == "external_select.external");
+    CHECK(event->at("target").string() ==
+          "script.external_select.external");
+    CHECK(event->at("edits").integer() &&
+          *event->at("edits").integer() == 2);
+  }
+  CHECK(retarget_events == 1);
+  const std::uint64_t external_revision = external.revision();
+  joggle::Attr external_repeat;
+  CHECK(joggle::run(env, "script.apply_external", external,
+                    external_repeat));
+  CHECK(external.revision() == external_revision);
+  CHECK(external_repeat.dict() &&
+        external_repeat.dict()->at("changed").boolean() == false);
+
+  const joggle::Fn external_impl =
+      env.find_fn("script.external_select.external");
+  CHECK(external_impl && external_impl.external());
+  joggle::Mod direct_external;
+  CHECK(joggle::parse(env, external_source, direct_external,
+                      "direct-external-select.jog"));
+  CHECK(direct_external.verify(env));
+  const joggle::Op direct_call =
+      direct_external.find_fn("main").body().ops().front();
+  CHECK(direct_external.retarget(env, direct_call, external_impl));
+  CHECK(direct_call.callee() == "script.external_select.external");
+  CHECK(direct_external.verify(env));
+
+  joggle::Mod rejected_external;
+  CHECK(joggle::parse(env, external_source, rejected_external,
+                      "rejected-external-select.jog"));
+  CHECK(rejected_external.verify(env));
+  const joggle::Op rejected_call =
+      rejected_external.find_fn("main").body().ops().front();
+  const std::string rejected_before = joggle::print(rejected_external);
+  const std::uint64_t rejected_revision = rejected_external.revision();
+  CHECK(!rejected_external.retarget(
+      env, rejected_call, env.find_fn("script.emit_wrong_type")));
+  CHECK(joggle::print(rejected_external) == rejected_before);
+  CHECK(rejected_external.revision() == rejected_revision);
+  CHECK(rejected_external.uses().empty());
+
+  CHECK(env.load("c"));
+  constexpr std::string_view conflicting_external_source =
+      "module conflicting_external\n"
+      "use script\n"
+      "fn main(a: tensor<f32, [4]>, b: tensor<i32, [8]>) "
+      "-> (tensor<f32, [4]>, tensor<i32, [8]>) {\n"
+      "  let x = script.mixed(a)\n"
+      "  let y = script.mixed(b)\n"
+      "  return x, y\n"
+      "}\n";
+  joggle::Mod conflicting_external;
+  CHECK(joggle::parse(env, conflicting_external_source,
+                      conflicting_external, "conflicting-external.jog"));
+  CHECK(conflicting_external.verify(env));
+  CHECK(joggle::run(env, "c.prepare", conflicting_external));
+  const std::string conflicting_before = joggle::print(conflicting_external);
+  const std::uint64_t conflicting_revision =
+      conflicting_external.revision();
+  joggle::Attr conflicting_source;
+  CHECK(!joggle::query(env, "c.source", conflicting_external,
+                       conflicting_source));
+  CHECK(joggle::print(conflicting_external) == conflicting_before);
+  CHECK(conflicting_external.revision() == conflicting_revision);
+  CHECK(!env.diags().empty());
+  CHECK(env.diags().back().message.find(
+            "external symbol mixed_external has incompatible call ABIs") !=
+        std::string::npos);
+
   joggle::Mod ambiguous_impl;
   CHECK(joggle::parse(env, implementation_source, ambiguous_impl,
                       "ambiguous-implementation-network.jog"));

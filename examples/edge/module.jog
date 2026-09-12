@@ -1,10 +1,26 @@
 module edge
+use ir
+use opt
 use tensor
 
 [c: {name: "edge_matmul"}]
-fn matmul(
-  a: tensor<f32, [2, 3]>, b: tensor<f32, [3, 2]>
-) -> tensor<f32, [2, 2]>;
+fn matmul<E: Ty, M: int, N: int, K: int>(
+  a: tensor<E, [M, K]>,
+  b: tensor<E, [K, N]>,
+  rows: int,
+  columns: int,
+  inner: int
+) -> tensor<E, [M, N]>;
+
+fn tensor.matmul<E: Ty, M: int, N: int, K: int>(
+  a: tensor<E, [M, K]>, b: tensor<E, [K, N]>
+) -> tensor<E, [M, N]> {
+  return matmul(a, b, M, N, K)
+}
 
 [c: {name: "edge_extrema"}]
-fn extrema(x: tensor<f32, [4]>) -> (f32, f32);
+fn model.measure(x: tensor<f32, [4]>) -> (f32, f32);
+
+fn apply(m: Mod) -> bool {
+  return opt.apply(m, ir.fns("edge"))
+}

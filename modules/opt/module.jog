@@ -776,6 +776,8 @@ fn apply(m: Mod, impls: list<Fn>, limit: int) -> bool {
     if again {
       var calls: list<Op> = []
       var bodies: list<Fn> = []
+      var redirects: list<Op> = []
+      var targets: list<Fn> = []
       for op in ir.ops(m) {
         if ir.live(op) && ir.kind(op) == "call" && len(ir.meta(op)) == 0 {
           var symbol = ir.callee(op)
@@ -785,18 +787,33 @@ fn apply(m: Mod, impls: list<Fn>, limit: int) -> bool {
           }
           var candidates: list<Fn> = []
           for impl in impls {
-            if ir.name(impl) == symbol && len(ir.blks(impl)) != 0 {
+            if ir.name(impl) == symbol {
               candidates += [impl]
             }
           }
           let selected = ir.match(op, candidates)
           if ir.live(selected) {
-            calls += [op]
-            bodies += [selected]
+            if len(ir.blks(selected)) == 0 {
+              redirects += [op]
+              targets += [selected]
+            } else {
+              calls += [op]
+              bodies += [selected]
+            }
           }
         }
       }
-      again = len(calls) != 0 && ir.expand(m, calls, bodies)
+      again = false
+      for i in 0..len(redirects) {
+        assert(ir.retarget(m, redirects[i], targets[i]),
+               "opt.apply could not select an external implementation")
+        again = true
+      }
+      if len(calls) != 0 {
+        assert(ir.expand(m, calls, bodies),
+               "opt.apply could not expand a selected implementation")
+        again = true
+      }
       changed = again || changed
       if round == limit && again {
         exceeded = true

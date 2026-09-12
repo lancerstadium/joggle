@@ -1,10 +1,13 @@
-void edge_matmul(const float* a, const float* b, float* out) {
-  for (int i = 0; i != 2; ++i) {
-    for (int j = 0; j != 2; ++j) {
+#include <stdint.h>
+
+void edge_matmul(const float* a, const float* b, int64_t rows,
+                 int64_t columns, int64_t inner, float* out) {
+  for (int64_t i = 0; i != rows; ++i) {
+    for (int64_t j = 0; j != columns; ++j) {
       float sum = 0.0f;
-      for (int k = 0; k != 3; ++k)
-        sum += a[i * 3 + k] * b[k * 2 + j];
-      out[i * 2 + j] = sum;
+      for (int64_t k = 0; k != inner; ++k)
+        sum += a[i * inner + k] * b[k * columns + j];
+      out[i * columns + j] = sum;
     }
   }
 }
