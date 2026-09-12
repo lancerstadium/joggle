@@ -1,0 +1,38 @@
+module spatial
+use ir
+use nn
+use opt
+use tensor
+
+fn nn.conv2d<
+  E: Ty,
+  N: int, C: int, H: int, W: int,
+  M: int, Q: int, R: int, S: int,
+  OH: int, OW: int
+>(
+  x: tensor<E, [N, C, H, W]>,
+  weight: tensor<E, [M, Q, R, S]>,
+  stride: list<int>,
+  pad: list<int>,
+  dilation: list<int>,
+  groups: int
+) -> tensor<E, [N, M, OH, OW]> {
+  var out = tensor<E, [N, M, OH, OW]>(E(0))
+  for n in 0..N, m in 0..M, q in 0..Q,
+      r in 0..R, s in 0..S, oh in 0..OH, ow in 0..OW {
+    let h = oh * stride[0] + r * dilation[0] - pad[0]
+    let w = ow * stride[1] + s * dilation[1] - pad[1]
+    if h >= 0 && h < H && w >= 0 && w < W {
+      let c = (m / (M / groups)) * Q + q
+      let xi = ((n * C + c) * H + h) * W + w
+      let wi = ((m * Q + q) * R + r) * S + s
+      let yi = ((n * M + m) * OH + oh) * OW + ow
+      out[yi] = out[yi] + x[xi] * weight[wi]
+    }
+  }
+  return out
+}
+
+fn apply(m: Mod) -> bool {
+  return opt.instantiate(m, [ir.find("spatial.nn.conv2d")])
+}

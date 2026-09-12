@@ -52,6 +52,26 @@ by 0.9--3.0%. Reference error bounds are unchanged. The table intentionally
 contains no latency column because the first unisolated runs did not establish
 a stable speed effect.
 
+`spatial-conv-pilot.csv` evaluates an out-of-tree convolution body rather than
+a C-emitter special case. The module keeps each output's floating-point
+reduction order but makes output columns the innermost loop. Compiler-owned
+call-site instances bind shapes and scalar configuration; the same module is
+then used unchanged for MobileNetV2, ResNet18, and TinyYOLOv2. All variants
+use external weights and Apple Clang 17 with strict C11, `-O3 -DNDEBUG`, three
+warm-ups, and ten measured calls in one unisolated process per variant.
+
+Reference/spatial median latency is 203.305/108.218 ms for MobileNetV2,
+1,206.575/392.541 ms for ResNet18, and 2,247.627/371.412 ms for TinyYOLOv2,
+or 1.88x, 3.07x, and 6.05x within this pilot. Generated source falls from
+169,558 to 118,167 bytes, 63,895 to 46,274 bytes, and 56,762 to 43,877 bytes.
+Checksums match within each pair and the prior reference comparisons retain
+maximum absolute errors of `2.0981e-5`, `5.0068e-6`, and `1.6689e-5`.
+Clang reports width-four vectorization of representative innermost output
+column loops that it did not vectorize in the reference ordering. This is
+direction-setting evidence for replaceable implementation modules, not a
+production-runtime or publication speed claim; the processes were not
+interleaved, isolated, pinned, or frequency-controlled.
+
 `mobilenetv2-fusion-pilot.csv` was recorded on 12 September 2026 on an Apple
 M4 running Darwin 24.6.0 with Apple Clang 17.0.0 (`clang-1700.6.3.2`). All
 three programs used `-std=c11 -O3`, the same external weight blob, three untimed

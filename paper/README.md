@@ -129,6 +129,12 @@ frozen.
   with a seed-0 ONNX Runtime reference within `1.669e-5`. Its unisolated strict
   C median is 2.285 s versus 22.587 ms for one-thread ONNX Runtime, exposing a
   roughly 101x backend gap on a larger detection input.
+- One out-of-tree convolution implementation now changes the generated loop
+  structure without an ONNX or C-emitter edit. On matched strict-C pilots it
+  reduces median latency by 1.88x on MobileNetV2, 3.07x on ResNet18, and 6.05x
+  on TinyYOLOv2 while preserving their recorded error bounds. This narrows but
+  does not close the runtime gap; controlled reruns and shape-aware selection
+  remain necessary.
 - A deterministic VM execution of the exposed MobileNetV2 program reported
   95,592,386,975 steps.
 - A structural fusion experiment reduced loops from 374 to 328 and tensor
