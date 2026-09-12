@@ -843,10 +843,14 @@ them with a system C compiler under warnings-as-errors, and checks their
 numerical results.
 
 One `c.abi` dictionary is the source of both scalar spelling and byte width;
-it contains only actual IR scalar types. `int` and semantic `index` currently
-choose signed 64-bit C storage. Emitter-created loops over fixed array storage
-use that same `index` mapping, so generated code has no second counter-type
-policy or synthetic Joggle type. These are C-module policies, not core types.
+it contains only actual IR scalar types and also classifies them as Boolean,
+signed, unsigned, or floating. That classification makes `c.accepts` reject
+C-illegal combinations such as floating remainder and bitwise operations
+before emission; real remainder is the explicit `math.fmod` function. `int`
+and semantic `index` currently choose signed 64-bit C storage. Emitter-created
+loops over fixed array storage use that same `index` mapping, so generated code
+has no second counter-type policy or synthetic Joggle type. These are C-module
+policies, not core types.
 The executable ABI regression exposes `index`, `int`, and `i32` in one normal
 function and requires the generated prototype to use `int64_t`, `int64_t`, and
 `int32_t` respectively. Fixed-storage loops must use the same `int64_t` index

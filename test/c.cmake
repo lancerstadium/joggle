@@ -1,9 +1,23 @@
 if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
+   NOT DEFINED INVALID_MODEL OR
    NOT DEFINED OPEN_MODEL OR NOT DEFINED COLLISION_MODEL OR
    NOT DEFINED HARNESS OR NOT DEFINED OPEN_HARNESS OR
    NOT DEFINED MODULES OR NOT DEFINED ROOT)
   message(FATAL_ERROR
-          "C execution test requires TOOL, CC, MODEL, HARNESS, MODULES, ROOT")
+          "C execution test requires TOOL, CC, models, harnesses, MODULES, ROOT")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run c.prepare "${INVALID_MODEL}" -M "${MODULES}"
+  RESULT_VARIABLE invalid_result
+  OUTPUT_VARIABLE invalid_output
+  ERROR_VARIABLE invalid_error
+)
+if(invalid_result EQUAL 0 OR
+   NOT invalid_error MATCHES "c: unsupported call remains: operator %")
+  message(FATAL_ERROR
+          "C preparation accepted an invalid floating operator "
+          "(${invalid_result}):\n${invalid_output}${invalid_error}")
 endif()
 
 file(REMOVE_RECURSE "${ROOT}")

@@ -1173,8 +1173,10 @@ implemented entirely in `.jog`: it traverses the same `Fn`/`Blk`/`Op`/`Val`
 structure, emits local scalar calls and structured branches/loops, flattens
 static tensor indices, and uses caller-provided storage for tensor results.
 Scalar type spelling and byte width come from one ordinary ABI dictionary
-owned by the module; fixed C operator spellings are likewise module data, not
-core cases. The dictionary contains only real IR scalar types. Semantic
+owned by the module. The same dictionary classifies scalar arithmetic so the
+capability query rejects C-illegal operator/type pairs before emission. Fixed
+C operator spellings are likewise module data, not core cases. The dictionary
+contains only real IR scalar types. Semantic
 indices and emitter-created fixed-array loops use the same signed `index` ABI;
 there is no second counter-type policy or synthetic IR pseudo-type. The emitter
 also recognizes optional `mem.slot`

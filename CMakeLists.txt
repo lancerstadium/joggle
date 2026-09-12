@@ -480,6 +480,7 @@ if(JOGGLE_BUILD_TESTS)
         -DTOOL=$<TARGET_FILE:joggle-tool>
         -DCC=${JOGGLE_TEST_C_COMPILER}
         -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c.jog
+        -DINVALID_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_invalid.jog
         -DOPEN_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_open.jog
         -DCOLLISION_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_collision.jog
         -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_main.c

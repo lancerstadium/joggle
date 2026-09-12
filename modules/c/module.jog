@@ -28,19 +28,19 @@ local fn val(value: Val) -> str {
 
 fn abi() -> dict {
   return {
-    "bool.c": "bool",       "bool.bytes": 1,
-    "f32.c": "float",       "f32.bytes": 4,
-    "f64.c": "double",      "f64.bytes": 8,
-    "i8.c": "int8_t",       "i8.bytes": 1,
-    "i16.c": "int16_t",     "i16.bytes": 2,
-    "i32.c": "int32_t",     "i32.bytes": 4,
-    "i64.c": "int64_t",     "i64.bytes": 8,
-    "index.c": "int64_t",   "index.bytes": 8,
-    "int.c": "int64_t",     "int.bytes": 8,
-    "u8.c": "uint8_t",      "u8.bytes": 1,
-    "u16.c": "uint16_t",    "u16.bytes": 2,
-    "u32.c": "uint32_t",    "u32.bytes": 4,
-    "u64.c": "uint64_t",    "u64.bytes": 8
+    "bool.c": "bool",       "bool.bytes": 1,     "bool.class": "bool",
+    "f32.c": "float",       "f32.bytes": 4,      "f32.class": "float",
+    "f64.c": "double",      "f64.bytes": 8,      "f64.class": "float",
+    "i8.c": "int8_t",       "i8.bytes": 1,       "i8.class": "signed",
+    "i16.c": "int16_t",     "i16.bytes": 2,      "i16.class": "signed",
+    "i32.c": "int32_t",     "i32.bytes": 4,      "i32.class": "signed",
+    "i64.c": "int64_t",     "i64.bytes": 8,      "i64.class": "signed",
+    "index.c": "int64_t",   "index.bytes": 8,    "index.class": "signed",
+    "int.c": "int64_t",     "int.bytes": 8,      "int.class": "signed",
+    "u8.c": "uint8_t",      "u8.bytes": 1,       "u8.class": "unsigned",
+    "u16.c": "uint16_t",    "u16.bytes": 2,      "u16.class": "unsigned",
+    "u32.c": "uint32_t",    "u32.bytes": 4,      "u32.class": "unsigned",
+    "u64.c": "uint64_t",    "u64.bytes": 8,      "u64.class": "unsigned"
   }
 }
 
@@ -58,6 +58,29 @@ local fn scalar(type: Ty) -> str {
 
 local fn scalar_name(name: str) -> bool {
   return has(abi(), name + ".c")
+}
+
+local fn class(type: Ty) -> str {
+  let name = base.name(type)
+  if !scalar_name(name) {
+    return ""
+  }
+  return str(abi(name, "class"))
+}
+
+local fn number(type: Ty) -> bool {
+  let kind = class(type)
+  return kind == "signed" || kind == "unsigned" || kind == "float"
+}
+
+local fn integer(type: Ty) -> bool {
+  let kind = class(type)
+  return kind == "signed" || kind == "unsigned"
+}
+
+local fn same_repr(left: Ty, right: Ty) -> bool {
+  return class(left) != "" && class(right) != "" &&
+         scalar(left) == scalar(right)
 }
 
 local fn width(type: Ty) -> int {
@@ -298,6 +321,45 @@ local fn unary(op: str) -> str {
   return ""
 }
 
+local fn binary_types(op: str, inputs: list<Val>, output: Val) -> bool {
+  if len(inputs) != 2 || binary(op) == "" {
+    return false
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[1])
+  let result = ir.type(output)
+  if op == "operator &&" || op == "operator ||" {
+    return class(left) != "" && class(right) != "" && result == ty("bool")
+  }
+  if op == "operator ==" || op == "operator !=" ||
+     op == "operator <" || op == "operator <=" ||
+     op == "operator >" || op == "operator >=" {
+    return same_repr(left, right) && result == ty("bool")
+  }
+  if op == "operator <<" || op == "operator >>" {
+    return integer(left) && integer(right) && same_repr(result, left)
+  }
+  if op == "operator %" || op == "operator &" ||
+     op == "operator ^" || op == "operator |" {
+    return integer(left) && integer(right) && same_repr(left, right) &&
+           same_repr(result, left)
+  }
+  return number(left) && number(right) && same_repr(left, right) &&
+         same_repr(result, left)
+}
+
+local fn unary_types(op: str, input: Val, output: Val) -> bool {
+  let source = ir.type(input)
+  let result = ir.type(output)
+  if op == "operator !" {
+    return class(source) != "" && result == ty("bool")
+  }
+  if op == "operator ~" {
+    return integer(source) && same_repr(result, source)
+  }
+  return number(source) && same_repr(result, source)
+}
+
 local fn binding(fn: Fn) -> str {
   if !ir.live(fn) || !ir.has(fn, "c") {
     return ""
@@ -333,7 +395,8 @@ fn accepts(m: Mod, op: Op) -> bool {
   }
   if name == "base.copy" {
     return len(inputs) == 1 && len(outputs) == 1 &&
-           ir.type(inputs[0]) == ir.type(outputs[0])
+           ir.type(inputs[0]) == ir.type(outputs[0]) &&
+           supported(ir.type(outputs[0]))
   }
   if name == "operator []" {
     if len(outputs) != 1 || len(inputs) < 2 ||
@@ -341,7 +404,7 @@ fn accepts(m: Mod, op: Op) -> bool {
       return false
     }
     if tensor.valid(ir.type(inputs[0])) {
-      return true
+      return supported(ir.type(inputs[0]))
     }
     let source = ir.def(inputs[0])
     return len(inputs) == 2 && ir.live(source) &&
@@ -349,31 +412,34 @@ fn accepts(m: Mod, op: Op) -> bool {
   }
   if name == "operator []=" {
     return len(outputs) == 1 && len(inputs) >= 3 &&
-           tensor.valid(ir.type(outputs[0]))
+           tensor.valid(ir.type(outputs[0])) &&
+           supported(ir.type(outputs[0]))
   }
   let target = ir.resolve(m, op)
   if len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
      ir.live(target) && ir.symbol(target) == "tensor.tensor" {
-    return true
+    return supported(ir.type(outputs[0]))
   }
   if len(inputs) == 1 && len(outputs) == 1 &&
-     tensor.static(ir.type(outputs[0])) && ir.is_const(inputs[0]) &&
+     supported(ir.type(outputs[0])) && ir.is_const(inputs[0]) &&
      base.kind(ir.constant(inputs[0])) == "bytes" &&
      ir.live(target) && ir.symbol(target) == "tensor.literal" {
     return base.size(ir.constant(inputs[0])) ==
            count(ir.type(outputs[0])) * width(tensor.elem(ir.type(outputs[0])))
   }
   if binary(name) != "" && len(inputs) == 2 && len(outputs) == 1 {
-    return !tensor.valid(ir.type(outputs[0]))
+    return !tensor.valid(ir.type(outputs[0])) &&
+           binary_types(name, inputs, outputs[0])
   }
   if unary(name) != "" && len(inputs) == 1 && len(outputs) == 1 {
-    return !tensor.valid(ir.type(outputs[0]))
+    return !tensor.valid(ir.type(outputs[0])) &&
+           unary_types(name, inputs[0], outputs[0])
   }
   if scalar_name(name) && len(inputs) == 1 && len(outputs) == 1 {
     return !tensor.valid(ir.type(outputs[0]))
   }
   if binding(m, op) != "" {
-    return true
+    return callable(m, target)
   }
   return callable(m, target)
 }
