@@ -1,4 +1,5 @@
 module tile
+use base
 use ir
 use opt
 
@@ -292,6 +293,159 @@ fn split(m: Mod, source: Op, factor: int) -> bool {
   }
   assert(ir.erase(m, source),
          "tile.split could not erase the original loop")
+  return true
+}
+
+fn unroll(m: Mod, source: Op, factor: int) -> bool {
+  assert(factor > 0, "tile.unroll requires a positive factor")
+  assert(ir.live(source) && ir.kind(source) == "loop",
+         "tile.unroll requires a live loop")
+  if factor == 1 {
+    return false
+  }
+
+  let bodies = ir.blks(source)
+  let inputs = ir.args(source)
+  let outputs = ir.outs(source)
+  assert(len(bodies) == 1 && len(inputs) > len(outputs),
+         "tile.unroll requires a structured range loop")
+  let body = bodies[0]
+  let body_args = ir.args(body)
+  let axes = len(inputs) - len(outputs)
+  assert(axes > 0 && len(body_args) == axes + len(outputs),
+         "tile.unroll found an invalid loop signature")
+  let axis = axes - 1
+  assert(ir.type(body_args[axis]) == ty("index"),
+         "tile.unroll requires an index iterator")
+
+  let range = inputs[axis]
+  let range_op = ir.def(range)
+  assert(ir.live(range_op) && ir.callee(range_op) == "operator ..",
+         "tile.unroll requires the last iterator to use a range")
+  let bounds = ir.args(range_op)
+  assert(len(bounds) == 2 && ir.is_const(bounds[0]) &&
+         ir.is_const(bounds[1]) &&
+         base.kind(ir.constant(bounds[0])) == "int" &&
+         base.kind(ir.constant(bounds[1])) == "int",
+         "tile.unroll requires static integer bounds")
+  let lower = base.int(ir.constant(bounds[0]))
+  let upper = base.int(ir.constant(bounds[1]))
+  var trip = 0
+  if upper > lower {
+    trip = upper - lower
+  }
+  assert(trip % factor == 0,
+         "tile.unroll requires the trip count to be divisible by the factor")
+  var private_range = true
+  for user in ir.users(range) {
+    if user != source {
+      private_range = false
+    }
+  }
+
+  let type = ty("index")
+  let zero = keep(m, ir.constant(m, source, 0, type), "unroll_zero")
+  let blocks = keep(
+    m, ir.constant(m, source, trip / factor, type), "unroll_blocks"
+  )
+  let outer_range = ir.call(
+    m, source, "operator ..", [zero, blocks], ir.type(range)
+  )
+  var names: list<str> = []
+  var sources: list<Val> = []
+  for i in 0..axes {
+    names += [ir.name(body_args[i])]
+    if i == axis {
+      sources += [outer_range]
+    } else {
+      sources += [inputs[i]]
+    }
+  }
+  var carried: list<Val> = []
+  for i in axes..len(inputs) {
+    carried += [inputs[i]]
+  }
+  let outer = ir.loop(m, source, names, sources, carried)
+  assert(ir.live(outer), "tile.unroll could not build the outer loop")
+  let outer_body = ir.blks(outer)[0]
+  let outer_args = ir.args(outer_body)
+  let outer_ops = ir.ops(outer_body)
+  let outer_yield = outer_ops[len(outer_ops) - 1]
+
+  let width = keep(
+    m, ir.constant(m, outer_yield, factor, type), "unroll_factor"
+  )
+  let begin = keep(
+    m, ir.constant(m, outer_yield, lower, type), "unroll_begin"
+  )
+  let scaled = keep(
+    m,
+    ir.call(m, outer_yield, "operator *", [outer_args[axis], width], type),
+    "unroll_scaled"
+  )
+  let base_index = keep(
+    m, ir.call(m, outer_yield, "operator +", [begin, scaled], type),
+    "unroll_base"
+  )
+
+  let original_ops = ir.ops(body)
+  assert(len(original_ops) > 0 &&
+         ir.kind(original_ops[len(original_ops) - 1]) == "yield",
+         "tile.unroll requires a terminated loop body")
+  let original_yield = original_ops[len(original_ops) - 1]
+  var current: list<Val> = []
+  for i in axes..len(outer_args) {
+    current += [outer_args[i]]
+  }
+  for point in 0..factor {
+    var index = base_index
+    if point != 0 {
+      let offset = keep(
+        m, ir.constant(m, outer_yield, point, type), "unroll_offset"
+      )
+      index = keep(
+        m, ir.call(m, outer_yield, "operator +", [base_index, offset], type),
+        "unroll_index"
+      )
+    }
+    var old: list<Val> = []
+    var next: list<Val> = []
+    for i in 0..axes {
+      old += [body_args[i]]
+      if i == axis {
+        next += [index]
+      } else {
+        next += [outer_args[i]]
+      }
+    }
+    for i in 0..len(outputs) {
+      old += [body_args[axes + i]]
+      next += [current[i]]
+    }
+    for i in 0..len(original_ops) - 1 {
+      let copy = ir.clone(m, original_ops[i], outer_yield, old, next)
+      assert(ir.live(copy), "tile.unroll could not clone the loop body")
+      old += ir.outs(original_ops[i])
+      next += ir.outs(copy)
+    }
+    current = mapped(ir.args(original_yield), old, next)
+    assert(len(current) == len(outputs),
+           "tile.unroll found an invalid loop yield")
+  }
+
+  assert(ir.args(m, outer_yield, current),
+         "tile.unroll could not connect the outer loop")
+  if len(outputs) != 0 {
+    assert(ir.replace(m, outputs, ir.outs(outer)),
+           "tile.unroll could not replace the original loop results")
+  }
+  var erased: list<Op> = [source]
+  if private_range {
+    erased += [range_op]
+  }
+  assert(ir.erase(m, erased),
+         "tile.unroll could not erase the original loop")
+  opt.dce(m, [])
   return true
 }
 

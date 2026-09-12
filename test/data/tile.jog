@@ -17,3 +17,11 @@ fn grid(rows: int, cols: int) -> int {
   }
   return total
 }
+
+fn fixed_grid() -> int {
+  var total = 0
+  for row in 0..2, column in 2..6 {
+    total = total * 10 + row * 4 + column - 1
+  }
+  return total
+}

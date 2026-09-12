@@ -1355,8 +1355,12 @@ transformation rather than frontend- or operator-specific VM cases.
 The first application-sized loop rewrite remains in the removable `tile`
 module. Its read-only legality predicate and explicit fusion function know only
 loop structure, indexed loads/stores, use lists, and dominance. A greedy
-overload repeatedly applies that same primitive to adjacent legal loops. With
-BatchNorm expressed as an ordinary row-major pointwise loop, the pinned
+overload repeatedly applies that same primitive to adjacent legal loops.
+The same module can sequentially unroll an exactly divisible static innermost
+range by cloning its ordinary body and threading carried values; an
+order-sensitive multi-axis recurrence and tensor update pass unchanged C99
+execution without an emitter pragma or core operation.
+With BatchNorm expressed as an ordinary row-major pointwise loop, the pinned
 MobileNetV2 body falls from 374 to 328 loops and from 155 to 109 local tensor
 initializers; 46 of 53 BatchNorm intermediates disappear. Replanning storage,
 placing workspace statically, and emitting external-data C requires no new C

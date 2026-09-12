@@ -347,6 +347,9 @@ The first reusable loop transformation is now a separate `tile` module.
 preserves arbitrary carried values, and guards a dynamic partial tile using
 only public construction, capture-remapped cloning, replacement, and erasure.
 Its generated program round-trips and executes through unchanged C emission.
+`tile.unroll` uses the same public edits for an exactly divisible static
+innermost range, preserves multi-axis iteration order and carried-value
+sequencing, and rejects unsupported tails before mutation.
 The same module now fuses an explicitly selected same-range pointwise
 producer/consumer pair without inspecting neural-network operation names. A
 three-loop tensor chain becomes two loops, emits through unchanged C, and
@@ -362,7 +365,7 @@ first application-scale structural prerequisite for scheduling experiments.
 An ordinary configured callback now supplies profitability without changing
 `tile`: the example extent/call budget selects 17 of those 46 pairs and closes
 the application-scale dispatch gate. Its local pilot remains slower than the
-unfused baseline, so predictive target policy, reorder, unroll, multi-axis
+unfused baseline, so predictive target policy, reorder, multi-axis
 fusion, and controlled network measurements remain open and must not be
 inferred from the correctness gates.
 

@@ -60,6 +60,10 @@ small embeddable compiler frameworks.
   carried state, guards partial tiles, round-trips, emits C, and matches exact
   results for negative, empty, exact, short, and partial ranges. Core and the
   emitter contain no tile case.
+- The same module sequentially unrolls an exactly divisible static innermost
+  range without target pragmas or a new IR form. An order-sensitive multi-axis
+  recurrence and a tensor update compile as strict C99 and preserve results;
+  dynamic and non-divisible ranges fail before mutation.
 - An operator-name-independent fusion function merges an explicitly selected
   same-range pointwise producer/consumer pair. Its gate reduces a three-loop
   tensor chain to two loops, removes a private intermediate tensor through

@@ -686,6 +686,15 @@ Generated bounds are named structural values so their `index` types survive a
 text round trip. Invalid factors, non-range iterators, malformed carried state,
 or failed rewiring abort the enclosing transform transaction.
 
+`tile.unroll(m, loop, factor)` expands a statically bounded innermost range in
+the same module. It requires a positive factor that exactly divides the trip
+count, keeps every outer-axis iteration in place, and threads each cloned
+iteration's carried results into the next. Empty ranges remain empty and a
+factor of one is a no-op. Dynamic or non-divisible ranges are rejected before
+mutation rather than receiving a hidden cleanup loop. The regression exercises
+an order-sensitive multi-axis recurrence and a tensor update through strict
+C99 generation and execution.
+
 `tile.fuse(m, producer, consumer)` is the complementary conservative fusion
 function. It merges explicitly selected one-dimensional loops only when they
 share a range, each carries one distinct type-stable tensor, the producer has
@@ -701,8 +710,8 @@ occur between the selected loops; an intervening observable call is rejected.
 The implementation inspects structural loops and built-in indexed memory
 operations, never frontend or neural-network function names. Shifted access,
 private-intermediate elimination, live-result retention, an `add -> relu`
-chain, and emitted-C numerical execution are regression gates. Reorder, unroll,
-and multi-axis legality remain follow-on functions, not implied behavior of
+chain, and emitted-C numerical execution are regression gates. Reorder and
+multi-axis legality remain follow-on functions, not implied behavior of
 `split` or `fuse`.
 
 `tile.can_fuse(m, producer, consumer)` exposes the same structural legality

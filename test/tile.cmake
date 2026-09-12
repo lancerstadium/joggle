@@ -40,6 +40,7 @@ file(MAKE_DIRECTORY "${ROOT}")
 
 set(tiled_sum "${ROOT}/tiled-sum.jog")
 set(tiled "${ROOT}/tiled.jog")
+set(unrolled_grid "${ROOT}/unrolled-grid.jog")
 set(prepared "${ROOT}/prepared.jog")
 set(source "${ROOT}/model.c")
 set(program "${ROOT}/model")
@@ -74,7 +75,24 @@ if(NOT text MATCHES "for i_tile" OR
 endif()
 
 execute_process(
-  COMMAND "${TOOL}" run c.prepare "${tiled}" -M "${MODULES}"
+  COMMAND "${TOOL}" run tile_pass.unroll_named "${tiled}"
+          --arg "\"fixed_grid\"" --arg 2 -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${unrolled_grid}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "multi-axis loop unrolling failed (${result}):\n${error}")
+endif()
+file(READ "${unrolled_grid}" unrolled_grid_text)
+if(NOT unrolled_grid_text MATCHES "unroll_blocks_[0-9]+: index = 2" OR
+   NOT unrolled_grid_text MATCHES "unroll_offset_[0-9]+: index = 1")
+  message(FATAL_ERROR
+          "multi-axis loop unrolling omitted its points:\n${unrolled_grid_text}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run c.prepare "${unrolled_grid}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${prepared}"
   ERROR_VARIABLE error
@@ -124,6 +142,9 @@ set(policy_fusion "${ROOT}/policy-fusion.jog")
 set(fused_ready "${ROOT}/fused-ready.jog")
 set(fused_source "${ROOT}/fused.c")
 set(fused_program "${ROOT}/fused")
+set(unrolled "${ROOT}/unrolled.jog")
+set(unrolled_source "${ROOT}/unrolled.c")
+set(unrolled_program "${ROOT}/unrolled")
 
 execute_process(
   COMMAND "${TOOL}" run c.prepare "${FUSE_MODEL}" -M "${MODULES}"
@@ -133,6 +154,66 @@ execute_process(
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "fusion preparation failed (${result}):\n${error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.unroll_first "${fuse_prepared}"
+          --arg 2 -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${unrolled}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "loop unrolling failed (${result}):\n${error}")
+endif()
+file(READ "${unrolled}" unrolled_text)
+if(NOT unrolled_text MATCHES "unroll_blocks_[0-9]+: index = 2" OR
+   NOT unrolled_text MATCHES "unroll_offset_[0-9]+: index = 1" OR
+   unrolled_text MATCHES "var size = 4")
+  message(FATAL_ERROR
+          "loop unrolling retained the old range or omitted a point:\n${unrolled_text}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${unrolled}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${unrolled_source}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "unrolled C emission failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CC}" -std=c99 -O2 -Wall -Wextra -Wstrict-prototypes -Werror
+          "${unrolled_source}" "${FUSE_HARNESS}" -o "${unrolled_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "unrolled C did not compile (${result}):\n${output}${error}")
+endif()
+execute_process(
+  COMMAND "${unrolled_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "unrolled C returned the wrong result (${result}):\n${output}${error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.unroll_first "${fuse_prepared}"
+          --arg 3 -M "${MODULES}"
+  RESULT_VARIABLE result
+  ERROR_VARIABLE error
+)
+if(result EQUAL 0 OR NOT error MATCHES "divisible by the factor")
+  message(FATAL_ERROR
+          "non-divisible unrolling was not rejected (${result}):\n${error}")
 endif()
 
 execute_process(

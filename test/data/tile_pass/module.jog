@@ -21,6 +21,26 @@ fn named(m: Mod, name: str, factor: int) -> bool {
   return false
 }
 
+fn unroll_first(m: Mod, factor: int) -> bool {
+  for op in ir.ops(m) {
+    if ir.kind(op) == "loop" {
+      return tile.unroll(m, op, factor)
+    }
+  }
+  return false
+}
+
+fn unroll_named(m: Mod, name: str, factor: int) -> bool {
+  let selected = ir.find(m, name)
+  assert(ir.live(selected), "tile_pass.unroll_named could not find the function")
+  for op in ir.ops(selected) {
+    if ir.kind(op) == "loop" {
+      return tile.unroll(m, op, factor)
+    }
+  }
+  return false
+}
+
 fn fuse_first(m: Mod) -> bool {
   var loops: list<Op> = []
   for op in ir.ops(m) {

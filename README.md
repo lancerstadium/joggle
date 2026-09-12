@@ -191,6 +191,10 @@ materialization without a separate kernel builder.
 Operation cloning also accepts parallel old/new `Val` lists, allowing loop and
 fusion modules to rewire captured indices, tensors, and bounds while preserving
 the same `Fn/Blk/Op/Val` structure.
+The removable `tile.unroll` function uses that single editor surface to expand
+a statically bounded, exactly divisible innermost range while preserving
+multi-axis order and carried values. It emits through unchanged targets; no
+unroll operation or pragma enters core IR.
 Supplying a final `list<Ty>` binds the template generics and produces a
 monomorphic function through the same operation.
 `ir.match(call, fn)` supplies those terms directly from a resolved network

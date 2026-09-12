@@ -2,6 +2,7 @@
 
 int64_t jog_sum(int64_t n);
 int64_t jog_grid(int64_t rows, int64_t cols);
+int64_t jog_fixed_grid(void);
 
 static int64_t grid(int64_t rows, int64_t cols) {
   int64_t total = 0;
@@ -19,7 +20,8 @@ int main(void) {
       jog_grid(3, 1) != grid(3, 1) ||
       jog_grid(3, 2) != grid(3, 2) ||
       jog_grid(3, 3) != grid(3, 3) ||
-      jog_grid(3, 8) != grid(3, 8))
+      jog_grid(3, 8) != grid(3, 8) ||
+      jog_fixed_grid() != INT64_C(12345678))
     return 1;
   return 0;
 }
