@@ -165,6 +165,13 @@ frozen.
   Runtime. A generated-harness pilot records a 258.022 ms strict-C median
   versus 13.578 ms for one-thread ONNX Runtime, leaving a roughly 19.0x gap.
   This extends correctness coverage; it does not improve the backend claim.
+- DenseNet-121 is the ninth application-scale numerical pilot and the tenth
+  end-to-end ONNX model including MNIST. A block-local cleanup index and
+  batched exposure reduce the same `c.prepare` pilot from exceeding a
+  600-second cutoff to 271.92 seconds. Strict external-weight C produces the
+  official 1,000 outputs within `7.629e-6`, but its unisolated 574.763 ms
+  median remains about 29.2x slower than one-thread ONNX Runtime. Preparation
+  time and generated-code speed therefore remain negative results.
 - A separate compact convolution body preserves GoogLeNet's output and reduces
   its static plan from 55 to 6 slots and by 58.4% in scalar elements, but slows
   the unisolated median by 27.5%. This is useful co-design evidence because the

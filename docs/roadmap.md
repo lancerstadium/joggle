@@ -81,7 +81,10 @@ offset and broadcast helpers. Conservative cleanup runs after exposure but
 does not rewrite mutable updates as algebraic expressions. It does not yet
 eliminate every resulting scalar temporary or materialized broadcast, and the
 measured convolution/layout gap to a production runtime remains the primary
-backend limitation.
+backend limitation. Block-local dead-code indexing and batched exposure allow
+the current DenseNet path to finish preparation, but its 271.92-second pilot
+and approximately 29.2x generated-C latency gap remain explicit scaling and
+code-quality targets rather than evidence of a mature backend.
 
 Every generated artifact used in evaluation must be checked against reference
 outputs with documented tolerances.

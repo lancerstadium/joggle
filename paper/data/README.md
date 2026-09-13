@@ -184,9 +184,10 @@ round-trip stability, not generated-C execution.
 
 The same matrix now includes focused partial-cache runs for ShuffleNet V2 and
 DenseNet-121. Both decode, infer to a zero unknown-result frontier, convert to
-shared semantics, verify, and round trip. DenseNet's later stages remain
-`not_run`: no generated-C or numerical claim is inferred from structural
-compatibility.
+shared semantics, verify, and round trip. DenseNet now also passes exposure,
+strict C compilation, and the official stored-output check. This later result
+is recorded separately because structural compatibility alone was not treated
+as generated-code support.
 
 TinyYOLOv3-11 and SSD-MobileNetV1-12 are explicit negative rows. TinyYOLOv3
 decodes and round trips but retains 219 unknown results after inference.
@@ -314,15 +315,30 @@ a publication timing result: it has one repetition, no host isolation, and
 mixes two implementation changes that require separate ablation if compiler
 overhead becomes a paper claim.
 
-`densenet-prepare-pilot.csv` records a negative application-scale boundary.
-The checksum-pinned DenseNet-121 model decodes, infers, converts, round trips,
-and accepts the ordinary out-of-tree spatial implementation. The resulting
-65,429,147-byte IR did not complete `c.prepare` within a 600-second cutoff at
-revision `741b972`; its redirected output remained empty. The official ONNX
-Zoo application archive, input, and output were checksum-verified, but no C
-source was emitted and no numerical or latency claim is made for this model.
-The row motivates compiler-preparation scaling work; it does not count as an
-additional supported model.
+`densenet-prepare-pilot.csv` preserves both sides of an application-scale
+compiler-preparation result. The checksum-pinned DenseNet-121 model decodes,
+infers, converts, round trips, and accepts the ordinary out-of-tree spatial
+implementation. Its 65,429,147-byte IR did not complete `c.prepare` within a
+600-second cutoff at revision `741b972`. Revision `d09571a` replaces repeated
+block scans during dead-code cleanup with one block-local binding index and
+expands each exposure round transactionally as a batch. The same input then
+completed in 271.92 seconds and produced a 65,834,120-byte prepared IR with the
+recorded checksum. Isolated diagnostics reduced a byte-identical exposure
+round from 6.64 to 1.45 seconds and byte-identical cleanup of a late round from
+48.81 to 4.88 seconds. These are single-run engineering diagnostics, not a
+publication-grade compiler-throughput claim; 271.92 seconds remains a serious
+scaling limitation.
+
+`densenet-backend-pilot.csv` advances that prepared model through static memory
+planning, external-data emission, strict C11 compilation, and the official
+ONNX Zoo application archive. The generated source is 648,514 bytes, the
+separate payload is 32,584,608 bytes, and the static plan contains six slots
+holding 3,112,912 `f32` elements. One generated-C call agrees with the stored
+1,000-element output within `7.6293945e-6` maximum absolute error. After three
+warm-ups, ten unisolated calls have a 574.763 ms median versus 19.673 ms for
+one-thread sequential ONNX Runtime 1.26.0, leaving an approximately 29.2x gap.
+This makes DenseNet the tenth numerically executed ONNX model, while preserving
+both preparation cost and generated-code speed as negative results.
 
 `c-emitter-pilot.csv` isolates the C expression-emission change between
 commits `49cba96` and `5214a6b`. Each pair uses the same already prepared and

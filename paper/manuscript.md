@@ -19,7 +19,7 @@ and emitters are ordinary distributable module functions. We evaluate whether
 this design reduces extension coupling without hiding failure. The planned
 study measures four matched extension tasks, transactional composition, staged
 compatibility on conventional inference models, numerical correctness, and the
-quality of generated artifacts. Current pilots execute nine ONNX models and
+quality of generated artifacts. Current pilots execute ten ONNX models and
 preserve explicit unsupported frontiers on two harder models, but generated C
 remains substantially slower than a one-thread production runtime. The final
 paper will therefore test research iteration cost and transparency rather than
@@ -169,13 +169,12 @@ handwritten C.
 
 ## 4. Evaluation status
 
-The repository currently records pilots, not publication measurements. Nine
-ONNX models execute against stored reference outputs. DenseNet completes
-structural conversion, while TinyYOLOv3 retains a type frontier and
-SSD-MobileNetV1 retains 710 source calls after conversion. Across executed
-models, stored maximum absolute differences range from approximately
-`1.34e-7` to `2.10e-5`. These checks establish numerical paths, not task-level
-accuracy.
+The repository currently records pilots, not publication measurements. Ten
+ONNX models execute against stored reference outputs. TinyYOLOv3 retains a
+type frontier and SSD-MobileNetV1 retains 710 source calls after conversion.
+Across executed models, the stored maximum absolute differences range from
+approximately `1.34e-7` to `2.10e-5`. These checks establish numerical paths,
+not task-level accuracy.
 
 The structural compatibility table is now generated directly from twelve
 pinned Zoo tests rather than transcribed from test output. Ten models complete
@@ -183,14 +182,19 @@ semantic conversion and canonical round trip. TinyYOLOv3 retains 219 unknown
 results after inference; SSD-MobileNetV1 infers all result types but retains
 710 source calls after conversion. Models absent from the configured cache are
 omitted, not counted as passes. Structural completion is kept separate from
-the nine-model numerical execution claim above.
+the ten-model numerical execution claim above.
 
-DenseNet also exposes a compiler-scaling boundary rather than an additional
-backend result. After conversion and selection of the same out-of-tree spatial
-implementation used by smaller models, its 65,429,147-byte IR did not complete
-`c.prepare` within a 600-second pilot cutoff. No source, executable, or output
-comparison was produced. This failure keeps preparation cost in RQ4 and rules
-out presenting structural conversion alone as end-to-end compatibility.
+DenseNet exposes both progress and a compiler-scaling boundary. After
+conversion and selection of the same out-of-tree spatial implementation used
+by smaller models, its 65,429,147-byte IR did not complete `c.prepare` within a
+600-second pilot cutoff at revision `741b972`. Replacing repeated block scans
+with block-local indexing and batching exposure edits reduced the same
+single-run pilot to 271.92 seconds at revision `d09571a`. The resulting strict
+C agrees with the official stored output within `7.6293945e-6`, making
+DenseNet the tenth executed ONNX model. Its unisolated median remains 574.763
+ms versus 19.673 ms for one-thread ONNX Runtime, an approximately 29.2x gap.
+Neither the single compiler timing nor the latency rows are publication-grade;
+preparation scaling and generated-code quality remain open problems.
 
 The compiled application gate now checks that generated model source, public
 header, structured API, and generated harness agree under strict C11 warnings.
