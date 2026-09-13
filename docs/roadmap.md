@@ -95,11 +95,9 @@ diagnostics exercise exact and non-exact paths without inspecting an operator
 name. The runs are unisolated and substantially increase C source, so they
 motivate a controlled multi-model study rather than a default schedule. The
 policy now optionally enforces a whole-invocation structural-duplication limit
-using `tile.scalar_cost` before any split or reorder. When candidates compete
-for that limit, the example orders them by statically derived reduction reuse
-per duplication unit; an unconstrained invocation preserves the original
-order. Target-dependent factor choice, packing, direct artifact-size modelling,
-and measured profitability remain policy and mechanism gaps.
+using `tile.scalar_cost` before any split or reorder. Target-dependent factor
+choice, packing, direct artifact-size modelling, and profitability remain
+policy and mechanism gaps.
 
 General loop-invariant motion now lives in `opt.hoist`, not in an operator or
 artifact emitter. A module supplies either a short list of calls that are safe

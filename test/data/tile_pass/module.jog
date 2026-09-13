@@ -229,7 +229,7 @@ fn check_scalarize(m: Mod) -> bool {
 }
 
 local fn scalarized_loop(
-  m: Mod, function: Fn, outer_axes: int, inner_axes: int, lanes: int
+  m: Mod, function: Fn, outer_axes: int, inner_axes: int
 ) -> bool {
   var outers: list<Op> = []
   var inners: list<Op> = []
@@ -254,13 +254,13 @@ local fn scalarized_loop(
   let outer_args = ir.args(ir.blks(outer)[0])
   let inner_args = ir.args(ir.blks(inner)[0])
   if len(outer_args) != outer_axes + 1 ||
-     len(inner_args) != inner_axes + lanes ||
+     len(inner_args) != inner_axes + 1 ||
      ir.type(inner_args[inner_axes]) != ty("f32") {
     return false
   }
   let reads = tile.reads(m, outer, outer_args[outer_axes])
   let writes = tile.writes(m, outer, outer_args[outer_axes])
-  return len(reads) == lanes && len(writes) == lanes
+  return len(reads) == 1 && len(writes) == 1
 }
 
 fn check_scalarized(m: Mod) -> bool {
@@ -271,27 +271,12 @@ fn check_scalarized(m: Mod) -> bool {
   let reduce = ir.find(m, "reduce5")
   assert(ir.live(main) && ir.live(reduce),
          "scalarized check requires main and reduce5")
-  assert(scalarized_loop(m, main, 4, 3, 1),
+  assert(scalarized_loop(m, main, 4, 3),
          "convolution did not become a scalar reduction nest")
-  assert(scalarized_loop(m, reduce, 4, 1, 1),
+  assert(scalarized_loop(m, reduce, 4, 1),
          "generic reduction did not become a scalar reduction nest")
   assert(ir.revision(m) == before,
          "scalarized checks changed the module")
-  return true
-}
-
-fn check_ranked(m: Mod) -> bool {
-  let before = ir.revision(m)
-  let main = ir.find(m, "main")
-  let reduce = ir.find(m, "reduce5")
-  assert(ir.live(main) && ir.live(reduce),
-         "ranked block check requires main and reduce5")
-  assert(!scalarized_loop(m, main, 4, 3, 2),
-         "bounded block selected the lower-reuse convolution loop")
-  assert(scalarized_loop(m, reduce, 4, 1, 2),
-         "bounded block omitted the higher-reuse reduction loop")
-  assert(ir.revision(m) == before,
-         "ranked block check changed the module")
   return true
 }
 

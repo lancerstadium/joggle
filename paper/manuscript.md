@@ -175,12 +175,10 @@ Structural transformations also expose policy-facing queries before mutation.
 For scalar promotion, `tile.scalar_cost` returns zero for an illegal candidate
 and otherwise reports lane count times recursive source-body operation count.
 The example blocking policy can enforce a whole-invocation duplication limit
-before applying split, reorder, or scalarize. If candidates compete for that
-limit, the source module ranks the statically proved repeated state updates
-removed per duplication unit; if all fit, it preserves traversal order. These
-metrics are deliberately target-neutral proxies rather than claims to predict
-emitted bytes or latency; the evaluation must determine whether they are
-informative enough for useful selection.
+before applying split, reorder, or scalarize. This metric is deliberately a
+target-neutral proxy rather than a claim to predict emitted bytes or latency;
+the evaluation must determine whether it is informative enough for useful
+selection.
 
 Storage and artifact policy remain separate module functions. `mem.separate`
 proves a deliberately narrow call-site relation from planned slots and
@@ -376,6 +374,15 @@ bit-identical to the common baseline. The small limits therefore control size
 but capture little of the unrestricted speed direction. This is an unisolated
 mechanism pilot, not a Pareto result; it shows that a replaceable policy needs
 a benefit signal or candidate ordering in addition to structural cost.
+
+A deliberately temporary source policy then ordered candidates by statically
+derived reduction reuse per structural-cost unit. At limits 500 and 1,500 it
+produced 2.7% and 10.4% larger C than baseline and median paired ratios of
+1.002 and 1.060, versus 1.039 and 1.052 for first-fit. All outputs remained
+bit-identical. The small difference at 1,500 is not distinguishable from this
+pilot's uncontrolled variation, and the 500 direction is worse. We therefore
+retired the heuristic rather than adding it to the workbench: static reduction
+reuse is not a sufficient latency benefit model.
 
 A separate UltraFace diagnostic tests whether the artifact
 module can consume storage facts without an operator case. A single call index

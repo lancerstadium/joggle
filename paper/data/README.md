@@ -307,6 +307,24 @@ identifies candidate ranking as the next mechanism question. The calls are
 technical repetitions on one unisolated machine and carry no significance or
 production-runtime claim.
 
+`block-ranked-frontier-pilot.csv` and
+`block-ranked-frontier-runtime-pilot.csv` preserve a failed answer to that
+question at revision `a487488`. That temporary source policy ranked candidates
+by statically inferred repeated state updates removed per structural-cost
+unit, without an operator or target case. At limits 500 and 1,500 it still
+creates 4 and 16 accumulators, but C grows to 202,607 and 217,769 bytes rather
+than the first-fit policy's 200,740 and 208,137 bytes. Ten alternating pairs
+give median within-pair ratios 1.002 and 1.060, compared with 1.039 and 1.052
+for first-fit. All paired result differences remain zero.
+
+The 1,500 result is too small and the host too uncontrolled to distinguish
+from noise, while the 500 result moves in the wrong direction. Reduction reuse
+alone therefore does not justify the extra policy complexity, and the ranking
+was removed immediately after recording this pilot. The retained negative
+rows prevent later selection of only the favorable unrestricted result. A
+future bounded policy needs measured or target-supplied benefit, not another
+operator-specific heuristic in the compiler core.
+
 `compile-memo-pilot.csv` records one matched, unisolated compiler diagnostic
 on the same 27 MB MobileNetV2 canonical IR at revision `0ba0e2c`. Both rows run
 `spatial.block(m, 2)` with deterministic execution reporting. The control uses

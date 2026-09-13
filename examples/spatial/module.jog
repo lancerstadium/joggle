@@ -55,146 +55,6 @@ local fn factor(extent: int, factors: list<int>) -> int {
   return tail
 }
 
-local fn state_axis(axis: int, state: list<int>) -> bool {
-  for selected in state {
-    if selected == axis {
-      return true
-    }
-  }
-  return false
-}
-
-local fn reuse(extents: list<int>, state: list<int>) -> int {
-  var out = 1
-  for axis in 0..len(extents) {
-    if !state_axis(axis, state) {
-      if extents[axis] <= 0 {
-        return 0
-      }
-      if out > 9223372036854775807 / extents[axis] {
-        return 9223372036854775807
-      }
-      out *= extents[axis]
-    }
-  }
-  return out
-}
-
-// axis, factor, structural duplication, repeated state updates removed.
-local fn plan(m: Mod, source: Op, factors: list<int>) -> list<int> {
-  if !ir.live(source) || ir.kind(source) != "loop" ||
-     len(ir.outs(source)) != 1 {
-    return []
-  }
-  let state = tile.state_axes(m, source)
-  let extents = tile.extents(m, source)
-  if len(state) == 0 || len(extents) <= len(state) {
-    return []
-  }
-  let axis = state[len(state) - 1]
-  let selected_factor = factor(extents[axis], factors)
-  let unit = tile.scalar_cost(m, source)
-  if selected_factor <= 1 || unit <= 0 ||
-     unit > 9223372036854775807 / selected_factor {
-    return []
-  }
-  let iterations = reuse(extents, state)
-  if iterations <= 1 {
-    return []
-  }
-  var gain = iterations - 1
-  if gain > 9223372036854775807 / selected_factor {
-    gain = 9223372036854775807
-  } else {
-    gain *= selected_factor
-  }
-  return [axis, selected_factor, unit * selected_factor, gain]
-}
-
-local fn greater_ratio(
-  left: int, left_divisor: int,
-  right: int, right_divisor: int,
-  reverse: bool
-) -> bool {
-  let left_whole = left / left_divisor
-  let right_whole = right / right_divisor
-  if left_whole != right_whole {
-    if reverse {
-      return left_whole < right_whole
-    }
-    return left_whole > right_whole
-  }
-  let left_rest = left % left_divisor
-  let right_rest = right % right_divisor
-  if left_rest == 0 || right_rest == 0 {
-    if left_rest == right_rest {
-      return false
-    }
-    if reverse {
-      return left_rest == 0
-    }
-    return right_rest == 0
-  }
-  return greater_ratio(
-    left_divisor, left_rest,
-    right_divisor, right_rest,
-    !reverse
-  )
-}
-
-local fn better(left: list<int>, right: list<int>) -> bool {
-  if greater_ratio(left[3], left[2], right[3], right[2], false) {
-    return true
-  }
-  if greater_ratio(right[3], right[2], left[3], left[2], false) {
-    return false
-  }
-  if left[3] != right[3] {
-    return left[3] > right[3]
-  }
-  return left[2] < right[2]
-}
-
-local fn apply_block(m: Mod, source: Op, selected: list<int>) -> bool {
-  let axis = selected[0]
-  let selected_factor = selected[1]
-  let extents = tile.extents(m, source)
-  let axes = len(extents)
-  var target = source
-  if extents[axis] % selected_factor != 0 {
-    let parts = tile.peel(m, source, axis, selected_factor)
-    assert(len(parts) == 2,
-           "spatial.block could not peel a selected loop")
-    target = parts[0]
-  }
-  let split = tile.split(m, target, axis, selected_factor)
-  assert(ir.live(split),
-         "spatial.block could not split a selected loop")
-  let next_order = order(m, split, 1)
-  assert(len(next_order) == axes + 1,
-         "spatial.block could not order a selected tile")
-  let reordered = tile.reorder(m, split, next_order)
-  assert(ir.live(reordered),
-         "spatial.block could not reorder a selected tile")
-  assert(ir.live(tile.scalarize(m, reordered, selected_factor)),
-         "spatial.block could not promote a selected tile")
-  return true
-}
-
-local fn contains(root: Op, selected: Op) -> bool {
-  if root == selected {
-    return true
-  }
-  for body in ir.blks(root) {
-    for child in ir.ops(body) {
-      if contains(child, selected) {
-        return true
-      }
-    }
-  }
-  return false
-}
-
 local fn block(
   m: Mod, factors: list<int>, limit: int, bounded: bool
 ) -> bool {
@@ -205,58 +65,46 @@ local fn block(
            "spatial.block requires factors greater than one")
   }
   let candidates = ir.ops(m)
-  var plans: list<list<int>> = []
-  var used: list<bool> = []
-  var selected_candidates: list<Op> = []
-  for candidate in candidates {
-    let selected = plan(m, candidate, factors)
-    if len(selected) == 4 {
-      selected_candidates += [candidate]
-      plans += [selected]
-      used += [false]
-    }
-  }
   var changed = false
   var spent = 0
-  var total = 0
-  var all_fit = true
-  if bounded {
-    for selected in plans {
-      if selected[2] > limit - total {
-        all_fit = false
-      } else {
-        total += selected[2]
-      }
-    }
-  }
-  let prioritize = bounded && !all_fit
-  for round in 0..len(selected_candidates) {
-    var best = -1
-    for item in 0..len(selected_candidates) {
-      let selected = plans[item]
-      var fits = ir.live(selected_candidates[item])
-      if bounded && fits {
-        fits = selected[2] <= limit - spent
-      }
-      if !used[item] && fits &&
-         (best < 0 || (prioritize && better(selected, plans[best]))) {
-        best = item
-      }
-    }
-    if best >= 0 {
-      used[best] = true
-      for item in 0..len(selected_candidates) {
-        if item != best && !used[item] &&
-           ir.live(selected_candidates[item]) &&
-           contains(selected_candidates[item], selected_candidates[best]) {
-          used[item] = true
+  for source in candidates {
+    if ir.live(source) && ir.kind(source) == "loop" &&
+       len(ir.outs(source)) == 1 {
+      let state = tile.state_axes(m, source)
+      let extents = tile.extents(m, source)
+      if len(state) > 0 && len(extents) > len(state) {
+        let axis = state[len(state) - 1]
+        let selected_factor = factor(extents[axis], factors)
+        let unit = tile.scalar_cost(m, source)
+        var fits = unit > 0
+        if bounded && fits {
+          fits = unit <= (limit - spent) / selected_factor
         }
-      }
-      changed = apply_block(
-        m, selected_candidates[best], plans[best]
-      ) || changed
-      if bounded {
-        spent += plans[best][2]
+        if selected_factor > 1 && fits {
+          let axes = len(extents)
+          var selected = source
+          if extents[axis] % selected_factor != 0 {
+            let parts = tile.peel(m, source, axis, selected_factor)
+            assert(len(parts) == 2,
+                   "spatial.block could not peel a selected loop")
+            selected = parts[0]
+          }
+          let split = tile.split(m, selected, axis, selected_factor)
+          assert(ir.live(split),
+                 "spatial.block could not split a selected loop")
+          let next_order = order(m, split, 1)
+          assert(len(next_order) == axes + 1,
+                 "spatial.block could not order a selected tile")
+          let reordered = tile.reorder(m, split, next_order)
+          assert(ir.live(reordered),
+                 "spatial.block could not reorder a selected tile")
+          assert(ir.live(tile.scalarize(m, reordered, selected_factor)),
+                 "spatial.block could not promote a selected tile")
+          if bounded {
+            spent += unit * selected_factor
+          }
+          changed = true
+        }
       }
     }
   }
