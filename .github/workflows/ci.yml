@@ -82,7 +82,9 @@ jobs:
           -DJOGGLE_BUILD_SAT=ON
       - name: Build
         id: optional-build
-        run: cmake --build build --parallel 2 2>&1 | tee optional-build.log
+        run: |
+          set -o pipefail
+          cmake --build build --parallel 2 2>&1 | tee optional-build.log
       - name: Preserve optional build failure
         if: ${{ failure() && steps.optional-build.outcome == 'failure' }}
         run: |
