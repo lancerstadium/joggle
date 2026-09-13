@@ -54,7 +54,7 @@ bool valid_binding_name(std::string_view text) {
   return true;
 }
 
-bool valid_module(std::string_view text) {
+bool valid_qualified_name_impl(std::string_view text) {
   if (text.empty())
     return false;
   std::size_t begin = 0;
@@ -92,12 +92,12 @@ bool valid_callee(std::string_view text) {
     return valid_operator(text.substr(marker.size()));
   const std::size_t qualified = text.rfind(".operator ");
   if (qualified != std::string_view::npos)
-    return valid_module(text.substr(0, qualified)) &&
+    return detail::valid_qualified_name(text.substr(0, qualified)) &&
            valid_operator(text.substr(qualified + 10));
   const Ty applied{std::string(text)};
   if (!applied.valid())
     return false;
-  return valid_module(applied.name());
+  return detail::valid_qualified_name(applied.name());
 }
 
 std::optional<std::size_t>
@@ -356,6 +356,10 @@ bool same_signature(const detail::Store& store,
 
 bool detail::valid_binding(std::string_view text) {
   return valid_binding_name(text);
+}
+
+bool detail::valid_qualified_name(std::string_view text) {
+  return valid_qualified_name_impl(text);
 }
 
 bool detail::literal_matches(const Attr& value, const Ty& type) {
@@ -809,7 +813,7 @@ std::vector<std::string> Mod::uses() const { return impl_->store.uses; }
 
 bool Mod::use(const Env& env, std::string module) {
   auto& store = impl_->store;
-  if (!valid_module(module) || module == store.name) {
+  if (!detail::valid_qualified_name(module) || module == store.name) {
     detail::add_diag(store.diags,
                      "use requires a valid, different module name");
     return false;
@@ -1586,7 +1590,7 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
   };
   if (!source_fn.valid())
     return reject("function clone requires a live source function");
-  if (!valid_module(store.name))
+  if (!detail::valid_qualified_name(store.name))
     return reject("function clone requires a named destination module",
                   source_fn.loc());
   if (!detail::valid_binding(name))

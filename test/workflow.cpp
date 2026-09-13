@@ -84,6 +84,41 @@ int main(int argc, char** argv) {
   joggle::Env env;
   env.path(argv[2]);
   env.path(argv[3]);
+
+  joggle::Mod invalid_module_name;
+  CHECK(!joggle::parse(env, "module invalid.\n", invalid_module_name,
+                       "invalid-module-name.jog"));
+  CHECK(std::any_of(invalid_module_name.diags().begin(),
+                    invalid_module_name.diags().end(),
+                    [](const joggle::Diag& diag) {
+                      return diag.loc.line == 1 &&
+                             diag.message.find("invalid module name") !=
+                                 std::string::npos;
+                    }));
+
+  joggle::Mod invalid_use_name;
+  CHECK(!joggle::parse(env, "module valid\nuse invalid.\n", invalid_use_name,
+                       "invalid-use-name.jog"));
+  CHECK(std::any_of(invalid_use_name.diags().begin(),
+                    invalid_use_name.diags().end(),
+                    [](const joggle::Diag& diag) {
+                      return diag.loc.line == 2 &&
+                             diag.message.find("invalid module name") !=
+                                 std::string::npos;
+                    }));
+
+  joggle::Mod invalid_fn_name;
+  CHECK(!joggle::parse(env,
+                       "module valid\nfn invalid.(x: i32) -> i32;\n",
+                       invalid_fn_name, "invalid-fn-name.jog"));
+  CHECK(std::any_of(invalid_fn_name.diags().begin(),
+                    invalid_fn_name.diags().end(),
+                    [](const joggle::Diag& diag) {
+                      return diag.loc.line == 2 &&
+                             diag.message.find("invalid function name") !=
+                                 std::string::npos;
+                    }));
+
   CHECK(env.load("tensor"));
   CHECK(env.loaded("base"));
   CHECK(env.loaded("tensor"));

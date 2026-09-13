@@ -337,12 +337,19 @@ public:
       return fail("expected 'module'");
     if (peek().kind != Tk::name)
       return fail("expected module name");
-    store_.name = take().text;
+    const Token module = take();
+    if (!detail::valid_qualified_name(module.text))
+      return fail("invalid module name '" + module.text + "'", module.loc);
+    store_.name = module.text;
     semi();
     while (word("use")) {
       if (peek().kind != Tk::name)
         return fail("expected module name after 'use'");
-      store_.uses.push_back(take().text);
+      const Token dependency = take();
+      if (!detail::valid_qualified_name(dependency.text))
+        return fail("invalid module name '" + dependency.text + "'",
+                    dependency.loc);
+      store_.uses.push_back(dependency.text);
       semi();
     }
     while (!at_end()) {
@@ -612,9 +619,11 @@ private:
     const Token first = take();
     const Loc loc = first.loc;
     std::string name;
-    if (first.kind == Tk::name)
+    if (first.kind == Tk::name) {
+      if (!detail::valid_qualified_name(first.text))
+        return fail("invalid function name '" + first.text + "'", loc);
       name = first.text;
-    else if (first.kind == Tk::symbol) {
+    } else if (first.kind == Tk::symbol) {
       std::string spelling = first.text;
       if (spelling == "[") {
         if (!expect("]"))

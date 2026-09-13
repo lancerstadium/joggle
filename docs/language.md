@@ -31,6 +31,10 @@ and `return`. It has generics, structural types, attributes, and overloadable
 operators. It has no `graph`, `kernel`, `compute`, `map`, `fold`, `rewrite`,
 `region`, or `pass` syntax.
 
+Module names, dependency names, and dotted function names consist of nonempty
+identifier segments separated by single dots. Invalid qualified names are
+rejected at their declaration rather than entering the symbol table.
+
 Top-level functions are exported by default. A helper that belongs only to its
 declaring module uses the ordinary `local fn` form:
 
