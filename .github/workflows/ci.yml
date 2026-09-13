@@ -1,0 +1,50 @@
+name: ci
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  sanitize:
+    name: Linux sanitizers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS=-fsanitize=address,undefined
+          -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined
+          -DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=address,undefined
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build --output-on-failure

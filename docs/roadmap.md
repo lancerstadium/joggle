@@ -177,7 +177,7 @@ Before a public artifact release:
 - fuzz the parser, attribute decoder, module loader, and binary codecs;
 - test malformed modules, incompatible upgrades, rollback, stale handles, and
   deterministic output;
-- run sanitizers and supported-platform CI;
+- keep Linux/macOS builds and a Linux sanitizer configuration green in CI;
 - document API and module compatibility rules;
 - provide a reproducible release archive with licenses and checksums;
 - keep generated files, downloaded models, and measurements out of source
