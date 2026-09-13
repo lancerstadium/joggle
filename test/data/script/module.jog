@@ -627,7 +627,7 @@ fn reject_internal_clone(m: Mod) -> bool {
 fn split_first_loop(m: Mod, factor: int) -> bool {
   for op in ir.ops(m) {
     if ir.kind(op) == "loop" {
-      return tile.split(m, op, factor)
+      return ir.live(tile.split(m, op, factor))
     }
   }
   return false

@@ -93,7 +93,7 @@ blocker.
 | Frontends are separate from semantics | ONNX/TFLite codecs, explicit bridge modules, one pinned Zoo declaration list, and a generated staged table for 12 official models | Frozen controlled subset, task-level accuracy, and broader non-vision evidence |
 | Targets expose only required detail | `c.accepts`, `vm.accepts`, `opt.expose`, preparation tests | A genuinely different external target or simulator study |
 | Transform failure is safe | Transaction and rollback tests, ownership/liveness checks | Fault-injection matrix and diagnostic assessment |
-| Storage and scheduling are replaceable | `mem` and `tile` modules, typed policy callbacks with module-owned configuration | Multi-axis legality, meaningful workload policies, performance results |
+| Storage and scheduling are replaceable | `mem` and `tile` modules, typed policy callbacks, multi-axis legality, directly composable structural edits, and budgeted scalar promotion with strict-C execution tests | Frozen profitability policies, model-scale compile-time analysis, and multi-model performance results |
 | C artifacts are usable | Compiled examples, independent weight payload, structured ABI descriptors, generated multi-input/output harnesses, strict compilation, and numerical checks | Frozen execution suite, task metrics, latency distribution, workspace and binary comparisons |
 | VM execution is deterministic | Stable image format, output and step-count tests | Defined use case and overhead comparison |
 

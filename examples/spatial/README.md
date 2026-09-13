@@ -63,3 +63,27 @@ expanded `xi`/`wi` stride-update chains do not survive the rewrite. This is the
 optimization path for an inspectable Conv definition. The `edge` example is a
 separate ABI escape hatch for hardware or library kernels that genuinely are
 external implementations; it is not used to optimize this Conv body.
+
+The budgeted scalar form covers a small output tile rather than one output at
+a time. A user policy can split a state axis, use `tile.reorder` to place the
+inner state axis below the reduction band, and call
+`tile.scalarize(m, loop, factor)`. The pass carries at most `factor` scalar
+accumulators and proves every hoisted state address against the static tensor
+capacity. The regression suite executes both a two-lane Conv pipeline and a
+four-lane spatial pipeline; a padded three-lane split is rejected by affine
+legality instead of being turned into an out-of-bounds load or store. None of
+these paths defines a second `nn.conv2d` function.
+
+`spatial.block(m, factor)` is the complete generic policy used by that test. It
+selects loops with proved state and reduction axes, skips dynamic or
+non-divisible state extents, splits the last state axis, moves only the new
+inner axis below the reduction band, and scalarizes within the same hard
+budget. Each explicit edit returns its replacement `Op`, so the three edits
+compose directly without an anchor, result wrapper, or module rescan:
+
+```sh
+joggle run spatial.block canonical.jog --arg 2 \
+  -M examples -M build/modules > blocked.jog
+joggle run bounds.fold opt.fold opt.basic blocked.jog \
+  -M build/modules > blocked-clean.jog
+```

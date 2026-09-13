@@ -113,7 +113,7 @@ fn check_custom_affine(m: Mod) -> bool {
          len(tile.writes(m, access_loop, body_args[1])) == 1,
          "custom indexing did not retain access semantics")
   assert(tile.can_split(m, access_loop, 2) &&
-         tile.split(m, access_loop, 2),
+         ir.live(tile.split(m, access_loop, 2)),
          "custom-container loop could not be split")
   var exact_adds = 0
   var custom_adds = 0
@@ -160,6 +160,8 @@ fn check_reorder(m: Mod) -> bool {
   assert(len(loops) == 1, "reorder check requires one seven-axis loop")
   let loop = loops[0]
   let before = ir.revision(m)
+  assert(tile.extents(m, loop) == [1, 1, 2, 2, 1, 2, 2],
+         "reorder found the wrong static loop extents")
   assert(tile.state_axes(m, loop) == [0, 1, 2, 3] &&
          tile.reduction_axes(m, loop) == [4, 5, 6],
          "reorder classified the wrong axis roles")
@@ -173,8 +175,8 @@ fn check_reorder(m: Mod) -> bool {
   assert(tile.reorder_issue(m, loop, [0, 1, 4, 5, 6, 2, 2]) ==
            "contains a duplicate axis",
          "duplicate order reported the wrong issue")
-  assert(!tile.reorder(m, loop, [0, 1, 2, 3, 4, 5, 6]),
-         "identity reorder reported a change")
+  assert(tile.reorder(m, loop, [0, 1, 2, 3, 4, 5, 6]) == loop,
+         "identity reorder did not preserve the loop")
 
   let reduce = ir.find(m, "reduce5")
   assert(ir.live(reduce), "reorder check requires reduce5")
@@ -265,6 +267,132 @@ fn check_scalarized(m: Mod) -> bool {
          "generic reduction did not become a scalar reduction nest")
   assert(ir.revision(m) == before,
          "scalarized checks changed the module")
+  return true
+}
+
+fn check_spatial_scalarize(m: Mod, budget: int) -> bool {
+  let before = ir.revision(m)
+  let main = ir.find(m, "main")
+  assert(ir.live(main), "spatial scalarize check requires main")
+  var selected: list<Op> = []
+  for op in ir.ops(main) {
+    if ir.kind(op) == "loop" &&
+       len(ir.args(op)) - len(ir.outs(op)) == 7 {
+      selected += [op]
+    }
+  }
+  assert(len(selected) == 1,
+         "spatial scalarize check requires one seven-axis loop")
+  assert(tile.scalarize_issue(m, selected[0], 0) ==
+           "requires a positive scalar budget",
+         "zero scalar budget reported the wrong issue")
+  assert(tile.scalarize_issue(m, selected[0], budget - 1) ==
+           "exceeds the scalar budget",
+         "small scalar budget reported the wrong issue")
+  assert(tile.can_scalarize(m, selected[0], budget) &&
+         tile.scalarize_issue(m, selected[0], budget) == "",
+         "spatial scalar tile was not accepted")
+  assert(ir.revision(m) == before,
+         "spatial scalarize queries changed the module")
+  return true
+}
+
+local fn same_state_address(m: Mod, loop: Op) -> bool {
+  let body = ir.blks(loop)[0]
+  let args = ir.args(body)
+  let reads = tile.reads(m, loop, args[8])
+  let writes = tile.writes(m, loop, args[8])
+  return len(reads) == 1 && len(writes) == 1 &&
+         len(reads[0]) == 1 && len(writes[0]) == 1 &&
+         reads[0][0] == writes[0][0] &&
+         len(tile.affine(m, loop, reads[0][0])) == 9 &&
+         tile.affine(m, loop, reads[0][0]) ==
+           tile.affine(m, loop, writes[0][0])
+}
+
+fn check_scalarize_tail(m: Mod) -> bool {
+  let main = ir.find(m, "main")
+  assert(ir.live(main), "scalar tail check requires main")
+  var selected: list<Op> = []
+  for op in ir.ops(main) {
+    if ir.kind(op) == "loop" &&
+       len(ir.args(op)) - len(ir.outs(op)) == 7 {
+      selected += [op]
+    }
+  }
+  assert(len(selected) == 1,
+         "scalar tail check requires one seven-axis loop")
+  let source = selected[0]
+  let split = tile.split(m, source, 3, 3)
+  assert(ir.live(split) && !ir.live(source) &&
+         len(ir.args(split)) - len(ir.outs(split)) == 8,
+         "scalar tail check could not split the state axis")
+  assert(same_state_address(m, split),
+         "split tail changed the state address")
+  assert(tile.reorder_issue(
+           m, split, [0, 1, 2, 3, 5, 6, 7, 4]
+         ) == "cannot prove that state coordinates have distinct addresses",
+         "reorder accepted an aliasing padded state tile")
+  return true
+}
+
+fn scalarize_budget(m: Mod, budget: int) -> bool {
+  return tile.scalarize(m, budget)
+}
+
+fn check_spatial_scalarized(m: Mod, lanes: int) -> bool {
+  let before = ir.revision(m)
+  let main = ir.find(m, "main")
+  assert(ir.live(main), "tiled scalarized check requires main")
+  var outer: list<Op> = []
+  var inner: list<Op> = []
+  for op in ir.ops(main) {
+    if ir.kind(op) == "loop" {
+      let axes = len(ir.args(op)) - len(ir.outs(op))
+      if axes == 2 && len(ir.outs(op)) == 1 {
+        outer += [op]
+      }
+      if axes == 3 && len(ir.outs(op)) == lanes {
+        inner += [op]
+      }
+    }
+  }
+  assert(len(outer) == 1 && len(inner) == 1 &&
+         ir.blk(inner[0]) == ir.blks(outer[0])[0],
+         "spatial scalar tile has the wrong loop structure")
+  let outer_args = ir.args(ir.blks(outer[0])[0])
+  assert(len(outer_args) == 3,
+         "spatial scalar tile has the wrong outer state")
+  assert(len(tile.reads(m, outer[0], outer_args[2])) == lanes &&
+         len(tile.writes(m, outer[0], outer_args[2])) == lanes,
+         "spatial scalar tile has the wrong state traffic")
+  assert(ir.revision(m) == before,
+         "tiled scalarized checks changed the module")
+  return true
+}
+
+fn check_split_scalarized(m: Mod, outer_axes: int, lanes: int) -> bool {
+  let before = ir.revision(m)
+  let main = ir.find(m, "main")
+  assert(ir.live(main), "split scalarized check requires main")
+  var outer: list<Op> = []
+  var inner: list<Op> = []
+  for op in ir.ops(main) {
+    if ir.kind(op) == "loop" {
+      let axes = len(ir.args(op)) - len(ir.outs(op))
+      if axes == outer_axes && len(ir.outs(op)) == 1 {
+        outer += [op]
+      }
+      if axes == 3 && len(ir.outs(op)) == lanes {
+        inner += [op]
+      }
+    }
+  }
+  assert(len(outer) == 1 && len(inner) == 1 &&
+         ir.blk(inner[0]) == ir.blks(outer[0])[0],
+         "split scalar tile has the wrong loop structure")
+  assert(ir.revision(m) == before,
+         "split scalarized checks changed the module")
   return true
 }
 
@@ -386,7 +514,7 @@ fn check_spatial_axes(m: Mod) -> bool {
 fn first(m: Mod, factor: int) -> bool {
   for op in ir.ops(m) {
     if ir.kind(op) == "loop" {
-      return tile.split(m, op, factor)
+      return ir.live(tile.split(m, op, factor))
     }
   }
   return false
@@ -397,7 +525,7 @@ fn named(m: Mod, name: str, factor: int) -> bool {
   assert(ir.live(selected), "tile_pass.named could not find the function")
   for op in ir.ops(selected) {
     if ir.kind(op) == "loop" {
-      return tile.split(m, op, factor)
+      return ir.live(tile.split(m, op, factor))
     }
   }
   return false
@@ -408,7 +536,7 @@ fn named_axis(m: Mod, name: str, axis: int, factor: int) -> bool {
   assert(ir.live(selected), "tile_pass.named_axis could not find the function")
   for op in ir.ops(selected) {
     if ir.kind(op) == "loop" {
-      return tile.split(m, op, axis, factor)
+      return ir.live(tile.split(m, op, axis, factor))
     }
   }
   return false
@@ -462,8 +590,8 @@ fn check_split_noop(m: Mod) -> bool {
   for op in ir.ops(m) {
     if ir.kind(op) == "loop" {
       let before = ir.revision(m)
-      assert(!tile.split(m, op, 1),
-             "factor-one split reported a change")
+      assert(tile.split(m, op, 1) == op,
+             "factor-one split did not preserve the loop")
       assert(ir.revision(m) == before,
              "factor-one split changed the module")
       return true
@@ -476,7 +604,7 @@ fn check_split_noop(m: Mod) -> bool {
 fn unroll_first(m: Mod, factor: int) -> bool {
   for op in ir.ops(m) {
     if ir.kind(op) == "loop" {
-      return tile.unroll(m, op, factor)
+      return ir.live(tile.unroll(m, op, factor))
     }
   }
   return false
@@ -487,7 +615,7 @@ fn unroll_named(m: Mod, name: str, factor: int) -> bool {
   assert(ir.live(selected), "tile_pass.unroll_named could not find the function")
   for op in ir.ops(selected) {
     if ir.kind(op) == "loop" {
-      return tile.unroll(m, op, factor)
+      return ir.live(tile.unroll(m, op, factor))
     }
   }
   return false
@@ -568,7 +696,7 @@ fn fuse_first(m: Mod) -> bool {
   }
   assert(len(loops) >= 2,
          "tile_pass.fuse_first requires two loops")
-  return tile.fuse(m, loops[0], loops[1])
+  return ir.live(tile.fuse(m, loops[0], loops[1]))
 }
 
 fn can_first(m: Mod) -> bool {

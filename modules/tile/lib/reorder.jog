@@ -54,6 +54,33 @@ local fn trip(m: Mod, range: Val) -> int {
   return upper - lower
 }
 
+fn extents(m: Mod, source: Op) -> list<int> {
+  let before = ir.revision(m)
+  var out: list<int> = []
+  var valid = true
+  if ir.live(source) && ir.kind(source) == "loop" {
+    let inputs = ir.args(source)
+    let outputs = ir.outs(source)
+    let axes = len(inputs) - len(outputs)
+    if axes > 0 {
+      for axis in 0..axes {
+        let extent = trip(m, inputs[axis])
+        if extent < 0 {
+          valid = false
+        } else {
+          out += [extent]
+        }
+      }
+    }
+  }
+  assert(ir.revision(m) == before,
+         "tile.extents changed the module")
+  if !valid {
+    return []
+  }
+  return out
+}
+
 local fn subsequence(order: list<int>, selected: list<bool>) -> list<int> {
   var out: list<int> = []
   for axis in order {
@@ -275,7 +302,7 @@ fn reorderable(m: Mod, order: list<int>) -> list<Op> {
   return out
 }
 
-fn reorder(m: Mod, source: Op, order: list<int>) -> bool {
+fn reorder(m: Mod, source: Op, order: list<int>) -> Op {
   let issue = reorder_issue(m, source, order)
   assert(issue == "", "tile.reorder " + issue)
   let inputs = ir.args(source)
@@ -289,7 +316,7 @@ fn reorder(m: Mod, source: Op, order: list<int>) -> bool {
     identity += [axis]
   }
   if same_order(order, identity) {
-    return false
+    return source
   }
 
   var names: list<str> = []
@@ -342,7 +369,7 @@ fn reorder(m: Mod, source: Op, order: list<int>) -> bool {
          "tile.reorder could not replace the loop results")
   assert(ir.erase(m, source),
          "tile.reorder could not erase the original loop")
-  return true
+  return next_loop
 }
 
 local fn reorder_all(
@@ -366,7 +393,10 @@ local fn reorder_all(
         let issue = reorder_issue(m, op, order)
         assert(issue == "",
                "tile.reorder policy selected an illegal order: " + issue)
-        changed = reorder(m, op, order) || changed
+        let next = reorder(m, op, order)
+        assert(ir.live(next),
+               "tile.reorder could not apply a valid order")
+        changed = next != op || changed
       }
     }
   }

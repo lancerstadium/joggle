@@ -4,9 +4,19 @@ use tile
 
 local fn order(m: Mod, op: Op, inner: int) -> list<int> {
   let state = tile.state_axes(m, op)
-  let reduction = tile.reduction_axes(m, op)
-  if inner <= 0 || len(state) <= inner || len(reduction) == 0 {
+  let extents = tile.extents(m, op)
+  if inner <= 0 || len(state) <= inner ||
+     len(extents) <= len(state) {
     return []
+  }
+  var reduction: list<int> = []
+  var state_index = 0
+  for axis in 0..len(extents) {
+    if state_index < len(state) && state[state_index] == axis {
+      state_index += 1
+    } else {
+      reduction += [axis]
+    }
   }
   var out: list<int> = []
   for i in 0..len(state) - inner {
@@ -29,4 +39,36 @@ fn choose(m: Mod, op: Op) -> list<int> {
 
 fn apply(m: Mod) -> bool {
   return tile.reorder(m, ir.find("spatial.choose"))
+}
+
+fn block(m: Mod, factor: int) -> bool {
+  assert(factor > 1, "spatial.block requires a factor greater than one")
+  let candidates = ir.ops(m)
+  var changed = false
+  for source in candidates {
+    if ir.live(source) && ir.kind(source) == "loop" &&
+       len(ir.outs(source)) == 1 {
+      let state = tile.state_axes(m, source)
+      let extents = tile.extents(m, source)
+      if len(state) > 0 && len(extents) > len(state) {
+        let axis = state[len(state) - 1]
+        if extents[axis] > 0 && extents[axis] % factor == 0 {
+          let axes = len(extents)
+          let split = tile.split(m, source, axis, factor)
+          assert(ir.live(split),
+                 "spatial.block could not split a selected loop")
+          let selected = order(m, split, 1)
+          assert(len(selected) == axes + 1,
+                 "spatial.block could not order a selected tile")
+          let reordered = tile.reorder(m, split, selected)
+          assert(ir.live(reordered),
+                 "spatial.block could not reorder a selected tile")
+          assert(ir.live(tile.scalarize(m, reordered, factor)),
+                 "spatial.block could not promote a selected tile")
+          changed = true
+        }
+      }
+    }
+  }
+  return changed
 }

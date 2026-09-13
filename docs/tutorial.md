@@ -335,7 +335,7 @@ use tile
 fn apply(m: Mod) -> bool {
   for op in ir.ops(m) {
     if ir.kind(op) == "loop" {
-      return tile.split(m, op, 0, 4)
+      return ir.live(tile.split(m, op, 0, 4))
     }
   }
   return false
@@ -349,6 +349,27 @@ iteration order even when `axis` is not the last iterator; a later checked
 `tile.reorder` call is the explicit way to change that order. The shorter
 `tile.split(m, loop, factor)` form selects the last iterator. Neither form
 selects a loop or factor on the user's behalf.
+
+After splitting a state axis, a pass may legally move only its inner axis
+across a reduction band and promote the resulting tile:
+
+```jog
+let tiled = tile.split(m, loop, state_axis, 4)
+let reordered = tile.reorder(m, tiled, [0, 1, 2, 3, 5, 6, 7, 4])
+let promoted = tile.scalarize(m, reordered, 4)
+assert(ir.live(promoted), "tile promotion failed")
+```
+
+The final argument is a hard scalar budget, not a hidden schedule choice. The
+pass infers the state and reduction bands from affine accesses and refuses a
+tile whose full state-address range cannot be proved inside its static tensor.
+This is the same mechanism for convolution, matrix multiplication, or a custom
+tensor reduction; a policy still chooses the axis, factor, and order.
+An explicit single-loop edit returns its replacement `Op`, so edits compose
+without a result wrapper, temporary metadata, or a second module scan. A legal
+factor-one split or identity reorder returns the unchanged source handle.
+Whole-module and policy overloads instead return `bool` because their result is
+whether any candidate changed.
 
 `tile.reorder(m, loop, [0, 1, 4, 5, 6, 2, 3])` changes only the axis order of
 the selected loop. Its legality check proves that the carried tensor uses an

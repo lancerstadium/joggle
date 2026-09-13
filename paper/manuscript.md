@@ -137,6 +137,10 @@ as inference or conversion, but it does not create a second pass language.
 Read-only queries, mutating transforms, decoders, and artifact functions share
 the invocation model. The study will test whether this uniformity lowers real
 extension cost or merely shifts complexity into module code.
+For structural transforms, an edit of one operation returns its replacement
+`Op`, while a whole-module traversal returns only whether it changed the
+module. This lets a source policy compose checked edits directly without a
+second result abstraction, metadata marker, or module rescan.
 
 ### 3.4 Capability-driven exposure and failure
 

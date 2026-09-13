@@ -312,6 +312,11 @@ state address must be provably injective, and the permutation must preserve
 relative order within state axes and within reduction axes. This admits stable
 interleavings such as moving an unchanged reduction nest across independent
 output coordinates while rejecting a changed floating-point reduction order.
+The explicit form returns the replacement `Op`; an identity returns the
+unchanged source. Factor-one split and unroll operations do the same. Policy
+and whole-module forms return whether anything changed. The same convention
+applies to explicit `split`, `unroll`, `scalarize`, and `fuse` edits, so a user
+can compose structural edits without a wrapper or a rediscovery scan.
 `tile.can_reorder` and `tile.reorder_issue` expose the identical read-only
 legality decision used by the edit. `tile.reorderable(m, order)` enumerates
 every currently legal loop without mutation. The policy overloads
@@ -336,12 +341,25 @@ ranges, and no other observation of the carried tensor. `tile.scalarize_issue`,
 `tile.scalarizable` expose the same read-only decision, and
 `tile.scalarize(m)` applies every current candidate. None of these APIs names
 Conv, an NN module, a tensor rank, or a backend.
+The budgeted form `tile.scalarize(m, loop, budget)` also accepts a contiguous
+reduction band followed by a static state tile. It materializes at most
+`budget` scalar carried values, evaluates the original reduction body once per
+tile coordinate, and writes each result after the reduction. The legality
+proof checks the same affine access contract plus the complete address range
+against the static carried-tensor capacity. A padded split that can alias or
+escape that capacity is rejected; the pass never speculates that a surrounding
+condition makes an invalid state address harmless. `can_scalarize`,
+`scalarize_issue`, `scalarizable`, and the whole-module form accept the same
+budget.
 `tile.split(m, loop, axis, factor)` strip-mines any selected range axis into
 adjacent outer and inner axes. Keeping them adjacent preserves lexicographic
 iteration order; the generated branch handles a partial final tile. The
-three-argument form selects the last axis. `split_issue`, `can_split`, and
+returned `Op` is the replacement loop. The three-argument form selects the
+last axis. `split_issue`, `can_split`, and
 `splittable` accept the same optional explicit axis, so policy code can inspect
-exactly the edit it intends to request.
+exactly the edit it intends to request. `tile.extents(m, loop)` returns all
+static trip counts, or an empty list when any range is dynamic, so a policy can
+require exact tiles without reimplementing range recognition.
 `tile.splittable(m, factor)` and `tile.unrollable(m, factor)` expose legal loop
 sets; `tile.fusible(m)` exposes the exact pair collection consumed by automatic
 fusion. Enumeration is read-only and returns live `Op` handles, or

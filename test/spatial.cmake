@@ -19,6 +19,15 @@ set(scalarized "${ROOT}/scalarized.jog")
 set(scalarized_stable "${ROOT}/scalarized-stable.jog")
 set(scalarized_source "${ROOT}/scalarized.c")
 set(scalarized_program "${ROOT}/scalarized")
+set(tiled_scalar_raw "${ROOT}/tiled-scalar-raw.jog")
+set(tiled_scalar "${ROOT}/tiled-scalar.jog")
+set(tiled_scalar_stable "${ROOT}/tiled-scalar-stable.jog")
+set(tiled_scalar_source "${ROOT}/tiled-scalar.c")
+set(tiled_scalar_program "${ROOT}/tiled-scalar")
+set(split_scalar_raw "${ROOT}/split-scalar-raw.jog")
+set(split_scalar "${ROOT}/split-scalar.jog")
+set(split_scalar_source "${ROOT}/split-scalar.c")
+set(split_scalar_program "${ROOT}/split-scalar")
 set(source "${ROOT}/model.c")
 set(program "${ROOT}/model")
 
@@ -40,6 +49,17 @@ execute_process(
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "reorder contract failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_scalarize_tail "${canonical}"
+          -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_QUIET
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "scalar tail safety failed (${result}):\n${error}")
 endif()
 execute_process(
   COMMAND "${TOOL}" run bounds.fold opt.fold opt.basic "${canonical}"
@@ -180,6 +200,80 @@ if(NOT result EQUAL 0)
           "scalarized C returned the wrong result (${result}):\n${output}${error}")
 endif()
 execute_process(
+  COMMAND "${TOOL}" run spatial.block "${canonical}"
+          --arg 2 -M "${EXAMPLES}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${split_scalar_raw}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "split/reorder/scalarize composition failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run bounds.fold opt.fold opt.basic
+          "${split_scalar_raw}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${split_scalar}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "split scalar cleanup failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_split_scalarized "${split_scalar}"
+          --arg 4 --arg 2 -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_QUIET
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "split scalar structure check failed (${result}):\n${error}")
+endif()
+file(READ "${split_scalar}" split_scalar_text)
+if(NOT split_scalar_text MATCHES "var acc_0 =" OR
+   NOT split_scalar_text MATCHES "var acc_1 =" OR
+   split_scalar_text MATCHES "tile_inside_")
+  message(FATAL_ERROR
+          "split scalar pipeline retained the wrong lane structure:\n"
+          "${split_scalar_text}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${split_scalar}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${split_scalar_source}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "split scalar C emission failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CC}" -std=c99 -O2 -Wall -Wextra -Wstrict-prototypes -Werror
+          "${split_scalar_source}" "${HARNESS}" -lm
+          -o "${split_scalar_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "split scalar C did not compile (${result}):\n${output}${error}")
+endif()
+execute_process(
+  COMMAND "${split_scalar_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "split scalar C returned the wrong result (${result}):\n"
+          "${output}${error}")
+endif()
+execute_process(
   COMMAND "${TOOL}" run tile_pass.reject_mutating_reorder_policy
           "${canonical}" -M "${MODULES}"
   RESULT_VARIABLE result
@@ -274,6 +368,109 @@ execute_process(
 if(NOT result EQUAL 0)
   message(FATAL_ERROR
           "spatial axis dependence check failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_spatial_scalarize "${prepared}"
+          --arg 4 -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_QUIET
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "tiled scalar promotion contract failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.scalarize_budget "${prepared}"
+          --arg 4 -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${tiled_scalar_raw}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "tiled scalar promotion failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run opt.basic "${tiled_scalar_raw}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${tiled_scalar}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "tiled scalar cleanup failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_spatial_scalarized "${tiled_scalar}"
+          --arg 4 -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_QUIET
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "tiled scalar structure check failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.scalarize_budget "${tiled_scalar}"
+          --arg 4 -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${tiled_scalar_stable}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "repeated tiled scalar promotion failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E compare_files
+          "${tiled_scalar}" "${tiled_scalar_stable}"
+  RESULT_VARIABLE result
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "tiled scalar promotion is not idempotent")
+endif()
+file(READ "${tiled_scalar}" tiled_scalar_text)
+if(NOT tiled_scalar_text MATCHES "var acc_0 =" OR
+   NOT tiled_scalar_text MATCHES "var acc_3 =" OR
+   tiled_scalar_text MATCHES "spatial\.nn\.conv2d|edge\.nn\.conv2d")
+  message(FATAL_ERROR
+          "tiled scalar promotion did not expose four accumulators:\n"
+          "${tiled_scalar_text}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${tiled_scalar}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${tiled_scalar_source}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "tiled scalar C emission failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CC}" -std=c99 -O2 -Wall -Wextra -Wstrict-prototypes -Werror
+          "${tiled_scalar_source}" "${HARNESS}" -lm
+          -o "${tiled_scalar_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "tiled scalar C did not compile (${result}):\n${output}${error}")
+endif()
+execute_process(
+  COMMAND "${tiled_scalar_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "tiled scalar C returned the wrong result (${result}):\n"
+          "${output}${error}")
 endif()
 execute_process(
   COMMAND "${TOOL}" emit c.source "${prepared}"

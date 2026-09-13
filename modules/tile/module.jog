@@ -2,6 +2,7 @@ module tile
 use base
 use ir
 use opt
+use tensor
 
 local fn base_op(m: Mod, op: Op, name: str) -> bool {
   if !ir.live(op) || ir.kind(op) != "call" {
@@ -243,11 +244,11 @@ fn splittable(m: Mod, factor: int) -> list<Op> {
   return out
 }
 
-fn split(m: Mod, source: Op, axis: int, factor: int) -> bool {
+fn split(m: Mod, source: Op, axis: int, factor: int) -> Op {
   let issue = split_issue(m, source, axis, factor)
   assert(issue == "", "tile.split " + issue)
   if factor == 1 {
-    return false
+    return source
   }
 
   let bodies = ir.blks(source)
@@ -264,43 +265,81 @@ fn split(m: Mod, source: Op, axis: int, factor: int) -> bool {
   let type = ty("index")
   var lower = bounds[0]
   var upper = bounds[1]
-  if ir.type(lower) != type {
+  let fixed = ir.is_const(bounds[0]) && ir.is_const(bounds[1]) &&
+              base.kind(ir.constant(bounds[0])) == "int" &&
+              base.kind(ir.constant(bounds[1])) == "int"
+  if fixed {
     lower = keep(
-      m, ir.call(m, source, text(type), [lower], type), "tile_begin"
+      m, ir.constant(
+        m, source, base.int(ir.constant(bounds[0])), type
+      ),
+      "tile_begin"
     )
     upper = keep(
-      m, ir.call(m, source, text(type), [upper], type), "tile_end"
+      m, ir.constant(
+        m, source, base.int(ir.constant(bounds[1])), type
+      ),
+      "tile_end"
     )
+  } else {
+    if ir.type(lower) != type {
+      lower = keep(
+        m, ir.call(m, source, text(type), [lower], type), "tile_begin"
+      )
+      upper = keep(
+        m, ir.call(m, source, text(type), [upper], type), "tile_end"
+      )
+    }
   }
   let zero = keep(m, ir.constant(m, source, 0, type), "tile_zero")
-  let one = keep(m, ir.constant(m, source, 1, type), "tile_one")
-  let width = keep(
-    m, ir.call(
-      m, source, base_fn("operator -", 2), [upper, lower], type
-    ),
-    "tile_width"
-  )
   let factor_value = keep(
     m, ir.constant(m, source, factor, type), "tile_factor"
   )
-  let factor_less_one = keep(
-    m, ir.call(
-      m, source, base_fn("operator -", 2), [factor_value, one], type
-    ),
-    "tile_tail"
-  )
-  let padded = keep(
-    m, ir.call(
-      m, source, base_fn("operator +", 2), [width, factor_less_one], type
-    ),
-    "tile_padded"
-  )
-  let blocks = keep(
-    m, ir.call(
-      m, source, base_fn("operator /", 2), [padded, factor_value], type
-    ),
-    "tile_blocks"
-  )
+  var blocks = zero
+  if fixed {
+    let begin = base.int(ir.constant(bounds[0]))
+    let end = base.int(ir.constant(bounds[1]))
+    var width = 0
+    if end > begin {
+      width = end - begin
+    }
+    var block_count = width / factor
+    if width % factor != 0 {
+      block_count += 1
+    }
+    blocks = keep(
+      m, ir.constant(
+        m, source, block_count, type
+      ),
+      "tile_blocks"
+    )
+  } else {
+    let one = keep(m, ir.constant(m, source, 1, type), "tile_one")
+    let width = keep(
+      m, ir.call(
+        m, source, base_fn("operator -", 2), [upper, lower], type
+      ),
+      "tile_width"
+    )
+    let factor_less_one = keep(
+      m, ir.call(
+        m, source, base_fn("operator -", 2), [factor_value, one], type
+      ),
+      "tile_tail"
+    )
+    let padded = keep(
+      m, ir.call(
+        m, source, base_fn("operator +", 2), [width, factor_less_one], type
+      ),
+      "tile_padded"
+    )
+    blocks = keep(
+      m, ir.call(
+        m, source, base_fn("operator /", 2), [padded, factor_value], type
+      ),
+      "tile_blocks"
+    )
+  }
   let outer_range = call_like(
     m, source, range_op, [zero, blocks], ir.type(range)
   )
@@ -412,10 +451,10 @@ fn split(m: Mod, source: Op, axis: int, factor: int) -> bool {
   }
   assert(ir.erase(m, source),
          "tile.split could not erase the original loop")
-  return true
+  return split
 }
 
-fn split(m: Mod, source: Op, factor: int) -> bool {
+fn split(m: Mod, source: Op, factor: int) -> Op {
   return split(m, source, last_axis(source), factor)
 }
 
@@ -491,11 +530,11 @@ fn unrollable(m: Mod, factor: int) -> list<Op> {
   return out
 }
 
-fn unroll(m: Mod, source: Op, factor: int) -> bool {
+fn unroll(m: Mod, source: Op, factor: int) -> Op {
   let issue = unroll_issue(m, source, factor)
   assert(issue == "", "tile.unroll " + issue)
   if factor == 1 {
-    return false
+    return source
   }
 
   let bodies = ir.blks(source)
@@ -632,7 +671,7 @@ fn unroll(m: Mod, source: Op, factor: int) -> bool {
   assert(ir.erase(m, erased),
          "tile.unroll could not erase the original loop")
   opt.dce(m, [])
-  return true
+  return outer
 }
 
 local fn unroll_all(
@@ -657,7 +696,9 @@ local fn unroll_all(
         let issue = unroll_issue(m, op, factor)
         assert(issue == "",
                "tile.unroll policy selected an illegal factor: " + issue)
-        changed = unroll(m, op, factor) || changed
+        assert(ir.live(unroll(m, op, factor)),
+               "tile.unroll could not apply a valid candidate")
+        changed = true
       }
     }
   }
@@ -819,7 +860,7 @@ fn fusible(m: Mod) -> list<list<Op>> {
   return out
 }
 
-fn fuse(m: Mod, producer: Op, consumer: Op) -> bool {
+fn fuse(m: Mod, producer: Op, consumer: Op) -> Op {
   let issue = fuse_issue(m, producer, consumer)
   assert(issue == "", "tile.fuse " + issue)
 
@@ -965,7 +1006,7 @@ fn fuse(m: Mod, producer: Op, consumer: Op) -> bool {
   }
   assert(ir.erase(m, erased),
          "tile.fuse could not erase the original structure")
-  return true
+  return merged
 }
 
 local fn fuse_all(
@@ -998,7 +1039,7 @@ local fn fuse_all(
                    "tile.fuse policy must not mutate the module")
           }
           if profitable {
-            assert(fuse(m, pair[0], pair[1]),
+            assert(ir.live(fuse(m, pair[0], pair[1])),
                    "tile.fuse could not apply a valid candidate")
             changed = true
             again = true
