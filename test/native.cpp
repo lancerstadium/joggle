@@ -30,6 +30,15 @@ bool empty(joggle_call* call, void*) {
   return call->api->ret(call, 0, &value);
 }
 
+bool partial(joggle_call* call, void*) {
+  if (call->api->arg_count(call) != 0)
+    return call->api->fail(call, "expected no arguments");
+  joggle_value value{};
+  value.kind = JOGGLE_STR;
+  value.data.string = {"written", 7};
+  return call->api->ret(call, 0, &value);
+}
+
 }  // namespace
 
 JOGGLE_MODULE_EXPORT bool joggle_module(const joggle_api* api,
@@ -37,5 +46,6 @@ JOGGLE_MODULE_EXPORT bool joggle_module(const joggle_api* api,
   return joggle::compatible(api) &&
          api->bind(module, "sample.ping", ping, nullptr) &&
          api->bind(module, "sample.echo", echo, nullptr) &&
-         api->bind(module, "sample.empty", empty, nullptr);
+         api->bind(module, "sample.empty", empty, nullptr) &&
+         api->bind(module, "sample.partial", partial, nullptr);
 }

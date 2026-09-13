@@ -144,7 +144,9 @@ The command-line interface exposes four operations:
 Embedding code uses the same resolution and invocation path. A sequence of
 mutations is one transaction: failure restores all IR and metadata changes.
 Handles carry liveness and ownership checks, and successful mutations advance
-a module revision used by analyses and diagnostics.
+a module revision used by analyses and diagnostics. Native calls likewise
+publish result attributes only after every declared result has been written
+and type-checked; failure leaves the caller's prior result vector unchanged.
 
 This avoids pass subclasses and a global registry. A transform conventionally
 has a signature such as:

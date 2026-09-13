@@ -814,10 +814,10 @@ bool Env::call(std::string_view symbol, std::span<const Attr> args,
       return false;
     }
   }
-  returns.assign(result_types.size(), Attr{});
+  std::vector<Attr> produced(result_types.size());
   CallState state{args,
-                  &returns,
-                  std::vector<bool>(returns.size(), false),
+                  &produced,
+                  std::vector<bool>(produced.size(), false),
                   &impl_->diags,
                   std::string(symbol),
                   false};
@@ -831,14 +831,15 @@ bool Env::call(std::string_view symbol, std::span<const Attr> args,
                          std::string(symbol));
     return false;
   }
-  for (std::size_t index = 0; index < returns.size(); ++index) {
-    if (!scalar_matches(result_types[index], returns[index])) {
+  for (std::size_t index = 0; index < produced.size(); ++index) {
+    if (!scalar_matches(result_types[index], produced[index])) {
       detail::add_diag(impl_->diags,
                        "return type does not match native declaration: " +
                            std::string(symbol));
       return false;
     }
   }
+  returns = std::move(produced);
   return true;
 }
 

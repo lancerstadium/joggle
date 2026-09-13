@@ -2803,6 +2803,13 @@ int main(int argc, char** argv) {
   CHECK(returns.size() == 1 && returns[0].string() == "hello");
   CHECK(env.call("sample.empty", {}, returns));
   CHECK(returns.size() == 1 && returns[0].string() == "");
+  const std::vector<joggle::Attr> committed_returns = returns;
+  CHECK(!env.call("sample.partial", {}, returns));
+  CHECK(returns == committed_returns);
+  CHECK(!env.diags().empty() &&
+        env.diags().back().message.find("did not write every return") !=
+            std::string::npos);
+  env.clear_diags();
   joggle::Mod mod;
   CHECK(joggle::parse(env, source.str(), mod, argv[1]));
   CHECK(mod.verify(env));
