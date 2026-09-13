@@ -143,6 +143,11 @@ backend limitation. Block-local dead-code indexing and batched exposure allow
 the current DenseNet path to finish preparation, but its 271.92-second pilot
 and approximately 29.2x generated-C latency gap remain explicit scaling and
 code-quality targets rather than evidence of a mature backend.
+The C emitter now constructs external-payload offsets once and reuses pure
+snapshot-relative ABI, type, and naming queries. On one placed UltraFace pilot
+this preserves byte-identical source while reducing a report-enabled emission
+from 191.51 to 38.65 seconds. Controlled repetitions and larger-model scaling
+are still required before treating this as a compiler-throughput result.
 Non-empty fixed-shape tensor parameters and results now retain their exact
 minimum element count in C11 function definitions while public declarations
 keep the compatible C/C++ pointer ABI. A paired UltraFace diagnostic found

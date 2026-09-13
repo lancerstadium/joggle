@@ -306,6 +306,16 @@ revision-aware loop-local access caches, reduces recursive affine calls from
 seconds. Both variants perform 15,877 edits and emit byte-identical IR. This is
 also a one-run mechanism diagnostic; controlled repetitions remain required.
 
+Source emission exposed a third repeated-work boundary on the placed UltraFace
+IR. The original external-payload path rescanned the full operation sequence
+for each of 240 constants, while ABI, type, and naming queries were repeatedly
+interpreted despite an unchanged snapshot. Building one value-keyed payload
+layout and applying the existing revision-aware memo contract to pure queries
+reduces a report-enabled run from 191.51 to 38.65 seconds. The number of
+interpreted source-function bodies falls from 2,099,082 to 237,342 after memo
+hits, and both variants emit byte-identical 329,117-byte C. This is a
+single-host mechanism diagnostic, not a controlled compiler-throughput claim.
+
 Generated C is presently the main negative result. Depending on the model, the
 recorded unisolated pilots are about 7--101 times slower than one-thread ONNX
 Runtime. A retired out-of-tree spatial convolution body improved five matched

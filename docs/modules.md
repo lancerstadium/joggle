@@ -429,6 +429,13 @@ format terms as normal scalar arguments without declaring every model shape.
 `vm` emits a deterministic image and reports executed steps. Neither receives
 privileged access to the IR.
 
+External payload offsets are indexed once by stable `Val` identity before
+function definitions are rendered. Pure ABI, type, naming, and ownership
+queries opt into the language's snapshot-aware memo contract. These are
+emitter implementation details: they add no persistent analysis object or
+target field to the IR, and an IR revision still invalidates every
+capability-dependent result.
+
 `c.api` returns the exported C surface as ordinary structured data: symbol and
 declaration strings plus parameter and result descriptors containing source
 types, C scalar spellings and representation classes, shapes, element counts,

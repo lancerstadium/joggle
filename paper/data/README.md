@@ -625,3 +625,19 @@ outputs are byte-identical. This unisolated diagnostic establishes performance
 parity, not a speedup; the change preserves static tensor capacities for a
 downstream C compiler and the portable public declaration remains pointer
 based.
+
+`c-source-pilot.csv` records an application-scale source-emission diagnostic
+on the same placed UltraFace IR used by the private-`restrict` study. Both rows
+load their C and tensor modules from the named revision, invoke `c.source` with
+the external payload name `weights`, and use one report-enabled wrapper under
+the same release binary. The baseline recomputes the complete payload prefix
+for each of 240 constants and repeatedly interprets pure ABI, type, and naming
+queries. The candidate constructs one value-keyed payload-offset table and
+marks reusable queries with snapshot-aware `[memo]`. Wall time falls from
+191.51 to 38.65 seconds. Reported source-function calls fall from 2,099,082 to
+686,010, including 448,668 memo hits; subtracting hits leaves 237,342
+interpreted bodies. Both variants emit the same 329,117-byte source with
+SHA-256
+`7166b99e0ff9e909606898a175e070cf85dcfa23c03fc279f9f1309ca7cfe874`.
+This is one unisolated engineering run. It demonstrates a scaling mechanism
+and semantic identity, not a publication-grade compiler-throughput result.
