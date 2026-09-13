@@ -67,7 +67,10 @@ The first tensor-traffic rewrite is also present. `tile.scalarize` promotes one
 affine output element across a structurally proved reduction band, leaving one
 load and one store around a scalar carried reduction. It is validated on the
 same Conv body and on a differently ranked generic reduction, without operator
-names or rank cases. It currently requires state axes to form a prefix and
+names or rank cases. The same rewrite canonicalizes proven affine indexed
+operands and drops their private expanded address calculations, reducing the
+generated Conv body without a C-emitter peephole. It currently requires state
+axes to form a prefix and
 reduction axes a suffix; combining interchange, promotion, and tiling under a
 single profitability policy remains open.
 

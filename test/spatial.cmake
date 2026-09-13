@@ -92,6 +92,10 @@ if(NOT scalarized_text MATCHES "var acc =" OR
   message(FATAL_ERROR
           "scalar promotion did not remain a structural pass:\n${scalarized_text}")
 endif()
+if(scalarized_text MATCHES "var (xi|wi)(_[A-Za-z0-9]+)* =")
+  message(FATAL_ERROR
+          "scalar promotion retained expanded affine address state:\n${scalarized_text}")
+endif()
 execute_process(
   COMMAND "${TOOL}" emit c.source "${scalarized}" -M "${MODULES}"
   RESULT_VARIABLE result

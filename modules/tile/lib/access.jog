@@ -170,6 +170,36 @@ local fn access_ops(loop: Op, tensor: Val, writes: bool) -> list<Op> {
   return out
 }
 
+local fn indexed_ops(loop: Op) -> list<Op> {
+  assert(ir.live(loop) && ir.kind(loop) == "loop",
+         "tile indexed-op query requires a live loop")
+  var out: list<Op> = []
+  for op in nested(loop) {
+    if ir.kind(op) == "call" {
+      let inputs = ir.args(op)
+      if (ir.callee(op) == "operator []" && len(inputs) >= 2) ||
+         (ir.callee(op) == "operator []=" && len(inputs) >= 3) {
+        out += [op]
+      }
+    }
+  }
+  return out
+}
+
+local fn index_arg(op: Op, value: Val) -> bool {
+  let inputs = ir.args(op)
+  var end = len(inputs)
+  if ir.callee(op) == "operator []=" {
+    end -= 1
+  }
+  for i in 1..end {
+    if inputs[i] == value {
+      return true
+    }
+  }
+  return false
+}
+
 local fn accesses(loop: Op, tensor: Val, writes: bool)
     -> list<list<Val>> {
   var out: list<list<Val>> = []

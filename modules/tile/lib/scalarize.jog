@@ -51,7 +51,7 @@ local fn address_only(
   }
   let next_seen = seen + [value]
   for user in ir.users(value) {
-    if !has_op(accesses, user) {
+    if !has_op(accesses, user) || !index_arg(user, value) {
       if ir.kind(user) != "call" || len(ir.outs(user)) == 0 ||
          len(base.keys(ir.meta(user))) != 0 {
         return false
@@ -287,6 +287,7 @@ local fn rebuild_scalar_block(
   next: list<Val>,
   states: list<Val>,
   scalars: list<Val>,
+  axis_values: list<Val>,
   load: Op,
   store: Op,
   accesses: list<Op>
@@ -341,6 +342,7 @@ local fn rebuild_scalar_block(
               m, loop, source_arms[arm], target_arms[arm],
               old_values, next_values,
               state_values + source_args, scalar_values + target_args,
+              axis_values,
               load, store, accesses
             )
             let arm_ops = ir.ops(target_arms[arm])
@@ -352,8 +354,26 @@ local fn rebuild_scalar_block(
           scalar_values += ir.outs(branch)
         } else {
           if !drop_address(loop, op, accesses) {
+            var clone_old = old_values
+            var clone_next = next_values
+            if has_op(accesses, op) {
+              var end = len(inputs)
+              if ir.callee(op) == "operator []=" {
+                end -= 1
+              }
+              for input in 1..end {
+                let form = affine(loop, inputs[input])
+                if len(form) != 0 {
+                  clone_old += [inputs[input]]
+                  clone_next += [index_value(
+                    m, terminator, ir.type(inputs[input]),
+                    form, axis_values
+                  )]
+                }
+              }
+            }
             let copy = ir.clone(
-              m, op, terminator, old_values, next_values
+              m, op, terminator, clone_old, clone_next
             )
             assert(ir.live(copy),
                    "tile.scalarize could not clone a reduction operation")
@@ -448,10 +468,11 @@ fn scalarize(m: Mod, source: Op) -> bool {
     old += [body_args[reduction[i]]]
     next += [inner_args[i]]
   }
+  let axis_values = next
   let final = rebuild_scalar_block(
     m, source, body, inner_body, old, next,
     [body_args[axes]], [inner_args[len(reduction)]],
-    load, store, loads + stores
+    axis_values, load, store, indexed_ops(source)
   )
   assert(ir.args(m, inner_yield, [final]),
          "tile.scalarize could not connect the reduction loop")

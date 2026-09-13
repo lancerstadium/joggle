@@ -306,9 +306,12 @@ semantic implementation or hard-coding the number of loop axes.
 state axes precede all reduction axes. It replaces one tensor-carried nest with
 an outer state-coordinate loop, one scalar accumulator load, an inner
 reduction loop, and one final tensor store. The pass preserves reduction order
-and conditional updates. Its legality is structural: one carried state, one
-equal affine indexed load/store, static ranges, and no other observation of
-the carried tensor. `tile.scalarize_issue`, `tile.can_scalarize`, and
+and conditional updates. It also rebuilds every provably affine indexed
+operand directly from the loop axes and omits the old address-only subgraph;
+non-affine or otherwise observed address values remain unchanged. Its legality
+is structural: one carried state, one equal affine indexed load/store, static
+ranges, and no other observation of the carried tensor. `tile.scalarize_issue`,
+`tile.can_scalarize`, and
 `tile.scalarizable` expose the same read-only decision, and
 `tile.scalarize(m)` applies every current candidate. None of these APIs names
 Conv, an NN module, a tensor rank, or a backend.

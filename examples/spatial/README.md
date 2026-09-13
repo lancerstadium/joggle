@@ -54,7 +54,9 @@ For an output-stationary reduction this moves the output access outside the
 reduction band. The resulting source has an outer `n, m, oh, ow` loop, one
 `acc` load, an inner `q, r, s` loop, and one final store. The bundled test also
 applies it to an unrelated five-axis reduction, checks idempotence, emits strict
-C99, and executes both paths against the same numerical harness. This is the
+C99, and executes both paths against the same numerical harness. Proven affine
+input, weight, and output indices are rebuilt directly from loop axes, so the
+expanded `xi`/`wi` stride-update chains do not survive the rewrite. This is the
 optimization path for an inspectable Conv definition. The `edge` example is a
 separate ABI escape hatch for hardware or library kernels that genuinely are
 external implementations; it is not used to optimize this Conv body.
