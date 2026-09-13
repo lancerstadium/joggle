@@ -635,6 +635,9 @@ private:
         std::string generic = take_name("generic parameter");
         if (generic.empty())
           return false;
+        if (intrinsic_type(generic))
+          return fail("generic parameter '" + generic +
+                      "' conflicts with an intrinsic type");
         if (std::any_of(
                 generics.begin(), generics.end(),
                 [&](const Decl& item) { return item.name == generic; }))

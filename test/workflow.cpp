@@ -2570,6 +2570,19 @@ int main(int argc, char** argv) {
                        duplicate_generic, "duplicate-generic.jog"));
   CHECK(!duplicate_generic.diags().empty());
 
+  joggle::Mod intrinsic_generic;
+  CHECK(!joggle::parse(env,
+                       "module intrinsic.generic\n"
+                       "fn bad<i32: Ty>(x: i32) -> i32 { return x }\n",
+                       intrinsic_generic, "intrinsic-generic.jog"));
+  CHECK(std::any_of(intrinsic_generic.diags().begin(),
+                    intrinsic_generic.diags().end(),
+                    [](const joggle::Diag& diag) {
+                      return diag.message.find(
+                                 "conflicts with an intrinsic type") !=
+                             std::string::npos;
+                    }));
+
   joggle::Mod stringly_builder;
   CHECK(joggle::parse(env,
                       "module stringly.builder\n"

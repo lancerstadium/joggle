@@ -171,7 +171,9 @@ open constraint. The same structural checker validates explicit generic
 arguments, inferred bindings, and type-constructor arguments; no separate kind
 or trait registry exists. A term can occupy a type position only when its
 constraint is `Ty` (or open): value parameters such as `N: int`, shape lists,
-and scalar literals are rejected there. Intrinsic types have fixed arity;
+and scalar literals are rejected there. A generic parameter cannot reuse an
+intrinsic type name, because it participates in both value terms and type
+patterns. Intrinsic types have fixed arity;
 `list<T>` is the only parameterized intrinsic. `Fn::generics()` exposes the
 parameter values, so embedding code reads both `name()` and `type()` through
 the normal `Val` API.
