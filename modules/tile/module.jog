@@ -244,6 +244,36 @@ fn splittable(m: Mod, factor: int) -> list<Op> {
   return out
 }
 
+local fn clone_body(
+  m: Mod, source: Blk, target: Blk,
+  old: list<Val>, next: list<Val>
+) -> list<Val> {
+  let source_ops = ir.ops(source)
+  let target_ops = ir.ops(target)
+  assert(len(source_ops) > 0 && len(target_ops) > 0 &&
+         ir.kind(source_ops[len(source_ops) - 1]) == "yield" &&
+         ir.kind(target_ops[len(target_ops) - 1]) == "yield",
+         "tile requires terminated source and target blocks")
+  let before = target_ops[len(target_ops) - 1]
+  var old_values = old
+  var next_values = next
+  for i in 0..len(source_ops) - 1 {
+    let copy = ir.clone(
+      m, source_ops[i], before, old_values, next_values
+    )
+    assert(ir.live(copy), "tile could not clone a loop body")
+    let source_outputs = ir.outs(source_ops[i])
+    let target_outputs = ir.outs(copy)
+    assert(len(source_outputs) == len(target_outputs),
+           "tile cloned an inconsistent operation")
+    old_values += source_outputs
+    next_values += target_outputs
+  }
+  return mapped(
+    ir.args(source_ops[len(source_ops) - 1]), old_values, next_values
+  )
+}
+
 fn split(m: Mod, source: Op, axis: int, factor: int) -> Op {
   let issue = split_issue(m, source, axis, factor)
   assert(issue == "", "tile.split " + issue)
@@ -265,6 +295,7 @@ fn split(m: Mod, source: Op, axis: int, factor: int) -> Op {
   let type = ty("index")
   var lower = bounds[0]
   var upper = bounds[1]
+  var exact = false
   let fixed = ir.is_const(bounds[0]) && ir.is_const(bounds[1]) &&
               base.kind(ir.constant(bounds[0])) == "int" &&
               base.kind(ir.constant(bounds[1])) == "int"
@@ -303,6 +334,7 @@ fn split(m: Mod, source: Op, axis: int, factor: int) -> Op {
     if end > begin {
       width = end - begin
     }
+    exact = width % factor == 0
     var block_count = width / factor
     if width % factor != 0 {
       block_count += 1
@@ -391,23 +423,6 @@ fn split(m: Mod, source: Op, axis: int, factor: int) -> Op {
     ),
     "tile_index"
   )
-  let inside = keep(
-    m, ir.call(
-      m, split_yield, base_fn("operator <", 2),
-      [index, upper], ty("bool")
-    ),
-    "tile_inside"
-  )
-  var guarded_carried: list<Val> = []
-  for i in axes + 1..len(split_args) {
-    guarded_carried += [split_args[i]]
-  }
-  let guard = ir.branch(m, split_yield, inside, guarded_carried)
-  assert(ir.live(guard), "tile.split could not build the tail guard")
-  let then_body = ir.blks(guard)[0]
-  let then_args = ir.args(then_body)
-  let then_ops = ir.ops(then_body)
-  let then_yield = then_ops[len(then_ops) - 1]
 
   var old: list<Val> = []
   var next: list<Val> = []
@@ -423,28 +438,42 @@ fn split(m: Mod, source: Op, axis: int, factor: int) -> Op {
       next += [split_args[split_axis]]
     }
   }
-  for i in 0..len(outputs) {
-    old += [body_args[axes + i]]
-    next += [then_args[i]]
+  if exact {
+    for i in 0..len(outputs) {
+      old += [body_args[axes + i]]
+      next += [split_args[axes + 1 + i]]
+    }
+    assert(ir.args(m, split_yield,
+                   clone_body(m, body, split_body, old, next)),
+           "tile.split could not connect an exact split loop")
+  } else {
+    let inside = keep(
+      m, ir.call(
+        m, split_yield, base_fn("operator <", 2),
+        [index, upper], ty("bool")
+      ),
+      "tile_inside"
+    )
+    var guarded_carried: list<Val> = []
+    for i in axes + 1..len(split_args) {
+      guarded_carried += [split_args[i]]
+    }
+    let guard = ir.branch(m, split_yield, inside, guarded_carried)
+    assert(ir.live(guard), "tile.split could not build the tail guard")
+    let then_body = ir.blks(guard)[0]
+    let then_args = ir.args(then_body)
+    let then_ops = ir.ops(then_body)
+    let then_yield = then_ops[len(then_ops) - 1]
+    for i in 0..len(outputs) {
+      old += [body_args[axes + i]]
+      next += [then_args[i]]
+    }
+    assert(ir.args(m, then_yield,
+                   clone_body(m, body, then_body, old, next)),
+           "tile.split could not connect the guarded body")
+    assert(ir.args(m, split_yield, ir.outs(guard)),
+           "tile.split could not connect the split loop")
   }
-
-  let original_ops = ir.ops(body)
-  for i in 0..len(original_ops) - 1 {
-    let copy = ir.clone(m, original_ops[i], then_yield, old, next)
-    assert(ir.live(copy), "tile.split could not clone the loop body")
-    let old_outputs = ir.outs(original_ops[i])
-    let new_outputs = ir.outs(copy)
-    assert(len(old_outputs) == len(new_outputs),
-           "tile.split cloned an inconsistent operation")
-    old += old_outputs
-    next += new_outputs
-  }
-
-  let original_yield = original_ops[len(original_ops) - 1]
-  assert(ir.args(m, then_yield, mapped(ir.args(original_yield), old, next)),
-         "tile.split could not connect the guarded body")
-  assert(ir.args(m, split_yield, ir.outs(guard)),
-         "tile.split could not connect the split loop")
   if len(outputs) != 0 {
     assert(ir.replace(m, outputs, ir.outs(split)),
            "tile.split could not replace the original loop results")

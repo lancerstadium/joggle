@@ -112,9 +112,14 @@ fn check_custom_affine(m: Mod) -> bool {
   assert(len(tile.reads(m, access_loop, params[0])) == 1 &&
          len(tile.writes(m, access_loop, body_args[1])) == 1,
          "custom indexing did not retain access semantics")
-  assert(tile.can_split(m, access_loop, 2) &&
-         ir.live(tile.split(m, access_loop, 2)),
+  assert(tile.can_split(m, access_loop, 2),
          "custom-container loop could not be split")
+  let split = tile.split(m, access_loop, 2)
+  assert(ir.live(split), "custom-container loop could not be split")
+  for op in ir.ops(ir.blks(split)[0]) {
+    assert(ir.kind(op) != "branch",
+           "exact split retained an unnecessary tail guard")
+  }
   var exact_adds = 0
   var custom_adds = 0
   for op in ir.ops(access) {
@@ -327,6 +332,13 @@ fn check_scalarize_tail(m: Mod) -> bool {
   assert(ir.live(split) && !ir.live(source) &&
          len(ir.args(split)) - len(ir.outs(split)) == 8,
          "scalar tail check could not split the state axis")
+  var guarded = false
+  for op in ir.ops(ir.blks(split)[0]) {
+    if ir.kind(op) == "branch" {
+      guarded = true
+    }
+  }
+  assert(guarded, "padded split lost its tail guard")
   assert(same_state_address(m, split),
          "split tail changed the state address")
   assert(tile.reorder_issue(

@@ -353,7 +353,8 @@ condition makes an invalid state address harmless. `can_scalarize`,
 budget.
 `tile.split(m, loop, axis, factor)` strip-mines any selected range axis into
 adjacent outer and inner axes. Keeping them adjacent preserves lexicographic
-iteration order; the generated branch handles a partial final tile. The
+iteration order. Statically divisible ranges need no tail branch; dynamic and
+padded ranges retain the checked final-tile guard. The
 returned `Op` is the replacement loop. The three-argument form selects the
 last axis. `split_issue`, `can_split`, and
 `splittable` accept the same optional explicit axis, so policy code can inspect
