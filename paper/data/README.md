@@ -184,6 +184,46 @@ input
 and reference
 `8411a51bfb945b17a4cd7ebb75a512849a902878c02e8212741ab11d6149bac8`.
 
+`squeezenet-block-pilot.csv` is the first non-exact companion diagnostic at
+revision `e096fcc`. The model is the official ONNX Model Zoo SqueezeNet 1.1
+fixture already named in `model-coverage-pilot.csv`. Both variants start from
+the same freshly instantiated and `c.prepare`-canonicalized model. The
+candidate invokes the unchanged source policy `spatial.block(m, [4, 7])`.
+Unlike MobileNetV2, its innermost state widths are odd (111, 55, 27, and 13),
+so the policy exercises the generic `tile.peel` mechanism: 18 loop bodies
+become aligned prefixes plus scalar tails, and the prefixes contain 72 local
+accumulators. No operator name, tensor rank, or C-emitter branch selects them.
+
+The variants then receive the same fold/basic cleanup, static memory planning,
+external-weight placement, and Apple Clang 17 strict C11 `-O3 -DNDEBUG`
+compilation. Both objects are linked into one process under distinct entry
+names. After three warm-ups per entry, each row runs both implementations and
+alternates which runs first. The 20 baseline/candidate medians are
+253.762/71.524 ms; the median within-pair ratio is 3.544, and all 20 pairs favor
+the candidate. Every pair is bit-identical, while independent executions of
+both variants retain maximum absolute error `5.2452087e-6` against the stored
+ONNX Runtime result. Baseline/candidate C is 76,108/166,609 bytes (+118.9%).
+
+This remains an unisolated single-machine pilot, not a paper performance result
+or a comparison with ONNX Runtime. It shows that the same structural policy
+extends to non-divisible state domains without a masked access or
+operator-specific fallback. Publication claims still require repeated isolated
+runs, dispersion, a second machine, and additional models. Recorded SHA-256
+values are: canonical IR
+`d1e77c052437dc41f19f730a0a672d61e63be20abbdd8bffc8ae1c798ace768d`,
+blocked IR
+`5ee307d2d799ca4a3339dc1db7fde7642a15d8fee0e19051d68caba5378d0ace`,
+baseline C
+`fb951f3941a5ad67d9884171cc6ca7590303794bb9c3714610b22c95303af6dd`,
+candidate C
+`2681c3f1b837af26dd1f5d976268b36437fd219d2210a181cc2f1d21ba8ef539`,
+weights
+`86a003fd5f28959bb1b8dab3430ef77759da8f6270f3328d5d8fee88de495a6f`,
+input
+`f58703a9ac8ecda4f75937f08872426f72aad262382ce5540cb4809f09a17608`,
+and reference
+`2d1bf2cdedf27bd8c35007baf886388d57f9a74e12056d87463015c4afd02140`.
+
 `compile-memo-pilot.csv` records one matched, unisolated compiler diagnostic
 on the same 27 MB MobileNetV2 canonical IR at revision `0ba0e2c`. Both rows run
 `spatial.block(m, 2)` with deterministic execution reporting. The control uses

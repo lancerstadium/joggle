@@ -281,7 +281,13 @@ and seven from affine state extents and composes `split`, `reorder`, and
 paired calls favor the candidate, with a 1.559 median pair ratio and
 bit-identical candidate/baseline outputs. Candidate C is 75.7% larger, and the
 machine slows materially during the unisolated run, so this is a mechanism and
-protocol pilot rather than a performance claim. A second ordinary
+protocol pilot rather than a performance claim. The same source policy now
+uses a generic state-axis peel for SqueezeNet's non-divisible widths; 20 paired
+calls have 253.762/71.524 ms medians and a 3.544 median pair ratio, with
+bit-identical variant outputs and unchanged `5.2452e-6` reference error.
+Candidate C is 118.9% larger. This second run broadens the mechanism evidence,
+but its unisolated single-machine protocol still precludes a performance
+claim. A second ordinary
 implementation reduces GoogLeNet's static workspace elements by 58.4% and
 slots from 55 to 6, while
 increasing its unisolated median latency by 27.5%. This is a resource tradeoff,
