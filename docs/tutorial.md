@@ -38,6 +38,10 @@ instead of creating a wrapper module:
 
 The sequence commits once. If any function fails, none of its edits are
 printed and the report is not written.
+Each step in the report includes deterministic `calls` counts for its source
+functions. Use these counts to find repeated policy or analysis work; use the
+embedding API's elapsed-time overload separately when wall-clock measurements
+are needed.
 
 Run a read-only analysis without rewriting or reprinting the module:
 

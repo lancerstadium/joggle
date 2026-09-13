@@ -777,6 +777,12 @@ return type patterns, and its exact revision delta. `clone` records the source
 template, copied symbol, concrete generic bindings, signature, and revision
 interval of a function-level materialization. These are structural dictionary
 fields, not a second event class or callback interface.
+Each top-level step also contains a `calls` dictionary. Its keys are qualified
+source-function names and its values are invocation counts for that step,
+including read-only helpers that do not appear in the mutation trace. Counts
+are deterministic structural evidence, not timings or native-intrinsic counts;
+they make repeated compile-time analysis visible without changing report
+reproducibility.
 The named entry is selected by the same overload resolver as an ordinary DSL
 call, using `Mod` as its argument type. A module may therefore expose both
 `convert(m)` for the default workflow and `convert(m, rules)` for explicit

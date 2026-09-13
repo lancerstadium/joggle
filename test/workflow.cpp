@@ -2758,8 +2758,16 @@ int main(int argc, char** argv) {
   const joggle::Attr::Dict* sequence_summary = sequence_report.dict();
   CHECK(sequence_summary &&
         sequence_summary->at("changed").boolean() == true);
-  CHECK(sequence_summary->at("steps").list() &&
-        sequence_summary->at("steps").list()->size() == 2);
+  const joggle::Attr::List* sequence_steps =
+      sequence_summary->at("steps").list();
+  CHECK(sequence_steps && sequence_steps->size() == 2);
+  const joggle::Attr::Dict* fold_step = sequence_steps->at(0).dict();
+  const joggle::Attr::Dict* mark_step = sequence_steps->at(1).dict();
+  CHECK(fold_step && mark_step);
+  const joggle::Attr::Dict* fold_calls = fold_step->at("calls").dict();
+  const joggle::Attr::Dict* mark_calls = mark_step->at("calls").dict();
+  CHECK(fold_calls && fold_calls->at("opt.fold_add_zero").integer() >= 1);
+  CHECK(mark_calls && mark_calls->at("script.mark_add").integer() >= 1);
   joggle::Mod failed_sequence;
   CHECK(joggle::parse(env, source.str(), failed_sequence, argv[1]));
   const std::string before_sequence = joggle::print(failed_sequence);

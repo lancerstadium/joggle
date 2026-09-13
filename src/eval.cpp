@@ -537,6 +537,13 @@ private:
       frame.values.emplace_back(value, std::move(item));
   }
 
+  Attr calls() const {
+    Attr::Dict out;
+    for (const auto& [fn, count] : calls_)
+      out.emplace(fn, Attr(static_cast<std::int64_t>(count)));
+    return Attr(std::move(out));
+  }
+
   void record(Fn fn, Mod& mod, std::uint64_t before,
               const Items& results) {
     if (!trace_)
@@ -704,6 +711,8 @@ private:
       fail("compile-time function is invalid");
       return std::nullopt;
     }
+    if (trace_)
+      ++calls_[std::string(fn.module()) + "." + std::string(fn.name())];
     const std::vector<Val> params = fn.params();
     const std::vector<Val> generics = fn.generics();
     if (generics.size() != generic_args.size()) {
@@ -2759,6 +2768,7 @@ private:
   std::unordered_map<Site, std::vector<Val>, SiteHash> op_args_;
   std::unordered_map<Site, std::vector<Val>, SiteHash> op_outs_;
   std::unordered_map<Site, std::vector<Blk>, SiteHash> op_blks_;
+  std::map<std::string, std::uint64_t, std::less<>> calls_;
   bool failed_ = false;
 };
 
@@ -2971,6 +2981,7 @@ bool detail::Eval::sequence(
     summary["edits"] =
         Attr(static_cast<std::int64_t>(after_revision - step_revision));
     summary["changed"] = Attr(after_revision != step_revision);
+    summary["calls"] = eval.calls();
     summary["steps"] = Attr(std::move(trace));
     *step = Attr(std::move(summary));
     return true;
