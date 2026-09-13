@@ -219,6 +219,19 @@ fn can_reorder(m: Mod, source: Op, order: list<int>) -> bool {
   return legal
 }
 
+fn reorderable(m: Mod, order: list<int>) -> list<Op> {
+  let before = ir.revision(m)
+  var out: list<Op> = []
+  for op in ir.ops(m) {
+    if can_reorder(m, op, order) {
+      out += [op]
+    }
+  }
+  assert(ir.revision(m) == before,
+         "tile.reorderable changed the module")
+  return out
+}
+
 fn reorder(m: Mod, source: Op, order: list<int>) -> bool {
   let issue = reorder_issue(source, order)
   assert(issue == "", "tile.reorder " + issue)
@@ -287,4 +300,40 @@ fn reorder(m: Mod, source: Op, order: list<int>) -> bool {
   assert(ir.erase(m, source),
          "tile.reorder could not erase the original loop")
   return true
+}
+
+local fn reorder_all(
+  m: Mod, policy: Fn, arg: Attr, configured: bool
+) -> bool {
+  assert(ir.live(policy), "tile.reorder requires a valid policy")
+  let candidates = ir.ops(m)
+  var changed = false
+  for op in candidates {
+    if ir.live(op) && ir.kind(op) == "loop" {
+      let before = ir.revision(m)
+      var order: list<int> = []
+      if configured {
+        order = ir.invoke<list<int>>(m, op, policy, arg)
+      } else {
+        order = ir.invoke<list<int>>(m, op, policy)
+      }
+      assert(ir.revision(m) == before,
+             "tile.reorder policy changed the module")
+      if len(order) != 0 {
+        let issue = reorder_issue(op, order)
+        assert(issue == "",
+               "tile.reorder policy selected an illegal order: " + issue)
+        changed = reorder(m, op, order) || changed
+      }
+    }
+  }
+  return changed
+}
+
+fn reorder(m: Mod, policy: Fn) -> bool {
+  return reorder_all(m, policy, nil, false)
+}
+
+fn reorder(m: Mod, policy: Fn, arg: Attr) -> bool {
+  return reorder_all(m, policy, arg, true)
 }

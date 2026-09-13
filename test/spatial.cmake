@@ -9,6 +9,8 @@ file(REMOVE_RECURSE "${ROOT}")
 file(MAKE_DIRECTORY "${ROOT}")
 set(canonical "${ROOT}/canonical.jog")
 set(prepared "${ROOT}/prepared.jog")
+set(configured "${ROOT}/configured.jog")
+set(disabled "${ROOT}/disabled.jog")
 set(source "${ROOT}/model.c")
 set(program "${ROOT}/model")
 
@@ -32,6 +34,46 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "reorder contract failed (${result}):\n${error}")
 endif()
 execute_process(
+  COMMAND "${TOOL}" run tile_pass.reject_mutating_reorder_policy
+          "${canonical}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_QUIET
+  ERROR_VARIABLE error
+)
+if(result EQUAL 0 OR NOT error MATCHES "policy changed the module")
+  message(FATAL_ERROR
+          "mutating reorder policy was not rejected (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.reorder_configured "${canonical}"
+          --arg true -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${configured}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "configured reorder failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.reorder_configured "${canonical}"
+          --arg false -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${disabled}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "disabled reorder failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E compare_files "${canonical}" "${disabled}"
+  RESULT_VARIABLE result
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "disabled reorder changed the module")
+endif()
+execute_process(
   COMMAND "${TOOL}" run spatial.apply "${canonical}"
           -M "${EXAMPLES}" -M "${MODULES}"
   RESULT_VARIABLE result
@@ -40,6 +82,14 @@ execute_process(
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "spatial scheduling failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E compare_files "${configured}" "${prepared}"
+  RESULT_VARIABLE result
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "configured and source-only reorder policies diverged")
 endif()
 file(READ "${prepared}" text)
 if(text MATCHES "spatial.nn.conv2d" OR text MATCHES "use spatial")

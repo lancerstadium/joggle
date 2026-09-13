@@ -352,6 +352,24 @@ injective affine address and that both the per-address reduction order and the
 state-axis order remain stable. A pass can therefore move reduction axes across
 independent output axes without defining a replacement operator body. See the
 [`spatial` example](../examples/spatial) for a complete source-only policy.
+The policy overload accepts a normal function returning `list<int>`:
+
+```jog
+fn choose(m: Mod, op: Op) -> list<int> {
+  if tile.can_reorder(m, op, [0, 1, 4, 5, 6, 2, 3]) {
+    return [0, 1, 4, 5, 6, 2, 3]
+  }
+  return []
+}
+
+fn apply(m: Mod) -> bool {
+  return tile.reorder(m, ir.find("my_tile.choose"))
+}
+```
+
+The driver owns traversal and stale-handle checks, verifies that the policy is
+read-only, and sends every nonempty result through `reorder_issue`; user policy
+does not duplicate transformation safety.
 
 `tile.fuse(m, producer, consumer)` uses the same explicit-selection rule. It
 accepts a conservative case: two one-dimensional loops over the same

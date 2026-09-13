@@ -292,7 +292,11 @@ relative order within state axes and within reduction axes. This admits stable
 interleavings such as moving an unchanged reduction nest across independent
 output coordinates while rejecting a changed floating-point reduction order.
 `tile.can_reorder` and `tile.reorder_issue` expose the identical read-only
-legality decision used by the edit.
+legality decision used by the edit. `tile.reorderable(m, order)` enumerates
+every currently legal loop without mutation. The policy overloads
+`tile.reorder(m, policy)` and `tile.reorder(m, policy, config)` invoke an
+ordinary read-only function for each live loop; returning an empty `list<int>`
+skips it and returning a permutation requests the same checked edit.
 `tile.splittable(m, factor)` and `tile.unrollable(m, factor)` expose legal loop
 sets; `tile.fusible(m)` exposes the exact pair collection consumed by automatic
 fusion. Enumeration is read-only and returns live `Op` handles, or

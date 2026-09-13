@@ -97,6 +97,8 @@ fn check_reorder(m: Mod) -> bool {
   assert(len(loops) == 1, "reorder check requires one seven-axis loop")
   let loop = loops[0]
   let before = ir.revision(m)
+  assert(len(tile.reorderable(m, [0, 1, 4, 5, 6, 2, 3])) == 2,
+         "reorderable returned the wrong candidate set")
   assert(tile.can_reorder(m, loop, [0, 1, 4, 5, 6, 2, 3]),
          "legal reduction-preserving order was rejected")
   assert(tile.reorder_issue(loop, [0, 1, 5, 4, 6, 2, 3]) ==
@@ -110,6 +112,35 @@ fn check_reorder(m: Mod) -> bool {
   assert(ir.revision(m) == before,
          "reorder queries or identity changed the module")
   return true
+}
+
+fn mutating_reorder_policy(m: Mod, op: Op) -> list<int> {
+  ir.set(m, op, "policy.mutated", true)
+  return []
+}
+
+fn reject_mutating_reorder_policy(m: Mod) -> bool {
+  return tile.reorder(
+    m, ir.find("tile_pass.mutating_reorder_policy")
+  )
+}
+
+fn configured_reorder_policy(
+  m: Mod, op: Op, enabled: bool
+) -> list<int> {
+  let order = [0, 1, 4, 5, 6, 2, 3]
+  if enabled && ir.kind(op) == "loop" &&
+     len(ir.args(op)) - len(ir.outs(op)) == len(order) &&
+     tile.can_reorder(m, op, order) {
+    return order
+  }
+  return []
+}
+
+fn reorder_configured(m: Mod, enabled: bool) -> bool {
+  return tile.reorder(
+    m, ir.find("tile_pass.configured_reorder_policy"), enabled
+  )
 }
 
 fn check_spatial_axes(m: Mod) -> bool {

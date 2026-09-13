@@ -42,10 +42,9 @@ The loop API must move from isolated demonstrations to dependable research use:
 - make dependence checks precise for nested and multi-axis loops;
 - define legality for interchange, fusion, splitting, and unrolling;
 - preserve reductions and loop-carried values under composition;
-- extend the current read-only split/unroll/fusion candidate enumeration and
-  ordinary function policies to interchange and other loop transforms;
-- extend the current split/unroll/fusion rejection reasons to interchange and
-  future loop transforms;
+- keep read-only candidate enumeration and ordinary function policies
+  consistent as further loop transforms are added;
+- keep rejection reasons aligned with the exact legality used by every edit;
 - separate legality, profitability, and mechanism.
 
 The first read-only layer is now present: `tile.depends` follows conservative
@@ -60,7 +59,9 @@ with static bounds, carried-state accesses, an affine injectivity proof, and
 stable state/reduction subsequences. This covers a useful reduction-preserving
 interchange class without claiming general cross-iteration dependence analysis;
 multiple states, dynamic bounds, non-affine accesses, and general imperfect
-nests remain open.
+nests remain open. Its explicit, candidate-enumeration, read-only policy, and
+configured policy forms now follow the same convention as unrolling and
+fusion.
 
 The goal is not an automatic scheduler. It is a small, inspectable substrate on
 which a researcher can implement and compare scheduling policies.

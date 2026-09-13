@@ -6,15 +6,16 @@ local fn order() -> list<int> {
   return [0, 1, 4, 5, 6, 2, 3]
 }
 
-fn apply(m: Mod) -> bool {
-  var changed = false
+fn choose(m: Mod, op: Op) -> list<int> {
   let selected = order()
-  for op in ir.ops(m) {
-    if ir.live(op) && ir.kind(op) == "loop" &&
-       len(ir.args(op)) - len(ir.outs(op)) == len(selected) &&
-       tile.can_reorder(m, op, selected) {
-      changed = tile.reorder(m, op, selected) || changed
-    }
+  if ir.kind(op) == "loop" &&
+     len(ir.args(op)) - len(ir.outs(op)) == len(selected) &&
+     tile.can_reorder(m, op, selected) {
+    return selected
   }
-  return changed
+  return []
+}
+
+fn apply(m: Mod) -> bool {
+  return tile.reorder(m, ir.find("spatial.choose"))
 }
