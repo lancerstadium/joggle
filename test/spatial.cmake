@@ -27,6 +27,8 @@ set(tiled_scalar_program "${ROOT}/tiled-scalar")
 set(split_scalar_raw "${ROOT}/split-scalar-raw.jog")
 set(split_scalar "${ROOT}/split-scalar.jog")
 set(split_scalar_list "${ROOT}/split-scalar-list.jog")
+set(split_scalar_bounded "${ROOT}/split-scalar-bounded.jog")
+set(split_scalar_skipped "${ROOT}/split-scalar-skipped.jog")
 set(split_scalar_source "${ROOT}/split-scalar.c")
 set(split_scalar_program "${ROOT}/split-scalar")
 set(source "${ROOT}/model.c")
@@ -221,6 +223,44 @@ execute_process(
 if(NOT result EQUAL 0)
   message(FATAL_ERROR
           "split/reorder/scalarize composition failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run spatial.block "${canonical}"
+          --arg 2 --arg 1000000 -M "${EXAMPLES}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${split_scalar_bounded}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "bounded block composition failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E compare_files
+          "${split_scalar_raw}" "${split_scalar_bounded}"
+  RESULT_VARIABLE result
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "a loose block cost limit changed the policy")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run spatial.block "${canonical}"
+          --arg 2 --arg 1 -M "${EXAMPLES}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${split_scalar_skipped}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "small block cost limit failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E compare_files
+          "${canonical}" "${split_scalar_skipped}"
+  RESULT_VARIABLE result
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "a rejected block candidate changed the module")
 endif()
 execute_process(
   COMMAND "${TOOL}" run bounds.fold opt.fold opt.basic

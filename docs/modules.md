@@ -366,6 +366,13 @@ escape that capacity is rejected; the pass never speculates that a surrounding
 condition makes an invalid state address harmless. `can_scalarize`,
 `scalarize_issue`, `scalarizable`, and the whole-module form accept the same
 budget.
+`tile.scalar_cost(m, loop, budget)` is the matching read-only structural cost.
+It returns zero when that exact scalarization is illegal; otherwise it returns
+the lane count multiplied by the recursively nested non-terminator operation
+count in the source body. The two-argument form uses a one-lane budget. This is
+an intentionally target-neutral duplication proxy for policy code, not an
+estimate of emitted bytes or latency. Address rebuilding and later cleanup may
+make the final artifact smaller or larger than the proxy suggests.
 `tile.split(m, loop, axis, factor)` strip-mines any selected range axis into
 adjacent outer and inner axes. Keeping them adjacent preserves lexicographic
 iteration order. Statically divisible ranges need no tail branch; dynamic and

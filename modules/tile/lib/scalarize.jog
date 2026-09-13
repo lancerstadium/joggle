@@ -362,6 +362,47 @@ fn scalarizable(m: Mod) -> list<Op> {
   return scalarizable(m, 1)
 }
 
+local fn block_cost(block: Blk) -> int {
+  var out = 0
+  for op in ir.ops(block) {
+    if ir.kind(op) != "yield" {
+      out += 1
+      for child in ir.blks(op) {
+        out += block_cost(child)
+      }
+    }
+  }
+  return out
+}
+
+fn scalar_cost(m: Mod, source: Op, budget: int) -> int {
+  let before = ir.revision(m)
+  if !can_scalarize(m, source, budget) {
+    assert(ir.revision(m) == before,
+           "tile.scalar_cost changed the module")
+    return 0
+  }
+  let inputs = ir.args(source)
+  let outputs = ir.outs(source)
+  let axes = len(inputs) - len(outputs)
+  let state = state_axes(m, source)
+  let reduction = other_axes(axes, state)
+  let lanes = scalar_lanes(
+    m, source, reduction[len(reduction) - 1], budget
+  )
+  let body = block_cost(ir.blks(source)[0])
+  assert(body == 0 || lanes <= 9223372036854775807 / body,
+         "tile.scalar_cost exceeds the integer range")
+  let cost = lanes * body
+  assert(ir.revision(m) == before,
+         "tile.scalar_cost changed the module")
+  return cost
+}
+
+fn scalar_cost(m: Mod, source: Op) -> int {
+  return scalar_cost(m, source, 1)
+}
+
 local fn index_value(
   m: Mod,
   before: Op,

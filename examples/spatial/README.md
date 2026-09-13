@@ -94,3 +94,18 @@ joggle run spatial.block canonical.jog --arg '[4, 7]' \
 joggle run bounds.fold opt.fold opt.basic blocked.jog \
   -M build/modules > blocked-clean.jog
 ```
+
+An optional final argument limits structural duplication across the complete
+invocation. Before editing a loop, the policy multiplies the selected lane
+count by `tile.scalar_cost(m, loop)`. If that amount would exceed the remaining
+limit, it leaves the loop untouched; it does not partially split or reorder
+the rejected candidate.
+
+```sh
+joggle run spatial.block canonical.jog --arg '[4, 7]' --arg 4000 \
+  -M examples -M build/modules > bounded-block.jog
+```
+
+The cost is a backend-independent proxy: recursively nested, non-terminator
+source operations duplicated per scalar lane. It is useful for a small source
+policy, but it is not a prediction of C bytes, instructions, or latency.

@@ -383,6 +383,12 @@ pass infers the state and reduction bands from affine accesses and refuses a
 tile whose full state-address range cannot be proved inside its static tensor.
 This is the same mechanism for convolution, matrix multiplication, or a custom
 tensor reduction; a policy still chooses the axis, factor, and order.
+Before choosing a factor, policy code may query `tile.scalar_cost(m, loop)`.
+The query returns the recursive source-body operation count for one legal
+scalar lane, or zero when the loop is not a candidate. Multiplying it by a
+prospective factor provides a backend-independent duplication budget without
+performing a speculative edit. It deliberately does not pretend to predict
+generated source bytes or target latency.
 An explicit single-loop edit returns its replacement `Op`, so edits compose
 without a result wrapper, temporary metadata, or a second module scan. A legal
 factor-one split or identity reorder returns the unchanged source handle.

@@ -55,7 +55,9 @@ local fn factor(extent: int, factors: list<int>) -> int {
   return tail
 }
 
-fn block(m: Mod, factors: list<int>) -> bool {
+local fn block(
+  m: Mod, factors: list<int>, limit: int, bounded: bool
+) -> bool {
   assert(len(factors) > 0,
          "spatial.block requires at least one factor")
   for candidate in factors {
@@ -64,6 +66,7 @@ fn block(m: Mod, factors: list<int>) -> bool {
   }
   let candidates = ir.ops(m)
   var changed = false
+  var spent = 0
   for source in candidates {
     if ir.live(source) && ir.kind(source) == "loop" &&
        len(ir.outs(source)) == 1 {
@@ -72,7 +75,12 @@ fn block(m: Mod, factors: list<int>) -> bool {
       if len(state) > 0 && len(extents) > len(state) {
         let axis = state[len(state) - 1]
         let selected_factor = factor(extents[axis], factors)
-        if selected_factor > 1 {
+        let unit = tile.scalar_cost(m, source)
+        var fits = unit > 0
+        if bounded && fits {
+          fits = unit <= (limit - spent) / selected_factor
+        }
+        if selected_factor > 1 && fits {
           let axes = len(extents)
           var selected = source
           if extents[axis] % selected_factor != 0 {
@@ -92,12 +100,29 @@ fn block(m: Mod, factors: list<int>) -> bool {
                  "spatial.block could not reorder a selected tile")
           assert(ir.live(tile.scalarize(m, reordered, selected_factor)),
                  "spatial.block could not promote a selected tile")
+          if bounded {
+            spent += unit * selected_factor
+          }
           changed = true
         }
       }
     }
   }
   return changed
+}
+
+fn block(m: Mod, factors: list<int>, limit: int) -> bool {
+  assert(limit >= 0,
+         "spatial.block requires a nonnegative cost limit")
+  return block(m, factors, limit, true)
+}
+
+fn block(m: Mod, factors: list<int>) -> bool {
+  return block(m, factors, 0, false)
+}
+
+fn block(m: Mod, factor: int, limit: int) -> bool {
+  return block(m, [factor], limit)
 }
 
 fn block(m: Mod, factor: int) -> bool {

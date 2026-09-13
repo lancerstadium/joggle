@@ -171,6 +171,15 @@ unchanged snapshot. Deterministic reports count both source-function
 invocations and memoized returns; this makes repeated module-level analysis
 visible without adding timings to the reproducible report.
 
+Structural transformations also expose policy-facing queries before mutation.
+For scalar promotion, `tile.scalar_cost` returns zero for an illegal candidate
+and otherwise reports lane count times recursive source-body operation count.
+The example blocking policy can enforce a whole-invocation duplication limit
+before applying split, reorder, or scalarize. This metric is deliberately a
+target-neutral proxy rather than a claim to predict emitted bytes or latency;
+the evaluation must determine whether it is informative enough for useful
+selection.
+
 Storage and artifact policy remain separate module functions. `mem.separate`
 proves a deliberately narrow call-site relation from planned slots and
 immutable payloads. The C module can consume that fact across every call to a

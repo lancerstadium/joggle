@@ -78,10 +78,12 @@ reduction. It is validated on the same Conv body and on a differently ranked
 generic reduction, without operator names or rank cases. The same rewrite
 canonicalizes proven affine indexed operands and drops their private expanded
 address calculations, reducing the generated Conv body without a C-emitter
-peephole. A scalar budget bounds code growth. Static tensor-capacity and affine
-address-range proofs reject padded state domains before loads or stores are
-hoisted. Automatic profitability selection across interchange, promotion, and
-tiling remains open.
+peephole. A scalar budget bounds live accumulators; the separate read-only
+`tile.scalar_cost` query reports a target-neutral source-body duplication
+proxy before an edit. Static tensor-capacity and affine address-range proofs
+reject padded state domains before loads or stores are hoisted. Target latency,
+emitted size, and automatic profitability selection across interchange,
+promotion, and tiling remain open.
 
 The source-only `spatial.block` example now accepts an ordered factor list and
 prefers an exact factor per proved state extent in one module traversal. When
@@ -91,9 +93,11 @@ permits only leading state coordinates and therefore cannot separate a
 reduction tail. Same-process MobileNetV2, SqueezeNet, and two-result UltraFace
 diagnostics exercise exact and non-exact paths without inspecting an operator
 name. The runs are unisolated and substantially increase C source, so they
-motivate a controlled multi-model study rather than a default schedule.
-Target-dependent factor choice, packing, code-size control, and profitability
-remain policy and mechanism gaps.
+motivate a controlled multi-model study rather than a default schedule. The
+policy now optionally enforces a whole-invocation structural-duplication limit
+using `tile.scalar_cost` before any split or reorder. Target-dependent factor
+choice, packing, direct artifact-size modelling, and profitability remain
+policy and mechanism gaps.
 
 General loop-invariant motion now lives in `opt.hoist`, not in an operator or
 artifact emitter. A module supplies either a short list of calls that are safe

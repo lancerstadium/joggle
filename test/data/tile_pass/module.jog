@@ -204,6 +204,7 @@ fn check_reorder(m: Mod) -> bool {
 }
 
 fn check_scalarize(m: Mod) -> bool {
+  let before = ir.revision(m)
   let main = ir.find(m, "main")
   let reduce = ir.find(m, "reduce5")
   assert(ir.live(main) && ir.live(reduce),
@@ -215,11 +216,15 @@ fn check_scalarize(m: Mod) -> bool {
          len(ir.args(op)) - len(ir.outs(op)) > 1 {
         let issue = tile.scalarize_issue(m, op)
         assert(issue == "", ir.name(fn) + ": " + issue)
+        assert(tile.scalar_cost(m, op) > 0,
+               "scalarize cost omitted a legal loop")
         found = true
       }
     }
     assert(found, "scalarize check requires a reduction loop")
   }
+  assert(ir.revision(m) == before,
+         "scalarize cost changed the module")
   return true
 }
 
@@ -297,6 +302,10 @@ fn check_spatial_scalarize(m: Mod, budget: int) -> bool {
   assert(tile.can_scalarize(m, selected[0], budget) &&
          tile.scalarize_issue(m, selected[0], budget) == "",
          "spatial scalar tile was not accepted")
+  let cost = tile.scalar_cost(m, selected[0], budget)
+  assert(cost > 0 && cost % budget == 0 &&
+         tile.scalar_cost(m, selected[0], budget - 1) == 0,
+         "scalar cost disagrees with scalarize legality or lanes")
   assert(ir.revision(m) == before,
          "spatial scalarize queries changed the module")
   return true
