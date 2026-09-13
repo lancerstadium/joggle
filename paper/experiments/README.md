@@ -24,7 +24,8 @@ must use a clean checkout, an explicit host-specific load threshold, stable
 power and thermal conditions, the same subject manifest on a second machine,
 and raw task-accuracy checks where the model has a dataset-level metric.
 
-Run the MobileNetV2 comparison after building the ONNX application gate:
+Run a comparison after building the corresponding ONNX application gate. For
+example, the MobileNetV2 study is:
 
 ```sh
 python3 paper/measure_systems.py \
@@ -32,6 +33,19 @@ python3 paper/measure_systems.py \
   --repo . \
   --output paper/data/mobilenetv2-systems.csv \
   --record paper/data/mobilenetv2-systems.json \
+  --max-load1 2 --require-clean
+```
+
+The same protocol has a separate checked-in manifest for the official MNIST
+model. It deliberately names its own model, generated artifact, input, and
+reference rather than treating another Joggle configuration as a subject:
+
+```sh
+python3 paper/measure_systems.py \
+  --manifest paper/experiments/mnist.json \
+  --repo . \
+  --output paper/data/mnist-systems.csv \
+  --record paper/data/mnist-systems.json \
   --max-load1 2 --require-clean
 ```
 
