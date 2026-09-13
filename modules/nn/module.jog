@@ -584,6 +584,15 @@ fn minimum<
   return minimum(a, b)
 }
 
+fn clip<
+  E: Ty, S: list<int>, L: list<int>, H: list<int>
+>(
+  x: tensor<E, S>, lower: tensor<E, L>, upper: tensor<E, H>
+) -> tensor<E, S> {
+  let bounded: tensor<E, S> = maximum(x, lower)
+  return minimum(bounded, upper)
+}
+
 fn pow<E: Ty, S: list<int>>(
   left: tensor<E, S>, right: tensor<E, S>
 ) -> tensor<E, S> {

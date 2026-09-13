@@ -2668,6 +2668,27 @@ local fn convert_reshape(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.reshape", [inputs[0]])
 }
 
+[phase: "compute", on: "onnx.Clip"]
+local fn convert_clip(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let lower = ir.type(inputs[1])
+  let upper = ir.type(inputs[2])
+  if !tensor.valid(input) || !tensor.valid(lower) || !tensor.valid(upper) ||
+     ir.type(outputs[0]) != input ||
+     tensor.elem(input) != tensor.elem(lower) ||
+     tensor.elem(input) != tensor.elem(upper) ||
+     !tensor.broadcastable(tensor.dims(lower), tensor.dims(input)) ||
+     !tensor.broadcastable(tensor.dims(upper), tensor.dims(input)) {
+    return false
+  }
+  return convert_call(m, op, "nn.clip")
+}
+
 local fn convert_binary_result(
   m: Mod, op: Op, callee: str, output_elem: Ty
 ) -> bool {

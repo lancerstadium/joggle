@@ -887,6 +887,39 @@ int main(int argc, char** argv) {
   }
   CHECK(comparisons >= 3);
 
+  constexpr std::string_view clip_source =
+      "module clip.network\n"
+      "use onnx.nn\n"
+      "fn main(x: tensor<f32, [2, 3]>, lower: tensor<f32, []>, "
+      "upper: tensor<f32, []>) -> tensor<f32, [2, 3]> {\n"
+      "  return onnx.Clip(x, lower, upper)\n"
+      "}\n";
+  joggle::Mod clip;
+  CHECK(joggle::parse(env, clip_source, clip, "clip-network.jog"));
+  CHECK(joggle::run(env, "onnx.nn.infer", clip));
+  CHECK(clip.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.convert", clip));
+  CHECK(clip.verify(env));
+  CHECK(count(clip, "onnx.Clip") == 0 && count(clip, "nn.clip") == 1);
+  for (joggle::Op op : clip.ops()) {
+    if (op.callee() != "nn.clip")
+      continue;
+    const joggle::Fn fn = env.resolve(clip, op);
+    CHECK(fn && env.expand(clip, op, fn));
+  }
+  CHECK(clip.verify(env));
+  CHECK(count(clip, "nn.clip") == 0);
+  std::size_t lower_bounds = 0;
+  std::size_t upper_bounds = 0;
+  for (joggle::Op op : clip.ops()) {
+    const joggle::Fn fn = env.resolve(clip, op);
+    if (!fn)
+      continue;
+    lower_bounds += fn.module() == "nn" && fn.name() == "maximum";
+    upper_bounds += fn.module() == "nn" && fn.name() == "minimum";
+  }
+  CHECK(lower_bounds == 1 && upper_bounds == 1);
+
   constexpr std::string_view unary_extrema_source =
       "module unary.extrema\n"
       "use onnx\n"

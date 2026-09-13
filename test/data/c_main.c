@@ -32,6 +32,15 @@ int main(void) {
   for (size_t i = 0; i < 6; ++i)
     if (compare_out[i] != compare_expected[i])
       return 33;
+  const float clip_input[4] = {-2.0f, -0.5f, 1.5f, 4.0f};
+  const float clip_lower[1] = {-1.0f};
+  const float clip_upper[1] = {2.0f};
+  const float clip_expected[4] = {-1.0f, -0.5f, 1.5f, 2.0f};
+  float clip_out[4] = {0.0f};
+  kernel_tensor_clip(clip_input, clip_lower, clip_upper, clip_out);
+  for (size_t i = 0; i < 4; ++i)
+    if (clip_out[i] != clip_expected[i])
+      return 34;
   const int64_t product_expected[4] = {58, 64, 139, 154};
   int64_t product[4] = {0};
   kernel_int_matmul(integers_a, integers_b, product);

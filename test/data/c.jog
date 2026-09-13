@@ -171,6 +171,14 @@ fn tensor_less(
   return a < b
 }
 
+fn tensor_clip(
+  x: tensor<f32, [4]>,
+  lower: tensor<f32, []>,
+  upper: tensor<f32, []>
+) -> tensor<f32, [4]> {
+  return nn.clip(x, lower, upper)
+}
+
 fn int_matmul(
   a: tensor<i64, [2, 3]>,
   b: tensor<i64, [3, 2]>
