@@ -587,6 +587,30 @@ compile-only in this follow-up and are not labeled as fresh numerical checks.
 This is a readability and source-volume pilot, not evidence of a latency
 improvement.
 
+`restrict-analysis-pilot.csv` and `restrict-pilot.csv` exercise the first
+proof-derived ABI fact at commit `8baec16`. `mem.separate` accepts only
+pairwise-distinct planned slots, distinct immutable tensor payloads, and
+slot/payload pairs. `c.restrict` requires every represented call to a private
+function to satisfy that relation and excludes implicit payload users. On the
+same placed UltraFace IR used by the block pilot, it qualifies 72 of 139
+private functions. Replacing a per-function module scan with one call index
+reduces a one-run diagnostic from 69.13 to 6.05 seconds and emits byte-identical
+2,778,682-byte IR with SHA-256
+`4aafba6d5a819a6263642db01613f8e26b57bb6581a0ddcb4e467c9a7373abb6`.
+
+For the latency ablation, both variants include the same C11 static tensor
+bounds; the only generated-code difference is the proved private `restrict`
+qualification. Their source SHA-256 values are
+`2a7f0627511cbb59216a99434c0ef88627bbcafce83fae2bca8b9214ec2def7a`
+and `7166b99e0ff9e909606898a175e070cf85dcfa23c03fc279f9f1309ca7cfe874`.
+Apple Clang 17 compiled both with
+`-std=c11 -O3 -DNDEBUG -mcpu=native -ffast-math` into one alternating harness.
+After three warm-ups, all 40 pairs favor the proved variant; the unqualified
+and proved medians are 20.5700 and 17.6795 ms, and the median within-pair ratio
+is 1.1622. Both outputs differ from the unqualified variant by at most
+`1.1920929e-7`. This remains an unisolated mechanism diagnostic, not a
+publication-grade speedup.
+
 `c-bounds-pilot.csv` isolates the C11 static-array spelling added at commit
 `cf58849` from the pointer-only definitions emitted by `4682d62`. Both sources
 were generated from the same placed UltraFace IR (SHA-256

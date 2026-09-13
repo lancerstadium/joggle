@@ -171,6 +171,13 @@ unchanged snapshot. Deterministic reports count both source-function
 invocations and memoized returns; this makes repeated module-level analysis
 visible without adding timings to the reproducible report.
 
+Storage and artifact policy remain separate module functions. `mem.separate`
+proves a deliberately narrow call-site relation from planned slots and
+immutable payloads. The C module can consume that fact across every call to a
+private function before strengthening its definition; one unclassified or
+repeated pointer rejects the contract, and exported entries are never inferred.
+The proof neither introduces a memory IR nor gives C semantics to the planner.
+
 ### 3.4 Capability-driven exposure and failure
 
 Targets publish an ordinary predicate over operations. Exposure repeatedly
@@ -326,7 +333,13 @@ peeled non-divisible extents. Its 20 baseline/candidate medians are
 bit-identical between variants and retain their reference errors, while C grows
 67.5%. Together the three runs make cross-model structural selection
 plausible; they still do not establish controlled performance or an automatic
-scheduling policy. A second ordinary
+scheduling policy. A separate UltraFace diagnostic tests whether the artifact
+module can consume storage facts without an operator case. A single call index
+proves private non-aliasing contracts for 72 of 139 functions; all 40 paired
+calls favor the proved variant, with 20.570/17.680 ms medians and a 1.162
+median pair ratio. The two result errors are at most `1.1921e-7` relative to
+the unqualified variant. The host was not isolated, so this is a mechanism
+pilot rather than a final speedup. A second ordinary
 implementation reduces GoogLeNet's static workspace elements by 58.4% and
 slots from 55 to 6, while
 increasing its unisolated median latency by 27.5%. This is a resource tradeoff,
