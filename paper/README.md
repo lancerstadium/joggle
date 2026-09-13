@@ -26,7 +26,7 @@ runtimes or that fewer source lines imply better usability.
 | Question | Evidence present | Blocking work |
 | --- | --- | --- |
 | Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths | Freeze and record model-level stage traces |
-| Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM implementations pass the implementation, policy, and external-kernel contracts | Complete or explicitly reject the matched numeric-format baseline |
+| Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM controls pass the implementation, policy, and external-kernel contracts | Execute the pinned ONNX-MLIR system baseline; keep bare-MLIR observations component-level |
 | Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, and deterministic language mutation tests | Freeze a fault and diagnostic matrix |
 | Artifact quality | Ten numerical ONNX paths and several reproducible pilots, including negative performance results | Isolated repetitions, dispersion, task accuracy, second machine, and a materially smaller generated-C gap |
 
@@ -45,7 +45,9 @@ or extensibility until the corresponding controlled study is complete.
 - [`extension-tasks.json`](extension-tasks.json) and [`tasks/`](tasks/):
   machine-readable task contracts and inputs.
 - [`baselines/tvm/`](baselines/tvm/): pinned TVM build record and matched
-  implementations.
+  mechanism-level controls.
+- [`baselines/onnx-mlir/`](baselines/onnx-mlir/): pinned protocol for the
+  end-to-end neural-network compiler baseline; implementation pending.
 - [`model-study.md`](model-study.md): model selection and staged compatibility
   protocol.
 - [`data/`](data/): raw pilot records and provenance.

@@ -64,24 +64,42 @@ another machine can reproduce them from the contract. The paper reports each
 dimension separately; it does not translate them into developer time,
 productivity, or a synthetic ease-of-use score.
 
-The intended matched comparisons are:
+The comparison has two levels. They answer different questions and must not be
+collapsed into one ranking.
 
-- implementation task: TVM TIR schedule or tensor implementation and
-  RISE/Shine rewrite path;
-- policy task: TVM scheduling/cost-model interface;
-- external-kernel task: TVM BYOC or IREE/MLIR documented plugin path;
-- numeric-format task: an MLIR type/dialect extension with the minimum target
-  representation required by the same oracle.
+1. **System-level extension path.** ONNX-MLIR is the primary baseline for the
+   complete neural-network compiler workflow: ingest the same ONNX fixture,
+   introduce the task-specific implementation through its documented
+   operation or accelerator path, run the same oracle, and preserve the
+   generated artifact. An unsupported contract remains a measured outcome; it
+   must not be replaced by a smaller standalone MLIR example.
+2. **Mechanism-level controls.** TVM is retained for the implementation,
+   scheduling-policy, and external-kernel tasks because those contracts map to
+   documented TIR, schedule, and external-call mechanisms. RISE/Shine is a
+   prospective control for typed rewriting. A standalone MLIR dialect/type
+   experiment is only a component-level decomposition of the work required
+   inside the ONNX-MLIR stack; it is not an end-to-end competing compiler.
+
+The ONNX-MLIR comparison must record both the user extension and any required
+changes to generated operation definitions, dialect registration, pass
+registration, type conversion, build configuration, or driver wiring. This is
+the relevant boundary because the official project imports ONNX, lowers it to
+native artifacts, documents generated ONNX operation definitions, and exposes
+an accelerator integration path for dialects and passes. The task-to-hook
+protocol is recorded in
+[`baselines/onnx-mlir/README.md`](baselines/onnx-mlir/README.md); its shared
+ONNX fixtures must be checked in before any implementation or measurement.
 
 TVM `v0.26.0` at commit
 `c7b458e946bc4266915da582457476bdcd9705ae` is now pinned. Reproducible TVM
 programs pass the implementation, policy, and external-kernel contracts; their
 sources and build recipe are preserved under `baselines/tvm/`. The numeric-
-format contract remains unimplemented, so there is no complete TVM result and
-no cross-system conclusion yet. RISE/Shine and MLIR assignments remain
-provisional until the same feasibility check is complete. ONNX-MLIR is more
-appropriate for a separate frontend-semantics task than for all four extension
-tasks.
+format contract remains unimplemented, so there is no complete TVM result.
+ONNX-MLIR is pinned at commit
+`42803380540dc3c8fce2e831cc77d3c87a195a70`, but its task implementations and
+oracles are not complete. There is therefore no system-level result and no
+cross-system extensibility conclusion yet. RISE/Shine remains provisional;
+standalone MLIR observations may explain plumbing cost but cannot close RQ2.
 
 ## Threat controls
 

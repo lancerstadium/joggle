@@ -97,9 +97,9 @@ and results are frozen.
 - **RQ1, progressive representation:** Can imported model calls, reusable
   semantics, explicit loops, storage decisions, and target preparation remain
   understandable and verifiable in one function representation?
-- **RQ2, extension surface:** For matched co-design tasks, which files, native
-  registrations, generated definitions, core changes, and build dependencies
-  are required?
+- **RQ2, extension surface:** Across an end-to-end ONNX-MLIR baseline and
+  task-specific mechanism controls, which files, native registrations,
+  generated definitions, core changes, and build dependencies are required?
 - **RQ3, composition:** Do independently defined modules compose with stable
   output, transactional failure, and useful unsupported-frontier diagnostics?
 - **RQ4, artifact quality:** What correctness, code size, workspace,
@@ -295,8 +295,14 @@ The first three frozen contracts now also pass on a pinned TVM `v0.26.0`
 baseline: one generic explicit i-k-j matrix body, one structural schedule
 policy, and one generic external-call implementation exercised by the unchanged
 C harness. Their exact experiment sources and build recipe are preserved, but
-the numeric-format contract remains incomplete. Consequently, there is still
-no full matched RQ2 result and no comparative extensibility claim.
+the numeric-format contract remains incomplete. These are mechanism-level
+controls, not a substitute for an end-to-end neural-network compiler. The
+primary system baseline is now a pinned ONNX-MLIR revision using its documented
+operation and accelerator extension paths; its implementations are not yet
+complete. Consequently, there is still no full matched RQ2 result and no
+comparative extensibility claim. Standalone MLIR type/dialect experiments may
+decompose registration and conversion work, but cannot be reported as the
+system comparison because they omit ONNX ingestion and artifact generation.
 
 ## 6. Related work
 
@@ -304,9 +310,12 @@ MLIR addresses compiler extensibility by making multiple domain-specific IRs,
 operation interfaces, conversions, and pass infrastructure reusable
 [Lattner et al. 2021](https://doi.org/10.1109/CGO51591.2021.9370308).
 ONNX-MLIR applies that approach to ONNX semantics and loop-oriented lowering
-[Jin et al. 2020](https://arxiv.org/abs/2008.08272), while IREE extends an MLIR
-stack through host/device partitioning, deployment artifacts, and embedded
-runtime configurations
+[Jin et al. 2020](https://arxiv.org/abs/2008.08272), exposes documented
+operation-generation and accelerator integration paths, and produces native
+artifacts ([official documentation](https://onnx.ai/onnx-mlir/)). It is
+therefore the system-level comparator. IREE extends an MLIR stack through
+host/device partitioning, deployment artifacts, and embedded runtime
+configurations
 [Liu et al. 2022](https://doi.org/10.1109/MM.2022.3178068). Joggle does not
 argue that one representation replaces these abstractions. It tests whether a
 smaller source-level module boundary is sufficient for bounded experiments

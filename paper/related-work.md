@@ -6,9 +6,9 @@ comparison that should be tested; it is not a superiority claim.
 
 | System | Central design | User-facing extension surface | Joggle boundary to test |
 | --- | --- | --- | --- |
-| MLIR | Reusable infrastructure for IRs at multiple abstraction levels and across domains | Dialects, operations, interfaces, rewrites, conversions, and passes in the MLIR ecosystem | Whether a deliberately smaller single function IR and source module can reduce setup and cross-representation coupling for bounded co-design experiments |
+| MLIR | Reusable infrastructure for IRs at multiple abstraction levels and across domains | Dialects, operations, interfaces, rewrites, conversions, and passes in the MLIR ecosystem | Component-level control for isolating dialect, type, registration, and conversion plumbing; not the end-to-end NN compiler baseline |
 | TVM | End-to-end tensor compiler with graph-level optimization, tensor programs, schedules, cost models, and target backends | Relax/TIR programs, schedules, tensor intrinsics, BYOC and target integration | Joggle is not an autotuner or production backend; compare the effort and observability of one controlled semantic and loop-policy change |
-| ONNX-MLIR | ONNX semantics represented in an ONNX dialect and lowered through a loop-oriented dialect to native code | ONNX operation definitions, shape inference, lowering patterns, accelerator integration | Compare one imported operation crossing format semantics and loop implementation against Joggle's schema bridge plus ordinary shared function body |
+| ONNX-MLIR | ONNX semantics represented in an ONNX dialect and lowered through a loop-oriented dialect to native code | Generated ONNX operation definitions, shape inference, lowering patterns, accelerator-scoped dialects and passes | Primary system-level comparison: run matched extensions from ONNX ingestion through the documented pass/accelerator path to a native artifact |
 | IREE / TinyIREE | Multi-level MLIR compiler and runtime spanning host orchestration, device code, deployment artifacts, and embedded configurations | Input dialects, compiler plugins, HAL/device targets, runtime modules | IREE is a deployment stack; Joggle tests a narrower research-workbench role with inspectable source and no required runtime |
 | Lift | Functional data-parallel patterns, dependent types, and rewrite-rule exploration before OpenCL generation | Pattern composition and rewrite rules | Joggle adopts inspectable functions but does not require a closed map/reduce vocabulary; imported graph calls and explicit loops coexist in one representation |
 | RISE & Shine | Language-oriented high- and low-level functional/imperative languages with explicit rewrite strategies | Typed functional programs and Elevate strategies | Compare predictable typed transformation with Joggle's single-representation, ordinary-module approach; do not claim that one IR is universally preferable |
@@ -55,10 +55,13 @@ comparison that should be tested; it is not a superiority claim.
 The final paper should compare only matched tasks. A model-throughput table can
 use ONNX Runtime as a correctness and deployment reference, but it cannot test
 extension usability. TileLang can test kernel author control, but not frontend
-or module packaging. MLIR, TVM, ONNX-MLIR, and IREE should be studied through
-their documented extension paths and pinned revisions. Repository line count,
-subjective syntax preference, and an unmatched backend benchmark are not valid
-evidence of lower extension coupling.
+or module packaging. ONNX-MLIR is the system-level baseline because the study
+concerns a neural-network compiler workflow. TVM remains a mechanism-level
+control for kernel and scheduling tasks. Bare MLIR may isolate dialect/type
+plumbing but must not be presented as a full competing system. Every system
+must be studied through its documented extension path and a pinned revision.
+Repository line count, subjective syntax preference, and an unmatched backend
+benchmark are not valid evidence of lower extension coupling.
 
 The matrix now includes lightweight edge runtimes, but it is not a systematic
 survey. Exact baseline revisions, supported task subsets, and the matched
