@@ -1,0 +1,128 @@
+{
+  "cpu": null,
+  "finished_utc": "2026-09-13T22:45:12.185821+00:00",
+  "host": {
+    "machine": "arm64",
+    "node": "lancerdeMacBook-Air.local",
+    "platform": "macOS-15.7.3-arm64-arm-64bit-Mach-O",
+    "processor": "arm",
+    "python": "3.14.0"
+  },
+  "manifest": {
+    "path": "paper/experiments/mnist.json",
+    "sha256": "a355b045e3a8c2740f40ae435448ad7dffca645e89536a9f69f8be05f21db5a3"
+  },
+  "max_load1": 4.0,
+  "output": {
+    "path": "paper/data/mnist-systems-pilot.csv",
+    "rows": 40,
+    "sha256": "5a45de5afdecbeebc17c850585d1a37f6b737789ea7f73bec16c1b26061ca5ae"
+  },
+  "repo_dirty": false,
+  "repo_revision": "fc12a26cc695d457b8d959dd1f0e8801b8021088",
+  "runner_sha256": "352c0439ceaacdf463f3ad52ebc42eb3621de031e84517c42adaec6d180d62ad",
+  "schema": 1,
+  "started_utc": "2026-09-13T22:45:10.673328+00:00",
+  "study": "mnist",
+  "subjects": [
+    {
+      "artifacts": {
+        "executable": {
+          "bytes": 34424,
+          "path": "build-app/examples/mnist/model-blob",
+          "sha256": "149df59d36eb9ccb32e26f5649278f17f335b824adf9c4c3340b8396df0b68dd"
+        },
+        "header": {
+          "bytes": 181,
+          "path": "build-app/examples/mnist/model-blob.h",
+          "sha256": "496fab15e808e704c5c3fa29dd300388b4d30d2e108b8d52acf03e6878675956"
+        },
+        "input": {
+          "bytes": 3136,
+          "path": "build-app/examples/mnist/input.bin",
+          "sha256": "2243f6d58f2fdfaf37033501628afb5eb78afb12a847a04da80c058690091af5"
+        },
+        "reference": {
+          "bytes": 40,
+          "path": "build-app/examples/mnist/expected.bin",
+          "sha256": "90d278fe5a5970318659749e1f1dacc10f0e988f7410b8f0e26e213b95692579"
+        },
+        "source": {
+          "bytes": 11522,
+          "path": "build-app/examples/mnist/model-blob.c",
+          "sha256": "ff1032a747ec01b4feef9ac16ee08ed04b15cf29ddb53b4800f341d9293d9c0f"
+        },
+        "weights": {
+          "bytes": 23976,
+          "path": "build-app/examples/mnist/model.bin",
+          "sha256": "b2b2738c1a3edf6e54ff59b306acfc9a0ae2caacf38878c6dd1db4897615de59"
+        }
+      },
+      "command": [
+        "build-app/examples/mnist/model-blob",
+        "build-app/examples/mnist/input.bin",
+        "build-app/examples/mnist/model.bin",
+        "build-app/examples/mnist/expected.bin",
+        "3",
+        "1"
+      ],
+      "name": "joggle-c",
+      "version": "Apple clang version 17.0.0 (clang-1700.6.3.2)",
+      "version_command": [
+        "/usr/bin/clang",
+        "--version"
+      ]
+    },
+    {
+      "artifacts": {
+        "input": {
+          "bytes": 3136,
+          "path": "build-app/examples/mnist/input.bin",
+          "sha256": "2243f6d58f2fdfaf37033501628afb5eb78afb12a847a04da80c058690091af5"
+        },
+        "model": {
+          "bytes": 26454,
+          "path": ".cache/onnx-zoo/app/mnist-8/model.onnx",
+          "sha256": "2f06e72de813a8635c9bc0397ac447a601bdbfa7df4bebc278723b958831c9bf"
+        },
+        "reference": {
+          "bytes": 40,
+          "path": "build-app/examples/mnist/expected.bin",
+          "sha256": "90d278fe5a5970318659749e1f1dacc10f0e988f7410b8f0e26e213b95692579"
+        }
+      },
+      "command": [
+        "python3",
+        "paper/bench_onnxruntime.py",
+        ".cache/onnx-zoo/app/mnist-8/model.onnx",
+        "build-app/examples/mnist/input.bin",
+        "build-app/examples/mnist/expected.bin",
+        "--warmup",
+        "3",
+        "--repetitions",
+        "1",
+        "--atol",
+        "0.0001",
+        "--rtol",
+        "0.0001",
+        "--protocol"
+      ],
+      "name": "onnxruntime",
+      "version": "1.26.0",
+      "version_command": [
+        "python3",
+        "-c",
+        "import onnxruntime as ort; print(ort.__version__)"
+      ]
+    }
+  ],
+  "thread_environment": {
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "VECLIB_MAXIMUM_THREADS": "1"
+  },
+  "timeout_seconds": 900.0,
+  "trials": 20
+}

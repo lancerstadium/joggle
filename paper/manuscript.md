@@ -345,12 +345,14 @@ internal records for regression and ablation, but the paper's performance
 table will compare independent systems on identical model, input, thread, and
 correctness contracts while recording each system's compiler and runtime
 versions.
-The current run of that protocol uses a clean revision and 20 balanced,
-fresh-process MobileNetV2 trials. Median latency is 199.159 ms for generated C
-and 5.962 ms for ONNX Runtime 1.26.0, a 33.40x gap; both subjects pass the same
-stored-output contract. This is a one-host pilot rather than a publication
-result because it lacks an explicit load threshold, controlled thermal state,
-and second-machine replication.
+Two current runs of that protocol use clean revisions and 20 balanced,
+fresh-process trials per model. On MobileNetV2, median latency is 199.159 ms
+for generated C and 5.962 ms for ONNX Runtime 1.26.0, a 33.40x gap. On MNIST,
+the corresponding medians are 0.910 ms and 0.050208 ms, an 18.12x gap. Every
+subject passes its model's common stored-output contract. These remain
+one-host pilots rather than publication results: MobileNetV2 lacks an explicit
+load threshold, and neither run has controlled thermal state or second-machine
+replication.
 
 The extension-surface study and controlled performance study are not complete.
 One of four system-baseline tasks now passes, but that result does not support

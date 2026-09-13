@@ -39,15 +39,16 @@ usability.
 | Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths | Freeze and record model-level stage traces |
 | Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM controls pass three contracts; the exact MatMul contract now passes through Joggle and a native, end-to-end ONNX-MLIR extension | Finish the remaining system tasks or preserve their unsupported outcomes; repeat the ONNX-MLIR build from a clean checkout |
 | Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical CSE/analysis scaling pilots | Freeze a fault and diagnostic matrix |
-| Artifact quality | Ten numerical ONNX paths; a clean-revision, 20-trial MobileNetV2 pilot compares generated C with ONNX Runtime; internal rewrite diagnostics remain separate | Broaden the independent-system matrix, add ONNX-MLIR where executable, task accuracy, an isolated second machine, and a materially smaller generated-C gap |
+| Artifact quality | Ten numerical ONNX paths; clean-revision, 20-trial MobileNetV2 and MNIST pilots compare generated C with ONNX Runtime; internal rewrite diagnostics remain separate | Broaden the independent-system matrix, add ONNX-MLIR where executable, task accuracy, an isolated second machine, and a materially smaller generated-C gap |
 
 The current generated-C pilots remain roughly 7--101 times slower than
 one-thread ONNX Runtime, depending on the model. Under the new balanced
-cross-system protocol, the latest clean-revision MobileNetV2 run reports
-199.159 ms versus 5.962 ms median latency, a 33.40x gap over 20 trials. This is
-a blocking result, not a hidden caveat; the run still lacks a host load bound
-and second-machine replication. The manuscript must not claim superior speed,
-compatibility, or extensibility until the corresponding study is complete.
+cross-system protocol, clean-revision MobileNetV2 and MNIST runs respectively
+report 199.159 versus 5.962 ms (33.40x) and 0.910 versus 0.050208 ms (18.12x)
+over 20 trials. These are blocking results, not hidden caveats. MobileNetV2
+lacks a host load bound; both runs lack isolated second-machine replication.
+The manuscript must not claim superior speed, compatibility, or extensibility
+until the corresponding study is complete.
 
 ## Repository map
 
