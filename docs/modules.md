@@ -223,7 +223,9 @@ the complete compatible set and returns zero or one member, allowing user code
 to resolve equally specific implementations. Both policies are read-only;
 selector cardinality and membership are validated before an edit. This lets a
 module express layout, alignment, cost, or device-feature choices without a
-core registry.
+core registry. A configured overload appends a normal `dict` parameter to
+either callback. The caller supplies that dictionary to `opt.apply` or
+`opt.instantiate`; its keys and units remain module-owned.
 `opt.candidates(m, op, impls)` returns that same symbol and type-compatible set
 without applying a policy or editing the module, so experiments can inspect
 and report their choice space directly. Duplicate handles are removed; two
@@ -244,8 +246,8 @@ concrete call sites. Compile-time Boolean, integer, real, string, and recursive
 list arguments are bound into private functions; tensor and byte values remain
 ordinary parameters. Structurally identical configurations reuse one instance.
 The policy overload accepts the same predicate or selector form as
-`opt.apply`. No operator name, frontend schema, or target is built into this
-mechanism.
+`opt.apply`, including its configured form. No operator name, frontend schema,
+configuration key, or target is built into this mechanism.
 
 Modules may query open metadata uniformly with `ir.where`: the same name
 filters `list<Fn>`, `list<Op>`, and `list<Val>` and returns the same handle
@@ -356,8 +358,11 @@ source from the same IR.
 `c.prepare` expands unsupported function bodies and specializes loops explicitly
 marked as shape bookkeeping. Static-rank traversal in tensor offsets and
 broadcasting is therefore removed before emission without teaching the C target
-about a tensor operator. Runtime element loops and data-dependent indexing
-remain visible.
+about a tensor operator. It then runs the target-independent cleanup, whose
+algebraic rewrites are restricted to immutable expressions: assignments,
+compound updates, and indexed writes are never classified as removable pure
+calls. Immutable scalar bindings are emitted as C `const` values. Runtime
+element loops and data-dependent indexing remain visible.
 
 For a function with one return path, an unplanned local tensor that reaches a
 pointer result is backed directly by that result buffer. The emitter retains

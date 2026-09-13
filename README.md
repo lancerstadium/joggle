@@ -185,8 +185,10 @@ rewrites, and target capability queries without a native binding per operator.
 `fn(Mod, Op, list<Fn>) -> list<Fn>` selector. The latter returns zero or one
 compatible member, so an implementation module can resolve equal signatures
 by shape, layout, representation, cost, or device features without a central
-registry. `opt.candidates` exposes the unmodified compatible set for reports
-and policy development.
+registry. Either policy may take one ordinary `dict` argument, allowing each
+invocation to supply a resource budget or feature set without creating a
+target class or changing the implementation functions. `opt.candidates`
+exposes the unmodified compatible set for reports and policy development.
 
 The complete out-of-tree
 [`ikj` example](examples/ikj/module.jog) replaces matrix multiplication with

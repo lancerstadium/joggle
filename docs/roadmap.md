@@ -21,7 +21,8 @@ The repository currently provides:
 - capability-driven exposure instead of a central lowering table;
 - signature-matched selection of inspectable or external implementations,
   including inspectable candidate sets, per-candidate predicates, whole-set
-  selectors, and call-site-derived C ABIs for generic external declarations;
+  selectors, ordinary configuration dictionaries, and call-site-derived C
+  ABIs for generic external declarations;
 - safe IR editing, cleanup, range analysis, measurements, static storage
   planning, and conservative loop transformations;
 - configurable C generation, generic external-call ABI derivation, and a
@@ -76,9 +77,11 @@ The C path must produce a stable baseline suitable for experiments:
   against defined baselines.
 
 Shape specialization now removes static-rank traversal from ordinary tensor
-offset and broadcast helpers. It does not yet eliminate every resulting scalar
-temporary or materialized broadcast, and the measured convolution/layout gap
-to a production runtime remains the primary backend limitation.
+offset and broadcast helpers. Conservative cleanup runs after exposure but
+does not rewrite mutable updates as algebraic expressions. It does not yet
+eliminate every resulting scalar temporary or materialized broadcast, and the
+measured convolution/layout gap to a production runtime remains the primary
+backend limitation.
 
 Every generated artifact used in evaluation must be checked against reference
 outputs with documented tolerances.

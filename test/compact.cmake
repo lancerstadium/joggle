@@ -8,12 +8,14 @@ endif()
 file(REMOVE_RECURSE "${ROOT}")
 file(MAKE_DIRECTORY "${ROOT}")
 set(selected "${ROOT}/selected.jog")
+set(staged "${ROOT}/staged.jog")
 set(prepared "${ROOT}/prepared.jog")
 set(source "${ROOT}/model.c")
 set(program "${ROOT}/model")
 
 execute_process(
   COMMAND "${TOOL}" run compact.apply "${MODEL}"
+          --arg "{max_extra_elems: 0}"
           -M "${EXAMPLES}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${selected}"
@@ -30,6 +32,37 @@ list(LENGTH instances instance_count)
 if(NOT instance_count EQUAL 1)
   message(FATAL_ERROR
           "compact selection expected one biased-convolution instance:\n${text}")
+endif()
+string(REGEX MATCHALL
+       "opt.instance: \\{\"fn\": \"spatial.nn.conv2d\""
+       spatial_instances "${text}")
+list(LENGTH spatial_instances spatial_count)
+if(NOT spatial_count EQUAL 1)
+  message(FATAL_ERROR
+          "configured selection did not retain the unbiased spatial body:\n${text}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run compact.apply "${MODEL}"
+          --arg "{max_extra_elems: 100}"
+          -M "${EXAMPLES}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${staged}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "staged policy selection failed (${result}):\n${error}")
+endif()
+file(READ "${staged}" staged_text)
+string(REGEX MATCHALL
+       "opt.instance: \\{\"fn\": \"spatial.nn.conv2d\""
+       staged_instances "${staged_text}")
+list(LENGTH staged_instances staged_count)
+if(NOT staged_count EQUAL 2 OR
+   staged_text MATCHES "\"fn\": \"compact.nn.conv2d\"")
+  message(FATAL_ERROR
+          "large budget did not select both staged bodies:\n${staged_text}")
 endif()
 
 execute_process(

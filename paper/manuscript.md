@@ -147,6 +147,14 @@ failure must not expose a half-rewritten program. Partial ONNX models are
 therefore reported by stage and remaining source calls rather than counted as
 supported end to end.
 
+Alternative implementations are ordinary overloaded functions. A read-only
+module policy can inspect one compatible candidate or the complete compatible
+set and can receive an ordinary configuration dictionary. The compiler checks
+that a selector returns at most one member of that set. Thus a resource budget
+can alter choices at individual call sites without adding a target class or an
+operator-specific compiler branch; whether this interface is sufficient for a
+useful co-design study remains an evaluation question.
+
 ### 3.5 Artifact interfaces are derived, not duplicated
 
 The C target derives public symbols from qualified source functions, preserves

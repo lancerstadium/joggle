@@ -267,7 +267,11 @@ local fn lhs(op: Op, output: Val, config: dict) -> str {
   if reuses(op) {
     return val(output)
   }
-  return scalar(ir.type(output), config) + " " + val(output)
+  var type = scalar(ir.type(output), config)
+  if ir.form(op) == "let" {
+    type = "const " + type
+  }
+  return type + " " + val(output)
 }
 
 local fn index(
@@ -619,6 +623,9 @@ local fn prepare_with(m: Mod, config: dict) -> bool {
   )
   var changed = opt.expose(m, accept, config, limit)
   if opt.specialize(m, "stage", "shape") {
+    changed = true
+  }
+  if opt.basic(m) {
     changed = true
   }
   for op in ir.ops(m) {

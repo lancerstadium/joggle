@@ -87,11 +87,11 @@ blocker.
 | Candidate claim | Current repository evidence | Missing evidence |
 | --- | --- | --- |
 | One IR spans graph and loop detail | Printer, verifier, semantic bodies, explicit loops, C and VM preparation tests | Model-level stage traces and comparison with multi-IR workflows |
-| Extensions are normal module functions | Source modules, `local fn`, installation tests, `ir.invoke`, body expansion, transactional external selection, four frozen extension tasks, and a generated footprint pilot | Controlled comparison using matched baseline tasks and implementation-time evidence |
+| Extensions are normal module functions | Source modules, `local fn`, typed configured `ir.invoke`, body expansion, transactional per-call implementation selection, four frozen extension tasks, and a generated footprint pilot | Controlled comparison using matched baseline tasks and implementation-time evidence |
 | Frontends are separate from semantics | ONNX/TFLite codecs, explicit bridge modules, one pinned Zoo declaration list, and a generated staged table for 12 official models | Frozen controlled subset, task-level accuracy, and broader non-vision evidence |
 | Targets expose only required detail | `c.accepts`, `vm.accepts`, `opt.expose`, preparation tests | A genuinely different external target or simulator study |
 | Transform failure is safe | Transaction and rollback tests, ownership/liveness checks | Fault-injection matrix and diagnostic assessment |
-| Storage and scheduling are replaceable | `mem` and `tile` modules, policy callbacks | Multi-axis legality, meaningful workload policies, performance results |
+| Storage and scheduling are replaceable | `mem` and `tile` modules, typed policy callbacks with module-owned configuration | Multi-axis legality, meaningful workload policies, performance results |
 | C artifacts are usable | Compiled examples, independent weight payload, structured ABI descriptors, generated multi-input/output harnesses, strict compilation, and numerical checks | Frozen execution suite, task metrics, latency distribution, workspace and binary comparisons |
 | VM execution is deterministic | Stable image format, output and step-count tests | Defined use case and overhead comparison |
 

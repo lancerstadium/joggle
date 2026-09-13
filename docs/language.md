@@ -633,6 +633,10 @@ candidate before the usual specificity check. A
 `fn(Mod, Op, list<Fn>) -> list<Fn>` selector instead sees the complete
 compatible set and returns zero or one member, which lets user code resolve
 equally specific implementations by shape, layout, cost, or device metadata.
+Configured overloads pass one ordinary dictionary to the corresponding
+`fn(Mod, Op, Fn, dict) -> bool` or
+`fn(Mod, Op, list<Fn>, dict) -> list<Fn>` callback. The dictionary is owned by
+the invoking module: the compiler assigns no names or units to its entries.
 Both forms must be read-only and are checked by module revision. The selector
 result is also checked for cardinality and membership. These constraints
 therefore stay beside implementation modules instead of becoming core
@@ -648,15 +652,17 @@ language. `ir.where(items, key, value)` filters an explicit `list<Fn>`,
 when it contains the requested value. The result retains the input handle
 type, so a transform can pass selected operations or values directly to the
 safe editing API. `ir.invoke<R>(m, op, fn)` executes a selected ordinary
-`fn(Mod, Op) -> R` in the current transaction. Its four-argument overload
-passes any typed compile-time value to a matching callback; a dictionary can
-carry named policy, while a `Fn` can identify one candidate implementation
-without an option class, serialized handle, or wrapper object.
+`fn(Mod, Op) -> R` in the current transaction. Its overloads pass one or two
+typed compile-time values to a matching callback; a dictionary can carry
+named policy, while a `Fn` can identify one candidate implementation without
+an option class, serialized handle, or wrapper object. For example,
+`ir.invoke<bool>(m, op, policy, candidate, config)` requires a
+`fn(Mod, Op, Fn, dict) -> bool` callback.
 The subject type is generic and inferred, so the same overload can invoke a
 typed relation over a whole `list<Op>` candidate, such as a
 producer/consumer pair, without encoding live handles in serializable
 metadata. Empty and nonempty lists use the same callback type. A handle passed
-directly, inside the subject, or inside the extra argument must be live.
+directly, inside the subject, or inside either extra argument must be live.
 The explicit result type keeps dynamic invocation typed even though `Fn` is a
 runtime handle. It rejects
 generic or incompatible callback signatures before execution, validates the

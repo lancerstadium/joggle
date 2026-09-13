@@ -185,7 +185,10 @@ The guarded form of `opt.apply` invokes a normal read-only
 the same specificity rule. The candidate is a live `Fn`, not a string or a
 second descriptor. A module can consequently inspect constant layout lists,
 alignment metadata, scalar formats, or declared device features without the
-core assigning meaning to any of them.
+core assigning meaning to any of them. The configured overload passes one
+additional ordinary dictionary to the predicate or whole-set selector. This
+allows the same loaded module to make per-run or per-call choices from a
+resource budget without a device hierarchy or option-object API.
 
 `opt.instantiate` provides the complementary boundary-preserving choice. Given
 a set of generic implementations, or simply a module name, it creates private
@@ -206,7 +209,8 @@ semantics; they map their schemas to shared functions.
 Transforms edit `Fn` bodies through the `ir` module. Reusable primitives
 cover construction, cloning, movement, replacement, expansion, and fusion. A
 policy can be supplied as a normal function handle and invoked through
-`ir.invoke`. This separates mechanism from experiment without inventing a
+`ir.invoke`; one or two extra typed values carry candidates and configuration
+when needed. This separates mechanism from experiment without inventing a
 scheduler object or callback ABI.
 
 The bundled `tile` module demonstrates structural loop transformation. Its

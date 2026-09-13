@@ -2180,7 +2180,7 @@ private:
         return Items{Item(std::move(out))};
       }
     } else if (name == "invoke" &&
-               (args.size() == 3 || args.size() == 4)) {
+               (args.size() == 3 || args.size() == 4 || args.size() == 5)) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* fn = as<Fn>(args[2]);
       if (mod && *mod && fn && *fn) {
@@ -2191,16 +2191,12 @@ private:
         const Ty& expected = generics.front();
         const std::vector<Val> params = fn->params();
         const std::vector<Ty> returns = fn->returns();
-        const bool configured = args.size() == 4;
+        const std::size_t callback_arity = args.size() - 1;
         if (!fn->generics().empty() ||
-            params.size() != (configured ? 3 : 2) ||
+            params.size() != callback_arity ||
             params[0].type() != Ty("Mod") ||
-            (configured &&
-             (!accepts_runtime(params[2].type(), args[3]) ||
-              !valid_runtime_handles(args[3]))) ||
             returns.size() != 1 || returns.front() != expected) {
-          fail("ir.invoke callback must match fn(Mod, subject" +
-                   std::string(configured ? ", argument" : "") + ") -> " +
+          fail("ir.invoke callback must match fn(Mod, subject, ...) -> " +
                    std::string(expected.text()),
                loc);
           return std::nullopt;
@@ -2213,9 +2209,18 @@ private:
                loc);
           return std::nullopt;
         }
+        for (std::size_t i = 3; i < args.size(); ++i) {
+          if (!accepts_runtime(params[i - 1].type(), args[i]) ||
+              !valid_runtime_handles(args[i])) {
+            fail("ir.invoke argument does not match callback parameter " +
+                     std::to_string(i - 1),
+                 loc);
+            return std::nullopt;
+          }
+        }
         Items callback_args{Item(*mod), args[1]};
-        if (configured)
-          callback_args.push_back(args[3]);
+        for (std::size_t i = 3; i < args.size(); ++i)
+          callback_args.push_back(args[i]);
         auto result = invoke(*fn, std::move(callback_args));
         if (!result)
           return std::nullopt;

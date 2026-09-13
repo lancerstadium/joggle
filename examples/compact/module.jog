@@ -1,7 +1,9 @@
 module compact
+use base
 use ir
 use nn
 use opt
+use spatial
 use tensor
 
 [impl: "compact"]
@@ -70,10 +72,47 @@ fn nn.conv2d<
   return out
 }
 
-fn impls() -> list<Fn> {
+local fn choices() -> list<Fn> {
   return ir.where(ir.fns("compact"), "impl", "compact")
 }
 
+fn select(
+  m: Mod, op: Op, candidates: list<Fn>, config: dict
+) -> list<Fn> {
+  if len(candidates) == 1 {
+    return candidates
+  }
+  let staged = ir.where(candidates, "impl", "spatial")
+  let compact = ir.where(candidates, "impl", "compact")
+  if len(staged) != 1 || len(compact) != 1 {
+    return []
+  }
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 || !tensor.valid(ir.type(outputs[0])) ||
+     !tensor.static(ir.type(outputs[0])) {
+    return staged
+  }
+  let budget = base.get(config, "max_extra_elems", 0)
+  assert(budget >= 0,
+         "compact: max_extra_elems must not be negative")
+  var elements = 1
+  for extent in tensor.shape(ir.type(outputs[0])) {
+    elements *= extent
+  }
+  if elements > budget / 2 {
+    return compact
+  }
+  return staged
+}
+
 fn apply(m: Mod) -> bool {
-  return opt.instantiate(m, impls())
+  return opt.instantiate(m, choices())
+}
+
+fn apply(m: Mod, config: dict) -> bool {
+  let candidates = choices() +
+                   ir.where(ir.fns("spatial"), "impl", "spatial")
+  return opt.instantiate(
+    m, candidates, ir.find("compact.select"), config
+  )
 }
