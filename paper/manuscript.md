@@ -14,6 +14,10 @@ distinct graph, tensor, loop, and target abstractions make a small experiment
 depend on native compiler infrastructure. Joggle explores malleable inference
 compilation: one typed function IR progressively exposes imported calls as
 reusable bodies, structured loops, and storage decisions.
+Malleability has an operational meaning here: a separately distributed module
+can discover a represented decision, replace it through the public IR API, and
+carry the edit to executable output without adding a native IR kind or central
+dispatch case.
 Decoders, analyses, transformations, memory policies, and emitters are
 distributable typed module functions rather than privileged pipeline stages.
 Structural legality queries and transactional edits let user policy rewrite
@@ -112,6 +116,17 @@ and results are frozen.
 ## 3. Design
 
 ### 3.1 One progressive function representation
+
+Malleability is not used as a synonym for configurability. For one installed
+module and one input program, we require three observable properties. First,
+the module discovers candidates through typed structure rather than frontend or
+operator-name cases. Second, it can replace the selected decision through the
+same public `Fn`/`Blk`/`Op`/`Val` API used by other modules. Third, the edited
+program either reaches an executable artifact with the change intact or fails
+at an explicit capability boundary. The extension study measures native
+registrations and core changes, the composition study exercises transactional
+failure, and the model study checks the artifact boundary. These are the paper's
+tests of malleability; source brevity alone is not one.
 
 The representation has seven public concepts: `Mod`, `Fn`, `Blk`, `Op`, `Val`,
 `Ty`, and `Attr`. Calls and structured control flow are operations; tensor

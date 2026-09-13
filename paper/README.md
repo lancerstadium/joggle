@@ -24,9 +24,13 @@ The paper studies one compiler claim: a progressive function IR can make
 inference compilation malleable across source semantics, loop structure,
 storage policy, and executable artifacts. Ordinary module functions expose and
 rewrite those layers without adding a central lowering registry or rebuilding
-the compiler. Extension surface, compile cost, code size, correctness,
-workspace, and latency all belong to that claim. Joggle does not claim to
-replace production runtimes or equate fewer source lines with better usability.
+the compiler. Here, *malleable* has a narrow testable meaning: a separately
+distributed module can discover a represented decision, replace it through the
+public IR API, and carry the edit to executable output without adding a native
+IR kind or a central dispatch case. Extension surface, compile cost, code size,
+correctness, workspace, and latency all belong to that claim. Joggle does not
+claim to replace production runtimes or equate fewer source lines with better
+usability.
 
 ## Current evidence status
 
