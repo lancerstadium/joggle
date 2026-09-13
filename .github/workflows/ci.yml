@@ -30,7 +30,7 @@ jobs:
         id: test
         run: >-
           ctest --test-dir build --output-on-failure
-          --output-junit build/ctest.xml
+          --output-junit ctest.xml
       - name: Preserve CTest failure
         if: ${{ failure() && steps.test.outcome == 'failure' }}
         run: |
@@ -81,7 +81,7 @@ jobs:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: >-
           ctest --test-dir build --output-on-failure
-          --output-junit build/ctest.xml
+          --output-junit ctest.xml
       - name: Preserve CTest failure
         if: ${{ failure() && steps.test.outcome == 'failure' }}
         run: |
