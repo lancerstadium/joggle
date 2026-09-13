@@ -2490,6 +2490,19 @@ int main(int argc, char** argv) {
       "module wrong.number\nuse number\n"
       "fn bad(x: qreal<8, 16>) -> qreal<8, 16> { return x }\n",
       "expects 1 type argument"));
+  joggle::Mod trim_number;
+  CHECK(joggle::parse(env,
+                      "module trim.number\n"
+                      "use math\n"
+                      "use number\n"
+                      "fn keep(x: qreal<8>) -> qreal<8> { return x }\n",
+                      trim_number, "trim-number.jog"));
+  CHECK(trim_number.verify(env));
+  const std::uint64_t before_trim_number = trim_number.revision();
+  CHECK(trim_number.trim(env));
+  CHECK(trim_number.revision() == before_trim_number + 1);
+  CHECK(trim_number.uses() == std::vector<std::string>{"number"});
+  CHECK(trim_number.verify(env));
   joggle::Mod custom_number;
   constexpr std::string_view custom_number_source =
       "module custom.number\n"

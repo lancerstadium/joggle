@@ -2778,19 +2778,13 @@ struct TypeLookup {
   Ty actual;
 };
 
-bool type_constructor(Fn fn) {
-  const std::vector<Ty> returns = fn.returns();
-  return fn.params().empty() && returns.size() == 1 &&
-         returns.front().name() == "Ty";
-}
-
 TypeLookup type_declaration(const Mod& mod, const Env& env, const Ty& type,
                             std::span<const GenericInfo> context) {
   const std::vector<Fn> candidates = env.resolve_fns(mod, type.name());
   TypeLookup result;
   result.seen = !candidates.empty();
   for (const Fn candidate : candidates) {
-    if (!type_constructor(candidate))
+    if (!detail::type_constructor(candidate))
       continue;
     result.arities.push_back(candidate.generics().size());
     if (candidate.generics().size() != type.args().size())
@@ -2921,7 +2915,8 @@ bool verify_type(detail::Store& store, const Mod& mod, const Env& env,
     } else {
       for (const std::string& module : env.modules()) {
         for (const Fn candidate : env.fns(module)) {
-          if (candidate.name() == type.name() && type_constructor(candidate)) {
+          if (candidate.name() == type.name() &&
+              detail::type_constructor(candidate)) {
             hidden.push_back(candidate);
             break;
           }

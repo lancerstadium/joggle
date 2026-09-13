@@ -362,6 +362,12 @@ bool detail::valid_qualified_name(std::string_view text) {
   return valid_qualified_name_impl(text);
 }
 
+bool detail::type_constructor(Fn fn) {
+  const std::vector<Ty> returns = fn.returns();
+  return fn.params().empty() && returns.size() == 1 &&
+         returns.front().name() == "Ty";
+}
+
 bool detail::literal_matches(const Attr& value, const Ty& type) {
   const std::string_view name = type.name();
   if (name == "_" || name == "Attr" || name == "meta")
@@ -842,14 +848,8 @@ bool Mod::trim(const Env& env) {
   const auto add_type = [&](const auto& self, const Ty& type) -> void {
     if (!type.valid())
       return;
-    const std::string symbol =
-        type.name().find('.') == std::string_view::npos
-            ? std::string(type.name()) + "." + std::string(type.name())
-            : std::string(type.name());
-    for (Fn candidate : env.resolve_fns(*this, symbol)) {
-      const std::vector<Ty> returns = candidate.returns();
-      if (candidate.store_ != &store && candidate.params().empty() &&
-          returns.size() == 1 && returns.front().name() == "Ty")
+    for (Fn candidate : env.resolve_fns(*this, type.name())) {
+      if (candidate.store_ != &store && detail::type_constructor(candidate))
         targets.insert(std::string(candidate.module()));
     }
     for (const Ty& arg : type.args())

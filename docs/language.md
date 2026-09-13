@@ -769,8 +769,10 @@ hidden load or creates an unresolved dependency. This lets an
 explicit frontend bridge introduce the semantic library whose qualified
 functions it selects; parsing a frontend never does so implicitly.
 `ir.trim(m)` removes dependencies that no longer own a resolved external call
-or a visible structural type constructor. It prefers a direct provider and
-keeps a declared transitive provider only when the program still needs it.
+or a visible structural type constructor. Type dependencies use the same
+visible constructor-family lookup as verification, including constructors whose
+name differs from their module. It prefers a direct provider and keeps a
+declared transitive provider only when the program still needs it.
 Metadata strings are provenance rather than symbol references, so exposing a
 module body does not retain its source package accidentally. The operation is
 deterministic, idempotent, and covered by the enclosing transaction.
