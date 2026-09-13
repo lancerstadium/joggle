@@ -313,3 +313,17 @@ fell from 75.47 to 55.71 seconds (-26.18%). This is an engineering pilot, not
 a publication timing result: it has one repetition, no host isolation, and
 mixes two implementation changes that require separate ablation if compiler
 overhead becomes a paper claim.
+
+`c-emitter-pilot.csv` isolates the C expression-emission change between
+commits `49cba96` and `5214a6b`. Each pair uses the same already prepared and
+placed IR, the same external-payload argument spelling, and strict
+`-std=c11 -O3 -DNDEBUG -Wall -Wextra -Werror -pedantic-errors` compilation.
+The candidate preserves immutable scalar bindings as `const`, emits compound
+updates directly, and omits integral compound updates by zero or one when the
+operator identity makes them no-ops. Source size falls on all six checked
+models, from 1.035% on QDQ SqueezeNet to 11.096% on MNIST. Current sources for
+MNIST, MobileNetV2, ShuffleNet, and GoogLeNet also pass reference-output smoke
+execution with the errors recorded in the CSV; the two SqueezeNet rows were
+compile-only in this follow-up and are not labeled as fresh numerical checks.
+This is a readability and source-volume pilot, not evidence of a latency
+improvement.

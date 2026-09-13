@@ -117,6 +117,11 @@ frozen.
   incompatible scalar ABIs. This is mechanism evidence, not a speedup result.
 - Externalizing the MobileNetV2 weight payload reduced generated C source from
   about 56.9 MB to 246 KB, with a separate payload of about 14.2 MB.
+- Preserving `const` bindings and compound updates in the C emitter reduces
+  source size by 1.0--11.1% across a matched six-model pilot. All twelve
+  baseline and candidate sources compile under strict C11; four candidate
+  models received fresh reference-output smoke checks. This is source-quality
+  evidence, not a latency result.
 - Compiler-owned call-site instances now execute MobileNetV2, UltraFace,
   SqueezeNet 1.1, and ResNet18 with their recorded numerical error bounds. They
   reduce external-data C source by 26.3%, 8.4%, 15.4%, and 21.8% against the

@@ -1,0 +1,7 @@
+model,baseline_revision,candidate_revision,baseline_source_bytes,candidate_source_bytes,delta_bytes,delta_percent,baseline_strict_c11,candidate_strict_c11,candidate_execute,candidate_max_abs_error,note
+MNIST-8,49cba96,5214a6b,12942,11506,-1436,-11.096,pass,pass,pass,0.000019073486328125,"same prepared IR and weights payload name; ordinary application gate"
+MobileNetV2-7,49cba96,5214a6b,240059,236656,-3403,-1.418,pass,pass,pass,0.0000209808349609375,"same placed IR and joggle_data_weights payload name; three-call smoke execution"
+SqueezeNet1.1-7,49cba96,5214a6b,135009,133000,-2009,-1.488,pass,pass,not_run,,"same placed IR and joggle_data_weights payload name"
+SqueezeNet1.0-13-QDQ,49cba96,5214a6b,230334,227949,-2385,-1.035,pass,pass,not_run,,"same placed IR and joggle_data_weights payload name"
+ShuffleNetV2-12,49cba96,5214a6b,156012,148644,-7368,-4.723,pass,pass,pass,0.00000858306884765625,"same placed IR and weights payload name; three-call smoke execution"
+GoogLeNet-12,49cba96,5214a6b,250681,231509,-19172,-7.648,pass,pass,pass,0.00000015646219253540039,"same placed IR and weights payload name; three-call smoke execution"
