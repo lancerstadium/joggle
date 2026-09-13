@@ -8,8 +8,8 @@ preserved here.
 
 ## Target and thesis
 
-Working title: **Joggle: A Progressive Function IR for Cross-Layer AI
-Co-Design**.
+Working title: **Joggle: Malleable Inference Compilation with a Progressive
+Function IR**.
 
 The current target is the
 [EuroSys 2027 fall cycle](https://2027.eurosys.org/cfp.html). Titles and
@@ -20,14 +20,13 @@ format, and is double blind. Repository links must therefore point to an
 anonymous snapshot rather than this development repository. EuroSys also
 requires disclosure of AI-tool use under ACM policy.
 
-The paper studies one systems claim: a small progressive compiler can expose
-the real function bodies of conventional neural networks to user-defined
-analysis and transformation, then carry those edits through memory planning
-and executable artifact generation without adding a central lowering registry
-or rebuilding the compiler. Extension surface, compile cost, code size,
-correctness, workspace, and latency all belong to that claim. Joggle does not
-claim to replace production runtimes or equate fewer source lines with better
-usability.
+The paper studies one compiler claim: a progressive function IR can make
+inference compilation malleable across source semantics, loop structure,
+storage policy, and executable artifacts. Ordinary module functions expose and
+rewrite those layers without adding a central lowering registry or rebuilding
+the compiler. Extension surface, compile cost, code size, correctness,
+workspace, and latency all belong to that claim. Joggle does not claim to
+replace production runtimes or equate fewer source lines with better usability.
 
 ## Current evidence status
 

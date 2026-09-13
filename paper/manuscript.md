@@ -1,4 +1,4 @@
-# Joggle: A Progressive Function IR for Cross-Layer AI Co-Design
+# Joggle: Malleable Inference Compilation with a Progressive Function IR
 
 Working manuscript for the EuroSys 2027 fall cycle. The current file is
 an argument draft, not a submission-ready paper. Pilot values are labeled and
@@ -6,14 +6,14 @@ must be replaced by frozen experiment results.
 
 ## Abstract
 
-AI hardware/software co-design often crosses several compiler boundaries at
-once: a researcher imports a conventional model, exposes an operator's real
-function body, changes its loop or storage structure, and emits an executable
-for a new device or data representation. Production stacks support such work,
-but distinct graph, tensor, loop, and target abstractions make a small
-cross-layer experiment depend on native compiler infrastructure. Joggle
-explores a smaller design: one typed function IR that progressively exposes
-imported calls as reusable bodies, structured loops, and storage decisions.
+Custom inference research often crosses several compiler boundaries at once: a
+researcher imports a conventional model, exposes an operator's real function
+body, changes its loop or storage structure, and emits an executable for a new
+device or data representation. Production stacks support such work, but
+distinct graph, tensor, loop, and target abstractions make a small experiment
+depend on native compiler infrastructure. Joggle explores malleable inference
+compilation: one typed function IR progressively exposes imported calls as
+reusable bodies, structured loops, and storage decisions.
 Decoders, analyses, transformations, memory policies, and emitters are
 distributable typed module functions rather than privileged pipeline stages.
 Structural legality queries and transactional edits let user policy rewrite
