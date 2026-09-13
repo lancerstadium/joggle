@@ -1,7 +1,0 @@
-{
-  "matplotlib": "3.10.9",
-  "numpy": "2.4.4",
-  "platform": "macOS-15.7.3-arm64-arm-64bit-Mach-O",
-  "point_offset": "deterministic linear spacing within each model",
-  "python": "3.14.0"
-}

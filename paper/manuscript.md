@@ -24,13 +24,13 @@ Structural legality queries and transactional edits let user policy rewrite
 actual model bodies while preserving explicit failure. We evaluate the design
 through matched extension tasks, compiler cost, staged compatibility on
 conventional models, numerical correctness, workspace, code size, and latency.
-Current pilots execute ten ONNX models. On MobileNetV2, SqueezeNet, and
-UltraFace, one operator-independent loop-order policy changes canonical
-function bodies and yields 2.08x, 6.09x, and 1.62x same-process latency ratios
-while growing generated C by less than 0.5%; uncontrolled measurements still
-preclude a final speed claim. The completed study will test whether a
-progressive function IR provides a practical, inspectable substrate for
-cross-layer AI co-design, not whether it replaces a production runtime.
+Current pilots execute ten ONNX models, but generated C remains slower than
+one-thread ONNX Runtime on every measured network. An operator-independent
+loop-order policy and a proof-derived no-alias pass show that external modules
+can rewrite real function bodies without emitter cases; controlled
+cross-system measurements remain incomplete. The completed study will test
+whether a progressive function IR provides a practical, inspectable substrate
+for cross-layer AI co-design, not whether it replaces a production runtime.
 
 ## 1. Introduction
 
@@ -109,9 +109,10 @@ and results are frozen.
   generated definitions, core changes, and build dependencies are required?
 - **RQ3, composition:** Do independently defined modules compose with stable
   output, transactional failure, and useful unsupported-frontier diagnostics?
-- **RQ4, artifact quality:** What correctness, code size, workspace,
-  compilation, and latency costs result, and how much can user-defined
-  structural policies improve them without modifying the core or C emitter?
+- **RQ4, artifact quality:** Under matched model, threading, and correctness
+  contracts, how do generated artifacts compare with independent production
+  systems? Separately, can user modules change real function bodies without a
+  core or emitter modification?
 
 ## 3. Design
 
@@ -327,89 +328,22 @@ single-host mechanism diagnostic, not a controlled compiler-throughput claim.
 
 Generated C is presently the main negative result. Depending on the model, the
 recorded unisolated pilots are about 7--101 times slower than one-thread ONNX
-Runtime. A retired out-of-tree spatial convolution body improved five matched
-C variants by 1.36--6.29 times without frontend or emitter changes, but does not
-provide evidence for the replacement pass. A matched current-revision pilot
-instead applies the generic `tile.reorder` pass to instantiated canonical
-bodies without retargeting any call. Twenty paired MobileNetV2 calls have
-221.645/106.397 ms medians and a 2.081 median pair ratio after changing 32
-bodies; generated C grows by 0.286%, candidate and baseline outputs are
-bit-identical, and both retain the `2.0981e-5` reference error. On
-SqueezeNet, the same policy changes 18 bodies. Twenty paired calls have
-231.433/38.136 ms medians and a 6.090 median pair ratio; generated C grows by
-0.28%, candidate and baseline outputs are bit-identical, and both retain the
-`5.2452e-6` stored-reference error. On UltraFace, the policy changes 37 bodies.
-Twenty paired calls have
-40.457/24.895 ms medians and a 1.624 median pair ratio, with both output tensors
-bit-identical between variants; generated C grows by 0.30%. Independent
-reference runs retain maximum absolute score/box errors of `2.9802e-7` and
-`3.5763e-7`. These runs remain unisolated and do not close the
-production-runtime gap, but they separate the low-growth reordering direction
-from the replication cost below. A later same-process diagnostic selects
-factors four and seven from affine state extents and composes `split`,
-`reorder`, and
-`scalarize` without inspecting operator names. It changes 31 bodies; all 40
-paired calls favor the candidate, with a 1.559 median pair ratio and
-bit-identical candidate/baseline outputs. Candidate C is 75.7% larger, and the
-machine slows materially during the unisolated run, so this is a mechanism and
-protocol pilot rather than a performance claim. The same source policy now
-uses a generic state-axis peel for SqueezeNet's non-divisible widths; 20 paired
-calls have 253.762/71.524 ms medians and a 3.544 median pair ratio, with
-bit-identical variant outputs and unchanged `5.2452e-6` reference error.
-Candidate C is 118.9% larger. This second run broadens the mechanism evidence,
-but its unisolated single-machine protocol still precludes a performance
-claim. A third paired UltraFace diagnostic changes 37 bodies, including 11
-peeled non-divisible extents. Its 20 baseline/candidate medians are
-40.632/18.125 ms with a 2.244 median pair ratio. Both result tensors are
-bit-identical between variants and retain their reference errors, while C grows
-67.5%. Together the three runs make cross-model structural selection
-plausible; they still do not establish controlled performance or an automatic
-scheduling policy.
-
-![Three-model loop-reordering latency and generated-source trade-off.](figures/Fig1.png)
-
-**Figure 1 | Low-growth structural reordering across conventional models.**
-**a,** Each point is one adjacent baseline/reordered technical call; thick
-vertical lines show interquartile ranges and horizontal ticks show medians.
-All 20 pairs per model favor the reordered variant. These repeated calls were
-collected within one unisolated process and are not independent experimental
-units, so no inferential test is reported. **b,** Exact generated C source
-growth for the same variants; labels give the number of changed loop bodies.
-Candidate and baseline outputs are bit-identical in every pair. This descriptive
-pilot does not compare Joggle with a production runtime.
-
-A follow-up UltraFace diagnostic tests whether the policy can bound this
-growth before mutation. Limits 0, 500, 1,500, and 1,000,000 produce 0, 4, 16,
-and 148 accumulators and C sizes of 197,266, 200,740, 208,137, and 326,858
-bytes. Ten alternating paired calls give median within-pair ratios of 1.039,
-1.052, and 2.260 for the three nonzero limits, with both result tensors
-bit-identical to the common baseline. The small limits therefore control size
-but capture little of the unrestricted speed direction. This is an unisolated
-mechanism pilot, not a Pareto result; it shows that a replaceable policy needs
-a benefit signal or candidate ordering in addition to structural cost.
-
-A deliberately temporary source policy then ordered candidates by statically
-derived reduction reuse per structural-cost unit. At limits 500 and 1,500 it
-produced 2.7% and 10.4% larger C than baseline and median paired ratios of
-1.002 and 1.060, versus 1.039 and 1.052 for first-fit. All outputs remained
-bit-identical. The small difference at 1,500 is not distinguishable from this
-pilot's uncontrolled variation, and the 500 direction is worse. We therefore
-retired the heuristic rather than adding it to the workbench: static reduction
-reuse is not a sufficient latency benefit model.
-
-A separate UltraFace diagnostic tests whether the artifact
-module can consume storage facts without an operator case. A single call index
-proves private non-aliasing contracts for 72 of 139 functions; all 40 paired
-calls favor the proved variant, with 20.570/17.680 ms medians and a 1.162
-median pair ratio. The two result errors are at most `1.1921e-7` relative to
-the unqualified variant. The host was not isolated, so this is a mechanism
-pilot rather than a final speedup. A second ordinary
-implementation reduces GoogLeNet's static workspace elements by 58.4% and
-slots from 55 to 6, while
-increasing its unisolated median latency by 27.5%. This is a resource tradeoff,
-not a Pareto or speedup claim. Final experiments require isolated repeated
-runs, dispersion, fixed revisions and flags, task-level accuracy where
-applicable, and at least one second machine.
+Runtime. Internal A/B runs of structural rewrites are therefore excluded from
+the primary performance evidence: comparing two Joggle variants can validate
+that a pass changes real function bodies and preserves results, but cannot show
+that Joggle is competitive. Those diagnostics establish three narrower facts.
+First, one operator-independent loop policy rewrites canonical bodies across
+MobileNetV2, SqueezeNet, and UltraFace. Second, a structural budget bounds code
+replication before mutation. Third, call-site analysis can prove private
+non-aliasing without adding an operator case when such calls remain after
+specialization. The standard MobileNetV2 path contains only its exported entry,
+so that analysis correctly makes no change there. The repository retains raw
+internal records for regression and ablation, but the paper's performance
+table will compare independent systems on identical model, input, thread, and
+correctness contracts while recording each system's compiler and runtime
+versions.
+It remains incomplete until isolated repetitions and a second machine are
+available.
 
 The extension-surface study and controlled performance study are not complete.
 One of four system-baseline tasks now passes, but that result does not support

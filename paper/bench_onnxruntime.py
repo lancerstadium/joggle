@@ -9,6 +9,14 @@ import numpy as np
 import onnxruntime as ort
 
 
+def fnv1a(value: np.ndarray) -> str:
+    checksum = 1469598103934665603
+    for byte in np.asarray(value, dtype=np.float32).reshape(-1).tobytes():
+        checksum ^= byte
+        checksum = (checksum * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+    return f"{checksum:016x}"
+
+
 def parse_shape(text: str) -> tuple[int, ...]:
     try:
         shape = tuple(int(item) for item in text.split(","))
@@ -27,9 +35,23 @@ def main() -> None:
     parser.add_argument("--shape", type=parse_shape)
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--repetitions", type=int, default=30)
+    parser.add_argument("--atol", type=float, default=1.0e-4)
+    parser.add_argument("--rtol", type=float, default=1.0e-4)
+    parser.add_argument(
+        "--protocol",
+        action="store_true",
+        help="emit the backend-neutral iteration,seconds,checksum protocol",
+    )
     args = parser.parse_args()
     if args.warmup < 0 or args.repetitions <= 0:
         parser.error("warmup must be nonnegative and repetitions positive")
+    if (
+        not np.isfinite(args.atol)
+        or not np.isfinite(args.rtol)
+        or args.atol < 0
+        or args.rtol < 0
+    ):
+        parser.error("atol and rtol must be nonnegative and finite")
 
     options = ort.SessionOptions()
     options.intra_op_num_threads = 1
@@ -64,21 +86,34 @@ def main() -> None:
     for _ in range(args.warmup):
         session.run(None, feed)
 
-    print("backend,iteration,seconds,checksum")
+    if args.protocol:
+        print("iteration,seconds,checksum")
+    else:
+        print("backend,iteration,seconds,checksum")
     result = None
     for iteration in range(args.repetitions):
         begin = time.perf_counter()
         result = session.run(None, feed)[0]
         elapsed = time.perf_counter() - begin
         flat = np.asarray(result, dtype=np.float32).reshape(-1)
-        checksum = flat.sum(dtype=np.float64)
-        print(f"onnxruntime,{iteration},{elapsed:.9f},{checksum:.17g}")
+        if args.protocol:
+            print(f"{iteration},{elapsed:.9f},{fnv1a(flat)}")
+        else:
+            checksum = flat.sum(dtype=np.float64)
+            print(f"onnxruntime,{iteration},{elapsed:.9f},{checksum:.17g}")
 
     assert result is not None
     flat = np.asarray(result, dtype=np.float32).reshape(-1)
     if flat.size != expected.size:
         raise ValueError(f"expected {expected.size} outputs, received {flat.size}")
-    print(f"max_abs_error={np.max(np.abs(flat - expected)):.9g}", file=sys.stderr)
+    if not np.all(np.isfinite(expected)):
+        raise ValueError("reference output contains a nonfinite value")
+    errors = np.abs(flat - expected)
+    if not np.all(np.isfinite(flat)) or np.any(
+        errors > args.atol + args.rtol * np.abs(expected)
+    ):
+        raise ValueError("output exceeds the declared numerical tolerance")
+    print(f"max_abs_error={np.max(errors):.9g}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -503,6 +503,16 @@ if(JOGGLE_BUILD_TESTS)
   )
   find_program(JOGGLE_TEST_C_COMPILER NAMES cc clang gcc)
   find_program(JOGGLE_TEST_PYTHON NAMES python3 python)
+  if(JOGGLE_TEST_PYTHON)
+    add_test(
+      NAME measure-systems
+      COMMAND
+        ${JOGGLE_TEST_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/test/measure_systems.py
+        --runner ${CMAKE_CURRENT_SOURCE_DIR}/paper/measure_systems.py
+        --repo ${CMAKE_CURRENT_SOURCE_DIR}
+        --root ${CMAKE_CURRENT_BINARY_DIR}/measure-systems
+    )
+  endif()
   if(JOGGLE_TEST_C_COMPILER)
     add_test(
       NAME ikj-example

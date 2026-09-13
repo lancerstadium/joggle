@@ -8,8 +8,8 @@ preserved here.
 
 ## Target and thesis
 
-Working title: **Joggle: Malleable Inference Compilation with a Progressive
-Function IR**.
+Working title: **Joggle: A Progressive Function IR for Malleable Inference
+Compilation**.
 
 The current target is the
 [EuroSys 2027 fall cycle](https://2027.eurosys.org/cfp.html). Titles and
@@ -39,7 +39,7 @@ usability.
 | Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths | Freeze and record model-level stage traces |
 | Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM controls pass three contracts; the exact MatMul contract now passes through Joggle and a native, end-to-end ONNX-MLIR extension | Finish the remaining system tasks or preserve their unsupported outcomes; repeat the ONNX-MLIR build from a clean checkout |
 | Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical CSE/analysis scaling pilots | Freeze a fault and diagnostic matrix |
-| Artifact quality | Ten numerical ONNX paths; one generic reorder policy has low-source-growth paired MobileNetV2, SqueezeNet, and two-result UltraFace diagnostics, while a separate block policy exposes replication trade-offs | Isolated multi-model repetitions, dispersion, task accuracy, second machine, and a materially smaller generated-C gap |
+| Artifact quality | Ten numerical ONNX paths; internal rewrite diagnostics preserve their reference outputs, but they are not system comparisons | Controlled Joggle/ONNX Runtime/ONNX-MLIR results, task accuracy, a second machine, and a materially smaller generated-C gap |
 
 The current generated-C pilots remain roughly 7--101 times slower than
 one-thread ONNX Runtime, depending on the model. This is a blocking result, not
@@ -65,8 +65,9 @@ or extensibility until the corresponding controlled study is complete.
 - [`model-study.md`](model-study.md): model selection and staged compatibility
   protocol.
 - [`data/`](data/): raw pilot records and provenance.
-- [`figures/`](figures/): scripts, derived summaries, rendered assets, and the
-  figure hand-off report; generated values are never copied manually.
+- [`experiments/`](experiments/): frozen cross-system command manifests. The
+  runner rotates independent process trials and rejects a busy host when a
+  publication run supplies a load threshold.
 
 ## Reproduction entry points
 
@@ -110,8 +111,14 @@ Other scripts in this directory each regenerate the correspondingly named CSV.
 The provenance and interpretation boundary for every record is documented in
 [`data/README.md`](data/README.md).
 
-Build matched baseline and generic-reorder sources from an already prepared
-model, then run the two-result alternating harness:
+The remaining paired-variant scripts are internal pass diagnostics. They test
+structural mutation, numerical preservation, and code-growth bounds; they must
+not be used as the paper's system-performance comparison. The publication
+runner is [`measure_systems.py`](measure_systems.py), whose subjects are
+independent external commands declared under [`experiments/`](experiments/).
+
+For pass regression work only, build matched original and rewritten sources
+from an already prepared model, then run the alternating harness:
 
 ```sh
 python3 paper/measure_reorder.py \
