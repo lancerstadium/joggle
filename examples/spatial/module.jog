@@ -2,7 +2,7 @@ module spatial
 use ir
 use tile
 
-local fn order(m: Mod, op: Op, inner: int) -> list<int> {
+local fn block_order(m: Mod, op: Op, inner: int) -> list<int> {
   let state = tile.state_axes(m, op)
   let extents = tile.extents(m, op)
   if inner <= 0 || len(state) <= inner ||
@@ -29,10 +29,91 @@ local fn order(m: Mod, op: Op, inner: int) -> list<int> {
   return out
 }
 
+local fn same_order(left: list<int>, right: list<int>) -> bool {
+  if len(left) != len(right) {
+    return false
+  }
+  for i in 0..len(left) {
+    if left[i] != right[i] {
+      return false
+    }
+  }
+  return true
+}
+
+local fn interleave(
+  state: list<int>, reduction: list<int>, inner: int
+) -> list<int> {
+  var out: list<int> = []
+  for i in 0..len(state) - inner {
+    out += [state[i]]
+  }
+  out += reduction
+  for i in len(state) - inner..len(state) {
+    out += [state[i]]
+  }
+  return out
+}
+
+local fn locality_scores(m: Mod, op: Op) -> list<int> {
+  let axes = len(tile.extents(m, op))
+  let forms = tile.read_forms(m, op) + tile.write_forms(m, op)
+  if axes == 0 || len(forms) == 0 {
+    return []
+  }
+  var scores: list<int> = []
+  for axis in 0..axes {
+    scores += [0]
+  }
+  for form in forms {
+    if len(form) != axes + 1 {
+      return []
+    }
+    for axis in 0..axes {
+      let coefficient = form[axis + 1]
+      if coefficient == 1 || coefficient == -1 {
+        scores[axis] = scores[axis] + 3
+      } else {
+        if coefficient == 0 {
+          scores[axis] = scores[axis] + 1
+        }
+      }
+    }
+  }
+  return scores
+}
+
+local fn locality(order: list<int>, scores: list<int>) -> int {
+  var out = 0
+  for position in 0..len(order) {
+    out += (position + 1) * scores[order[position]]
+  }
+  return out
+}
+
 fn choose(m: Mod, op: Op) -> list<int> {
-  let selected = order(m, op, 2)
-  if len(selected) != 0 && tile.can_reorder(m, op, selected) {
-    return selected
+  let state = tile.state_axes(m, op)
+  let reduction = tile.reduction_axes(m, op)
+  let scores = locality_scores(m, op)
+  if len(state) == 0 || len(reduction) == 0 || len(scores) == 0 {
+    return []
+  }
+  var identity: list<int> = []
+  for axis in 0..len(scores) {
+    identity += [axis]
+  }
+  var best = identity
+  var best_score = locality(identity, scores)
+  for inner in 0..len(state) + 1 {
+    let candidate = interleave(state, reduction, inner)
+    let score = locality(candidate, scores)
+    if score > best_score && tile.can_reorder(m, op, candidate) {
+      best = candidate
+      best_score = score
+    }
+  }
+  if !same_order(best, identity) {
+    return best
   }
   return []
 }
@@ -92,7 +173,7 @@ local fn block(
           let split = tile.split(m, selected, axis, selected_factor)
           assert(ir.live(split),
                  "spatial.block could not split a selected loop")
-          let next_order = order(m, split, 1)
+          let next_order = block_order(m, split, 1)
           assert(len(next_order) == axes + 1,
                  "spatial.block could not order a selected tile")
           let reordered = tile.reorder(m, split, next_order)

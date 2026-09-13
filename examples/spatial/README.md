@@ -12,7 +12,7 @@ n, m, oh, ow, q, r, s
 to
 
 ```text
-n, m, q, r, s, oh, ow
+n, m, oh, q, r, s, ow
 ```
 
 with the generic `tile.reorder` transform. There is no `spatial.nn.conv2d`
@@ -28,8 +28,11 @@ joggle emit c.source scheduled.jog \
 ```
 
 The example policy does not recognize convolution or require seven axes. It
-uses `tile.state_axes` and `tile.reduction_axes` to keep the last two affine
-state axes inside the reduction band. Correctness belongs to `tile.reorder`.
+uses `tile.state_axes`, `tile.reduction_axes`, and the whole-loop
+`tile.read_forms`/`tile.write_forms` queries. It scores unit-stride access
+higher than reuse and moves the best suffix of state axes inside the unchanged
+reduction band. The score is deliberately visible source policy, not a hidden
+target heuristic. Correctness belongs to `tile.reorder`.
 Before editing, the transform requires static integer ranges, one
 carried state, equal affine read/write addresses, an injective address map for
 state axes, and unchanged relative order within both state and reduction axes.
@@ -70,9 +73,9 @@ inner state axis below the reduction band, and call
 `tile.scalarize(m, loop, factor)`. The pass carries at most `factor` scalar
 accumulators and proves every hoisted state address against the static tensor
 capacity. The regression suite executes both a two-lane Conv pipeline and a
-four-lane spatial pipeline; a padded three-lane split is rejected by affine
-legality instead of being turned into an out-of-bounds load or store. None of
-these paths defines a second `nn.conv2d` function.
+locality-selected two-lane spatial pipeline; a padded three-lane split is
+rejected by affine legality instead of being turned into an out-of-bounds load
+or store. None of these paths defines a second `nn.conv2d` function.
 
 `spatial.block(m, factors)` is the complete generic policy used by that test.
 For each loop it prefers the first factor that exactly divides the innermost

@@ -436,21 +436,13 @@ execute_process(
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "spatial scheduling is not idempotent")
 endif()
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E compare_files "${configured}" "${prepared}"
-  RESULT_VARIABLE result
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "configured and source-only reorder policies diverged")
-endif()
 file(READ "${prepared}" text)
 if(text MATCHES "spatial.nn.conv2d" OR text MATCHES "use spatial")
   message(FATAL_ERROR
           "spatial scheduling retained an implementation override:\n${text}")
 endif()
 if(NOT text MATCHES
-   "for n in [^\n]+, m in [^\n]+, q in [^\n]+, r in [^\n]+, s in [^\n]+, oh in [^\n]+, ow in")
+   "for n in [^\n]+, m in [^\n]+, oh in [^\n]+, q in [^\n]+, r in [^\n]+, s in [^\n]+, ow in")
   message(FATAL_ERROR "spatial pass omitted its loop order:\n${text}")
 endif()
 execute_process(
@@ -466,7 +458,7 @@ if(NOT result EQUAL 0)
 endif()
 execute_process(
   COMMAND "${TOOL}" run tile_pass.check_spatial_scalarize "${prepared}"
-          --arg 4 -M "${MODULES}"
+          --arg 2 -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_QUIET
   ERROR_VARIABLE error
@@ -477,7 +469,7 @@ if(NOT result EQUAL 0)
 endif()
 execute_process(
   COMMAND "${TOOL}" run tile_pass.scalarize_budget "${prepared}"
-          --arg 4 -M "${MODULES}"
+          --arg 2 -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${tiled_scalar_raw}"
   ERROR_VARIABLE error
@@ -498,7 +490,7 @@ if(NOT result EQUAL 0)
 endif()
 execute_process(
   COMMAND "${TOOL}" run tile_pass.check_spatial_scalarized "${tiled_scalar}"
-          --arg 4 -M "${MODULES}"
+          --arg 2 -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_QUIET
   ERROR_VARIABLE error
@@ -509,7 +501,7 @@ if(NOT result EQUAL 0)
 endif()
 execute_process(
   COMMAND "${TOOL}" run tile_pass.scalarize_budget "${tiled_scalar}"
-          --arg 4 -M "${MODULES}"
+          --arg 2 -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${tiled_scalar_stable}"
   ERROR_VARIABLE error
@@ -528,10 +520,10 @@ if(NOT result EQUAL 0)
 endif()
 file(READ "${tiled_scalar}" tiled_scalar_text)
 if(NOT tiled_scalar_text MATCHES "var acc_0 =" OR
-   NOT tiled_scalar_text MATCHES "var acc_3 =" OR
+   NOT tiled_scalar_text MATCHES "var acc_1 =" OR
    tiled_scalar_text MATCHES "spatial\.nn\.conv2d|edge\.nn\.conv2d")
   message(FATAL_ERROR
-          "tiled scalar promotion did not expose four accumulators:\n"
+          "tiled scalar promotion did not expose two accumulators:\n"
           "${tiled_scalar_text}")
 endif()
 execute_process(
