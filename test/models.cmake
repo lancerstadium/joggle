@@ -85,6 +85,9 @@ joggle_onnx_model(
   SHA256 0294e7e88e5b3360de9b0fdc321baf9e6ef18b7f058c4536caae3b9f18ed9ed5
   TEST onnx-zoo-densenet
   ARGS --frontier-from-signature 0 onnx.Concat onnx.BatchNormalization
+  APP_SOURCE validated/vision/classification/densenet-121/model/densenet-12.tar.gz
+  APP_TOP densenet-12
+  APP_SHA256 055c8ea3bdb3536063bc71b8bb3752f9482ed368a1d48c59a9fd769ded565682
 )
 joggle_onnx_model(
   NAME googlenet-12

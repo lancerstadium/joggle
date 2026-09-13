@@ -314,6 +314,16 @@ a publication timing result: it has one repetition, no host isolation, and
 mixes two implementation changes that require separate ablation if compiler
 overhead becomes a paper claim.
 
+`densenet-prepare-pilot.csv` records a negative application-scale boundary.
+The checksum-pinned DenseNet-121 model decodes, infers, converts, round trips,
+and accepts the ordinary out-of-tree spatial implementation. The resulting
+65,429,147-byte IR did not complete `c.prepare` within a 600-second cutoff at
+revision `741b972`; its redirected output remained empty. The official ONNX
+Zoo application archive, input, and output were checksum-verified, but no C
+source was emitted and no numerical or latency claim is made for this model.
+The row motivates compiler-preparation scaling work; it does not count as an
+additional supported model.
+
 `c-emitter-pilot.csv` isolates the C expression-emission change between
 commits `49cba96` and `5214a6b`. Each pair uses the same already prepared and
 placed IR, the same external-payload argument spelling, and strict

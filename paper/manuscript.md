@@ -185,6 +185,13 @@ results after inference; SSD-MobileNetV1 infers all result types but retains
 omitted, not counted as passes. Structural completion is kept separate from
 the nine-model numerical execution claim above.
 
+DenseNet also exposes a compiler-scaling boundary rather than an additional
+backend result. After conversion and selection of the same out-of-tree spatial
+implementation used by smaller models, its 65,429,147-byte IR did not complete
+`c.prepare` within a 600-second pilot cutoff. No source, executable, or output
+comparison was produced. This failure keeps preparation cost in RQ4 and rules
+out presenting structural conversion alone as end-to-end compatibility.
+
 The compiled application gate now checks that generated model source, public
 header, structured API, and generated harness agree under strict C11 warnings.
 The harness mechanism has compiled for both the official MNIST application and

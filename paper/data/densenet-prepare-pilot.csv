@@ -1,0 +1,2 @@
+model,variant,revision,input_ir_bytes,input_sha256,cutoff_seconds,status,output_bytes
+DenseNet121-12,spatial-c-prepare,741b972,65429147,86c0b3b77175efbda90e4ff0e7caf589ab64922c084da24749892fe6265b47ab,600,timeout,0
