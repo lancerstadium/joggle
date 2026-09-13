@@ -385,25 +385,19 @@ fn fold_add_zero(m: Mod) -> bool {
   return changed
 }
 
-local fn needs_declaration(op: Op) -> bool {
-  if ir.form(op) != "var" || len(ir.outs(op)) != 1 {
-    return false
-  }
-  let name = ir.name(ir.outs(op)[0])
-  for peer in ir.ops(ir.blk(op)) {
-    let form = ir.form(peer)
-    if ir.live(peer) && len(ir.outs(peer)) == 1 &&
+local fn dead(ops: list<Op>, pure: list<str>) -> list<Op> {
+  var assigned = {}
+  for op in ops {
+    let form = ir.form(op)
+    let outputs = ir.outs(op)
+    if ir.live(op) && len(outputs) == 1 &&
        (form == "assign" || form == "compound" ||
-        form == "index_assign") && ir.name(ir.outs(peer)[0]) == name {
-      return true
+        form == "index_assign") {
+      assigned[ir.name(outputs[0])] = true
     }
   }
-  return false
-}
-
-fn dce(m: Mod, pure: list<str>) -> bool {
-  var changed = false
-  for op in ir.ops(m) {
+  var dead: list<Op> = []
+  for op in ops {
     if ir.live(op) {
       var allowed = ir.kind(op) == "constant"
       for callee in pure {
@@ -411,23 +405,37 @@ fn dce(m: Mod, pure: list<str>) -> bool {
           allowed = true
         }
       }
-      allowed = allowed && !needs_declaration(op)
       let form = ir.form(op)
+      let outputs = ir.outs(op)
+      if form == "var" && len(outputs) == 1 &&
+         base.has(assigned, ir.name(outputs[0])) {
+        allowed = false
+      }
       allowed = allowed && form != "index_assign"
       if allowed {
         var unused = true
-        for value in ir.outs(op) {
+        for value in outputs {
           if len(ir.users(value)) != 0 {
             unused = false
           }
         }
         if unused {
-          changed = ir.erase(m, op) || changed
+          dead += [op]
         }
       }
     }
   }
-  return changed
+  return dead
+}
+
+fn dce(m: Mod, pure: list<str>) -> bool {
+  var unused: list<Op> = []
+  for fn in ir.fns(m) {
+    for block in ir.blks(fn) {
+      unused += dead(ir.ops(block), pure)
+    }
+  }
+  return len(unused) != 0 && ir.erase(m, unused)
 }
 
 fn cse(m: Mod, pure: list<str>) -> bool {
@@ -703,18 +711,20 @@ fn legalize(m: Mod, caps: list<Fn>, limit: int) -> bool {
 local fn expand_with(
   m: Mod, accept: Fn, arg: Attr, configured: bool
 ) -> bool {
-  var changed = false
+  var calls: list<Op> = []
+  var bodies: list<Fn> = []
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" &&
        !supports_with(m, op, accept, arg, configured) &&
        len(ir.meta(op)) == 0 {
       let target = ir.resolve(m, op)
       if ir.live(target) && len(ir.blks(target)) != 0 {
-        changed = ir.expand(m, op, target) || changed
+        calls += [op]
+        bodies += [target]
       }
     }
   }
-  return changed
+  return len(calls) != 0 && ir.expand(m, calls, bodies)
 }
 
 fn expand(m: Mod, accept: Fn) -> bool {
