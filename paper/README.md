@@ -39,7 +39,7 @@ usability.
 | Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths | Freeze and record model-level stage traces |
 | Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM controls pass three contracts; the exact MatMul contract now passes through Joggle and a native, end-to-end ONNX-MLIR extension | Finish the remaining system tasks or preserve their unsupported outcomes; repeat the ONNX-MLIR build from a clean checkout |
 | Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical CSE/analysis scaling pilots | Freeze a fault and diagnostic matrix |
-| Artifact quality | Ten numerical ONNX paths and several reproducible pilots; one structural block policy has paired MobileNetV2, SqueezeNet, and two-result UltraFace diagnostics | Isolated multi-model repetitions, dispersion, task accuracy, second machine, and a materially smaller generated-C gap |
+| Artifact quality | Ten numerical ONNX paths; one generic reorder policy has low-source-growth paired MobileNetV2 and two-result UltraFace diagnostics, while a separate block policy covers three models | Isolated multi-model repetitions, dispersion, task accuracy, second machine, and a materially smaller generated-C gap |
 
 The current generated-C pilots remain roughly 7--101 times slower than
 one-thread ONNX Runtime, depending on the model. This is a blocking result, not
@@ -109,6 +109,29 @@ python3 paper/measure_baselines.py \
 Other scripts in this directory each regenerate the correspondingly named CSV.
 The provenance and interpretation boundary for every record is documented in
 [`data/README.md`](data/README.md).
+
+Build matched baseline and generic-reorder sources from an already prepared
+model, then run the two-result alternating harness:
+
+```sh
+python3 paper/measure_reorder.py \
+  --tool build/joggle \
+  --modules build/modules \
+  --examples examples \
+  --model UltraFace=build-study/ultraface-block/canonical.jog \
+  --out-dir build-study/reorder/UltraFace-study \
+  --output paper/data/reorder-ultraface-pilot.csv
+
+python3 paper/measure_pair2.py \
+  --model UltraFace --cc /usr/bin/clang \
+  --baseline build-study/reorder/UltraFace-study/UltraFace/baseline/model.c \
+  --candidate reorder=build-study/reorder/UltraFace-study/UltraFace/reorder/model.c \
+  --input build-matrix/ultraface-rfb-320/input.bin \
+  --weights build-study/ultraface-block/weights.bin \
+  --first-count 8840 --second-count 17680 --repetitions 20 \
+  --out-dir build-study/reorder/UltraFace-study/UltraFace/paired \
+  --output paper/data/reorder-ultraface-runtime-pilot.csv
+```
 
 Measure the structural-cost frontier of an already prepared model without
 placing artifacts in a temporary directory:

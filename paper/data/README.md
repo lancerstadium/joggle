@@ -157,6 +157,26 @@ complete instantiation, preparation, pass, planning, placement, emission,
 strict compilation, interface/payload equality checks, numerical check, and
 four-process measurement from caller-supplied managed artifacts.
 
+`reorder-ultraface-pilot.csv` and
+`reorder-ultraface-runtime-pilot.csv` repeat the same operator-independent
+mechanism on the two-result UltraFace RFB-320 fixture at revision `e840fd4`.
+`paper/measure_reorder.py` starts both variants from the identical
+2,675,643-byte canonical IR and runs matched cleanup, memory planning, static
+placement, and external-weight C emission. The source policy reorders 37 loop
+bodies. Generated C grows from 197,266 to 197,851 bytes, or 0.30%; the input IR
+grows by 816 bytes and the cleaned IR by 585 bytes.
+
+`paper/measure_pair2.py` strictly compiles those exact sources into one process
+and alternates call order for 20 pairs. All 20 pairs favor the reordered
+variant. Baseline/candidate medians are 40.457/24.895 ms and the median
+within-pair ratio is 1.624. Both result tensors are bit-identical between
+variants in every row. Separate executions against the stored references
+retain maximum absolute score/box errors of `2.9802322e-7` and `3.5762787e-7`.
+Together with the MobileNetV2 rows, this supports a low-source-growth
+structural-reorder direction distinct from scalar promotion. Both runs remain
+single-host unisolated pilots, not publication performance measurements or a
+claim against ONNX Runtime.
+
 `mobilenetv2-block-pilot.csv` is a subsequent same-process diagnostic at
 revision `7cc089a`. Starting from one `c.prepare` result, the candidate invokes
 the ordinary source policy `spatial.block(m, [4, 7])` once. That policy names

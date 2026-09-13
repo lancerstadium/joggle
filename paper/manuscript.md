@@ -24,13 +24,13 @@ Structural legality queries and transactional edits let user policy rewrite
 actual model bodies while preserving explicit failure. We evaluate the design
 through matched extension tasks, compiler cost, staged compatibility on
 conventional models, numerical correctness, workspace, code size, and latency.
-Current pilots execute ten ONNX models; one operator-independent block policy
-selects 31 MobileNetV2, 18 SqueezeNet, and 37 UltraFace bodies and improves
-same-process paired latency while preserving outputs, although code growth and
-uncontrolled measurements still preclude a final speed claim. The completed
-study will test whether a progressive function IR provides a practical,
-inspectable substrate for cross-layer AI co-design, not whether it replaces a
-production runtime.
+Current pilots execute ten ONNX models. On MobileNetV2 and UltraFace, one
+operator-independent loop-order policy changes canonical function bodies and
+yields 1.81x and 1.62x same-process latency ratios while growing generated C by
+less than 0.5%; uncontrolled measurements still preclude a final speed claim.
+The completed study will test whether a progressive function IR provides a
+practical, inspectable substrate for cross-layer AI co-design, not whether it
+replaces a production runtime.
 
 ## 1. Introduction
 
@@ -329,13 +329,20 @@ Generated C is presently the main negative result. Depending on the model, the
 recorded unisolated pilots are about 7--101 times slower than one-thread ONNX
 Runtime. A retired out-of-tree spatial convolution body improved five matched
 C variants by 1.36--6.29 times without frontend or emitter changes, but does not
-provide evidence for the replacement pass. A fresh single-model pilot instead
-applies the generic `tile.reorder` pass to 64 instantiated canonical Conv
-bodies without retargeting any call. Its pooled 20-call MobileNetV2 median falls
-from 351.060 to 194.463 ms (1.81x), with identical output hash and unchanged
-`2.0981e-5` reference error. This run remains unisolated and does not close the
-production-runtime gap. A later same-process diagnostic selects factors four
-and seven from affine state extents and composes `split`, `reorder`, and
+provide evidence for the replacement pass. A fresh pilot instead applies the
+generic `tile.reorder` pass to instantiated canonical bodies without
+retargeting any call. Its pooled 20-call MobileNetV2 median falls from 351.060
+to 194.463 ms (1.81x) after changing 64 bodies; generated C grows by 0.46%, the
+output hash is identical, and the `2.0981e-5` reference error is unchanged. On
+UltraFace, the same policy changes 37 bodies. Twenty paired calls have
+40.457/24.895 ms medians and a 1.624 median pair ratio, with both output tensors
+bit-identical between variants; generated C grows by 0.30%. Independent
+reference runs retain maximum absolute score/box errors of `2.9802e-7` and
+`3.5763e-7`. These runs remain unisolated and do not close the
+production-runtime gap, but they separate the low-growth reordering direction
+from the replication cost below. A later same-process diagnostic selects
+factors four and seven from affine state extents and composes `split`,
+`reorder`, and
 `scalarize` without inspecting operator names. It changes 31 bodies; all 40
 paired calls favor the candidate, with a 1.559 median pair ratio and
 bit-identical candidate/baseline outputs. Candidate C is 75.7% larger, and the
