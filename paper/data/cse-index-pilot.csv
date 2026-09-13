@@ -1,0 +1,3 @@
+variant,revision,lookup,input_bytes,input_sha256,output_bytes,output_sha256,edits,cse_edits,fix_rounds,wall_seconds,byte_identical
+control,eb462bf,prior-module-prefix-scan,2791922,ec0350a9b58db1547be6657e0817401f7d4f566a0ad525b57924996e7a7757f9,2764428,5c62b15dcfb6b57856ed01d09fca19a523bcb107a7429fa5e8d5186e63e03b4e,597,222,6,244.26,true
+indexed,852c834,block-structural-index,2791922,ec0350a9b58db1547be6657e0817401f7d4f566a0ad525b57924996e7a7757f9,2764428,5c62b15dcfb6b57856ed01d09fca19a523bcb107a7429fa5e8d5186e63e03b4e,597,222,6,11.28,true

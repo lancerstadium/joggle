@@ -288,6 +288,22 @@ work. The machine was not isolated or frequency controlled, and two repetitions
 are insufficient for an inferential timing claim. This pilot supports semantic
 preservation and experiment design, not a publication-grade speedup.
 
+`cse-index-pilot.csv` isolates a later compiler-scaling fault exposed by the
+blocked UltraFace path. At revision `eb462bf`, `opt.cse` considered each pure
+call against the entire preceding module operation prefix and then filtered by
+block, giving near-quadratic lookup. Revision `852c834` instead groups direct
+operations by `Blk`, indexes the existing equivalence fields with a structural
+key, and repeats the full equality check before every merge. On the same
+2,791,922-byte folded IR, one unisolated `opt.basic` invocation falls from
+244.26 to 11.28 seconds (21.65x). Both variants perform 597 total edits,
+including 222 CSE edits across six fixpoint rounds, and emit the same
+2,764,428-byte IR with SHA-256
+`5c62b15dcfb6b57856ed01d09fca19a523bcb107a7429fa5e8d5186e63e03b4e`.
+The complete 41-test suite passes, and a focused test prevents merging equal
+expressions across blocks. This one-run diagnostic validates output identity
+and the removed scaling pathology; controlled repetitions are still required
+for a compiler-throughput claim.
+
 `exact-split-pilot.csv` checks the next generic scheduling refinement on the
 same MobileNetV2 path. The earlier `tile.split` always materialized a final-tile
 guard; `ce8f174` omits it only when static bounds prove exact divisibility and

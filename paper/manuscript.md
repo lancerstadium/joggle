@@ -268,6 +268,14 @@ Deterministic source calls fell from 2,939,981 to 1,272,463; two-run wall-time
 medians were 42.099 and 28.341 seconds. The host was not isolated and the sample
 is too small for a performance claim. The result currently establishes a safe
 ablation path and identifies repeated structural analysis as measurable work.
+The later UltraFace block experiment exposed a separate quadratic CSE lookup:
+each candidate scanned the complete preceding module prefix before testing
+block ownership. Indexing the unchanged equivalence fields per `Blk` reduces a
+single `opt.basic` diagnostic from 244.26 to 11.28 seconds while producing
+byte-identical IR and the same 597 edits. This is a mechanism check from one
+unisolated run, not a compiler-throughput result; it also demonstrates why
+end-to-end model bodies, rather than only small extension fixtures, belong in
+the evaluation.
 
 Generated C is presently the main negative result. Depending on the model, the
 recorded unisolated pilots are about 7--101 times slower than one-thread ONNX
