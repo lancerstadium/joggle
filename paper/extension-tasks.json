@@ -21,8 +21,7 @@
       "description": "Replace a shared matrix implementation with an inspectable loop body.",
       "contract": {
         "inputs": [
-          "examples/ikj/model.jog",
-          "examples/ikj/main.c"
+          "paper/tasks/implementation.json"
         ],
         "required": [
           "provide one generic matrix-multiplication implementation with explicit i-k-j iteration and accumulation",
@@ -48,9 +47,7 @@
       "description": "Define a structural cost measure and fusion-selection policy.",
       "contract": {
         "inputs": [
-          "examples/cost/model.jog",
-          "test/data/mem.jog",
-          "test/data/mem_main.c"
+          "paper/tasks/policy.json"
         ],
         "required": [
           "measure calls and non-call operations with caller-supplied integer weights",
@@ -80,7 +77,7 @@
       "description": "Connect generic external matrix and convolution kernels through inferred signatures.",
       "contract": {
         "inputs": [
-          "examples/edge/model.jog",
+          "paper/tasks/external-kernel.json",
           "examples/edge/kernel.c",
           "examples/edge/main.c"
         ],
@@ -98,12 +95,9 @@
         ]
       },
       "joggle": {
-        "scope": "out-of-tree source module and supplied C implementation",
+        "scope": "out-of-tree source module using supplied C kernels",
         "modules": ["edge"],
-        "sources": [
-          "examples/edge/module.jog",
-          "examples/edge/kernel.c"
-        ],
+        "sources": ["examples/edge/module.jog"],
         "tests": ["edge-example"]
       }
     },
@@ -112,10 +106,7 @@
       "description": "Add a parametric saturating integer format with two target representations.",
       "contract": {
         "inputs": [
-          "test/data/sat.jog",
-          "test/data/sat_c.jog",
-          "test/data/sat_c_main.c",
-          "test/data/sat_vm.jog"
+          "paper/tasks/numeric-format.json"
         ],
         "required": [
           "define signed sat<W> for widths 2 through 63 with saturating addition",

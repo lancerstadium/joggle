@@ -17,11 +17,12 @@ table does not claim execution, task accuracy, or support for absent models.
 observable requirements, and forbidden shortcuts alongside each Joggle
 implementation record. The collector validates those inputs and the named
 modules and tests, then records only mechanically observable footprint: source
-files, nonblank
-non-comment source lines, bytes, declared dependencies, and public functions.
+files, nonblank non-comment source lines, bytes, declared dependencies, and
+public functions. Supplied fixtures, kernels, and harnesses are inputs rather
+than extension code and are excluded from this footprint.
 The three out-of-tree tasks range from 20 source lines for an alternative
-matrix body to 210 source lines for a generic external-kernel adapter plus its
-C implementation. The bundled parametric numeric-format task contains 284
+matrix body to 138 source lines for a generic external-kernel adapter. The
+bundled parametric numeric-format task contains 284
 source lines across its semantic module, native binding, and two target
 companions. These counts do not measure development time, comprehension, or
 usability and therefore do not answer RQ2 without controlled baselines.

@@ -287,7 +287,7 @@ Until they are, this manuscript must not claim that Joggle is easier to extend,
 more compatible, or faster than another compiler.
 
 The first reproducible extension-footprint pilot freezes four tasks and runs
-their named tests. Its three out-of-tree tasks contain 20, 69, and 210 source
+their named tests. Its three out-of-tree tasks contain 20, 69, and 138 source
 lines; the bundled numeric-format task contains 284 source lines across a
 source semantic module, a native binding, and two target companions. These are
 descriptive implementation footprints, not usability or productivity results.

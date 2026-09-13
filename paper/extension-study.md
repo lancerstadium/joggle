@@ -20,6 +20,8 @@ shortcuts before a comparison implementation begins. The first three Joggle
 records are out-of-tree extensions. The numeric format is explicitly
 classified as a bundled optional module because it also exercises the native
 module ABI; it must not be reported as a zero-build-system-change task.
+Supplied fixtures, C kernels, and harnesses are task inputs and are not counted
+as implementation source for any system.
 
 ## Mechanically collected observations
 

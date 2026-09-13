@@ -59,8 +59,8 @@ imported, refined, converted, exposed, transformed, and emitted while remaining
 in one readable function IR?
 
 **RQ2 — Extension surface.** What code, coupling, dependencies, and core changes
-are required to add a data representation, semantic implementation,
-transformation policy, frontend, or artifact target?
+are required by matched semantic-implementation, transformation-policy,
+external-kernel, and numeric-format tasks?
 
 **RQ3 — Composition and safety.** Can independently defined module functions be
 composed with deterministic output, transactional failure, useful unsupported
@@ -250,10 +250,10 @@ or target-aware measurement.
 Implement representative tasks in Joggle and selected comparison systems using
 their documented extension paths:
 
-- one parametric scalar or packed data representation;
 - one neural-network semantic implementation with an inspectable body;
-- one loop or fusion policy;
-- one artifact target or deterministic simulator.
+- one structural measurement and fusion-selection policy;
+- one generic external-kernel adapter;
+- one parametric numeric format spanning two target representations.
 
 Record changed files, source lines, generated code, core and build-system
 modifications, registrations, dependencies, clean build time, oracle commands,
