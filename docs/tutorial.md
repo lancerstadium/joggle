@@ -346,6 +346,13 @@ fn apply(m: Mod) -> bool {
 adds a tail guard, so bounds need not be divisible by four. It does not select
 loops or choose a factor on the user's behalf.
 
+`tile.reorder(m, loop, [0, 1, 4, 5, 6, 2, 3])` changes only the axis order of
+the selected loop. Its legality check proves that the carried tensor uses an
+injective affine address and that both the per-address reduction order and the
+state-axis order remain stable. A pass can therefore move reduction axes across
+independent output axes without defining a replacement operator body. See the
+[`spatial` example](../examples/spatial) for a complete source-only policy.
+
 `tile.fuse(m, producer, consumer)` uses the same explicit-selection rule. It
 accepts a conservative case: two one-dimensional loops over the same
 range, each carrying one tensor, where the producer stores one element and the

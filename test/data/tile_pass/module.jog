@@ -84,10 +84,38 @@ local fn expect_axes(loop: Op, value: Val, expected: list<int>) -> bool {
   return true
 }
 
+fn check_reorder(m: Mod) -> bool {
+  let function = ir.find(m, "main")
+  assert(ir.live(function), "reorder check requires main")
+  var loops: list<Op> = []
+  for op in ir.ops(function) {
+    if ir.kind(op) == "loop" &&
+       len(ir.args(op)) - len(ir.outs(op)) == 7 {
+      loops += [op]
+    }
+  }
+  assert(len(loops) == 1, "reorder check requires one seven-axis loop")
+  let loop = loops[0]
+  let before = ir.revision(m)
+  assert(tile.can_reorder(m, loop, [0, 1, 4, 5, 6, 2, 3]),
+         "legal reduction-preserving order was rejected")
+  assert(tile.reorder_issue(loop, [0, 1, 5, 4, 6, 2, 3]) ==
+           "must preserve the relative order of reduction axes",
+         "reordered reduction axes reported the wrong issue")
+  assert(tile.reorder_issue(loop, [0, 1, 4, 5, 6, 2, 2]) ==
+           "contains a duplicate axis",
+         "duplicate order reported the wrong issue")
+  assert(!tile.reorder(m, loop, [0, 1, 2, 3, 4, 5, 6]),
+         "identity reorder reported a change")
+  assert(ir.revision(m) == before,
+         "reorder queries or identity changed the module")
+  return true
+}
+
 fn check_spatial_axes(m: Mod) -> bool {
   let before = ir.revision(m)
-  let function = ir.find(m, "nn_conv2d")
-  assert(ir.live(function), "spatial axis check requires nn_conv2d")
+  let function = ir.find(m, "main")
+  assert(ir.live(function), "spatial axis check requires main")
   var loops: list<Op> = []
   for op in ir.ops(function) {
     if ir.kind(op) == "loop" {

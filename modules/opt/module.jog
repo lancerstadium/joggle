@@ -131,11 +131,15 @@ fn fold(m: Mod, fns: list<Fn>) -> bool {
   var changed = len(calls) != 0 && ir.fold(m, calls, bodies)
   changed = project(m) || changed
   changed = select(m) || changed
+  var controls: list<Op> = []
   for op in ir.ops(m) {
     if ir.live(op) &&
        (ir.kind(op) == "loop" || ir.kind(op) == "branch") {
-      changed = ir.fold(m, op, fns) || changed
+      controls += [op]
     }
+  }
+  if len(controls) != 0 {
+    changed = ir.fold(m, controls, fns) || changed
   }
   return changed
 }
@@ -923,6 +927,7 @@ local fn apply_with(
     }
   }
   assert(!exceeded, "opt.apply did not converge within its limit")
+  changed = ir.trim(m) || changed
   return changed
 }
 
@@ -1130,6 +1135,7 @@ local fn instantiate_with(
     }
   }
   assert(!exceeded, "opt.instantiate did not converge within its limit")
+  changed = ir.trim(m) || changed
   return changed
 }
 

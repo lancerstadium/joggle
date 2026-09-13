@@ -284,13 +284,23 @@ index values grouped once per access. They conservatively follow tensor
 bindings through stores, branch-carried values, and loop-carried values, so a
 policy can combine actual accesses with `tile.axes` without learning internal
 value versions.
+`tile.reorder(m, loop, order)` rebuilds the same loop with a permutation of its
+existing axes. It is deliberately conservative: ranges must be statically
+bounded, the carried state must have one equal affine read/write address, the
+state address must be provably injective, and the permutation must preserve
+relative order within state axes and within reduction axes. This admits stable
+interleavings such as moving an unchanged reduction nest across independent
+output coordinates while rejecting a changed floating-point reduction order.
+`tile.can_reorder` and `tile.reorder_issue` expose the identical read-only
+legality decision used by the edit.
 `tile.splittable(m, factor)` and `tile.unrollable(m, factor)` expose legal loop
 sets; `tile.fusible(m)` exposes the exact pair collection consumed by automatic
 fusion. Enumeration is read-only and returns live `Op` handles, or
 two-operation lists for fusion, so a user policy can inspect ordinary IR
 without reconstructing legality. Fusion recomputes this collection after each
 structural round and skips candidates invalidated by an earlier edit in the
-same round. The matching `split_issue`, `unroll_issue`, and `fuse_issue`
+same round. The matching `reorder_issue`, `split_issue`, `unroll_issue`, and
+`fuse_issue`
 functions return the same human-readable reason used by each transform; an
 empty string means the requested edit is legal. Policies can therefore count
 or report rejected alternatives without attempting a mutation and scraping a

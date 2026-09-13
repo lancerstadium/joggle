@@ -386,6 +386,7 @@ public:
   std::string_view name() const noexcept;
   std::vector<std::string> uses() const;
   bool use(const Env& env, std::string module);
+  bool trim(const Env& env);
   std::vector<Fn> fns() const;
   std::vector<Op> ops() const;
   std::vector<Val> vals() const;

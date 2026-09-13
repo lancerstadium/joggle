@@ -1,30 +1,42 @@
-# Spatial convolution
+# Spatial loop scheduling
 
-This source-only module supplies one alternative implementation family for
-`nn.conv2d`. One `convolve` function owns the loop semantics; ordinary
-overloads adapt the compact, explicit-layout, and bias/activation signatures.
-It keeps reduction order unchanged for each output but moves output rows and
-columns inside the reduction loops. Consecutive output columns then update
-consecutive input and output elements, giving a C compiler a vector-friendly
-innermost loop.
+`spatial` is a pass, not a convolution implementation. The shared `nn` module
+owns the only semantic `conv2d` body. Target preparation exposes that body as
+ordinary `Fn`/`Blk`/`Op` IR; `spatial.apply` then changes its seven-axis loop
+from output-stationary order
 
-Apply it before target preparation:
-
-```sh
-joggle run spatial.apply semantic.jog \
-  -M examples -M build/modules > selected.jog
-joggle run c.prepare mem.plan selected.jog \
-  -M examples -M build/modules > prepared.jog
+```text
+n, m, oh, ow, q, r, s
 ```
 
-`spatial.apply` uses compiler-owned call-site instantiation. Equal concrete
-configurations share one private helper, static configuration becomes part of
-its body, and weights remain normal parameters. The module does not edit ONNX,
-the shared `nn` semantics, memory planning, or C emission.
+to
 
-The compact overload uses NCHW input, OIHW weights, and NCHW output. The
-general overloads instead consume the same explicit axis lists as `nn`, so a
-non-default layout is never silently treated as NCHW. The element type remains
-a generic `Ty`; the selected target still decides which concrete scalar types
-it can represent. The `[impl: "spatial"]` tag belongs entirely to this module:
-`impls` discovers the family without a core registration table.
+```text
+n, m, q, r, s, oh, ow
+```
+
+with the generic `tile.reorder` transform. There is no `spatial.nn.conv2d`
+overload, implementation tag, frontend rule, or emitter case.
+
+```sh
+joggle run c.prepare mem.plan semantic.jog \
+  -M build/modules > canonical.jog
+joggle run spatial.apply canonical.jog \
+  -M examples -M build/modules > scheduled.jog
+joggle emit c.source scheduled.jog \
+  -M build/modules > model.c
+```
+
+The example policy selects compatible seven-axis loops, but correctness belongs
+to `tile.reorder`. Before editing, it requires static integer ranges, one
+carried state, equal affine read/write addresses, an injective address map for
+state axes, and unchanged relative order within both state and reduction axes.
+Moving reduction axes across independent output axes is therefore accepted;
+permuting the reduction itself is rejected. The same mechanism is available to
+pooling, tensor programs, or a user policy without naming an NN operator.
+
+This separation is intentional: `nn` defines computation, `tile` proves and
+performs a structural rewrite, and `spatial` contains only a replaceable
+profitability policy. An external or packed kernel may still use implementation
+selection when it truly changes the available computation, but loop scheduling
+does not need a second function body.

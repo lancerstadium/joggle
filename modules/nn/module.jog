@@ -29,20 +29,17 @@ fn conv2d<
   let ow_size = tensor.extent(Y, out_axes, 3)
   var out = tensor<E, Y>(E(0))
   for n in 0..n_size, m in 0..m_size,
-      oh in 0..oh_size, ow in 0..ow_size {
-    var sum = E(0)
-    for q in 0..q_size, r in 0..r_size, s in 0..s_size {
-      let h = oh * stride[0] + r * dilation[0] - pad[0]
-      let w = ow * stride[1] + s * dilation[1] - pad[1]
-      if h >= 0 && h < h_size && w >= 0 && w < w_size {
-        let c = (m / (m_size / groups)) * q_size + q
-        let xi = tensor.offset(X, x_axes, [n, c, h, w])
-        let wi = tensor.offset(K, weight_axes, [m, q, r, s])
-        sum += x[xi] * weight[wi]
-      }
+      oh in 0..oh_size, ow in 0..ow_size,
+      q in 0..q_size, r in 0..r_size, s in 0..s_size {
+    let h = oh * stride[0] + r * dilation[0] - pad[0]
+    let w = ow * stride[1] + s * dilation[1] - pad[1]
+    if h >= 0 && h < h_size && w >= 0 && w < w_size {
+      let c = (m / (m_size / groups)) * q_size + q
+      let xi = tensor.offset(X, x_axes, [n, c, h, w])
+      let wi = tensor.offset(K, weight_axes, [m, q, r, s])
+      let yi = tensor.offset(Y, out_axes, [n, m, oh, ow])
+      out[yi] = out[yi] + x[xi] * weight[wi]
     }
-    let yi = tensor.offset(Y, out_axes, [n, m, oh, ow])
-    out[yi] = sum
   }
   return out
 }

@@ -185,12 +185,14 @@ frozen.
   1,521 to 710 source calls without a C-emitter case. Post-processing,
   comparison, dynamic indexing, and control flow remain. Both models decode
   and round trip; neither is currently a generated-C claim.
-- One out-of-tree convolution implementation now changes the generated loop
-  structure without an ONNX or C-emitter edit. On matched strict-C pilots it
+- A now-retired out-of-tree convolution implementation changed the generated
+  loop structure without an ONNX or C-emitter edit. On matched strict-C pilots it
   reduces median latency by 1.93x on MobileNetV2, 3.13x on ResNet18, 6.29x on
   TinyYOLOv2, 1.36x on UltraFace, and 3.45x on SqueezeNet while preserving
   their recorded error bounds. This narrows but does not close the runtime
-  gap; controlled reruns and shape-aware selection remain necessary.
+  gap. The current source expresses this layout through `tile.reorder` over the
+  canonical body; controlled reruns are required before transferring the old
+  measurements to that pass-based path.
 - A deterministic VM execution of the exposed MobileNetV2 program reported
   95,592,386,975 steps.
 - A structural fusion experiment reduced loops from 374 to 328 and tensor

@@ -3,7 +3,6 @@ use base
 use ir
 use nn
 use opt
-use spatial
 use tensor
 
 [impl: "compact"]
@@ -79,18 +78,14 @@ local fn choices() -> list<Fn> {
 fn select(
   m: Mod, op: Op, candidates: list<Fn>, config: dict
 ) -> list<Fn> {
-  if len(candidates) == 1 {
-    return candidates
-  }
-  let staged = ir.where(candidates, "impl", "spatial")
   let compact = ir.where(candidates, "impl", "compact")
-  if len(staged) != 1 || len(compact) != 1 {
+  if len(compact) != 1 {
     return []
   }
   let outputs = ir.outs(op)
   if len(outputs) != 1 || !tensor.valid(ir.type(outputs[0])) ||
      !tensor.static(ir.type(outputs[0])) {
-    return staged
+    return []
   }
   let budget = base.get(config, "max_extra_elems", 0)
   assert(budget >= 0,
@@ -102,7 +97,7 @@ fn select(
   if elements > budget / 2 {
     return compact
   }
-  return staged
+  return []
 }
 
 fn apply(m: Mod) -> bool {
@@ -110,9 +105,7 @@ fn apply(m: Mod) -> bool {
 }
 
 fn apply(m: Mod, config: dict) -> bool {
-  let candidates = choices() +
-                   ir.where(ir.fns("spatial"), "impl", "spatial")
   return opt.instantiate(
-    m, candidates, ir.find("compact.select"), config
+    m, choices(), ir.find("compact.select"), config
   )
 }

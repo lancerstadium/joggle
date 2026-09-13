@@ -8,6 +8,7 @@ fn find(name: str, params: list<Ty>) -> Fn;
 fn find(m: Mod, name: str) -> Fn;
 fn find(m: Mod, name: str, params: list<Ty>) -> Fn;
 fn uses(m: Mod) -> list<str>;
+fn trim(m: Mod) -> bool;
 fn revision(m: Mod) -> int;
 fn params(f: Fn) -> list<Val>;
 fn returns(f: Fn) -> list<Ty>;

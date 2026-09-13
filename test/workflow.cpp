@@ -849,9 +849,12 @@ int main(int argc, char** argv) {
   std::size_t conv_loops = 0;
   for (joggle::Op op : conv_network.ops()) {
     CHECK(op.callee() != "nn.conv2d");
-    conv_loops += op.kind() == joggle::Op::Kind::loop ? 1 : 0;
+    if (op.kind() == joggle::Op::Kind::loop) {
+      ++conv_loops;
+      CHECK(op.args().size() == op.outs().size() + 7);
+    }
   }
-  CHECK(conv_loops == 2);
+  CHECK(conv_loops == 1);
   joggle::Mod conv_roundtrip;
   CHECK(joggle::parse(env, joggle::print(conv_network), conv_roundtrip,
                       "conv-network-roundtrip.jog"));
@@ -2794,6 +2797,22 @@ int main(int argc, char** argv) {
   CHECK(partial_text.find("let extent: int = 3") != std::string::npos);
   CHECK(partial_text.find("return x + extent") != std::string::npos);
 
+  constexpr std::string_view redundant_use_source =
+      "module redundant.use\n"
+      "use tensor\n"
+      "use nn\n"
+      "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> { return x }\n";
+  joggle::Mod redundant_use;
+  CHECK(joggle::parse(env, redundant_use_source, redundant_use,
+                      "redundant-use.jog"));
+  CHECK(redundant_use.verify(env));
+  CHECK(joggle::run(env, "script.trim", redundant_use));
+  CHECK(redundant_use.verify(env));
+  CHECK(redundant_use.uses() == std::vector<std::string>{"tensor"});
+  const std::uint64_t trimmed_revision = redundant_use.revision();
+  CHECK(joggle::run(env, "script.trim", redundant_use));
+  CHECK(redundant_use.revision() == trimmed_revision);
+
   constexpr std::string_view folded_assignment_source =
       "module folded_assignment\n"
       "use base\n"
@@ -2830,6 +2849,41 @@ int main(int argc, char** argv) {
   CHECK(folded_assignment_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(folded_assignment,
                                    folded_assignment_roundtrip));
+
+  constexpr std::string_view folded_controls_source =
+      "module folded_controls\n"
+      "use base\n"
+      "fn work() -> int {\n"
+      "  var total: int = 0\n"
+      "  for i in 0..2 {\n"
+      "    for j in 0..3 { total += 1 }\n"
+      "  }\n"
+      "  if true { total += 4 } else { total += 100 }\n"
+      "  return total\n"
+      "}\n";
+  joggle::Mod folded_controls;
+  CHECK(joggle::parse(env, folded_controls_source, folded_controls,
+                      "folded-controls.jog"));
+  CHECK(folded_controls.verify(env));
+  const std::string controls_before = joggle::print(folded_controls);
+  CHECK(joggle::run(env, "script.fold_controls", folded_controls));
+  CHECK(folded_controls.verify(env));
+  for (joggle::Op op : folded_controls.ops()) {
+    CHECK(op.kind() != joggle::Op::Kind::loop);
+    CHECK(op.kind() != joggle::Op::Kind::branch);
+  }
+  CHECK(joggle::print(folded_controls).find("var total: int = 10") !=
+        std::string::npos);
+
+  joggle::Mod rejected_controls;
+  CHECK(joggle::parse(env, folded_controls_source, rejected_controls,
+                      "rejected-controls.jog"));
+  CHECK(!joggle::run(env, "script.reject_mixed_fold", rejected_controls));
+  CHECK(joggle::print(rejected_controls) == controls_before);
+  CHECK(!env.diags().empty());
+  CHECK(env.diags().front().message.find("homogeneous control list") !=
+        std::string::npos);
+  env.clear_diags();
 
   constexpr std::string_view specialized_source =
       "module specialized\n"

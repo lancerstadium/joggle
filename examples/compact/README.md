@@ -11,10 +11,11 @@ joggle run compact.apply semantic.jog \
   -M examples -M build/modules > selected.jog
 ```
 
-Passing a configuration dictionary combines `compact` with `spatial` and
-makes the decision independently for each call. The following selects
-`compact` only when the staged body's two
-full-size intermediate results would exceed 262,144 scalar elements:
+Passing a configuration dictionary makes the decision independently for each
+compatible call. The following selects `compact` only when the canonical
+bias-and-activation path's two full-size intermediate results would exceed
+262,144 scalar elements; returning no candidate leaves the call on shared `nn`
+semantics:
 
 ```sh
 joggle run compact.apply semantic.jog \
@@ -27,9 +28,9 @@ joggle run compact.apply semantic.jog \
 shape and tagged candidates; `opt.instantiate` verifies that it returns at
 most one member and that it does not mutate the program. A study can replace
 this policy without changing either implementation or the compiler core. The
-compiler does not know the budget key, its unit, either implementation name,
-or convolution as a special case. Unbiased calls have only the spatial
-candidate and remain spatial.
+compiler does not know the budget key, its unit, the implementation name, or
+convolution as a special case. Unbiased calls do not match the fused signature
+and remain canonical.
 
 The module changes neither a frontend nor an artifact emitter. Its purpose is
 to expose a real resource tradeoff through an ordinary distributable module:

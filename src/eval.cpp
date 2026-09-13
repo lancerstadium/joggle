@@ -1733,7 +1733,7 @@ private:
     return values;
   }
 
-  bool replace_structure(Mod& mod, FoldedStructure folded) {
+  bool replace_structure_in_place(Mod& mod, FoldedStructure folded) {
     Op op = folded.op;
     const std::vector<Val> old = op.outs();
     const std::vector<Val> args = op.args();
@@ -1742,7 +1742,6 @@ private:
         old.size() != folded.values.size() || args.size() < old.size())
       return false;
     detail::Store& store = mod.impl_->store;
-    detail::Store backup = store;
     std::vector<Val> next;
     next.reserve(old.size());
     const std::size_t carried = args.size() - old.size();
@@ -1770,7 +1769,6 @@ private:
       Val value = mod.constant(op, std::move(folded.values[index]),
                                prior.type());
       if (!value) {
-        store = std::move(backup);
         fail("could not materialize a folded control result", op.loc());
         return false;
       }
@@ -1783,11 +1781,48 @@ private:
     }
     if ((!old.empty() && !mod.replace(old, next)) || !mod.erase(op)) {
       const Loc loc = op.loc();
-      store = std::move(backup);
       fail("could not replace folded control", loc);
       return false;
     }
     return true;
+  }
+
+  bool replace_structure(Mod& mod, FoldedStructure folded) {
+    detail::Store& store = mod.impl_->store;
+    detail::Store backup = store;
+    if (replace_structure_in_place(mod, std::move(folded)))
+      return true;
+    std::vector<Diag> diagnostics = std::move(store.diags);
+    store = std::move(backup);
+    store.diags = std::move(diagnostics);
+    return false;
+  }
+
+  std::optional<bool> fold_structures(Mod& mod, std::span<const Op> ops,
+                                      std::span<const Fn> allowed) {
+    detail::Store& store = mod.impl_->store;
+    detail::Store backup = store;
+    const auto rollback = [&]() -> std::optional<bool> {
+      std::vector<Diag> diagnostics = std::move(store.diags);
+      store = std::move(backup);
+      store.diags = std::move(diagnostics);
+      return std::nullopt;
+    };
+    bool changed = false;
+    for (Op op : ops) {
+      if (!op.valid())
+        continue;
+      auto values = fold_structure(mod, op, allowed);
+      if (failed_)
+        return rollback();
+      if (!values)
+        continue;
+      if (!replace_structure_in_place(
+              mod, FoldedStructure{op, std::move(*values)}))
+        return rollback();
+      changed = true;
+    }
+    return changed;
   }
 
   bool replace_folded(Mod& mod, std::vector<Folded> folded) {
@@ -1914,6 +1949,9 @@ private:
           out.emplace_back(Attr(module));
         return Items{Item(std::move(out))};
       }
+    } else if (name == "trim" && args.size() == 1) {
+      if (const auto* mod = as<Mod*>(args[0]); mod && *mod)
+        return Items{Item(Attr((*mod)->trim(env_)))};
     } else if (name == "revision" && args.size() == 1) {
       if (const auto* mod = as<Mod*>(args[0]); mod && *mod)
         return Items{Item(Attr(static_cast<std::int64_t>((*mod)->revision())))};
@@ -2443,9 +2481,28 @@ private:
       } else {
         auto selected_ops = handles<Op>(args[1]);
         auto selected_fns = handles<Fn>(args[2]);
-        if (!selected_ops || !selected_fns ||
-            selected_ops->size() != selected_fns->size()) {
-          fail("ir.fold requires one function per call", loc);
+        if (!selected_ops || !selected_fns) {
+          fail("ir.fold requires operation and function lists", loc);
+          return std::nullopt;
+        }
+        const bool calls = std::all_of(
+            selected_ops->begin(), selected_ops->end(),
+            [](Op item) { return item && item.kind() == Op::Kind::call; });
+        const bool structures = !selected_ops->empty() && std::all_of(
+            selected_ops->begin(), selected_ops->end(), [](Op item) {
+              return item && (item.kind() == Op::Kind::loop ||
+                              item.kind() == Op::Kind::branch);
+            });
+        if (structures) {
+          auto changed = fold_structures(**mod, *selected_ops, *selected_fns);
+          if (!changed)
+            return std::nullopt;
+          return Items{Item(Attr(*changed))};
+        }
+        if (!calls || selected_ops->size() != selected_fns->size()) {
+          fail("ir.fold requires one function per call or a homogeneous "
+               "control list with an allowed function set",
+               loc);
           return std::nullopt;
         }
         ops = std::move(*selected_ops);

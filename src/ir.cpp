@@ -4,6 +4,7 @@
 #include <array>
 #include <charconv>
 #include <cctype>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -818,6 +819,85 @@ bool Mod::use(const Env& env, std::string module) {
     return true;
   store.uses.push_back(std::move(module));
   touch(store);
+  return true;
+}
+
+bool Mod::trim(const Env& env) {
+  auto& store = impl_->store;
+  std::set<std::string, std::less<>> targets;
+  const auto add_type = [&](const auto& self, const Ty& type) -> void {
+    if (!type.valid())
+      return;
+    const std::string symbol =
+        type.name().find('.') == std::string_view::npos
+            ? std::string(type.name()) + "." + std::string(type.name())
+            : std::string(type.name());
+    for (Fn candidate : env.resolve_fns(*this, symbol)) {
+      const std::vector<Ty> returns = candidate.returns();
+      if (candidate.store_ != &store && candidate.params().empty() &&
+          returns.size() == 1 && returns.front().name() == "Ty")
+        targets.insert(std::string(candidate.module()));
+    }
+    for (const Ty& arg : type.args())
+      self(self, arg);
+  };
+  for (Fn fn : fns()) {
+    for (Val generic : fn.generics())
+      add_type(add_type, generic.type());
+    for (Val param : fn.params())
+      add_type(add_type, param.type());
+    for (const Ty& type : fn.returns())
+      add_type(add_type, type);
+  }
+  for (Val value : vals())
+    add_type(add_type, value.type());
+  for (Op op : ops()) {
+    if (op.kind() != Op::Kind::call)
+      continue;
+    const Fn target = env.resolve(*this, op);
+    if (target && target.store_ != &store)
+      targets.insert(std::string(target.module()));
+  }
+
+  std::vector<bool> keep(store.uses.size(), false);
+  for (const std::string& target : targets) {
+    const auto direct =
+        std::find(store.uses.begin(), store.uses.end(), target);
+    if (direct != store.uses.end())
+      keep[static_cast<std::size_t>(direct - store.uses.begin())] = true;
+  }
+  for (const std::string& target : targets) {
+    bool reachable = false;
+    for (std::size_t index = 0; index < store.uses.size(); ++index)
+      if (keep[index] && env.reaches(store.uses[index], target)) {
+        reachable = true;
+        break;
+      }
+    if (reachable)
+      continue;
+    for (std::size_t index = 0; index < store.uses.size(); ++index)
+      if (env.reaches(store.uses[index], target)) {
+        keep[index] = true;
+        reachable = true;
+        break;
+      }
+    if (!reachable) {
+      detail::add_diag(store.diags,
+                       "trim could not preserve a resolved dependency: " +
+                           target);
+      return false;
+    }
+  }
+
+  std::vector<std::string> uses;
+  uses.reserve(store.uses.size());
+  for (std::size_t index = 0; index < store.uses.size(); ++index)
+    if (keep[index])
+      uses.push_back(store.uses[index]);
+  if (uses == store.uses)
+    return false;
+  store.uses = std::move(uses);
+  detail::touch(store);
   return true;
 }
 

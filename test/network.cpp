@@ -181,10 +181,7 @@ int main(int argc, char** argv) {
   CHECK(count(implementation, "mid.relu") == 0);
   CHECK(count(implementation, "edge.relu4") == 1);
   CHECK(count(implementation, "edge.relu") == 1);
-  bool uses_script = false;
-  for (const std::string& dependency : implementation.uses())
-    uses_script = dependency == "script" || uses_script;
-  CHECK(uses_script);
+  CHECK(implementation.uses() == std::vector<std::string>{"nn"});
   const joggle::Attr::Dict* implementation_summary =
       implementation_report.dict();
   CHECK(implementation_summary);

@@ -194,10 +194,10 @@ The complete out-of-tree
 [`ikj` example](examples/ikj/module.jog) replaces matrix multiplication with
 an inspectable loop body. The [`edge` example](examples/edge) selects a generic
 external kernel while the unchanged model continues to call its semantic
-functions. [`spatial`](examples/spatial) and [`compact`](examples/compact)
-provide alternative convolution bodies with different latency and workspace
-behavior, selected without changing the frontend, shared semantics, or C
-emitter. [Module documentation](docs/modules.md) covers
+functions. [`spatial`](examples/spatial) reorders a proved affine reduction in
+the exposed body, while [`compact`](examples/compact) demonstrates the distinct
+case of selecting a fused implementation with different workspace behavior.
+Neither changes the frontend or C emitter. [Module documentation](docs/modules.md) covers
 packaging, discovery, lifecycle, and every bundled module.
 
 ## Artifacts and weights

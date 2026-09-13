@@ -33,13 +33,10 @@ if(NOT instance_count EQUAL 1)
   message(FATAL_ERROR
           "compact selection expected one biased-convolution instance:\n${text}")
 endif()
-string(REGEX MATCHALL
-       "opt.instance: \\{\"fn\": \"spatial.nn.conv2d\""
-       spatial_instances "${text}")
-list(LENGTH spatial_instances spatial_count)
-if(NOT spatial_count EQUAL 1)
+if(text MATCHES "spatial.nn.conv2d" OR
+   NOT text MATCHES "return nn.conv2d\\(x, weight")
   message(FATAL_ERROR
-          "configured selection did not retain the unbiased spatial body:\n${text}")
+          "configured selection did not leave the unmatched call canonical:\n${text}")
 endif()
 
 execute_process(
@@ -55,14 +52,11 @@ if(NOT result EQUAL 0)
           "staged policy selection failed (${result}):\n${error}")
 endif()
 file(READ "${staged}" staged_text)
-string(REGEX MATCHALL
-       "opt.instance: \\{\"fn\": \"spatial.nn.conv2d\""
-       staged_instances "${staged_text}")
-list(LENGTH staged_instances staged_count)
-if(NOT staged_count EQUAL 2 OR
-   staged_text MATCHES "\"fn\": \"compact.nn.conv2d\"")
+if(staged_text MATCHES "\"fn\": \"compact.nn.conv2d\"" OR
+   staged_text MATCHES "spatial.nn.conv2d" OR
+   NOT staged_text MATCHES "return nn.conv2d\\(x, weight")
   message(FATAL_ERROR
-          "large budget did not select both staged bodies:\n${staged_text}")
+          "large budget did not leave calls canonical:\n${staged_text}")
 endif()
 
 execute_process(

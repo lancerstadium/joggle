@@ -73,8 +73,8 @@ by 0.9--3.0%. Reference error bounds are unchanged. The table intentionally
 contains no latency column because the first unisolated runs did not establish
 a stable speed effect.
 
-`spatial-conv-pilot.csv` evaluates an out-of-tree convolution body rather than
-a C-emitter special case. The module keeps each output's floating-point
+`spatial-conv-pilot.csv` evaluates the historical out-of-tree convolution body
+rather than a C-emitter special case. The module keeps each output's floating-point
 reduction order but makes output columns the innermost loop. Compiler-owned
 call-site instances bind shapes and scalar configuration; the same module is
 then used unchanged for MobileNetV2, ResNet18, TinyYOLOv2, UltraFace, and
@@ -97,6 +97,10 @@ column loops that it did not vectorize in the reference ordering. This is
 direction-setting evidence for replaceable implementation modules, not a
 production-runtime or publication speed claim; the processes were not
 interleaved, isolated, pinned, or frequency-controlled.
+The implementation body was later retired in favor of a generic
+reduction-preserving `tile.reorder` pass over the canonical `nn` body. These
+revision-pinned rows remain valid history but are not evidence for the new
+mechanism until the matched variants are regenerated and rerun.
 
 `mobilenetv2-fusion-pilot.csv` was recorded on 12 September 2026 on an Apple
 M4 running Darwin 24.6.0 with Apple Clang 17.0.0 (`clang-1700.6.3.2`). All
@@ -317,7 +321,7 @@ overhead becomes a paper claim.
 
 `densenet-prepare-pilot.csv` preserves both sides of an application-scale
 compiler-preparation result. The checksum-pinned DenseNet-121 model decodes,
-infers, converts, round trips, and accepts the ordinary out-of-tree spatial
+infers, converts, round trips, and accepts the then-current out-of-tree spatial
 implementation. Its 65,429,147-byte IR did not complete `c.prepare` within a
 600-second cutoff at revision `741b972`. Revision `d09571a` replaces repeated
 block scans during dead-code cleanup with one block-local binding index and

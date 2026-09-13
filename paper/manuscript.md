@@ -185,9 +185,10 @@ omitted, not counted as passes. Structural completion is kept separate from
 the ten-model numerical execution claim above.
 
 DenseNet exposes both progress and a compiler-scaling boundary. After
-conversion and selection of the same out-of-tree spatial implementation used
-by smaller models, its 65,429,147-byte IR did not complete `c.prepare` within a
-600-second pilot cutoff at revision `741b972`. Replacing repeated block scans
+conversion and selection of the then-current out-of-tree spatial
+implementation used by smaller models, its 65,429,147-byte IR did not complete
+`c.prepare` within a 600-second pilot cutoff at revision `741b972`. Replacing
+repeated block scans
 with block-local indexing and batching exposure edits reduced the same
 single-run pilot to 271.92 seconds at revision `d09571a`. The resulting strict
 C agrees with the official stored output within `7.6293945e-6`, making
@@ -204,8 +205,8 @@ broader model execution or performance.
 
 Generated C is presently the main negative result. Depending on the model, the
 recorded unisolated pilots are about 7--101 times slower than one-thread ONNX
-Runtime. An out-of-tree spatial convolution body improves five matched C
-variants by 1.36--6.29 times without frontend or emitter changes, but does not
+Runtime. A retired out-of-tree spatial convolution body improved five matched
+C variants by 1.36--6.29 times without frontend or emitter changes, but does not
 close the production-runtime gap. A second ordinary implementation reduces
 GoogLeNet's static workspace elements by 58.4% and slots from 55 to 6, while
 increasing its unisolated median latency by 27.5%. This is a resource tradeoff,

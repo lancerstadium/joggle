@@ -628,6 +628,9 @@ local fn prepare_with(m: Mod, config: dict) -> bool {
   if opt.basic(m) {
     changed = true
   }
+  if ir.trim(m) {
+    changed = true
+  }
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" {
       assert(accepts_with(m, op, config),

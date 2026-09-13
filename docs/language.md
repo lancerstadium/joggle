@@ -420,6 +420,15 @@ standard `opt.fold(m)` selects visible `base` functions, and its overload
 accepts a user-selected `list<Fn>`. Parsing and emission never invoke it
 implicitly.
 
+The same list overload accepts a homogeneous set of `loop` and `branch`
+operations plus the functions allowed during evaluation. It visits the
+selected controls in structural order and commits every successful fold in one
+transaction. A folded outer control invalidates its now-removed descendants,
+which the batch skips. Non-static controls remain unchanged; a diagnostic or
+invalid edit restores the complete batch. This avoids one full-program
+snapshot per control without adding a control-flow dialect or a pass-specific
+API.
+
 `ir.def(v)` returns the operation defining a value; parameters have an invalid
 definition detectable with `ir.live`. Together with `ir.users`, this completes
 both directions of ordinary dataflow traversal. Byte attributes remain opaque
@@ -679,6 +688,12 @@ must already be loaded in the current environment; the edit never performs a
 hidden load or creates an unresolved dependency. This lets an
 explicit frontend bridge introduce the semantic library whose qualified
 functions it selects; parsing a frontend never does so implicitly.
+`ir.trim(m)` removes dependencies that no longer own a resolved external call
+or a visible structural type constructor. It prefers a direct provider and
+keeps a declared transitive provider only when the program still needs it.
+Metadata strings are provenance rather than symbol references, so exposing a
+module body does not retain its source package accidentally. The operation is
+deterministic, idempotent, and covered by the enclosing transaction.
 Module verification likewise rejects declared dependencies absent from the
 environment, self-dependencies, and duplicate dependencies, so textual modules
 and embedding edits have the same closure rule.

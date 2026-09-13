@@ -17,9 +17,9 @@ complexity. Each directory is a complete, runnable module or application.
 - [`edge`](edge) demonstrates external tensor kernel selection. A generic
   adapter forwards inferred dimensions to one bodyless `fn`; the C emitter
   derives and checks the concrete call ABI without knowing the kernel name.
-- [`spatial`](spatial) selects one portable convolution implementation family
-  across compact, explicit-layout, and fused signatures. Its loop order
-  exposes consecutive output columns to an optimizing C compiler.
+- [`spatial`](spatial) is a loop-scheduling pass over exposed computation. It
+  reorders a proven affine tensor reduction without defining or selecting a
+  second convolution body.
 - [`compact`](compact) selects a lower-workspace body for biased convolution.
   It deliberately records a memory/latency tradeoff instead of being presented
   as a universally faster replacement.
