@@ -21,7 +21,7 @@ set(JOGGLE_EXAMPLE_MOBILENET "" CACHE PATH
 set(JOGGLE_TEST_TFLITE_MODEL "" CACHE FILEPATH
     "Official TFLite model used by tests")
 
-foreach(module base bounds c ir math mem nn opt quant stat tensor tile vm)
+function(joggle_copy_source_module module)
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/${module}")
   configure_file(
     "modules/${module}/module.jog"
@@ -39,6 +39,10 @@ foreach(module base bounds c ir math mem nn opt quant stat tensor tile vm)
       COPYONLY
     )
   endforeach()
+endfunction()
+
+foreach(module base bounds c ir math mem nn opt quant stat tensor tile vm)
+  joggle_copy_source_module(${module})
 endforeach()
 
 add_library(joggle src/env.cpp src/eval.cpp src/ir.cpp src/lang.cpp)
@@ -121,18 +125,8 @@ if(JOGGLE_BUILD_TFLITE)
       LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/tflite/native"
       RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/tflite/native"
   )
-  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/tflite")
-  configure_file(
-    modules/tflite/module.jog
-    "${CMAKE_CURRENT_BINARY_DIR}/modules/tflite/module.jog"
-    COPYONLY
-  )
-  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/tflite.nn")
-  configure_file(
-    modules/tflite.nn/module.jog
-    "${CMAKE_CURRENT_BINARY_DIR}/modules/tflite.nn/module.jog"
-    COPYONLY
-  )
+  joggle_copy_source_module(tflite)
+  joggle_copy_source_module(tflite.nn)
   install(
     TARGETS joggle-tflite
     LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/tflite/native
@@ -196,18 +190,8 @@ if(JOGGLE_BUILD_ONNX)
       LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/onnx/native"
       RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/onnx/native"
   )
-  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/onnx")
-  configure_file(
-    modules/onnx/module.jog
-    "${CMAKE_CURRENT_BINARY_DIR}/modules/onnx/module.jog"
-    COPYONLY
-  )
-  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/onnx.nn")
-  configure_file(
-    modules/onnx.nn/module.jog
-    "${CMAKE_CURRENT_BINARY_DIR}/modules/onnx.nn/module.jog"
-    COPYONLY
-  )
+  joggle_copy_source_module(onnx)
+  joggle_copy_source_module(onnx.nn)
   install(
     TARGETS joggle-onnx
     LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/onnx/native
@@ -242,24 +226,9 @@ if(JOGGLE_BUILD_SAT)
       LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/sat/native"
       RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/sat/native"
   )
-  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/sat")
-  configure_file(
-    modules/sat/module.jog
-    "${CMAKE_CURRENT_BINARY_DIR}/modules/sat/module.jog"
-    COPYONLY
-  )
-  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/sat.c")
-  configure_file(
-    modules/sat.c/module.jog
-    "${CMAKE_CURRENT_BINARY_DIR}/modules/sat.c/module.jog"
-    COPYONLY
-  )
-  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/sat.vm")
-  configure_file(
-    modules/sat.vm/module.jog
-    "${CMAKE_CURRENT_BINARY_DIR}/modules/sat.vm/module.jog"
-    COPYONLY
-  )
+  joggle_copy_source_module(sat)
+  joggle_copy_source_module(sat.c)
+  joggle_copy_source_module(sat.vm)
   install(
     TARGETS joggle-sat
     LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/sat/native
