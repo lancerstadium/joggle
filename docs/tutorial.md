@@ -832,6 +832,21 @@ workspace must not consume the host stack; `"local"` removes that request.
 Static placement is deliberately explicit because it trades reentrancy for a
 fixed program-lifetime workspace.
 
+For a caller that guarantees all pointer arguments of exported entries are
+disjoint, annotate the contract explicitly:
+
+```sh
+joggle run c.noalias prepared.jog -M modules > noalias.jog
+joggle emit c.source noalias.jog -M modules > model.c
+```
+
+The generated definitions use C `restrict` on tensor inputs, tensor outputs,
+and any external weight payload. Headers stay unqualified and `c.api` records
+`noalias: true`. Use `joggle run c.noalias noalias.jog --arg false` to remove
+the field without deleting an existing `[c: {name: ...}]` binding. This is a
+user assertion, not a dependence proof; do not enable it for in-place or
+otherwise overlapping calls.
+
 Inspect deterministic structural measurements before or after any step:
 
 ```sh

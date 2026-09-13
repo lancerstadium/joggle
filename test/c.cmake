@@ -53,6 +53,12 @@ set(prepared_again "${ROOT}/prepared-again.jog")
 set(open_source "${ROOT}/open.c")
 set(open_header "${ROOT}/open.h")
 set(open_program "${ROOT}/open-model")
+set(noalias "${ROOT}/noalias.jog")
+set(noalias_again "${ROOT}/noalias-again.jog")
+set(noalias_restored "${ROOT}/noalias-restored.jog")
+set(noalias_source "${ROOT}/open-noalias.c")
+set(noalias_header "${ROOT}/open-noalias.h")
+set(noalias_program "${ROOT}/open-noalias-model")
 execute_process(
   COMMAND "${TOOL}" run c.prepare "${OPEN_MODEL}" -M "${MODULES}"
   RESULT_VARIABLE result
@@ -156,6 +162,110 @@ if(NOT add_name STREQUAL "open_add" OR
    NOT add_result_kind STREQUAL "float" OR
    NOT add_param_pointer OR NOT add_result_pointer)
   message(FATAL_ERROR "C API query disagrees with its header:\n${api}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run c.noalias "${prepared}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${noalias}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "C noalias annotation failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run c.noalias "${noalias}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${noalias_again}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "repeated C noalias annotation failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E compare_files
+          "${noalias}" "${noalias_again}"
+  RESULT_VARIABLE result
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "C noalias annotation is not idempotent")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run c.noalias "${noalias}"
+          --arg false -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${noalias_restored}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "C noalias removal failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E compare_files
+          "${prepared}" "${noalias_restored}"
+  RESULT_VARIABLE result
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "C noalias removal did not restore the module")
+endif()
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${noalias}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${noalias_source}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "noalias C emission failed (${result}):\n${error}")
+endif()
+file(READ "${noalias_source}" noalias_text)
+if(NOT noalias_text MATCHES
+   "void open_add\\(const float\\* restrict a, const float\\* restrict b, float\\* restrict out_out\\) \\{" OR
+   noalias_text MATCHES
+   "void open_add\\(const float\\* restrict a, const float\\* restrict b, float\\* restrict out_out\\);")
+  message(FATAL_ERROR
+          "C noalias contract was not limited to the definition:\n${noalias_text}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" emit c.header "${noalias}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${noalias_header}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "noalias C header failed (${result}):\n${error}")
+endif()
+file(READ "${noalias_header}" noalias_header_text)
+if(noalias_header_text MATCHES "restrict")
+  message(FATAL_ERROR
+          "C noalias contract leaked into the portable header:\n"
+          "${noalias_header_text}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" query c.api "${noalias}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE noalias_api
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "noalias C API query failed (${result}):\n${error}")
+endif()
+string(JSON add_noalias GET "${noalias_api}" 1 noalias)
+string(JSON noalias_decl GET "${noalias_api}" 1 declaration)
+if(NOT add_noalias OR NOT noalias_decl STREQUAL add_decl)
+  message(FATAL_ERROR
+          "C API did not report its noalias contract:\n${noalias_api}")
+endif()
+execute_process(
+  COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
+          -include "${noalias_header}"
+          "${noalias_source}" "${OPEN_HARNESS}" -lm -o "${noalias_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "noalias C did not compile (${result}):\n${output}${error}")
 endif()
 execute_process(
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror

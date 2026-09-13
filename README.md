@@ -234,6 +234,13 @@ results, C representation class, tensor shapes, element and byte counts,
 pointer passing, and whether it receives the external payload. `c.api`,
 `c.header`, and `c.source` share the same internal ABI and naming functions.
 
+An entry can state an explicit non-aliasing contract with
+`[c: {noalias: true}]`, or a workflow can annotate every exported entry with
+`joggle run c.noalias`. The C definition then qualifies its tensor and payload
+pointers with `restrict`; declarations in the portable public header remain
+unqualified. `c.api` reports the contract as `noalias`. This is never inferred:
+the caller remains responsible for passing disjoint pointer objects.
+
 ABI spelling, widths, alignment, includes, and external scalar types come from
 a configuration dictionary. Function prototypes are derived from resolved
 signatures; adding an external kernel does not add an emitter case.

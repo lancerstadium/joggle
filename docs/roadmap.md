@@ -89,6 +89,10 @@ backend limitation. Block-local dead-code indexing and batched exposure allow
 the current DenseNet path to finish preparation, but its 271.92-second pilot
 and approximately 29.2x generated-C latency gap remain explicit scaling and
 code-quality targets rather than evidence of a mature backend.
+An explicit per-entry `c.noalias` contract now reaches tensor and payload
+pointers in C definitions and the structured API without contaminating the
+portable header. Alignment propagation, proof-derived alias facts, and
+measured optimization impact remain open; no-alias is never inferred.
 
 Every generated artifact used in evaluation must be checked against reference
 outputs with documented tolerances.

@@ -540,7 +540,7 @@ local fn binding(fn: Fn) -> str {
   }
   let spec = ir.meta(fn, "c")
   assert(base.kind(spec) == "dict", "c: binding must be a dictionary")
-  let name = base.get(spec, "name")
+  let name = base.get(spec, "name", "")
   assert(base.kind(name) == "str", "c: binding name must be a string")
   return base.str(name)
 }
@@ -558,6 +558,18 @@ local fn binding_header(fn: Fn) -> str {
   let name = base.get(spec, "include", "")
   assert(base.kind(name) == "str", "c: binding header must be a string")
   return base.str(name)
+}
+
+local fn noalias_enabled(fn: Fn) -> bool {
+  if !ir.live(fn) || !ir.has(fn, "c") {
+    return false
+  }
+  let spec = ir.meta(fn, "c")
+  assert(base.kind(spec) == "dict", "c: binding must be a dictionary")
+  let enabled = base.get(spec, "noalias", false)
+  assert(base.kind(enabled) == "bool",
+         "c: noalias must be a Boolean")
+  return enabled == true
 }
 
 local fn accepts_with(m: Mod, op: Op, config: dict) -> bool {
@@ -1316,7 +1328,8 @@ local fn signature_text(
   returns: list<Ty>,
   results: list<str>,
   blob: str,
-  config: dict
+  config: dict,
+  qualified: bool
 ) -> str {
   assert(len(params) == len(names) && len(returns) == len(results),
          "c: signature names do not match its types")
@@ -1333,7 +1346,11 @@ local fn signature_text(
     let type = params[i]
     if tensor.valid(type) {
       count(type)
-      out += "const " + scalar(tensor.elem(type), config) + "* " + names[i]
+      out += "const " + scalar(tensor.elem(type), config) + "*"
+      if qualified {
+        out += " restrict"
+      }
+      out += " " + names[i]
     } else {
       out += scalar(type, config) + " " + names[i]
     }
@@ -1343,7 +1360,11 @@ local fn signature_text(
     if arguments != 0 {
       out += ", "
     }
-    out += "const unsigned char* " + blob
+    out += "const unsigned char*"
+    if qualified {
+      out += " restrict"
+    }
+    out += " " + blob
     arguments += 1
   }
   if len(returns) != 1 || tensor.valid(returns[0]) {
@@ -1355,6 +1376,9 @@ local fn signature_text(
       if tensor.valid(type) {
         count(type)
         out += scalar(tensor.elem(type), config) + "*"
+        if qualified {
+          out += " restrict"
+        }
       } else {
         out += scalar(type, config) + "*"
       }
@@ -1369,7 +1393,8 @@ local fn signature_text(
 }
 
 local fn signature(
-  m: Mod, fn: Fn, blob: str, data_fns: list<Fn>, config: dict
+  m: Mod, fn: Fn, blob: str, data_fns: list<Fn>, config: dict,
+  qualified: bool
 ) -> str {
   assert(callable(m, fn, config), "c: function has no representable ABI")
   var types: list<Ty> = []
@@ -1384,7 +1409,8 @@ local fn signature(
   }
   return signature_text(
     symbol(m, fn, config), types, names, ir.returns(fn),
-    result_names(fn, data), data, config
+    result_names(fn, data), data, config,
+    qualified && noalias_enabled(fn)
   )
 }
 
@@ -1436,7 +1462,8 @@ local fn external_signature(m: Mod, op: Op, config: dict) -> str {
     results += [name]
   }
   return signature_text(
-    symbol(m, fn, config), types, names, returns, results, "", config
+    symbol(m, fn, config), types, names, returns, results, "", config,
+    false
   )
 }
 
@@ -1514,7 +1541,7 @@ local fn definition(
   let direct = direct_labels(fn)
   let results = result_names(fn, data_name)
   return linkage(m, fn) +
-         signature(m, fn, blob, data_fns, config) + " {\n" +
+         signature(m, fn, blob, data_fns, config, true) + " {\n" +
          memory +
          block(
            m, bodies[0], 1, data_name, data_fns, config, direct, results
@@ -1543,6 +1570,41 @@ local fn exports(m: Mod) -> list<Fn> {
     return entries
   }
   return visible
+}
+
+local fn noalias_spec(fn: Fn, enabled: bool) -> dict {
+  var out: dict = {}
+  if ir.has(fn, "c") {
+    let current = ir.meta(fn, "c")
+    assert(base.kind(current) == "dict",
+           "c: binding must be a dictionary")
+    for key in base.keys(current) {
+      if key != "noalias" {
+        out[key] = base.get(current, key)
+      }
+    }
+  }
+  if enabled {
+    out["noalias"] = true
+  }
+  return out
+}
+
+fn noalias(m: Mod, enabled: bool) -> bool {
+  var changed = false
+  for fn in exports(m) {
+    let spec = noalias_spec(fn, enabled)
+    if len(spec) == 0 {
+      changed = ir.unset(m, fn, "c") || changed
+    } else {
+      changed = ir.set(m, fn, "c", spec) || changed
+    }
+  }
+  return changed
+}
+
+fn noalias(m: Mod) -> bool {
+  return noalias(m, true)
 }
 
 local fn dependencies(m: Mod, config: dict) -> list<Op> {
@@ -1701,7 +1763,7 @@ local fn prototypes(
     }
     names += [name]
     declarations += linkage(m, fn) +
-                    signature(m, fn, blob, data_fns, config) + ";\n"
+                    signature(m, fn, blob, data_fns, config, false) + ";\n"
   }
   return declarations
 }
@@ -1797,7 +1859,9 @@ local fn api_with(m: Mod, blob: str, config: dict) -> list<dict> {
     }
     var entry: dict = {}
     entry["name"] = symbol(m, fn, config)
-    entry["declaration"] = signature(m, fn, blob, data_fns, config) + ";"
+    entry["declaration"] =
+      signature(m, fn, blob, data_fns, config, false) + ";"
+    entry["noalias"] = noalias_enabled(fn)
     entry["params"] = params
     entry["results"] = results
     entry["data"] = data

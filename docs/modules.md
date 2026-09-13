@@ -349,6 +349,16 @@ rules to allocate buffers. In particular, a scalar is marked as a pointer when
 it is one member of a multi-result C interface, but remains a direct value when
 it is the function's sole result.
 
+`[c: {noalias: true}]` is an explicit contract on one function. The convenience
+transform `c.noalias(m)` applies it to exported entries and
+`c.noalias(m, false)` removes only that field while preserving other `c`
+metadata. Tensor parameters, tensor results, and an external payload receive
+`restrict` in the generated function definition. Public declarations remain
+unqualified, so the same header remains valid for C++ consumers. `c.api`
+reports the Boolean contract. The compiler does not infer disjointness from NN
+names, constness, storage slots, or calling convention; violating the contract
+at a call site is the user's error.
+
 By default, `c` derives public symbols from qualified function names and keeps
 valid source value names. Named pointer results derive from the return value
 with a collision-checked `_out` suffix. An external payload argument uses
