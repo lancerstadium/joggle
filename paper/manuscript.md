@@ -1,4 +1,4 @@
-# Joggle: Progressive Compilation for Neural-Network Systems Co-Design
+# Joggle: Cross-Layer AI Co-Design with a Progressive Function IR
 
 Working manuscript for the EuroSys 2027 fall cycle. The current file is
 an argument draft, not a submission-ready paper. Pilot values are labeled and
@@ -6,26 +6,26 @@ must be replaced by frozen experiment results.
 
 ## Abstract
 
-Neural-network systems research often changes several compiler boundaries at
+AI hardware/software co-design often crosses several compiler boundaries at
 once: a researcher imports a conventional model, exposes an operator's real
 function body, changes its loop or storage structure, and emits an executable
 for a new device or data representation. Production stacks support such work,
 but distinct graph, tensor, loop, and target abstractions make a small
 cross-layer experiment depend on native compiler infrastructure. Joggle
-explores a smaller systems design: one typed function representation that is
-progressively exposed from imported calls to structured loops and storage
-decisions. Decoders, analyses, transformations, memory policies, and emitters
-are distributable typed module functions rather than privileged pipeline
-stages. Structural legality queries and transactional edits let user policy
-rewrite actual model bodies while preserving explicit failure. We evaluate the
-design through matched extension tasks, compiler cost, staged compatibility on
+explores a smaller design: one typed function IR that progressively exposes
+imported calls as reusable bodies, structured loops, and storage decisions.
+Decoders, analyses, transformations, memory policies, and emitters are
+distributable typed module functions rather than privileged pipeline stages.
+Structural legality queries and transactional edits let user policy rewrite
+actual model bodies while preserving explicit failure. We evaluate the design
+through matched extension tasks, compiler cost, staged compatibility on
 conventional models, numerical correctness, workspace, code size, and latency.
 Current pilots execute ten ONNX models; one operator-independent block policy
 selects 31 MobileNetV2, 18 SqueezeNet, and 37 UltraFace bodies and improves
 same-process paired latency while preserving outputs, although code growth and
 uncontrolled measurements still preclude a final speed claim. The completed
-study will test whether progressive compilation provides a practical, honest
-substrate for neural-network systems co-design, not whether it replaces a
+study will test whether a progressive function IR provides a practical,
+inspectable substrate for cross-layer AI co-design, not whether it replaces a
 production runtime.
 
 ## 1. Introduction

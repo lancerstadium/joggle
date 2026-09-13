@@ -8,6 +8,9 @@ preserved here.
 
 ## Target and thesis
 
+Working title: **Joggle: Cross-Layer AI Co-Design with a Progressive Function
+IR**.
+
 The current target is the
 [EuroSys 2027 fall cycle](https://2027.eurosys.org/cfp.html). Titles and
 abstracts are due September 17, 2026, and full papers are due September 24,
