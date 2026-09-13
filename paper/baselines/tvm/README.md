@@ -54,6 +54,16 @@ paper/baselines/tvm/external_kernel.py \
 paper/tasks/external-kernel.json \
 examples/edge/kernel.c \
 examples/edge/main.c
+
+TVM_ROOT="$TVM_ROOT" \
+TVM_LIBRARY_PATH="$TVM_ROOT/build-make/lib" \
+PYTHONPATH="$TVM_ROOT/python" \
+"$TVM_ROOT/.venv/bin/python" \
+paper/measure_baselines.py \
+--record paper/baselines/tvm/record.json \
+--contracts paper/extension-tasks.json \
+--repo . \
+--output paper/data/extension-tvm-pilot.csv
 ```
 
 The three Python programs and the external-kernel C bridge and header are

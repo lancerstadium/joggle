@@ -1,0 +1,4 @@
+schema,system,version,revision,task,source_files,source_sloc,source_bytes,core_files,build_files,native_registrations,new_dependencies,generated_artifacts,validation,source_sha256
+1,TVM,v0.26.0,c7b458e946bc4266915da582457476bdcd9705ae,implementation,1,62,1960,0,0,0,0,2,pass,5aba2b6df6b5b986389aeeda10bca9a304f0305dd593dc56d47662f951679c42
+1,TVM,v0.26.0,c7b458e946bc4266915da582457476bdcd9705ae,policy,1,126,4504,0,0,0,0,2,pass,6e986f57e09b230ed80de5dc69dccfcbac4800e12479b262ca9f3dc0c71861c5
+1,TVM,v0.26.0,c7b458e946bc4266915da582457476bdcd9705ae,external-kernel,3,355,11337,0,0,0,0,3,pass,1eb1b401b220a4ba684118386ed527e1ffb147cbc30395c643e3268542631dbb
