@@ -94,6 +94,9 @@ fn check_forms(m: Mod) -> bool {
          "form check found the wrong row-major read address")
   assert(tile.write_forms(m, loop, body_args[2]) == [[0, 3, 1]],
          "form check found the wrong row-major write address")
+  assert(tile.read_forms(m, loop) == [[0, 3, 1]] &&
+         tile.write_forms(m, loop) == [[0, 3, 1]],
+         "whole-loop form check found the wrong stencil accesses")
 
   let nonlinear = ir.find(m, "nonlinear")
   assert(ir.live(nonlinear), "form check requires nonlinear")
@@ -107,6 +110,22 @@ fn check_forms(m: Mod) -> bool {
   assert(len(nonlinear_loops) == 1 && len(nonlinear_params) == 1 &&
          tile.read_forms(m, nonlinear_loops[0], nonlinear_params[0]) == [[]],
          "form check did not preserve an unproved access")
+  assert(tile.read_forms(m, nonlinear_loops[0]) == [[]],
+         "whole-loop form check did not preserve an unproved access")
+
+  let pair = ir.find(m, "pair")
+  assert(ir.live(pair), "form check requires pair")
+  var pair_loops: list<Op> = []
+  for op in ir.ops(pair) {
+    if ir.kind(op) == "loop" {
+      pair_loops += [op]
+    }
+  }
+  assert(len(pair_loops) == 1 &&
+         tile.read_forms(m, pair_loops[0]) ==
+           [[0, 3, 1], [0, 3, 1]] &&
+         tile.write_forms(m, pair_loops[0]) == [[0, 3, 1]],
+         "whole-loop form check lost or reordered an access")
   assert(ir.revision(m) == before,
          "access-form queries changed the module")
   return true

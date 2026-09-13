@@ -348,6 +348,10 @@ Each result is the row-major linear form of one access. For a static
 `tensor<E, [2, 3]>` indexed by `[row, column]`, the form is `[0, 3, 1]`.
 An empty inner list retains the fact that an access exists while stating that
 its address is not provably affine; dynamic tensor layouts are never guessed.
+The two-argument overloads `tile.read_forms(m, loop)` and
+`tile.write_forms(m, loop)` collect every corresponding access in lexical IR
+order. They let a policy inspect a newly exposed body without knowing its
+parameter names or reconstructing tensor aliases.
 
 A project can then choose a rewrite with ordinary reflection:
 

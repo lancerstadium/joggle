@@ -320,6 +320,12 @@ policy can combine actual accesses with `tile.axes` without learning internal
 value versions. Indexing and range syntax are structural contracts: resolved
 user overloads of `[]`, `[]=`, and `..` participate without a registration
 table, while affine arithmetic laws remain restricted to `base` functions.
+`tile.read_forms` and `tile.write_forms` linearize those indices for static
+tensors as `[offset, coefficient0, coefficient1, ...]`. Their two-argument
+forms collect all reads or writes in lexical IR order, so a policy can inspect
+an unfamiliar body without naming its tensors; the three-argument forms retain
+alias-aware selection for one tensor. An empty inner form preserves a known
+access whose address or layout is not provably affine.
 `tile.reorder(m, loop, order)` rebuilds the same loop with a permutation of its
 existing axes. It is deliberately conservative: ranges must be statically
 bounded, the carried state must have one equal affine read/write address, the

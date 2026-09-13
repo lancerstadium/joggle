@@ -53,6 +53,31 @@ local fn access_forms(
   return out
 }
 
+local fn all_forms(
+  m: Mod, loop: Op, stores: bool
+) -> list<list<int>> {
+  let before = ir.revision(m)
+  var out: list<list<int>> = []
+  for op in indexed_ops(m, loop) {
+    let inputs = ir.args(op)
+    let write = syntax_op(m, op, "operator []=")
+    if write == stores {
+      var indices: list<Val> = []
+      var end = len(inputs)
+      if write {
+        end -= 1
+      }
+      for i in 1..end {
+        indices += [inputs[i]]
+      }
+      out += [address_form(m, loop, inputs[0], indices)]
+    }
+  }
+  assert(ir.revision(m) == before,
+         "tile access-form query changed the module")
+  return out
+}
+
 // Return one row-major linear affine address per read. A form is
 // [offset, coefficient0, coefficient1, ...]; an empty inner list preserves an
 // access whose address is not provably affine.
@@ -60,8 +85,20 @@ fn read_forms(m: Mod, loop: Op, value: Val) -> list<list<int>> {
   return access_forms(m, loop, value, false)
 }
 
+// Return forms for every indexed read nested in a loop. This overload lets a
+// policy inspect an unfamiliar function body without first naming its tensors.
+fn read_forms(m: Mod, loop: Op) -> list<list<int>> {
+  return all_forms(m, loop, false)
+}
+
 // Return one row-major linear affine address per write, following structured
 // carried-value versions of the selected tensor.
 fn write_forms(m: Mod, loop: Op, value: Val) -> list<list<int>> {
   return access_forms(m, loop, value, true)
+}
+
+
+// Return forms for every indexed write nested in a loop.
+fn write_forms(m: Mod, loop: Op) -> list<list<int>> {
+  return all_forms(m, loop, true)
 }

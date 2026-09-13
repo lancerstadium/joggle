@@ -20,3 +20,13 @@ fn nonlinear(
   }
   return out
 }
+
+fn pair(
+  x: tensor<f32, [2, 3]>, y: tensor<f32, [2, 3]>
+) -> tensor<f32, [2, 3]> {
+  var out = tensor<f32, [2, 3]>(f32(0))
+  for row in 0..2, column in 0..3 {
+    out[row, column] = x[row, column] + y[row, column]
+  }
+  return out
+}
