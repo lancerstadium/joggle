@@ -216,6 +216,12 @@ frozen.
   from 63.42 to 34.26 seconds (1.85x), and both variants printed the same
   28,575,757-byte IR with the same SHA-256. This validates the compiler
   mechanism, not a publication-grade timing claim.
+- Exact static strip-mining now removes 82 cloned final-tile guards from that
+  factor-two MobileNetV2 block path while retaining guards for padded and
+  dynamic ranges. Readable IR falls from 3,910 to 3,664 lines and strict C from
+  230,432 to 228,488 bytes; checksum and `1.812e-5` reference error are
+  unchanged. Three-call medians are effectively tied, so this is generated
+  structure evidence rather than a speedup claim.
 - Mixed-stage specialization instead removed 328 rank-traversal loops and all
   492 dynamic compound-list indices from MobileNetV2. External-weight C shrank
   from 244,239 to 226,855 bytes. The official 1,000 outputs retained maximum

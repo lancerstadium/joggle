@@ -143,6 +143,18 @@ calls from 4,518,747 to 2,962,531 because cached parents skip their helper
 calls. This single paired run validates the mechanism and identifies remaining
 interpreter work; it is not a publication-grade compile-time result.
 
+`exact-split-pilot.csv` checks the next generic scheduling refinement on the
+same MobileNetV2 path. The earlier `tile.split` always materialized a final-tile
+guard; `ce8f174` omits it only when static bounds prove exact divisibility and
+retains it for dynamic or padded ranges. The factor-two block policy removes
+82 cloned guard conditions, shortens readable IR from 3,910 to 3,664 lines,
+and reduces strict external-weight C from 230,432 to 228,488 bytes. Both
+variants compile with strict C11, use the same weights, produce checksum
+`edc2e29ecf792982`, and remain within `1.812e-5` of the stored reference. Their
+three-call medians are 132.867 and 132.427 ms on an unisolated Apple M4, so the
+result is cleaner generated structure and numerical preservation, not a
+runtime-speed claim.
+
 `mobilenetv2-fusion-pilot.csv` was recorded on 12 September 2026 on an Apple
 M4 running Darwin 24.6.0 with Apple Clang 17.0.0 (`clang-1700.6.3.2`). All
 three programs used `-std=c11 -O3`, the same external weight blob, three untimed
