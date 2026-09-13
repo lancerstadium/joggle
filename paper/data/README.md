@@ -11,7 +11,7 @@ configured `onnx-zoo-record` tests. It records decode, inference, and semantic
 conversion separately, together with exact unknown-result and remaining-call
 frontiers. Ten of the twelve locally present pinned models complete semantic
 conversion. TinyYOLOv3 retains 219 unknown results, while SSD-MobileNetV1
-infers every result type and retains 710 ONNX calls after conversion. The
+infers every result type and retains 431 ONNX calls after conversion. The
 table does not claim execution, task accuracy, or support for absent models.
 
 `extension-footprint-pilot.csv` is generated from the schema-2 task manifest by
@@ -545,11 +545,13 @@ as generated-code support.
 
 TinyYOLOv3-11 and SSD-MobileNetV1-12 are explicit negative rows. TinyYOLOv3
 decodes and round trips but retains 219 unknown results after inference.
-SSD-MobileNetV1 infers all result types, then retains 710 source-format calls
+SSD-MobileNetV1 infers all result types, then retains 431 source-format calls
 after conversion. Ordinary variadic broadcast conversion to shared
 `nn.maximum` and `nn.minimum` functions removed the prior 360 Max and 451 Min
-calls; no target-emitter case was added. The remaining calls include comparison,
-dynamic indexing, NonZero, NonMaxSuppression, If, and Loop. The Zoo gate checks
+calls. Reusable tensor comparison overloads and the ONNX semantic bridge remove
+the remaining 92 Equal, 183 Greater, and 4 Less calls; neither change adds a
+target-emitter case. The remaining calls include dynamic indexing, NonZero,
+NonMaxSuppression, If, and Loop. The Zoo gate checks
 both frontiers so later changes cannot silently relabel partial compatibility
 as full support.
 

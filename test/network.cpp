@@ -809,11 +809,14 @@ int main(int argc, char** argv) {
       "  scalar: tensor<f32, []>, left: tensor<f32, [1, 3]>,\n"
       "  right: tensor<f32, [2, 1]>\n"
       ") -> (tensor<f32, [2, 3]>, tensor<f32, [2, 3]>,\n"
+      "      tensor<bool, [2, 3]>, tensor<bool, [2, 3]>,\n"
       "      tensor<bool, [2, 3]>) {\n"
       "  let maximum = onnx.Max(scalar, left, right)\n"
       "  let minimum = onnx.Min(right, left, scalar)\n"
       "  let less = onnx.Less(maximum, minimum)\n"
-      "  return maximum, minimum, less\n"
+      "  let equal = onnx.Equal(maximum, minimum)\n"
+      "  let greater = onnx.Greater(left, right)\n"
+      "  return maximum, minimum, less, equal, greater\n"
       "}\n";
   joggle::Mod broadcast_relations;
   CHECK(joggle::parse(env, broadcast_relations_source, broadcast_relations,
@@ -824,11 +827,18 @@ int main(int argc, char** argv) {
   for (joggle::Op op : broadcast_relations.ops()) {
     if (op.callee() == "onnx.Max" || op.callee() == "onnx.Min")
       CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [2, 3]>"));
-    if (op.callee() == "onnx.Less")
+    if (op.callee() == "onnx.Less" || op.callee() == "onnx.Equal" ||
+        op.callee() == "onnx.Greater")
       CHECK(op.outs()[0].type() == joggle::Ty("tensor<bool, [2, 3]>"));
   }
   CHECK(joggle::run(env, "onnx.nn.convert", broadcast_relations));
   CHECK(broadcast_relations.verify(env));
+  CHECK(count(broadcast_relations, "onnx.Less") == 0);
+  CHECK(count(broadcast_relations, "onnx.Equal") == 0);
+  CHECK(count(broadcast_relations, "onnx.Greater") == 0);
+  CHECK(count(broadcast_relations, "operator <") == 1);
+  CHECK(count(broadcast_relations, "operator ==") == 1);
+  CHECK(count(broadcast_relations, "operator >") == 1);
   std::size_t extrema = 0;
   for (joggle::Op op : broadcast_relations.ops()) {
     CHECK(op.callee() != "onnx.Max" && op.callee() != "onnx.Min");
@@ -839,8 +849,43 @@ int main(int argc, char** argv) {
     ++extrema;
   }
   CHECK(extrema == 4 && broadcast_relations.verify(env));
-  for (joggle::Op op : broadcast_relations.ops())
+  std::size_t comparisons = 0;
+  for (joggle::Op op : broadcast_relations.ops()) {
     CHECK(op.callee() != "nn.maximum" && op.callee() != "nn.minimum");
+    if (op.callee() != "operator <" && op.callee() != "operator ==" &&
+        op.callee() != "operator >")
+      continue;
+    const joggle::Fn fn = env.resolve(broadcast_relations, op);
+    CHECK(fn && env.expand(broadcast_relations, op, fn));
+    ++comparisons;
+  }
+  CHECK(comparisons == 3 && broadcast_relations.verify(env));
+  for (;;) {
+    bool expanded = false;
+    for (joggle::Op op : broadcast_relations.ops()) {
+      if ((op.callee() != "operator <" && op.callee() != "operator ==" &&
+           op.callee() != "operator >") ||
+          op.outs().empty() || op.outs()[0].type().name() != "tensor")
+        continue;
+      const joggle::Fn fn = env.resolve(broadcast_relations, op);
+      CHECK(fn && env.expand(broadcast_relations, op, fn));
+      expanded = true;
+      break;
+    }
+    if (!expanded)
+      break;
+  }
+  CHECK(broadcast_relations.verify(env));
+  comparisons = 0;
+  for (joggle::Op op : broadcast_relations.ops()) {
+    if (op.callee() != "operator <" && op.callee() != "operator ==" &&
+        op.callee() != "operator >")
+      continue;
+    CHECK(op.outs().size() == 1 &&
+          op.outs()[0].type() == joggle::Ty("bool"));
+    ++comparisons;
+  }
+  CHECK(comparisons >= 3);
 
   constexpr std::string_view unary_extrema_source =
       "module unary.extrema\n"

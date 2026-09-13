@@ -45,7 +45,7 @@ The collector first asks CTest for the exact configured
 and rejects inconsistent stage/frontier combinations. The current local pilot
 contains twelve models: ten complete semantic conversion, TinyYOLOv3 stops at
 type inference with 219 unknown results, and SSD-MobileNetV1 stops at semantic
-conversion with 710 ONNX calls. GoogLeNet adds LRN and an inference-only
+conversion with 431 ONNX calls. GoogLeNet adds LRN and an inference-only
 Dropout with an unused mask result; both map to ordinary shared functions
 before the canonical round trip.
 

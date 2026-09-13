@@ -164,6 +164,13 @@ fn int_add(
   return out
 }
 
+fn tensor_less(
+  a: tensor<i64, [1, 3]>,
+  b: tensor<i64, [2, 1]>
+) -> tensor<bool, [2, 3]> {
+  return a < b
+}
+
 fn int_matmul(
   a: tensor<i64, [2, 3]>,
   b: tensor<i64, [3, 2]>

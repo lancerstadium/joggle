@@ -2220,6 +2220,11 @@ bool accepts_term(const Ty& expected, const Ty& term,
   return accepts_kind(expected, term_kind(term, context));
 }
 
+bool unknown(std::span<const Ty> types) {
+  return std::any_of(types.begin(), types.end(),
+                     [](const Ty& type) { return type.name() == "_"; });
+}
+
 Fn select_overload(std::span<const Fn> candidates,
                    std::span<const Ty> arguments,
                    std::span<const Ty> explicit_arguments,
@@ -2230,7 +2235,10 @@ Fn select_overload(std::span<const Fn> candidates,
   Fn best;
   std::vector<Ty> best_returns;
   std::vector<Ty> best_generics;
-  std::size_t best_score = 0;
+  std::vector<Ty> common_returns;
+  std::array<std::size_t, 4> best_rank{};
+  std::size_t matches_count = 0;
+  bool returns_agree = true;
   bool tied = false;
   for (const Fn candidate : candidates) {
     const std::vector<Val> params = candidate.params();
@@ -2247,10 +2255,20 @@ Fn select_overload(std::span<const Fn> candidates,
     for (std::size_t index = 0; index < explicit_arguments.size(); ++index)
       bindings.emplace(generics[index], explicit_arguments[index]);
     bool matches = true;
+    std::size_t general = 0;
     std::size_t score = 0;
+    std::size_t exact = 0;
     for (std::size_t index = 0; index < params.size(); ++index) {
       const Ty formal = params[index].type();
+      if ((arguments[index].name() == "_" ||
+           arguments[index].name() == "Attr") &&
+          (formal.name() == "_" || formal.name() == "Attr" ||
+           formal.name() == "meta" ||
+           (formal.args().empty() && generic(generics, formal.name()))))
+        ++general;
       score += specificity(formal, generics);
+      score += formal.name() == "Attr" && arguments[index].name() == "Attr";
+      exact += formal == arguments[index];
       if (!unify(formal, arguments[index], generics, bindings)) {
         matches = false;
         break;
@@ -2276,11 +2294,17 @@ Fn select_overload(std::span<const Fn> candidates,
     }
     if (!matches)
       continue;
-    score =
-        score * 1024 + (1023 - std::min<std::size_t>(generics.size(), 1023));
+    ++matches_count;
+    const std::array rank{
+        general, score, exact,
+        1023 - std::min<std::size_t>(generics.size(), 1023)};
     std::vector<Ty> substituted;
     for (const Ty& type : candidate_returns)
       substituted.push_back(substitute(type, generics, bindings));
+    if (matches_count == 1)
+      common_returns = substituted;
+    else if (common_returns != substituted)
+      returns_agree = false;
     std::vector<Ty> bound_generics;
     bound_generics.reserve(generics.size());
     for (const std::string& generic : generics) {
@@ -2288,19 +2312,22 @@ Fn select_overload(std::span<const Fn> candidates,
       bound_generics.push_back(bound == bindings.end() ? Ty("_")
                                                        : bound->second);
     }
-    if (!best || score > best_score) {
+    if (!best || rank > best_rank) {
       best = candidate;
       best_returns = std::move(substituted);
       best_generics = std::move(bound_generics);
-      best_score = score;
+      best_rank = rank;
       tied = false;
-    } else if (score == best_score)
+    } else if (rank == best_rank)
       tied = true;
   }
   if (ambiguous)
     *ambiguous = tied;
-  if (!best || tied)
+  if (!best || tied) {
+    if (returns && matches_count != 0 && returns_agree)
+      *returns = std::move(common_returns);
     return {};
+  }
   if (returns)
     *returns = std::move(best_returns);
   if (resolved_generics)
@@ -2490,8 +2517,17 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
                                 &ambiguous, context, nullptr,
                                 expected_returns);
   if (!fn) {
-    if (can_defer(candidates, arguments, explicit_args, expected_returns,
+    const bool open_inference =
+        !diagnose && (unknown(arguments) || unknown(explicit_args));
+    if (open_inference ||
+        can_defer(candidates, arguments, explicit_args, expected_returns,
                   context)) {
+      for (std::size_t index = 0;
+           index < op.outs.size() && index < returns.size(); ++index) {
+        detail::ValData& result = store.vals[op.outs[index]].data;
+        if (!result.type_annotation || result.type.text() == "_")
+          result.type = returns[index];
+      }
       for (std::size_t index = 0;
            index < op.outs.size() && index < expected_returns.size(); ++index) {
         detail::ValData& result = store.vals[op.outs[index]].data;

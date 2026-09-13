@@ -258,7 +258,7 @@ record explicitly which optional gates were available.
 
 The repository currently records pilots, not publication measurements. Ten
 ONNX models execute against stored reference outputs. TinyYOLOv3 retains a
-type frontier and SSD-MobileNetV1 retains 710 source calls after conversion.
+type frontier and SSD-MobileNetV1 retains 431 source calls after conversion.
 Across executed models, the stored maximum absolute differences range from
 approximately `1.34e-7` to `2.10e-5`. These checks establish numerical paths,
 not task-level accuracy.
@@ -267,7 +267,9 @@ The structural compatibility table is now generated directly from twelve
 pinned Zoo tests rather than transcribed from test output. Ten models complete
 semantic conversion and canonical round trip. TinyYOLOv3 retains 219 unknown
 results after inference; SSD-MobileNetV1 infers all result types but retains
-710 source calls after conversion. Models absent from the configured cache are
+431 source calls after conversion. The 279-call reduction comes from shared
+broadcast-capable tensor comparison functions plus source-semantic mappings,
+not an ONNX operator in the target emitter. Models absent from the configured cache are
 omitted, not counted as passes. Structural completion is kept separate from
 the ten-model numerical execution claim above.
 

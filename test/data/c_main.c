@@ -23,6 +23,15 @@ int main(void) {
   for (size_t i = 0; i < 6; ++i)
     if (integers_out[i] != integers_expected[i])
       return 5;
+  const int64_t compare_left[3] = {1, 4, 2};
+  const int64_t compare_right[2] = {3, 2};
+  const bool compare_expected[6] = {true, false, true,
+                                    true, false, false};
+  bool compare_out[6] = {false};
+  kernel_tensor_less(compare_left, compare_right, compare_out);
+  for (size_t i = 0; i < 6; ++i)
+    if (compare_out[i] != compare_expected[i])
+      return 33;
   const int64_t product_expected[4] = {58, 64, 139, 154};
   int64_t product[4] = {0};
   kernel_int_matmul(integers_a, integers_b, product);

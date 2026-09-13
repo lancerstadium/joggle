@@ -109,7 +109,7 @@ hard-code these categories.
 | --- | --- |
 | `base` | Compile-time collections, structural type construction, text utilities, assertions, and scalar operator declarations |
 | `ir` | Reflection, resolution, safe editing, cloning, expansion, replacement, and function invocation |
-| `tensor` | Tensor type constructor, shape algebra, indexing, broadcasting, reductions, reshaping, and inspectable tensor bodies |
+| `tensor` | Tensor type constructor, shape algebra, indexing, broadcasting, arithmetic and comparison overloads, reductions, reshaping, and inspectable tensor bodies |
 | `nn` | Frontend-neutral neural-network semantics expressed in terms of tensor and scalar functions |
 | `quant` | Quantization, dequantization, and quantized tensor computation |
 | `math` | Portable scalar mathematical functions |

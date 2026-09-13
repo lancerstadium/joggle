@@ -89,6 +89,20 @@ int main(int argc, char** argv) {
   CHECK(env.loaded("tensor"));
   CHECK((env.modules() == std::vector<std::string>{"base", "tensor"}));
 
+  joggle::Mod dynamic_overload;
+  constexpr std::string_view dynamic_overload_source =
+      "module dynamic.overload\n"
+      "use tensor\n"
+      "fn equal(a: Attr, b: Attr) -> bool { return a == b }\n";
+  CHECK(joggle::parse(env, dynamic_overload_source, dynamic_overload,
+                      "dynamic-overload.jog"));
+  CHECK(dynamic_overload.verify(env));
+  const joggle::Op dynamic_equal =
+      dynamic_overload.find_fn("equal").body().ops().front();
+  const joggle::Fn dynamic_target = env.resolve(dynamic_overload, dynamic_equal);
+  CHECK(dynamic_target && dynamic_target.module() == "base" &&
+        dynamic_target.name() == "operator ==");
+
   std::ifstream base_input(std::string(argv[2]) + "/base/module.jog");
   CHECK(base_input);
   std::ostringstream base_source;

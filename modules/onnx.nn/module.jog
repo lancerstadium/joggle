@@ -2668,7 +2668,9 @@ local fn convert_reshape(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.reshape", [inputs[0]])
 }
 
-local fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
+local fn convert_binary_result(
+  m: Mod, op: Op, callee: str, output_elem: Ty
+) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 2 || len(outputs) != 1 {
@@ -2682,7 +2684,7 @@ local fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
     return false
   }
   if tensor.elem(left) != tensor.elem(right) ||
-     tensor.elem(left) != tensor.elem(result) {
+     tensor.elem(result) != output_elem {
     return false
   }
   var left_ok = len(tensor.dims(left)) == 0
@@ -2701,6 +2703,16 @@ local fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
     return false
   }
   return convert_call(m, op, callee)
+}
+
+local fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
+  let inputs = ir.args(op)
+  if len(inputs) != 2 || !tensor.valid(ir.type(inputs[0])) {
+    return false
+  }
+  return convert_binary_result(
+    m, op, callee, tensor.elem(ir.type(inputs[0]))
+  )
 }
 
 local fn extrema_types(inputs: list<Val>) -> list<Ty> {
@@ -2786,6 +2798,21 @@ local fn convert_div(m: Mod, op: Op) -> bool {
 [phase: "compute", on: "onnx.Pow"]
 local fn convert_pow(m: Mod, op: Op) -> bool {
   return convert_binary(m, op, "nn.pow")
+}
+
+[phase: "compute", on: "onnx.Equal"]
+local fn convert_equal(m: Mod, op: Op) -> bool {
+  return convert_binary_result(m, op, "operator ==", ty("bool"))
+}
+
+[phase: "compute", on: "onnx.Greater"]
+local fn convert_greater(m: Mod, op: Op) -> bool {
+  return convert_binary_result(m, op, "operator >", ty("bool"))
+}
+
+[phase: "compute", on: "onnx.Less"]
+local fn convert_less(m: Mod, op: Op) -> bool {
+  return convert_binary_result(m, op, "operator <", ty("bool"))
 }
 
 [phase: "compute", on: "onnx.Max"]
