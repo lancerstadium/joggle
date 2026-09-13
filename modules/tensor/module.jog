@@ -715,6 +715,53 @@ fn broadcast<E: Ty, S: list<int>, T: list<int>>(
   return out
 }
 
+fn tiled(shape: list<Ty>, repeats: list<int>) -> list<Ty> {
+  var out: list<Ty> = []
+  if len(shape) != len(repeats) {
+    return out
+  }
+  for axis in 0..len(shape) {
+    if repeats[axis] < 0 {
+      return []
+    }
+    if kind(shape[axis]) == "int" {
+      out += [ty(int(shape[axis]) * repeats[axis])]
+    } else {
+      if repeats[axis] == 1 {
+        out += [shape[axis]]
+      } else {
+        out += [ty("_")]
+      }
+    }
+  }
+  return out
+}
+
+fn tile_offset(from: list<int>, to: list<int>, linear: int) -> int {
+  var out = 0
+  var from_stride = 1
+  var to_stride = 1
+  [stage: "shape"]
+  for reverse in 0..len(from) {
+    let axis = len(from) - reverse - 1
+    let coord = linear / to_stride % to[axis]
+    out += coord % from[axis] * from_stride
+    from_stride *= from[axis]
+    to_stride *= to[axis]
+  }
+  return out
+}
+
+fn tile<E: Ty, S: list<int>, T: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, T> {
+  var out = tensor<E, T>(E(0))
+  for i in 0..numel<T>() {
+    out[i] = x[tile_offset(S, T, i)]
+  }
+  return out
+}
+
 fn cast<A: Ty, B: Ty, S: list<int>>(
   x: tensor<A, S>
 ) -> tensor<B, S> {

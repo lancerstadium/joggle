@@ -1472,6 +1472,24 @@ int main(int argc, char** argv) {
         op.blk().fn().name() == "dynamic_slice")
       CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [_, _, 4]>"));
   }
+  CHECK(joggle::run(env, "onnx.nn.convert", shape_relations));
+  CHECK(shape_relations.verify(env));
+  bool expanded = false;
+  bool tiled = false;
+  bool dynamic_tile = false;
+  for (joggle::Op op : shape_relations.ops()) {
+    if (op.blk().fn().name() == "expand" &&
+        op.callee() == "tensor.broadcast")
+      expanded = true;
+    if (op.blk().fn().name() == "tile" && op.callee() == "tensor.tile")
+      tiled = true;
+    if (op.blk().fn().name() == "dynamic_tile" &&
+        op.callee() == "onnx.Tile")
+      dynamic_tile = true;
+  }
+  CHECK(expanded);
+  CHECK(tiled);
+  CHECK(dynamic_tile);
 
   constexpr std::string_view invalid_conv_source =
       "module invalid.conv\n"

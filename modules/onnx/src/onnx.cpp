@@ -106,19 +106,19 @@ std::string type(const jogonnx::ValueInfoProto& value, Names& dimensions) {
   if (!value.has_type() || !value.type().has_tensor_type())
     return "_";
   const auto& tensor = value.type().tensor_type();
+  if (!tensor.has_shape())
+    return "_";
   std::string dims = "[";
-  if (tensor.has_shape()) {
-    for (int index = 0; index < tensor.shape().dim_size(); ++index) {
-      if (index)
-        dims += ", ";
-      const auto& dim = tensor.shape().dim(index);
-      if (dim.has_dim_value())
-        dims += std::to_string(dim.dim_value());
-      else if (dim.has_dim_param() && !dim.dim_param().empty())
-        dims += dimensions.get(dim.dim_param());
-      else
-        dims += "_";
-    }
+  for (int index = 0; index < tensor.shape().dim_size(); ++index) {
+    if (index)
+      dims += ", ";
+    const auto& dim = tensor.shape().dim(index);
+    if (dim.has_dim_value())
+      dims += std::to_string(dim.dim_value());
+    else if (dim.has_dim_param() && !dim.dim_param().empty())
+      dims += dimensions.get(dim.dim_param());
+    else
+      dims += "_";
   }
   return "tensor<" + element(tensor.elem_type()) + ", " + dims + "]>";
 }

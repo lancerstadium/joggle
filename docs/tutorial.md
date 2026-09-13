@@ -730,10 +730,11 @@ SSD-MobileNetV1-12 detector
 is a partial semantic stress gate: 1,567 constants, 5,985 nodes, eight nested
 graphs, Resize, and NonMaxSuppression must verify and round-trip, while type
 propagation resolves all 6,790 initially open results. Semantic conversion then
-stops with 396 source calls, principally post-processing, dynamic indexing, and
+stops with 386 source calls, principally post-processing, dynamic indexing, and
 control flow. Tensor comparison overloads and the source bridge remove all 279
 Equal, Greater, and Less calls; a reusable composition of broadcast maximum and
-minimum removes 35 Clip calls. Neither change adds an emitter case. This is
+minimum removes 35 Clip calls; and ten statically shaped Tile calls map to the
+shared tensor implementation. None adds an emitter case. This is
 deliberately not a full execution claim. ShuffleNet V2
 independently requires
 complete inference, conversion, verification, and round trip. DenseNet-121

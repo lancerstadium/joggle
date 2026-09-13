@@ -212,6 +212,12 @@ fn broadcast_identity(
   return tensor.broadcast(x)
 }
 
+fn tile(
+  x: tensor<i64, [2, 2]>
+) -> tensor<i64, [4, 6]> {
+  return tensor.tile(x)
+}
+
 fn extrema(
   left: tensor<f32, [2, 1]>,
   right: tensor<f32, [1, 3]>

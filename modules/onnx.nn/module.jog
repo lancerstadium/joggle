@@ -1100,22 +1100,14 @@ local fn tile_type(m: Mod, op: Op) -> bool {
   if len(repeats) != len(source) {
     return false
   }
-  var shape: list<Ty> = []
-  for axis in 0..len(source) {
-    if repeats[axis] < 0 {
+  for repeat in repeats {
+    if repeat < 0 {
       return false
     }
-    if kind(source[axis]) == "int" {
-      shape += [ty(int(source[axis]) * repeats[axis])]
-    } else {
-      if repeats[axis] == 1 {
-        shape += [source[axis]]
-      } else {
-        shape += [ty("_")]
-      }
-    }
   }
-  return set_type(m, outputs[0], shaped(tensor.elem(input), shape))
+  return set_type(
+    m, outputs[0], shaped(tensor.elem(input), tensor.tiled(source, repeats))
+  )
 }
 
 [phase: "infer", on: "onnx.TopK"]
@@ -2666,6 +2658,53 @@ local fn convert_reshape(m: Mod, op: Op) -> bool {
     return false
   }
   return convert_call(m, op, "tensor.reshape", [inputs[0]])
+}
+
+[phase: "compute", on: "onnx.Expand"]
+local fn convert_expand(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let result = ir.type(outputs[0])
+  let shape = shape_terms(inputs[1])
+  if !tensor.valid(input) || !tensor.valid(result) ||
+     !tensor.static(result) ||
+     result != shaped(tensor.elem(input), shape) ||
+     !tensor.broadcastable(tensor.dims(input), shape) {
+    return false
+  }
+  return convert_call(m, op, "tensor.broadcast", [inputs[0]])
+}
+
+[phase: "compute", on: "onnx.Tile"]
+local fn convert_tile(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let result = ir.type(outputs[0])
+  let repeats = const_ints(inputs[1])
+  if !tensor.valid(input) || !tensor.valid(result) ||
+     !tensor.static(input) || !tensor.static(result) ||
+     len(repeats) != len(tensor.dims(input)) {
+    return false
+  }
+  for repeat in repeats {
+    if repeat < 0 {
+      return false
+    }
+  }
+  if result != shaped(
+       tensor.elem(input), tensor.tiled(tensor.dims(input), repeats)
+     ) {
+    return false
+  }
+  return convert_call(m, op, "tensor.tile", [inputs[0]])
 }
 
 [phase: "compute", on: "onnx.Clip"]

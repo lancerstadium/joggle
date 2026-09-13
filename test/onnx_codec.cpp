@@ -23,8 +23,15 @@ void tensor_type(jogonnx::ValueInfoProto* value, std::string name,
   value->set_name(std::move(name));
   auto* tensor = value->mutable_type()->mutable_tensor_type();
   tensor->set_elem_type(element);
+  auto* dims = tensor->mutable_shape();
   for (const std::int64_t extent : shape)
-    tensor->mutable_shape()->add_dim()->set_dim_value(extent);
+    dims->add_dim()->set_dim_value(extent);
+}
+
+void unknown_rank_type(jogonnx::ValueInfoProto* value, std::string name,
+                       int element = 1) {
+  value->set_name(std::move(name));
+  value->mutable_type()->mutable_tensor_type()->set_elem_type(element);
 }
 
 void dynamic_type(jogonnx::ValueInfoProto* value, std::string name) {
@@ -48,6 +55,26 @@ std::string dynamic_model() {
   identity->set_op_type("Identity");
   identity->add_input("batch_size");
   identity->add_output("output");
+  std::string bytes;
+  return model.SerializeToString(&bytes) ? bytes : std::string{};
+}
+
+std::string rank_model() {
+  jogonnx::ModelProto model;
+  model.set_ir_version(9);
+  model.add_opset_import()->set_version(21);
+  auto* graph = model.mutable_graph();
+  tensor_type(graph->add_input(), "scalar", {});
+  tensor_type(graph->add_output(), "known", {});
+  unknown_rank_type(graph->add_output(), "unknown");
+  auto* known = graph->add_node();
+  known->set_op_type("Identity");
+  known->add_input("scalar");
+  known->add_output("known");
+  auto* unknown = graph->add_node();
+  unknown->set_op_type("Identity");
+  unknown->add_input("scalar");
+  unknown->add_output("unknown");
   std::string bytes;
   return model.SerializeToString(&bytes) ? bytes : std::string{};
 }
@@ -197,6 +224,23 @@ int main(int argc, char** argv) {
                       "dynamic-roundtrip.jog"));
   CHECK(roundtrip.verify(env));
   CHECK(joggle::structurally_equal(mod, roundtrip));
+
+  const std::string rank_bytes = rank_model();
+  CHECK(!rank_bytes.empty());
+  const auto* rank_first =
+      reinterpret_cast<const std::uint8_t*>(rank_bytes.data());
+  const joggle::Attr::Bytes rank_payload(rank_first,
+                                         rank_first + rank_bytes.size());
+  const std::vector<joggle::Attr> rank_args{joggle::Attr(rank_payload)};
+  std::vector<joggle::Attr> rank_returns;
+  CHECK(env.call("onnx.read", rank_args, rank_returns));
+  CHECK(rank_returns.size() == 1 && rank_returns[0].string());
+  const std::string rank_source(*rank_returns[0].string());
+  CHECK(rank_source.find("scalar: tensor<f32, []>") != std::string::npos);
+  CHECK(rank_source.find("-> (tensor<f32, []>, _)") != std::string::npos);
+  joggle::Mod rank;
+  CHECK(joggle::parse(env, rank_source, rank, "rank.onnx"));
+  CHECK(rank.verify(env));
 
   const std::string constant_bytes = schema_model();
   CHECK(!constant_bytes.empty());

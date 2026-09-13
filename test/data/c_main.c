@@ -65,6 +65,15 @@ int main(void) {
   for (size_t i = 0; i < 6; ++i)
     if (identity[i] != identity_input[i])
       return 28;
+  const int64_t tile_input[4] = {1, 2, 3, 4};
+  const int64_t tile_expected[24] = {
+      1, 2, 1, 2, 1, 2, 3, 4, 3, 4, 3, 4,
+      1, 2, 1, 2, 1, 2, 3, 4, 3, 4, 3, 4};
+  int64_t tiled[24] = {0};
+  kernel_tile(tile_input, tiled);
+  for (size_t i = 0; i < 24; ++i)
+    if (tiled[i] != tile_expected[i])
+      return 35;
   const float extrema_left[2] = {NAN, -4.0f};
   const float extrema_right[3] = {1.0f, 3.0f, -5.0f};
   const float maximum_expected[3] = {1.0f, 3.0f, -4.0f};
