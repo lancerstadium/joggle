@@ -167,8 +167,12 @@ constraints. `Ty` means a type argument, `int` can represent a bit width or
 dimension, and `list<int>` describes a shape. An omitted annotation is `_`, the
 open constraint. The same structural checker validates explicit generic
 arguments, inferred bindings, and type-constructor arguments; no separate kind
-or trait registry exists. `Fn::generics()` exposes the parameter values, so
-embedding code reads both `name()` and `type()` through the normal `Val` API.
+or trait registry exists. A term can occupy a type position only when its
+constraint is `Ty` (or open): value parameters such as `N: int`, shape lists,
+and scalar literals are rejected there. Intrinsic types have fixed arity;
+`list<T>` is the only parameterized intrinsic. `Fn::generics()` exposes the
+parameter values, so embedding code reads both `name()` and `type()` through
+the normal `Val` API.
 An explicit generic list may bind a leading prefix while ordinary arguments
 infer the remainder. For example, `invoke<bool>(m, subject, policy)` fixes the
 result type and infers the subject type; supplying more explicit terms than a

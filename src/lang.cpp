@@ -2747,11 +2747,6 @@ bool verify_type(detail::Store& store, const Mod& mod, const Env& env,
                      std::move(loc));
     return false;
   }
-  if (type.args().empty() &&
-      (intrinsic_type(type.name()) || generic(generics, type.name())))
-    return true;
-  if (type.name() == "[]")
-    return true;
   if (type.name() == "list") {
     if (type.args().size() != 1) {
       detail::add_diag(store.diags, "type 'list' expects 1 argument",
@@ -2760,6 +2755,42 @@ bool verify_type(detail::Store& store, const Mod& mod, const Env& env,
     }
     return verify_type(store, mod, env, type.args().front(), generics, context,
                        std::move(loc));
+  }
+  if (type.args().empty() && intrinsic_type(type.name()))
+    return true;
+  if (type.args().empty() && generic(generics, type.name())) {
+    const Ty kind = term_kind(type, context);
+    if (accepts_kind(Ty("Ty"), kind))
+      return true;
+    detail::add_diag(store.diags,
+                     "type parameter '" + std::string(type.name()) +
+                         "' has type '" + std::string(kind.text()) +
+                         "', expected 'Ty'",
+                     std::move(loc));
+    return false;
+  }
+  if (intrinsic_type(type.name())) {
+    detail::add_diag(store.diags,
+                     "type '" + std::string(type.name()) +
+                         "' does not accept type arguments",
+                     std::move(loc));
+    return false;
+  }
+  if (generic(generics, type.name())) {
+    detail::add_diag(store.diags,
+                     "type parameter '" + std::string(type.name()) +
+                         "' cannot be used as a type constructor",
+                     std::move(loc));
+    return false;
+  }
+  const Ty kind = term_kind(type, context);
+  if (!accepts_kind(Ty("Ty"), kind)) {
+    detail::add_diag(store.diags,
+                     "type expression '" + std::string(type.text()) +
+                         "' has type '" + std::string(kind.text()) +
+                         "', expected 'Ty'",
+                     std::move(loc));
+    return false;
   }
 
   const TypeLookup lookup = type_declaration(mod, env, type, context);
