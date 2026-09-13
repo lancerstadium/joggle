@@ -166,7 +166,7 @@ placement, and external-weight C emission. The source policy reorders 37 loop
 bodies. Generated C grows from 197,266 to 197,851 bytes, or 0.30%; the input IR
 grows by 816 bytes and the cleaned IR by 585 bytes.
 
-`paper/measure_pair2.py` strictly compiles those exact sources into one process
+`paper/measure_pair.py` strictly compiles those exact sources into one process
 and alternates call order for 20 pairs. All 20 pairs favor the reordered
 variant. Baseline/candidate medians are 40.457/24.895 ms and the median
 within-pair ratio is 1.624. Both result tensors are bit-identical between
@@ -176,6 +176,18 @@ Together with the MobileNetV2 rows, this supports a low-source-growth
 structural-reorder direction distinct from scalar promotion. Both runs remain
 single-host unisolated pilots, not publication performance measurements or a
 claim against ONNX Runtime.
+
+`reorder-squeezenet-pilot.csv` and
+`reorder-squeezenet-runtime-pilot.csv` add a single-result model using the same
+tools at revision `29a18a2`. The policy reorders 18 bodies. Generated C grows
+from 78,725 to 78,945 bytes, or 0.28%. All 20 paired calls favor the candidate;
+baseline/candidate medians are 231.433/38.136 ms and the median within-pair
+ratio is 6.090. Candidate and baseline outputs are bit-identical, and separate
+runs of both sources retain the stored-reference error `5.2452087e-6`.
+The pair tool generates its strict C harness from one declared result count;
+no SqueezeNet call or output name appears in the tool. This remains an
+unisolated mechanism pilot and the large direction requires controlled
+replication before it can support a performance claim.
 
 `mobilenetv2-block-pilot.csv` is a subsequent same-process diagnostic at
 revision `7cc089a`. Starting from one `c.prepare` result, the candidate invokes
@@ -260,8 +272,9 @@ and reference
 
 `ultraface-block-pilot.csv` applies the same revision and source policy to the
 current freshly imported UltraFace RFB-320 semantic fixture. Its two public
-results also exercise the generated multi-result ABI; `paired2.c` is the
-strict C11 same-process harness. The policy changes 37 structurally eligible
+results also exercise the generated multi-result ABI; the strict C11
+same-process harness is generated from the declared result counts. The policy
+changes 37 structurally eligible
 loop bodies, creates 148 local accumulators, and peels 11 non-divisible state
 extents. It does not inspect UltraFace functions or ONNX operators.
 
@@ -317,7 +330,7 @@ and that the current first-fit policy needs a benefit signal in addition to a
 cost limit.
 
 `block-frontier-runtime-pilot.csv` contains the raw alternating measurements
-produced by `paper/measure_pair2.py` from those exact generated sources. With
+produced by `paper/measure_pair.py` from those exact generated sources. With
 ten paired calls per candidate, the median within-pair baseline/candidate
 ratios are 1.039, 1.052, and 2.260 for limits 500, 1,500, and 1,000,000. Both
 result tensors are bit-identical to the paired baseline in every row. The

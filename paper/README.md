@@ -39,7 +39,7 @@ usability.
 | Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths | Freeze and record model-level stage traces |
 | Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM controls pass three contracts; the exact MatMul contract now passes through Joggle and a native, end-to-end ONNX-MLIR extension | Finish the remaining system tasks or preserve their unsupported outcomes; repeat the ONNX-MLIR build from a clean checkout |
 | Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical CSE/analysis scaling pilots | Freeze a fault and diagnostic matrix |
-| Artifact quality | Ten numerical ONNX paths; one generic reorder policy has low-source-growth paired MobileNetV2 and two-result UltraFace diagnostics, while a separate block policy covers three models | Isolated multi-model repetitions, dispersion, task accuracy, second machine, and a materially smaller generated-C gap |
+| Artifact quality | Ten numerical ONNX paths; one generic reorder policy has low-source-growth paired MobileNetV2, SqueezeNet, and two-result UltraFace diagnostics, while a separate block policy exposes replication trade-offs | Isolated multi-model repetitions, dispersion, task accuracy, second machine, and a materially smaller generated-C gap |
 
 The current generated-C pilots remain roughly 7--101 times slower than
 one-thread ONNX Runtime, depending on the model. This is a blocking result, not
@@ -122,13 +122,13 @@ python3 paper/measure_reorder.py \
   --out-dir build-study/reorder/UltraFace-study \
   --output paper/data/reorder-ultraface-pilot.csv
 
-python3 paper/measure_pair2.py \
+python3 paper/measure_pair.py \
   --model UltraFace --cc /usr/bin/clang \
   --baseline build-study/reorder/UltraFace-study/UltraFace/baseline/model.c \
   --candidate reorder=build-study/reorder/UltraFace-study/UltraFace/reorder/model.c \
   --input build-matrix/ultraface-rfb-320/input.bin \
   --weights build-study/ultraface-block/weights.bin \
-  --first-count 8840 --second-count 17680 --repetitions 20 \
+  --output-count 8840 --output-count 17680 --repetitions 20 \
   --out-dir build-study/reorder/UltraFace-study/UltraFace/paired \
   --output paper/data/reorder-ultraface-runtime-pilot.csv
 ```
@@ -147,13 +147,13 @@ python3 paper/measure_block_frontier.py \
   --output paper/data/block-frontier-pilot.csv
 ```
 
-`paper/measure_pair2.py` then strictly compiles one baseline and any number of
-two-result candidates, links each pair to the same alternating harness, and
-writes every raw timing observation. The caller supplies managed input and
+`paper/measure_pair.py` then strictly compiles one baseline and any number of
+candidates, generates an alternating harness for the declared result arity,
+and writes every raw timing observation. The caller supplies managed input and
 weight artifacts; neither script downloads or invents model data.
 
 ```sh
-python3 paper/measure_pair2.py \
+python3 paper/measure_pair.py \
   --model UltraFace \
   --cc /usr/bin/clang \
   --baseline build-study/block-frontier/UltraFace/0/model.c \
@@ -162,7 +162,7 @@ python3 paper/measure_pair2.py \
   --candidate 1000000=build-study/block-frontier/UltraFace/1000000/model.c \
   --input build-matrix/ultraface-rfb-320/input.bin \
   --weights build-study/ultraface-block/weights.bin \
-  --first-count 8840 --second-count 17680 --repetitions 10 \
+  --output-count 8840 --output-count 17680 --repetitions 10 \
   --out-dir build-study/block-frontier/UltraFace/paired \
   --output paper/data/block-frontier-runtime-pilot.csv
 ```

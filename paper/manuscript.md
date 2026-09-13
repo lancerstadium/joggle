@@ -24,13 +24,13 @@ Structural legality queries and transactional edits let user policy rewrite
 actual model bodies while preserving explicit failure. We evaluate the design
 through matched extension tasks, compiler cost, staged compatibility on
 conventional models, numerical correctness, workspace, code size, and latency.
-Current pilots execute ten ONNX models. On MobileNetV2 and UltraFace, one
-operator-independent loop-order policy changes canonical function bodies and
-yields 1.81x and 1.62x same-process latency ratios while growing generated C by
-less than 0.5%; uncontrolled measurements still preclude a final speed claim.
-The completed study will test whether a progressive function IR provides a
-practical, inspectable substrate for cross-layer AI co-design, not whether it
-replaces a production runtime.
+Current pilots execute ten ONNX models. On MobileNetV2, SqueezeNet, and
+UltraFace, one operator-independent loop-order policy changes canonical
+function bodies and yields 1.81x, 6.09x, and 1.62x same-process latency ratios
+while growing generated C by less than 0.5%; uncontrolled measurements still
+preclude a final speed claim. The completed study will test whether a
+progressive function IR provides a practical, inspectable substrate for
+cross-layer AI co-design, not whether it replaces a production runtime.
 
 ## 1. Introduction
 
@@ -334,7 +334,11 @@ generic `tile.reorder` pass to instantiated canonical bodies without
 retargeting any call. Its pooled 20-call MobileNetV2 median falls from 351.060
 to 194.463 ms (1.81x) after changing 64 bodies; generated C grows by 0.46%, the
 output hash is identical, and the `2.0981e-5` reference error is unchanged. On
-UltraFace, the same policy changes 37 bodies. Twenty paired calls have
+SqueezeNet, the same policy changes 18 bodies. Twenty paired calls have
+231.433/38.136 ms medians and a 6.090 median pair ratio; generated C grows by
+0.28%, candidate and baseline outputs are bit-identical, and both retain the
+`5.2452e-6` stored-reference error. On UltraFace, the policy changes 37 bodies.
+Twenty paired calls have
 40.457/24.895 ms medians and a 1.624 median pair ratio, with both output tensors
 bit-identical between variants; generated C grows by 0.30%. Independent
 reference runs retain maximum absolute score/box errors of `2.9802e-7` and
