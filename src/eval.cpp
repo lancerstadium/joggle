@@ -1170,7 +1170,8 @@ private:
       const std::string_view intrinsic_name =
           applied.args().empty() ? name.substr(3) : applied.name();
       const std::vector<Ty> generics = site.generics();
-      return intrinsic(intrinsic_name, args, std::move(loc), generics);
+      return intrinsic(current, intrinsic_name, args, std::move(loc),
+                       generics);
     }
 
     const Ty applied{std::string(name)};
@@ -2132,8 +2133,8 @@ private:
     return true;
   }
 
-  std::optional<Items> intrinsic(std::string_view name, const Items& args,
-                                 Loc loc,
+  std::optional<Items> intrinsic(Fn current, std::string_view name,
+                                 const Items& args, Loc loc,
                                  std::span<const Ty> generics = {}) {
     if (name == "fns" && args.size() == 1) {
       if (const auto* mod = as<Mod*>(args[0]); mod && *mod) {
@@ -2143,8 +2144,16 @@ private:
         return Items{Item(std::move(out))};
       } else if (const auto module = string(args[0])) {
         Items out;
-        for (Fn fn : env_.fns(*module))
-          out.emplace_back(fn);
+        if (current && current.module() == *module) {
+          for (std::uint32_t id = 0; id < current.store_->fns.size(); ++id) {
+            const auto& slot = current.store_->fns[id];
+            if (slot.live)
+              out.emplace_back(Fn(current.store_, id, slot.generation));
+          }
+        } else {
+          for (Fn fn : env_.fns(*module))
+            out.emplace_back(fn);
+        }
         return Items{Item(std::move(out))};
       }
     } else if (name == "find" && args.size() == 1) {

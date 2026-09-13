@@ -159,6 +159,12 @@ not acquire neural-network or target knowledge.
 - body reuse through `ir.expand` and `ir.fold`;
 - policy invocation through `ir.invoke`.
 
+`ir.fns(m)` reflects every function in the concrete program `m`, including
+local functions because they are part of that program's editable structure.
+`ir.fns("name")` instead enumerates an installed package and therefore returns
+only its public functions. The C++ `Mod::fns()` and `Env::fns(name)` forms obey
+the same boundary.
+
 All mutations are checked against handle ownership and take part in the caller's
 transaction. A higher-level module should build on these operations instead of
 requiring a new native binding for each transformation.

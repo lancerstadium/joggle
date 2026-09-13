@@ -493,8 +493,11 @@ bool Env::loaded(std::string_view name) const noexcept {
 
 std::vector<Fn> Env::fns(std::string_view module) const {
   const auto found = impl_->modules.find(module);
-  return found == impl_->modules.end() ? std::vector<Fn>{}
-                                       : found->second->fns();
+  if (found == impl_->modules.end())
+    return {};
+  std::vector<Fn> result = found->second->fns();
+  std::erase_if(result, [](Fn fn) { return fn.local(); });
+  return result;
 }
 
 std::vector<Fn> Env::find_fns(std::string_view symbol) const {

@@ -14,6 +14,24 @@ fn local_probe(m: Mod) -> bool {
   return hidden(m)
 }
 
+fn own_local_visible(m: Mod) -> bool {
+  for fn in ir.fns("script") {
+    if ir.name(fn) == "hidden" {
+      return ir.local(fn)
+    }
+  }
+  return false
+}
+
+fn imported_locals_hidden(m: Mod) -> bool {
+  for fn in ir.fns("onnx.nn") {
+    if ir.local(fn) {
+      return false
+    }
+  }
+  return true
+}
+
 fn nn.relu<S: list<int>>(x: tensor<i8, S>) -> tensor<i8, S> {
   return mid.relu(x)
 }

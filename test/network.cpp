@@ -82,6 +82,8 @@ int main(int argc, char** argv) {
   CHECK(joggle::parse(env, typed_source, typed, "typed-network.jog"));
   CHECK(typed.verify(env));
   const std::vector<joggle::Fn> script_fns = env.fns("script");
+  for (joggle::Fn fn : script_fns)
+    CHECK(!fn.local());
   joggle::Fn relu_cap;
   for (joggle::Fn fn : script_fns)
     if (fn.name() == "nn.relu" && !fn.generics().empty())

@@ -499,11 +499,8 @@ int main(int argc, char** argv) {
   }
   CHECK(network_cpp.verify(env));
   CHECK(env.load("script"));
-  joggle::Fn hidden;
   for (joggle::Fn fn : env.fns("script"))
-    if (fn.name() == "hidden")
-      hidden = fn;
-  CHECK(hidden && hidden.local());
+    CHECK(fn.name() != "hidden" && !fn.local());
   CHECK(!env.find_fn("script.hidden"));
   constexpr std::string_view local_client_source =
       "module local.client\n"
@@ -526,6 +523,12 @@ int main(int argc, char** argv) {
   CHECK(env.resolve(local_client, "script.local_probe"));
   joggle::Attr local_result;
   CHECK(joggle::query(env, "script.local_probe", network_cpp, local_result));
+  CHECK(local_result.boolean() && *local_result.boolean());
+  CHECK(joggle::query(env, "script.own_local_visible", network_cpp,
+                      local_result));
+  CHECK(local_result.boolean() && *local_result.boolean());
+  CHECK(joggle::query(env, "script.imported_locals_hidden", network_cpp,
+                      local_result));
   CHECK(local_result.boolean() && *local_result.boolean());
   joggle::Mod scripted_generic_edit;
   CHECK(joggle::parse(env, generic_edit_source, scripted_generic_edit,
