@@ -258,7 +258,7 @@ local fn index_value(
         assert(ir.live(scale),
                "tile.scalarize could not build an address scale")
         term = ir.call(
-          m, before, "operator *", [coordinate, scale], type
+          m, before, base_fn("operator *", 2), [coordinate, scale], type
         )
         assert(ir.live(term),
                "tile.scalarize could not scale an address coordinate")
@@ -267,7 +267,9 @@ local fn index_value(
         out = term
         started = true
       } else {
-        out = ir.call(m, before, "operator +", [out, term], type)
+        out = ir.call(
+          m, before, base_fn("operator +", 2), [out, term], type
+        )
         assert(ir.live(out), "tile.scalarize could not extend an address")
       }
     }

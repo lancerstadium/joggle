@@ -2335,8 +2335,9 @@ private:
       const auto* mod = as<Mod*>(args[0]);
       const auto* before = as<Op>(args[1]);
       const auto callee = string(args[2]);
+      const auto* target = as<Fn>(args[2]);
       const Items* values = list(args[3]);
-      if (mod && *mod && before && callee && values) {
+      if (mod && *mod && before && (callee || target) && values) {
         std::vector<Val> inputs;
         inputs.reserve(values->size());
         for (const Item& item : *values) {
@@ -2348,14 +2349,18 @@ private:
           inputs.push_back(*value);
         }
         if (const auto* type = as<Ty>(args[4])) {
-          Val result = (*mod)->call(*before, std::string(*callee), inputs,
-                                    *type);
+          Val result = target
+                           ? (*mod)->call(env_, *before, *target, inputs, *type)
+                           : (*mod)->call(*before, std::string(*callee),
+                                          inputs, *type);
           if (result)
             return Items{Item(result)};
         } else if (auto result_types = types(args[4])) {
-          Op result =
-              (*mod)->call(*before, std::string(*callee), inputs,
-                           *result_types);
+          Op result = target
+                          ? (*mod)->call(env_, *before, *target, inputs,
+                                         *result_types)
+                          : (*mod)->call(*before, std::string(*callee), inputs,
+                                         *result_types);
           if (result)
             return Items{Item(result)};
         }

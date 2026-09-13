@@ -112,6 +112,25 @@ fn check_custom_affine(m: Mod) -> bool {
   assert(len(tile.reads(m, access_loop, params[0])) == 1 &&
          len(tile.writes(m, access_loop, body_args[1])) == 1,
          "custom indexing did not retain access semantics")
+  assert(tile.can_split(m, access_loop, 2) &&
+         tile.split(m, access_loop, 2),
+         "custom-container loop could not be split")
+  var exact_adds = 0
+  var custom_adds = 0
+  for op in ir.ops(access) {
+    if ir.kind(op) == "call" && ir.callee(op) == "base.operator +" {
+      assert(ir.target(m, op) == "base.operator +",
+             "split lost its exact base addition target")
+      exact_adds += 1
+    }
+    if ir.kind(op) == "call" && ir.callee(op) == "operator +" {
+      assert(ir.target(m, op) == "tile.custom.operator +",
+             "split rebound the user's addition")
+      custom_adds += 1
+    }
+  }
+  assert(exact_adds > 0 && custom_adds > 0,
+         "split did not preserve distinct operator implementations")
   return true
 }
 

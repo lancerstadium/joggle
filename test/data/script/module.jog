@@ -1011,7 +1011,7 @@ fn rebuild_tagged(m: Mod) -> bool {
             let outs = ir.outs(op)
             if len(outs) == 1 && len(ir.users(outs[0])) == 1 {
               let next = ir.call(
-                m, op, target, ir.args(op), ir.type(outs[0])
+                m, op, str(target), ir.args(op), ir.type(outs[0])
               )
               changed = ir.replace(m, outs[0], next)
               changed = ir.erase(m, op)

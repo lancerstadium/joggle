@@ -2026,6 +2026,74 @@ int main(int argc, char** argv) {
         std::string::npos);
   CHECK(joggle::print(built_multi).find("observe(x)") != std::string::npos);
 
+  joggle::Fn base_add;
+  for (const joggle::Fn fn : env.find_fns("base.operator +"))
+    if (fn.params().size() == 2)
+      base_add = fn;
+  CHECK(base_add);
+  joggle::Mod exact_call;
+  CHECK(joggle::parse(env,
+                      "module exact.call\n"
+                      "use base\n"
+                      "fn +(left: i64, right: i64) -> i64 {\n"
+                      "  return left - right\n"
+                      "}\n"
+                      "fn custom(x: i64, y: i64) -> i64 { return x + y }\n"
+                      "fn main(x: i64, y: i64) -> i64 { return x }\n",
+                      exact_call, "exact-call.jog"));
+  CHECK(exact_call.verify(env));
+  const joggle::Fn exact_main = exact_call.find_fn("main");
+  const joggle::Op exact_return = exact_main.body().ops().back();
+  const std::vector<joggle::Val> exact_args{exact_main.params()[0],
+                                            exact_main.params()[1]};
+  const std::string before_bad_exact = joggle::print(exact_call);
+  const std::uint64_t before_bad_exact_revision = exact_call.revision();
+  CHECK(!exact_call.call(env, exact_return, base_add, exact_args,
+                         joggle::Ty("bool")));
+  CHECK(joggle::print(exact_call) == before_bad_exact);
+  CHECK(exact_call.revision() == before_bad_exact_revision);
+  exact_call.clear_diags();
+  const joggle::Val exact_sum = exact_call.call(
+      env, exact_return, base_add, exact_args, joggle::Ty("i64"));
+  CHECK(exact_sum && env.resolve(exact_call, exact_sum.def()) == base_add);
+  CHECK(exact_call.replace(exact_main.params().front(), exact_sum,
+                           exact_return));
+  CHECK(exact_call.verify(env));
+  const std::string exact_text = joggle::print(exact_call);
+  CHECK(exact_text.find("base.+(x, y)") != std::string::npos);
+  joggle::Mod exact_roundtrip;
+  CHECK(joggle::parse(env, exact_text, exact_roundtrip,
+                      "exact-call-roundtrip.jog"));
+  CHECK(exact_roundtrip.verify(env));
+  bool exact_roundtrip_target = false;
+  for (const joggle::Op op : exact_roundtrip.ops())
+    if (op.callee() == "base.operator +")
+      exact_roundtrip_target = env.resolve(exact_roundtrip, op) == base_add;
+  CHECK(exact_roundtrip_target);
+
+  joggle::Mod exact_vm;
+  CHECK(joggle::parse(env, exact_text, exact_vm, "exact-vm.jog"));
+  CHECK(exact_vm.verify(env));
+  CHECK(env.load("vm"));
+  joggle::Attr exact_vm_prepare;
+  CHECK(joggle::run(env, "vm.prepare", exact_vm, exact_vm_prepare));
+  joggle::Attr exact_image;
+  CHECK(joggle::query(env, "vm.image", exact_vm, exact_image));
+  CHECK(exact_image.string() &&
+        exact_image.string()->find("add ") != std::string::npos &&
+        exact_image.string()->find("sub ") != std::string::npos);
+
+  CHECK(env.load("c"));
+  joggle::Attr exact_prepare;
+  CHECK(joggle::run(env, "c.prepare", exact_roundtrip, exact_prepare));
+  joggle::Attr exact_c;
+  CHECK(joggle::query(env, "c.source", exact_roundtrip, exact_c));
+  CHECK(exact_c.string() &&
+        exact_c.string()->find("(x + y)") != std::string::npos &&
+        exact_c.string()->find(
+            "return exact_call_operatorZX20ZX2b(x, y);") !=
+            std::string::npos);
+
   joggle::Mod overloaded;
   constexpr std::string_view overload_source =
       "module overloads\n"

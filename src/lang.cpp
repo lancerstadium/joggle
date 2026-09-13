@@ -213,6 +213,11 @@ int precedence(std::string_view op) {
   return -1;
 }
 
+bool supported_operator(std::string_view spelling) {
+  return precedence(spelling) >= 0 || spelling == "!" || spelling == "~" ||
+         spelling == ".." || spelling == "[]" || spelling == "[]=";
+}
+
 std::string attr_text(const Attr& value) {
   if (value.empty())
     return "nil";
@@ -588,8 +593,7 @@ private:
         if (match("="))
           spelling += '=';
       }
-      if (precedence(spelling) < 0 && spelling != "!" && spelling != "~" &&
-          spelling != ".." && spelling != "[]" && spelling != "[]=")
+      if (!supported_operator(spelling))
         return fail("unsupported function symbol '" + spelling + "'", loc);
       name = operator_name(spelling);
     } else
@@ -1477,6 +1481,22 @@ private:
     }
 
     std::string callee = token.text;
+    if (callee.ends_with('.') && peek().kind == Tk::symbol) {
+      std::string spelling = take().text;
+      if (spelling == "[") {
+        if (!expect("]"))
+          return detail::none;
+        spelling = "[]";
+        if (match("="))
+          spelling += '=';
+      }
+      if (!supported_operator(spelling)) {
+        fail("unsupported qualified function symbol '" + spelling + "'",
+             token.loc);
+        return detail::none;
+      }
+      callee += operator_name(spelling);
+    }
     if (is("<")) {
       const std::size_t save = pos_;
       const auto suffix = template_suffix();
@@ -1556,7 +1576,11 @@ std::string render_call(const detail::Store& store, const detail::OpData& op) {
              render_value(store, op.args[1], level, true);
     }
   }
-  std::string out = op.callee + "(";
+  std::string callee = op.callee;
+  const std::size_t qualified = callee.rfind(".operator ");
+  if (qualified != std::string::npos)
+    callee = callee.substr(0, qualified + 1) + callee.substr(qualified + 10);
+  std::string out = callee + "(";
   for (std::size_t index = 0; index < op.args.size(); ++index) {
     if (index)
       out += ", ";

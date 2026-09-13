@@ -63,6 +63,21 @@ local fn reg(value: Val) -> str {
   return text(ir.key(value))
 }
 
+local fn call_name(m: Mod, op: Op) -> str {
+  let target = ir.resolve(m, op)
+  if ir.live(target) {
+    let name = ir.name(target)
+    let symbol = ir.symbol(target)
+    if base.replace(name, "operator ", "") != name {
+      if symbol == "base." + name || symbol == "tensor." + name {
+        return name
+      }
+      return symbol
+    }
+  }
+  return ir.callee(op)
+}
+
 local fn binary(name: str) -> str {
   let ops = {
     "operator +": "add", "operator -": "sub", "operator *": "mul",
@@ -99,7 +114,7 @@ local fn binding(fn: Fn) -> str {
 }
 
 local fn binary(m: Mod, op: Op) -> str {
-  let direct = binary(ir.callee(op))
+  let direct = binary(call_name(m, op))
   if direct != "" {
     return direct
   }
@@ -111,7 +126,7 @@ local fn binary(m: Mod, op: Op) -> str {
 }
 
 local fn unary(m: Mod, op: Op) -> str {
-  let direct = unary(ir.callee(op))
+  let direct = unary(call_name(m, op))
   if direct != "" {
     return direct
   }
@@ -142,7 +157,7 @@ fn accepts(m: Mod, op: Op) -> bool {
   }
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
-  let name = ir.callee(op)
+  let name = call_name(m, op)
   if name == "operator .." || name == "base.list" {
     return true
   }
@@ -296,7 +311,7 @@ local fn access(op: Op, store: bool) -> str {
 local fn call(m: Mod, op: Op) -> str {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
-  let name = ir.callee(op)
+  let name = call_name(m, op)
   if name == "operator .." || name == "base.list" {
     return ""
   }
@@ -448,13 +463,13 @@ local fn loop(m: Mod, op: Op) -> str {
     assert(ir.live(source) && ir.kind(source) == "call",
            "vm: loop source must be a call")
     let items = ir.args(source)
-    if ir.callee(source) == "operator .." {
+    if call_name(m, source) == "operator .." {
       assert(len(items) == 2, "vm: range must have two bounds")
       out += "loop " + reg(args[i]) + " " +
              reg(items[0]) + " " + reg(items[1]) +
              "\n"
     } else {
-      assert(ir.callee(source) == "base.list",
+      assert(call_name(m, source) == "base.list",
              "vm: loop source must be a range or scalar list")
       out += "each " + reg(args[i]) + " " +
              format(ir.type(args[i])) + " " + text(len(items))

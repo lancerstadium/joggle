@@ -44,6 +44,21 @@ local fn val(value: Val) -> str {
   return label(value)
 }
 
+local fn call_name(m: Mod, op: Op) -> str {
+  let target = ir.resolve(m, op)
+  if ir.live(target) {
+    let name = ir.name(target)
+    let symbol = ir.symbol(target)
+    if base.replace(name, "operator ", "") != name {
+      if symbol == "base." + name || symbol == "tensor." + name {
+        return name
+      }
+      return symbol
+    }
+  }
+  return ir.callee(op)
+}
+
 fn abi() -> dict {
   return {
     bool: {name: "bool",     bytes: 1, kind: "bool",     include: "stdbool.h"},
@@ -216,7 +231,7 @@ local fn expr(
   assert(ir.kind(op) == "call",
          "c: unnamed " + text(ir.type(value)) +
          " value is neither a constant nor a call result")
-  let name = ir.callee(op)
+  let name = call_name(m, op)
   let inputs = ir.args(op)
   if name == "operator []" {
     return index(m, inputs[0], inputs, blob, data_fns, config)
@@ -410,7 +425,7 @@ local fn external_call(m: Mod, op: Op, config: dict) -> bool {
   if !ir.live(op) || ir.kind(op) != "call" {
     return false
   }
-  let name = ir.callee(op)
+  let name = call_name(m, op)
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   let fn = ir.resolve(m, op)
@@ -573,7 +588,7 @@ local fn noalias_enabled(fn: Fn) -> bool {
 }
 
 local fn accepts_with(m: Mod, op: Op, config: dict) -> bool {
-  let name = ir.callee(op)
+  let name = call_name(m, op)
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if name == "base.list" || name == "operator .." {
@@ -865,7 +880,7 @@ local fn call(
   m: Mod, op: Op, depth: int, blob: str, data_fns: list<Fn>, config: dict,
   direct: list<str>, results: list<str>
 ) -> str {
-  let name = ir.callee(op)
+  let name = call_name(m, op)
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   let indent = pad(depth)

@@ -72,6 +72,8 @@ fn is_const(v: Val) -> bool;
 fn constant(v: Val) -> Attr;
 fn call(m: Mod, before: Op, callee: str, args: list<Val>, type: Ty) -> Val;
 fn call(m: Mod, before: Op, callee: str, args: list<Val>, types: list<Ty>) -> Op;
+fn call(m: Mod, before: Op, target: Fn, args: list<Val>, type: Ty) -> Val;
+fn call(m: Mod, before: Op, target: Fn, args: list<Val>, types: list<Ty>) -> Op;
 fn constant(m: Mod, before: Op, value: Attr, type: Ty) -> Val;
 fn assign(m: Mod, before: Op, target: Val, value: Val) -> Val;
 fn loop(

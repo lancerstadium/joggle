@@ -457,9 +457,19 @@ calls: a module can preserve the externally meaningful result name without
 accessing internal storage or generated identifiers.
 
 Construction also uses ordinary overloaded functions. `ir.constant` and
-`ir.call` insert leaves before a named operation. `ir.clone` deep-copies an
-operation and its nested `Blk`s, while `ir.move` changes `Blk`-local order only
-when all operands and users remain dominated. `ir.kind(op)` returns `call`,
+`ir.call` insert leaves before a named operation. Passing a `str` to `ir.call`
+deliberately creates an open or dynamically chosen symbol. Passing a live `Fn`
+instead adds its module dependency when necessary and proves that the new call
+resolves to that exact overload before committing. The typed form keeps the
+short spelling when unambiguous and qualifies a collision. Qualified operators
+use the compact callable form `base.+(left, right)`, so an exact binding remains
+readable and round-trips without pretending to be the module's overloaded
+infix expression. Pass a `Fn` whenever a transform must preserve an already
+proved implementation identity.
+
+`ir.clone` deep-copies an operation and its nested `Blk`s, while `ir.move`
+changes `Blk`-local order only when all operands and users remain dominated.
+`ir.kind(op)` returns `call`,
 `constant`, `loop`, `branch`, `return`, or `yield`; `ir.blks(op)` exposes
 nested bodies. A terminator supplies an insertion point even for an otherwise
 empty `Blk`, so there is no stateful builder object. Constructed result types
@@ -542,7 +552,9 @@ their own representation policy, so a custom format may deliberately wrap an
 integer, byte string, or another attribute without adding a core case.
 Constructed and renamed callees must use the same qualified-name, explicit
 generic, or operator spelling accepted by the parser, preserving textual
-round trips without reserving a module vocabulary.
+round trips without reserving a module vocabulary. `module.+(a, b)` is the
+qualified spelling of `module.operator +`; ordinary `a + b` remains the
+unqualified overload expression.
 
 Structured construction follows the same rule. `ir.loop` receives iterator
 names, source values, and carried values, then returns an `Op` with one body and

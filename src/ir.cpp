@@ -77,17 +77,23 @@ bool valid_module(std::string_view text) {
   return false;
 }
 
+bool valid_operator(std::string_view spelling) {
+  static constexpr std::string_view operators[] = {
+      "||", "&&", "==", "!=", "<",  "<=", ">",  ">=", "|",
+      "^",  "&",  "<<", ">>", "+",  "-",  "*",  "/",  "%",
+      "!",  "~",  "..", "[]", "[]="};
+  return std::find(std::begin(operators), std::end(operators), spelling) !=
+         std::end(operators);
+}
+
 bool valid_callee(std::string_view text) {
-  constexpr std::string_view prefix = "operator ";
-  if (text.starts_with(prefix)) {
-    const std::string_view spelling = text.substr(prefix.size());
-    static constexpr std::string_view operators[] = {
-        "||", "&&", "==", "!=", "<",  "<=", ">",  ">=", "|",
-        "^",  "&",  "<<", ">>", "+",  "-",  "*",  "/",  "%",
-        "!",  "~",  "..", "[]", "[]="};
-    return std::find(std::begin(operators), std::end(operators), spelling) !=
-           std::end(operators);
-  }
+  constexpr std::string_view marker = "operator ";
+  if (text.starts_with(marker))
+    return valid_operator(text.substr(marker.size()));
+  const std::size_t qualified = text.rfind(".operator ");
+  if (qualified != std::string_view::npos)
+    return valid_module(text.substr(0, qualified)) &&
+           valid_operator(text.substr(qualified + 10));
   const Ty applied{std::string(text)};
   if (!applied.valid())
     return false;
@@ -1012,6 +1018,56 @@ Val Mod::call(Op before, std::string callee, std::span<const Val> args,
               Ty type) {
   const Op op =
       call(before, std::move(callee), args, std::span<const Ty>(&type, 1));
+  const std::vector<Val> outs = op.outs();
+  return outs.size() == 1 ? outs.front() : Val{};
+}
+
+Op Mod::call(const Env& env, Op before, Fn target,
+             std::span<const Val> args, std::span<const Ty> types) {
+  auto& store = impl_->store;
+  detail::Store backup = store;
+  const auto rollback = [&]() {
+    std::vector<Diag> diagnostics = std::move(store.diags);
+    store = std::move(backup);
+    store.diags = std::move(diagnostics);
+    return Op{};
+  };
+  if (!target.valid()) {
+    detail::add_diag(store.diags,
+                     "call requires a live target function");
+    return rollback();
+  }
+  if (target.store_ != &store) {
+    const std::string symbol = std::string(target.module()) + "." +
+                               std::string(target.name());
+    const std::vector<Fn> visible = env.resolve_fns(*this, symbol);
+    if (std::find(visible.begin(), visible.end(), target) == visible.end() &&
+        !use(env, std::string(target.module())))
+      return rollback();
+  }
+
+  Op result = call(before, std::string(target.name()), args, types);
+  if (!result)
+    return rollback();
+  if (env.resolve(*this, result) != target &&
+      !retarget(env, result, target, args))
+    return rollback();
+  if (env.resolve(*this, result) != target) {
+    detail::add_diag(store.diags,
+                     "call target does not uniquely match the arguments",
+                     before.loc());
+    return rollback();
+  }
+  store.revision = backup.revision;
+  store.queries.clear();
+  touch(store);
+  return result;
+}
+
+Val Mod::call(const Env& env, Op before, Fn target,
+              std::span<const Val> args, Ty type) {
+  const Op op = call(env, before, target, args,
+                     std::span<const Ty>(&type, 1));
   const std::vector<Val> outs = op.outs();
   return outs.size() == 1 ? outs.front() : Val{};
 }

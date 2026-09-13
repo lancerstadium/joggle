@@ -12,6 +12,26 @@ local fn base_op(m: Mod, op: Op, name: str) -> bool {
          (target == ir.callee(op) && target == name)
 }
 
+local fn base_fn(name: str, arity: int) -> Fn {
+  for fn in ir.fns("base") {
+    if ir.name(fn) == name && len(ir.params(fn)) == arity {
+      return fn
+    }
+  }
+  assert(false, "tile requires base." + name)
+  return ir.find("")
+}
+
+local fn call_like(
+  m: Mod, before: Op, source: Op, args: list<Val>, type: Ty
+) -> Val {
+  let target = ir.resolve(m, source)
+  if ir.live(target) {
+    return ir.call(m, before, target, args, type)
+  }
+  return ir.call(m, before, ir.callee(source), args, type)
+}
+
 local fn syntax_op(m: Mod, op: Op, name: str) -> bool {
   if !ir.live(op) || ir.kind(op) != "call" {
     return false
@@ -226,26 +246,34 @@ fn split(m: Mod, source: Op, factor: int) -> bool {
   let zero = keep(m, ir.constant(m, source, 0, type), "tile_zero")
   let one = keep(m, ir.constant(m, source, 1, type), "tile_one")
   let width = keep(
-    m, ir.call(m, source, "operator -", [upper, lower], type),
+    m, ir.call(
+      m, source, base_fn("operator -", 2), [upper, lower], type
+    ),
     "tile_width"
   )
   let factor_value = keep(
     m, ir.constant(m, source, factor, type), "tile_factor"
   )
   let factor_less_one = keep(
-    m, ir.call(m, source, "operator -", [factor_value, one], type),
+    m, ir.call(
+      m, source, base_fn("operator -", 2), [factor_value, one], type
+    ),
     "tile_tail"
   )
   let padded = keep(
-    m, ir.call(m, source, "operator +", [width, factor_less_one], type),
+    m, ir.call(
+      m, source, base_fn("operator +", 2), [width, factor_less_one], type
+    ),
     "tile_padded"
   )
   let blocks = keep(
-    m, ir.call(m, source, "operator /", [padded, factor_value], type),
+    m, ir.call(
+      m, source, base_fn("operator /", 2), [padded, factor_value], type
+    ),
     "tile_blocks"
   )
-  let outer_range = ir.call(
-    m, source, "operator ..", [zero, blocks], ir.type(range)
+  let outer_range = call_like(
+    m, source, range_op, [zero, blocks], ir.type(range)
   )
 
   var outer_sources: list<Val> = []
@@ -274,16 +302,19 @@ fn split(m: Mod, source: Op, factor: int) -> bool {
   let scaled = keep(
     m,
     ir.call(
-      m, outer_yield, "operator *", [outer_args[axis], factor_value], type
+      m, outer_yield, base_fn("operator *", 2),
+      [outer_args[axis], factor_value], type
     ),
     "tile_scaled"
   )
   let base = keep(
-    m, ir.call(m, outer_yield, "operator +", [lower, scaled], type),
+    m, ir.call(
+      m, outer_yield, base_fn("operator +", 2), [lower, scaled], type
+    ),
     "tile_base"
   )
-  let inner_range = ir.call(
-    m, outer_yield, "operator ..", [zero, factor_value], ir.type(range)
+  let inner_range = call_like(
+    m, outer_yield, range_op, [zero, factor_value], ir.type(range)
   )
   var inner_carried: list<Val> = []
   for i in axes..len(outer_args) {
@@ -299,12 +330,16 @@ fn split(m: Mod, source: Op, factor: int) -> bool {
   let inner_ops = ir.ops(inner_body)
   let inner_yield = inner_ops[len(inner_ops) - 1]
   let index = keep(
-    m, ir.call(m, inner_yield, "operator +", [base, inner_args[0]], type),
+    m, ir.call(
+      m, inner_yield, base_fn("operator +", 2),
+      [base, inner_args[0]], type
+    ),
     "tile_index"
   )
   let inside = keep(
     m, ir.call(
-      m, inner_yield, "operator <", [index, upper], ty("bool")
+      m, inner_yield, base_fn("operator <", 2),
+      [index, upper], ty("bool")
     ),
     "tile_inside"
   )
@@ -469,8 +504,8 @@ fn unroll(m: Mod, source: Op, factor: int) -> bool {
   let blocks = keep(
     m, ir.constant(m, source, trip / factor, type), "unroll_blocks"
   )
-  let outer_range = ir.call(
-    m, source, "operator ..", [zero, blocks], ir.type(range)
+  let outer_range = call_like(
+    m, source, range_op, [zero, blocks], ir.type(range)
   )
   var names: list<str> = []
   var sources: list<Val> = []
@@ -501,11 +536,16 @@ fn unroll(m: Mod, source: Op, factor: int) -> bool {
   )
   let scaled = keep(
     m,
-    ir.call(m, outer_yield, "operator *", [outer_args[axis], width], type),
+    ir.call(
+      m, outer_yield, base_fn("operator *", 2),
+      [outer_args[axis], width], type
+    ),
     "unroll_scaled"
   )
   let base_index = keep(
-    m, ir.call(m, outer_yield, "operator +", [begin, scaled], type),
+    m, ir.call(
+      m, outer_yield, base_fn("operator +", 2), [begin, scaled], type
+    ),
     "unroll_base"
   )
 
@@ -525,7 +565,10 @@ fn unroll(m: Mod, source: Op, factor: int) -> bool {
         m, ir.constant(m, outer_yield, point, type), "unroll_offset"
       )
       index = keep(
-        m, ir.call(m, outer_yield, "operator +", [base_index, offset], type),
+        m, ir.call(
+          m, outer_yield, base_fn("operator +", 2),
+          [base_index, offset], type
+        ),
         "unroll_index"
       )
     }
