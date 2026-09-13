@@ -358,8 +358,9 @@ runs, dispersion, fixed revisions and flags, task-level accuracy where
 applicable, and at least one second machine.
 
 The extension-surface study and controlled performance study are not complete.
-Until they are, this manuscript must not claim that Joggle is easier to extend,
-more compatible, or faster than another compiler.
+One of four system-baseline tasks now passes, but that result does not support
+a general claim that Joggle is easier to extend, more compatible, or faster
+than another compiler.
 
 The first reproducible extension-footprint pilot freezes four tasks and runs
 their named tests. Its three out-of-tree tasks contain 20, 69, and 138 source
@@ -369,9 +370,11 @@ descriptive implementation footprints, not usability or productivity results.
 The implementation contract now also has a generated, digest-pinned opset-13
 ONNX fixture with its exact `2x3` and `3x2` inputs. Joggle imports that model,
 expands the ordinary `ikj` function, and reproduces the same TensorProto oracle
-through both its deterministic VM and strictly compiled C. This freezes the
-system-level input and validates Joggle's side of the protocol; it is not an
-ONNX-MLIR comparison result.
+through both its deterministic VM and strictly compiled C. The same model now
+passes a native ONNX-MLIR `0.4.2` extension at pinned revision `4a13c34a` and
+its documented LLVM revision. The preserved lowered IR contains explicit
+`i-k-j` affine loops, and its shared library returns `[58, 64, 139, 154]` with
+zero maximum absolute error.
 
 The first three frozen contracts now also pass on a pinned TVM `v0.26.0`
 baseline: one generic explicit i-k-j matrix body, one structural schedule
@@ -379,10 +382,17 @@ policy, and one generic external-call implementation exercised by the unchanged
 C harness. Their exact experiment sources and build recipe are preserved, but
 the numeric-format contract remains incomplete. These are mechanism-level
 controls, not a substitute for an end-to-end neural-network compiler. The
-primary system baseline is now a pinned ONNX-MLIR revision using its documented
-operation and accelerator extension paths; its implementations are not yet
-complete. Consequently, there is still no full matched RQ2 result and no
-comparative extensibility claim. Standalone MLIR type/dialect experiments may
+ONNX-MLIR implementation task uses its documented accelerator path and adds
+six files containing 167 nonblank, non-comment lines: the conversion and
+accelerator class, three build files, and a runtime compatibility symbol. It
+also requires one generated native registration and five global macro
+definitions, but changes no existing framework-core file and adds no external
+dependency. Joggle's matching body contains 20 source lines and TVM's control
+contains 62. These are separately reported surface observations, not measures
+of difficulty, comprehension, or developer time. The remaining ONNX-MLIR
+contracts and a clean-build repetition are incomplete, so there is still no
+full matched RQ2 result or comparative extensibility claim. Standalone MLIR
+type/dialect experiments may
 decompose registration and conversion work, but cannot be reported as the
 system comparison because they omit ONNX ingestion and artifact generation.
 

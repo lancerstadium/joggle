@@ -98,10 +98,15 @@ programs pass the implementation, policy, and external-kernel contracts; their
 sources and build recipe are preserved under `baselines/tvm/`. The numeric-
 format contract remains unimplemented, so there is no complete TVM result.
 ONNX-MLIR is pinned at commit
-`4a13c34aa695b228599d637cdb772c19b4b18dba`, but its task implementations and
-oracles are not complete. There is therefore no system-level result and no
-cross-system extensibility conclusion yet. RISE/Shine remains provisional;
-standalone MLIR observations may explain plumbing cost but cannot close RQ2.
+`4a13c34aa695b228599d637cdb772c19b4b18dba`. Its implementation task now passes
+end to end through the documented accelerator path: the unchanged ONNX fixture
+lowers to an explicit `i-k-j` loop nest, compiles to a native shared library,
+and passes the numerical oracle. The exact six-file extension, emitted IR, and
+result record are preserved under `baselines/onnx-mlir/implementation/`. The
+other three contracts and a clean-build repetition remain incomplete, so there
+is no complete system comparison or cross-system extensibility conclusion yet.
+RISE/Shine remains provisional; standalone MLIR observations may explain
+plumbing cost but cannot close RQ2.
 
 ## Threat controls
 

@@ -38,6 +38,20 @@ and 355 source lines, respectively. These are raw matched-task footprints, not
 an extensibility ranking: the numeric-format comparison, clean-build timing,
 and independent-machine reproduction are still missing.
 
+`extension-onnx-mlir-pilot.csv` records the first end-to-end system-baseline
+task at ONNX-MLIR `4a13c34a` and its documented LLVM revision. A six-file,
+167-line accelerator extension imports the unchanged ONNX fixture, emits the
+required explicit `i-k-j` affine loop nest, produces a native shared library,
+and returns `[58, 64, 139, 154]` with zero maximum absolute error. The preserved
+surface includes three added build files, one generated accelerator registration
+entry, five required global macro definitions, and one required runtime
+compatibility symbol; it changes no existing framework-core file and adds no
+external dependency. These are descriptive facts, not a claim that source
+volume measures usability. The exact sources, emitted IR, configuration,
+digests, and oracle are under `paper/baselines/onnx-mlir/implementation/`.
+Because the LLVM dependency build was resumed incrementally, this pilot reports
+no clean-build duration. The other three ONNX-MLIR contracts remain open.
+
 `instance-specialization-pilot.csv` records the first four-model evaluation of
 compiler-owned call-site instances. Each automatic variant starts from the
 same semantic model, invokes `opt.instantiate(m, "nn")`, prepares C, plans

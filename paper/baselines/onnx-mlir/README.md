@@ -1,9 +1,9 @@
 # ONNX-MLIR system baseline
 
-This directory defines the primary system-level baseline for RQ2. It is a
-protocol record, not a completed result. No ONNX-MLIR measurements may enter
-the manuscript until the implementations, patches, commands, and raw outputs
-described below are preserved here.
+This directory defines the primary system-level baseline for RQ2. The first
+matched implementation task now has a preserved native pilot; the other three
+contracts remain incomplete. The pilot is not a complete ONNX-MLIR comparison
+and does not support a broad extensibility claim.
 
 ## Frozen revision and documented path
 
@@ -42,8 +42,9 @@ the same numerical or diagnostic oracle.
 The first such input is
 [`../../fixtures/implementation`](../../fixtures/implementation), whose model,
 TensorProto data, generator, dependency versions, contract digest, and file
-digests are committed. Joggle already executes this fixture through its ONNX,
-VM, and generated-C paths. No ONNX-MLIR result is claimed yet.
+digests are committed. Joggle executes this fixture through its ONNX, VM, and
+generated-C paths. The preserved ONNX-MLIR implementation and result are under
+[`implementation/`](implementation/).
 
 | Contract | ONNX-MLIR path to evaluate | Required end-to-end evidence |
 | --- | --- | --- |
@@ -55,6 +56,59 @@ VM, and generated-C paths. No ONNX-MLIR result is claimed yet.
 If a requirement cannot be expressed through the documented operation or
 accelerator paths, record the exact failing requirement and diagnostic. Do not
 fall back to a standalone `mlir-opt` plugin and label it an ONNX-MLIR result.
+
+## Native implementation pilot
+
+The implementation task was run natively on arm64 macOS rather than through a
+container. ONNX-MLIR was checked out at the revision above with recursive
+submodules. Its documented LLVM revision
+`1053047a4be7d1fece3adaf5e7597f838058c947` was built with MLIR and Clang,
+Release mode, assertions, RTTI, and the host target. StableHLO was disabled
+because the task does not use that input path.
+
+The exact added tree is preserved in [`implementation/`](implementation/).
+Reproduction copies its `src/` and `test/` subtrees into a clean ONNX-MLIR
+checkout, then configures with `ONNX_MLIR_ACCELERATORS=IKJ` and the five empty
+instrumentation/reporting macros required by `Accelerator.hpp`:
+
+```sh
+cmake -S . -B build-ikj -G Ninja \
+  -DCMAKE_CXX_COMPILER=/usr/bin/c++ \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DLLVM_ENABLE_ASSERTIONS=ON \
+  -DMLIR_DIR=/path/to/llvm-project/build/lib/cmake/mlir \
+  -DONNX_MLIR_ACCELERATORS=IKJ \
+  -DONNX_MLIR_ENABLE_STABLEHLO=OFF \
+  '-DCMAKE_CXX_FLAGS=-DINSTRUMENTSTAGE_ENUM_IKJ= -DINSTRUMENTSTAGE_CL_ENUM_IKJ= -DPROFILEIR_CL_ENUM_IKJ= -DOPTREPORT_ENUM_IKJ= -DOPTREPORT_CL_ENUM_IKJ='
+cmake --build build-ikj --target onnx-mlir
+```
+
+The accelerator registers a higher-benefit rank-two float32 `MatMul`
+conversion. It initializes the result and emits explicit `i-k-j` loops with
+loads, multiply, add, and store; it does not call ONNX-MLIR's existing matrix
+kernel. The accelerator must also delegate the complete host pipeline and
+provide the runtime compatibility symbol expected by generated entry points.
+
+The following commands preserve the lowered affine IR and compile the shared
+library from the same ONNX input:
+
+```sh
+build-ikj/Release/bin/onnx-mlir --maccel=IKJ --O0 --EmitMLIR \
+  -o results/implementation/ikj \
+  /path/to/joggle/paper/fixtures/implementation/model.onnx
+build-ikj/Release/bin/onnx-mlir --maccel=IKJ --O0 \
+  -o results/implementation/ikj-native \
+  /path/to/joggle/paper/fixtures/implementation/model.onnx
+```
+
+With the ONNX-MLIR source runtime and built Python runtime on `PYTHONPATH`, the
+checked-in [`oracle.py`](oracle.py) reports `[58, 64, 139, 154]` with zero
+maximum absolute error. [`implementation/ikj.mlir`](implementation/ikj.mlir)
+preserves the emitted loop nest, while
+[`implementation/result.json`](implementation/result.json) records revisions,
+digests, configuration, extension surface, and the oracle. The dependency
+build was resumed incrementally, so no clean-build duration is reported for
+this pilot.
 
 ## Measurement boundary
 
