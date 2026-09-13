@@ -2275,6 +2275,16 @@ private:
       if (const auto* fn = as<Fn>(args[0]); fn && *fn)
         return Items{Item(Attr(std::string(fn->module()) + "." +
                                std::string(fn->name())))};
+    } else if (name == "target" && args.size() == 2) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* op = as<Op>(args[1]);
+      if (mod && *mod && op && *op) {
+        std::string symbol(op->callee());
+        if (const Fn target = env_.resolve(**mod, *op))
+          symbol = std::string(target.module()) + "." +
+                   std::string(target.name());
+        return Items{Item(Attr(std::move(symbol)))};
+      }
     } else if (name == "meta" && args.size() == 1) {
       if (const auto* fn = as<Fn>(args[0]); fn && *fn)
         return Items{Item(Attr(fn->meta()))};

@@ -611,6 +611,9 @@ reuse an existing instance after removing bound compile-time parameters.
 Function bodies are exposed by an explicit edit, never by loading a module.
 `ir.resolve(m, op)` applies normal import, qualification, overload, and generic
 resolution to a call and returns an invalid `Fn` when the call remains open.
+`ir.target(m, op)` returns the selected function's qualified symbol, or the
+surface call spelling when resolution remains open, so ordinary passes do not
+duplicate this normalization.
 `ir.expand(m, op, fn)` substitutes the selected ordinary
 function body at that call, remaps its parameters and nested control flow, and
 preserves the caller's visible result bindings. The edit is atomic; a missing

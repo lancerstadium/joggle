@@ -5,9 +5,9 @@ local fn matches(m: Mod, op: Op, name: str) -> bool {
   if ir.callee(op) == name {
     return true
   }
-  let target = ir.resolve(m, op)
-  if ir.live(target) {
-    return ir.symbol(target) == name
+  let symbol = ir.target(m, op)
+  if symbol != ir.callee(op) {
+    return symbol == name
   }
   let builtin = base.replace(name, "base.", "")
   return builtin != name && ir.callee(op) == builtin
@@ -607,11 +607,7 @@ fn supports(m: Mod, op: Op, caps: list<Fn>) -> bool {
   if ir.callee(op) == "base.list" {
     return true
   }
-  var symbol = ir.callee(op)
-  let target = ir.resolve(m, op)
-  if ir.live(target) {
-    symbol = ir.symbol(target)
-  }
+  let symbol = ir.target(m, op)
   for cap in caps {
     if ir.name(cap) == symbol && ir.accepts(op, cap) {
       return true
@@ -648,11 +644,7 @@ fn frontier(m: Mod, caps: list<Fn>) -> list<str> {
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" &&
        !supports(m, op, caps) {
-      var symbol = ir.callee(op)
-      let target = ir.resolve(m, op)
-      if ir.live(target) {
-        symbol = ir.symbol(target)
-      }
+      let symbol = ir.target(m, op)
       var seen = false
       for item in out {
         if item == symbol {
@@ -674,11 +666,7 @@ local fn frontier_with(
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" &&
        !supports_with(m, op, accept, arg, configured) {
-      var symbol = ir.callee(op)
-      let target = ir.resolve(m, op)
-      if ir.live(target) {
-        symbol = ir.symbol(target)
-      }
+      let symbol = ir.target(m, op)
       var seen = false
       for item in out {
         if item == symbol {
@@ -814,11 +802,7 @@ fn expose(m: Mod, accept: Fn, arg: Attr, limit: int) -> bool {
 }
 
 fn candidates(m: Mod, op: Op, impls: list<Fn>) -> list<Fn> {
-  var symbol = ir.callee(op)
-  let source = ir.resolve(m, op)
-  if ir.live(source) {
-    symbol = ir.symbol(source)
-  }
+  let symbol = ir.target(m, op)
   var out: list<Fn> = []
   for impl in impls {
     if (ir.name(impl) == symbol || ir.symbol(impl) == symbol) &&
@@ -1219,10 +1203,7 @@ fn expand(m: Mod, callees: list<str>) -> bool {
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" {
       let target = ir.resolve(m, op)
-      var symbol = ir.callee(op)
-      if ir.live(target) {
-        symbol = ir.symbol(target)
-      }
+      let symbol = ir.target(m, op)
       var selected = false
       for callee in callees {
         if !selected {

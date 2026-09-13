@@ -220,12 +220,9 @@ local fn logical(
 }
 
 local fn base_call(m: Mod, op: Op) -> str {
-  let target = ir.resolve(m, op)
-  if !ir.live(target) {
-    return ""
-  }
-  let name = ir.name(target)
-  if ir.symbol(target) != "base." + name {
+  let symbol = ir.target(m, op)
+  let name = base.replace(symbol, "base.", "")
+  if symbol != "base." + name {
     return ""
   }
   return name

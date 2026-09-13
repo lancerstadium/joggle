@@ -58,6 +58,7 @@ fn invoke<R: Ty, S: Ty, A: Ty, B: Ty>(
   m: Mod, subject: S, fn: Fn, first: A, second: B
 ) -> R;
 fn symbol(f: Fn) -> str;
+fn target(m: Mod, op: Op) -> str;
 fn has(f: Fn, key: str) -> bool;
 fn has(v: Val, key: str) -> bool;
 fn has(op: Op, key: str) -> bool;
