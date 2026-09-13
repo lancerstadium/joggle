@@ -586,3 +586,18 @@ execution with the errors recorded in the CSV; the two SqueezeNet rows were
 compile-only in this follow-up and are not labeled as fresh numerical checks.
 This is a readability and source-volume pilot, not evidence of a latency
 improvement.
+
+`c-bounds-pilot.csv` isolates the C11 static-array spelling added at commit
+`cf58849` from the pointer-only definitions emitted by `4682d62`. Both sources
+were generated from the same placed UltraFace IR (SHA-256
+`141852a986e068905acb4291e3fe65c9c53e0af94c26f8837ff64eb966f69686`),
+compiled by Apple Clang 17 with `-std=c11 -O3 -ffast-math`, and linked into one
+alternating harness. The source SHA-256 values are
+`77009fdb37618dfa17256a5772c6289b45117fe1fd1d429ec702393e28b41ffa`
+and `2a7f0627511cbb59216a99434c0ef88627bbcafce83fae2bca8b9214ec2def7a`.
+After three warm-ups, the 20-pair medians are 20.2365 and 20.2690 ms; the
+median within-pair ratio is 1.00025 and each variant wins ten pairs. Both
+outputs are byte-identical. This unisolated diagnostic establishes performance
+parity, not a speedup; the change preserves static tensor capacities for a
+downstream C compiler and the portable public declaration remains pointer
+based.
