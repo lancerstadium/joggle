@@ -116,6 +116,7 @@ inline bool live(const std::vector<Slot<T>>& slots, std::uint32_t id,
 
 void add_diag(std::vector<Diag>& diags, std::string message, Loc loc = {});
 int print_diags(std::FILE* file, const std::vector<Diag>& diags);
+bool valid_binding(std::string_view text);
 bool literal_matches(const Attr& value, const Ty& type);
 void touch(Store& store);
 void rebuild_uses(Store& store);

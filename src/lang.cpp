@@ -442,6 +442,16 @@ private:
     return take().text;
   }
 
+  std::string take_binding(std::string_view what) {
+    const Loc loc = peek().loc;
+    std::string name = take_name(what);
+    if (!name.empty() && !detail::valid_binding(name)) {
+      fail("invalid " + std::string(what) + " '" + name + "'", loc);
+      return {};
+    }
+    return name;
+  }
+
   bool parse_meta(Attr::Dict& out) {
     while (match("[")) {
       if (is("]"))
@@ -632,7 +642,7 @@ private:
         Attr::Dict generic_meta;
         if (!parse_meta(generic_meta))
           return false;
-        std::string generic = take_name("generic parameter");
+        std::string generic = take_binding("generic parameter");
         if (generic.empty())
           return false;
         if (intrinsic_type(generic))
@@ -665,7 +675,7 @@ private:
         Attr::Dict param_meta;
         if (!parse_meta(param_meta))
           return false;
-        std::string param = take_name("parameter name");
+        std::string param = take_binding("parameter name");
         if (param.empty() || !expect(":"))
           return false;
         if (std::any_of(
@@ -792,7 +802,7 @@ private:
           Attr::Dict value_meta;
           if (!parse_meta(value_meta))
             return false;
-          std::string name = take_name("binding name");
+          std::string name = take_binding("binding name");
           if (name.empty())
             return false;
           if (declared.contains(name))
@@ -990,8 +1000,10 @@ private:
     data.meta = std::move(meta);
     data.loc = tokens_[pos_ - 1].loc;
     do {
-      const std::string iter = take_name("loop variable");
-      if (iter.empty() || !word("in"))
+      const std::string iter = take_binding("loop variable");
+      if (iter.empty())
+        return false;
+      if (!word("in"))
         return fail("expected 'in' after loop variable");
       if (scope.contains(iter) ||
           std::find(data.iter_names.begin(), data.iter_names.end(), iter) !=

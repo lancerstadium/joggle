@@ -36,7 +36,7 @@ bool valid_atom(std::string_view text) {
          });
 }
 
-bool valid_binding(std::string_view text) {
+bool valid_binding_name(std::string_view text) {
   if (text.empty() ||
       (!std::isalpha(static_cast<unsigned char>(text.front())) &&
        text.front() != '_'))
@@ -46,8 +46,8 @@ bool valid_binding(std::string_view text) {
       }))
     return false;
   static constexpr std::string_view reserved[] = {
-      "module", "use", "fn", "let", "var", "for", "in",
-      "if", "else", "return", "true", "false", "nil"};
+      "let", "var", "for", "in", "if",   "else",
+      "return", "true", "false", "nil", "hex"};
   for (const std::string_view word : reserved)
     if (text == word)
       return false;
@@ -353,6 +353,10 @@ bool same_signature(const detail::Store& store,
 }
 
 }  // namespace
+
+bool detail::valid_binding(std::string_view text) {
+  return valid_binding_name(text);
+}
 
 bool detail::literal_matches(const Attr& value, const Ty& type) {
   const std::string_view name = type.name();
@@ -1174,7 +1178,7 @@ Op Mod::loop(Op before, std::span<const std::string> names,
     return reject("loop requires an insertion point and one name per source");
   std::unordered_set<std::string> unique;
   for (const std::string& name : names)
-    if (!valid_binding(name) || !unique.insert(name).second)
+    if (!detail::valid_binding(name) || !unique.insert(name).second)
       return reject("loop variable names must be valid and distinct");
   std::vector<Val> inputs(sources.begin(), sources.end());
   inputs.insert(inputs.end(), carried.begin(), carried.end());
@@ -1585,7 +1589,7 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
   if (!valid_module(store.name))
     return reject("function clone requires a named destination module",
                   source_fn.loc());
-  if (!valid_binding(name))
+  if (!detail::valid_binding(name))
     return reject("function clone requires a valid local function name",
                   source_fn.loc());
   if (source_fn.external() || !source_fn.body())
@@ -3091,7 +3095,7 @@ bool Mod::rename(const Env& env, Fn fn, std::string name) {
     detail::add_diag(store.diags, std::move(message), std::move(loc));
     return false;
   };
-  if (!fn.valid() || fn.store_ != &store || !valid_binding(name))
+  if (!fn.valid() || fn.store_ != &store || !detail::valid_binding(name))
     return reject("rename requires a live function and valid local name");
   const detail::FnData& current = store.fns[fn.id_].data;
   if (current.name == name)
@@ -3173,7 +3177,8 @@ bool Mod::rename(const Env& env, Fn fn, std::string name) {
 
 bool Mod::rename(Val value, std::string name) {
   auto& store = impl_->store;
-  if (!value.valid() || value.store_ != &store || !valid_binding(name)) {
+  if (!value.valid() || value.store_ != &store ||
+      !detail::valid_binding(name)) {
     detail::add_diag(store.diags,
                      "rename requires a live value and valid binding name");
     return false;

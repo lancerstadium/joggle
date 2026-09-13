@@ -2583,6 +2583,30 @@ int main(int argc, char** argv) {
                              std::string::npos;
                     }));
 
+  joggle::Mod qualified_binding;
+  CHECK(!joggle::parse(env,
+                       "module invalid.binding\n"
+                       "fn bad(x.y: i32) -> i32 { return x.y }\n",
+                       qualified_binding, "qualified-binding.jog"));
+  CHECK(std::any_of(qualified_binding.diags().begin(),
+                    qualified_binding.diags().end(),
+                    [](const joggle::Diag& diag) {
+                      return diag.message.find("invalid parameter name") !=
+                             std::string::npos;
+                    }));
+
+  joggle::Mod reserved_binding;
+  CHECK(!joggle::parse(env,
+                       "module invalid.binding\n"
+                       "fn bad(x: i32) -> i32 { let true = x return x }\n",
+                       reserved_binding, "reserved-binding.jog"));
+  CHECK(std::any_of(reserved_binding.diags().begin(),
+                    reserved_binding.diags().end(),
+                    [](const joggle::Diag& diag) {
+                      return diag.message.find("invalid binding name") !=
+                             std::string::npos;
+                    }));
+
   joggle::Mod stringly_builder;
   CHECK(joggle::parse(env,
                       "module stringly.builder\n"

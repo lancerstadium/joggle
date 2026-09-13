@@ -284,6 +284,11 @@ compound forms `+=`, `-=`, `*=`, `/=`, `%=`, `|=`, `^=`, `&=`, `<<=`, and
 by the same value update; it does not add an operation kind. Tensor-like values
 may use `value[i, j] = next`, which normalizes to `operator []=` returning the
 updated value, so mutation remains explicit value flow.
+Local binding names are simple identifiers: they cannot contain module dots or
+reuse statement and literal words such as `return`, `true`, and `nil`. The text
+parser and IR editing API enforce the same rule for generics, parameters, local
+values, and loop variables. Top-level words remain contextual, so concise
+bindings such as `for fn in functions` are valid inside a function body.
 
 A name is declared at most once in one lexical block; parameters and generics
 belong to the function's entry block for this rule. Nested blocks may reuse an
