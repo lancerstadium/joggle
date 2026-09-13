@@ -1,385 +1,102 @@
 # FSE 2027 paper workspace
 
-This directory separates the working manuscript, related-work evidence, and raw
-pilot records:
+This directory contains the manuscript, frozen study contracts, baseline
+implementations, and raw pilot records for the Joggle paper. Implemented
+features are not automatically treated as research contributions. A result may
+enter the paper only when its inputs, command, environment, and raw output are
+preserved here.
 
-- [manuscript.md](manuscript.md) is the current paper text;
-- [related-work.md](related-work.md) records source-grounded comparisons;
-- [extension-study.md](extension-study.md) freezes the RQ2 tasks and collection
-  protocol;
-- [baselines/tvm/](baselines/tvm/) preserves the pinned TVM build recipe and
-  current matched-contract implementations;
-- [model-study.md](model-study.md) defines staged conventional-model
-  compatibility and its generated frontier table;
-- [spatial-pilot.cmake](spatial-pilot.cmake) rebuilds and checks the canonical
-  versus pass-reordered C variants from managed model artifacts;
-- [measure_memo.py](measure_memo.py) runs the paired snapshot-query
-  memoization ablation and rejects non-identical output;
-- [data/](data/) contains pilot measurements and their provenance.
-
-Implemented features are not automatically treated as research contributions.
-Only frozen, reproducible measurements may enter the final Results section.
-
-## Intended venue
+## Target and thesis
 
 The current target is the
 [FSE 2027 Research Papers track](https://conf.researchr.org/track/fse-2027/fse-2027-papers).
-The official deadline is October 2, 2026, Anywhere on Earth, as listed on the
-[FSE 2027 dates page](https://conf.researchr.org/dates/fse-2027). Initial
+The official deadline is October 2, 2026, Anywhere on Earth. Initial
 submissions use the ACM `acmsmall` format and allow 18 pages of text and
-figures plus 4 pages of references. The call encourages an anonymized,
-curated, reproducible artifact.
+figures plus 4 pages of references. Review is double anonymous and requires a
+Data Availability section.
 
-The review is double anonymous. The submission must include a `Data
-Availability` section after the conclusion. Because AI assistance has affected
-research code and analysis, the Methods section must disclose that use in the
-specific terms required by the current ACM/FSE policy; a writing-only statement
-would be insufficient.
+The paper studies one narrow claim: a compiler workbench can let neural-network
+co-design researchers change semantics, loop structure, storage, numeric
+formats, and artifact generation through typed module functions without adding
+a central lowering registry. It does not claim that Joggle replaces production
+runtimes or that fewer source lines imply better usability.
 
-The deadline is a decision point, not permission to overclaim. If the controlled
-evaluation below is incomplete, the project should continue toward a later
-venue.
+## Current evidence status
 
-## Working thesis
-
-Researchers exploring neural-network software/hardware co-design should be able
-to change semantic implementations, loop structure, storage, data
-representation, and artifact generation without building a new compiler stack
-or editing a central lowering registry.
-
-Joggle tests one design response: keep imported calls, reusable semantics,
-explicit loops, storage annotations, and target preparation in a single typed
-function IR, and make each extension an ordinary distributable module function.
-
-This is the claim to evaluate. “Small,” “easy,” “fast,” and “extensible” are not
-paper claims until they have operational definitions and comparative evidence.
-
-## Research questions
-
-**RQ1 — Progressive representation.** Can conventional inference models be
-imported, refined, converted, exposed, transformed, and emitted while remaining
-in one readable function IR?
-
-**RQ2 — Extension surface.** What code, coupling, dependencies, and core changes
-are required by matched semantic-implementation, transformation-policy,
-external-kernel, and numeric-format tasks?
-
-**RQ3 — Composition and safety.** Can independently defined module functions be
-composed with deterministic output, transactional failure, useful unsupported
-frontiers, and no hidden pipeline state?
-
-**RQ4 — Artifact quality.** What correctness, code-size, workspace, compile-time,
-and latency results does the approach produce on resource-constrained inference
-workloads, and can user-defined policies improve them without core edits?
-
-## Candidate contributions
-
-The paper may claim at most three contributions:
-
-1. A function-oriented compiler workbench in which graph calls, semantic
-   bodies, structured loops, storage decisions, and target preparation coexist
-   in one typed IR.
-2. A module boundary that uses ordinary functions for decoding, conversion,
-   analysis, transformation, capability queries, and artifact generation,
-   including capability-driven progressive exposure.
-3. A controlled evaluation of extension surface, composition, correctness, and
-   generated artifacts on conventional neural-network models.
-
-The third contribution is currently incomplete and is the main submission
-blocker.
-
-## Evidence ledger
-
-| Candidate claim | Current repository evidence | Missing evidence |
+| Question | Evidence present | Blocking work |
 | --- | --- | --- |
-| One IR spans graph and loop detail | Printer, verifier, semantic bodies, explicit loops, C and VM preparation tests | Model-level stage traces and comparison with multi-IR workflows |
-| Extensions are normal module functions | Source modules, `local fn`, typed configured `ir.invoke`, body expansion, transactional per-call implementation selection, four frozen extension contracts, a generated footprint pilot, and passing pinned TVM implementations for three contracts | Complete the remaining matched baseline contract and report exact baseline patches |
-| Frontends are separate from semantics | ONNX/TFLite codecs, explicit bridge modules, one pinned Zoo declaration list, and a generated staged table for 12 official models | Frozen controlled subset, task-level accuracy, and broader non-vision evidence |
-| Targets expose only required detail | `c.accepts`, `vm.accepts`, `opt.expose`, preparation tests | A genuinely different external target or simulator study |
-| Transform failure is safe | Transaction and rollback tests, ownership/liveness checks | Fault-injection matrix and diagnostic assessment |
-| Storage and scheduling are replaceable | `mem` and `tile` modules, typed policy callbacks, multi-axis legality, directly composable structural edits, budgeted scalar promotion, deterministic source-call accounting, and revision-safe query memoization | Frozen profitability policies, repeated model-scale compile-time measurements, and multi-model performance results |
-| C artifacts are usable | Compiled examples, independent weight payload, structured ABI descriptors, generated multi-input/output harnesses, strict compilation, and numerical checks | Frozen execution suite, task metrics, latency distribution, workspace and binary comparisons |
-| VM execution is deterministic | Stable image format, output and step-count tests | Defined use case and overhead comparison |
+| Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths | Freeze and record model-level stage traces |
+| Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM implementations pass the implementation, policy, and external-kernel contracts | Complete or explicitly reject the matched numeric-format baseline |
+| Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, and deterministic language mutation tests | Freeze a fault and diagnostic matrix |
+| Artifact quality | Ten numerical ONNX paths and several reproducible pilots, including negative performance results | Isolated repetitions, dispersion, task accuracy, second machine, and a materially smaller generated-C gap |
 
-## Current engineering observations
+The current generated-C pilots remain roughly 7--101 times slower than
+one-thread ONNX Runtime, depending on the model. This is a blocking result, not
+a hidden caveat. The manuscript must not claim superior speed, compatibility,
+or extensibility until the corresponding controlled study is complete.
 
-These numbers are useful for debugging and experiment design. They are not yet
-paper results because the protocol, baselines, and repetition plan are not
-frozen.
+## Repository map
 
-- The compiled MNIST path has matched its stored reference with maximum absolute
-  error about `1.907e-05`.
-- A MobileNetV2 path has matched its reference with maximum absolute error about
-  `2.098e-05` after regeneration from the pinned original ONNX model.
-- UltraFace-RFB-320 now passes the complete ONNX-to-C path. Its two outputs
-  match ONNX Runtime with maximum absolute errors `2.980e-7` and `3.576e-7`.
-  External weights reduce its generated C from about 5.21 MB to 258 KB.
-- ResNet18-v1-7 also passes after the generic entry batch `N` is explicitly
-  instantiated as one. Maximum absolute error is `5.007e-6`.
-- A model-independent external selection gate now maps the same semantic
-  matrix function at two shapes through one generic target adapter and one
-  external C declaration. Concrete prototypes are deduplicated after tensor
-  extent erasure, while a negative gate rejects one symbol used with
-  incompatible scalar ABIs. This is mechanism evidence, not a speedup result.
-- Externalizing the MobileNetV2 weight payload reduced generated C source from
-  about 56.9 MB to 246 KB, with a separate payload of about 14.2 MB.
-- Preserving `const` bindings and compound updates in the C emitter reduces
-  source size by 1.0--11.1% across a matched six-model pilot. All twelve
-  baseline and candidate sources compile under strict C11; four candidate
-  models received fresh reference-output smoke checks. This is source-quality
-  evidence, not a latency result.
-- Compiler-owned call-site instances now execute MobileNetV2, UltraFace,
-  SqueezeNet 1.1, and ResNet18 with their recorded numerical error bounds. They
-  reduce external-data C source by 26.3%, 8.4%, 15.4%, and 21.8% against the
-  scalar-expanded variants. Their ten-call median latency changes are small and
-  mixed, so the result is code-size reduction with performance parity rather
-  than a speedup claim.
-- Treating returned tensors as caller-owned storage reduces the four models'
-  statically planned workspace elements by 63.9--86.6% and removes one full
-  result copy per private function. A paired unisolated pilot shows mixed
-  median latency changes from -0.2% to +5.8%, so this is currently a memory
-  result, not a runtime-speed claim.
-- A generic full-overwrite proof subsequently removes 34.4--55.0% of tensor
-  fill loops across four models without operation-name cases. It preserves all
-  recorded error bounds and reduces external-data C by 0.9--3.0%. Unisolated
-  timing did not show a stable speed effect, so this is dead-work elimination,
-  not a latency claim.
-- On the same unisolated Apple M4 pilots, recorded strict C medians are 198.469,
-  32.022, 188.152, and 1,193.713 ms for those four models. The recorded
-  one-thread ONNX Runtime medians are 5.881, 4.342, 2.908, and 24.862 ms. The
-  remaining roughly 7--65x gap is a blocking generated-code-quality result;
-  optimized convolution, layout, and cross-function storage are now more
-  important than further source compaction.
-- TinyYOLOv2 is the fifth numerically executed ONNX model: 21,125 outputs agree
-  with a seed-0 ONNX Runtime reference within `1.669e-5`. Its unisolated strict
-  C median is 2.285 s versus 22.587 ms for one-thread ONNX Runtime, exposing a
-  roughly 101x backend gap on a larger detection input.
-- QDQ SqueezeNet 1.0 is the sixth application-scale numerical pilot and the
-  first executed model with explicit quantize/dequantize boundaries. Its 1,000
-  outputs agree with an ONNX Runtime reference within `1.341e-7`; an
-  unisolated ten-call pilot is still about 18.3x slower than the reference
-  runtime.
-- ShuffleNet V2 is the seventh application-scale numerical pilot and adds
-  Split/Concat channel shuffling to the executed path. Including the smaller
-  MNIST gate, the coverage table now contains eight end-to-end ONNX models.
-  ShuffleNet's 1,000 outputs agree within `8.583e-6`; generated spatial C has a
-  37.503 ms unisolated median versus 1.945 ms for one-thread ONNX Runtime,
-  leaving a roughly 19.3x gap.
-- GoogLeNet is the eighth application-scale numerical pilot and the ninth
-  end-to-end ONNX model including MNIST. Its Inception branches, LRN, and safe
-  inference Dropout path produce 1,000 outputs within `1.565e-7` of ONNX
-  Runtime. A generated-harness pilot records a 258.022 ms strict-C median
-  versus 13.578 ms for one-thread ONNX Runtime, leaving a roughly 19.0x gap.
-  This extends correctness coverage; it does not improve the backend claim.
-- DenseNet-121 is the ninth application-scale numerical pilot and the tenth
-  end-to-end ONNX model including MNIST. A block-local cleanup index and
-  batched exposure reduce the same `c.prepare` pilot from exceeding a
-  600-second cutoff to 271.92 seconds. Strict external-weight C produces the
-  official 1,000 outputs within `7.629e-6`, but its unisolated 574.763 ms
-  median remains about 29.2x slower than one-thread ONNX Runtime. Preparation
-  time and generated-code speed therefore remain negative results.
-- A separate compact convolution body preserves GoogLeNet's output and reduces
-  its static plan from 55 to 6 slots and by 58.4% in scalar elements, but slows
-  the unisolated median by 27.5%. This is useful co-design evidence because the
-  implementation choice exposes a measurable workspace/latency tradeoff
-  without a frontend, semantic-library, planner, or emitter edit.
-- TinyYOLOv3 and SSD-MobileNetV1 add negative compatibility evidence rather
-  than executable-model counts. TinyYOLOv3 retains 219 unknown results after
-  inference across dynamic shape and control-flow paths. SSD-MobileNetV1
-  infers all 6,790 initially unknown results. Mapping variadic broadcast Max
-  and Min to ordinary shared functions reduces its conversion frontier from
-  1,521 to 710 source calls without a C-emitter case. Post-processing,
-  comparison, dynamic indexing, and control flow remain. Both models decode
-  and round trip; neither is currently a generated-C claim.
-- A now-retired out-of-tree convolution implementation changed the generated
-  loop structure without an ONNX or C-emitter edit. On matched strict-C pilots it
-  reduces median latency by 1.93x on MobileNetV2, 3.13x on ResNet18, 6.29x on
-  TinyYOLOv2, 1.36x on UltraFace, and 3.45x on SqueezeNet while preserving
-  their recorded error bounds. This narrows but does not close the runtime
-  gap. Those old ratios are not transferred to the replacement mechanism. A
-  fresh MobileNetV2 pilot at `e909ec0` instead applies the generic
-  `tile.reorder` pass to 64 instantiated canonical Conv bodies, with no call
-  retargeting or alternate Conv implementation. Across two unisolated
-  ten-call processes per variant, the pooled median falls from 351.060 to
-  194.463 ms (1.81x), while the output hash and `2.0981e-5` reference error
-  remain unchanged. This validates the pass path on one real model; broader,
-  isolated reruns are still required.
-- A deterministic VM execution of the exposed MobileNetV2 program reported
-  95,592,386,975 steps.
-- A structural fusion experiment reduced loops from 374 to 328 and tensor
-  constructions from 155 to 109, but the broad fused variant was slower in the
-  local pilot. The selected variant also did not establish a meaningful speedup.
-- A user policy expanded 72 statically bounded MobileNetV2 loops with trip
-  counts at most three. Generated C grew by about 26%, while the 20-run median
-  changed by only -0.22%, within the unisolated pilot's noise. Small-loop
-  unrolling is therefore not the next generated-code priority.
-- A deterministic MobileNetV2 `spatial.block` report exposed 4,518,747
-  source-function calls for 9,680 IR edits. Marking reusable value-only affine
-  helpers with the generic `[memo]` contract produced 973,136 cache hits and
-  reduced executed source calls to 2,962,531. One matched unisolated run fell
-  from 63.42 to 34.26 seconds (1.85x), and both variants printed the same
-  28,575,757-byte IR with the same SHA-256. This validates the compiler
-  mechanism, not a publication-grade timing claim.
-- Revision-safe memoization subsequently admits explicitly pure IR queries.
-  Handle identity, generation, and store revision participate in the key;
-  result stores remain dependencies, and a call that edits an input store is
-  not inserted. A two-process-per-variant MobileNetV2 ablation reduced
-  deterministic source calls from 2,939,981 to 1,272,463 while all four runs
-  emitted the same 28,565,283-byte IR. Unisolated wall-time medians were 42.099
-  and 28.341 seconds (1.49x). This is a reproducible engineering pilot, not a
-  publication-grade performance result.
-- Exact static strip-mining now removes 82 cloned final-tile guards from that
-  factor-two MobileNetV2 block path while retaining guards for padded and
-  dynamic ranges. Readable IR falls from 3,910 to 3,664 lines and strict C from
-  230,432 to 228,488 bytes; checksum and `1.812e-5` reference error are
-  unchanged. Three-call medians are effectively tied, so this is generated
-  structure evidence rather than a speedup claim.
-- Mixed-stage specialization instead removed 328 rank-traversal loops and all
-  492 dynamic compound-list indices from MobileNetV2. External-weight C shrank
-  from 244,239 to 226,855 bytes. The official 1,000 outputs retained maximum
-  absolute error `2.0980835e-05`; a matched 20-run pilot changed the median from
-  204.549 to 201.240 ms (-1.62%). This is promising mechanism evidence, not a
-  broad performance claim.
+- [`manuscript.md`](manuscript.md): evidence-bounded working paper text.
+- [`related-work.md`](related-work.md): claim-oriented comparisons grounded in
+  primary papers and official documentation.
+- [`extension-study.md`](extension-study.md): frozen extension protocol,
+  fairness rules, and threats.
+- [`extension-tasks.json`](extension-tasks.json) and [`tasks/`](tasks/):
+  machine-readable task contracts and inputs.
+- [`baselines/tvm/`](baselines/tvm/): pinned TVM build record and matched
+  implementations.
+- [`model-study.md`](model-study.md): model selection and staged compatibility
+  protocol.
+- [`data/`](data/): raw pilot records and provenance.
 
-Raw pilot records belong in [data/](data/). Negative results must remain visible:
-they show that structural simplification is not a substitute for a cost model
-or target-aware measurement.
+## Reproduction entry points
 
-## Evaluation design
+Measure the Joggle extension implementations from a configured build:
 
-### Study A: extension surface
+```sh
+python3 paper/measure_extensions.py \
+  --manifest paper/extension-tasks.json \
+  --repo . \
+  --tool build-san/joggle \
+  --build build-san \
+  --module-path examples \
+  --module-path build-san/modules \
+  --output paper/data/extension-footprint-pilot.csv
+```
 
-Implement representative tasks in Joggle and selected comparison systems using
-their documented extension paths:
+Measure the pinned TVM implementations after following
+[`baselines/tvm/README.md`](baselines/tvm/README.md):
 
-- one neural-network semantic implementation with an inspectable body;
-- one structural measurement and fusion-selection policy;
-- one generic external-kernel adapter;
-- one parametric numeric format spanning two target representations.
+```sh
+TVM_ROOT=/path/to/tvm \
+TVM_LIBRARY_PATH=/path/to/tvm/build/lib \
+PYTHONPATH=/path/to/tvm/python \
+python3 paper/measure_baselines.py \
+  --record paper/baselines/tvm/record.json \
+  --contracts paper/extension-tasks.json \
+  --repo . \
+  --output paper/data/extension-tvm-pilot.csv
+```
 
-Record changed files, source lines, generated code, core and build-system
-modifications, registrations, dependencies, clean build time, oracle commands,
-and unavailable-requirement diagnostics. Task inputs, observable requirements,
-and forbidden shortcuts are fixed in `extension-tasks.json` before baseline
-implementation. Repository size or line count alone is not a usability result,
-and this study does not measure developer productivity.
+Other scripts in this directory each regenerate the correspondingly named CSV.
+The provenance and interpretation boundary for every record is documented in
+[`data/README.md`](data/README.md).
 
-### Study B: model coverage and correctness
+## Submission gate
 
-Use checksum-pinned, licensed models from authoritative ONNX and TFLite sources.
-The initial suite should cover at least image classification, an audio or
-sequence workload, and a model with partial or dynamic shape computation.
+An FSE submission is justified only if all of the following are complete:
 
-For every model, report these stages independently:
+1. every reported comparison task has a passing implementation or a preserved,
+   documented unsupported outcome;
+2. the selected model suite has controlled correctness, artifact, workspace,
+   compilation, and isolated latency records;
+3. tables and figures are generated from raw records rather than copied from
+   prose;
+4. an anonymized artifact reproduces on a second machine;
+5. the ACM manuscript passes claim-to-evidence, citation, disclosure, and
+   double-anonymity audits.
 
-1. decode;
-2. verify and refine types;
-3. convert to shared semantics;
-4. expose to the selected target boundary;
-5. emit and compile;
-6. execute and compare with a reference runtime.
-
-Report maximum absolute and relative error, task-level accuracy where
-applicable, unsupported calls, compilation time, and artifact size. A decoded
-model is not counted as an executable model.
-
-### Study C: artifact quality
-
-Compare unmodified Joggle output, user-defined policies, and appropriate
-reference runtimes or compilers on named hardware. Record:
-
-- end-to-end and kernel latency with warm-up and repeated trials;
-- median, dispersion, and run count;
-- peak or statically planned workspace;
-- source, object, executable, and weight-payload size;
-- host compilation time and generated compiler diagnostics;
-- numerical agreement and task accuracy;
-- deterministic hashes for IR and artifacts.
-
-Use generated C as a transparent experimental baseline, not as a claim to
-replace a production runtime. Inspect generated loops and compiler reports when
-a transformation loses performance.
-
-### Study D: safety and composition
-
-Construct module sequences that succeed, reject an unsupported frontier, fail
-mid-transaction, load malformed input, upgrade incompatibly, and retain unknown
-metadata. Verify rollback, deterministic diagnostics, and stable output hashes.
-Repeat the sequences through both the CLI and embedding API.
-
-## Baseline selection
-
-Comparisons should answer a specific question:
-
-- ONNX Runtime or TensorFlow Lite for reference correctness and deployment
-  context;
-- TVM or IREE for established compiler workflows;
-- ONNX-MLIR for an ONNX-to-compiled-artifact workflow;
-- TileLang only when comparing user control over generated kernels;
-- a small direct C implementation when isolating abstraction overhead.
-
-The paper must not claim that all of these systems solve the same problem.
-Versions, configurations, target flags, and unavailable features must be
-recorded.
-
-## Related-work audit
-
-Before drafting prose, build a claim-oriented matrix from primary papers and
-official documentation for MLIR, TVM/Relax/TIR, IREE, ONNX-MLIR, TileLang,
-Lift/Rise, and representative edge-inference compilers. For each system record:
-
-- its user-facing extension unit;
-- the representations crossed by a new operation or target;
-- how semantics, legality, scheduling, and code generation are separated;
-- which steps require generated code, native registration, or core changes;
-- its intended deployment scope and evaluation subjects.
-
-The purpose is to identify the narrow difference that the evaluation actually
-tests, not to declare every adjacent system a competitor. Bibliographic
-metadata and quotations must be verified against the primary source before
-they enter the manuscript.
-
-## Planned paper structure
-
-1. **Introduction:** the co-design iteration problem, thesis, and measured
-   contributions.
-2. **Motivating study:** one change spanning data representation, semantic
-   implementation, scheduling, and artifact generation.
-3. **Design:** one IR, structural types, function resolution, modules,
-   transactions, and progressive exposure.
-4. **Implementation:** core/runtime boundary, codecs, bridges, semantic
-   libraries, analyses, transforms, and targets.
-5. **Evaluation:** research questions, subjects, baselines, protocols, results,
-   and negative findings.
-6. **Related work:** compiler infrastructures, tensor compilers, scheduling
-   languages, deployment compilers, and extensible systems.
-7. **Limitations and threats:** coverage, manual policy, C quality, dynamic
-   shapes, measurement bias, and external validity.
-8. **Conclusion:** only conclusions supported by the evidence ledger.
-
-## Submission blockers
-
-- Freeze the comparison systems and version-pinned experimental protocol.
-- Complete the matched extension study instead of inferring ease of use from
-  examples.
-- Complete the claim-oriented related-work matrix with verified primary
-  citations.
-- Freeze a controlled subset of the pinned model declarations and run
-  task-level accuracy, artifact, and isolated performance measurements.
-- Improve or honestly bound loop legality and generated-code quality.
-- Store raw timing, memory, accuracy, build, and artifact-size data.
-- Generate every table and figure from those raw records.
-- Create a clean, anonymized artifact and reproduce it on a second machine.
-- Run an internal claim-to-evidence and citation audit.
-
-## Research integrity
-
-The manuscript will distinguish design intent, implemented capability, pilot
-observation, and controlled result. Every factual claim about related work
-requires a verified primary citation. Every empirical claim requires a script,
-raw record, environment description, and derivation.
-
-The final package must include data and artifact availability, author
-contributions, funding, conflicts of interest, limitations, ethics where
-applicable, and a truthful AI-assistance disclosure consistent with the venue
-policy.
+If these conditions are not met by the venue deadline, the correct outcome is
+to continue the study for a later venue rather than weaken the task contracts
+or overstate the pilots.
