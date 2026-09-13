@@ -7,11 +7,11 @@ Rows comparing two Joggle variants are pass regressions or ablations only;
 they are excluded from the paper's primary system-performance evidence.
 
 `mobilenetv2-systems-pilot.csv` and its JSON provenance record are the first
-outputs of the independent-system runner. At clean revision `2f55701`, 20
+outputs of the independent-system runner. At clean revision `4bc8c5f`, 20
 balanced fresh-process trials compare generated C with ONNX Runtime 1.26.0 on
 the same MobileNetV2 model, input, reference output, and one-thread contract.
-Median latencies are 209.854 ms and 6.236 ms respectively, so generated C is
-33.65x slower. Both subjects pass their declared numerical check. The host was
+Median latencies are 199.159 ms and 5.962 ms respectively, so generated C is
+33.40x slower. Both subjects pass their declared numerical check. The host was
 not admitted through a load threshold and the run has not been repeated on a
 second machine, so these files remain pilots rather than publication results.
 

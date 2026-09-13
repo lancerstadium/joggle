@@ -1,6 +1,6 @@
 {
   "cpu": null,
-  "finished_utc": "2026-09-13T21:50:08.459227+00:00",
+  "finished_utc": "2026-09-13T22:35:30.481083+00:00",
   "host": {
     "machine": "arm64",
     "node": "lancerdeMacBook-Air.local",
@@ -16,13 +16,13 @@
   "output": {
     "path": "paper/data/mobilenetv2-systems-pilot.csv",
     "rows": 40,
-    "sha256": "d7dde40c0af88fb338fed20a8a13041dcf73df10ba5672215dd7115be8a979b2"
+    "sha256": "9025e38797bc102d6fc065dc1a29051666954fc3c703aa27789b5011ea4ef469"
   },
   "repo_dirty": false,
-  "repo_revision": "2f55701443180f81d6742230a289f57508b406d6",
+  "repo_revision": "4bc8c5fcc47e2f83ba74ef71dc3c43b997d92c5f",
   "runner_sha256": "352c0439ceaacdf463f3ad52ebc42eb3621de031e84517c42adaec6d180d62ad",
   "schema": 1,
-  "started_utc": "2026-09-13T21:49:49.019762+00:00",
+  "started_utc": "2026-09-13T22:35:12.294575+00:00",
   "study": "mobilenetv2",
   "subjects": [
     {
@@ -48,9 +48,9 @@
           "sha256": "8411a51bfb945b17a4cd7ebb75a512849a902878c02e8212741ab11d6149bac8"
         },
         "source": {
-          "bytes": 196380,
+          "bytes": 197096,
           "path": "build-app/examples/mobilenet/model-blob.c",
-          "sha256": "bf63167b2eee465bf3cf1a0087b959903b849b0ff7998df402acb56549e6f33f"
+          "sha256": "82c623372ec4b68b3ceb2f337d6dc8f7c34a5d65d13066a14a6faacabacdfe2e"
         },
         "weights": {
           "bytes": 14156544,
