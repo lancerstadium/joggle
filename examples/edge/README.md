@@ -1,4 +1,11 @@
-# Select external kernels
+# Bind external kernels
+
+This example is an interoperability boundary, not the Conv optimization path.
+Use structural passes such as `tile.reorder`, `tile.scalarize`, and
+`bounds.fold` to improve an exposed `nn.conv2d` body. Use `edge.apply` only
+when the chosen computation is already implemented outside Joggle and the
+compiler must bind that implementation without teaching the core or emitter
+its name.
 
 [`model.jog`](model.jog) contains no target call or target dependency. It calls
 the shared `tensor.matmul` function and a model-local `measure` declaration.

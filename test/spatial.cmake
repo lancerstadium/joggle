@@ -8,6 +8,9 @@ endif()
 file(REMOVE_RECURSE "${ROOT}")
 file(MAKE_DIRECTORY "${ROOT}")
 set(canonical "${ROOT}/canonical.jog")
+set(bounded "${ROOT}/bounded.jog")
+set(bounded_source "${ROOT}/bounded.c")
+set(bounded_program "${ROOT}/bounded")
 set(prepared "${ROOT}/prepared.jog")
 set(configured "${ROOT}/configured.jog")
 set(disabled "${ROOT}/disabled.jog")
@@ -39,6 +42,53 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "reorder contract failed (${result}):\n${error}")
 endif()
 execute_process(
+  COMMAND "${TOOL}" run bounds.fold opt.fold opt.basic "${canonical}"
+          -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${bounded}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "Conv bounds folding failed (${result}):\n${error}")
+endif()
+file(READ "${bounded}" bounded_text)
+if(bounded_text MATCHES "if h(_[A-Za-z0-9]+)* >=" OR
+   NOT bounded_text MATCHES "if value < f32\\(0\\)")
+  message(FATAL_ERROR
+          "Conv bounds folding changed the wrong branches:\n${bounded_text}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${bounded}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${bounded_source}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "bounded C emission failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CC}" -std=c99 -O2 -Wall -Wextra -Wstrict-prototypes -Werror
+          "${bounded_source}" "${HARNESS}" -lm -o "${bounded_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "bounded C did not compile (${result}):\n${output}${error}")
+endif()
+execute_process(
+  COMMAND "${bounded_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "bounded C returned the wrong result (${result}):\n${output}${error}")
+endif()
+execute_process(
   COMMAND "${TOOL}" run tile_pass.check_scalarize "${canonical}"
           -M "${MODULES}"
   RESULT_VARIABLE result
@@ -49,13 +99,15 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "scalar promotion contract failed (${result}):\n${error}")
 endif()
 execute_process(
-  COMMAND "${TOOL}" run tile.scalarize "${canonical}" -M "${MODULES}"
+  COMMAND "${TOOL}" run tile.scalarize opt.basic "${bounded}"
+          -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${scalarized}"
   ERROR_VARIABLE error
 )
 if(NOT result EQUAL 0)
-  message(FATAL_ERROR "scalar promotion failed (${result}):\n${error}")
+  message(FATAL_ERROR
+          "composed Conv improvement failed (${result}):\n${error}")
 endif()
 execute_process(
   COMMAND "${TOOL}" run tile_pass.check_scalarized "${scalarized}"

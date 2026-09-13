@@ -74,6 +74,13 @@ axes to form a prefix and
 reduction axes a suffix; combining interchange, promotion, and tiling under a
 single profitability policy remains open.
 
+Conservative integer bounds now feed an explicit `bounds.fold` edit for exact
+Boolean predicates. Composing it with ordinary `opt.fold` removes statically
+proved control flow, including no-padding Conv guards, while retaining dynamic
+activation conditions. Correlated values, division, branch-sensitive range
+refinement, and symbolic shape constraints remain open rather than being
+approximated.
+
 The goal is not an automatic scheduler. It is a small, inspectable substrate on
 which a researcher can implement and compare scheduling policies.
 

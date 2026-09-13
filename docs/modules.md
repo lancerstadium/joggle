@@ -114,7 +114,7 @@ hard-code these categories.
 | `quant` | Quantization, dequantization, and quantized tensor computation |
 | `math` | Portable scalar mathematical functions |
 | `opt` | General simplification, dead-code elimination, common-subexpression elimination, exposure, implementation selection, and call fusion |
-| `bounds` | Conservative integer range inference and representation checks |
+| `bounds` | Conservative integer ranges, representation checks, and exact predicate folding |
 | `stat` | Structural program measurements through user-supplied measurement functions |
 | `mem` | Static tensor-buffer reuse planning and inspectable slot annotations |
 | `tile` | Loop/access analysis plus explicit splitting, unrolling, and pointwise fusion |
@@ -211,6 +211,17 @@ It should not require edits to the core, the C emitter, or another frontend.
 
 `bounds` and `stat` return ordinary compile-time data. `opt`, `mem`, and
 `tile` edit the same function bodies that users inspect.
+
+`bounds.infer(m)` maps existing integer and Boolean values to conservative
+closed intervals. It follows constants, resolved scalar arithmetic, static
+loop ranges, and structured carried values while rejecting overflow instead of
+wrapping a proof. `bounds.fold(m)` changes only comparison or logical calls
+whose result interval is exactly `[0, 0]` or `[1, 1]`; unknown and mixed
+conditions remain untouched. It deliberately leaves control-flow selection
+and dead-code cleanup to the existing `opt.fold` and `opt.basic`, so
+`bounds.fold opt.fold opt.basic` is an explicit composable pipeline rather
+than an analysis with hidden mutation. Neither function knows about tensors,
+NN operations, or a target.
 
 `opt.expose` is the main connection between semantics and a target. It asks a
 capability function whether an operation is accepted and expands available

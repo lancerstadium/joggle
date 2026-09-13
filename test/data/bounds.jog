@@ -1,4 +1,5 @@
 module bounded
+use base
 
 fn kernel() -> int {
   var out = 0

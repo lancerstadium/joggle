@@ -1,0 +1,10 @@
+module bounds.custom
+use base
+
+fn < (left: i32, right: i32) -> bool {
+  return left > right
+}
+
+fn custom() -> bool {
+  return i32(1) < i32(2)
+}

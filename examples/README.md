@@ -14,9 +14,11 @@ complexity. Each directory is a complete, runnable module or application.
   replaces the shared generic matrix-multiplication body with a different loop
   order and then uses the unchanged C path. Its source is intentionally short
   enough to read in one screen.
-- [`edge`](edge) demonstrates external tensor kernel selection. A generic
-  adapter forwards inferred dimensions to one bodyless `fn`; the C emitter
-  derives and checks the concrete call ABI without knowing the kernel name.
+- [`edge`](edge) demonstrates the separate FFI case: binding an already-written
+  external tensor kernel. It is not used to optimize an inspectable Conv body.
+  A generic adapter forwards inferred dimensions to one bodyless `fn`; the C
+  emitter derives and checks the concrete call ABI without knowing the kernel
+  name.
 - [`spatial`](spatial) is a loop-scheduling pass over exposed computation. It
   reorders a proven affine tensor reduction without defining or selecting a
   second convolution body.

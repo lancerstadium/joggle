@@ -465,7 +465,10 @@ if(JOGGLE_BUILD_TESTS)
       ${CMAKE_COMMAND}
       -DTOOL=$<TARGET_FILE:joggle-tool>
       -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/bounds.jog
+      -DFOLD_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/bounds_resolved.jog
+      -DCUSTOM_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/bounds_custom.jog
       -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+      -DROOT=${CMAKE_CURRENT_BINARY_DIR}/bounds-report
       -P ${CMAKE_CURRENT_SOURCE_DIR}/test/bounds.cmake
   )
   add_test(

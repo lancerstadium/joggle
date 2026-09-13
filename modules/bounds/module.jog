@@ -141,22 +141,120 @@ local fn neg(value: list<int>) -> list<int> {
   return [0 - value[1], 0 - value[0]]
 }
 
+local fn exact(value: bool) -> list<int> {
+  if value {
+    return [1, 1]
+  }
+  return [0, 0]
+}
+
+local fn compare(
+  name: str, left: list<int>, right: list<int>
+) -> list<int> {
+  if len(left) != 2 || len(right) != 2 {
+    return []
+  }
+  if name == "operator ==" {
+    if left[1] < right[0] || right[1] < left[0] {
+      return exact(false)
+    }
+    if left[0] == left[1] && right[0] == right[1] &&
+       left[0] == right[0] {
+      return exact(true)
+    }
+  }
+  if name == "operator !=" {
+    let equal = compare("operator ==", left, right)
+    if len(equal) == 2 && equal[0] == equal[1] {
+      return exact(equal[0] == 0)
+    }
+  }
+  if name == "operator <" {
+    if left[1] < right[0] {
+      return exact(true)
+    }
+    if left[0] >= right[1] {
+      return exact(false)
+    }
+  }
+  if name == "operator <=" {
+    if left[1] <= right[0] {
+      return exact(true)
+    }
+    if left[0] > right[1] {
+      return exact(false)
+    }
+  }
+  if name == "operator >" {
+    return compare("operator <", right, left)
+  }
+  if name == "operator >=" {
+    return compare("operator <=", right, left)
+  }
+  return [0, 1]
+}
+
+local fn logical(
+  name: str, left: list<int>, right: list<int>
+) -> list<int> {
+  if len(left) != 2 || len(right) != 2 {
+    return []
+  }
+  if name == "operator &&" {
+    if left[1] == 0 || right[1] == 0 {
+      return exact(false)
+    }
+    if left[0] == 1 && right[0] == 1 {
+      return exact(true)
+    }
+  }
+  if name == "operator ||" {
+    if left[0] == 1 || right[0] == 1 {
+      return exact(true)
+    }
+    if left[1] == 0 && right[1] == 0 {
+      return exact(false)
+    }
+  }
+  return [0, 1]
+}
+
+local fn base_call(m: Mod, op: Op) -> str {
+  let target = ir.resolve(m, op)
+  if !ir.live(target) {
+    return ""
+  }
+  let name = ir.name(target)
+  if ir.symbol(target) != "base." + name {
+    return ""
+  }
+  return name
+}
+
 local fn result(m: Mod, op: Op, known: dict) -> list<int> {
   let outputs = ir.outs(op)
   if len(outputs) != 1 || !integer(ir.type(outputs[0])) {
     return []
   }
   let inputs = ir.args(op)
-  var name = ir.callee(op)
-  let target = ir.resolve(m, op)
-  if ir.live(target) {
-    name = ir.symbol(target)
+  let name = base_call(m, op)
+  if name == "" {
+    return []
   }
-  if (name == "base.copy" || name == "operator +") && len(inputs) == 1 {
+  if (name == "copy" || name == "operator +") && len(inputs) == 1 {
     return get(known, inputs[0])
   }
   if name == "operator -" && len(inputs) == 1 {
     return neg(get(known, inputs[0]))
+  }
+  if name == "operator !" && len(inputs) == 1 {
+    let value = get(known, inputs[0])
+    if len(value) == 2 && value[0] == value[1] {
+      return exact(value[0] == 0)
+    }
+    if len(value) == 2 {
+      return [0, 1]
+    }
   }
   if len(inputs) == 2 {
     let left = get(known, inputs[0])
@@ -172,9 +270,11 @@ local fn result(m: Mod, op: Op, known: dict) -> list<int> {
     }
     if name == "operator ==" || name == "operator !=" ||
        name == "operator <" || name == "operator <=" ||
-       name == "operator >" || name == "operator >=" ||
-       name == "operator &&" || name == "operator ||" {
-      return [0, 1]
+       name == "operator >" || name == "operator >=" {
+      return compare(name, left, right)
+    }
+    if name == "operator &&" || name == "operator ||" {
+      return logical(name, left, right)
     }
   }
   if len(inputs) == 1 && base.name(ir.type(outputs[0])) == name {
@@ -279,31 +379,47 @@ fn infer(m: Mod) -> dict {
             let owner = ir.op(ir.blk(op))
             if ir.live(owner) && ir.kind(owner) == "branch" {
               let yielded = ir.args(op)
+              let bodies = ir.blks(owner)
+              let owner_args = ir.args(owner)
+              var condition: list<int> = []
+              if len(owner_args) != 0 {
+                condition = get(known, owner_args[0])
+              }
+              var selected = -1
+              if len(condition) == 2 && condition[0] == condition[1] {
+                if condition[0] == 0 {
+                  selected = 1
+                } else {
+                  selected = 0
+                }
+              }
               for i in 0..len(yielded) {
                 var complete = true
                 var lo = 0
                 var hi = 0
                 var first = true
-                for body in ir.blks(owner) {
-                  let body_ops = ir.ops(body)
-                  if len(body_ops) == 0 {
-                    complete = false
-                  } else {
-                    let arm = ir.args(body_ops[len(body_ops) - 1])
-                    if i >= len(arm) {
+                for arm_index in 0..len(bodies) {
+                  if selected < 0 || arm_index == selected {
+                    let body_ops = ir.ops(bodies[arm_index])
+                    if len(body_ops) == 0 {
                       complete = false
                     } else {
-                      let value = get(known, arm[i])
-                      if len(value) != 2 {
+                      let arm = ir.args(body_ops[len(body_ops) - 1])
+                      if i >= len(arm) {
                         complete = false
                       } else {
-                        if first || value[0] < lo {
-                          lo = value[0]
+                        let value = get(known, arm[i])
+                        if len(value) != 2 {
+                          complete = false
+                        } else {
+                          if first || value[0] < lo {
+                            lo = value[0]
+                          }
+                          if first || value[1] > hi {
+                            hi = value[1]
+                          }
+                          first = false
                         }
-                        if first || value[1] > hi {
-                          hi = value[1]
-                        }
-                        first = false
                       }
                     }
                   }
@@ -344,6 +460,35 @@ fn infer(m: Mod) -> dict {
     }
   }
   return known
+}
+
+local fn predicate(m: Mod, op: Op) -> bool {
+  if ir.kind(op) != "call" || len(ir.outs(op)) != 1 ||
+     ir.type(ir.outs(op)[0]) != ty("bool") {
+    return false
+  }
+  let name = base_call(m, op)
+  return name == "operator ==" || name == "operator !=" ||
+         name == "operator <" || name == "operator <=" ||
+         name == "operator >" || name == "operator >=" ||
+         name == "operator &&" || name == "operator ||" ||
+         name == "operator !"
+}
+
+fn fold(m: Mod) -> bool {
+  let known = infer(m)
+  var changed = false
+  for op in ir.ops(m) {
+    if ir.live(op) && predicate(m, op) {
+      let bound = get(known, ir.outs(op)[0])
+      if len(bound) == 2 && bound[0] == bound[1] {
+        assert(ir.replace(m, op, bound[0] != 0),
+               "bounds.fold could not replace an exact predicate")
+        changed = true
+      }
+    }
+  }
+  return changed
 }
 
 fn fits(known: dict, value: Val, type: Ty) -> bool {

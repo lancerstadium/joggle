@@ -44,10 +44,13 @@ selection when it truly changes the available computation, but loop scheduling
 does not need a second function body.
 
 The same exposed Conv body can also be improved without an implementation
-override:
+override. Here each requested pass changes that body in place: range facts
+remove proved guards, scalar promotion changes the reduction's traffic, and
+ordinary cleanup removes values made dead by those edits.
 
 ```sh
-joggle run tile.scalarize canonical.jog -M build/modules > scalarized.jog
+joggle run bounds.fold opt.fold opt.basic tile.scalarize opt.basic \
+  canonical.jog -M build/modules > improved.jog
 ```
 
 For an output-stationary reduction this moves the output access outside the
