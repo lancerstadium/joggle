@@ -584,7 +584,10 @@ local fn noalias_enabled(fn: Fn) -> bool {
   let enabled = base.get(spec, "noalias", false)
   assert(base.kind(enabled) == "bool",
          "c: noalias must be a Boolean")
-  return enabled == true
+  let proven = base.get(spec, "restrict", false)
+  assert(base.kind(proven) == "bool",
+         "c: restrict proof must be a Boolean")
+  return enabled == true || proven == true
 }
 
 local fn accepts_with(m: Mod, op: Op, config: dict) -> bool {
@@ -1641,6 +1644,84 @@ fn noalias(m: Mod, enabled: bool) -> bool {
 
 fn noalias(m: Mod) -> bool {
   return noalias(m, true)
+}
+
+local fn restrict_spec(fn: Fn, enabled: bool) -> dict {
+  var out: dict = {}
+  if ir.has(fn, "c") {
+    let current = ir.meta(fn, "c")
+    assert(base.kind(current) == "dict",
+           "c: binding must be a dictionary")
+    for key in base.keys(current) {
+      if key != "restrict" {
+        out[key] = base.get(current, key)
+      }
+    }
+  }
+  if enabled {
+    out["restrict"] = true
+  }
+  return out
+}
+
+local fn pointer_count(op: Op) -> int {
+  var out = 0
+  for value in ir.args(op) {
+    if tensor.valid(ir.type(value)) {
+      out += 1
+    }
+  }
+  for value in ir.outs(op) {
+    if tensor.valid(ir.type(value)) {
+      out += 1
+    }
+  }
+  return out
+}
+
+local fn fn_index(fns: list<Fn>, target: Fn) -> int {
+  for i in 0..len(fns) {
+    if fns[i] == target {
+      return i
+    }
+  }
+  return -1
+}
+
+fn restrict(m: Mod) -> bool {
+  let data_fns = data_functions(m)
+  var called: list<Fn> = []
+  var separate: list<bool> = []
+  for op in ir.ops(m) {
+    if ir.kind(op) == "call" {
+      let target = ir.resolve(m, op)
+      if ir.live(target) && ir.local(target) && len(ir.blks(target)) != 0 {
+        var at = fn_index(called, target)
+        let safe = pointer_count(op) >= 2 && mem.separate(op)
+        if at < 0 {
+          called += [target]
+          separate += [safe]
+        } else {
+          separate[at] = separate[at] && safe
+        }
+      }
+    }
+  }
+  var changed = false
+  for fn in ir.fns(m) {
+    let at = fn_index(called, fn)
+    var enabled = false
+    if at >= 0 {
+      enabled = separate[at] && !has_fn(data_fns, fn)
+    }
+    let spec = restrict_spec(fn, enabled)
+    if len(spec) == 0 {
+      changed = ir.unset(m, fn, "c") || changed
+    } else {
+      changed = ir.set(m, fn, "c", spec) || changed
+    }
+  }
+  return changed
 }
 
 local fn dependencies(m: Mod, config: dict) -> list<Op> {

@@ -1,0 +1,26 @@
+module separation
+use tensor
+
+local fn distinct(
+  left: tensor<f32, [4]>,
+  right: tensor<f32, [4]>
+) -> tensor<f32, [4]> {
+  return left + right
+}
+
+[c: {restrict: true}]
+local fn repeated(
+  left: tensor<f32, [4]>,
+  right: tensor<f32, [4]>
+) -> tensor<f32, [4]> {
+  return left + right
+}
+
+[entry]
+fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {
+  let first = tensor<f32, [4]>(f32(1))
+  let second = tensor<f32, [4]>(f32(2))
+  let combined = distinct(first, second)
+  let duplicated = repeated(combined, combined)
+  return duplicated + x
+}

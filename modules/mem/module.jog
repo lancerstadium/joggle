@@ -273,6 +273,60 @@ fn slot(value: Val) -> int {
   return int(ir.meta(value, "mem.slot"))
 }
 
+local fn payload(value: Val) -> bool {
+  return tensor.valid(ir.type(value)) && ir.is_const(value) &&
+         base.kind(ir.constant(value)) == "bytes"
+}
+
+local fn separate(left: Val, right: Val) -> bool {
+  if !tensor.valid(ir.type(left)) || !tensor.valid(ir.type(right)) ||
+     left == right {
+    return false
+  }
+  if planned(left) && planned(right) {
+    return slot(left) != slot(right)
+  }
+  if planned(left) && payload(right) {
+    return true
+  }
+  if payload(left) && planned(right) {
+    return true
+  }
+  return payload(left) && payload(right)
+}
+
+local fn separate(values: list<Val>) -> bool {
+  for i in 0..len(values) {
+    if !tensor.valid(ir.type(values[i])) {
+      return false
+    }
+    for j in i + 1..len(values) {
+      if !separate(values[i], values[j]) {
+        return false
+      }
+    }
+  }
+  return true
+}
+
+fn separate(op: Op) -> bool {
+  if !ir.live(op) || ir.kind(op) != "call" {
+    return false
+  }
+  var values: list<Val> = []
+  for value in ir.args(op) {
+    if tensor.valid(ir.type(value)) {
+      values += [value]
+    }
+  }
+  for value in ir.outs(op) {
+    if tensor.valid(ir.type(value)) {
+      values += [value]
+    }
+  }
+  return separate(values)
+}
+
 fn slots(fn: Fn) -> int {
   if !ir.has(fn, "mem.types") {
     return 0

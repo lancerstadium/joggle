@@ -291,6 +291,11 @@ complete linear or rectangular tensor domain before yielding it. This proof
 uses no neural-network operation names; partial, conditional, indirect, and
 otherwise unproven writes retain the fill. `tile` provides conservative
 structural loop operations.
+`mem.separate(op)` is a read-only call-site proof over tensor operands and
+results. It recognizes only different planned slots, different immutable
+tensor payloads, and slot/payload pairs. It rejects repeated values and every
+unclassified storage source. This deliberately small relation can be consumed
+by an artifact module without moving ABI policy into `mem`.
 `tile.depends(value, source)` follows ordinary Def-Use edges, including values
 captured by nested blocks, and reports a conservative value dependence.
 `tile.axes(loop, value)` returns the zero-based loop-body axes on which a value
@@ -448,8 +453,16 @@ bounded array declarations, and an external payload receives a qualified
 pointer in the generated function definition. Public declarations remain
 unqualified, so the same header remains valid for C++ consumers. `c.api`
 reports the Boolean contract. The compiler does not infer disjointness from NN
-names, constness, storage slots, or calling convention; violating the contract
-at a call site is the user's error.
+names or calling convention; violating an explicit entry contract at a call
+site is the user's error.
+
+`c.restrict(m)` is the proof-driven alternative for private definitions. It
+indexes all calls once and adds `[c: {restrict: true}]` only when every call to
+a private function satisfies `mem.separate`. Functions with an implicit
+external-data parameter are excluded, as are entries, returned buffers,
+unplanned storage, and any function with one unsafe call. Repeating the pass
+revalidates and replaces only this derived field; explicit `noalias` metadata
+is preserved. Public declarations remain unchanged.
 
 By default, `c` derives public symbols from qualified function names and keeps
 valid source value names. Named pointer results derive from the return value

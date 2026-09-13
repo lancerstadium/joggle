@@ -566,6 +566,7 @@ if(JOGGLE_BUILD_TESTS)
         -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c.jog
         -DINVALID_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_invalid.jog
         -DOPEN_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_open.jog
+        -DRESTRICT_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_restrict.jog
         -DCOLLISION_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_collision.jog
         -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_main.c
         -DBLOB_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_blob_main.c

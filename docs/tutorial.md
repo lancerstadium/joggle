@@ -930,6 +930,21 @@ deleting an existing `[c: {name: ...}]` binding. This is a user assertion, not
 a dependence proof; do not enable it for in-place or otherwise overlapping
 calls.
 
+For private functions whose callers already use planned storage, request the
+conservative proof instead of asserting an entry contract:
+
+```sh
+joggle run c.restrict planned.jog -M modules > restricted.jog
+joggle emit c.source restricted.jog -M modules > model.c
+```
+
+The pass examines all calls to each private function. It accepts only distinct
+workspace slots, distinct immutable payload tensors, and slot/payload pairs.
+One repeated argument or otherwise unclassified pointer keeps the whole
+function unqualified. Entries and functions that implicitly consume the
+external payload are never inferred. Inspect `[c: {restrict: true}]` in the
+resulting IR to see exactly which contract was proved.
+
 Inspect deterministic structural measurements before or after any step:
 
 ```sh

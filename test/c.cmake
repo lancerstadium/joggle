@@ -1,6 +1,7 @@
 if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
    NOT DEFINED INVALID_MODEL OR
    NOT DEFINED OPEN_MODEL OR NOT DEFINED COLLISION_MODEL OR
+   NOT DEFINED RESTRICT_MODEL OR
    NOT DEFINED HARNESS OR NOT DEFINED BLOB_HARNESS OR
    NOT DEFINED OPEN_HARNESS OR
    NOT DEFINED MODULES OR NOT DEFINED ROOT)
@@ -59,6 +60,10 @@ set(noalias_restored "${ROOT}/noalias-restored.jog")
 set(noalias_source "${ROOT}/open-noalias.c")
 set(noalias_header "${ROOT}/open-noalias.h")
 set(noalias_program "${ROOT}/open-noalias-model")
+set(restricted "${ROOT}/restricted.jog")
+set(restricted_again "${ROOT}/restricted-again.jog")
+set(restricted_source "${ROOT}/restricted.c")
+set(restricted_object "${ROOT}/restricted.o")
 execute_process(
   COMMAND "${TOOL}" run c.prepare "${OPEN_MODEL}" -M "${MODULES}"
   RESULT_VARIABLE result
@@ -67,6 +72,64 @@ execute_process(
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "C preparation failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run c.prepare mem.plan c.restrict
+          "${RESTRICT_MODEL}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${restricted}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "C restrict proof failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run c.restrict "${restricted}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${restricted_again}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "repeated C restrict proof failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E compare_files
+          "${restricted}" "${restricted_again}"
+  RESULT_VARIABLE result
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "C restrict proof is not idempotent")
+endif()
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${restricted}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${restricted_source}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "restricted C emission failed (${result}):\n${error}")
+endif()
+file(READ "${restricted_source}" restricted_text)
+if(NOT restricted_text MATCHES
+   "static void separation_distinct\\(const float left\\[restrict static 4\\], const float right\\[restrict static 4\\], float [A-Za-z0-9_]+\\[restrict static 4\\]\\) \\{")
+  message(FATAL_ERROR
+          "proved private call did not receive restrict:\n${restricted_text}")
+endif()
+if(restricted_text MATCHES
+   "static void separation_repeated\\([^)]*restrict")
+  message(FATAL_ERROR
+          "repeated tensor argument received unsafe restrict:\n${restricted_text}")
+endif()
+execute_process(
+  COMMAND "${CC}" -std=c11 -Wall -Wextra -Werror
+          -pedantic-errors -c "${restricted_source}" -o "${restricted_object}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "restricted C did not compile (${result}):\n${output}${error}")
 endif()
 execute_process(
   COMMAND "${TOOL}" run c.prepare "${prepared}" -M "${MODULES}"

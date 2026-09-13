@@ -251,6 +251,15 @@ public header remain unqualified. `c.api` reports the contract as `noalias`.
 This is never inferred: the caller remains responsible for passing disjoint
 pointer objects.
 
+After `mem.plan`, `joggle run c.restrict` can instead prove a conservative
+contract for private functions. It considers every represented call to a
+candidate and accepts only pairwise-distinct planned slots, distinct immutable
+tensor payloads, or a slot/payload pair. Repeated arguments, entry parameters,
+returned storage, unplanned temporaries, and functions that implicitly read the
+payload are rejected. One unsafe call keeps the private function unqualified;
+exported entries are never inferred. The proof is an ordinary module function,
+and its result remains visible as `[c: {restrict: true}]` before emission.
+
 ABI spelling, widths, alignment, includes, and external scalar types come from
 a configuration dictionary. Function prototypes are derived from resolved
 signatures; adding an external kernel does not add an emitter case.

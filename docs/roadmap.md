@@ -149,10 +149,18 @@ keep the compatible C/C++ pointer ABI. A paired UltraFace diagnostic found
 byte-identical outputs and performance parity with the pointer-only spelling;
 the change exposes an existing type fact to downstream compilers but is not a
 speedup claim.
-An explicit per-entry `c.noalias` contract now reaches tensor and payload
-pointers in C definitions and the structured API without contaminating the
-portable header. Alignment propagation, proof-derived alias facts, and
-measured optimization impact remain open; no-alias is never inferred.
+An explicit per-entry `c.noalias` contract reaches tensor and payload pointers
+in C definitions and the structured API without contaminating the portable
+header. The first proof-derived path is also present: `mem.separate` recognizes
+pairwise-distinct planned slots and immutable payloads at one call, while
+`c.restrict` uses a single call index to strengthen a private function only
+when all of its calls qualify. It intentionally rejects entry parameters,
+returned or unplanned storage, implicit payload users, and repeated operands.
+An UltraFace diagnostic qualifies 72 of 139 private functions; after replacing
+the initial repeated module scan, the pass takes 6.05 rather than 69.13 seconds
+and emits byte-identical IR. A same-process paired run indicates a useful
+latency direction, but controlled repetition, alignment propagation, and a
+broader storage-origin proof remain open.
 
 Every generated artifact used in evaluation must be checked against reference
 outputs with documented tolerances.
