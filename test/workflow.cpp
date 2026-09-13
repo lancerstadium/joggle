@@ -1820,9 +1820,13 @@ int main(int argc, char** argv) {
   const joggle::Op inner_yield = inner_body.ops().back();
   const std::vector<joggle::Val> sum_args{inner_body.args()[1],
                                           inner_body.args()[0]};
-  const joggle::Val sum = built_control.call(
+  const joggle::Val sum_value = built_control.call(
       inner_yield, "operator +", sum_args, joggle::Ty("int"));
-  CHECK(sum && built_control.rename(sum, "total"));
+  CHECK(sum_value);
+  const joggle::Val sum = built_control.assign(
+      inner_yield, inner_body.args()[1], sum_value);
+  CHECK(sum && sum.name() == "total" &&
+        sum.def().form() == joggle::Op::Form::assign);
   const std::vector<joggle::Val> inner_values{sum};
   CHECK(built_control.args(env, inner_yield, inner_values));
   CHECK(built_control.args(env, built_yield, inner_loop.outs()));
@@ -1836,9 +1840,13 @@ int main(int argc, char** argv) {
                              joggle::Ty("int"));
   CHECK(one && built_control.rename(one, "one"));
   const std::vector<joggle::Val> then_args{then_blk.args().front(), one};
-  const joggle::Val increment = built_control.call(
+  const joggle::Val increment_value = built_control.call(
       then_yield, "operator +", then_args, joggle::Ty("int"));
-  CHECK(increment && built_control.rename(increment, "total"));
+  CHECK(increment_value);
+  const joggle::Val increment = built_control.assign(
+      then_yield, then_blk.args().front(), increment_value);
+  CHECK(increment && increment.name() == "total" &&
+        increment.def().form() == joggle::Op::Form::assign);
   const std::vector<joggle::Val> then_values{increment};
   CHECK(built_control.args(env, then_yield, then_values));
   CHECK(built_control.args(env, build_ret, built_branch.outs()));
@@ -1847,11 +1855,31 @@ int main(int argc, char** argv) {
   CHECK(built_control_text.find("for i in total..n") != std::string::npos);
   CHECK(built_control_text.find("for j in total..i") != std::string::npos);
   CHECK(built_control_text.find("if flag") != std::string::npos);
+  CHECK(built_control_text.find("total = total + j") != std::string::npos);
   joggle::Mod control_roundtrip;
   CHECK(joggle::parse(env, built_control_text, control_roundtrip,
                       "control-roundtrip.jog"));
   CHECK(control_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(built_control, control_roundtrip));
+
+  const std::uint64_t assign_revision = built_control.revision();
+  CHECK(!built_control.assign(build_ret, build_fn.params()[0],
+                              built_branch.outs()[0]));
+  CHECK(built_control.revision() == assign_revision);
+  CHECK(joggle::print(built_control) == built_control_text);
+  CHECK(!built_control.diags().empty());
+  CHECK(built_control.diags().back().message.find("not a mutable binding") !=
+        std::string::npos);
+  built_control.clear_diags();
+  CHECK(!built_control.assign(build_ret, built_branch.outs()[0],
+                              build_fn.params()[1]));
+  CHECK(built_control.revision() == assign_revision);
+  CHECK(joggle::print(built_control) == built_control_text);
+  CHECK(!built_control.diags().empty());
+  CHECK(built_control.diags().back().message.find("equal target and value") !=
+        std::string::npos);
+  built_control.clear_diags();
+  CHECK(built_control.verify(env));
 
   joggle::Mod failed_structure;
   CHECK(joggle::parse(env,

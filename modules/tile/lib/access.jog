@@ -148,12 +148,11 @@ local fn related(root: Op, tensor: Val) -> list<Val> {
   return out
 }
 
-local fn accesses(loop: Op, tensor: Val, writes: bool)
-    -> list<list<Val>> {
+local fn access_ops(loop: Op, tensor: Val, writes: bool) -> list<Op> {
   assert(ir.live(loop) && ir.kind(loop) == "loop" && ir.live(tensor),
          "tile access query requires a live loop and tensor value")
   let aliases = related(loop, tensor)
-  var out: list<list<Val>> = []
+  var out: list<Op> = []
   for op in nested(loop) {
     if ir.kind(op) == "call" {
       let inputs = ir.args(op)
@@ -164,17 +163,27 @@ local fn accesses(loop: Op, tensor: Val, writes: bool)
         valid = len(inputs) >= 3
       }
       if match && valid && known(inputs[0], aliases) {
-        var end = len(inputs)
-        if writes {
-          end -= 1
-        }
-        var indices: list<Val> = []
-        for i in 1..end {
-          indices += [inputs[i]]
-        }
-        out += [indices]
+        out += [op]
       }
     }
+  }
+  return out
+}
+
+local fn accesses(loop: Op, tensor: Val, writes: bool)
+    -> list<list<Val>> {
+  var out: list<list<Val>> = []
+  for op in access_ops(loop, tensor, writes) {
+    let inputs = ir.args(op)
+    var end = len(inputs)
+    if writes {
+      end -= 1
+    }
+    var indices: list<Val> = []
+    for i in 1..end {
+      indices += [inputs[i]]
+    }
+    out += [indices]
   }
   return out
 }

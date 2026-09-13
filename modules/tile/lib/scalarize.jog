@@ -1,0 +1,485 @@
+local fn has_op(ops: list<Op>, selected: Op) -> bool {
+  for op in ops {
+    if op == selected {
+      return true
+    }
+  }
+  return false
+}
+
+local fn carry_meta(m: Mod, source: Op, target: Op) -> bool {
+  var changed = false
+  let metadata = ir.meta(source)
+  for key in base.keys(metadata) {
+    changed = ir.set(m, target, key, metadata[key]) || changed
+  }
+  return changed
+}
+
+local fn captures_state(op: Op, states: list<Val>) -> bool {
+  for state in states {
+    if captured(op, state) {
+      return true
+    }
+  }
+  return false
+}
+
+local fn state_value(
+  value: Val,
+  states: list<Val>,
+  scalars: list<Val>,
+  old: list<Val>,
+  next: list<Val>
+) -> Val {
+  for i in 0..len(states) {
+    if value == states[i] {
+      return scalars[i]
+    }
+  }
+  return mapped(value, old, next)
+}
+
+local fn address_only(
+  loop: Op,
+  value: Val,
+  accesses: list<Op>,
+  seen: list<Val>
+) -> bool {
+  if known(value, seen) {
+    return true
+  }
+  let next_seen = seen + [value]
+  for user in ir.users(value) {
+    if !has_op(accesses, user) {
+      if ir.kind(user) != "call" || len(ir.outs(user)) == 0 ||
+         len(base.keys(ir.meta(user))) != 0 {
+        return false
+      }
+      for output in ir.outs(user) {
+        if len(affine(loop, output)) == 0 ||
+           !address_only(loop, output, accesses, next_seen) {
+          return false
+        }
+      }
+    }
+  }
+  return true
+}
+
+local fn drop_address(
+  loop: Op, op: Op, accesses: list<Op>
+) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) == 0 || len(base.keys(ir.meta(op))) != 0 {
+    return false
+  }
+  for output in outputs {
+    if len(affine(loop, output)) == 0 ||
+       !address_only(loop, output, accesses, []) {
+      return false
+    }
+  }
+  return true
+}
+
+local fn scalar_block_issue(
+  block: Blk,
+  current: Val,
+  states: list<Val>,
+  load: Op,
+  store: Op
+) -> str {
+  let ops = ir.ops(block)
+  var active = current
+  var known_states = states
+  if len(ops) == 0 || ir.kind(ops[len(ops) - 1]) != "yield" {
+    return "requires terminated structured blocks"
+  }
+  for i in 0..len(ops) - 1 {
+    let op = ops[i]
+    let inputs = ir.args(op)
+    let outputs = ir.outs(op)
+    if op == load {
+      if len(inputs) != 2 || len(outputs) != 1 || inputs[0] != active {
+        return "requires a scalar load from the current carried state"
+      }
+    } else {
+      if op == store {
+        if len(inputs) != 3 || len(outputs) != 1 ||
+           inputs[0] != active || ir.type(outputs[0]) != ir.type(active) {
+          return "requires a type-stable store to the current carried state"
+        }
+        active = outputs[0]
+        known_states += outputs
+      } else {
+        if ir.kind(op) == "branch" && captures_state(op, known_states) {
+          let arms = ir.blks(op)
+          if len(inputs) != 2 || len(outputs) != 1 ||
+             inputs[1] != active || len(arms) != 2 {
+            return "requires a branch carrying only the current state"
+          }
+          for arm in arms {
+            let args = ir.args(arm)
+            if len(args) != 1 || ir.type(args[0]) != ir.type(active) {
+              return "requires type-stable branch state"
+            }
+            let issue = scalar_block_issue(
+              arm, args[0], known_states + args, load, store
+            )
+            if issue != "" {
+              return issue
+            }
+          }
+          active = outputs[0]
+          known_states += outputs
+        } else {
+          if captures_state(op, known_states) {
+            return "found an unsupported use of carried state"
+          }
+        }
+      }
+    }
+  }
+  let yielded = ir.args(ops[len(ops) - 1])
+  if len(yielded) != 1 || yielded[0] != active {
+    return "requires each block to yield its current state"
+  }
+  return ""
+}
+
+fn scalarize_issue(source: Op) -> str {
+  if !ir.live(source) || ir.kind(source) != "loop" {
+    return "requires a live loop"
+  }
+  let inputs = ir.args(source)
+  let outputs = ir.outs(source)
+  let axes = len(inputs) - len(outputs)
+  if axes <= 1 {
+    return "requires state and reduction axes"
+  }
+  var identity: list<int> = []
+  for axis in 0..axes {
+    identity += [axis]
+  }
+  let reorder = reorder_issue(source, identity)
+  if reorder != "" {
+    return reorder
+  }
+  let state = state_axes(source)
+  let reduction = reduction_axes(source)
+  if len(state) == 0 || len(reduction) == 0 ||
+     len(state) + len(reduction) != axes {
+    return "requires both state and reduction axes"
+  }
+  for i in 0..len(state) {
+    if state[i] != i {
+      return "requires state axes before reduction axes"
+    }
+  }
+  for i in 0..len(reduction) {
+    if reduction[i] != len(state) + i {
+      return "requires state axes before reduction axes"
+    }
+  }
+
+  let body = ir.blks(source)[0]
+  let body_args = ir.args(body)
+  let load_ops = access_ops(source, body_args[axes], false)
+  let store_ops = access_ops(source, body_args[axes], true)
+  if len(load_ops) != 1 || len(store_ops) != 1 {
+    return "requires one carried-state load and store"
+  }
+  let load_args = ir.args(load_ops[0])
+  let load_outs = ir.outs(load_ops[0])
+  let store_args = ir.args(store_ops[0])
+  let store_outs = ir.outs(store_ops[0])
+  if len(load_args) != 2 || len(load_outs) != 1 ||
+     len(store_args) != 3 || len(store_outs) != 1 ||
+     ir.type(load_args[1]) != ir.type(store_args[1]) ||
+     ir.type(load_outs[0]) != ir.type(store_args[2]) {
+    return "requires compatible scalar indexed accesses"
+  }
+  return scalar_block_issue(
+    body, body_args[axes], [body_args[axes]], load_ops[0], store_ops[0]
+  )
+}
+
+fn can_scalarize(m: Mod, source: Op) -> bool {
+  let before = ir.revision(m)
+  let legal = scalarize_issue(source) == ""
+  assert(ir.revision(m) == before,
+         "tile.can_scalarize changed the module")
+  return legal
+}
+
+fn scalarizable(m: Mod) -> list<Op> {
+  let before = ir.revision(m)
+  var out: list<Op> = []
+  for op in ir.ops(m) {
+    if can_scalarize(m, op) {
+      out += [op]
+    }
+  }
+  assert(ir.revision(m) == before,
+         "tile.scalarizable changed the module")
+  return out
+}
+
+local fn index_value(
+  m: Mod,
+  before: Op,
+  type: Ty,
+  form: list<int>,
+  axes: list<Val>
+) -> Val {
+  var out = axes[0]
+  var started = false
+  if form[0] != 0 {
+    out = ir.constant(m, before, form[0], type)
+    assert(ir.live(out), "tile.scalarize could not build an address")
+    started = true
+  }
+  for axis in 0..len(axes) {
+    let coefficient = form[axis + 1]
+    if coefficient != 0 {
+      var coordinate = axes[axis]
+      if ir.type(coordinate) != type {
+        coordinate = ir.call(
+          m, before, text(type), [coordinate], type
+        )
+        assert(ir.live(coordinate),
+               "tile.scalarize could not cast an address coordinate")
+      }
+      var term = coordinate
+      if coefficient != 1 {
+        let scale = ir.constant(m, before, coefficient, type)
+        assert(ir.live(scale),
+               "tile.scalarize could not build an address scale")
+        term = ir.call(
+          m, before, "operator *", [coordinate, scale], type
+        )
+        assert(ir.live(term),
+               "tile.scalarize could not scale an address coordinate")
+      }
+      if !started {
+        out = term
+        started = true
+      } else {
+        out = ir.call(m, before, "operator +", [out, term], type)
+        assert(ir.live(out), "tile.scalarize could not extend an address")
+      }
+    }
+  }
+  if !started {
+    out = ir.constant(m, before, 0, type)
+    assert(ir.live(out), "tile.scalarize could not build a zero address")
+  }
+  return out
+}
+
+local fn rebuild_scalar_block(
+  m: Mod,
+  loop: Op,
+  source: Blk,
+  target: Blk,
+  old: list<Val>,
+  next: list<Val>,
+  states: list<Val>,
+  scalars: list<Val>,
+  load: Op,
+  store: Op,
+  accesses: list<Op>
+) -> Val {
+  let target_ops = ir.ops(target)
+  let terminator = target_ops[len(target_ops) - 1]
+  let source_ops = ir.ops(source)
+  var old_values = old
+  var next_values = next
+  var state_values = states
+  var scalar_values = scalars
+  for i in 0..len(source_ops) - 1 {
+    let op = source_ops[i]
+    let inputs = ir.args(op)
+    if op == load {
+      old_values += ir.outs(op)
+      next_values += [state_value(
+        inputs[0], state_values, scalar_values, old_values, next_values
+      )]
+    } else {
+      if op == store {
+        let value = state_value(
+          inputs[2], state_values, scalar_values, old_values, next_values
+        )
+        let target = state_value(
+          inputs[0], state_values, scalar_values, old_values, next_values
+        )
+        let assigned = ir.assign(m, terminator, target, value)
+        assert(ir.live(assigned),
+               "tile.scalarize could not update its accumulator")
+        state_values += ir.outs(op)
+        scalar_values += [assigned]
+      } else {
+        if ir.kind(op) == "branch" &&
+           captures_state(op, state_values) {
+          let condition = state_value(
+            inputs[0], state_values, scalar_values, old_values, next_values
+          )
+          let carried = state_value(
+            inputs[1], state_values, scalar_values, old_values, next_values
+          )
+          let branch = ir.branch(m, terminator, condition, [carried])
+          assert(ir.live(branch),
+                 "tile.scalarize could not build a scalar branch")
+          carry_meta(m, op, branch)
+          let source_arms = ir.blks(op)
+          let target_arms = ir.blks(branch)
+          for arm in 0..len(source_arms) {
+            let source_args = ir.args(source_arms[arm])
+            let target_args = ir.args(target_arms[arm])
+            let result = rebuild_scalar_block(
+              m, loop, source_arms[arm], target_arms[arm],
+              old_values, next_values,
+              state_values + source_args, scalar_values + target_args,
+              load, store, accesses
+            )
+            let arm_ops = ir.ops(target_arms[arm])
+            let yield = arm_ops[len(arm_ops) - 1]
+            assert(ir.args(m, yield, [result]),
+                   "tile.scalarize could not connect a scalar branch")
+          }
+          state_values += ir.outs(op)
+          scalar_values += ir.outs(branch)
+        } else {
+          if !drop_address(loop, op, accesses) {
+            let copy = ir.clone(
+              m, op, terminator, old_values, next_values
+            )
+            assert(ir.live(copy),
+                   "tile.scalarize could not clone a reduction operation")
+            old_values += ir.outs(op)
+            next_values += ir.outs(copy)
+          }
+        }
+      }
+    }
+  }
+  let yielded = ir.args(source_ops[len(source_ops) - 1])
+  return state_value(
+    yielded[0], state_values, scalar_values, old_values, next_values
+  )
+}
+
+fn scalarize(m: Mod, source: Op) -> bool {
+  let issue = scalarize_issue(source)
+  assert(issue == "", "tile.scalarize " + issue)
+  let inputs = ir.args(source)
+  let outputs = ir.outs(source)
+  let axes = len(inputs) - len(outputs)
+  let state = state_axes(source)
+  let reduction = reduction_axes(source)
+  let body = ir.blks(source)[0]
+  let body_args = ir.args(body)
+  let loads = access_ops(source, body_args[axes], false)
+  let stores = access_ops(source, body_args[axes], true)
+  let load = loads[0]
+  let store = stores[0]
+  let load_args = ir.args(load)
+  let store_args = ir.args(store)
+  let index_form = affine(source, store_args[1])
+
+  var outer_names: list<str> = []
+  var outer_sources: list<Val> = []
+  for axis in state {
+    outer_names += [ir.name(body_args[axis])]
+    outer_sources += [inputs[axis]]
+  }
+  let outer = ir.loop(
+    m, source, outer_names, outer_sources, [inputs[axes]]
+  )
+  assert(ir.live(outer), "tile.scalarize could not build the state loop")
+  carry_meta(m, source, outer)
+  let outer_body = ir.blks(outer)[0]
+  let outer_args = ir.args(outer_body)
+  let outer_ops = ir.ops(outer_body)
+  let outer_yield = outer_ops[len(outer_ops) - 1]
+
+  var coordinates: list<Val> = []
+  for axis in 0..len(state) {
+    coordinates += [outer_args[axis]]
+  }
+  let index = index_value(
+    m, outer_yield, ir.type(store_args[1]), index_form, coordinates
+  )
+  let initial_load = ir.clone(
+    m, load, outer_yield,
+    [load_args[0], load_args[1]],
+    [outer_args[len(state)], index]
+  )
+  assert(ir.live(initial_load) && len(ir.outs(initial_load)) == 1,
+         "tile.scalarize could not move the state load")
+  let initial = ir.outs(initial_load)[0]
+  assert(ir.rename(m, initial, "acc"),
+         "tile.scalarize could not name its accumulator")
+
+  var inner_names: list<str> = []
+  var inner_sources: list<Val> = []
+  for axis in reduction {
+    inner_names += [ir.name(body_args[axis])]
+    inner_sources += [inputs[axis]]
+  }
+  let inner = ir.loop(
+    m, outer_yield, inner_names, inner_sources, [initial]
+  )
+  assert(ir.live(inner),
+         "tile.scalarize could not build the reduction loop")
+  let inner_body = ir.blks(inner)[0]
+  let inner_args = ir.args(inner_body)
+  let inner_ops = ir.ops(inner_body)
+  let inner_yield = inner_ops[len(inner_ops) - 1]
+
+  var old: list<Val> = []
+  var next: list<Val> = []
+  for i in 0..len(state) {
+    old += [body_args[state[i]]]
+    next += [outer_args[i]]
+  }
+  for i in 0..len(reduction) {
+    old += [body_args[reduction[i]]]
+    next += [inner_args[i]]
+  }
+  let final = rebuild_scalar_block(
+    m, source, body, inner_body, old, next,
+    [body_args[axes]], [inner_args[len(reduction)]],
+    load, store, loads + stores
+  )
+  assert(ir.args(m, inner_yield, [final]),
+         "tile.scalarize could not connect the reduction loop")
+
+  let final_store = ir.clone(
+    m, store, outer_yield,
+    [store_args[0], store_args[1], store_args[2]],
+    [outer_args[len(state)], index, ir.outs(inner)[0]]
+  )
+  assert(ir.live(final_store) && len(ir.outs(final_store)) == 1,
+         "tile.scalarize could not move the state store")
+  assert(ir.args(m, outer_yield, ir.outs(final_store)),
+         "tile.scalarize could not connect the state loop")
+  assert(ir.replace(m, outputs, ir.outs(outer)),
+         "tile.scalarize could not replace the original loop result")
+  assert(ir.erase(m, source),
+         "tile.scalarize could not erase the original loop")
+  return true
+}
+
+fn scalarize(m: Mod) -> bool {
+  let candidates = scalarizable(m)
+  var changed = false
+  for reverse in 0..len(candidates) {
+    let op = candidates[len(candidates) - reverse - 1]
+    if ir.live(op) {
+      changed = scalarize(m, op) || changed
+    }
+  }
+  return changed
+}

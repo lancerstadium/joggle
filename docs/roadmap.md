@@ -63,6 +63,14 @@ nests remain open. Its explicit, candidate-enumeration, read-only policy, and
 configured policy forms now follow the same convention as unrolling and
 fusion.
 
+The first tensor-traffic rewrite is also present. `tile.scalarize` promotes one
+affine output element across a structurally proved reduction band, leaving one
+load and one store around a scalar carried reduction. It is validated on the
+same Conv body and on a differently ranked generic reduction, without operator
+names or rank cases. It currently requires state axes to form a prefix and
+reduction axes a suffix; combining interchange, promotion, and tiling under a
+single profitability policy remains open.
+
 The goal is not an automatic scheduler. It is a small, inspectable substrate on
 which a researcher can implement and compare scheduling policies.
 

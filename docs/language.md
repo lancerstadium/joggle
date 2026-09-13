@@ -489,6 +489,15 @@ This is the small structural primitive used by removable loop split, fusion,
 reorder, and unroll modules; it does not introduce a schedule object or a
 second loop IR.
 
+`ir.assign(m, before, target, value)` is the matching construction primitive
+for an existing mutable binding. It accepts only an equal-typed value that
+dominates the insertion point, and only a `var` or a loop/branch-carried value
+may be the target. The operation prints as the ordinary source assignment
+`target = value`; it is not an operator hook or a tensor-specific update.
+Structural passes use it when rebuilt control flow must keep the next carried
+value explicit and round-trippable. An immutable parameter or `let`, a type
+mismatch, and a dominance violation all reject without changing the module.
+
 The overload `ir.clone(m, fn, name)` copies an entire function signature,
 metadata, generics, and nested body into `m`. This is the function-level
 primitive for generated helpers and local template materialization; it does not

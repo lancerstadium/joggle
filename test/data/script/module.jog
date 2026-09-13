@@ -799,11 +799,13 @@ fn build_control(m: Mod) -> bool {
             let inner_body = ir.blks(inner_loop)[0]
             let inner_values = ir.args(inner_body)
             let inner_yield = ir.ops(inner_body)[0]
-            let sum = ir.call(
+            let sum_value = ir.call(
               m, inner_yield, "operator +",
               [inner_values[1], inner_values[0]], ty("int")
             )
-            changed = ir.rename(m, sum, "total")
+            let sum = ir.assign(
+              m, inner_yield, inner_values[1], sum_value
+            )
             changed = ir.args(m, inner_yield, [sum])
             changed = ir.args(m, outer_yield, ir.outs(inner_loop))
             let branch = ir.branch(m, op, params[1], ir.outs(loop))
@@ -811,10 +813,12 @@ fn build_control(m: Mod) -> bool {
             let then_yield = ir.ops(then)[0]
             let one = ir.constant(m, then_yield, 1, ty("int"))
             changed = ir.rename(m, one, "one")
-            let increment = ir.call(
+            let increment_value = ir.call(
               m, then_yield, "operator +", [ir.args(then)[0], one], ty("int")
             )
-            changed = ir.rename(m, increment, "total")
+            let increment = ir.assign(
+              m, then_yield, ir.args(then)[0], increment_value
+            )
             changed = ir.args(m, then_yield, [increment])
             changed = ir.args(m, op, ir.outs(branch))
             return changed

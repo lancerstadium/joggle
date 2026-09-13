@@ -2350,6 +2350,16 @@ private:
             return Items{Item(result)};
         }
       }
+    } else if (name == "assign" && args.size() == 4) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* before = as<Op>(args[1]);
+      const auto* target = as<Val>(args[2]);
+      const auto* value = as<Val>(args[3]);
+      if (mod && *mod && before && target && value) {
+        Val result = (*mod)->assign(*before, *target, *value);
+        if (result)
+          return Items{Item(result)};
+      }
     } else if (name == "loop" && args.size() == 5) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* before = as<Op>(args[1]);

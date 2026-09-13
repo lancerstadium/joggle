@@ -42,3 +42,19 @@ performs a structural rewrite, and `spatial` contains only a replaceable
 profitability policy. An external or packed kernel may still use implementation
 selection when it truly changes the available computation, but loop scheduling
 does not need a second function body.
+
+The same exposed Conv body can also be improved without an implementation
+override:
+
+```sh
+joggle run tile.scalarize canonical.jog -M build/modules > scalarized.jog
+```
+
+For an output-stationary reduction this moves the output access outside the
+reduction band. The resulting source has an outer `n, m, oh, ow` loop, one
+`acc` load, an inner `q, r, s` loop, and one final store. The bundled test also
+applies it to an unrelated five-axis reduction, checks idempotence, emits strict
+C99, and executes both paths against the same numerical harness. This is the
+optimization path for an inspectable Conv definition. The `edge` example is a
+separate ABI escape hatch for hardware or library kernels that genuinely are
+external implementations; it is not used to optimize this Conv body.

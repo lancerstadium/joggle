@@ -1060,6 +1060,52 @@ Val Mod::constant(Op before, Attr literal, Ty type) {
   return Val(&store, value_id, store.vals[value_id].generation);
 }
 
+Val Mod::assign(Op before, Val target, Val value) {
+  auto& store = impl_->store;
+  const auto reject = [&](std::string message) {
+    detail::add_diag(store.diags, std::move(message), before.loc());
+    return Val{};
+  };
+  if (!before.valid() || !target.valid() || !value.valid() ||
+      before.store_ != &store || target.store_ != &store ||
+      value.store_ != &store)
+    return reject("assign requires live values and an insertion point in this "
+                  "module");
+  if (target.name().empty())
+    return reject("assign requires a named mutable target");
+  if (target.type() != value.type())
+    return reject("assign requires equal target and value types");
+  if (!detail::dominates(store, target.id_, before.id_) ||
+      !detail::dominates(store, value.id_, before.id_))
+    return reject("assign operands must dominate the insertion point");
+
+  bool mutable_target = carried_arg(store, target.id_);
+  const Op definition = target.def();
+  if (definition) {
+    const detail::OpData& data = store.ops[definition.id_].data;
+    mutable_target = mutable_target || data.kind == Op::Kind::loop ||
+                     data.kind == Op::Kind::branch ||
+                     data.form == Op::Form::var ||
+                     data.form == Op::Form::assign ||
+                     data.form == Op::Form::compound ||
+                     data.form == Op::Form::index_assign;
+  }
+  if (!mutable_target)
+    return reject("assign target is not a mutable binding");
+
+  const std::array args{value};
+  Val result = call(before, "base.copy", args, target.type());
+  if (!result)
+    return {};
+  detail::OpData& op = store.ops[result.def().id_].data;
+  detail::ValData& out = store.vals[result.id_].data;
+  op.form = Op::Form::assign;
+  out.name = std::string(target.name());
+  out.meta = target.meta();
+  out.type_annotation = false;
+  return result;
+}
+
 Op Mod::loop(Op before, std::span<const std::string> names,
              std::span<const Val> sources, std::span<const Val> carried) {
   auto& store = impl_->store;
@@ -1304,6 +1350,7 @@ Op Mod::clone(Op source, Op before, std::span<const Val> old_values,
                   before.loc());
 
   std::unordered_map<std::uint32_t, std::uint32_t> substitutions;
+  std::unordered_map<std::string, std::string> substituted_names;
   substitutions.reserve(old_values.size());
   for (std::size_t index = 0; index < old_values.size(); ++index) {
     const Val old_value = old_values[index];
@@ -1329,6 +1376,12 @@ Op Mod::clone(Op source, Op before, std::span<const Val> old_values,
     if (!inserted && found->second != new_value.id_)
       return reject("clone has conflicting substitutions for one value",
                     source.loc());
+    if (!old_value.name().empty() && !new_value.name().empty()) {
+      const auto [name, name_inserted] = substituted_names.emplace(
+          std::string(old_value.name()), std::string(new_value.name()));
+      if (!name_inserted && name->second != new_value.name())
+        name->second.clear();
+    }
   }
 
   for (const std::uint32_t id : subtree_ops) {
@@ -1391,6 +1444,15 @@ Op Mod::clone(Op source, Op before, std::span<const Val> old_values,
       if (old_id == source.id_ &&
           (old.form == Op::Form::let || old.form == Op::Form::var))
         value.name = copy_name(value.name);
+      else if (old_id == source.id_ &&
+               (old.form == Op::Form::assign ||
+                old.form == Op::Form::compound ||
+                old.form == Op::Form::index_assign)) {
+        const auto mapped_name = substituted_names.find(value.name);
+        if (mapped_name != substituted_names.end() &&
+            !mapped_name->second.empty())
+          value.name = mapped_name->second;
+      }
       value.def = next_id;
       value.index = store.ops[next_id].data.outs.size();
       value.users.clear();

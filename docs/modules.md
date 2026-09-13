@@ -302,14 +302,24 @@ the affine read/write address of the loop's carried state. Unsupported loops
 return no roles. The queries do not inspect a callee name, tensor rank, or
 operator annotation, so a policy can choose an order without duplicating a
 semantic implementation or hard-coding the number of loop axes.
+`tile.scalarize(m, loop)` recognizes the output-stationary form in which all
+state axes precede all reduction axes. It replaces one tensor-carried nest with
+an outer state-coordinate loop, one scalar accumulator load, an inner
+reduction loop, and one final tensor store. The pass preserves reduction order
+and conditional updates. Its legality is structural: one carried state, one
+equal affine indexed load/store, static ranges, and no other observation of
+the carried tensor. `tile.scalarize_issue`, `tile.can_scalarize`, and
+`tile.scalarizable` expose the same read-only decision, and
+`tile.scalarize(m)` applies every current candidate. None of these APIs names
+Conv, an NN module, a tensor rank, or a backend.
 `tile.splittable(m, factor)` and `tile.unrollable(m, factor)` expose legal loop
 sets; `tile.fusible(m)` exposes the exact pair collection consumed by automatic
 fusion. Enumeration is read-only and returns live `Op` handles, or
 two-operation lists for fusion, so a user policy can inspect ordinary IR
 without reconstructing legality. Fusion recomputes this collection after each
 structural round and skips candidates invalidated by an earlier edit in the
-same round. The matching `reorder_issue`, `split_issue`, `unroll_issue`, and
-`fuse_issue`
+same round. The matching `reorder_issue`, `scalarize_issue`, `split_issue`,
+`unroll_issue`, and `fuse_issue`
 functions return the same human-readable reason used by each transform; an
 empty string means the requested edit is legal. Policies can therefore count
 or report rejected alternatives without attempting a mutation and scraping a

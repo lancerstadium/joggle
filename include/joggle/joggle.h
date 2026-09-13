@@ -398,6 +398,7 @@ public:
           std::span<const Ty> types);
   Val call(Op before, std::string callee, std::span<const Val> args, Ty type);
   Val constant(Op before, Attr value, Ty type);
+  Val assign(Op before, Val target, Val value);
   Op loop(Op before, std::span<const std::string> names,
           std::span<const Val> sources, std::span<const Val> carried);
   Op branch(Op before, Val condition, std::span<const Val> carried);

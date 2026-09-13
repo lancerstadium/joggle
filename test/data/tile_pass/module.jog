@@ -136,6 +136,78 @@ fn check_reorder(m: Mod) -> bool {
   return true
 }
 
+fn check_scalarize(m: Mod) -> bool {
+  let main = ir.find(m, "main")
+  let reduce = ir.find(m, "reduce5")
+  assert(ir.live(main) && ir.live(reduce),
+         "scalarize check requires main and reduce5")
+  for fn in [main, reduce] {
+    var found = false
+    for op in ir.ops(fn) {
+      if ir.kind(op) == "loop" &&
+         len(ir.args(op)) - len(ir.outs(op)) > 1 {
+        let issue = tile.scalarize_issue(op)
+        assert(issue == "", ir.name(fn) + ": " + issue)
+        found = true
+      }
+    }
+    assert(found, "scalarize check requires a reduction loop")
+  }
+  return true
+}
+
+local fn scalarized_loop(
+  function: Fn, outer_axes: int, inner_axes: int
+) -> bool {
+  var outers: list<Op> = []
+  var inners: list<Op> = []
+  for op in ir.ops(function) {
+    if ir.kind(op) == "loop" {
+      let axes = len(ir.args(op)) - len(ir.outs(op))
+      if axes == outer_axes && len(outers) == 0 {
+        outers += [op]
+      } else {
+        if axes == inner_axes && len(inners) == 0 {
+          inners += [op]
+        }
+      }
+    }
+  }
+  if len(outers) != 1 || len(inners) != 1 ||
+     ir.blk(inners[0]) != ir.blks(outers[0])[0] {
+    return false
+  }
+  let outer = outers[0]
+  let inner = inners[0]
+  let outer_args = ir.args(ir.blks(outer)[0])
+  let inner_args = ir.args(ir.blks(inner)[0])
+  if len(outer_args) != outer_axes + 1 ||
+     len(inner_args) != inner_axes + 1 ||
+     ir.type(inner_args[inner_axes]) != ty("f32") {
+    return false
+  }
+  let reads = tile.reads(outer, outer_args[outer_axes])
+  let writes = tile.writes(outer, outer_args[outer_axes])
+  return len(reads) == 1 && len(writes) == 1
+}
+
+fn check_scalarized(m: Mod) -> bool {
+  let before = ir.revision(m)
+  assert(len(tile.scalarizable(m)) == 0,
+         "scalarized module still contains a promotable reduction")
+  let main = ir.find(m, "main")
+  let reduce = ir.find(m, "reduce5")
+  assert(ir.live(main) && ir.live(reduce),
+         "scalarized check requires main and reduce5")
+  assert(scalarized_loop(main, 4, 3),
+         "convolution did not become a scalar reduction nest")
+  assert(scalarized_loop(reduce, 4, 1),
+         "generic reduction did not become a scalar reduction nest")
+  assert(ir.revision(m) == before,
+         "scalarized checks changed the module")
+  return true
+}
+
 fn mutating_reorder_policy(m: Mod, op: Op) -> list<int> {
   ir.set(m, op, "policy.mutated", true)
   return []

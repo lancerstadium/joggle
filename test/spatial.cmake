@@ -12,6 +12,10 @@ set(prepared "${ROOT}/prepared.jog")
 set(configured "${ROOT}/configured.jog")
 set(disabled "${ROOT}/disabled.jog")
 set(stable "${ROOT}/stable.jog")
+set(scalarized "${ROOT}/scalarized.jog")
+set(scalarized_stable "${ROOT}/scalarized-stable.jog")
+set(scalarized_source "${ROOT}/scalarized.c")
+set(scalarized_program "${ROOT}/scalarized")
 set(source "${ROOT}/model.c")
 set(program "${ROOT}/model")
 
@@ -33,6 +37,90 @@ execute_process(
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "reorder contract failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_scalarize "${canonical}"
+          -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_QUIET
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "scalar promotion contract failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run tile.scalarize "${canonical}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${scalarized}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "scalar promotion failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_scalarized "${scalarized}"
+          -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_QUIET
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "scalar promotion structure check failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run tile.scalarize "${scalarized}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${scalarized_stable}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "repeated scalar promotion failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E compare_files
+          "${scalarized}" "${scalarized_stable}"
+  RESULT_VARIABLE result
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "scalar promotion is not idempotent")
+endif()
+file(READ "${scalarized}" scalarized_text)
+if(NOT scalarized_text MATCHES "var acc =" OR
+   scalarized_text MATCHES "spatial\.nn\.conv2d|edge\.nn\.conv2d")
+  message(FATAL_ERROR
+          "scalar promotion did not remain a structural pass:\n${scalarized_text}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${scalarized}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${scalarized_source}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "scalarized C emission failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CC}" -std=c99 -O2 -Wall -Wextra -Wstrict-prototypes -Werror
+          "${scalarized_source}" "${HARNESS}" -lm -o "${scalarized_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "scalarized C did not compile (${result}):\n${output}${error}")
+endif()
+execute_process(
+  COMMAND "${scalarized_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "scalarized C returned the wrong result (${result}):\n${output}${error}")
 endif()
 execute_process(
   COMMAND "${TOOL}" run tile_pass.reject_mutating_reorder_policy
