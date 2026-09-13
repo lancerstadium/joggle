@@ -27,7 +27,17 @@ jobs:
       - name: Build
         run: cmake --build build --parallel 2
       - name: Test
+        id: test
         run: ctest --test-dir build --output-on-failure
+      - name: Preserve CTest failure
+        if: ${{ failure() && steps.test.outcome == 'failure' }}
+        run: |
+          {
+            echo '### CTest failure'
+            echo '```text'
+            cat build/Testing/Temporary/LastTest.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   sanitize:
     name: Linux sanitizers
@@ -44,7 +54,17 @@ jobs:
       - name: Build
         run: cmake --build build --parallel 2
       - name: Test
+        id: test
         env:
           ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: ctest --test-dir build --output-on-failure
+      - name: Preserve CTest failure
+        if: ${{ failure() && steps.test.outcome == 'failure' }}
+        run: |
+          {
+            echo '### CTest failure'
+            echo '```text'
+            cat build/Testing/Temporary/LastTest.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
