@@ -304,6 +304,21 @@ expressions across blocks. This one-run diagnostic validates output identity
 and the removed scaling pathology; controlled repetitions are still required
 for a compiler-throughput claim.
 
+`tile-analysis-pilot.csv` records a second UltraFace compiler-scaling
+diagnostic. The control keyed recursive affine analysis by both the SSA value
+and its complete DFS path, preventing common address subexpressions reached by
+different paths from sharing a result. Revision `1dd5e88` relies on Joggle's
+verified acyclic SSA definition relation and keys the query by module revision,
+loop, and value; it also memoizes repeated loop-local alias and access queries.
+For the same 2,675,643-byte canonical IR and `spatial.block(m, [4, 7])`, one
+unisolated invocation falls from 40.30 to 28.71 seconds (1.40x). Recursive
+affine calls fall from 254,955 to 145,171, with 18,666 reusable results in the
+candidate. Both variants perform 15,877 edits and emit the same 2,803,395-byte
+IR with SHA-256
+`67efe4401f805ea82e96fcb00099ae1aa8bab07034500eafb02e62b51b844f9f`.
+The complete 41-test suite passes. As with the CSE record, this is a one-run
+mechanism diagnostic, not a controlled compiler-throughput result.
+
 `exact-split-pilot.csv` checks the next generic scheduling refinement on the
 same MobileNetV2 path. The earlier `tile.split` always materialized a final-tile
 guard; `ce8f174` omits it only when static bounds prove exact divisibility and

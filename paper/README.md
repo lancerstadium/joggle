@@ -8,8 +8,8 @@ preserved here.
 
 ## Target and thesis
 
-Working title: **Joggle: Cross-Layer AI Co-Design with a Progressive Function
-IR**.
+Working title: **Joggle: A Progressive Function IR for Cross-Layer AI
+Co-Design**.
 
 The current target is the
 [EuroSys 2027 fall cycle](https://2027.eurosys.org/cfp.html). Titles and
@@ -35,7 +35,7 @@ usability.
 | --- | --- | --- |
 | Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths | Freeze and record model-level stage traces |
 | Extension surface | Four frozen contracts; all Joggle implementations pass; the exact MatMul contract also passes through Joggle's ONNX, VM, and C paths; pinned TVM controls pass three contracts | Execute the pinned ONNX-MLIR system baseline; keep bare-MLIR observations component-level |
-| Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical indexed-CSE output | Freeze a fault and diagnostic matrix |
+| Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical CSE/analysis scaling pilots | Freeze a fault and diagnostic matrix |
 | Artifact quality | Ten numerical ONNX paths and several reproducible pilots; one structural block policy has paired MobileNetV2, SqueezeNet, and two-result UltraFace diagnostics | Isolated multi-model repetitions, dispersion, task accuracy, second machine, and a materially smaller generated-C gap |
 
 The current generated-C pilots remain roughly 7--101 times slower than

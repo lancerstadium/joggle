@@ -1,4 +1,4 @@
-# Joggle: Cross-Layer AI Co-Design with a Progressive Function IR
+# Joggle: A Progressive Function IR for Cross-Layer AI Co-Design
 
 Working manuscript for the EuroSys 2027 fall cycle. The current file is
 an argument draft, not a submission-ready paper. Pilot values are labeled and
@@ -276,6 +276,13 @@ byte-identical IR and the same 597 edits. This is a mechanism check from one
 unisolated run, not a compiler-throughput result; it also demonstrates why
 end-to-end model bodies, rather than only small extension fixtures, belong in
 the evaluation.
+The same path exposed a path-sensitive affine-analysis key: including the
+complete DFS history prevented shared SSA address expressions from reusing a
+result. Keying by the verified acyclic SSA value instead, together with
+revision-aware loop-local access caches, reduces recursive affine calls from
+254,955 to 145,171 and one `spatial.block` diagnostic from 40.30 to 28.71
+seconds. Both variants perform 15,877 edits and emit byte-identical IR. This is
+also a one-run mechanism diagnostic; controlled repetitions remain required.
 
 Generated C is presently the main negative result. Depending on the model, the
 recorded unisolated pilots are about 7--101 times slower than one-thread ONNX

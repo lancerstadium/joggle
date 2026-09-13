@@ -1,0 +1,3 @@
+variant,revision,affine_key,query_cache,input_bytes,input_sha256,output_bytes,output_sha256,edits,affine_in_calls,affine_in_hits,related_calls,related_hits,syntax_calls,syntax_hits,wall_seconds,byte_identical
+control,c603d68,value-plus-seen-path,leaf-only,2675643,7340007dba3d075ca56d4cac9cd89bd60583fcad195999c8118243de18caf891,2803395,67efe4401f805ea82e96fcb00099ae1aa8bab07034500eafb02e62b51b844f9f,15877,254955,0,1105,0,330255,306986,40.30,true
+shared,1dd5e88,value,revision-aware,2675643,7340007dba3d075ca56d4cac9cd89bd60583fcad195999c8118243de18caf891,2803395,67efe4401f805ea82e96fcb00099ae1aa8bab07034500eafb02e62b51b844f9f,15877,145171,18666,532,266,70977,47708,28.71,true
