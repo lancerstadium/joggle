@@ -33,6 +33,7 @@ set(split_scalar_source "${ROOT}/split-scalar.c")
 set(split_scalar_program "${ROOT}/split-scalar")
 set(source "${ROOT}/model.c")
 set(program "${ROOT}/model")
+set(plan "${ROOT}/plan.attr")
 
 execute_process(
   COMMAND "${TOOL}" run c.prepare mem.plan "${MODEL}" -M "${MODULES}"
@@ -42,6 +43,30 @@ execute_process(
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "canonical preparation failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" query spatial.plan "${canonical}"
+          -M "${EXAMPLES}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${plan}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "spatial plan query failed (${result}):\n${error}")
+endif()
+file(READ "${plan}" plan_text)
+string(FIND "${plan_text}" "\"candidates\": 3" candidates_at)
+string(FIND "${plan_text}"
+       "\"current\": [\"n\", \"m\", \"oh\", \"ow\", \"q\", \"r\", \"s\"]"
+       current_at)
+string(FIND "${plan_text}"
+       "\"selected\": [\"n\", \"m\", \"oh\", \"q\", \"r\", \"s\", \"ow\"]"
+       selected_at)
+string(FIND "${plan_text}" "\"reads\": [" reads_at)
+string(FIND "${plan_text}" "\"writes\": [" writes_at)
+if(candidates_at EQUAL -1 OR current_at EQUAL -1 OR selected_at EQUAL -1 OR
+   reads_at EQUAL -1 OR writes_at EQUAL -1)
+  message(FATAL_ERROR "spatial plan omitted its evidence:\n${plan_text}")
 endif()
 execute_process(
   COMMAND "${TOOL}" run tile_pass.check_reorder "${canonical}"

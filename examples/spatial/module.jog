@@ -118,6 +118,59 @@ fn choose(m: Mod, op: Op) -> list<int> {
   return []
 }
 
+local fn axis_names(op: Op, order: list<int>) -> list<str> {
+  let body = ir.blks(op)[0]
+  let args = ir.args(body)
+  var out: list<str> = []
+  for axis in order {
+    out += [ir.name(args[axis])]
+  }
+  return out
+}
+
+// Describe every loop for which the locality policy has enough structural
+// evidence. The result is serializable compile-time data, not a schedule IR.
+fn plan(m: Mod) -> dict {
+  let before = ir.revision(m)
+  var rows: list<dict> = []
+  for fn in ir.fns(m) {
+    for op in ir.ops(fn) {
+      if ir.kind(op) == "loop" {
+        let state = tile.state_axes(m, op)
+        let reduction = tile.reduction_axes(m, op)
+        let scores = locality_scores(m, op)
+        if len(state) != 0 && len(reduction) != 0 && len(scores) != 0 {
+          var current: list<int> = []
+          for axis in 0..len(scores) {
+            current += [axis]
+          }
+          var selected = choose(m, op)
+          let changed = len(selected) != 0
+          if !changed {
+            selected = current
+          }
+          var row: dict = {}
+          row["fn"] = ir.name(fn)
+          row["current"] = axis_names(op, current)
+          row["selected"] = axis_names(op, selected)
+          row["scores"] = scores
+          row["reads"] = tile.read_forms(m, op)
+          row["writes"] = tile.write_forms(m, op)
+          row["changed"] = changed
+          rows += [row]
+        }
+      }
+    }
+  }
+  var out: dict = {}
+  out["revision"] = before
+  out["candidates"] = len(rows)
+  out["loops"] = rows
+  assert(ir.revision(m) == before,
+         "spatial.plan changed the module")
+  return out
+}
+
 fn apply(m: Mod) -> bool {
   return tile.reorder(m, ir.find("spatial.choose"))
 }

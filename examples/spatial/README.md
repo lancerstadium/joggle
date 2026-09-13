@@ -27,6 +27,19 @@ joggle emit c.source scheduled.jog \
   -M build/modules > model.c
 ```
 
+Before changing the program, the same policy is inspectable as ordinary
+compile-time data:
+
+```sh
+joggle query spatial.plan canonical.jog \
+  -M examples -M build/modules > plan.attr
+```
+
+The report lists each candidate's function, current and selected axis names,
+per-axis locality scores, and the read/write affine forms that produced the
+decision. It is read-only and serializable; there is no schedule object to keep
+in sync with the function IR.
+
 The example policy does not recognize convolution or require seven axes. It
 uses `tile.state_axes`, `tile.reduction_axes`, and the whole-loop
 `tile.read_forms`/`tile.write_forms` queries. It scores unit-stride access
