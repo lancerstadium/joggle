@@ -1551,6 +1551,31 @@ int main(int argc, char** argv) {
   CHECK(type_composition.find_fn("shaped").params().front().type() ==
         joggle::Ty("tensor<f32, [4]>"));
 
+  joggle::Mod structural_arity;
+  CHECK(joggle::parse(
+      env,
+      "module structural_arity\n"
+      "fn keep(x: opaque) -> opaque;\n"
+      "fn bad(x: opaque<i32>) -> opaque { return keep(x) }\n",
+      structural_arity, "structural-arity.jog"));
+  CHECK(!structural_arity.verify(env));
+  CHECK(std::any_of(structural_arity.diags().begin(),
+                    structural_arity.diags().end(),
+                    [](const joggle::Diag& diag) {
+                      return diag.message.find("has type 'opaque<i32>', "
+                                               "expected 'opaque'") !=
+                             std::string::npos;
+                    }));
+
+  joggle::Mod structural_exact;
+  CHECK(joggle::parse(
+      env,
+      "module structural_exact\n"
+      "fn keep(x: opaque<i32>) -> opaque<i32>;\n"
+      "fn good(x: opaque<i32>) -> opaque<i32> { return keep(x) }\n",
+      structural_exact, "structural-exact.jog"));
+  CHECK(structural_exact.verify(env));
+
   joggle::Mod wrong_shape;
   CHECK(joggle::parse(
       env,

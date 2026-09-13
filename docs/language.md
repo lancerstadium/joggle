@@ -130,8 +130,10 @@ tensor<f32, [2, N]>
 Whitespace is canonicalized when a `Ty` is constructed. `Ty::valid`,
 `Ty::name`, and `Ty::args` expose validation and structure to embedding code
 without introducing a class per type constructor. Malformed nesting and empty
-arguments are rejected while parsing declarations. Constructor meaning is
-supplied by modules; the core only needs the tree for matching and substitution.
+arguments are rejected while parsing declarations. Matching preserves that
+tree exactly: `opaque` and `opaque<i32>` are distinct types, and `_` is the only
+structural wildcard. Constructor meaning is supplied by modules; the core only
+needs the tree for matching and substitution.
 
 The same tree is available to compile-time functions. `ir.type(value)` returns
 a `Ty`; `name(type)` and `args(type)` inspect it, `int(type)` projects a numeric

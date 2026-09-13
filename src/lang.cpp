@@ -2154,8 +2154,6 @@ bool unify(const Ty& formal, const Ty& actual,
     return true;
   if (formal.name() != actual.name())
     return false;
-  if (formal.args().empty() || actual.args().empty())
-    return true;
   if (formal.args().size() != actual.args().size())
     return false;
   for (std::size_t index = 0; index < formal.args().size(); ++index)
