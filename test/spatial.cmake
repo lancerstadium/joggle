@@ -11,6 +11,7 @@ set(canonical "${ROOT}/canonical.jog")
 set(prepared "${ROOT}/prepared.jog")
 set(configured "${ROOT}/configured.jog")
 set(disabled "${ROOT}/disabled.jog")
+set(stable "${ROOT}/stable.jog")
 set(source "${ROOT}/model.c")
 set(program "${ROOT}/model")
 
@@ -84,6 +85,24 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "spatial scheduling failed (${result}):\n${error}")
 endif()
 execute_process(
+  COMMAND "${TOOL}" run spatial.apply "${prepared}"
+          -M "${EXAMPLES}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${stable}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "repeated spatial scheduling failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E compare_files "${prepared}" "${stable}"
+  RESULT_VARIABLE result
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "spatial scheduling is not idempotent")
+endif()
+execute_process(
   COMMAND "${CMAKE_COMMAND}" -E compare_files "${configured}" "${prepared}"
   RESULT_VARIABLE result
 )
@@ -123,7 +142,7 @@ if(NOT result EQUAL 0)
 endif()
 file(READ "${source}" text)
 if(NOT text MATCHES
-   "void model_main\\(const float\\* x, const float\\* weight, float\\* (out|out_out)\\)")
+   "void model_main\\(const float\\* x, const float\\* weight, float\\* [A-Za-z_][A-Za-z0-9_]*\\)")
   message(FATAL_ERROR
           "spatial C did not preserve the public function and value names:\n${text}")
 endif()

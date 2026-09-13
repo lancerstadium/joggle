@@ -2,15 +2,26 @@ module spatial
 use ir
 use tile
 
-local fn order() -> list<int> {
-  return [0, 1, 4, 5, 6, 2, 3]
+local fn order(op: Op, inner: int) -> list<int> {
+  let state = tile.state_axes(op)
+  let reduction = tile.reduction_axes(op)
+  if inner <= 0 || len(state) <= inner || len(reduction) == 0 {
+    return []
+  }
+  var out: list<int> = []
+  for i in 0..len(state) - inner {
+    out += [state[i]]
+  }
+  out += reduction
+  for i in len(state) - inner..len(state) {
+    out += [state[i]]
+  }
+  return out
 }
 
 fn choose(m: Mod, op: Op) -> list<int> {
-  let selected = order()
-  if ir.kind(op) == "loop" &&
-     len(ir.args(op)) - len(ir.outs(op)) == len(selected) &&
-     tile.can_reorder(m, op, selected) {
+  let selected = order(op, 2)
+  if len(selected) != 0 && tile.can_reorder(m, op, selected) {
     return selected
   }
   return []

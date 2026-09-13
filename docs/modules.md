@@ -297,6 +297,11 @@ every currently legal loop without mutation. The policy overloads
 `tile.reorder(m, policy)` and `tile.reorder(m, policy, config)` invoke an
 ordinary read-only function for each live loop; returning an empty `list<int>`
 skips it and returning a permutation requests the same checked edit.
+`tile.state_axes(loop)` and `tile.reduction_axes(loop)` derive axis roles from
+the affine read/write address of the loop's carried state. Unsupported loops
+return no roles. The queries do not inspect a callee name, tensor rank, or
+operator annotation, so a policy can choose an order without duplicating a
+semantic implementation or hard-coding the number of loop axes.
 `tile.splittable(m, factor)` and `tile.unrollable(m, factor)` expose legal loop
 sets; `tile.fusible(m)` exposes the exact pair collection consumed by automatic
 fusion. Enumeration is read-only and returns live `Op` handles, or

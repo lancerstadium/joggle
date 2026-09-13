@@ -356,8 +356,21 @@ The policy overload accepts a normal function returning `list<int>`:
 
 ```jog
 fn choose(m: Mod, op: Op) -> list<int> {
-  if tile.can_reorder(m, op, [0, 1, 4, 5, 6, 2, 3]) {
-    return [0, 1, 4, 5, 6, 2, 3]
+  let state = tile.state_axes(op)
+  let reduction = tile.reduction_axes(op)
+  if len(state) <= 2 || len(reduction) == 0 {
+    return []
+  }
+  var order: list<int> = []
+  for i in 0..len(state) - 2 {
+    order += [state[i]]
+  }
+  order += reduction
+  for i in len(state) - 2..len(state) {
+    order += [state[i]]
+  }
+  if tile.can_reorder(m, op, order) {
+    return order
   }
   return []
 }
@@ -370,6 +383,11 @@ fn apply(m: Mod) -> bool {
 The driver owns traversal and stale-handle checks, verifies that the policy is
 read-only, and sends every nonempty result through `reorder_issue`; user policy
 does not duplicate transformation safety.
+
+Policies need not know an operator name or fixed rank. `tile.state_axes(loop)`
+returns axes that select distinct elements of the carried state, while
+`tile.reduction_axes(loop)` returns axes that update the selected element. Both
+are inferred from the same affine access proof used by `tile.reorder`.
 
 `tile.fuse(m, producer, consumer)` uses the same explicit-selection rule. It
 accepts a conservative case: two one-dimensional loops over the same

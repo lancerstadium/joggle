@@ -21,3 +21,15 @@ fn layout(
     [0, 2, 3, 1], [0, 2, 3, 1], [0, 2, 3, 1], "RELU"
   )
 }
+
+fn reduce5(
+  x: tensor<f32, [2, 3, 4, 5, 6]>
+) -> tensor<f32, [2, 3, 4, 5]> {
+  var out = tensor<f32, [2, 3, 4, 5]>(f32(0))
+  for a in 0..2, b in 0..3, c in 0..4, d in 0..5, k in 0..6 {
+    let xi = ((((a * 3 + b) * 4 + c) * 5 + d) * 6 + k)
+    let yi = ((a * 3 + b) * 4 + c) * 5 + d
+    out[yi] = out[yi] + x[xi]
+  }
+  return out
+}

@@ -219,6 +219,46 @@ fn can_reorder(m: Mod, source: Op, order: list<int>) -> bool {
   return legal
 }
 
+local fn role_axes(source: Op, state: bool) -> list<int> {
+  if !ir.live(source) || ir.kind(source) != "loop" {
+    return []
+  }
+  let inputs = ir.args(source)
+  let outputs = ir.outs(source)
+  let axes = len(inputs) - len(outputs)
+  if axes <= 0 {
+    return []
+  }
+  var identity: list<int> = []
+  for axis in 0..axes {
+    identity += [axis]
+  }
+  if reorder_issue(source, identity) != "" {
+    return []
+  }
+  let body_args = ir.args(ir.blks(source)[0])
+  let accesses = writes(source, body_args[axes])
+  let form = affine(source, accesses[0][0])
+  var out: list<int> = []
+  for axis in 0..axes {
+    if (form[axis + 1] != 0) == state {
+      out += [axis]
+    }
+  }
+  return out
+}
+
+// Classify a reorderable loop by the affine address of its carried state.
+// State axes select distinct carried elements; reduction axes update an
+// already-selected element. Unsupported loops return no roles.
+fn state_axes(source: Op) -> list<int> {
+  return role_axes(source, true)
+}
+
+fn reduction_axes(source: Op) -> list<int> {
+  return role_axes(source, false)
+}
+
 fn reorderable(m: Mod, order: list<int>) -> list<Op> {
   let before = ir.revision(m)
   var out: list<Op> = []

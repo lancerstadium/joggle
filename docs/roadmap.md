@@ -51,9 +51,9 @@ The first read-only layer is now present: `tile.depends` follows conservative
 value dependence through nested blocks, and `tile.axes` projects that fact onto
 the axes of an existing loop. `tile.reads` and `tile.writes` expose grouped
 index values while following store and structured carried bindings. They are
-validated both on a small conditional grid and on the seven-axis
-spatial-convolution body. `tile.affine` now proves exact integer affine forms
-for those values and rejects nonlinear, truncating, unsupported, or
+validated on a small conditional grid, a five-axis generic reduction, and the
+seven-axis spatial-convolution body. `tile.affine` now proves exact integer
+affine forms for those values and rejects nonlinear, truncating, unsupported, or
 coefficient-overflowing expressions. `tile.reorder` now combines those forms
 with static bounds, carried-state accesses, an affine injectivity proof, and
 stable state/reduction subsequences. This covers a useful reduction-preserving

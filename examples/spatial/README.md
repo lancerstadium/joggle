@@ -27,8 +27,10 @@ joggle emit c.source scheduled.jog \
   -M build/modules > model.c
 ```
 
-The example policy selects compatible seven-axis loops, but correctness belongs
-to `tile.reorder`. Before editing, it requires static integer ranges, one
+The example policy does not recognize convolution or require seven axes. It
+uses `tile.state_axes` and `tile.reduction_axes` to keep the last two affine
+state axes inside the reduction band. Correctness belongs to `tile.reorder`.
+Before editing, the transform requires static integer ranges, one
 carried state, equal affine read/write addresses, an injective address map for
 state axes, and unchanged relative order within both state and reduction axes.
 Moving reduction axes across independent output axes is therefore accepted;
