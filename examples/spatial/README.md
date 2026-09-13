@@ -74,16 +74,21 @@ four-lane spatial pipeline; a padded three-lane split is rejected by affine
 legality instead of being turned into an out-of-bounds load or store. None of
 these paths defines a second `nn.conv2d` function.
 
-`spatial.block(m, factor)` is the complete generic policy used by that test. It
-selects loops with proved state and reduction axes, skips dynamic or
-non-divisible state extents, splits the last state axis, moves only the new
-inner axis below the reduction band, and scalarizes within the same hard
-budget. Each explicit edit returns its replacement `Op`, so the three edits
-compose directly without an anchor, result wrapper, or module rescan:
+`spatial.block(m, factors)` is the complete generic policy used by that test.
+For each loop it selects the first factor that exactly divides the innermost
+proved state extent; `[4, 7]`, for example, can cover both power-of-two spatial
+widths and width seven in one traversal. Dynamic and unmatched extents are
+left unchanged. The policy splits the selected state axis, moves only the new
+inner axis below the reduction band, and scalarizes within the selected hard
+budget. It neither inspects a callee name nor assumes a loop rank. Each
+explicit edit returns its replacement `Op`, so the three edits compose
+directly without an anchor, result wrapper, or module rescan:
 
 ```sh
 joggle run spatial.block canonical.jog --arg 2 \
   -M examples -M build/modules > blocked.jog
+joggle run spatial.block canonical.jog --arg '[4, 7]' \
+  -M examples -M build/modules > blocked-mixed.jog
 joggle run bounds.fold opt.fold opt.basic blocked.jog \
   -M build/modules > blocked-clean.jog
 ```

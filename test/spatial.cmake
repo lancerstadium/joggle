@@ -26,6 +26,7 @@ set(tiled_scalar_source "${ROOT}/tiled-scalar.c")
 set(tiled_scalar_program "${ROOT}/tiled-scalar")
 set(split_scalar_raw "${ROOT}/split-scalar-raw.jog")
 set(split_scalar "${ROOT}/split-scalar.jog")
+set(split_scalar_list "${ROOT}/split-scalar-list.jog")
 set(split_scalar_source "${ROOT}/split-scalar.c")
 set(split_scalar_program "${ROOT}/split-scalar")
 set(source "${ROOT}/model.c")
@@ -220,6 +221,49 @@ execute_process(
 if(NOT result EQUAL 0)
   message(FATAL_ERROR
           "split scalar cleanup failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run spatial.block "${canonical}"
+          --arg "[3, 2]" -M "${EXAMPLES}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${split_scalar_list}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "factor-list block composition failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run bounds.fold opt.fold opt.basic
+          "${split_scalar_list}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${split_scalar_list}.clean"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "factor-list block cleanup failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E compare_files
+          "${split_scalar}" "${split_scalar_list}.clean"
+  RESULT_VARIABLE result
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "factor-list policy disagrees with its first legal factor")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run spatial.block "${canonical}"
+          --arg "[2, 1]" -M "${EXAMPLES}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_QUIET
+  ERROR_VARIABLE error
+)
+if(result EQUAL 0 OR
+   NOT error MATCHES "spatial.block requires factors greater than one")
+  message(FATAL_ERROR
+          "factor-list policy accepted an invalid trailing factor: ${error}")
 endif()
 execute_process(
   COMMAND "${TOOL}" run tile_pass.check_split_scalarized "${split_scalar}"

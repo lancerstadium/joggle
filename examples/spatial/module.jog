@@ -41,8 +41,23 @@ fn apply(m: Mod) -> bool {
   return tile.reorder(m, ir.find("spatial.choose"))
 }
 
-fn block(m: Mod, factor: int) -> bool {
-  assert(factor > 1, "spatial.block requires a factor greater than one")
+[memo]
+local fn factor(extent: int, factors: list<int>) -> int {
+  for candidate in factors {
+    if extent > 0 && extent % candidate == 0 {
+      return candidate
+    }
+  }
+  return 1
+}
+
+fn block(m: Mod, factors: list<int>) -> bool {
+  assert(len(factors) > 0,
+         "spatial.block requires at least one factor")
+  for candidate in factors {
+    assert(candidate > 1,
+           "spatial.block requires factors greater than one")
+  }
   let candidates = ir.ops(m)
   var changed = false
   for source in candidates {
@@ -52,9 +67,10 @@ fn block(m: Mod, factor: int) -> bool {
       let extents = tile.extents(m, source)
       if len(state) > 0 && len(extents) > len(state) {
         let axis = state[len(state) - 1]
-        if extents[axis] > 0 && extents[axis] % factor == 0 {
+        let selected_factor = factor(extents[axis], factors)
+        if selected_factor > 1 {
           let axes = len(extents)
-          let split = tile.split(m, source, axis, factor)
+          let split = tile.split(m, source, axis, selected_factor)
           assert(ir.live(split),
                  "spatial.block could not split a selected loop")
           let selected = order(m, split, 1)
@@ -63,7 +79,7 @@ fn block(m: Mod, factor: int) -> bool {
           let reordered = tile.reorder(m, split, selected)
           assert(ir.live(reordered),
                  "spatial.block could not reorder a selected tile")
-          assert(ir.live(tile.scalarize(m, reordered, factor)),
+          assert(ir.live(tile.scalarize(m, reordered, selected_factor)),
                  "spatial.block could not promote a selected tile")
           changed = true
         }
@@ -71,4 +87,8 @@ fn block(m: Mod, factor: int) -> bool {
     }
   }
   return changed
+}
+
+fn block(m: Mod, factor: int) -> bool {
+  return block(m, [factor])
 }
