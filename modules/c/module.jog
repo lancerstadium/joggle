@@ -5,6 +5,7 @@ use mem
 use opt
 use tensor
 
+[memo]
 local fn c_name(text: str) -> str {
   let name = base.ident(text)
   let reserved = [
@@ -26,6 +27,7 @@ local fn c_name(text: str) -> str {
   return name
 }
 
+[memo]
 local fn label(value: Val) -> str {
   let name = ir.name(value)
   if name == "" {
@@ -34,6 +36,7 @@ local fn label(value: Val) -> str {
   return c_name(name)
 }
 
+[memo]
 local fn val(value: Val) -> str {
   if mem.planned(value) {
     let type = ir.type(value)
@@ -44,6 +47,7 @@ local fn val(value: Val) -> str {
   return label(value)
 }
 
+[memo]
 local fn call_name(m: Mod, op: Op) -> str {
   let target = ir.resolve(m, op)
   if ir.live(target) {
@@ -59,6 +63,7 @@ local fn call_name(m: Mod, op: Op) -> str {
   return ir.callee(op)
 }
 
+[memo]
 fn abi() -> dict {
   return {
     bool: {name: "bool",     bytes: 1, kind: "bool",     include: "stdbool.h"},
@@ -77,6 +82,7 @@ fn abi() -> dict {
   }
 }
 
+[memo]
 local fn spec(config: dict, name: str) -> Attr {
   if base.has(config, name) {
     return config[name]
@@ -86,6 +92,7 @@ local fn spec(config: dict, name: str) -> Attr {
   return defaults[name]
 }
 
+[memo]
 local fn field(config: dict, name: str, key: str) -> Attr {
   let type = spec(config, name)
   assert(base.kind(type) == "dict",
@@ -94,14 +101,17 @@ local fn field(config: dict, name: str, key: str) -> Attr {
   return base.get(type, key)
 }
 
+[memo]
 local fn scalar(type: Ty, config: dict) -> str {
   return str(field(config, base.name(type), "name"))
 }
 
+[memo]
 local fn scalar_name(name: str, config: dict) -> bool {
   return base.has(config, name) || base.has(abi(), name)
 }
 
+[memo]
 local fn class(type: Ty, config: dict) -> str {
   let name = base.name(type)
   if !scalar_name(name, config) {
@@ -110,27 +120,32 @@ local fn class(type: Ty, config: dict) -> str {
   return str(field(config, name, "kind"))
 }
 
+[memo]
 local fn number(type: Ty, config: dict) -> bool {
   let kind = class(type, config)
   return kind == "signed" || kind == "unsigned" || kind == "float"
 }
 
+[memo]
 local fn integer(type: Ty, config: dict) -> bool {
   let kind = class(type, config)
   return kind == "signed" || kind == "unsigned"
 }
 
+[memo]
 local fn same_repr(left: Ty, right: Ty, config: dict) -> bool {
   return class(left, config) != "" && class(right, config) != "" &&
          scalar(left, config) == scalar(right, config)
 }
 
+[memo]
 local fn width(type: Ty, config: dict) -> int {
   let bytes = base.int(field(config, base.name(type), "bytes"))
   assert(bytes > 0, "c: ABI byte width must be positive")
   return bytes
 }
 
+[memo]
 local fn alignment(type: Ty, config: dict) -> int {
   let desc = spec(config, base.name(type))
   var bytes = width(type, config)
@@ -141,6 +156,7 @@ local fn alignment(type: Ty, config: dict) -> int {
   return bytes
 }
 
+[memo]
 local fn index_type(config: dict) -> str {
   return scalar(ty("index"), config)
 }
@@ -154,6 +170,7 @@ local fn count(type: Ty) -> int {
   return out
 }
 
+[memo]
 local fn pad(depth: int) -> str {
   var out = ""
   for i in 0..depth {
@@ -318,6 +335,7 @@ local fn index(
          expr(m, indices[1], blob, data_fns, config) + "]"
 }
 
+[memo]
 local fn owned(m: Mod, fn: Fn) -> bool {
   for candidate in ir.fns(m) {
     if candidate == fn {
@@ -396,6 +414,7 @@ local fn data_name(m: Mod, requested: str) -> str {
   return name
 }
 
+[memo]
 local fn supported(type: Ty, config: dict) -> bool {
   if tensor.valid(type) {
     return tensor.static(type) &&
@@ -404,6 +423,7 @@ local fn supported(type: Ty, config: dict) -> bool {
   return scalar_name(base.name(type), config)
 }
 
+[memo]
 local fn callable(m: Mod, fn: Fn, config: dict) -> bool {
   if !ir.live(fn) || len(ir.generics(fn)) != 0 {
     return false
@@ -421,6 +441,7 @@ local fn callable(m: Mod, fn: Fn, config: dict) -> bool {
   return owned(m, fn) || len(ir.blks(fn)) == 0
 }
 
+[memo]
 local fn external_call(m: Mod, op: Op, config: dict) -> bool {
   if !ir.live(op) || ir.kind(op) != "call" {
     return false
@@ -478,6 +499,7 @@ local fn args(
   return out
 }
 
+[memo]
 local fn binary(op: str) -> str {
   let operators = {
     "operator %": "%", "operator &": "&", "operator &&": "&&",
@@ -493,6 +515,7 @@ local fn binary(op: str) -> str {
   return ""
 }
 
+[memo]
 local fn unary(op: str) -> str {
   let operators = {
     "operator !": "!", "operator +": "+", "operator -": "-",
@@ -549,6 +572,7 @@ local fn unary_types(
   return number(source, config) && same_repr(result, source, config)
 }
 
+[memo]
 local fn binding(fn: Fn) -> str {
   if !ir.live(fn) || !ir.has(fn, "c") {
     return ""
@@ -560,6 +584,7 @@ local fn binding(fn: Fn) -> str {
   return base.str(name)
 }
 
+[memo]
 local fn binding(m: Mod, op: Op) -> str {
   return binding(ir.resolve(m, op))
 }
@@ -575,6 +600,7 @@ local fn binding_header(fn: Fn) -> str {
   return base.str(name)
 }
 
+[memo]
 local fn noalias_enabled(fn: Fn) -> bool {
   if !ir.live(fn) || !ir.has(fn, "c") {
     return false
@@ -767,28 +793,33 @@ local fn aligned(offset: int, alignment: int) -> int {
   return ((offset + alignment - 1) / alignment) * alignment
 }
 
-local fn payload_offset(m: Mod, target: Op, config: dict) -> int {
+local fn payload_offsets(m: Mod, config: dict) -> dict {
+  var offsets: dict = {}
   var out = 0
   for op in ir.ops(m) {
     if payload(op) {
       let outputs = ir.outs(op)
+      assert(len(outputs) == 1,
+             "c: tensor payload must have one result")
       out = aligned(
         out, alignment(tensor.elem(ir.type(outputs[0])), config)
       )
-    }
-    if op == target {
-      return out
-    }
-    if payload(op) {
+      offsets[text(ir.key(outputs[0]))] = out
       out += base.size(payload_data(op))
     }
   }
-  assert(false, "c: tensor constant is outside the module")
-  return 0
+  return offsets
+}
+
+local fn payload_offset(offsets: dict, output: Val) -> int {
+  let key = text(ir.key(output))
+  assert(base.has(offsets, key),
+         "c: tensor constant is outside the payload layout")
+  return int(offsets[key])
 }
 
 local fn tensor_constant(
-  m: Mod, op: Op, depth: int, blob: str, config: dict
+  op: Op, depth: int, blob: str, offsets: dict, config: dict
 ) -> str {
   let outputs = ir.outs(op)
   let data = payload_data(op)
@@ -805,7 +836,7 @@ local fn tensor_constant(
     return indent + "const " + scalar(tensor.elem(type), config) + "* " +
            val(output) + " = (const " + scalar(tensor.elem(type), config) +
            "*)(const void*)(" + blob + " + " +
-           text(payload_offset(m, op, config)) + ");\n"
+           text(payload_offset(offsets, output)) + ");\n"
   }
   var storage = elements
   if storage == 0 {
@@ -1109,7 +1140,7 @@ local fn constant(op: Op, depth: int, config: dict) -> str {
 
 local fn loop(
   m: Mod, op: Op, depth: int, blob: str, data_fns: list<Fn>, config: dict,
-  direct: list<str>, results: list<str>
+  offsets: dict, direct: list<str>, results: list<str>
 ) -> str {
   let bodies = ir.blks(op)
   assert(len(bodies) == 1, "c: loop must have one body")
@@ -1155,7 +1186,8 @@ local fn loop(
     }
   }
   out += block(
-    m, body, depth + iterators, blob, data_fns, config, direct, results
+    m, body, depth + iterators, blob, data_fns, config, offsets, direct,
+    results
   )
   for reverse in 0..iterators {
     out += pad(depth + iterators - reverse - 1) + "}\n"
@@ -1165,17 +1197,17 @@ local fn loop(
 
 local fn branch(
   m: Mod, op: Op, depth: int, blob: str, data_fns: list<Fn>, config: dict,
-  direct: list<str>, results: list<str>
+  offsets: dict, direct: list<str>, results: list<str>
 ) -> str {
   let bodies = ir.blks(op)
   let inputs = ir.args(op)
   assert(len(bodies) == 2 && len(inputs) >= 1,
          "c: branch structure is invalid")
   let first = block(
-    m, bodies[0], depth + 1, blob, data_fns, config, direct, results
+    m, bodies[0], depth + 1, blob, data_fns, config, offsets, direct, results
   )
   let second = block(
-    m, bodies[1], depth + 1, blob, data_fns, config, direct, results
+    m, bodies[1], depth + 1, blob, data_fns, config, offsets, direct, results
   )
   var out = pad(depth) + "if (" +
             expr(m, inputs[0], blob, data_fns, config) +
@@ -1191,7 +1223,7 @@ local fn branch(
 local fn block(
   m: Mod, body: Blk, depth: int, blob: str,
   data_fns: list<Fn>, config: dict,
-  direct: list<str>, results: list<str>
+  offsets: dict, direct: list<str>, results: list<str>
 ) -> str {
   var out = ""
   for op in ir.ops(body) {
@@ -1200,7 +1232,9 @@ local fn block(
       out += call(m, op, depth, blob, data_fns, config, direct, results)
     } else {
       if kind == "loop" {
-        out += loop(m, op, depth, blob, data_fns, config, direct, results)
+        out += loop(
+          m, op, depth, blob, data_fns, config, offsets, direct, results
+        )
       } else {
         if kind == "branch" {
           let logic = logical(m, op, blob, data_fns, config)
@@ -1208,7 +1242,7 @@ local fn block(
           if logic == "" ||
              (len(outputs) == 1 && ir.name(outputs[0]) != "") {
             out += branch(
-              m, op, depth, blob, data_fns, config, direct, results
+              m, op, depth, blob, data_fns, config, offsets, direct, results
             )
           }
         } else {
@@ -1217,7 +1251,7 @@ local fn block(
           } else {
             if kind == "constant" {
               if payload(op) {
-                out += tensor_constant(m, op, depth, blob, config)
+                out += tensor_constant(op, depth, blob, offsets, config)
               } else {
                 out += constant(op, depth, config)
               }
@@ -1556,7 +1590,7 @@ local fn linkage(m: Mod, fn: Fn) -> str {
 }
 
 local fn definition(
-  m: Mod, fn: Fn, blob: str, data_fns: list<Fn>, config: dict
+  m: Mod, fn: Fn, blob: str, data_fns: list<Fn>, config: dict, offsets: dict
 ) -> str {
   let bodies = ir.blks(fn)
   assert(len(bodies) >= 1, "c: function has no body")
@@ -1583,7 +1617,8 @@ local fn definition(
          signature(m, fn, blob, data_fns, config, true) + " {\n" +
          memory +
          block(
-           m, bodies[0], 1, data_name, data_fns, config, direct, results
+           m, bodies[0], 1, data_name, data_fns, config, offsets, direct,
+           results
          ) + "}\n"
 }
 
@@ -1794,6 +1829,7 @@ local fn includes(names: list<str>) -> str {
   return out
 }
 
+[memo]
 local fn type_header(type: Ty, config: dict) -> str {
   var scalar_type = type
   if tensor.valid(type) {
@@ -2038,10 +2074,14 @@ local fn emit(m: Mod, blob: str, config: dict) -> str {
   if blob != "" {
     data_fns = data_functions(m)
   }
+  var offsets: dict = {}
+  if blob != "" {
+    offsets = payload_offsets(m, config)
+  }
   let declarations = prototypes(m, fns, calls, blob, data_fns, config)
   var definitions = ""
   for fn in fns {
-    definitions += definition(m, fn, blob, data_fns, config) + "\n"
+    definitions += definition(m, fn, blob, data_fns, config, offsets) + "\n"
   }
   return includes(source_headers(m, fns, blob, config)) + "\n" +
          declarations + "\n" + definitions

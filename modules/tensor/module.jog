@@ -4,6 +4,7 @@ use base
 fn tensor<E: Ty, S: list<int>>() -> Ty;
 fn tensor<E: Ty, S: list<int>>(fill: E) -> tensor<E, S>;
 
+[memo]
 fn valid(type: Ty) -> bool {
   if name(type) != "tensor" {
     return false
@@ -14,6 +15,7 @@ fn valid(type: Ty) -> bool {
   return name(args(type)[1]) == "[]"
 }
 
+[memo]
 fn static(type: Ty) -> bool {
   if !valid(type) {
     return false
@@ -26,10 +28,12 @@ fn static(type: Ty) -> bool {
   return true
 }
 
+[memo]
 fn elem(type: Ty) -> Ty {
   return args(type)[0]
 }
 
+[memo]
 fn shape(type: Ty) -> list<int> {
   var out: list<int> = []
   for dim in args(args(type)[1]) {
@@ -38,6 +42,7 @@ fn shape(type: Ty) -> list<int> {
   return out
 }
 
+[memo]
 fn dims(type: Ty) -> list<Ty> {
   return args(args(type)[1])
 }
