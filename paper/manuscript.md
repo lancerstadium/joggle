@@ -207,7 +207,12 @@ Generated C is presently the main negative result. Depending on the model, the
 recorded unisolated pilots are about 7--101 times slower than one-thread ONNX
 Runtime. A retired out-of-tree spatial convolution body improved five matched
 C variants by 1.36--6.29 times without frontend or emitter changes, but does not
-close the production-runtime gap. A second ordinary implementation reduces
+provide evidence for the replacement pass. A fresh single-model pilot instead
+applies the generic `tile.reorder` pass to 64 instantiated canonical Conv
+bodies without retargeting any call. Its pooled 20-call MobileNetV2 median falls
+from 351.060 to 194.463 ms (1.81x), with identical output hash and unchanged
+`2.0981e-5` reference error. This run remains unisolated and does not close the
+production-runtime gap. A second ordinary implementation reduces
 GoogLeNet's static workspace elements by 58.4% and slots from 55 to 6, while
 increasing its unisolated median latency by 27.5%. This is a resource tradeoff,
 not a Pareto or speedup claim. Final experiments require isolated repeated

@@ -9,6 +9,8 @@ pilot records:
   protocol;
 - [model-study.md](model-study.md) defines staged conventional-model
   compatibility and its generated frontier table;
+- [spatial-pilot.cmake](spatial-pilot.cmake) rebuilds and checks the canonical
+  versus pass-reordered C variants from managed model artifacts;
 - [data/](data/) contains pilot measurements and their provenance.
 
 Implemented features are not automatically treated as research contributions.
@@ -190,9 +192,14 @@ frozen.
   reduces median latency by 1.93x on MobileNetV2, 3.13x on ResNet18, 6.29x on
   TinyYOLOv2, 1.36x on UltraFace, and 3.45x on SqueezeNet while preserving
   their recorded error bounds. This narrows but does not close the runtime
-  gap. The current source expresses this layout through `tile.reorder` over the
-  canonical body; controlled reruns are required before transferring the old
-  measurements to that pass-based path.
+  gap. Those old ratios are not transferred to the replacement mechanism. A
+  fresh MobileNetV2 pilot at `e909ec0` instead applies the generic
+  `tile.reorder` pass to 64 instantiated canonical Conv bodies, with no call
+  retargeting or alternate Conv implementation. Across two unisolated
+  ten-call processes per variant, the pooled median falls from 351.060 to
+  194.463 ms (1.81x), while the output hash and `2.0981e-5` reference error
+  remain unchanged. This validates the pass path on one real model; broader,
+  isolated reruns are still required.
 - A deterministic VM execution of the exposed MobileNetV2 program reported
   95,592,386,975 steps.
 - A structural fusion experiment reduced loops from 374 to 328 and tensor

@@ -98,9 +98,37 @@ direction-setting evidence for replaceable implementation modules, not a
 production-runtime or publication speed claim; the processes were not
 interleaved, isolated, pinned, or frequency-controlled.
 The implementation body was later retired in favor of a generic
-reduction-preserving `tile.reorder` pass over the canonical `nn` body. These
-revision-pinned rows remain valid history but are not evidence for the new
-mechanism until the matched variants are regenerated and rerun.
+reduction-preserving `tile.reorder` pass over the canonical `nn` body. The
+revision-pinned rows remain valid history but are not transferred to that new
+mechanism.
+
+`spatial-pass-pilot.csv` is the first fresh measurement of the pass-based path.
+At revision `e909ec0`, the same MobileNetV2 semantic IR is instantiated into 64
+ordinary Conv functions and prepared to canonical seven-axis loops. The
+out-of-tree `spatial.apply` policy then calls the generic `tile.reorder` pass;
+there is no alternate Conv body or call retargeting. Both variants subsequently
+run the same `mem.plan`, static C placement, external-weight emission, and
+strict C11 `-O3 -DNDEBUG` compilation. The 14,156,544-byte payload is identical
+to the prior stored payload (SHA-256
+`c40aa17983eda5de11337934906bbd7bbde107d55f383b4dbfd0f00146f15aaf`).
+
+Two processes per variant perform three warm-ups and ten recorded calls on an
+unisolated Apple M4. Pooling all 20 calls gives canonical/spatial medians of
+351.060/194.463 ms, or a 1.81x pilot ratio. Every call has output hash
+`44781c44effa5746`; both variants retain maximum absolute error
+`2.09808349609375e-5` against the stored ONNX Runtime output. Candidate C is
+152,520 bytes versus 151,824 bytes for the baseline. The official ONNX model,
+semantic IR, input, and reference hashes are respectively
+`c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f`,
+`7a9a1d442068d5d346109808fca0b15ac77a453ad649289ea3b488d5821f93e3`,
+`97972f018032f84938f48b7ef79756e473ebcc983558987f93f24cddc01b274a`,
+and `8411a51bfb945b17a4cd7ebb75a512849a902878c02e8212741ab11d6149bac8`.
+This remains a direction-setting pilot: processes were alternated but the
+machine was not isolated, pinned, or frequency controlled, and only one model
+was rerun. [`paper/spatial-pilot.cmake`](../spatial-pilot.cmake) reproduces the
+complete instantiation, preparation, pass, planning, placement, emission,
+strict compilation, interface/payload equality checks, numerical check, and
+four-process measurement from caller-supplied managed artifacts.
 
 `mobilenetv2-fusion-pilot.csv` was recorded on 12 September 2026 on an Apple
 M4 running Darwin 24.6.0 with Apple Clang 17.0.0 (`clang-1700.6.3.2`). All
