@@ -955,7 +955,6 @@ private:
         applied.args().empty() ? name : applied.name();
     const std::vector<Ty> explicit_arguments =
         applied.args().empty() ? std::vector<Ty>{} : applied.args();
-    const std::vector<Fn> candidates = env_.resolve_fns(current, symbol);
     std::vector<Ty> argument_types;
     argument_types.reserve(args.size());
     for (std::size_t index = 0; index < args.size(); ++index) {
@@ -986,6 +985,7 @@ private:
       target = cached->target;
       generic_values = cached->generics;
     } else {
+      const std::vector<Fn> candidates = env_.resolve_fns(current, symbol);
       target = resolve_overload(candidates, argument_types, explicit_arguments,
                                 nullptr, &ambiguous, context, &generic_values);
       if (target)
