@@ -42,6 +42,17 @@ bool fold_add_zero(joggle::Mod& mod, joggle::Op* removed = nullptr) {
   return false;
 }
 
+bool rejects_type(joggle::Env& env, std::string_view source,
+                  std::string_view message) {
+  joggle::Mod mod;
+  if (!joggle::parse(env, source, mod, "invalid-type.jog") || mod.verify(env))
+    return false;
+  return std::any_of(mod.diags().begin(), mod.diags().end(),
+                     [&](const joggle::Diag& diag) {
+                       return diag.message.find(message) != std::string::npos;
+                     });
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -1477,59 +1488,22 @@ int main(int argc, char** argv) {
   CHECK(wrong_shape.diags().front().message.find("expected 'list<int>'") !=
         std::string::npos);
 
-  joggle::Mod parameterized_intrinsic;
-  CHECK(joggle::parse(
+  CHECK(rejects_type(
+      env, "module invalid\nfn bad(x: i32<f32>) -> i32<f32> { return x }\n",
+      "does not accept type arguments"));
+  CHECK(rejects_type(
       env,
-      "module parameterized_intrinsic\n"
-      "fn bad(x: i32<f32>) -> i32<f32> { return x }\n",
-      parameterized_intrinsic, "parameterized-intrinsic.jog"));
-  CHECK(!parameterized_intrinsic.verify(env));
-  CHECK(!parameterized_intrinsic.diags().empty());
-  CHECK(parameterized_intrinsic.diags().front().message.find(
-            "does not accept type arguments") != std::string::npos);
-
-  joggle::Mod parameterized_generic;
-  CHECK(joggle::parse(
-      env,
-      "module parameterized_generic\n"
-      "fn bad<T: Ty>(x: T<i32>) -> T<i32> { return x }\n",
-      parameterized_generic, "parameterized-generic.jog"));
-  CHECK(!parameterized_generic.verify(env));
-  CHECK(!parameterized_generic.diags().empty());
-  CHECK(parameterized_generic.diags().front().message.find(
-            "cannot be used as a type constructor") != std::string::npos);
-
-  joggle::Mod value_generic_as_type;
-  CHECK(joggle::parse(
-      env,
-      "module value_generic_as_type\n"
-      "fn bad<N: int>(x: N) -> N { return x }\n",
-      value_generic_as_type, "value-generic-as-type.jog"));
-  CHECK(!value_generic_as_type.verify(env));
-  CHECK(!value_generic_as_type.diags().empty());
-  CHECK(value_generic_as_type.diags().front().message.find(
-            "has type 'int', expected 'Ty'") != std::string::npos);
-
-  joggle::Mod list_term_as_type;
-  CHECK(joggle::parse(
-      env,
-      "module list_term_as_type\n"
-      "fn bad(x: [i32]) -> [i32] { return x }\n",
-      list_term_as_type, "list-term-as-type.jog"));
-  CHECK(!list_term_as_type.verify(env));
-  CHECK(!list_term_as_type.diags().empty());
-  CHECK(list_term_as_type.diags().front().message.find(
-            "has type 'list<Ty>', expected 'Ty'") != std::string::npos);
-
-  joggle::Mod missing_list_element;
-  CHECK(joggle::parse(env,
-                      "module missing_list_element\n"
-                      "fn bad(x: list) -> list { return x }\n",
-                      missing_list_element, "missing-list-element.jog"));
-  CHECK(!missing_list_element.verify(env));
-  CHECK(!missing_list_element.diags().empty());
-  CHECK(missing_list_element.diags().front().message.find(
-            "type 'list' expects 1 argument") != std::string::npos);
+      "module invalid\nfn bad<T: Ty>(x: T<i32>) -> T<i32> { return x }\n",
+      "cannot be used as a type constructor"));
+  CHECK(rejects_type(
+      env, "module invalid\nfn bad<N: int>(x: N) -> N { return x }\n",
+      "has type 'int', expected 'Ty'"));
+  CHECK(rejects_type(
+      env, "module invalid\nfn bad(x: [i32]) -> [i32] { return x }\n",
+      "has type 'list<Ty>', expected 'Ty'"));
+  CHECK(rejects_type(
+      env, "module invalid\nfn bad(x: list) -> list { return x }\n",
+      "type 'list' expects 1 argument"));
 
   joggle::Mod multi;
   constexpr std::string_view multi_source =
