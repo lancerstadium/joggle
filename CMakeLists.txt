@@ -628,6 +628,7 @@ if(JOGGLE_BUILD_TESTS)
         -DTOOL=$<TARGET_FILE:joggle-tool>
         -DCC=${JOGGLE_TEST_C_COMPILER}
         -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile.jog
+        -DFORM_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_form.jog
         -DCUSTOM_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_custom.jog
         -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_main.c
         -DFUSE_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem.jog

@@ -1,5 +1,5 @@
 if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
-   NOT DEFINED CUSTOM_MODEL OR
+   NOT DEFINED FORM_MODEL OR NOT DEFINED CUSTOM_MODEL OR
    NOT DEFINED HARNESS OR NOT DEFINED FUSE_MODEL OR
    NOT DEFINED FUSE_HARNESS OR NOT DEFINED INVALID_FUSE_MODEL OR
    NOT DEFINED EFFECT_FUSE_MODEL OR
@@ -32,6 +32,18 @@ execute_process(
 if(NOT axes_result EQUAL 0)
   message(FATAL_ERROR
           "axis dependence query failed:\n${axes_output}${axes_error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_forms "${FORM_MODEL}"
+          -M "${MODULES}"
+  RESULT_VARIABLE forms_result
+  OUTPUT_VARIABLE forms_output
+  ERROR_VARIABLE forms_error
+)
+if(NOT forms_result EQUAL 0)
+  message(FATAL_ERROR
+          "linear access-form query failed:\n${forms_output}${forms_error}")
 endif()
 
 execute_process(

@@ -1,0 +1,67 @@
+[memo]
+local fn address_form(
+  m: Mod, loop: Op, value: Val, indices: list<Val>
+) -> list<int> {
+  let type = ir.type(value)
+  if !tensor.static(type) {
+    return []
+  }
+  if len(indices) == 1 {
+    return affine(m, loop, indices[0])
+  }
+  let shape = tensor.shape(type)
+  if len(indices) != len(shape) {
+    return []
+  }
+  let axes = len(ir.args(loop)) - len(ir.outs(loop))
+  var out = affine_zero(axes)
+  var stride = 1
+  for reverse in 0..len(shape) {
+    let axis = len(shape) - reverse - 1
+    let index = affine(m, loop, indices[axis])
+    let term = affine_scale(index, stride)
+    if len(term) == 0 {
+      return []
+    }
+    out = affine_add(out, term, false)
+    if len(out) == 0 {
+      return []
+    }
+    let next = affine_mul_int(stride, shape[axis])
+    if len(next) == 0 {
+      return []
+    }
+    stride = next[0]
+  }
+  return out
+}
+
+local fn access_forms(
+  m: Mod, loop: Op, value: Val, stores: bool
+) -> list<list<int>> {
+  let before = ir.revision(m)
+  var accesses = reads(m, loop, value)
+  if stores {
+    accesses = writes(m, loop, value)
+  }
+  var out: list<list<int>> = []
+  for indices in accesses {
+    out += [address_form(m, loop, value, indices)]
+  }
+  assert(ir.revision(m) == before,
+         "tile access-form query changed the module")
+  return out
+}
+
+// Return one row-major linear affine address per read. A form is
+// [offset, coefficient0, coefficient1, ...]; an empty inner list preserves an
+// access whose address is not provably affine.
+fn read_forms(m: Mod, loop: Op, value: Val) -> list<list<int>> {
+  return access_forms(m, loop, value, false)
+}
+
+// Return one row-major linear affine address per write, following structured
+// carried-value versions of the selected tensor.
+fn write_forms(m: Mod, loop: Op, value: Val) -> list<list<int>> {
+  return access_forms(m, loop, value, true)
+}

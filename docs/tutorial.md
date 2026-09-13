@@ -342,6 +342,13 @@ actual index vector of one access. Store updates and structured carried values
 are followed conservatively, so the query does not expose compiler-created
 versions as a second user-facing abstraction.
 
+Policies that need layout cost rather than the original index values can call
+`tile.read_forms(m, loop, tensor)` or `tile.write_forms(m, loop, tensor)`.
+Each result is the row-major linear form of one access. For a static
+`tensor<E, [2, 3]>` indexed by `[row, column]`, the form is `[0, 3, 1]`.
+An empty inner list retains the fact that an access exists while stating that
+its address is not provably affine; dynamic tensor layouts are never guessed.
+
 A project can then choose a rewrite with ordinary reflection:
 
 ```jog

@@ -74,6 +74,44 @@ fn check_axes(m: Mod) -> bool {
   return true
 }
 
+fn check_forms(m: Mod) -> bool {
+  let before = ir.revision(m)
+  let function = ir.find(m, "stencil")
+  assert(ir.live(function), "form check requires stencil")
+  var loops: list<Op> = []
+  for op in ir.ops(function) {
+    if ir.kind(op) == "loop" {
+      loops += [op]
+    }
+  }
+  assert(len(loops) == 1, "form check requires one loop")
+  let loop = loops[0]
+  let params = ir.params(function)
+  let body_args = ir.args(ir.blks(loop)[0])
+  assert(len(params) == 1 && len(body_args) == 3,
+         "form check found an invalid signature")
+  assert(tile.read_forms(m, loop, params[0]) == [[0, 3, 1]],
+         "form check found the wrong row-major read address")
+  assert(tile.write_forms(m, loop, body_args[2]) == [[0, 3, 1]],
+         "form check found the wrong row-major write address")
+
+  let nonlinear = ir.find(m, "nonlinear")
+  assert(ir.live(nonlinear), "form check requires nonlinear")
+  var nonlinear_loops: list<Op> = []
+  for op in ir.ops(nonlinear) {
+    if ir.kind(op) == "loop" {
+      nonlinear_loops += [op]
+    }
+  }
+  let nonlinear_params = ir.params(nonlinear)
+  assert(len(nonlinear_loops) == 1 && len(nonlinear_params) == 1 &&
+         tile.read_forms(m, nonlinear_loops[0], nonlinear_params[0]) == [[]],
+         "form check did not preserve an unproved access")
+  assert(ir.revision(m) == before,
+         "access-form queries changed the module")
+  return true
+}
+
 fn check_custom_affine(m: Mod) -> bool {
   let function = ir.find(m, "work")
   assert(ir.live(function), "custom affine check requires work")
