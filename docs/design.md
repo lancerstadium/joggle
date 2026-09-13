@@ -250,6 +250,11 @@ They are modules, not privileged backends. Custom scalar representations can
 provide target-specific adapters in separate modules, as the saturating-number
 example does, without adding those representations to the core.
 
+Preparing one artifact must not silently prepare another. A workflow that
+checks several targets derives each target state from the same verified source
+snapshot; target preparation may destructively refine its own copy without
+coupling the other artifact path to its cost or accepted forms.
+
 Code generation is late and explicit. Storage placement, external payloads,
 ABI choices, and target calls remain visible as IR or function arguments before
 emission. SystemVerilog, custom RISC-V code, and cycle models are possible

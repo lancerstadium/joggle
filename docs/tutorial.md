@@ -676,7 +676,8 @@ ctest --test-dir build -R onnx-app-mnist --output-on-failure
 ```
 
 The application-sized MobileNetV2 stress gate uses the same driver and is
-separately opt-in because its fully exposed scalar execution is much longer:
+separately opt-in because model preparation and strict C compilation are much
+larger than the normal test cases:
 
 ```sh
 cmake -DOUT=.cache/onnx-zoo -DMODELS=mobilenetv2-7 -DAPP=ON \
@@ -688,14 +689,16 @@ ctest --test-dir build -R onnx-app-mobilenet --output-on-failure
 ```
 
 That test performs import, explicit semantic conversion, dead-data cleanup,
-body exposure, deterministic VM execution, static memory planning, explicit C
-storage placement, strict C11 compilation, and comparison of both targets'
-1,000 outputs. The model, input, output, and archive hashes are checked before
-execution. Because the scalar VM path executes 95,592,386,975 instructions,
-this is intentionally a long application gate. Its inspectable `model.jog`,
-`model.vm`, `model.c`, generated `model.h`, input, expected output, executable,
-and `result.txt` remain under `build/examples/mobilenet` after the test. The
-harness has
+body exposure, static memory planning, explicit C storage placement, strict
+C11 compilation, and comparison of all 1,000 outputs. The model, input, output,
+and archive hashes are checked before execution. The scalar reference VM is
+validated independently by the MNIST application and dedicated execution
+tests; MobileNet does not prepare or execute a VM artifact before selecting C.
+When a workflow requests both targets, the driver prepares the VM from a parsed
+copy of the converted model so its destructive preparation cannot affect the C
+path. MobileNet's inspectable `model.jog`, `model.c`, generated `model.h`,
+input, expected output, executable, and `result.txt` remain under
+`build/examples/mobilenet` after the test. The harness has
 no handwritten model declaration, so strict compilation also checks that the
 header is the actual application ABI rather than a decorative artifact.
 

@@ -858,7 +858,7 @@ if(JOGGLE_BUILD_TESTS)
     add_dependencies(joggle-onnx-app joggle-onnx joggle-vm)
 
     function(joggle_onnx_app name case model model_hash input_hash output_hash
-             timeout labels)
+             vm timeout labels)
       if("${case}" STREQUAL "")
         return()
       endif()
@@ -890,6 +890,7 @@ if(JOGGLE_BUILD_TESTS)
           -DPYTHON=${JOGGLE_PYTHON_EXECUTABLE}
           -DGENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/examples/onnx/make_harness.py
           -DROOT=${CMAKE_CURRENT_BINARY_DIR}/examples/${name}
+          -DVM=${vm}
           -P ${CMAKE_CURRENT_SOURCE_DIR}/examples/onnx/run.cmake
       )
       set_tests_properties(
@@ -911,14 +912,14 @@ if(JOGGLE_BUILD_TESTS)
       2f06e72de813a8635c9bc0397ac447a601bdbfa7df4bebc278723b958831c9bf
       2b4cf8da91bc87fbe0c3e52e54ea1c48d9744f5c6139d3d7457927506ab9c286
       6d0aea7dae241e2e09f75f3552f535026afa58f353a1ca58590db48f4e364c62
-      120 "onnx;execution"
+      ON 120 "onnx;execution"
     )
     joggle_onnx_app(
       mobilenet "${JOGGLE_EXAMPLE_MOBILENET}" mobilenetv2-7.onnx
       c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f
       8d2dd7bc0a81404c443315a7cdcec81b502082cf3f450cec204b7278be85a254
       55c3689e6946111fd78ad250e857c36d58fd383819dd0d3997cd1332c7d86cbd
-      1200 "heavy;onnx;execution"
+      OFF 1200 "heavy;onnx;execution"
     )
   endif()
   if(JOGGLE_BUILD_TFLITE AND NOT JOGGLE_TEST_TFLITE_MODEL STREQUAL "")

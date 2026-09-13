@@ -92,7 +92,10 @@ bool tensor(std::string_view path, Bytes& data) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  CHECK(argc == 11);
+  CHECK(argc == 12);
+  const std::string_view vm_mode(argv[11]);
+  CHECK(vm_mode == "vm" || vm_mode == "no-vm");
+  const bool check_vm = vm_mode == "vm";
   const Bytes encoded = read(argv[1]);
   CHECK(!encoded.empty());
   Bytes input;
@@ -110,7 +113,6 @@ int main(int argc, char** argv) {
 
   CHECK(env.load("onnx.nn"));
   CHECK(env.load("opt"));
-  CHECK(env.load("vm"));
   CHECK(env.load("c"));
   CHECK(env.load("mem"));
   joggle::Mod model;
@@ -121,29 +123,36 @@ int main(int argc, char** argv) {
       joggle::Attr(joggle::Attr::List{})};
   CHECK(joggle::run(env, "opt.dce", model, dce_args));
   CHECK(model.verify(env));
-  CHECK(joggle::run(env, "vm.prepare", model));
-  CHECK(model.verify(env));
 
-  joggle::Attr image;
-  if (!joggle::query(env, "vm.image", model, image)) {
-    env.print_diags(stderr);
-    return 1;
+  if (check_vm) {
+    CHECK(env.load("vm"));
+    joggle::Mod vm_model;
+    CHECK(joggle::parse(env, joggle::print(model), vm_model, argv[1]));
+    CHECK(vm_model.verify(env));
+    CHECK(joggle::run(env, "vm.prepare", vm_model));
+    CHECK(vm_model.verify(env));
+
+    joggle::Attr image;
+    if (!joggle::query(env, "vm.image", vm_model, image)) {
+      env.print_diags(stderr);
+      return 1;
+    }
+    CHECK(image.string() && write(argv[9], *image.string()));
+    const std::vector<joggle::Attr> vm_args{
+        joggle::Attr(std::string(*image.string())), joggle::Attr("main"),
+        joggle::Attr(input)};
+    std::vector<joggle::Attr> vm_result;
+    const auto started = std::chrono::steady_clock::now();
+    CHECK(env.call("vm.run", vm_args, vm_result));
+    const std::chrono::duration<double> elapsed =
+        std::chrono::steady_clock::now() - started;
+    CHECK(vm_result.size() == 2 && vm_result[0].bytes() &&
+          close(*vm_result[0].bytes(), expected) && vm_result[1].integer() &&
+          *vm_result[1].integer() > 0);
+    std::printf("VM: %lld steps in %.3f seconds\n",
+                static_cast<long long>(*vm_result[1].integer()),
+                elapsed.count());
   }
-  CHECK(image.string() && write(argv[9], *image.string()));
-  const std::vector<joggle::Attr> vm_args{
-      joggle::Attr(std::string(*image.string())), joggle::Attr("main"),
-      joggle::Attr(input)};
-  std::vector<joggle::Attr> vm_result;
-  const auto started = std::chrono::steady_clock::now();
-  CHECK(env.call("vm.run", vm_args, vm_result));
-  const std::chrono::duration<double> elapsed =
-      std::chrono::steady_clock::now() - started;
-  CHECK(vm_result.size() == 2 && vm_result[0].bytes() &&
-        close(*vm_result[0].bytes(), expected) && vm_result[1].integer() &&
-        *vm_result[1].integer() > 0);
-  std::printf("VM: %lld steps in %.3f seconds\n",
-              static_cast<long long>(*vm_result[1].integer()),
-              elapsed.count());
 
   if (!joggle::run(env, "c.prepare", model)) {
     env.print_diags(stderr);

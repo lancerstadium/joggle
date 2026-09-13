@@ -1,9 +1,15 @@
 if(NOT DEFINED APP OR NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
    NOT DEFINED INPUT OR NOT DEFINED OUTPUT OR NOT DEFINED MODULES OR
-   NOT DEFINED PYTHON OR NOT DEFINED GENERATOR OR NOT DEFINED ROOT)
+   NOT DEFINED PYTHON OR NOT DEFINED GENERATOR OR NOT DEFINED ROOT OR
+   NOT DEFINED VM)
   message(FATAL_ERROR
           "ONNX example requires APP, TOOL, CC, MODEL, INPUT, OUTPUT, MODULES, "
-          "PYTHON, GENERATOR, and ROOT")
+          "PYTHON, GENERATOR, ROOT, and VM")
+endif()
+
+set(vm_mode no-vm)
+if(VM)
+  set(vm_mode vm)
 endif()
 
 file(REMOVE_RECURSE "${ROOT}")
@@ -28,14 +34,14 @@ set(blob_harness "${ROOT}/harness-blob.c")
 execute_process(
   COMMAND "${APP}" "${MODEL}" "${INPUT}" "${OUTPUT}"
           "${source}" "${input}" "${expected}" "${MODULES}"
-          "${prepared}" "${image}" "${header}"
+          "${prepared}" "${image}" "${header}" "${vm_mode}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR
-          "ONNX preparation or VM execution failed (${result}):\n${output}${error}")
+          "ONNX application preparation failed (${result}):\n${output}${error}")
 endif()
 set(vm_output "${output}")
 
