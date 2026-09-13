@@ -56,6 +56,60 @@ if(EXISTS "${TEST_ROOT}/fragment_error")
 endif()
 file(REMOVE_RECURSE "${fragment_root}")
 
+set(graph_root "${TEST_ROOT}.module-graph")
+file(REMOVE_RECURSE "${graph_root}")
+foreach(module IN ITEMS graph.leaf graph.left graph.right graph.top
+                        graph.first graph.second graph.ambiguous
+                        graph.qualified graph.cycle_a graph.cycle_b)
+  file(MAKE_DIRECTORY "${graph_root}/${module}")
+endforeach()
+file(WRITE "${graph_root}/graph.leaf/module.jog"
+     "module graph.leaf\n"
+     "fn identity<T: Ty>(x: T) -> T { return x }\n")
+file(WRITE "${graph_root}/graph.left/module.jog"
+     "module graph.left\nuse graph.leaf\n"
+     "fn left(x: i32) -> i32 { return identity(x) }\n")
+file(WRITE "${graph_root}/graph.right/module.jog"
+     "module graph.right\nuse graph.leaf\n"
+     "fn right(x: i32) -> i32 { return identity(x) }\n")
+file(WRITE "${graph_root}/graph.top/module.jog"
+     "module graph.top\nuse graph.left\nuse graph.right\n"
+     "fn main(x: i32) -> i32 {\n"
+     "  return identity(graph.left.left(graph.right.right(x)))\n}\n")
+invoke(ok "${TOOL}" module check graph.top -M "${graph_root}")
+
+file(WRITE "${graph_root}/graph.first/module.jog"
+     "module graph.first\n"
+     "fn choose(x: i32) -> i32 { return x }\n")
+file(WRITE "${graph_root}/graph.second/module.jog"
+     "module graph.second\n"
+     "fn choose(x: i32) -> i32 { return x + 1 }\n")
+file(WRITE "${graph_root}/graph.ambiguous/module.jog"
+     "module graph.ambiguous\nuse graph.first\nuse graph.second\n"
+     "fn main(x: i32) -> i32 { return choose(x) }\n")
+invoke(fail "${TOOL}" module check graph.ambiguous -M "${graph_root}")
+set(graph_diagnostics "${COMMAND_OUTPUT}${COMMAND_ERROR}")
+if(NOT graph_diagnostics MATCHES "call to 'choose' is ambiguous")
+  message(FATAL_ERROR
+          "module ambiguity was not diagnosed:\n${graph_diagnostics}")
+endif()
+file(WRITE "${graph_root}/graph.qualified/module.jog"
+     "module graph.qualified\nuse graph.first\nuse graph.second\n"
+     "fn main(x: i32) -> i32 { return graph.second.choose(x) }\n")
+invoke(ok "${TOOL}" module check graph.qualified -M "${graph_root}")
+
+file(WRITE "${graph_root}/graph.cycle_a/module.jog"
+     "module graph.cycle_a\nuse graph.cycle_b\nfn a() -> i32 { return 1 }\n")
+file(WRITE "${graph_root}/graph.cycle_b/module.jog"
+     "module graph.cycle_b\nuse graph.cycle_a\nfn b() -> i32 { return 2 }\n")
+invoke(fail "${TOOL}" module check graph.cycle_a -M "${graph_root}")
+set(graph_diagnostics "${COMMAND_OUTPUT}${COMMAND_ERROR}")
+if(NOT graph_diagnostics MATCHES "module dependency cycle")
+  message(FATAL_ERROR
+          "module dependency cycle was not diagnosed:\n${graph_diagnostics}")
+endif()
+file(REMOVE_RECURSE "${graph_root}")
+
 invoke(ok "${TOOL}" module list -M "${SOURCE_ROOT}")
 set(expected
     "base\nbounds\nc\nir\nmath\nmem\nnn\nonnx\nonnx.nn\nopt\nquant\nsat\nsat.c\nsat.vm\nstat\ntensor\ntflite\ntflite.nn\ntile\nvm\n")
