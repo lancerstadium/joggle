@@ -1,0 +1,21 @@
+module opt.cse
+use base
+
+fn duplicate(x: i32) -> i32 {
+  let one = i32(1)
+  let first = x + one
+  let second = x + one
+  return first * second
+}
+
+fn separate(x: i32, choose: bool) -> i32 {
+  var out = x
+  if choose {
+    let selected = x + i32(1)
+    out = selected
+  } else {
+    let selected = x + i32(1)
+    out = selected
+  }
+  return out
+}

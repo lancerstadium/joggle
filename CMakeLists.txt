@@ -486,6 +486,7 @@ if(JOGGLE_BUILD_TESTS)
       ${CMAKE_COMMAND}
       -DTOOL=$<TARGET_FILE:joggle-tool>
       -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/opt_custom.jog
+      -DCSE_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/opt_cse.jog
       -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
       -P ${CMAKE_CURRENT_SOURCE_DIR}/test/opt.cmake
   )

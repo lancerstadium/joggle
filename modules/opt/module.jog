@@ -454,9 +454,23 @@ fn dce(m: Mod, pure: list<str>) -> bool {
   return len(unused) != 0 && ir.erase(m, unused)
 }
 
-fn cse(m: Mod, pure: list<str>) -> bool {
+local fn cse_key(op: Op) -> str {
+  let callee = ir.callee(op)
+  var out = callee + "|"
+  for value in ir.args(op) {
+    out += text(ir.key(value)) + ","
+  }
+  out += "|"
+  for value in ir.outs(op) {
+    out += text(ir.type(value)) + ";"
+  }
+  return out + "|" + text(ir.meta(op))
+}
+
+local fn cse_block(m: Mod, block: Blk, pure: list<str>) -> bool {
   var changed = false
-  let ops = ir.ops(m)
+  let ops = ir.ops(block)
+  var seen: dict = {}
   for i in 0..len(ops) {
     let op = ops[i]
     if ir.live(op) {
@@ -470,42 +484,49 @@ fn cse(m: Mod, pure: list<str>) -> bool {
       if ir.kind(op) == "call" && allowed &&
          (form == "expr" || form == "let") {
         var merged = false
-        for j in 0..i {
-          if !merged {
-            let prior = ops[j]
-            if ir.live(prior) {
-              let prior_form = ir.form(prior)
-              if ir.kind(prior) == "call" && ir.blk(prior) == ir.blk(op) &&
-                 (prior_form == "expr" || prior_form == "let") {
-                let left = ir.outs(prior)
-                let right = ir.outs(op)
-                var same = len(left) == len(right)
-                if same {
-                  for k in 0..len(left) {
-                    if ir.type(left[k]) != ir.type(right[k]) {
-                      same = false
-                    }
-                  }
+        let key = cse_key(op)
+        if has(seen, key) {
+          let prior = ops[int(seen[key])]
+          if ir.live(prior) && ir.kind(prior) == "call" &&
+             ir.blk(prior) == ir.blk(op) {
+            let left = ir.outs(prior)
+            let right = ir.outs(op)
+            var same = len(left) == len(right)
+            if same {
+              for k in 0..len(left) {
+                if ir.type(left[k]) != ir.type(right[k]) {
+                  same = false
                 }
-                if same && ir.callee(prior) == ir.callee(op) &&
-                   ir.args(prior) == ir.args(op) &&
-                   ir.meta(prior) == ir.meta(op) {
-                  var replaced = true
-                  for k in 0..len(ir.outs(op)) {
-                    replaced = ir.replace(
-                      m, ir.outs(op)[k], ir.outs(prior)[k]
-                    ) && replaced
-                  }
-                  if replaced {
-                    merged = ir.erase(m, op)
-                    changed = merged || changed
-                  }
-                }
+              }
+            }
+            if same && ir.callee(prior) == ir.callee(op) &&
+               ir.args(prior) == ir.args(op) &&
+               ir.meta(prior) == ir.meta(op) {
+              var replaced = true
+              for k in 0..len(right) {
+                replaced = ir.replace(m, right[k], left[k]) && replaced
+              }
+              if replaced {
+                merged = ir.erase(m, op)
+                changed = merged || changed
               }
             }
           }
         }
+        if !merged {
+          seen[key] = i
+        }
       }
+    }
+  }
+  return changed
+}
+
+fn cse(m: Mod, pure: list<str>) -> bool {
+  var changed = false
+  for fn in ir.fns(m) {
+    for block in ir.blks(fn) {
+      changed = cse_block(m, block, pure) || changed
     }
   }
   return changed
