@@ -320,8 +320,8 @@ inexact integer division, an unsupported definition, or arithmetic overflow.
 This gives a user pass a proof-oriented building block for layout and loop
 legality without introducing an affine expression object.
 
-For tensor accesses, `tile.reads(loop, tensor)` and
-`tile.writes(loop, tensor)` return `list<list<Val>>`. Each inner list is the
+For tensor accesses, `tile.reads(m, loop, tensor)` and
+`tile.writes(m, loop, tensor)` return `list<list<Val>>`. Each inner list is the
 actual index vector of one access. Store updates and structured carried values
 are followed conservatively, so the query does not expose compiler-created
 versions as a second user-facing abstraction.

@@ -3,6 +3,25 @@ use base
 use ir
 use opt
 
+local fn base_op(m: Mod, op: Op, name: str) -> bool {
+  if !ir.live(op) || ir.kind(op) != "call" {
+    return false
+  }
+  let target = ir.target(m, op)
+  return target == "base." + name ||
+         (target == ir.callee(op) && target == name)
+}
+
+local fn syntax_op(m: Mod, op: Op, name: str) -> bool {
+  if !ir.live(op) || ir.kind(op) != "call" {
+    return false
+  }
+  let target = ir.resolve(m, op)
+  if ir.live(target) {
+    return ir.name(target) == name
+  }
+  return ir.callee(op) == name
+}
 local fn mapped(value: Val, old: list<Val>, next: list<Val>) -> Val {
   for i in 0..len(old) {
     if value == old[i] {
@@ -30,15 +49,14 @@ local fn same_value(left: Val, right: Val) -> bool {
          ir.constant(left) == ir.constant(right)
 }
 
-local fn same_range(left: Val, right: Val) -> bool {
+local fn same_range(m: Mod, left: Val, right: Val) -> bool {
   if left == right {
     return true
   }
   let left_op = ir.def(left)
   let right_op = ir.def(right)
-  if !ir.live(left_op) || !ir.live(right_op) ||
-     ir.callee(left_op) != "operator .." ||
-     ir.callee(right_op) != "operator .." {
+  if !syntax_op(m, left_op, "operator ..") ||
+     !syntax_op(m, right_op, "operator ..") {
     return false
   }
   let a = ir.args(left_op)
@@ -77,9 +95,9 @@ local fn contains(root: Op, selected: Op) -> bool {
   return false
 }
 
-local fn load(op: Op, tensor: Val, index: Val) -> bool {
+local fn load(m: Mod, op: Op, tensor: Val, index: Val) -> bool {
   let inputs = ir.args(op)
-  return ir.kind(op) == "call" && ir.callee(op) == "operator []" &&
+  return syntax_op(m, op, "operator []") &&
          len(inputs) == 2 && inputs[0] == tensor && inputs[1] == index
 }
 
@@ -89,7 +107,7 @@ local fn constructor(op: Op) -> bool {
          ir.callee(op) == text(ir.type(outputs[0]))
 }
 
-local fn pointwise(op: Op, tensor: Val, index: Val) -> bool {
+local fn pointwise(m: Mod, op: Op, tensor: Val, index: Val) -> bool {
   var touches = false
   for input in ir.args(op) {
     if input == tensor {
@@ -97,11 +115,11 @@ local fn pointwise(op: Op, tensor: Val, index: Val) -> bool {
     }
   }
   if touches {
-    return load(op, tensor, index)
+    return load(m, op, tensor, index)
   }
   for body in ir.blks(op) {
     for child in ir.ops(body) {
-      if !pointwise(child, tensor, index) {
+      if !pointwise(m, child, tensor, index) {
         return false
       }
     }
@@ -116,7 +134,7 @@ local fn keep(m: Mod, value: Val, stem: str) -> Val {
   return value
 }
 
-fn split_issue(source: Op, factor: int) -> str {
+fn split_issue(m: Mod, source: Op, factor: int) -> str {
   if factor <= 0 {
     return "requires a positive factor"
   }
@@ -137,7 +155,7 @@ fn split_issue(source: Op, factor: int) -> str {
   }
   let axis = axes - 1
   let range_op = ir.def(inputs[axis])
-  if !ir.live(range_op) || ir.callee(range_op) != "operator .." {
+  if !syntax_op(m, range_op, "operator ..") {
     return "requires the last iterator to use a range"
   }
   let bounds = ir.args(range_op)
@@ -156,7 +174,7 @@ fn split_issue(source: Op, factor: int) -> str {
 
 fn can_split(m: Mod, source: Op, factor: int) -> bool {
   let before = ir.revision(m)
-  let legal = factor > 1 && split_issue(source, factor) == ""
+  let legal = factor > 1 && split_issue(m, source, factor) == ""
   assert(ir.revision(m) == before,
          "tile.can_split changed the module")
   return legal
@@ -176,7 +194,7 @@ fn splittable(m: Mod, factor: int) -> list<Op> {
 }
 
 fn split(m: Mod, source: Op, factor: int) -> bool {
-  let issue = split_issue(source, factor)
+  let issue = split_issue(m, source, factor)
   assert(issue == "", "tile.split " + issue)
   if factor == 1 {
     return false
@@ -344,7 +362,7 @@ fn split(m: Mod, source: Op, factor: int) -> bool {
   return true
 }
 
-fn unroll_issue(source: Op, factor: int) -> str {
+fn unroll_issue(m: Mod, source: Op, factor: int) -> str {
   if factor <= 0 {
     return "requires a positive factor"
   }
@@ -373,7 +391,7 @@ fn unroll_issue(source: Op, factor: int) -> str {
 
   let range = inputs[axis]
   let range_op = ir.def(range)
-  if !ir.live(range_op) || ir.callee(range_op) != "operator .." {
+  if !syntax_op(m, range_op, "operator ..") {
     return "requires the last iterator to use a range"
   }
   let bounds = ir.args(range_op)
@@ -397,7 +415,7 @@ fn unroll_issue(source: Op, factor: int) -> str {
 
 fn can_unroll(m: Mod, source: Op, factor: int) -> bool {
   let before = ir.revision(m)
-  let legal = factor > 1 && unroll_issue(source, factor) == ""
+  let legal = factor > 1 && unroll_issue(m, source, factor) == ""
   assert(ir.revision(m) == before,
          "tile.can_unroll changed the module")
   return legal
@@ -417,7 +435,7 @@ fn unrollable(m: Mod, factor: int) -> list<Op> {
 }
 
 fn unroll(m: Mod, source: Op, factor: int) -> bool {
-  let issue = unroll_issue(source, factor)
+  let issue = unroll_issue(m, source, factor)
   assert(issue == "", "tile.unroll " + issue)
   if factor == 1 {
     return false
@@ -571,7 +589,7 @@ local fn unroll_all(
       assert(ir.revision(m) == before,
              "tile.unroll policy changed the module")
       if factor > 1 {
-        let issue = unroll_issue(op, factor)
+        let issue = unroll_issue(m, op, factor)
         assert(issue == "",
                "tile.unroll policy selected an illegal factor: " + issue)
         changed = unroll(m, op, factor) || changed
@@ -589,7 +607,7 @@ fn unroll(m: Mod, policy: Fn, arg: Attr) -> bool {
   return unroll_all(m, policy, arg, true)
 }
 
-fn fuse_issue(producer: Op, consumer: Op) -> str {
+fn fuse_issue(m: Mod, producer: Op, consumer: Op) -> str {
   if !ir.live(producer) || !ir.live(consumer) ||
      ir.kind(producer) != "loop" || ir.kind(consumer) != "loop" ||
      producer == consumer || ir.blk(producer) != ir.blk(consumer) {
@@ -625,7 +643,7 @@ fn fuse_issue(producer: Op, consumer: Op) -> str {
   if len(producer_inputs) != 2 || len(consumer_inputs) != 2 {
     return "currently requires one iterator per loop"
   }
-  if !same_range(producer_inputs[0], consumer_inputs[0]) {
+  if !same_range(m, producer_inputs[0], consumer_inputs[0]) {
     return "requires equal iteration ranges"
   }
   if ir.type(producer_outputs[0]) != ir.type(producer_inputs[1]) ||
@@ -646,7 +664,7 @@ fn fuse_issue(producer: Op, consumer: Op) -> str {
   var stores: list<Op> = []
   for op in ir.ops(producer_body) {
     let inputs = ir.args(op)
-    if ir.callee(op) == "operator []=" && len(inputs) == 3 &&
+    if syntax_op(m, op, "operator []=") && len(inputs) == 3 &&
        inputs[0] == producer_args[1] && inputs[1] == producer_args[0] {
       stores += [op]
     }
@@ -668,14 +686,14 @@ fn fuse_issue(producer: Op, consumer: Op) -> str {
     return "requires the producer store to reach its yield"
   }
   if !captured(consumer, producer_outputs[0]) ||
-     !pointwise(consumer, producer_outputs[0], consumer_args[0]) {
+     !pointwise(m, consumer, producer_outputs[0], consumer_args[0]) {
     return "requires pointwise consumer reads"
   }
 
   for user in ir.users(producer_outputs[0]) {
     if contains(consumer, user) {
       if ir.blk(user) != consumer_body ||
-         !load(user, producer_outputs[0], consumer_args[0]) {
+         !load(m, user, producer_outputs[0], consumer_args[0]) {
         return "requires direct pointwise consumer reads"
       }
     }
@@ -692,7 +710,7 @@ fn fuse_issue(producer: Op, consumer: Op) -> str {
       } else {
         if between {
           if ir.kind(op) != "constant" && !constructor(op) &&
-             ir.callee(op) != "base.list" && op != consumer_init &&
+             !base_op(m, op, "list") && op != consumer_init &&
              op != consumer_range {
             return "cannot cross non-setup operation: " + ir.kind(op) +
                    " " + ir.callee(op)
@@ -706,7 +724,7 @@ fn fuse_issue(producer: Op, consumer: Op) -> str {
 
 fn can_fuse(m: Mod, producer: Op, consumer: Op) -> bool {
   let before = ir.revision(m)
-  let legal = fuse_issue(producer, consumer) == ""
+  let legal = fuse_issue(m, producer, consumer) == ""
   assert(ir.revision(m) == before,
          "tile.can_fuse changed the module")
   return legal
@@ -737,7 +755,7 @@ fn fusible(m: Mod) -> list<list<Op>> {
 }
 
 fn fuse(m: Mod, producer: Op, consumer: Op) -> bool {
-  let issue = fuse_issue(producer, consumer)
+  let issue = fuse_issue(m, producer, consumer)
   assert(issue == "", "tile.fuse " + issue)
 
   let producer_inputs = ir.args(producer)
@@ -754,7 +772,7 @@ fn fuse(m: Mod, producer: Op, consumer: Op) -> bool {
   var stores: list<Op> = []
   for op in producer_ops {
     let inputs = ir.args(op)
-    if ir.callee(op) == "operator []=" && len(inputs) == 3 &&
+    if syntax_op(m, op, "operator []=") && len(inputs) == 3 &&
        inputs[0] == producer_args[1] && inputs[1] == producer_args[0] {
       stores += [op]
     }
@@ -842,7 +860,7 @@ fn fuse(m: Mod, producer: Op, consumer: Op) -> bool {
   next += [merged_args[0], consumer_carried]
 
   for i in 0..len(consumer_ops) - 1 {
-    if load(consumer_ops[i], producer_outputs[0], consumer_args[0]) {
+    if load(m, consumer_ops[i], producer_outputs[0], consumer_args[0]) {
       let outputs = ir.outs(consumer_ops[i])
       assert(len(outputs) == 1,
              "tile.fuse found an invalid pointwise load")

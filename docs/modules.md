@@ -297,11 +297,14 @@ subtraction, constant multiplication, and exact constant division. Nonlinear
 products, truncating division, unsupported control flow, and coefficient
 arithmetic overflow are rejected rather than approximated. The result is
 compile-time data over existing values, not an affine dialect or another IR.
-`tile.reads(loop, tensor)` and `tile.writes(loop, tensor)` return the existing
+`tile.reads(m, loop, tensor)` and `tile.writes(m, loop, tensor)` return the
+existing
 index values grouped once per access. They conservatively follow tensor
 bindings through stores, branch-carried values, and loop-carried values, so a
 policy can combine actual accesses with `tile.axes` without learning internal
-value versions.
+value versions. Indexing and range syntax are structural contracts: resolved
+user overloads of `[]`, `[]=`, and `..` participate without a registration
+table, while affine arithmetic laws remain restricted to `base` functions.
 `tile.reorder(m, loop, order)` rebuilds the same loop with a permutation of its
 existing axes. It is deliberately conservative: ranges must be statically
 bounded, the carried state must have one equal affine read/write address, the

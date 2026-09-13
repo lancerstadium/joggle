@@ -89,7 +89,7 @@ local fn linked(values: list<Val>, left: Val, right: Val) -> list<Val> {
   return out
 }
 
-local fn related(root: Op, tensor: Val) -> list<Val> {
+local fn related(m: Mod, root: Op, tensor: Val) -> list<Val> {
   let ops = nested(root)
   var out: list<Val> = [tensor]
   var again = true
@@ -99,7 +99,7 @@ local fn related(root: Op, tensor: Val) -> list<Val> {
       for op in ops {
         let inputs = ir.args(op)
         let outputs = ir.outs(op)
-        if ir.kind(op) == "call" && ir.callee(op) == "operator []=" &&
+        if syntax_op(m, op, "operator []=") &&
            len(inputs) >= 3 && len(outputs) == 1 {
           out = linked(out, inputs[0], outputs[0])
         }
@@ -148,18 +148,20 @@ local fn related(root: Op, tensor: Val) -> list<Val> {
   return out
 }
 
-local fn access_ops(loop: Op, tensor: Val, writes: bool) -> list<Op> {
+local fn access_ops(
+  m: Mod, loop: Op, tensor: Val, writes: bool
+) -> list<Op> {
   assert(ir.live(loop) && ir.kind(loop) == "loop" && ir.live(tensor),
          "tile access query requires a live loop and tensor value")
-  let aliases = related(loop, tensor)
+  let aliases = related(m, loop, tensor)
   var out: list<Op> = []
   for op in nested(loop) {
     if ir.kind(op) == "call" {
       let inputs = ir.args(op)
-      var match = ir.callee(op) == "operator []" && !writes
+      var match = syntax_op(m, op, "operator []") && !writes
       var valid = len(inputs) >= 2
       if writes {
-        match = ir.callee(op) == "operator []="
+        match = syntax_op(m, op, "operator []=")
         valid = len(inputs) >= 3
       }
       if match && valid && known(inputs[0], aliases) {
@@ -170,15 +172,15 @@ local fn access_ops(loop: Op, tensor: Val, writes: bool) -> list<Op> {
   return out
 }
 
-local fn indexed_ops(loop: Op) -> list<Op> {
+local fn indexed_ops(m: Mod, loop: Op) -> list<Op> {
   assert(ir.live(loop) && ir.kind(loop) == "loop",
          "tile indexed-op query requires a live loop")
   var out: list<Op> = []
   for op in nested(loop) {
     if ir.kind(op) == "call" {
       let inputs = ir.args(op)
-      if (ir.callee(op) == "operator []" && len(inputs) >= 2) ||
-         (ir.callee(op) == "operator []=" && len(inputs) >= 3) {
+      if (syntax_op(m, op, "operator []") && len(inputs) >= 2) ||
+         (syntax_op(m, op, "operator []=") && len(inputs) >= 3) {
         out += [op]
       }
     }
@@ -186,10 +188,10 @@ local fn indexed_ops(loop: Op) -> list<Op> {
   return out
 }
 
-local fn index_arg(op: Op, value: Val) -> bool {
+local fn index_arg(m: Mod, op: Op, value: Val) -> bool {
   let inputs = ir.args(op)
   var end = len(inputs)
-  if ir.callee(op) == "operator []=" {
+  if syntax_op(m, op, "operator []=") {
     end -= 1
   }
   for i in 1..end {
@@ -200,10 +202,10 @@ local fn index_arg(op: Op, value: Val) -> bool {
   return false
 }
 
-local fn accesses(loop: Op, tensor: Val, writes: bool)
+local fn accesses(m: Mod, loop: Op, tensor: Val, writes: bool)
     -> list<list<Val>> {
   var out: list<list<Val>> = []
-  for op in access_ops(loop, tensor, writes) {
+  for op in access_ops(m, loop, tensor, writes) {
     let inputs = ir.args(op)
     var end = len(inputs)
     if writes {
@@ -218,10 +220,10 @@ local fn accesses(loop: Op, tensor: Val, writes: bool)
   return out
 }
 
-fn reads(loop: Op, tensor: Val) -> list<list<Val>> {
-  return accesses(loop, tensor, false)
+fn reads(m: Mod, loop: Op, tensor: Val) -> list<list<Val>> {
+  return accesses(m, loop, tensor, false)
 }
 
-fn writes(loop: Op, tensor: Val) -> list<list<Val>> {
-  return accesses(loop, tensor, true)
+fn writes(m: Mod, loop: Op, tensor: Val) -> list<list<Val>> {
+  return accesses(m, loop, tensor, true)
 }

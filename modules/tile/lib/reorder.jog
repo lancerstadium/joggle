@@ -33,8 +33,7 @@ local fn permutation_issue(order: list<int>, axes: int) -> str {
 local fn trip(m: Mod, range: Val) -> int {
   let op = ir.def(range)
   if !ir.live(op) || ir.kind(op) != "call" ||
-     (ir.target(m, op) != "base.operator .." &&
-      ir.target(m, op) != "operator ..") {
+     !syntax_op(m, op, "operator ..") {
     return -1
   }
   let bounds = ir.args(op)
@@ -151,8 +150,8 @@ local fn reorder_access_issue(
     return "currently requires one carried value"
   }
   let state_value = body_args[axes]
-  let read_accesses = reads(source, state_value)
-  let write_accesses = writes(source, state_value)
+  let read_accesses = reads(m, source, state_value)
+  let write_accesses = writes(m, source, state_value)
   if len(read_accesses) != 1 || len(write_accesses) != 1 ||
      len(read_accesses[0]) != 1 || len(write_accesses[0]) != 1 {
     return "requires one indexed read and write of the carried value"
@@ -241,7 +240,7 @@ local fn role_axes(m: Mod, source: Op, state: bool) -> list<int> {
     return []
   }
   let body_args = ir.args(ir.blks(source)[0])
-  let accesses = writes(source, body_args[axes])
+  let accesses = writes(m, source, body_args[axes])
   let form = affine(m, source, accesses[0][0])
   var out: list<int> = []
   for axis in 0..axes {

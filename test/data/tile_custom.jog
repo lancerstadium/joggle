@@ -5,6 +5,10 @@ fn + (left: index, right: index) -> index {
   return left - right
 }
 
+fn buf<N: int>() -> Ty;
+fn []<N: int>(x: buf<N>, i: index) -> i32;
+fn []=<N: int>(x: buf<N>, i: index, value: i32) -> buf<N>;
+
 fn work() -> int {
   var total = 0
   for i in 0..4 {
@@ -12,4 +16,12 @@ fn work() -> int {
     total += int(location)
   }
   return total
+}
+
+fn access(x: buf<4>) -> buf<4> {
+  var out = x
+  for i in 0..4 {
+    out[i] = x[i] + i32(1)
+  }
+  return out
 }

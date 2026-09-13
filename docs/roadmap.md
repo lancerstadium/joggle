@@ -67,7 +67,9 @@ Affine and axis-role queries now receive the owning `Mod` explicitly. Their
 algebraic proof follows only operators resolved to `base`, while unresolved
 built-in syntax remains compatible and user overloads are conservatively
 rejected. Loop legality therefore cannot inherit arithmetic laws from a shared
-operator spelling.
+operator spelling. Access and range queries use their resolved structural
+operators instead: custom containers retain `[]`, `[]=`, and `..` semantics
+without registering a second access descriptor.
 
 The first tensor-traffic rewrite is also present. `tile.scalarize` promotes one
 affine output element across a structurally proved reduction band, leaving one

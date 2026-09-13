@@ -52,7 +52,7 @@ local fn address_only(
   }
   let next_seen = seen + [value]
   for user in ir.users(value) {
-    if !has_op(accesses, user) || !index_arg(user, value) {
+    if !has_op(accesses, user) || !index_arg(m, user, value) {
       if ir.kind(user) != "call" || len(ir.outs(user)) == 0 ||
          len(base.keys(ir.meta(user))) != 0 {
         return false
@@ -186,8 +186,8 @@ fn scalarize_issue(m: Mod, source: Op) -> str {
 
   let body = ir.blks(source)[0]
   let body_args = ir.args(body)
-  let load_ops = access_ops(source, body_args[axes], false)
-  let store_ops = access_ops(source, body_args[axes], true)
+  let load_ops = access_ops(m, source, body_args[axes], false)
+  let store_ops = access_ops(m, source, body_args[axes], true)
   if len(load_ops) != 1 || len(store_ops) != 1 {
     return "requires one carried-state load and store"
   }
@@ -359,7 +359,7 @@ local fn rebuild_scalar_block(
             var clone_next = next_values
             if has_op(accesses, op) {
               var end = len(inputs)
-              if ir.callee(op) == "operator []=" {
+              if syntax_op(m, op, "operator []=") {
                 end -= 1
               }
               for input in 1..end {
@@ -401,8 +401,8 @@ fn scalarize(m: Mod, source: Op) -> bool {
   let reduction = reduction_axes(m, source)
   let body = ir.blks(source)[0]
   let body_args = ir.args(body)
-  let loads = access_ops(source, body_args[axes], false)
-  let stores = access_ops(source, body_args[axes], true)
+  let loads = access_ops(m, source, body_args[axes], false)
+  let stores = access_ops(m, source, body_args[axes], true)
   let load = loads[0]
   let store = stores[0]
   let load_args = ir.args(load)
@@ -473,7 +473,7 @@ fn scalarize(m: Mod, source: Op) -> bool {
   let final = rebuild_scalar_block(
     m, source, body, inner_body, old, next,
     [body_args[axes]], [inner_args[len(reduction)]],
-    axis_values, load, store, indexed_ops(source)
+    axis_values, load, store, indexed_ops(m, source)
   )
   assert(ir.args(m, inner_yield, [final]),
          "tile.scalarize could not connect the reduction loop")

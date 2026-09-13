@@ -93,6 +93,25 @@ fn check_custom_affine(m: Mod) -> bool {
          "custom affine check requires its loop and location")
   assert(len(tile.affine(m, loops[0], locations[0])) == 0,
          "custom addition inherited base affine semantics")
+
+  let access = ir.find(m, "access")
+  assert(ir.live(access), "custom access check requires access")
+  var access_loops: list<Op> = []
+  for op in ir.ops(access) {
+    if ir.kind(op) == "loop" {
+      access_loops += [op]
+    }
+  }
+  assert(len(access_loops) == 1,
+         "custom access check requires one loop")
+  let access_loop = access_loops[0]
+  let params = ir.params(access)
+  let body_args = ir.args(ir.blks(access_loop)[0])
+  assert(len(params) == 1 && len(body_args) == 2,
+         "custom access check found an invalid signature")
+  assert(len(tile.reads(m, access_loop, params[0])) == 1 &&
+         len(tile.writes(m, access_loop, body_args[1])) == 1,
+         "custom indexing did not retain access semantics")
   return true
 }
 
@@ -179,7 +198,7 @@ fn check_scalarize(m: Mod) -> bool {
 }
 
 local fn scalarized_loop(
-  function: Fn, outer_axes: int, inner_axes: int
+  m: Mod, function: Fn, outer_axes: int, inner_axes: int
 ) -> bool {
   var outers: list<Op> = []
   var inners: list<Op> = []
@@ -208,8 +227,8 @@ local fn scalarized_loop(
      ir.type(inner_args[inner_axes]) != ty("f32") {
     return false
   }
-  let reads = tile.reads(outer, outer_args[outer_axes])
-  let writes = tile.writes(outer, outer_args[outer_axes])
+  let reads = tile.reads(m, outer, outer_args[outer_axes])
+  let writes = tile.writes(m, outer, outer_args[outer_axes])
   return len(reads) == 1 && len(writes) == 1
 }
 
@@ -221,9 +240,9 @@ fn check_scalarized(m: Mod) -> bool {
   let reduce = ir.find(m, "reduce5")
   assert(ir.live(main) && ir.live(reduce),
          "scalarized check requires main and reduce5")
-  assert(scalarized_loop(main, 4, 3),
+  assert(scalarized_loop(m, main, 4, 3),
          "convolution did not become a scalar reduction nest")
-  assert(scalarized_loop(reduce, 4, 1),
+  assert(scalarized_loop(m, reduce, 4, 1),
          "generic reduction did not become a scalar reduction nest")
   assert(ir.revision(m) == before,
          "scalarized checks changed the module")
@@ -287,10 +306,10 @@ fn check_spatial_axes(m: Mod) -> bool {
   let body_args = ir.args(ir.blks(loop)[0])
   assert(len(params) == 2 && len(body_args) == 8,
          "spatial axis check found an invalid function or loop signature")
-  let x_reads = tile.reads(loop, params[0])
-  let weight_reads = tile.reads(loop, params[1])
-  let out_reads = tile.reads(loop, body_args[7])
-  let out_writes = tile.writes(loop, body_args[7])
+  let x_reads = tile.reads(m, loop, params[0])
+  let weight_reads = tile.reads(m, loop, params[1])
+  let out_reads = tile.reads(m, loop, body_args[7])
+  let out_writes = tile.writes(m, loop, body_args[7])
   assert(tile.state_axes(m, loop) == [0, 1, 5, 6] &&
          tile.reduction_axes(m, loop) == [2, 3, 4],
          "scheduled loop has the wrong axis roles")
@@ -374,7 +393,7 @@ fn check_splittable(m: Mod, factor: int, expected: int) -> bool {
          "unexpected split candidate count")
   for loop in candidates {
     assert(tile.can_split(m, loop, factor) &&
-           tile.split_issue(loop, factor) == "",
+           tile.split_issue(m, loop, factor) == "",
            "tile.splittable returned an illegal loop")
   }
   return true
@@ -385,9 +404,9 @@ fn check_split_issue(m: Mod) -> bool {
   let candidates = tile.splittable(m, 2)
   assert(len(candidates) > 0,
          "split issue check requires a candidate")
-  assert(tile.split_issue(candidates[0], 2) == "",
+  assert(tile.split_issue(m, candidates[0], 2) == "",
          "legal split reported an issue")
-  assert(tile.split_issue(candidates[0], 0) ==
+  assert(tile.split_issue(m, candidates[0], 0) ==
          "requires a positive factor",
          "illegal split reported the wrong issue")
   assert(ir.revision(m) == before,
@@ -486,9 +505,9 @@ fn check_unroll_issue(m: Mod) -> bool {
   let candidates = tile.unrollable(m, 2)
   assert(len(candidates) == 1,
          "unroll issue check requires one candidate")
-  assert(tile.unroll_issue(candidates[0], 2) == "",
+  assert(tile.unroll_issue(m, candidates[0], 2) == "",
          "legal unroll reported an issue")
-  assert(tile.unroll_issue(candidates[0], 3) ==
+  assert(tile.unroll_issue(m, candidates[0], 3) ==
          "requires the trip count to be divisible by the factor",
          "illegal unroll reported the wrong issue")
   assert(ir.revision(m) == before,
@@ -553,7 +572,7 @@ fn check_fusible(m: Mod, expected: int) -> bool {
          "unexpected fusion candidate count")
   for pair in candidates {
     assert(len(pair) == 2 && tile.can_fuse(m, pair[0], pair[1]) &&
-           tile.fuse_issue(pair[0], pair[1]) == "",
+           tile.fuse_issue(m, pair[0], pair[1]) == "",
            "tile.fusible returned an illegal pair")
   }
   return true
@@ -569,7 +588,7 @@ fn check_fuse_issue(m: Mod, expected: str) -> bool {
   }
   assert(len(loops) >= 2,
          "fusion issue check requires two loops")
-  assert(tile.fuse_issue(loops[0], loops[1]) == expected,
+  assert(tile.fuse_issue(m, loops[0], loops[1]) == expected,
          "fusion reported the wrong issue")
   assert(ir.revision(m) == before,
          "tile.fuse_issue must be read-only")
