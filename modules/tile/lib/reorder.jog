@@ -101,6 +101,7 @@ local fn axis_sequence(selected: list<bool>, value: bool) -> list<int> {
   return out
 }
 
+[memo]
 local fn magnitude(value: int) -> list<int> {
   let low = -9223372036854775807 - 1
   if value == low {

@@ -7,6 +7,7 @@ local fn affine_seen(value: Val, seen: list<Val>) -> bool {
   return false
 }
 
+[memo]
 local fn affine_integer(type: Ty) -> bool {
   let name = base.name(type)
   return name == "int" || name == "index" ||
@@ -15,6 +16,7 @@ local fn affine_integer(type: Ty) -> bool {
          name == "u32" || name == "u64"
 }
 
+[memo]
 local fn affine_zero(axes: int) -> list<int> {
   var out: list<int> = [0]
   for axis in 0..axes {
@@ -23,6 +25,7 @@ local fn affine_zero(axes: int) -> list<int> {
   return out
 }
 
+[memo]
 local fn affine_add_int(left: int, right: int) -> list<int> {
   let low = -9223372036854775807 - 1
   let high = 9223372036854775807
@@ -33,6 +36,7 @@ local fn affine_add_int(left: int, right: int) -> list<int> {
   return [left + right]
 }
 
+[memo]
 local fn affine_sub_int(left: int, right: int) -> list<int> {
   let low = -9223372036854775807 - 1
   let high = 9223372036854775807
@@ -43,6 +47,7 @@ local fn affine_sub_int(left: int, right: int) -> list<int> {
   return [left - right]
 }
 
+[memo]
 local fn affine_mul_int(left: int, right: int) -> list<int> {
   let low = -9223372036854775807 - 1
   let high = 9223372036854775807
@@ -62,6 +67,7 @@ local fn affine_mul_int(left: int, right: int) -> list<int> {
   return [left * right]
 }
 
+[memo]
 local fn affine_add(
   left: list<int>, right: list<int>, subtract: bool
 ) -> list<int> {
@@ -82,6 +88,7 @@ local fn affine_add(
   return out
 }
 
+[memo]
 local fn affine_scale(value: list<int>, factor: int) -> list<int> {
   if len(value) == 0 {
     return []
@@ -97,6 +104,7 @@ local fn affine_scale(value: list<int>, factor: int) -> list<int> {
   return out
 }
 
+[memo]
 local fn affine_exact(value: list<int>) -> list<int> {
   if len(value) == 0 {
     return []
@@ -109,6 +117,7 @@ local fn affine_exact(value: list<int>) -> list<int> {
   return [value[0]]
 }
 
+[memo]
 local fn affine_divide(value: list<int>, divisor: int) -> list<int> {
   if len(value) == 0 || divisor == 0 {
     return []

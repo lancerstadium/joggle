@@ -2768,6 +2768,28 @@ int main(int argc, char** argv) {
   const joggle::Attr::Dict* mark_calls = mark_step->at("calls").dict();
   CHECK(fold_calls && fold_calls->at("opt.fold_add_zero").integer() >= 1);
   CHECK(mark_calls && mark_calls->at("script.mark_add").integer() >= 1);
+  joggle::Mod memo_module;
+  CHECK(joggle::parse(env, source.str(), memo_module, argv[1]));
+  joggle::Attr memo_report;
+  CHECK(joggle::run(env, "script.memo_probe", memo_module, memo_report));
+  const joggle::Attr::Dict* memo_summary = memo_report.dict();
+  CHECK(memo_summary);
+  const joggle::Attr::Dict* memo_cached =
+      memo_summary->at("cached").dict();
+  CHECK(memo_cached &&
+        memo_cached->at("script.memo_sum").integer() == 1);
+  joggle::Mod memo_handle_module;
+  CHECK(joggle::parse(env, source.str(), memo_handle_module, argv[1]));
+  joggle::Attr memo_handle_report;
+  CHECK(joggle::run(env, "script.memo_handle_probe", memo_handle_module,
+                    memo_handle_report));
+  const joggle::Attr::Dict* memo_handle_summary = memo_handle_report.dict();
+  CHECK(memo_handle_summary);
+  const joggle::Attr::Dict* memo_handle_cached =
+      memo_handle_summary->at("cached").dict();
+  CHECK(memo_handle_cached &&
+        memo_handle_cached->find("script.memo_name") ==
+            memo_handle_cached->end());
   joggle::Mod failed_sequence;
   CHECK(joggle::parse(env, source.str(), failed_sequence, argv[1]));
   const std::string before_sequence = joggle::print(failed_sequence);

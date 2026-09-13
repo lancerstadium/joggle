@@ -328,6 +328,103 @@ bool same(const Item& left, const Item& right) {
   return true;
 }
 
+void hash_combine(std::size_t& seed, std::size_t value) {
+  constexpr std::size_t salt =
+      static_cast<std::size_t>(0x9e3779b97f4a7c15ULL);
+  seed ^= value + salt + (seed << 6) + (seed >> 2);
+}
+
+std::size_t hash_attr(const Attr& value) {
+  std::size_t seed = value.data().index();
+  switch (value.data().index()) {
+  case 0:
+    break;
+  case 1:
+    hash_combine(seed, std::hash<bool>{}(std::get<bool>(value.data())));
+    break;
+  case 2:
+    hash_combine(seed,
+                 std::hash<std::int64_t>{}(
+                     std::get<std::int64_t>(value.data())));
+    break;
+  case 3:
+    hash_combine(seed, std::hash<double>{}(std::get<double>(value.data())));
+    break;
+  case 4:
+    hash_combine(seed,
+                 std::hash<std::string>{}(
+                     std::get<std::string>(value.data())));
+    break;
+  case 5:
+    for (const std::uint8_t byte : std::get<Attr::Bytes>(value.data()))
+      hash_combine(seed, byte);
+    break;
+  case 6:
+    for (const Attr& item : std::get<Attr::List>(value.data()))
+      hash_combine(seed, hash_attr(item));
+    break;
+  case 7:
+    for (const auto& [key, item] : std::get<Attr::Dict>(value.data())) {
+      hash_combine(seed, std::hash<std::string>{}(key));
+      hash_combine(seed, hash_attr(item));
+    }
+    break;
+  default:
+    break;
+  }
+  return seed;
+}
+
+std::optional<std::size_t> memo_hash(const Item& item) {
+  if (const Attr* value = as<Attr>(item)) {
+    std::size_t seed = 1;
+    hash_combine(seed, hash_attr(*value));
+    return seed;
+  }
+  if (const Ty* value = as<Ty>(item)) {
+    std::size_t seed = 2;
+    hash_combine(seed, std::hash<std::string_view>{}(value->text()));
+    return seed;
+  }
+  if (const Items* values = list(item)) {
+    std::size_t seed = 3;
+    hash_combine(seed, values->size());
+    for (const Item& value : *values) {
+      const auto item_hash = memo_hash(value);
+      if (!item_hash)
+        return std::nullopt;
+      hash_combine(seed, *item_hash);
+    }
+    return seed;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::size_t> memo_hash(const Items& generics,
+                                     const Items& args) {
+  std::size_t seed = generics.size();
+  for (const Item& item : generics) {
+    const auto item_hash = memo_hash(item);
+    if (!item_hash)
+      return std::nullopt;
+    hash_combine(seed, *item_hash);
+  }
+  hash_combine(seed, args.size());
+  for (const Item& item : args) {
+    const auto item_hash = memo_hash(item);
+    if (!item_hash)
+      return std::nullopt;
+    hash_combine(seed, *item_hash);
+  }
+  return seed;
+}
+
+bool same(const Items& left, const Items& right) {
+  return left.size() == right.size() &&
+         std::equal(left.begin(), left.end(), right.begin(),
+                    [](const Item& a, const Item& b) { return same(a, b); });
+}
+
 bool add(std::int64_t left, std::int64_t right, std::int64_t& out) {
   if ((right > 0 && left > std::numeric_limits<std::int64_t>::max() - right) ||
       (right < 0 && left < std::numeric_limits<std::int64_t>::min() - right))
@@ -427,6 +524,14 @@ private:
       return static_cast<std::size_t>(address ^ (address >> 17) ^ site.id);
     }
   };
+
+  struct Memo {
+    Items generics;
+    Items args;
+    Items result;
+  };
+
+  using MemoEntries = std::unordered_multimap<std::size_t, Memo>;
 
   struct Dispatch {
     std::vector<Ty> args;
@@ -540,6 +645,13 @@ private:
   Attr calls() const {
     Attr::Dict out;
     for (const auto& [fn, count] : calls_)
+      out.emplace(fn, Attr(static_cast<std::int64_t>(count)));
+    return Attr(std::move(out));
+  }
+
+  Attr cached() const {
+    Attr::Dict out;
+    for (const auto& [fn, count] : cached_)
       out.emplace(fn, Attr(static_cast<std::int64_t>(count)));
     return Attr(std::move(out));
   }
@@ -727,6 +839,30 @@ private:
            fn.loc());
       return std::nullopt;
     }
+    const Attr* memo = fn.meta("memo");
+    const bool memoized = memo && memo->boolean() == true;
+    const auto key = memoized ? memo_hash(generic_args, args)
+                              : std::optional<std::size_t>{};
+    const Site site{fn.store_, fn.id_};
+    Items memo_generics;
+    Items memo_args;
+    if (key) {
+      auto function = memo_.find(site);
+      if (function != memo_.end()) {
+        const auto [begin, end] = function->second.equal_range(*key);
+        for (auto entry = begin; entry != end; ++entry) {
+          if (same(entry->second.generics, generic_args) &&
+              same(entry->second.args, args)) {
+            if (trace_)
+              ++cached_[std::string(fn.module()) + "." +
+                        std::string(fn.name())];
+            return entry->second.result;
+          }
+        }
+      }
+      memo_generics = generic_args;
+      memo_args = args;
+    }
     if (fn.external()) {
       const std::string symbol = fn.store_->name + "." + std::string(fn.name());
       if (!env_.bound(symbol)) {
@@ -754,6 +890,9 @@ private:
       Items out;
       for (Attr& value : scalar_returns)
         out.emplace_back(std::move(value));
+      if (key && memo_hash(out))
+        memo_[site].emplace(
+            *key, Memo{std::move(memo_generics), std::move(memo_args), out});
       return out;
     }
 
@@ -773,6 +912,10 @@ private:
     if (flow.kind == FlowKind::ret) {
       if (observed)
         record(fn, *observed, before, flow.values);
+      if (key && memo_hash(flow.values))
+        memo_[site].emplace(
+            *key,
+            Memo{std::move(memo_generics), std::move(memo_args), flow.values});
       return std::move(flow.values);
     }
     if (flow.kind != FlowKind::fail)
@@ -2768,7 +2911,9 @@ private:
   std::unordered_map<Site, std::vector<Val>, SiteHash> op_args_;
   std::unordered_map<Site, std::vector<Val>, SiteHash> op_outs_;
   std::unordered_map<Site, std::vector<Blk>, SiteHash> op_blks_;
+  std::unordered_map<Site, MemoEntries, SiteHash> memo_;
   std::map<std::string, std::uint64_t, std::less<>> calls_;
+  std::map<std::string, std::uint64_t, std::less<>> cached_;
   bool failed_ = false;
 };
 
@@ -2982,6 +3127,7 @@ bool detail::Eval::sequence(
         Attr(static_cast<std::int64_t>(after_revision - step_revision));
     summary["changed"] = Attr(after_revision != step_revision);
     summary["calls"] = eval.calls();
+    summary["cached"] = eval.cached();
     summary["steps"] = Attr(std::move(trace));
     *step = Attr(std::move(summary));
     return true;

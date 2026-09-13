@@ -52,6 +52,27 @@ CLI invocation, module information, and compatibility checks expose only the
 public surface. Visibility is a property of `Fn`, available as `Fn::local()`
 and `ir.local(fn)`; it is not encoded in an attribute or naming convention.
 
+A value-level helper may opt into per-run memoization with `[memo]`:
+
+```jog
+[memo]
+local fn product(shape: list<int>) -> int {
+  var out = 1
+  for extent in shape {
+    out *= extent
+  }
+  return out
+}
+```
+
+`[memo]` is a semantic promise that equal arguments produce an equal result
+without externally visible effects. The evaluator reuses only calls whose
+arguments and result are immutable compile-time values (`Attr`, `Ty`, and
+recursive lists of those values). A call containing `Mod`, `Fn`, `Blk`, `Op`,
+or `Val` bypasses the cache even if annotated, so an IR analysis cannot become
+stale through this mechanism. The cache lasts for one top-level `run` step;
+there is no process-global state or cross-pass invalidation protocol.
+
 Multiple loop variables denote a lexically nested Cartesian product. A source
 may be a range or any compile-time list, so the same form traverses tensor
 indices and IR collections. `return` is always an ordinary statement in the
@@ -777,10 +798,12 @@ return type patterns, and its exact revision delta. `clone` records the source
 template, copied symbol, concrete generic bindings, signature, and revision
 interval of a function-level materialization. These are structural dictionary
 fields, not a second event class or callback interface.
-Each top-level step also contains a `calls` dictionary. Its keys are qualified
-source-function names and its values are invocation counts for that step,
+Each top-level step also contains `calls` and `cached` dictionaries. Their
+keys are qualified source-function names and their values are invocation
+counts for that step,
 including read-only helpers that do not appear in the mutation trace. Counts
-are deterministic structural evidence, not timings or native-intrinsic counts;
+in `cached` identify calls served by `[memo]`. Both are deterministic
+structural evidence, not timings or native-intrinsic counts;
 they make repeated compile-time analysis visible without changing report
 reproducibility.
 The named entry is selected by the same overload resolver as an ordinary DSL

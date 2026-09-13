@@ -24,6 +24,7 @@ endif()
 file(READ "${OUT}" report)
 if(NOT report MATCHES "\"changed\": true" OR
    NOT report MATCHES "\"calls\":" OR
+   NOT report MATCHES "\"cached\":" OR
    NOT report MATCHES "\"kind\": \"fn\"" OR
    NOT report MATCHES "\"fn\": \"opt.fold_add_zero\"" OR
    NOT report MATCHES "\"fn\": \"opt.fold_identity\"" OR

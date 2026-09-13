@@ -543,6 +543,43 @@ fn mark_add(m: Mod) -> bool {
   return false
 }
 
+[memo]
+local fn memo_sum(values: list<int>) -> int {
+  var out = 0
+  for value in values {
+    out += value
+  }
+  return out
+}
+
+fn memo_probe(m: Mod) -> bool {
+  let before = ir.revision(m)
+  let first = memo_sum([1, 2, 3, 4])
+  let second = memo_sum([1, 2, 3, 4])
+  assert(ir.revision(m) == before,
+         "script.memo_probe changed the module")
+  return first == 10 && second == 10
+}
+
+[memo]
+local fn memo_name(value: Val) -> str {
+  return ir.name(value)
+}
+
+fn memo_handle_probe(m: Mod) -> bool {
+  for f in ir.fns(m) {
+    let params = ir.params(f)
+    if len(params) != 0 {
+      let value = params[0]
+      let before = memo_name(value)
+      assert(ir.rename(m, value, "memo_handle"),
+             "script.memo_handle_probe could not rename a value")
+      return before != memo_name(value) && ir.name(value) == "memo_handle"
+    }
+  }
+  return false
+}
+
 fn mark_first_param(m: Mod) -> bool {
   for f in ir.fns(m) {
     let values = ir.params(f)
