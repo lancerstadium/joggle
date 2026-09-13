@@ -32,8 +32,9 @@ endif()
 
 file(REMOVE "${OUT}")
 execute_process(
-  COMMAND "${TOOL}" emit script.emit_bytes "${MODEL}"
+  COMMAND "${TOOL}" emit script.emit_bytes -
           -M "${SOURCE_MODULES}" -M "${BUILD_MODULES}"
+  INPUT_FILE "${MODEL}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${OUT}"
   ERROR_VARIABLE error

@@ -43,6 +43,18 @@ functions and `cached` counts for `[memo]` hits. Use them to find repeated
 policy or analysis work; use the embedding API's elapsed-time overload
 separately when wall-clock measurements are needed.
 
+Use `-` wherever a command expects an input file to compose processes without
+inventing a pipeline object or temporary IR files:
+
+```sh
+./build/joggle run opt.fold_add_zero test/data/matmul.jog -M modules |
+  ./build/joggle query opt.untyped - -M modules
+```
+
+`read` accepts binary standard input as well, while `emit` writes byte
+artifacts unchanged. Keep named intermediate files when the progressive states
+are evidence that an experiment must retain.
+
 Run a read-only analysis without rewriting or reprinting the module:
 
 ```sh

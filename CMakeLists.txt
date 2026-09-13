@@ -439,6 +439,16 @@ if(JOGGLE_BUILD_TESTS)
       -P ${CMAKE_CURRENT_SOURCE_DIR}/test/args.cmake
   )
   add_test(
+    NAME cli-stream
+    COMMAND
+      ${CMAKE_COMMAND}
+      -DTOOL=$<TARGET_FILE:joggle-tool>
+      -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
+      -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+      -DROOT=${CMAKE_CURRENT_BINARY_DIR}/stream-test
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/stream.cmake
+  )
+  add_test(
     NAME cost-example
     COMMAND $<TARGET_FILE:joggle-tool> query cost.total
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/cost/model.jog

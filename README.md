@@ -107,6 +107,20 @@ Conversion, optimization, storage planning, and emission remain explicit:
   -M build/modules > model.c
 ```
 
+Every command that reads a model accepts `-` for standard input, so the same
+explicit composition can remain in a shell pipeline when intermediate files
+are not needed:
+
+```sh
+./build/joggle read onnx.read model.onnx -M build/modules |
+  ./build/joggle run onnx.nn.convert opt.basic - -M build/modules |
+  ./build/joggle run c.prepare mem.plan - -M build/modules |
+  ./build/joggle emit c.source - -M build/modules > model.c
+```
+
+Named files remain preferable when an experiment must preserve and inspect
+each progressive state.
+
 `c.prepare` also specializes the tensor library's explicitly marked shape
 bookkeeping. This removes compile-time rank traversal without teaching the C
 emitter about Conv, ONNX, or a fixed tensor rank. User and imported value names

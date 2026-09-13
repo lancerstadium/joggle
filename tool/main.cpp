@@ -12,19 +12,24 @@
 #include <string_view>
 #include <vector>
 
+#if defined(_WIN32)
+#include <fcntl.h>
+#include <io.h>
+#endif
+
 namespace {
 
 namespace fs = std::filesystem;
 
 int usage() {
   std::cerr << "usage:\n"
-               "  joggle check <file.jog> [-M <module-dir>]...\n"
-               "  joggle read <module.fn> <file> [-M <module-dir>]...\n"
-               "  joggle run <module.fn>... <file.jog> "
+               "  joggle check <file.jog|-> [-M <module-dir>]...\n"
+               "  joggle read <module.fn> <file|-> [-M <module-dir>]...\n"
+               "  joggle run <module.fn>... <file.jog|-> "
                "[--arg <Attr>]... [--report <file>] [-M <module-dir>]...\n"
-               "  joggle query <module.fn> <file.jog> "
+               "  joggle query <module.fn> <file.jog|-> "
                "[--arg <Attr>]... [-M <module-dir>]...\n"
-               "  joggle emit <module.fn> <file.jog> "
+               "  joggle emit <module.fn> <file.jog|-> "
                "[--arg <Attr>]... [-M <module-dir>]...\n"
                "  joggle module list [-M <module-dir>]...\n"
                "  joggle module info <name> [-M <module-dir>]...\n"
@@ -65,6 +70,36 @@ bool load_uses(joggle::Env& env, const joggle::Mod& mod) {
       return false;
     }
   }
+  return true;
+}
+
+bool input(std::string_view file, bool binary, std::string& contents) {
+  std::ifstream stream;
+  std::istream* source = &std::cin;
+  if (file != "-") {
+    stream.open(std::string(file), std::ios::binary);
+    if (!stream) {
+      std::cerr << "joggle: cannot open " << file << '\n';
+      return false;
+    }
+    source = &stream;
+  }
+#if defined(_WIN32)
+  else if (binary && _setmode(_fileno(stdin), _O_BINARY) == -1) {
+    std::cerr << "joggle: cannot set standard input to binary mode\n";
+    return false;
+  }
+#else
+  (void)binary;
+#endif
+  std::ostringstream buffer;
+  buffer << source->rdbuf();
+  if (source->bad()) {
+    std::cerr << "joggle: cannot read "
+              << (file == "-" ? "standard input" : std::string(file)) << '\n';
+    return false;
+  }
+  contents = std::move(buffer).str();
   return true;
 }
 
@@ -116,14 +151,10 @@ int process(int argc, char** argv) {
                argument_sources))
     return usage();
 
-  std::ifstream input(file, std::ios::binary);
-  if (!input) {
-    std::cerr << "joggle: cannot open " << file << '\n';
+  std::string source;
+  if (!input(file, decode, source))
     return 1;
-  }
-  std::ostringstream contents;
-  contents << input.rdbuf();
-  std::string source = contents.str();
+  const std::string source_name = file == "-" ? "<stdin>" : file;
 
   joggle::Env env;
   for (const fs::path& root : roots)
@@ -170,7 +201,7 @@ int process(int argc, char** argv) {
   }
 
   joggle::Mod mod;
-  if (!joggle::parse(env, source, mod, file))
+  if (!joggle::parse(env, source, mod, source_name))
     return mod.print_diags(stderr);
   if (!load_uses(env, mod))
     return 1;
@@ -189,6 +220,12 @@ int process(int argc, char** argv) {
       if (std::fwrite(value->data(), 1, value->size(), stdout) != value->size())
         return 1;
     } else if (const auto* value = result.bytes()) {
+#if defined(_WIN32)
+      if (_setmode(_fileno(stdout), _O_BINARY) == -1) {
+        std::cerr << "joggle: cannot set standard output to binary mode\n";
+        return 1;
+      }
+#endif
       if (std::fwrite(value->data(), 1, value->size(), stdout) != value->size())
         return 1;
     } else {
