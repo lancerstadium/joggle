@@ -157,6 +157,27 @@ complete instantiation, preparation, pass, planning, placement, emission,
 strict compilation, interface/payload equality checks, numerical check, and
 four-process measurement from caller-supplied managed artifacts.
 
+`reorder-mobilenetv2-pilot.csv` and
+`reorder-mobilenetv2-runtime-pilot.csv` supersede that historical MobileNetV2
+mechanism run with the same pipeline used for the other current reorder rows.
+At revision `474387e`, the official model is decoded, converted, instantiated
+against the current `nn` module, and prepared into a new canonical IR before
+measurement. This avoids the separately discovered historical file whose
+"canonical" loops had already been reordered. The policy changes 32 current
+function bodies. Generated C grows from 153,352 to 153,790 bytes, or 0.286%.
+
+All 20 same-process pairs favor the reordered variant. Baseline/candidate
+medians are 221.645/106.397 ms and the median within-pair ratio is 2.081.
+Outputs are bit-identical between variants, and independent runs of both
+sources retain maximum absolute error `2.0980835e-5` against the official
+reference. The canonical IR, input, reference, and weight SHA-256 values are
+`8dd4c2adfad7ab65b36fbad4e9e5654d268b8e31a0e9693632fd76c58ed601f4`,
+`97972f018032f84938f48b7ef79756e473ebcc983558987f93f24cddc01b274a`,
+`8411a51bfb945b17a4cd7ebb75a512849a902878c02e8212741ab11d6149bac8`,
+and `c40aa17983eda5de11337934906bbd7bbde107d55f383b4dbfd0f00146f15aaf`.
+The host remains unisolated, so these are mechanism rows rather than final
+performance measurements.
+
 `reorder-ultraface-pilot.csv` and
 `reorder-ultraface-runtime-pilot.csv` repeat the same operator-independent
 mechanism on the two-result UltraFace RFB-320 fixture at revision `e840fd4`.
@@ -304,13 +325,11 @@ scores reference
 and boxes reference
 `7cc716300e70ca2c8106f5874fd2ccc4579b4ecf04003a359b7f31edeee54600`.
 
-`block-artifact-pilot.csv` puts the exact generated-source byte counts and
-artifact digests for the MobileNetV2, SqueezeNet, and UltraFace block pilots in
-one machine-readable record. `paper/figures/block_tradeoff.py` joins that file
-with the three raw paired-timing records to produce Figure 1 and its derived
-summary. The script rejects missing, nonpositive, or numerically mismatched
-rows. It reports medians and interquartile ranges without a significance test
-because calls repeated within one process are not independent replicates.
+`block-artifact-pilot.csv` preserves the exact generated-source byte counts
+and artifact digests for the older MobileNetV2, SqueezeNet, and UltraFace block
+pilots in one machine-readable record. These high-growth mechanism rows remain
+available for the policy-boundary analysis, but they are no longer the source
+of the paper's primary figure.
 
 `block-frontier-pilot.csv` is the first application-scale check of the
 read-only `tile.scalar_cost` mechanism at revision `ce9ebe8`. Starting from the

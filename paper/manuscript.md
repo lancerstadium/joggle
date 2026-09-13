@@ -1,4 +1,4 @@
-# Joggle: Malleable Inference Compilation with a Progressive Function IR
+# Joggle: A Progressive Function IR for Malleable Inference Compilation
 
 Working manuscript for the EuroSys 2027 fall cycle. The current file is
 an argument draft, not a submission-ready paper. Pilot values are labeled and
@@ -26,7 +26,7 @@ through matched extension tasks, compiler cost, staged compatibility on
 conventional models, numerical correctness, workspace, code size, and latency.
 Current pilots execute ten ONNX models. On MobileNetV2, SqueezeNet, and
 UltraFace, one operator-independent loop-order policy changes canonical
-function bodies and yields 1.81x, 6.09x, and 1.62x same-process latency ratios
+function bodies and yields 2.08x, 6.09x, and 1.62x same-process latency ratios
 while growing generated C by less than 0.5%; uncontrolled measurements still
 preclude a final speed claim. The completed study will test whether a
 progressive function IR provides a practical, inspectable substrate for
@@ -329,11 +329,12 @@ Generated C is presently the main negative result. Depending on the model, the
 recorded unisolated pilots are about 7--101 times slower than one-thread ONNX
 Runtime. A retired out-of-tree spatial convolution body improved five matched
 C variants by 1.36--6.29 times without frontend or emitter changes, but does not
-provide evidence for the replacement pass. A fresh pilot instead applies the
-generic `tile.reorder` pass to instantiated canonical bodies without
-retargeting any call. Its pooled 20-call MobileNetV2 median falls from 351.060
-to 194.463 ms (1.81x) after changing 64 bodies; generated C grows by 0.46%, the
-output hash is identical, and the `2.0981e-5` reference error is unchanged. On
+provide evidence for the replacement pass. A matched current-revision pilot
+instead applies the generic `tile.reorder` pass to instantiated canonical
+bodies without retargeting any call. Twenty paired MobileNetV2 calls have
+221.645/106.397 ms medians and a 2.081 median pair ratio after changing 32
+bodies; generated C grows by 0.286%, candidate and baseline outputs are
+bit-identical, and both retain the `2.0981e-5` reference error. On
 SqueezeNet, the same policy changes 18 bodies. Twenty paired calls have
 231.433/38.136 ms medians and a 6.090 median pair ratio; generated C grows by
 0.28%, candidate and baseline outputs are bit-identical, and both retain the
@@ -363,18 +364,19 @@ peeled non-divisible extents. Its 20 baseline/candidate medians are
 bit-identical between variants and retain their reference errors, while C grows
 67.5%. Together the three runs make cross-model structural selection
 plausible; they still do not establish controlled performance or an automatic
-scheduling policy (Figure 1).
+scheduling policy.
 
-![Three-model block-policy latency and generated-source trade-off.](figures/Fig1.png)
+![Three-model loop-reordering latency and generated-source trade-off.](figures/Fig1.png)
 
-**Figure 1: Descriptive block-policy pilot.** Each point in panel A is one
-adjacent baseline/candidate timed pair; bars show medians and vertical lines
-show interquartile ranges. These are repeated technical calls within one
-unisolated process (`n = 40`, `20`, and `20`), not independent experimental
-units, so no inferential test is reported. Every candidate output is
-bit-identical to its paired baseline. Panel B reports exact generated C source
-byte ratios from the corresponding preserved artifacts. The figure does not
-compare Joggle with a production runtime.
+**Figure 1 | Low-growth structural reordering across conventional models.**
+**a,** Each point is one adjacent baseline/reordered technical call; thick
+vertical lines show interquartile ranges and horizontal ticks show medians.
+All 20 pairs per model favor the reordered variant. These repeated calls were
+collected within one unisolated process and are not independent experimental
+units, so no inferential test is reported. **b,** Exact generated C source
+growth for the same variants; labels give the number of changed loop bodies.
+Candidate and baseline outputs are bit-identical in every pair. This descriptive
+pilot does not compare Joggle with a production runtime.
 
 A follow-up UltraFace diagnostic tests whether the policy can bound this
 growth before mutation. Limits 0, 500, 1,500, and 1,000,000 produce 0, 4, 16,

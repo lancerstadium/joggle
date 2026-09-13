@@ -1,21 +1,34 @@
 # Paper figures
 
 Figures in this directory are generated from committed raw records. Do not edit
-the rendered files or derived summaries by hand.
+rendered files or derived summaries by hand.
 
-Regenerate the current figure and its English hand-off report with:
+## Figure 1 contract
+
+- Core conclusion: one operator-independent loop-order policy changes real
+  function bodies across three conventional models and improves every paired
+  technical call with negligible generated-source growth.
+- Results-level question: can an out-of-core structural policy produce a useful
+  artifact change without operator cases or code replication?
+- Archetype: two-panel quantitative grid.
+- Output: EuroSys double-column figure, 178 mm wide, Python backend.
+- Panel a: all paired latency ratios, with medians and interquartile ranges.
+- Panel b: exact generated C growth and number of changed loop bodies.
+- Hero evidence: paired latency direction across the three models.
+- Boundary evidence: generated-source growth.
+- Statistics: descriptive only. The 20 pairs per model are technical calls in
+  one unisolated process, not independent experimental units.
+- Reviewer risk: these pilots do not establish isolated cross-machine speedup
+  or close the gap to a production runtime.
+
+Regenerate with the panel-alignment helper on `PYTHONPATH`:
 
 ```sh
-python3 paper/figures/block_tradeoff.py
-python3 paper/figures/figure_report.py
+PYTHONPATH=/path/to/nature-figure/scripts python3 paper/figures/reorder_tradeoff.py
 ```
 
-The figure script requires matplotlib, NumPy, and pandas. The report script
-requires `python-docx`; this reporting dependency is not part of Joggle itself.
-
-`Fig1` is a descriptive view of the three same-process block-policy pilots. It
-shows all paired latency ratios and the exact generated-source cost. Repeated
-calls within one process are technical observations, not independent
-replicates, so the figure reports medians and interquartile ranges without a
-significance test. It must not be presented as an ONNX Runtime comparison or a
-publication-grade performance result.
+The script requires matplotlib and NumPy. It validates row counts, source
+hashes, exact paired-output agreement, and the presence of an actual loop-body
+change before plotting. `qa/` contains the blocking panel-alignment and
+rendered collision audits. The editable SVG is the primary artifact; PDF, PNG,
+and TIFF exports are derived from the same figure object.
