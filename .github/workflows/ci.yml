@@ -62,6 +62,29 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  optional-modules:
+    name: Linux optional modules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install codec dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            flatbuffers-compiler libflatbuffers-dev \
+            libprotobuf-dev protobuf-compiler
+      - name: Configure
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DJOGGLE_BUILD_ONNX=ON
+          -DJOGGLE_BUILD_TFLITE=ON
+          -DJOGGLE_BUILD_SAT=ON
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
   sanitize:
     name: Linux sanitizers
     runs-on: ubuntu-latest
