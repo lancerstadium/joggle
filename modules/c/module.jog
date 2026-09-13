@@ -818,8 +818,8 @@ local fn tensor_constant(
   }
   out += indent + "static const unsigned char data_" +
          label(output) +
-         "[" + text(bytes) + "] = \"\\x" + base.hex(data, "\\x") +
-         "\";\n" + indent + "memcpy(" + val(output) + ", data_" +
+         "[" + text(bytes) + "] = {0x" + base.hex(data, ", 0x") +
+         "};\n" + indent + "memcpy(" + val(output) + ", data_" +
          label(output) + ", " + text(bytes) + ");\n"
   return out
 }

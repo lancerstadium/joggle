@@ -73,6 +73,11 @@ if(emitted MATCHES "(^|[^A-Za-z0-9_])(joggle_|jog_|v_[A-Za-z0-9])")
           "${emitted}")
 endif()
 if(NOT emitted MATCHES
+   "data_weight\\[16\\] = \\{0x00, 0x00, 0x80, 0x3f")
+  message(FATAL_ERROR
+          "external-kernel constant is not a byte array:\n${emitted}")
+endif()
+if(NOT emitted MATCHES
    "void edge_matmul\\(const float\\* a, const float\\* b, int64_t rows, int64_t columns, int64_t inner, float\\* out\\);")
   message(FATAL_ERROR "external kernel prototype is absent:\n${emitted}")
 endif()

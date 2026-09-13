@@ -414,6 +414,11 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "C emission failed (${result}):\n${error}")
 endif()
 file(READ "${source}" emitted_source)
+if(NOT emitted_source MATCHES
+   "data_values\\[3\\] = \\{0xff, 0x00, 0x7f\\};")
+  message(FATAL_ERROR
+          "C emission did not use a byte-array initializer:\n${emitted_source}")
+endif()
 if(NOT emitted_source MATCHES "sum_1 \\+=" OR
    emitted_source MATCHES "sum_1 = sum_1 \\+")
   message(FATAL_ERROR
