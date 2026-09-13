@@ -828,6 +828,24 @@ local fn copy(
          expr(m, input, blob, data_fns, config) + ";\n"
 }
 
+local fn compound_identity(
+  op: str, value: Val, type: Ty, config: dict
+) -> bool {
+  if !integer(type, config) || !ir.is_const(value) ||
+     base.kind(ir.constant(value)) != "int" {
+    return false
+  }
+  let literal = base.int(ir.constant(value))
+  if op == "+" || op == "-" || op == "|" || op == "^" ||
+     op == "<<" || op == ">>" {
+    return literal == 0
+  }
+  if op == "*" || op == "/" {
+    return literal == 1
+  }
+  return false
+}
+
 local fn call(
   m: Mod, op: Op, depth: int, blob: str, data_fns: list<Fn>, config: dict,
   direct: list<str>, results: list<str>
@@ -877,6 +895,15 @@ local fn call(
      !tensor.valid(ir.type(outputs[0])) {
     if ir.name(outputs[0]) == "" {
       return ""
+    }
+    if ir.form(op) == "compound" {
+      if compound_identity(
+           binary_op, inputs[1], ir.type(outputs[0]), config
+         ) {
+        return ""
+      }
+      return indent + val(outputs[0]) + " " + binary_op + "= " +
+             expr(m, inputs[1], blob, data_fns, config) + ";\n"
     }
     return indent + lhs(op, outputs[0], config) + " = " +
            expr(m, inputs[0], blob, data_fns, config) + " " + binary_op +

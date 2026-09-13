@@ -358,8 +358,18 @@ fn fold_identity(m: Mod, callee: str, identity: Attr, side: int) -> bool {
           if ir.constant(args[side]) == identity {
             let keep = args[1 - side]
             if ir.type(outs[0]) == ir.type(keep) {
-              changed = ir.replace(m, outs[0], keep)
-              changed = ir.erase(m, op)
+              let source = ir.def(keep)
+              var mutable = ir.name(keep) != "" && ir.is_const(keep)
+              if ir.live(source) {
+                let source_form = ir.form(source)
+                mutable = source_form == "var" || source_form == "assign" ||
+                          source_form == "compound" ||
+                          source_form == "index_assign"
+              }
+              if !mutable {
+                changed = ir.replace(m, outs[0], keep)
+                changed = ir.erase(m, op)
+              }
             }
           }
         }
@@ -403,8 +413,7 @@ fn dce(m: Mod, pure: list<str>) -> bool {
       }
       allowed = allowed && !needs_declaration(op)
       let form = ir.form(op)
-      allowed = allowed && form != "assign" && form != "compound" &&
-                form != "index_assign"
+      allowed = allowed && form != "index_assign"
       if allowed {
         var unused = true
         for value in ir.outs(op) {

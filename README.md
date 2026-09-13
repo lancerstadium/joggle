@@ -244,9 +244,11 @@ locals keep their readable names. Named pointer results derive from the return
 value with an `_out` suffix. Only compiler-owned temporaries, anonymous
 results, payload arrays, and storage slots use `tmp_`, `out`, `data_`, and
 `slot_`; C keywords receive a trailing underscore. Generated code therefore
-does not add a project-name prefix. An explicit `[c: {name: "..."}]` binding
-pins an external ABI name when source-derived spelling is not the desired
-contract.
+does not add a project-name prefix. Immutable scalar bindings remain `const`,
+and compound source updates remain `+=`, `*=`, and their corresponding C
+forms; integer identity updates are omitted. An explicit
+`[c: {name: "..."}]` binding pins an external ABI name when source-derived
+spelling is not the desired contract.
 
 When a function has one return path and an unplanned local tensor is returned,
 the C emitter binds that tensor directly to its output pointer. It does not

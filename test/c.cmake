@@ -303,6 +303,17 @@ execute_process(
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "C emission failed (${result}):\n${error}")
 endif()
+file(READ "${source}" emitted_source)
+if(NOT emitted_source MATCHES "sum_1 \\+=" OR
+   emitted_source MATCHES "sum_1 = sum_1 \\+")
+  message(FATAL_ERROR
+          "C emission did not preserve compound update syntax:\n${emitted_source}")
+endif()
+if(NOT emitted_source MATCHES "const float scale =")
+  message(FATAL_ERROR
+          "C emission did not preserve an immutable scalar binding:\n"
+          "${emitted_source}")
+endif()
 
 execute_process(
   COMMAND "${TOOL}" emit c.header "${model_prepared}" -M "${MODULES}"

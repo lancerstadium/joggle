@@ -121,6 +121,13 @@ fn captured_steps() -> i64 {
   return sum
 }
 
+fn snapshot() -> i64 {
+  var value: i64 = 4
+  let captured = value + i64(0)
+  value = 9
+  return captured
+}
+
 fn assign_literal() -> bool {
   var value = false
   value = true

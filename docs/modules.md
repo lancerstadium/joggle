@@ -359,10 +359,12 @@ source from the same IR.
 marked as shape bookkeeping. Static-rank traversal in tensor offsets and
 broadcasting is therefore removed before emission without teaching the C target
 about a tensor operator. It then runs the target-independent cleanup, whose
-algebraic rewrites are restricted to immutable expressions: assignments,
-compound updates, and indexed writes are never classified as removable pure
-calls. Immutable scalar bindings are emitted as C `const` values. Runtime
-element loops and data-dependent indexing remain visible.
+algebraic substitutions are restricted to immutable expressions. An unused
+scalar assignment may be removed only when its defining operation is already
+classified as pure; indexed writes remain effects. Immutable scalar bindings
+are emitted as C `const` values. Compound updates retain their C operators,
+and integral updates by the operator's identity are omitted without editing
+the IR. Runtime element loops and data-dependent indexing remain visible.
 
 For a function with one return path, an unplanned local tensor that reaches a
 pointer result is backed directly by that result buffer. The emitter retains

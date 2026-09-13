@@ -127,6 +127,8 @@ int main(void) {
     return 11;
   if (kernel_captured_steps() != 6)
     return 24;
+  if (kernel_snapshot() != 4)
+    return 32;
   if (!kernel_assign_literal())
     return 14;
   return 0;
