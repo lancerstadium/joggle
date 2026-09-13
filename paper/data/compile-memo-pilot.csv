@@ -1,0 +1,3 @@
+model,variant,commit,wall_s,user_s,sys_s,edits,source_calls,cached_calls,output_bytes,output_sha256
+MobileNetV2-7,no-memo,0ba0e2c,63.42,60.80,2.27,9680,4518747,0,28575757,4dba482d4feaf3bf79f454405b556b3f60c3dfca3227910bc84b40e3febacb6a
+MobileNetV2-7,memo,0ba0e2c,34.26,32.90,1.34,9680,2962531,973136,28575757,4dba482d4feaf3bf79f454405b556b3f60c3dfca3227910bc84b40e3febacb6a

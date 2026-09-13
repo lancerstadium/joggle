@@ -130,6 +130,19 @@ complete instantiation, preparation, pass, planning, placement, emission,
 strict compilation, interface/payload equality checks, numerical check, and
 four-process measurement from caller-supplied managed artifacts.
 
+`compile-memo-pilot.csv` records one matched, unisolated compiler diagnostic
+on the same 27 MB MobileNetV2 canonical IR at revision `0ba0e2c`. Both rows run
+`spatial.block(m, 2)` with deterministic execution reporting. The control uses
+the same evaluator but mechanically removes the `[memo]` annotations from the
+`tile` module; the candidate enables per-run memoization for value-only affine
+helpers. Wall time is 63.42 versus 34.26 seconds, while both variants perform
+9,680 IR edits and print the same 28,575,757-byte output with SHA-256
+`4dba482d4feaf3bf79f454405b556b3f60c3dfca3227910bc84b40e3febacb6a`.
+The report records 973,136 cache hits and reduces executed source-function
+calls from 4,518,747 to 2,962,531 because cached parents skip their helper
+calls. This single paired run validates the mechanism and identifies remaining
+interpreter work; it is not a publication-grade compile-time result.
+
 `mobilenetv2-fusion-pilot.csv` was recorded on 12 September 2026 on an Apple
 M4 running Darwin 24.6.0 with Apple Clang 17.0.0 (`clang-1700.6.3.2`). All
 three programs used `-std=c11 -O3`, the same external weight blob, three untimed

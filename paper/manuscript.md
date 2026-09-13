@@ -141,6 +141,13 @@ For structural transforms, an edit of one operation returns its replacement
 `Op`, while a whole-module traversal returns only whether it changed the
 module. This lets a source policy compose checked edits directly without a
 second result abstraction, metadata marker, or module rescan.
+Value-only helpers may separately promise referential transparency with a
+`memo` attribute. The evaluator then reuses equal scalar, type, attribute, or
+recursive-list calls within one top-level invocation. Calls carrying IR
+capabilities bypass this cache, so the mechanism requires neither global cache
+state nor an invalidation protocol. Deterministic reports count both source
+function invocations and memoized returns; this makes repeated module-level
+analysis visible without adding timings to the reproducible report.
 
 ### 3.4 Capability-driven exposure and failure
 

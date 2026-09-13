@@ -93,7 +93,7 @@ blocker.
 | Frontends are separate from semantics | ONNX/TFLite codecs, explicit bridge modules, one pinned Zoo declaration list, and a generated staged table for 12 official models | Frozen controlled subset, task-level accuracy, and broader non-vision evidence |
 | Targets expose only required detail | `c.accepts`, `vm.accepts`, `opt.expose`, preparation tests | A genuinely different external target or simulator study |
 | Transform failure is safe | Transaction and rollback tests, ownership/liveness checks | Fault-injection matrix and diagnostic assessment |
-| Storage and scheduling are replaceable | `mem` and `tile` modules, typed policy callbacks, multi-axis legality, directly composable structural edits, and budgeted scalar promotion with strict-C execution tests | Frozen profitability policies, model-scale compile-time analysis, and multi-model performance results |
+| Storage and scheduling are replaceable | `mem` and `tile` modules, typed policy callbacks, multi-axis legality, directly composable structural edits, budgeted scalar promotion, deterministic source-call accounting, and value-level helper memoization | Frozen profitability policies, repeated model-scale compile-time measurements, and multi-model performance results |
 | C artifacts are usable | Compiled examples, independent weight payload, structured ABI descriptors, generated multi-input/output harnesses, strict compilation, and numerical checks | Frozen execution suite, task metrics, latency distribution, workspace and binary comparisons |
 | VM execution is deterministic | Stable image format, output and step-count tests | Defined use case and overhead comparison |
 
@@ -209,6 +209,13 @@ frozen.
   counts at most three. Generated C grew by about 26%, while the 20-run median
   changed by only -0.22%, within the unisolated pilot's noise. Small-loop
   unrolling is therefore not the next generated-code priority.
+- A deterministic MobileNetV2 `spatial.block` report exposed 4,518,747
+  source-function calls for 9,680 IR edits. Marking reusable value-only affine
+  helpers with the generic `[memo]` contract produced 973,136 cache hits and
+  reduced executed source calls to 2,962,531. One matched unisolated run fell
+  from 63.42 to 34.26 seconds (1.85x), and both variants printed the same
+  28,575,757-byte IR with the same SHA-256. This validates the compiler
+  mechanism, not a publication-grade timing claim.
 - Mixed-stage specialization instead removed 328 rank-traversal loops and all
   492 dynamic compound-list indices from MobileNetV2. External-weight C shrank
   from 244,239 to 226,855 bytes. The official 1,000 outputs retained maximum
