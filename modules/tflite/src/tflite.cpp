@@ -119,7 +119,7 @@ std::string element(tflite::TensorType type) {
 
 std::string type(const tflite::Tensor& tensor) {
   const auto* dims = tensor.shape_signature();
-  if (!dims || dims->empty())
+  if (!dims || dims->size() == 0)
     dims = tensor.shape();
   return "tensor<" + element(tensor.type()) + ", " + ints(dims, true) + ">";
 }
@@ -226,7 +226,7 @@ std::string opcode(const tflite::Model& model, const tflite::Operator& op,
       std::max(static_cast<int>(code->builtin_code()),
                static_cast<int>(code->deprecated_builtin_code()));
   if (number == tflite::BuiltinOperator_CUSTOM) {
-    if (!code->custom_code() || code->custom_code()->empty())
+    if (!code->custom_code() || code->custom_code()->size() == 0)
       throw std::runtime_error("custom operator has no name");
     return code->custom_code()->str();
   }
@@ -266,7 +266,7 @@ void require_tensor(const tflite::SubGraph& graph, std::int32_t index) {
 }
 
 std::string emit(const tflite::Model& model) {
-  if (!model.subgraphs() || model.subgraphs()->empty())
+  if (!model.subgraphs() || model.subgraphs()->size() == 0)
     throw std::runtime_error("TFLite model has no subgraph");
   if (!model.buffers())
     throw std::runtime_error("TFLite model has no buffer table");
@@ -315,7 +315,7 @@ std::string emit(const tflite::Model& model) {
       }
     }
     out << ')';
-    if (graph->outputs() && !graph->outputs()->empty()) {
+    if (graph->outputs() && graph->outputs()->size() != 0) {
       out << " -> ";
       if (graph->outputs()->size() > 1)
         out << '(';
@@ -361,11 +361,11 @@ std::string emit(const tflite::Model& model) {
           << options(*op) << ", \"options_type\": "
           << quote(option_name ? option_name : "NONE") << ", \"version\": "
           << version;
-      if (op->custom_options() && !op->custom_options()->empty())
+      if (op->custom_options() && op->custom_options()->size() != 0)
         out << ", \"custom\": " << hex(op->custom_options());
       out << "}]\n  ";
 
-      if (op->outputs() && !op->outputs()->empty()) {
+      if (op->outputs() && op->outputs()->size() != 0) {
         out << "let ";
         for (flatbuffers::uoffset_t index = 0; index < op->outputs()->size();
              ++index) {
