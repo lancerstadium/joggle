@@ -8,8 +8,12 @@ described below are preserved here.
 ## Frozen revision and documented path
 
 - repository: <https://github.com/onnx/onnx-mlir>
-- revision: `42803380540dc3c8fce2e831cc77d3c87a195a70`
+- revision: `4a13c34aa695b228599d637cdb772c19b4b18dba`
 - observed: 2026-09-13
+- compiler image: `ghcr.io/onnxmlir/onnx-mlir`, amd64 manifest
+  `sha256:989e82c5cef0a0fbaf128a2d0a54d828beb4e3e9e5e3228f845fbab4539b288a`
+- development image: `ghcr.io/onnxmlir/onnx-mlir-dev`, amd64 manifest
+  `sha256:7cac84ffca2989699bb8267043d700b4679c6c90b119ea6540a50155b1f6aa60`
 - system boundary: ONNX input through the `onnx-mlir` driver to a compiled
   artifact and executable oracle
 
@@ -21,6 +25,13 @@ verification, and importer hooks. Its
 [accelerator guide](https://onnx.ai/onnx-mlir/AddCustomAccelerators.html)
 documents accelerator-scoped dialect and pass registration, build selection
 through `ONNX_MLIR_ACCELERATORS`, and compilation through `--maccel`.
+
+Both pinned image manifests declare the revision above in their OCI labels.
+The newer repository `main` observed on the same date is intentionally not the
+baseline because no matching successful image was available. Source and
+executable revisions must not be mixed. The retrieved manifest, config, size,
+and label fields are preserved in [`images.json`](images.json); the documented
+source integration boundary is summarized in [`surface.md`](surface.md).
 
 ## Task mapping
 

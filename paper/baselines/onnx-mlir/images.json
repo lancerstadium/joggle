@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "observed": "2026-09-13",
+  "registry": "ghcr.io",
+  "architecture": "amd64",
+  "source_revision": "4a13c34aa695b228599d637cdb772c19b4b18dba",
+  "images": {
+    "compiler": {
+      "repository": "onnxmlir/onnx-mlir",
+      "manifest": "sha256:989e82c5cef0a0fbaf128a2d0a54d828beb4e3e9e5e3228f845fbab4539b288a",
+      "config": "sha256:5eec7fbb056b38b58e815daae2c49b6754793fd20bf30093c4314fcb04da05d0",
+      "compressed_layer_bytes": 1222954074,
+      "source_label": "4a13c34aa695b228599d637cdb772c19b4b18dba",
+      "source_date_label": "2026-05-05T16:03:27Z",
+      "build_label": "yes"
+    },
+    "development": {
+      "repository": "onnxmlir/onnx-mlir-dev",
+      "manifest": "sha256:7cac84ffca2989699bb8267043d700b4679c6c90b119ea6540a50155b1f6aa60",
+      "config": "sha256:ed8976ae940e3ff2aa8babe971f598dce8a21e34c455807ac1fa33771e43dca3",
+      "compressed_layer_bytes": 7484416196,
+      "source_label": "4a13c34aa695b228599d637cdb772c19b4b18dba",
+      "source_date_label": "2026-05-05T16:03:27Z",
+      "build_label": "yes"
+    }
+  }
+}

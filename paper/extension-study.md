@@ -98,7 +98,7 @@ programs pass the implementation, policy, and external-kernel contracts; their
 sources and build recipe are preserved under `baselines/tvm/`. The numeric-
 format contract remains unimplemented, so there is no complete TVM result.
 ONNX-MLIR is pinned at commit
-`42803380540dc3c8fce2e831cc77d3c87a195a70`, but its task implementations and
+`4a13c34aa695b228599d637cdb772c19b4b18dba`, but its task implementations and
 oracles are not complete. There is therefore no system-level result and no
 cross-system extensibility conclusion yet. RISE/Shine remains provisional;
 standalone MLIR observations may explain plumbing cost but cannot close RQ2.
