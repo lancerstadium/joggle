@@ -2788,8 +2788,7 @@ int main(int argc, char** argv) {
   const joggle::Attr::Dict* memo_handle_cached =
       memo_handle_summary->at("cached").dict();
   CHECK(memo_handle_cached &&
-        memo_handle_cached->find("script.memo_name") ==
-            memo_handle_cached->end());
+        memo_handle_cached->at("script.memo_name").integer() == 1);
   joggle::Mod failed_sequence;
   CHECK(joggle::parse(env, source.str(), failed_sequence, argv[1]));
   const std::string before_sequence = joggle::print(failed_sequence);

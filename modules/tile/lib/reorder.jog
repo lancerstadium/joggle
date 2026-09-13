@@ -30,6 +30,7 @@ local fn permutation_issue(order: list<int>, axes: int) -> str {
   return ""
 }
 
+[memo]
 local fn trip(m: Mod, range: Val) -> int {
   let op = ir.def(range)
   if !ir.live(op) || ir.kind(op) != "call" ||

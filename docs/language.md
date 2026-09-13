@@ -52,7 +52,7 @@ CLI invocation, module information, and compatibility checks expose only the
 public surface. Visibility is a property of `Fn`, available as `Fn::local()`
 and `ir.local(fn)`; it is not encoded in an attribute or naming convention.
 
-A value-level helper may opt into per-run memoization with `[memo]`:
+A pure compile-time helper may opt into per-run memoization with `[memo]`:
 
 ```jog
 [memo]
@@ -65,13 +65,18 @@ local fn product(shape: list<int>) -> int {
 }
 ```
 
-`[memo]` is a semantic promise that equal arguments produce an equal result
-without externally visible effects. The evaluator reuses only calls whose
-arguments and result are immutable compile-time values (`Attr`, `Ty`, and
-recursive lists of those values). A call containing `Mod`, `Fn`, `Blk`, `Op`,
-or `Val` bypasses the cache even if annotated, so an IR analysis cannot become
-stale through this mechanism. The cache lasts for one top-level `run` step;
-there is no process-global state or cross-pass invalidation protocol.
+`[memo]` is a semantic promise that equal arguments under the same IR snapshot
+produce an equal result without externally visible effects. Scalar attributes,
+types, IR capabilities (`Mod`, `Fn`, `Blk`, `Op`, and `Val`), and recursive
+lists of those values may participate. Capability keys contain the store
+identity, handle identity and generation, and current store revision. A result
+that contains capabilities also retains their store revisions as dependencies.
+Every dependency must still be current at a hit, and a call that changes any
+input store revision is never inserted. Consequently an explicitly memoized IR
+query can be reused, while an accidentally annotated transform cannot leave a
+reusable stale entry. The cache lasts for one top-level `run` step; there is no
+process-global cache or cross-pass invalidation protocol. External state is not
+tracked, so the purity promise remains the module author's responsibility.
 
 Multiple loop variables denote a lexically nested Cartesian product. A source
 may be a range or any compile-time list, so the same form traverses tensor

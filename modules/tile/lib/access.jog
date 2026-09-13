@@ -1,3 +1,4 @@
+[memo]
 local fn known(value: Val, values: list<Val>) -> bool {
   for candidate in values {
     if candidate == value {
@@ -68,6 +69,7 @@ fn axes(loop: Op, value: Val) -> list<int> {
   return out
 }
 
+[memo]
 local fn nested(root: Op) -> list<Op> {
   var out: list<Op> = [root]
   for body in ir.blks(root) {
@@ -78,6 +80,7 @@ local fn nested(root: Op) -> list<Op> {
   return out
 }
 
+[memo]
 local fn linked(values: list<Val>, left: Val, right: Val) -> list<Val> {
   var out = values
   if known(left, out) && !known(right, out) {
@@ -188,6 +191,7 @@ local fn indexed_ops(m: Mod, loop: Op) -> list<Op> {
   return out
 }
 
+[memo]
 local fn index_arg(m: Mod, op: Op, value: Val) -> bool {
   let inputs = ir.args(op)
   var end = len(inputs)

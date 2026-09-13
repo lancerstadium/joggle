@@ -1,3 +1,4 @@
+[memo]
 local fn affine_seen(value: Val, seen: list<Val>) -> bool {
   for item in seen {
     if item == value {
@@ -133,6 +134,7 @@ local fn affine_divide(value: list<int>, divisor: int) -> list<int> {
   return out
 }
 
+[memo]
 local fn affine_in(
   m: Mod, loop: Op, value: Val, seen: list<Val>
 ) -> list<int> {
@@ -211,6 +213,7 @@ local fn affine_in(
   return []
 }
 
+[memo]
 fn affine(m: Mod, loop: Op, value: Val) -> list<int> {
   assert(ir.live(loop) && ir.kind(loop) == "loop" && ir.live(value),
          "tile.affine requires a live loop and value")

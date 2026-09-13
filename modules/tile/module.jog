@@ -4,6 +4,7 @@ use ir
 use opt
 use tensor
 
+[memo]
 local fn base_op(m: Mod, op: Op, name: str) -> bool {
   if !ir.live(op) || ir.kind(op) != "call" {
     return false
@@ -13,6 +14,7 @@ local fn base_op(m: Mod, op: Op, name: str) -> bool {
          (target == ir.callee(op) && target == name)
 }
 
+[memo]
 local fn base_fn(name: str, arity: int) -> Fn {
   for fn in ir.fns("base") {
     if ir.name(fn) == name && len(ir.params(fn)) == arity {
@@ -33,6 +35,7 @@ local fn call_like(
   return ir.call(m, before, ir.callee(source), args, type)
 }
 
+[memo]
 local fn syntax_op(m: Mod, op: Op, name: str) -> bool {
   if !ir.live(op) || ir.kind(op) != "call" {
     return false
@@ -86,6 +89,7 @@ local fn same_range(m: Mod, left: Val, right: Val) -> bool {
          same_value(a[0], b[0]) && same_value(a[1], b[1])
 }
 
+[memo]
 local fn captured(op: Op, value: Val) -> bool {
   for input in ir.args(op) {
     if input == value {
@@ -102,6 +106,7 @@ local fn captured(op: Op, value: Val) -> bool {
   return false
 }
 
+[memo]
 local fn contains(root: Op, selected: Op) -> bool {
   if root == selected {
     return true

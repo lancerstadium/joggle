@@ -572,6 +572,8 @@ fn memo_handle_probe(m: Mod) -> bool {
     if len(params) != 0 {
       let value = params[0]
       let before = memo_name(value)
+      assert(memo_name(value) == before,
+             "script.memo_handle_probe could not reuse a pure query")
       assert(ir.rename(m, value, "memo_handle"),
              "script.memo_handle_probe could not rename a value")
       return before != memo_name(value) && ir.name(value) == "memo_handle"

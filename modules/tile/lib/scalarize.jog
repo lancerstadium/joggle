@@ -1,3 +1,4 @@
+[memo]
 local fn has_op(ops: list<Op>, selected: Op) -> bool {
   for op in ops {
     if op == selected {
@@ -40,6 +41,7 @@ local fn state_value(
   return mapped(value, old, next)
 }
 
+[memo]
 local fn address_only(
   m: Mod,
   loop: Op,
@@ -68,6 +70,7 @@ local fn address_only(
   return true
 }
 
+[memo]
 local fn drop_address(
   m: Mod, loop: Op, op: Op, accesses: list<Op>
 ) -> bool {

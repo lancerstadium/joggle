@@ -375,50 +375,6 @@ std::size_t hash_attr(const Attr& value) {
   return seed;
 }
 
-std::optional<std::size_t> memo_hash(const Item& item) {
-  if (const Attr* value = as<Attr>(item)) {
-    std::size_t seed = 1;
-    hash_combine(seed, hash_attr(*value));
-    return seed;
-  }
-  if (const Ty* value = as<Ty>(item)) {
-    std::size_t seed = 2;
-    hash_combine(seed, std::hash<std::string_view>{}(value->text()));
-    return seed;
-  }
-  if (const Items* values = list(item)) {
-    std::size_t seed = 3;
-    hash_combine(seed, values->size());
-    for (const Item& value : *values) {
-      const auto item_hash = memo_hash(value);
-      if (!item_hash)
-        return std::nullopt;
-      hash_combine(seed, *item_hash);
-    }
-    return seed;
-  }
-  return std::nullopt;
-}
-
-std::optional<std::size_t> memo_hash(const Items& generics,
-                                     const Items& args) {
-  std::size_t seed = generics.size();
-  for (const Item& item : generics) {
-    const auto item_hash = memo_hash(item);
-    if (!item_hash)
-      return std::nullopt;
-    hash_combine(seed, *item_hash);
-  }
-  hash_combine(seed, args.size());
-  for (const Item& item : args) {
-    const auto item_hash = memo_hash(item);
-    if (!item_hash)
-      return std::nullopt;
-    hash_combine(seed, *item_hash);
-  }
-  return seed;
-}
-
 bool same(const Items& left, const Items& right) {
   return left.size() == right.size() &&
          std::equal(left.begin(), left.end(), right.begin(),
@@ -525,13 +481,128 @@ private:
     }
   };
 
+  struct Version {
+    const detail::Store* store = nullptr;
+    std::uint64_t revision = 0;
+
+    friend bool operator==(const Version&, const Version&) = default;
+  };
+
   struct Memo {
     Items generics;
     Items args;
     Items result;
+    std::vector<Version> dependencies;
+  };
+
+  struct MemoProbe {
+    std::size_t hash = 0;
+    std::vector<Version> versions;
   };
 
   using MemoEntries = std::unordered_multimap<std::size_t, Memo>;
+
+  static void memo_version(std::vector<Version>& versions,
+                           const detail::Store* store) {
+    if (store &&
+        std::none_of(versions.begin(), versions.end(),
+                     [store](const Version& version) {
+                       return version.store == store;
+                     }))
+      versions.push_back({store, store->revision});
+  }
+
+  static bool memo_item(const Item& item, std::size_t& seed,
+                        std::vector<Version>& versions) {
+    if (const Attr* value = as<Attr>(item)) {
+      hash_combine(seed, 1);
+      hash_combine(seed, hash_attr(*value));
+      return true;
+    }
+    if (const Ty* value = as<Ty>(item)) {
+      hash_combine(seed, 2);
+      hash_combine(seed, std::hash<std::string_view>{}(value->text()));
+      return true;
+    }
+    if (const auto* value = as<Mod*>(item)) {
+      if (!*value)
+        return false;
+      const detail::Store* store = &(*value)->impl_->store;
+      hash_combine(seed, 3);
+      hash_combine(seed, reinterpret_cast<std::uintptr_t>(store));
+      hash_combine(seed, store->revision);
+      memo_version(versions, store);
+      return true;
+    }
+    const auto handle = [&](std::size_t tag, const detail::Store* store,
+                            std::uint32_t id,
+                            std::uint32_t generation) -> bool {
+      if (!store)
+        return false;
+      hash_combine(seed, tag);
+      hash_combine(seed, reinterpret_cast<std::uintptr_t>(store));
+      hash_combine(seed, id);
+      hash_combine(seed, generation);
+      hash_combine(seed, store->revision);
+      memo_version(versions, store);
+      return true;
+    };
+    if (const auto* value = as<Fn>(item))
+      return handle(4, value->store_, value->id_, value->generation_);
+    if (const auto* value = as<Blk>(item))
+      return handle(5, value->store_, value->id_, value->generation_);
+    if (const auto* value = as<Op>(item))
+      return handle(6, value->store_, value->id_, value->generation_);
+    if (const auto* value = as<Val>(item))
+      return handle(7, value->store_, value->id_, value->generation_);
+    if (const Items* values = list(item)) {
+      hash_combine(seed, 8);
+      hash_combine(seed, values->size());
+      for (const Item& value : *values)
+        if (!memo_item(value, seed, versions))
+          return false;
+      return true;
+    }
+    return false;
+  }
+
+  static std::optional<MemoProbe> memo_probe(const Items& generics,
+                                             const Items& args) {
+    MemoProbe out;
+    hash_combine(out.hash, generics.size());
+    for (const Item& item : generics)
+      if (!memo_item(item, out.hash, out.versions))
+        return std::nullopt;
+    hash_combine(out.hash, args.size());
+    for (const Item& item : args)
+      if (!memo_item(item, out.hash, out.versions))
+        return std::nullopt;
+    return out;
+  }
+
+  static bool memo_current(std::span<const Version> versions) {
+    return std::all_of(versions.begin(), versions.end(),
+                       [](const Version& version) {
+                         return version.store &&
+                                version.store->revision == version.revision;
+                       });
+  }
+
+  void memo_store(const Site& site, std::size_t key, Items generics,
+                  Items args, const Items& result,
+                  const MemoProbe& input) {
+    if (!memo_current(input.versions))
+      return;
+    const auto output = memo_probe({}, result);
+    if (!output)
+      return;
+    std::vector<Version> dependencies = input.versions;
+    for (const Version& version : output->versions)
+      memo_version(dependencies, version.store);
+    memo_[site].emplace(
+        key, Memo{std::move(generics), std::move(args), result,
+                  std::move(dependencies)});
+  }
 
   struct Dispatch {
     std::vector<Ty> args;
@@ -841,18 +912,19 @@ private:
     }
     const Attr* memo = fn.meta("memo");
     const bool memoized = memo && memo->boolean() == true;
-    const auto key = memoized ? memo_hash(generic_args, args)
-                              : std::optional<std::size_t>{};
+    const auto probe = memoized ? memo_probe(generic_args, args)
+                                : std::optional<MemoProbe>{};
     const Site site{fn.store_, fn.id_};
     Items memo_generics;
     Items memo_args;
-    if (key) {
+    if (probe) {
       auto function = memo_.find(site);
       if (function != memo_.end()) {
-        const auto [begin, end] = function->second.equal_range(*key);
+        const auto [begin, end] = function->second.equal_range(probe->hash);
         for (auto entry = begin; entry != end; ++entry) {
           if (same(entry->second.generics, generic_args) &&
-              same(entry->second.args, args)) {
+              same(entry->second.args, args) &&
+              memo_current(entry->second.dependencies)) {
             if (trace_)
               ++cached_[std::string(fn.module()) + "." +
                         std::string(fn.name())];
@@ -890,9 +962,9 @@ private:
       Items out;
       for (Attr& value : scalar_returns)
         out.emplace_back(std::move(value));
-      if (key && memo_hash(out))
-        memo_[site].emplace(
-            *key, Memo{std::move(memo_generics), std::move(memo_args), out});
+      if (probe)
+        memo_store(site, probe->hash, std::move(memo_generics),
+                   std::move(memo_args), out, *probe);
       return out;
     }
 
@@ -912,10 +984,9 @@ private:
     if (flow.kind == FlowKind::ret) {
       if (observed)
         record(fn, *observed, before, flow.values);
-      if (key && memo_hash(flow.values))
-        memo_[site].emplace(
-            *key,
-            Memo{std::move(memo_generics), std::move(memo_args), flow.values});
+      if (probe)
+        memo_store(site, probe->hash, std::move(memo_generics),
+                   std::move(memo_args), flow.values, *probe);
       return std::move(flow.values);
     }
     if (flow.kind != FlowKind::fail)
