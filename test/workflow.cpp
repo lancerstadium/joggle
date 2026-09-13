@@ -89,6 +89,38 @@ int main(int argc, char** argv) {
   CHECK(env.loaded("tensor"));
   CHECK((env.modules() == std::vector<std::string>{"base", "tensor"}));
 
+  const std::array<joggle::Source, 2> split_sources{
+      joggle::Source{
+          "module split\n"
+          "fn entry(x: i32) -> i32 { return helper(x) }\n",
+          "module.jog"},
+      joggle::Source{
+          "local fn helper(x: i32) -> i32 { return x + 1 }\n",
+          "lib/helper.jog"}};
+  joggle::Mod split_mod;
+  CHECK(joggle::parse(env, split_sources, split_mod));
+  CHECK(split_mod.verify(env));
+  CHECK(split_mod.find_fn("entry") && split_mod.find_fn("helper"));
+  CHECK(split_mod.find_fn("entry").loc().file == "module.jog");
+  CHECK(split_mod.find_fn("helper").loc().file == "lib/helper.jog");
+
+  const std::array<joggle::Source, 2> invalid_split_sources{
+      joggle::Source{"module invalid_split\n", "module.jog"},
+      joggle::Source{
+          "fn wrong(x: i32) -> bool { return x }\n",
+          "lib/wrong.jog"}};
+  joggle::Mod invalid_split;
+  CHECK(joggle::parse(env, invalid_split_sources, invalid_split));
+  CHECK(!invalid_split.verify(env));
+  CHECK(std::any_of(invalid_split.diags().begin(),
+                    invalid_split.diags().end(),
+                    [](const joggle::Diag& diag) {
+                      return diag.loc.file == "lib/wrong.jog" &&
+                             diag.loc.line == 1 &&
+                             diag.message.find("return type") !=
+                                 std::string::npos;
+                    }));
+
   joggle::Mod dynamic_overload;
   constexpr std::string_view dynamic_overload_source =
       "module dynamic.overload\n"
