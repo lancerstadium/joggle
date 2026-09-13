@@ -920,12 +920,15 @@ joggle run c.noalias prepared.jog -M modules > noalias.jog
 joggle emit c.source noalias.jog -M modules > model.c
 ```
 
-The generated definitions use C `restrict` on tensor inputs, tensor outputs,
-and any external weight payload. Headers stay unqualified and `c.api` records
-`noalias: true`. Use `joggle run c.noalias noalias.jog --arg false` to remove
-the field without deleting an existing `[c: {name: ...}]` binding. This is a
-user assertion, not a dependence proof; do not enable it for in-place or
-otherwise overlapping calls.
+Generated definitions already state the static minimum element count of each
+non-empty fixed-shape tensor through C11 array parameters. The no-alias
+contract adds `restrict` to those tensor parameters and to any external weight
+payload. Headers retain their compatible, unqualified pointer form and `c.api`
+records `noalias: true`. Use
+`joggle run c.noalias noalias.jog --arg false` to remove the field without
+deleting an existing `[c: {name: ...}]` binding. This is a user assertion, not
+a dependence proof; do not enable it for in-place or otherwise overlapping
+calls.
 
 Inspect deterministic structural measurements before or after any step:
 

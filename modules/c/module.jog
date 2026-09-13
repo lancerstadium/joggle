@@ -1344,10 +1344,13 @@ local fn signature_text(
   results: list<str>,
   blob: str,
   config: dict,
-  qualified: bool
+  definition: bool,
+  noalias: bool
 ) -> str {
   assert(len(params) == len(names) && len(returns) == len(results),
          "c: signature names do not match its types")
+  assert(definition || !noalias,
+         "c: noalias qualifiers belong only to definitions")
   var out = "void"
   if len(returns) == 1 && !tensor.valid(returns[0]) {
     out = scalar(returns[0], config)
@@ -1360,12 +1363,21 @@ local fn signature_text(
     }
     let type = params[i]
     if tensor.valid(type) {
-      count(type)
-      out += "const " + scalar(tensor.elem(type), config) + "*"
-      if qualified {
-        out += " restrict"
+      let elements = count(type)
+      out += "const " + scalar(tensor.elem(type), config)
+      if definition && elements > 0 {
+        out += " " + names[i] + "["
+        if noalias {
+          out += "restrict "
+        }
+        out += "static " + text(elements) + "]"
+      } else {
+        out += "*"
+        if noalias {
+          out += " restrict"
+        }
+        out += " " + names[i]
       }
-      out += " " + names[i]
     } else {
       out += scalar(type, config) + " " + names[i]
     }
@@ -1376,7 +1388,7 @@ local fn signature_text(
       out += ", "
     }
     out += "const unsigned char*"
-    if qualified {
+    if noalias {
       out += " restrict"
     }
     out += " " + blob
@@ -1389,15 +1401,24 @@ local fn signature_text(
       }
       let type = returns[i]
       if tensor.valid(type) {
-        count(type)
-        out += scalar(tensor.elem(type), config) + "*"
-        if qualified {
-          out += " restrict"
+        let elements = count(type)
+        out += scalar(tensor.elem(type), config)
+        if definition && elements > 0 {
+          out += " " + results[i] + "["
+          if noalias {
+            out += "restrict "
+          }
+          out += "static " + text(elements) + "]"
+        } else {
+          out += "*"
+          if noalias {
+            out += " restrict"
+          }
+          out += " " + results[i]
         }
       } else {
-        out += scalar(type, config) + "*"
+        out += scalar(type, config) + "* " + results[i]
       }
-      out += " " + results[i]
       arguments += 1
     }
   }
@@ -1409,7 +1430,7 @@ local fn signature_text(
 
 local fn signature(
   m: Mod, fn: Fn, blob: str, data_fns: list<Fn>, config: dict,
-  qualified: bool
+  definition: bool
 ) -> str {
   assert(callable(m, fn, config), "c: function has no representable ABI")
   var types: list<Ty> = []
@@ -1425,7 +1446,7 @@ local fn signature(
   return signature_text(
     symbol(m, fn, config), types, names, ir.returns(fn),
     result_names(fn, data), data, config,
-    qualified && noalias_enabled(fn)
+    definition, definition && noalias_enabled(fn)
   )
 }
 
@@ -1478,7 +1499,7 @@ local fn external_signature(m: Mod, op: Op, config: dict) -> str {
   }
   return signature_text(
     symbol(m, fn, config), types, names, returns, results, "", config,
-    false
+    false, false
   )
 }
 

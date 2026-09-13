@@ -237,12 +237,19 @@ results, C representation class, tensor shapes, element and byte counts,
 pointer passing, and whether it receives the external payload. `c.api`,
 `c.header`, and `c.source` share the same internal ABI and naming functions.
 
+Definitions express every non-empty fixed-shape tensor parameter and result as
+a C11 array parameter with its static minimum element count. The declaration
+and portable C/C++ header retain the compatible pointer form; `c.api` reports
+that public form as well. This carries a fact already present in the tensor
+type into C without changing the ABI or inventing a target shape.
+
 An entry can state an explicit non-aliasing contract with
 `[c: {noalias: true}]`, or a workflow can annotate every exported entry with
-`joggle run c.noalias`. The C definition then qualifies its tensor and payload
-pointers with `restrict`; declarations in the portable public header remain
-unqualified. `c.api` reports the contract as `noalias`. This is never inferred:
-the caller remains responsible for passing disjoint pointer objects.
+`joggle run c.noalias`. The C definition then adds `restrict` to its bounded
+tensor array parameters and payload pointer; declarations in the portable
+public header remain unqualified. `c.api` reports the contract as `noalias`.
+This is never inferred: the caller remains responsible for passing disjoint
+pointer objects.
 
 ABI spelling, widths, alignment, includes, and external scalar types come from
 a configuration dictionary. Function prototypes are derived from resolved

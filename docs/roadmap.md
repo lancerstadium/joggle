@@ -143,6 +143,12 @@ backend limitation. Block-local dead-code indexing and batched exposure allow
 the current DenseNet path to finish preparation, but its 271.92-second pilot
 and approximately 29.2x generated-C latency gap remain explicit scaling and
 code-quality targets rather than evidence of a mature backend.
+Non-empty fixed-shape tensor parameters and results now retain their exact
+minimum element count in C11 function definitions while public declarations
+keep the compatible C/C++ pointer ABI. A paired UltraFace diagnostic found
+byte-identical outputs and performance parity with the pointer-only spelling;
+the change exposes an existing type fact to downstream compilers but is not a
+speedup claim.
 An explicit per-entry `c.noalias` contract now reaches tensor and payload
 pointers in C definitions and the structured API without contaminating the
 portable header. Alignment propagation, proof-derived alias facts, and
