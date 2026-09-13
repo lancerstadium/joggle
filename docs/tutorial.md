@@ -364,6 +364,20 @@ let promoted = tile.scalarize(m, reordered, 4)
 assert(ir.live(promoted), "tile promotion failed")
 ```
 
+If a static state extent is not divisible by four, peel it before applying the
+same sequence:
+
+```jog
+let parts = tile.peel(m, loop, state_axis, 4)
+let prefix = tile.split(m, parts[0], state_axis, 4)
+// Reorder and promote prefix; parts[1] remains the scalar tail.
+```
+
+`tile.peel` returns `[loop]` when no tail exists and `[prefix, tail]` when it
+performs the edit. It accepts only leading state coordinates proved from the
+carried value's affine address. It therefore cannot silently move a reduction
+tail into a separate phase.
+
 The final argument is a hard scalar budget, not a hidden schedule choice. The
 pass infers the state and reduction bands from affine accesses and refuses a
 tile whose full state-address range cannot be proved inside its static tensor.

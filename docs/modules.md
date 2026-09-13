@@ -371,6 +371,17 @@ last axis. `split_issue`, `can_split`, and
 exactly the edit it intends to request. `tile.extents(m, loop)` returns all
 static trip counts, or an empty list when any range is dynamic, so a policy can
 require exact tiles without reimplementing range recognition.
+`tile.peel(m, loop, axis, factor)` is the conservative alternative when a
+padded state tile would prevent a later interchange or promotion. It replaces
+one static loop by an aligned prefix and an ordinary scalar tail, returned in
+that order as `list<Op>`. The edit is legal only when the selected axis and all
+of its outer axes are proved state axes, so executing the two loops
+sequentially cannot change a reduction order. Exact, too-small, and
+factor-one requests return the unchanged loop as a one-item list.
+`peel_issue` and `can_peel` expose the same read-only legality decision. The
+mechanism adds neither masked accesses nor a target-emitter case; a policy may
+compose `split`, `reorder`, and `scalarize` on the returned prefix while leaving
+the tail untouched.
 `tile.splittable(m, factor)` and `tile.unrollable(m, factor)` expose legal loop
 sets; `tile.fusible(m)` exposes the exact pair collection consumed by automatic
 fusion. Enumeration is read-only and returns live `Op` handles, or

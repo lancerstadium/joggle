@@ -63,6 +63,17 @@ if(NOT result EQUAL 0)
           "scalar tail safety failed (${result}):\n${error}")
 endif()
 execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_peel "${canonical}"
+          -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_QUIET
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "loop peel contract failed (${result}):\n${error}")
+endif()
+execute_process(
   COMMAND "${TOOL}" run bounds.fold opt.fold opt.basic "${canonical}"
           -M "${MODULES}"
   RESULT_VARIABLE result
@@ -224,7 +235,7 @@ if(NOT result EQUAL 0)
 endif()
 execute_process(
   COMMAND "${TOOL}" run spatial.block "${canonical}"
-          --arg "[3, 2]" -M "${EXAMPLES}" -M "${MODULES}"
+          --arg "[2, 3]" -M "${EXAMPLES}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${split_scalar_list}"
   ERROR_VARIABLE error

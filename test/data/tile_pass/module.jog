@@ -348,6 +348,48 @@ fn check_scalarize_tail(m: Mod) -> bool {
   return true
 }
 
+fn check_peel(m: Mod) -> bool {
+  let function = ir.find(m, "reduce5")
+  assert(ir.live(function), "peel check requires reduce5")
+  var loops: list<Op> = []
+  for op in ir.ops(function) {
+    if ir.kind(op) == "loop" {
+      loops += [op]
+    }
+  }
+  assert(len(loops) == 1, "peel check requires one loop")
+  let source = loops[0]
+  let before = ir.revision(m)
+  assert(tile.peel_issue(m, source, 3, 2) == "" &&
+         tile.can_peel(m, source, 3, 2),
+         "peel rejected a static non-divisible state axis")
+  assert(tile.peel_issue(m, source, 4, 2) ==
+           "requires the selected axis and its outer axes to be state axes" &&
+         !tile.can_peel(m, source, 4, 2),
+         "peel accepted a reduction axis")
+  assert(!tile.can_peel(m, source, 3, 1) &&
+         !tile.can_peel(m, source, 3, 5) &&
+         !tile.can_peel(m, source, 3, 10),
+         "peel accepted a no-op factor")
+  assert(ir.revision(m) == before,
+         "peel legality queries changed the module")
+
+  let parts = tile.peel(m, source, 3, 2)
+  assert(len(parts) == 2 && ir.live(parts[0]) && ir.live(parts[1]) &&
+         !ir.live(source),
+         "peel did not replace the source with prefix and tail loops")
+  assert(tile.extents(m, parts[0]) == [2, 3, 4, 4, 6] &&
+         tile.extents(m, parts[1]) == [2, 3, 4, 1, 6],
+         "peel produced the wrong prefix or tail extent")
+  for part in parts {
+    for op in ir.ops(ir.blks(part)[0]) {
+      assert(ir.kind(op) != "branch",
+             "peel introduced a masked tail branch")
+    }
+  }
+  return true
+}
+
 fn scalarize_budget(m: Mod, budget: int) -> bool {
   return tile.scalarize(m, budget)
 }

@@ -75,12 +75,14 @@ legality instead of being turned into an out-of-bounds load or store. None of
 these paths defines a second `nn.conv2d` function.
 
 `spatial.block(m, factors)` is the complete generic policy used by that test.
-For each loop it selects the first factor that exactly divides the innermost
-proved state extent; `[4, 7]`, for example, can cover both power-of-two spatial
-widths and width seven in one traversal. Dynamic and unmatched extents are
-left unchanged. The policy splits the selected state axis, moves only the new
-inner axis below the reduction band, and scalarizes within the selected hard
-budget. It neither inspects a callee name nor assumes a loop rank. Each
+For each loop it prefers the first factor that exactly divides the innermost
+proved state extent. If none does, it uses the first smaller factor and
+`tile.peel` separates an aligned prefix from an ordinary scalar tail. `[4, 7]`,
+for example, covers both power-of-two widths, width seven, and odd extents such
+as 111 without a masked access or target-emitter case. Dynamic and too-small
+extents are left unchanged. The policy splits the selected prefix, moves only
+the new inner axis below the reduction band, and scalarizes within the selected
+hard budget. It neither inspects a callee name nor assumes a loop rank. Each
 explicit edit returns its replacement `Op`, so the three edits compose
 directly without an anchor, result wrapper, or module rescan:
 

@@ -43,12 +43,16 @@ fn apply(m: Mod) -> bool {
 
 [memo]
 local fn factor(extent: int, factors: list<int>) -> int {
+  var tail = 1
   for candidate in factors {
     if extent > 0 && extent % candidate == 0 {
       return candidate
     }
+    if tail == 1 && extent > candidate {
+      tail = candidate
+    }
   }
-  return 1
+  return tail
 }
 
 fn block(m: Mod, factors: list<int>) -> bool {
@@ -70,13 +74,20 @@ fn block(m: Mod, factors: list<int>) -> bool {
         let selected_factor = factor(extents[axis], factors)
         if selected_factor > 1 {
           let axes = len(extents)
-          let split = tile.split(m, source, axis, selected_factor)
+          var selected = source
+          if extents[axis] % selected_factor != 0 {
+            let parts = tile.peel(m, source, axis, selected_factor)
+            assert(len(parts) == 2,
+                   "spatial.block could not peel a selected loop")
+            selected = parts[0]
+          }
+          let split = tile.split(m, selected, axis, selected_factor)
           assert(ir.live(split),
                  "spatial.block could not split a selected loop")
-          let selected = order(m, split, 1)
-          assert(len(selected) == axes + 1,
+          let next_order = order(m, split, 1)
+          assert(len(next_order) == axes + 1,
                  "spatial.block could not order a selected tile")
-          let reordered = tile.reorder(m, split, selected)
+          let reordered = tile.reorder(m, split, next_order)
           assert(ir.live(reordered),
                  "spatial.block could not reorder a selected tile")
           assert(ir.live(tile.scalarize(m, reordered, selected_factor)),
