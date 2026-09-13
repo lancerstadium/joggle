@@ -168,6 +168,7 @@ file(MAKE_DIRECTORY "${ROOT}")
 
 set(tiled_sum "${ROOT}/tiled-sum.jog")
 set(tiled "${ROOT}/tiled.jog")
+set(axis_tiled "${ROOT}/axis-tiled.jog")
 set(unrolled_grid "${ROOT}/unrolled-grid.jog")
 set(policy_unrolled "${ROOT}/policy-unrolled.jog")
 set(prepared "${ROOT}/prepared.jog")
@@ -204,7 +205,25 @@ if(NOT text MATCHES "for i_tile" OR
 endif()
 
 execute_process(
-  COMMAND "${TOOL}" run tile_pass.unroll_named "${tiled}"
+  COMMAND "${TOOL}" run tile_pass.named_axis "${tiled}"
+          --arg "\"grid\"" --arg 0 --arg 2 -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${axis_tiled}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "first-axis loop tiling failed (${result}):\n${error}")
+endif()
+file(READ "${axis_tiled}" axis_tiled_text)
+if(NOT axis_tiled_text MATCHES
+   "for row_tile in [^\n]+, row in [^\n]+, column_tile in")
+  message(FATAL_ERROR
+          "first-axis tiling changed or hid the original loop order:\n"
+          "${axis_tiled_text}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.unroll_named "${axis_tiled}"
           --arg "\"fixed_grid\"" --arg 2 -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${unrolled_grid}"

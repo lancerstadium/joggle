@@ -3177,9 +3177,11 @@ int main(int argc, char** argv) {
     if (op.kind() == joggle::Op::Kind::branch)
       ++tail_guards;
   }
-  CHECK(tiled_loops == 2);
+  CHECK(tiled_loops == 1);
   CHECK(tail_guards == 1);
-  CHECK(joggle::print(tiled_loop).find("i_tile") != std::string::npos);
+  const std::string tiled_text = joggle::print(tiled_loop);
+  CHECK(tiled_text.find("for i_tile in") != std::string::npos);
+  CHECK(tiled_text.find(", i in") != std::string::npos);
   joggle::Mod tiled_roundtrip;
   CHECK(joggle::parse(env, joggle::print(tiled_loop), tiled_roundtrip,
                       "tiled-roundtrip.jog"));

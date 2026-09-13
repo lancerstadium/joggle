@@ -403,17 +403,36 @@ fn named(m: Mod, name: str, factor: int) -> bool {
   return false
 }
 
+fn named_axis(m: Mod, name: str, axis: int, factor: int) -> bool {
+  let selected = ir.find(m, name)
+  assert(ir.live(selected), "tile_pass.named_axis could not find the function")
+  for op in ir.ops(selected) {
+    if ir.kind(op) == "loop" {
+      return tile.split(m, op, axis, factor)
+    }
+  }
+  return false
+}
+
 fn check_splittable(m: Mod, factor: int, expected: int) -> bool {
   let before = ir.revision(m)
   let candidates = tile.splittable(m, factor)
+  let first_axis = tile.splittable(m, 0, factor)
   assert(ir.revision(m) == before,
          "tile.splittable must be read-only")
   assert(len(candidates) == expected,
          "unexpected split candidate count")
+  assert(len(first_axis) == expected,
+         "unexpected first-axis split candidate count")
   for loop in candidates {
     assert(tile.can_split(m, loop, factor) &&
            tile.split_issue(m, loop, factor) == "",
            "tile.splittable returned an illegal loop")
+  }
+  for loop in first_axis {
+    assert(tile.can_split(m, loop, 0, factor) &&
+           tile.split_issue(m, loop, 0, factor) == "",
+           "axis-aware tile.splittable returned an illegal loop")
   }
   return true
 }
@@ -428,6 +447,12 @@ fn check_split_issue(m: Mod) -> bool {
   assert(tile.split_issue(m, candidates[0], 0) ==
          "requires a positive factor",
          "illegal split reported the wrong issue")
+  assert(tile.split_issue(m, candidates[0], -1, 2) ==
+         "requires an axis within the loop rank",
+         "negative split axis reported the wrong issue")
+  assert(tile.split_issue(m, candidates[0], 1, 2) ==
+         "requires an axis within the loop rank",
+         "large split axis reported the wrong issue")
   assert(ir.revision(m) == before,
          "tile.split_issue must be read-only")
   return true

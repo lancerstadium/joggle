@@ -335,16 +335,20 @@ use tile
 fn apply(m: Mod) -> bool {
   for op in ir.ops(m) {
     if ir.kind(op) == "loop" {
-      return tile.split(m, op, 4)
+      return tile.split(m, op, 0, 4)
     }
   }
   return false
 }
 ```
 
-`tile.split` blocks the last range iterator, threads its carried values, and
-adds a tail guard, so bounds need not be divisible by four. It does not select
-loops or choose a factor on the user's behalf.
+`tile.split(m, loop, axis, factor)` replaces the selected iterator by adjacent
+outer and inner iterators and adds a tail guard, so bounds need not be
+divisible by the factor. The adjacency preserves the original lexicographic
+iteration order even when `axis` is not the last iterator; a later checked
+`tile.reorder` call is the explicit way to change that order. The shorter
+`tile.split(m, loop, factor)` form selects the last iterator. Neither form
+selects a loop or factor on the user's behalf.
 
 `tile.reorder(m, loop, [0, 1, 4, 5, 6, 2, 3])` changes only the axis order of
 the selected loop. Its legality check proves that the carried tensor uses an

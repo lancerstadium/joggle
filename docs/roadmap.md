@@ -82,6 +82,12 @@ axes to form a prefix and
 reduction axes a suffix; combining interchange, promotion, and tiling under a
 single profitability policy remains open.
 
+`tile.split` now strip-mines an explicitly selected range axis rather than
+assuming the last axis. It inserts adjacent outer and inner axes, preserving
+the original lexicographic order for arbitrary multi-axis loops, and represents
+the tail with ordinary structured control flow. This supplies a composable
+mechanism for later state tiling without a Conv, GEMM, rank, or target case.
+
 Conservative integer bounds now feed an explicit `bounds.fold` edit for exact
 Boolean predicates. Composing it with ordinary `opt.fold` removes statically
 proved control flow, including no-padding Conv guards, while retaining dynamic

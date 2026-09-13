@@ -336,6 +336,12 @@ ranges, and no other observation of the carried tensor. `tile.scalarize_issue`,
 `tile.scalarizable` expose the same read-only decision, and
 `tile.scalarize(m)` applies every current candidate. None of these APIs names
 Conv, an NN module, a tensor rank, or a backend.
+`tile.split(m, loop, axis, factor)` strip-mines any selected range axis into
+adjacent outer and inner axes. Keeping them adjacent preserves lexicographic
+iteration order; the generated branch handles a partial final tile. The
+three-argument form selects the last axis. `split_issue`, `can_split`, and
+`splittable` accept the same optional explicit axis, so policy code can inspect
+exactly the edit it intends to request.
 `tile.splittable(m, factor)` and `tile.unrollable(m, factor)` expose legal loop
 sets; `tile.fusible(m)` exposes the exact pair collection consumed by automatic
 fusion. Enumeration is read-only and returns live `Op` handles, or
