@@ -22,8 +22,8 @@ compatibility on conventional inference models, numerical correctness, and the
 quality of generated artifacts. Current pilots execute ten ONNX models and
 preserve explicit unsupported frontiers on two harder models, but generated C
 remains substantially slower than a one-thread production runtime. The final
-paper will therefore test research iteration cost and transparency rather than
-claim production-level inference performance.
+paper will therefore test extension coupling and compositional transparency
+rather than claim production-level inference performance.
 
 ## 1. Introduction
 
@@ -97,14 +97,14 @@ and results are frozen.
 - **RQ1, progressive representation:** Can imported model calls, reusable
   semantics, explicit loops, storage decisions, and target preparation remain
   understandable and verifiable in one function representation?
-- **RQ2, extension surface:** For matched co-design tasks, how many concepts,
-  files, native registrations, generated definitions, core changes, and build
-  dependencies does a developer encounter?
+- **RQ2, extension surface:** For matched co-design tasks, which files, native
+  registrations, generated definitions, core changes, and build dependencies
+  are required?
 - **RQ3, composition:** Do independently defined modules compose with stable
   output, transactional failure, and useful unsupported-frontier diagnostics?
 - **RQ4, artifact quality:** What correctness, code size, workspace,
-  compilation, and latency costs result, and how much can a user-defined
-  implementation improve them without modifying the core or C emitter?
+  compilation, and latency costs result, and how much can user-defined
+  structural policies improve them without modifying the core or C emitter?
 
 ## 3. Design
 
@@ -282,7 +282,7 @@ not a Pareto or speedup claim. Final experiments require isolated repeated
 runs, dispersion, fixed revisions and flags, task-level accuracy where
 applicable, and at least one second machine.
 
-The extension-cost study and controlled performance study are not complete.
+The extension-surface study and controlled performance study are not complete.
 Until they are, this manuscript must not claim that Joggle is easier to extend,
 more compatible, or faster than another compiler.
 
