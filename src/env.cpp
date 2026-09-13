@@ -163,6 +163,10 @@ bool decode(const joggle_value& input, Attr& output) {
   case JOGGLE_STR:
     if (!input.data.string.data && input.data.string.size)
       return false;
+    if (!input.data.string.size) {
+      output = Attr(std::string{});
+      return true;
+    }
     output = Attr(std::string(input.data.string.data, input.data.string.size));
     return true;
   case JOGGLE_HANDLE:

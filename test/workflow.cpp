@@ -2801,6 +2801,8 @@ int main(int argc, char** argv) {
   const std::vector<joggle::Attr> text{joggle::Attr("hello")};
   CHECK(env.call("sample.echo", text, returns));
   CHECK(returns.size() == 1 && returns[0].string() == "hello");
+  CHECK(env.call("sample.empty", {}, returns));
+  CHECK(returns.size() == 1 && returns[0].string() == "");
   joggle::Mod mod;
   CHECK(joggle::parse(env, source.str(), mod, argv[1]));
   CHECK(mod.verify(env));
