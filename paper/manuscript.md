@@ -232,7 +232,7 @@ Most compiler behavior is written in the same `.jog` language presented to an
 extension author. Bundled modules supply scalar and tensor semantics, ONNX and
 TFLite bridges, conservative bounds, structural loop transforms, storage
 planning, a deterministic virtual machine, and C artifact generation. A module
-is a directory containing one public source file, optional source fragments,
+is a directory containing one entry source, optional source fragments,
 and at most one optional native library. Dependency closure and visibility are
 derived from `use` declarations; a generated header, dialect table, or pass
 registry is not part of the module contract.

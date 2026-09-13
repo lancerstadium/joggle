@@ -4,8 +4,9 @@ Modules are Joggle's only extension unit. They define types, semantics,
 analyses, transformations, codecs, and artifact generation with the same
 `.jog` functions used by application code.
 
-This document explains module boundaries and the bundled module set. Function
-signatures in `module.jog` are the authoritative API.
+This document explains module boundaries and the bundled module set. The
+public declarations printed by `joggle module info` are the authoritative API
+of an installed package.
 
 ## Package layout
 
@@ -50,7 +51,9 @@ fn apply(m: Mod) -> bool {
 }
 ```
 
-Top-level `fn` declarations are public. `local fn` declarations are
+`module.jog` is the package entry source, not a second interface language.
+Together with the sorted `lib/*.jog` fragments it forms one module. Top-level
+`fn` declarations in any source are public; `local fn` declarations are
 implementation details. No generated header, export list, registration
 routine, or version suffix in a symbol name is required.
 
@@ -538,7 +541,8 @@ A module is ready to share when:
 
 - its name and public functions describe concepts rather than a development
   phase or version;
-- public behavior is visible in `module.jog`, with helpers marked `local`;
+- the intended public surface is visible in `joggle module info`, with helpers
+  marked `local`;
 - dependencies are explicit and minimal;
 - unknown metadata is preserved;
 - failure is transactional and diagnostics identify the rejected operation;
