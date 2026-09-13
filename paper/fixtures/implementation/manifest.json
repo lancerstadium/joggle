@@ -1,0 +1,14 @@
+{
+  "contract": "paper/tasks/implementation.json",
+  "contract_sha256": "2040695a683b07faef3a3871647c7ff12fc8fc470c14461c9d2496b3fb69a851",
+  "files": {
+    "model.onnx": "662fd988387d6e33bce053676711295f8b6f82b83baf171412d4a48f0e6c7284",
+    "test_data_set_0/input_0.pb": "b819079e4e6f60a2b29c5473b2d0e77a56bfc0fc3766ee48d3ef173e7b4854e6",
+    "test_data_set_0/input_1.pb": "0af081f30a3c7f3b58048f7f1642393afbc5a431bae498c4effe6c820c698b03",
+    "test_data_set_0/output_0.pb": "ca2186ef8510389441295b5dc2f952e15f8c645ad44c05c56e7ea69428bd8195"
+  },
+  "generator": "paper/fixtures/generate.py",
+  "numpy": "2.3.3",
+  "onnx": "1.19.0",
+  "schema": 1
+}

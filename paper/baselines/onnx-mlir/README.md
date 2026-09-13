@@ -28,6 +28,12 @@ Each implementation must consume a checked-in ONNX fixture derived from the
 same frozen task input, preserve the task's forbidden shortcuts, and execute
 the same numerical or diagnostic oracle.
 
+The first such input is
+[`../../fixtures/implementation`](../../fixtures/implementation), whose model,
+TensorProto data, generator, dependency versions, contract digest, and file
+digests are committed. Joggle already executes this fixture through its ONNX,
+VM, and generated-C paths. No ONNX-MLIR result is claimed yet.
+
 | Contract | ONNX-MLIR path to evaluate | Required end-to-end evidence |
 | --- | --- | --- |
 | implementation | Accelerator-scoped pass and lowering for standard matrix operations | Imported ONNX, explicit i-k-j body in preserved IR, native artifact, numerical oracle |

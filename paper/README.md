@@ -26,7 +26,7 @@ runtimes or that fewer source lines imply better usability.
 | Question | Evidence present | Blocking work |
 | --- | --- | --- |
 | Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths | Freeze and record model-level stage traces |
-| Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM controls pass the implementation, policy, and external-kernel contracts | Execute the pinned ONNX-MLIR system baseline; keep bare-MLIR observations component-level |
+| Extension surface | Four frozen contracts; all Joggle implementations pass; the exact MatMul contract also passes through Joggle's ONNX, VM, and C paths; pinned TVM controls pass three contracts | Execute the pinned ONNX-MLIR system baseline; keep bare-MLIR observations component-level |
 | Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, and deterministic language mutation tests | Freeze a fault and diagnostic matrix |
 | Artifact quality | Ten numerical ONNX paths and several reproducible pilots, including negative performance results | Isolated repetitions, dispersion, task accuracy, second machine, and a materially smaller generated-C gap |
 
@@ -44,6 +44,8 @@ or extensibility until the corresponding controlled study is complete.
   fairness rules, and threats.
 - [`extension-tasks.json`](extension-tasks.json) and [`tasks/`](tasks/):
   machine-readable task contracts and inputs.
+- [`fixtures/`](fixtures/): reproducibly generated ONNX inputs shared by
+  Joggle and system-level baselines; these are not model benchmarks.
 - [`baselines/tvm/`](baselines/tvm/): pinned TVM build record and matched
   mechanism-level controls.
 - [`baselines/onnx-mlir/`](baselines/onnx-mlir/): pinned protocol for the
@@ -65,6 +67,15 @@ python3 paper/measure_extensions.py \
   --module-path examples \
   --module-path build-san/modules \
   --output paper/data/extension-footprint-pilot.csv
+```
+
+Verify the checked-in matched ONNX fixture with its pinned generation
+dependencies:
+
+```sh
+python3.12 -m venv .venv-fixtures
+.venv-fixtures/bin/python -m pip install -r paper/fixtures/requirements.txt
+.venv-fixtures/bin/python paper/fixtures/generate.py --check
 ```
 
 Measure the pinned TVM implementations after following

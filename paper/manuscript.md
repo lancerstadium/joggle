@@ -291,6 +291,13 @@ their named tests. Its three out-of-tree tasks contain 20, 69, and 138 source
 lines; the bundled numeric-format task contains 284 source lines across a
 source semantic module, a native binding, and two target companions. These are
 descriptive implementation footprints, not usability or productivity results.
+The implementation contract now also has a generated, digest-pinned opset-13
+ONNX fixture with its exact `2x3` and `3x2` inputs. Joggle imports that model,
+expands the ordinary `ikj` function, and reproduces the same TensorProto oracle
+through both its deterministic VM and strictly compiled C. This freezes the
+system-level input and validates Joggle's side of the protocol; it is not an
+ONNX-MLIR comparison result.
+
 The first three frozen contracts now also pass on a pinned TVM `v0.26.0`
 baseline: one generic explicit i-k-j matrix body, one structural schedule
 policy, and one generic external-call implementation exercised by the unchanged

@@ -37,7 +37,10 @@ The first command sequence performs two explicit ordinary transforms:
 generated declaration. Inspect `build-dev/ikj.jog` to see the actual loop body
 received by the emitter; no hidden lowering or target registry is used.
 
-When the optional official ONNX backend case is enabled, the `onnx-execution`
-gate imports ONNX's pinned `test_matmul_2d`, converts it to shared tensor
-semantics, applies this same module, and checks both VM and compiled C results
-against ONNX's official TensorProto output.
+Every test build with the optional ONNX module enabled runs the frozen
+`onnx-matched-implementation` fixture from the paper workspace. It imports the
+contract's exact `2x3` by `3x2` model, converts it to shared tensor semantics,
+applies this same module, and checks both VM and compiled C results against the
+same TensorProto output. When a separate official ONNX backend checkout is
+configured, `onnx-execution` additionally runs ONNX's pinned
+`test_matmul_2d`; the two gates intentionally serve different purposes.

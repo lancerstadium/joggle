@@ -87,8 +87,10 @@ the relevant boundary because the official project imports ONNX, lowers it to
 native artifacts, documents generated ONNX operation definitions, and exposes
 an accelerator integration path for dialects and passes. The task-to-hook
 protocol is recorded in
-[`baselines/onnx-mlir/README.md`](baselines/onnx-mlir/README.md); its shared
-ONNX fixtures must be checked in before any implementation or measurement.
+[`baselines/onnx-mlir/README.md`](baselines/onnx-mlir/README.md). The
+implementation-task fixture is checked in under `fixtures/implementation` and
+is executed by Joggle's normal ONNX path. Fixtures for the other contracts must
+be frozen before their ONNX-MLIR implementations or measurements begin.
 
 TVM `v0.26.0` at commit
 `c7b458e946bc4266915da582457476bdcd9705ae` is now pinned. Reproducible TVM

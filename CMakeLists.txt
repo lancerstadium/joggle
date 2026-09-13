@@ -738,58 +738,90 @@ if(JOGGLE_BUILD_TESTS)
       COMMAND joggle-onnx-codec-test ${CMAKE_CURRENT_BINARY_DIR}/modules
     )
   endif()
-  if(JOGGLE_BUILD_ONNX AND JOGGLE_TEST_C_COMPILER AND
-     NOT JOGGLE_TEST_ONNX_BACKEND STREQUAL "")
-    set(onnx_execute_case "${JOGGLE_TEST_ONNX_BACKEND}/test_matmul_2d")
+  if(JOGGLE_BUILD_ONNX AND JOGGLE_TEST_C_COMPILER)
+    add_executable(joggle-onnx-execute-test test/onnx_execute.cpp)
+    target_link_libraries(
+      joggle-onnx-execute-test PRIVATE Joggle::joggle joggle-onnx-proto
+    )
+    add_dependencies(joggle-onnx-execute-test joggle-onnx joggle-vm)
+
     set(onnx_execute_files
       model.onnx
       test_data_set_0/input_0.pb
       test_data_set_0/input_1.pb
       test_data_set_0/output_0.pb
     )
-    set(onnx_execute_hashes
-      946f3a49ccfdaf62586bbae8438065fe41a7e6a9b8006b14af3219999b49bb76
-      5c9fa13b29d31b4105ea162c0caecc951804499b016bdf268b8f470b404c1f79
-      7d950d6d6af29dfa3acab8c9fcdea76d553c11124013b106eb6622bc0ebf3dd4
-      c7928ba3e8fe85076974c955200532c2a24697119eb54b338fbc7c2639228e48
-    )
-    foreach(index RANGE 3)
-      list(GET onnx_execute_files ${index} file)
-      list(GET onnx_execute_hashes ${index} expected)
-      if(NOT EXISTS "${onnx_execute_case}/${file}")
-        message(FATAL_ERROR "missing pinned ONNX backend file: ${file}")
+
+    function(joggle_check_onnx_case case)
+      set(hashes ${ARGN})
+      list(LENGTH hashes hash_count)
+      if(NOT hash_count EQUAL 4)
+        message(FATAL_ERROR "ONNX case requires four hashes: ${case}")
       endif()
-      file(SHA256 "${onnx_execute_case}/${file}" actual)
-      if(NOT actual STREQUAL expected)
-        message(FATAL_ERROR "ONNX backend hash mismatch: ${file}")
+      foreach(index RANGE 3)
+        list(GET onnx_execute_files ${index} file)
+        list(GET hashes ${index} expected)
+        if(NOT EXISTS "${case}/${file}")
+          message(FATAL_ERROR "missing pinned ONNX file: ${case}/${file}")
+        endif()
+        file(SHA256 "${case}/${file}" actual)
+        if(NOT actual STREQUAL expected)
+          message(FATAL_ERROR "ONNX hash mismatch: ${case}/${file}")
+        endif()
+      endforeach()
+    endfunction()
+
+    function(joggle_onnx_execution name case labels)
+      add_test(
+        NAME ${name}
+        COMMAND
+          ${CMAKE_COMMAND}
+          -DTEST=$<TARGET_FILE:joggle-onnx-execute-test>
+          -DCC=${JOGGLE_TEST_C_COMPILER}
+          -DCASE=${case}
+          -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+          -DEXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/examples
+          -DROOT=${CMAKE_CURRENT_BINARY_DIR}/${name}
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/test/onnx_execute.cmake
+      )
+      set_tests_properties(${name} PROPERTIES LABELS "${labels}")
+      if(APPLE AND CMAKE_CXX_FLAGS MATCHES "sanitize=address")
+        # Homebrew protobuf-lite is not ASan-instrumented, while Apple's libc++
+        # annotates std::string capacity in instrumented callers. Disable only
+        # those container annotations for this mixed-ABI fixture parser; normal
+        # address and undefined-behavior checks remain active.
+        set_property(
+          TEST ${name} PROPERTY ENVIRONMENT
+          "ASAN_OPTIONS=detect_container_overflow=0"
+        )
       endif()
-    endforeach()
-    add_executable(joggle-onnx-execute-test test/onnx_execute.cpp)
-    target_link_libraries(
-      joggle-onnx-execute-test PRIVATE Joggle::joggle joggle-onnx-proto
+    endfunction()
+
+    set(onnx_matched_case
+        "${CMAKE_CURRENT_SOURCE_DIR}/paper/fixtures/implementation")
+    joggle_check_onnx_case(
+      "${onnx_matched_case}"
+      662fd988387d6e33bce053676711295f8b6f82b83baf171412d4a48f0e6c7284
+      b819079e4e6f60a2b29c5473b2d0e77a56bfc0fc3766ee48d3ef173e7b4854e6
+      0af081f30a3c7f3b58048f7f1642393afbc5a431bae498c4effe6c820c698b03
+      ca2186ef8510389441295b5dc2f952e15f8c645ad44c05c56e7ea69428bd8195
     )
-    add_dependencies(joggle-onnx-execute-test joggle-onnx joggle-vm)
-    add_test(
-      NAME onnx-execution
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTEST=$<TARGET_FILE:joggle-onnx-execute-test>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DCASE=${onnx_execute_case}
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DEXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/examples
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/onnx-execution
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/onnx_execute.cmake
+    joggle_onnx_execution(
+      onnx-matched-implementation "${onnx_matched_case}"
+      "onnx;execution;paper"
     )
-    set_tests_properties(onnx-execution PROPERTIES LABELS "onnx;execution")
-    if(APPLE AND CMAKE_CXX_FLAGS MATCHES "sanitize=address")
-      # Homebrew protobuf-lite is not ASan-instrumented, while Apple's libc++
-      # annotates std::string capacity in instrumented callers. Disable only
-      # those container annotations for this mixed-ABI fixture parser; normal
-      # address and undefined-behavior checks remain active.
-      set_property(
-        TEST onnx-execution PROPERTY ENVIRONMENT
-        "ASAN_OPTIONS=detect_container_overflow=0"
+
+    if(NOT JOGGLE_TEST_ONNX_BACKEND STREQUAL "")
+      set(onnx_execute_case "${JOGGLE_TEST_ONNX_BACKEND}/test_matmul_2d")
+      joggle_check_onnx_case(
+        "${onnx_execute_case}"
+        946f3a49ccfdaf62586bbae8438065fe41a7e6a9b8006b14af3219999b49bb76
+        5c9fa13b29d31b4105ea162c0caecc951804499b016bdf268b8f470b404c1f79
+        7d950d6d6af29dfa3acab8c9fcdea76d553c11124013b106eb6622bc0ebf3dd4
+        c7928ba3e8fe85076974c955200532c2a24697119eb54b338fbc7c2639228e48
+      )
+      joggle_onnx_execution(
+        onnx-execution "${onnx_execute_case}" "onnx;execution"
       )
     endif()
   endif()
