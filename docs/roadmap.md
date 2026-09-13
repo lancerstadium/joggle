@@ -63,6 +63,12 @@ nests remain open. Its explicit, candidate-enumeration, read-only policy, and
 configured policy forms now follow the same convention as unrolling and
 fusion.
 
+Affine and axis-role queries now receive the owning `Mod` explicitly. Their
+algebraic proof follows only operators resolved to `base`, while unresolved
+built-in syntax remains compatible and user overloads are conservatively
+rejected. Loop legality therefore cannot inherit arithmetic laws from a shared
+operator spelling.
+
 The first tensor-traffic rewrite is also present. `tile.scalarize` promotes one
 affine output element across a structurally proved reduction band, leaving one
 load and one store around a scalar carried reduction. It is validated on the

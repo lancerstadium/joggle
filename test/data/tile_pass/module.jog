@@ -15,8 +15,8 @@ fn check_axes(m: Mod) -> bool {
   }
   assert(len(loops) == 1, "axis check requires one loop")
   let loop = loops[0]
-  assert(len(tile.state_axes(loop)) == 0 &&
-         len(tile.reduction_axes(loop)) == 0,
+  assert(len(tile.state_axes(m, loop)) == 0 &&
+         len(tile.reduction_axes(m, loop)) == 0,
          "unsupported loop reported reorder roles")
   let body = ir.blks(loop)[0]
   let body_args = ir.args(body)
@@ -38,7 +38,7 @@ fn check_axes(m: Mod) -> bool {
              !tile.depends(value, body_args[0]) &&
              tile.depends(value, body_args[1]),
              "condition has the wrong axis dependence")
-      assert(len(tile.affine(loop, value)) == 0,
+      assert(len(tile.affine(m, loop, value)) == 0,
              "condition was incorrectly accepted as affine")
       inside_found = true
     }
@@ -48,14 +48,14 @@ fn check_axes(m: Mod) -> bool {
              tile.depends(value, body_args[0]) &&
              tile.depends(value, body_args[1]),
              "coordinate has the wrong axis dependence")
-      assert(tile.affine(loop, value) == [0, 100, 1],
+      assert(tile.affine(m, loop, value) == [0, 100, 1],
              "coordinate has the wrong affine form")
       coordinate_found = true
     }
     if ir.name(value) == "product" {
       let axes = tile.axes(loop, value)
       assert(len(axes) == 2 && axes[0] == 0 && axes[1] == 1 &&
-             len(tile.affine(loop, value)) == 0,
+             len(tile.affine(m, loop, value)) == 0,
              "nonlinear product was accepted as affine")
       product_found = true
     }
@@ -71,6 +71,28 @@ fn check_axes(m: Mod) -> bool {
          "nested branch result has the wrong axis dependence")
   assert(ir.revision(m) == before,
          "axis dependence queries changed the module")
+  return true
+}
+
+fn check_custom_affine(m: Mod) -> bool {
+  let function = ir.find(m, "work")
+  assert(ir.live(function), "custom affine check requires work")
+  var loops: list<Op> = []
+  var locations: list<Val> = []
+  for op in ir.ops(function) {
+    if ir.kind(op) == "loop" {
+      loops += [op]
+    }
+    for value in ir.outs(op) {
+      if ir.name(value) == "location" {
+        locations += [value]
+      }
+    }
+  }
+  assert(len(loops) == 1 && len(locations) == 1,
+         "custom affine check requires its loop and location")
+  assert(len(tile.affine(m, loops[0], locations[0])) == 0,
+         "custom addition inherited base affine semantics")
   return true
 }
 
@@ -100,17 +122,17 @@ fn check_reorder(m: Mod) -> bool {
   assert(len(loops) == 1, "reorder check requires one seven-axis loop")
   let loop = loops[0]
   let before = ir.revision(m)
-  assert(tile.state_axes(loop) == [0, 1, 2, 3] &&
-         tile.reduction_axes(loop) == [4, 5, 6],
+  assert(tile.state_axes(m, loop) == [0, 1, 2, 3] &&
+         tile.reduction_axes(m, loop) == [4, 5, 6],
          "reorder classified the wrong axis roles")
   assert(len(tile.reorderable(m, [0, 1, 4, 5, 6, 2, 3])) == 2,
          "reorderable returned the wrong candidate set")
   assert(tile.can_reorder(m, loop, [0, 1, 4, 5, 6, 2, 3]),
          "legal reduction-preserving order was rejected")
-  assert(tile.reorder_issue(loop, [0, 1, 5, 4, 6, 2, 3]) ==
+  assert(tile.reorder_issue(m, loop, [0, 1, 5, 4, 6, 2, 3]) ==
            "must preserve the relative order of reduction axes",
          "reordered reduction axes reported the wrong issue")
-  assert(tile.reorder_issue(loop, [0, 1, 4, 5, 6, 2, 2]) ==
+  assert(tile.reorder_issue(m, loop, [0, 1, 4, 5, 6, 2, 2]) ==
            "contains a duplicate axis",
          "duplicate order reported the wrong issue")
   assert(!tile.reorder(m, loop, [0, 1, 2, 3, 4, 5, 6]),
@@ -127,8 +149,8 @@ fn check_reorder(m: Mod) -> bool {
   assert(len(reductions) == 1,
          "reorder check requires one five-axis reduction")
   let reduction = reductions[0]
-  assert(tile.state_axes(reduction) == [0, 1, 2, 3] &&
-         tile.reduction_axes(reduction) == [4] &&
+  assert(tile.state_axes(m, reduction) == [0, 1, 2, 3] &&
+         tile.reduction_axes(m, reduction) == [4] &&
          tile.can_reorder(m, reduction, [0, 1, 4, 2, 3]),
          "five-axis reduction has the wrong roles or legality")
   assert(ir.revision(m) == before,
@@ -146,7 +168,7 @@ fn check_scalarize(m: Mod) -> bool {
     for op in ir.ops(fn) {
       if ir.kind(op) == "loop" &&
          len(ir.args(op)) - len(ir.outs(op)) > 1 {
-        let issue = tile.scalarize_issue(op)
+        let issue = tile.scalarize_issue(m, op)
         assert(issue == "", ir.name(fn) + ": " + issue)
         found = true
       }
@@ -222,8 +244,8 @@ fn reject_mutating_reorder_policy(m: Mod) -> bool {
 fn configured_reorder_policy(
   m: Mod, op: Op, enabled: bool
 ) -> list<int> {
-  let state = tile.state_axes(op)
-  let reduction = tile.reduction_axes(op)
+  let state = tile.state_axes(m, op)
+  let reduction = tile.reduction_axes(m, op)
   var order: list<int> = []
   if len(state) > 2 && len(reduction) != 0 {
     for i in 0..len(state) - 2 {
@@ -269,8 +291,8 @@ fn check_spatial_axes(m: Mod) -> bool {
   let weight_reads = tile.reads(loop, params[1])
   let out_reads = tile.reads(loop, body_args[7])
   let out_writes = tile.writes(loop, body_args[7])
-  assert(tile.state_axes(loop) == [0, 1, 5, 6] &&
-         tile.reduction_axes(loop) == [2, 3, 4],
+  assert(tile.state_axes(m, loop) == [0, 1, 5, 6] &&
+         tile.reduction_axes(m, loop) == [2, 3, 4],
          "scheduled loop has the wrong axis roles")
   assert(len(x_reads) == 1 && len(x_reads[0]) == 1 &&
          len(weight_reads) == 1 && len(weight_reads[0]) == 1 &&
@@ -284,15 +306,15 @@ fn check_spatial_axes(m: Mod) -> bool {
   assert(expect_axes(loop, out_reads[0][0], [0, 1, 5, 6]) &&
          expect_axes(loop, out_writes[0][0], [0, 1, 5, 6]),
          "spatial output accesses have the wrong axes")
-  assert(tile.affine(loop, x_reads[0][0]) ==
+  assert(tile.affine(m, loop, x_reads[0][0]) ==
            [0, 9, 9, 9, 3, 1, 3, 1],
          "spatial input index has the wrong affine form")
-  assert(tile.affine(loop, weight_reads[0][0]) ==
+  assert(tile.affine(m, loop, weight_reads[0][0]) ==
            [0, 0, 4, 4, 2, 1, 0, 0],
          "spatial weight index has the wrong affine form")
-  assert(tile.affine(loop, out_reads[0][0]) ==
+  assert(tile.affine(m, loop, out_reads[0][0]) ==
            [0, 4, 4, 0, 0, 0, 2, 1] &&
-         tile.affine(loop, out_writes[0][0]) ==
+         tile.affine(m, loop, out_writes[0][0]) ==
            [0, 4, 4, 0, 0, 0, 2, 1],
          "spatial output accesses have the wrong affine form")
 
@@ -315,8 +337,8 @@ fn check_spatial_axes(m: Mod) -> bool {
          ir.name(reduction_args[3]) == "c" &&
          ir.name(reduction_args[4]) == "d",
          "spatial policy did not reorder the generic reduction")
-  assert(tile.state_axes(reduction) == [0, 1, 3, 4] &&
-         tile.reduction_axes(reduction) == [2],
+  assert(tile.state_axes(m, reduction) == [0, 1, 3, 4] &&
+         tile.reduction_axes(m, reduction) == [2],
          "generic reduction has the wrong scheduled roles")
   assert(ir.revision(m) == before,
          "spatial axis queries changed the module")

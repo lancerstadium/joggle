@@ -1,0 +1,15 @@
+module tile.custom
+use base
+
+fn + (left: index, right: index) -> index {
+  return left - right
+}
+
+fn work() -> int {
+  var total = 0
+  for i in 0..4 {
+    let location = i + index(1)
+    total += int(location)
+  }
+  return total
+}

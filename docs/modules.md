@@ -288,10 +288,11 @@ depends. Both queries are read-only and operate on the existing `Val` and `Op`
 handles; they do not introduce an access descriptor or schedule object. A value
 dependence is not by itself proof that two memory accesses are independent, so
 loop rewrites must combine these facts with access and carried-value checks.
-`tile.affine(loop, value)` adds the stronger fact needed for address reasoning.
-It returns `[offset, coefficient0, coefficient1, ...]` for an integer value
-that can be proved affine in the loop axes, or an empty list when the proof is
-not available. It follows ordinary constants, copies, same-type casts, addition,
+`tile.affine(m, loop, value)` adds the stronger fact needed for address
+reasoning. It returns `[offset, coefficient0, coefficient1, ...]` for an
+integer value that can be proved affine in the loop axes, or an empty list
+when the proof is not available. It follows ordinary constants, copies,
+same-type casts, addition,
 subtraction, constant multiplication, and exact constant division. Nonlinear
 products, truncating division, unsupported control flow, and coefficient
 arithmetic overflow are rejected rather than approximated. The result is
@@ -314,10 +315,10 @@ every currently legal loop without mutation. The policy overloads
 `tile.reorder(m, policy)` and `tile.reorder(m, policy, config)` invoke an
 ordinary read-only function for each live loop; returning an empty `list<int>`
 skips it and returning a permutation requests the same checked edit.
-`tile.state_axes(loop)` and `tile.reduction_axes(loop)` derive axis roles from
-the affine read/write address of the loop's carried state. Unsupported loops
-return no roles. The queries do not inspect a callee name, tensor rank, or
-operator annotation, so a policy can choose an order without duplicating a
+`tile.state_axes(m, loop)` and `tile.reduction_axes(m, loop)` derive axis roles
+from the affine read/write address of the loop's carried state. Unsupported
+loops return no roles. The queries do not inspect a callee name, tensor rank,
+or operator annotation, so a policy can choose an order without duplicating a
 semantic implementation or hard-coding the number of loop axes.
 `tile.scalarize(m, loop)` recognizes the output-stationary form in which all
 state axes precede all reduction axes. It replaces one tensor-carried nest with

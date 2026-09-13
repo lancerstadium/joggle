@@ -7,6 +7,12 @@ local fn affine_seen(value: Val, seen: list<Val>) -> bool {
   return false
 }
 
+local fn affine_base(m: Mod, op: Op, name: str) -> bool {
+  let target = ir.target(m, op)
+  return target == "base." + name ||
+         (target == ir.callee(op) && target == name)
+}
+
 local fn affine_integer(type: Ty) -> bool {
   let name = base.name(type)
   return name == "int" || name == "index" ||
@@ -125,7 +131,7 @@ local fn affine_divide(value: list<int>, divisor: int) -> list<int> {
 }
 
 local fn affine_in(
-  loop: Op, value: Val, seen: list<Val>
+  m: Mod, loop: Op, value: Val, seen: list<Val>
 ) -> list<int> {
   if !affine_integer(ir.type(value)) {
     return []
@@ -155,16 +161,18 @@ local fn affine_in(
     return []
   }
   let args = ir.args(op)
-  let name = ir.callee(op)
+  let name = ir.target(m, op)
   let next = seen + [value]
   if len(args) == 1 {
-    let input = affine_in(loop, args[0], next)
-    if name == "base.copy" || name == "operator +" ||
-       (name == text(ir.type(value)) &&
+    let input = affine_in(m, loop, args[0], next)
+    if affine_base(m, op, "copy") ||
+       affine_base(m, op, "operator +") ||
+       ((name == "base." + text(ir.type(value)) ||
+         name == text(ir.type(value))) &&
         ir.type(args[0]) == ir.type(value)) {
       return input
     }
-    if name == "operator -" {
+    if affine_base(m, op, "operator -") {
       return affine_scale(input, -1)
     }
     return []
@@ -172,15 +180,15 @@ local fn affine_in(
   if len(args) != 2 {
     return []
   }
-  let left = affine_in(loop, args[0], next)
-  let right = affine_in(loop, args[1], next)
-  if name == "operator +" {
+  let left = affine_in(m, loop, args[0], next)
+  let right = affine_in(m, loop, args[1], next)
+  if affine_base(m, op, "operator +") {
     return affine_add(left, right, false)
   }
-  if name == "operator -" {
+  if affine_base(m, op, "operator -") {
     return affine_add(left, right, true)
   }
-  if name == "operator *" {
+  if affine_base(m, op, "operator *") {
     let left_value = affine_exact(left)
     if len(left_value) == 1 {
       return affine_scale(right, left_value[0])
@@ -191,7 +199,7 @@ local fn affine_in(
     }
     return []
   }
-  if name == "operator /" {
+  if affine_base(m, op, "operator /") {
     let divisor = affine_exact(right)
     if len(divisor) == 1 {
       return affine_divide(left, divisor[0])
@@ -200,7 +208,7 @@ local fn affine_in(
   return []
 }
 
-fn affine(loop: Op, value: Val) -> list<int> {
+fn affine(m: Mod, loop: Op, value: Val) -> list<int> {
   assert(ir.live(loop) && ir.kind(loop) == "loop" && ir.live(value),
          "tile.affine requires a live loop and value")
   let bodies = ir.blks(loop)
@@ -209,5 +217,5 @@ fn affine(loop: Op, value: Val) -> list<int> {
   assert(len(bodies) == 1 && len(inputs) > len(outputs) &&
          len(ir.args(bodies[0])) == len(inputs),
          "tile.affine requires a structured loop")
-  return affine_in(loop, value, [])
+  return affine_in(m, loop, value, [])
 }

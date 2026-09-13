@@ -301,7 +301,7 @@ loop transform. A project chooses the loop with ordinary reflection:
 
 ```jog
 let axes = tile.axes(loop, index)
-let form = tile.affine(loop, index)
+let form = tile.affine(m, loop, index)
 if len(axes) == 2 && axes[0] == 0 && axes[1] == 1 {
   // The index is derived from both loop axes.
 }
@@ -356,8 +356,8 @@ The policy overload accepts a normal function returning `list<int>`:
 
 ```jog
 fn choose(m: Mod, op: Op) -> list<int> {
-  let state = tile.state_axes(op)
-  let reduction = tile.reduction_axes(op)
+  let state = tile.state_axes(m, op)
+  let reduction = tile.reduction_axes(m, op)
   if len(state) <= 2 || len(reduction) == 0 {
     return []
   }
@@ -384,10 +384,11 @@ The driver owns traversal and stale-handle checks, verifies that the policy is
 read-only, and sends every nonempty result through `reorder_issue`; user policy
 does not duplicate transformation safety.
 
-Policies need not know an operator name or fixed rank. `tile.state_axes(loop)`
-returns axes that select distinct elements of the carried state, while
-`tile.reduction_axes(loop)` returns axes that update the selected element. Both
-are inferred from the same affine access proof used by `tile.reorder`.
+Policies need not know an operator name or fixed rank.
+`tile.state_axes(m, loop)` returns axes that select distinct elements of the
+carried state, while `tile.reduction_axes(m, loop)` returns axes that update the
+selected element. Both are inferred from the same affine access proof used by
+`tile.reorder`.
 
 `tile.fuse(m, producer, consumer)` uses the same explicit-selection rule. It
 accepts a conservative case: two one-dimensional loops over the same

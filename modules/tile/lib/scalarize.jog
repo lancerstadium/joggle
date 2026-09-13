@@ -41,6 +41,7 @@ local fn state_value(
 }
 
 local fn address_only(
+  m: Mod,
   loop: Op,
   value: Val,
   accesses: list<Op>,
@@ -57,8 +58,8 @@ local fn address_only(
         return false
       }
       for output in ir.outs(user) {
-        if len(affine(loop, output)) == 0 ||
-           !address_only(loop, output, accesses, next_seen) {
+        if len(affine(m, loop, output)) == 0 ||
+           !address_only(m, loop, output, accesses, next_seen) {
           return false
         }
       }
@@ -68,15 +69,15 @@ local fn address_only(
 }
 
 local fn drop_address(
-  loop: Op, op: Op, accesses: list<Op>
+  m: Mod, loop: Op, op: Op, accesses: list<Op>
 ) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) == 0 || len(base.keys(ir.meta(op))) != 0 {
     return false
   }
   for output in outputs {
-    if len(affine(loop, output)) == 0 ||
-       !address_only(loop, output, accesses, []) {
+    if len(affine(m, loop, output)) == 0 ||
+       !address_only(m, loop, output, accesses, []) {
       return false
     }
   }
@@ -148,7 +149,7 @@ local fn scalar_block_issue(
   return ""
 }
 
-fn scalarize_issue(source: Op) -> str {
+fn scalarize_issue(m: Mod, source: Op) -> str {
   if !ir.live(source) || ir.kind(source) != "loop" {
     return "requires a live loop"
   }
@@ -162,12 +163,12 @@ fn scalarize_issue(source: Op) -> str {
   for axis in 0..axes {
     identity += [axis]
   }
-  let reorder = reorder_issue(source, identity)
+  let reorder = reorder_issue(m, source, identity)
   if reorder != "" {
     return reorder
   }
-  let state = state_axes(source)
-  let reduction = reduction_axes(source)
+  let state = state_axes(m, source)
+  let reduction = reduction_axes(m, source)
   if len(state) == 0 || len(reduction) == 0 ||
      len(state) + len(reduction) != axes {
     return "requires both state and reduction axes"
@@ -207,7 +208,7 @@ fn scalarize_issue(source: Op) -> str {
 
 fn can_scalarize(m: Mod, source: Op) -> bool {
   let before = ir.revision(m)
-  let legal = scalarize_issue(source) == ""
+  let legal = scalarize_issue(m, source) == ""
   assert(ir.revision(m) == before,
          "tile.can_scalarize changed the module")
   return legal
@@ -353,7 +354,7 @@ local fn rebuild_scalar_block(
           state_values += ir.outs(op)
           scalar_values += ir.outs(branch)
         } else {
-          if !drop_address(loop, op, accesses) {
+          if !drop_address(m, loop, op, accesses) {
             var clone_old = old_values
             var clone_next = next_values
             if has_op(accesses, op) {
@@ -362,7 +363,7 @@ local fn rebuild_scalar_block(
                 end -= 1
               }
               for input in 1..end {
-                let form = affine(loop, inputs[input])
+                let form = affine(m, loop, inputs[input])
                 if len(form) != 0 {
                   clone_old += [inputs[input]]
                   clone_next += [index_value(
@@ -391,13 +392,13 @@ local fn rebuild_scalar_block(
 }
 
 fn scalarize(m: Mod, source: Op) -> bool {
-  let issue = scalarize_issue(source)
+  let issue = scalarize_issue(m, source)
   assert(issue == "", "tile.scalarize " + issue)
   let inputs = ir.args(source)
   let outputs = ir.outs(source)
   let axes = len(inputs) - len(outputs)
-  let state = state_axes(source)
-  let reduction = reduction_axes(source)
+  let state = state_axes(m, source)
+  let reduction = reduction_axes(m, source)
   let body = ir.blks(source)[0]
   let body_args = ir.args(body)
   let loads = access_ops(source, body_args[axes], false)
@@ -406,7 +407,7 @@ fn scalarize(m: Mod, source: Op) -> bool {
   let store = stores[0]
   let load_args = ir.args(load)
   let store_args = ir.args(store)
-  let index_form = affine(source, store_args[1])
+  let index_form = affine(m, source, store_args[1])
 
   var outer_names: list<str> = []
   var outer_sources: list<Val> = []

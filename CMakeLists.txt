@@ -597,6 +597,7 @@ if(JOGGLE_BUILD_TESTS)
         -DTOOL=$<TARGET_FILE:joggle-tool>
         -DCC=${JOGGLE_TEST_C_COMPILER}
         -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile.jog
+        -DCUSTOM_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_custom.jog
         -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_main.c
         -DFUSE_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem.jog
         -DFUSE_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem_main.c

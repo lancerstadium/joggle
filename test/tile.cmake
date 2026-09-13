@@ -1,4 +1,5 @@
 if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
+   NOT DEFINED CUSTOM_MODEL OR
    NOT DEFINED HARNESS OR NOT DEFINED FUSE_MODEL OR
    NOT DEFINED FUSE_HARNESS OR NOT DEFINED INVALID_FUSE_MODEL OR
    NOT DEFINED EFFECT_FUSE_MODEL OR
@@ -7,6 +8,18 @@ if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
    NOT DEFINED MODULES OR NOT DEFINED EXAMPLES OR NOT DEFINED ROOT)
   message(FATAL_ERROR
           "tile test requires TOOL, CC, models, harnesses, module roots, and ROOT")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_custom_affine "${CUSTOM_MODEL}"
+          -M "${MODULES}"
+  RESULT_VARIABLE custom_result
+  OUTPUT_VARIABLE custom_output
+  ERROR_VARIABLE custom_error
+)
+if(NOT custom_result EQUAL 0)
+  message(FATAL_ERROR
+          "custom affine safety failed:\n${custom_output}${custom_error}")
 endif()
 
 execute_process(

@@ -30,10 +30,11 @@ local fn permutation_issue(order: list<int>, axes: int) -> str {
   return ""
 }
 
-local fn trip(range: Val) -> int {
+local fn trip(m: Mod, range: Val) -> int {
   let op = ir.def(range)
   if !ir.live(op) || ir.kind(op) != "call" ||
-     ir.callee(op) != "operator .." {
+     (ir.target(m, op) != "base.operator .." &&
+      ir.target(m, op) != "operator ..") {
     return -1
   }
   let bounds = ir.args(op)
@@ -89,14 +90,15 @@ local fn magnitude(value: int) -> list<int> {
 // coordinate. This accepts dense and padded strided layouts without assuming
 // a particular tensor axis order.
 local fn injective(
-  sources: list<Val>, axes: int, form: list<int>, state: list<bool>
+  m: Mod, sources: list<Val>, axes: int,
+  form: list<int>, state: list<bool>
 ) -> bool {
   if len(form) != axes + 1 {
     return false
   }
   var remaining = 0
   for axis in 0..axes {
-    if state[axis] && trip(sources[axis]) > 1 {
+    if state[axis] && trip(m, sources[axis]) > 1 {
       remaining += 1
     }
   }
@@ -107,7 +109,7 @@ local fn injective(
     var chosen = -1
     var coefficient = 0
     for axis in 0..axes {
-      let extent = trip(sources[axis])
+      let extent = trip(m, sources[axis])
       let absolute = magnitude(form[axis + 1])
       if len(absolute) == 0 {
         return false
@@ -123,7 +125,7 @@ local fn injective(
     if !found || coefficient <= reach {
       return false
     }
-    let width = trip(sources[chosen]) - 1
+    let width = trip(m, sources[chosen]) - 1
     let product = affine_mul_int(coefficient, width)
     if len(product) == 0 {
       return false
@@ -138,7 +140,9 @@ local fn injective(
   return true
 }
 
-local fn reorder_access_issue(source: Op, order: list<int>) -> str {
+local fn reorder_access_issue(
+  m: Mod, source: Op, order: list<int>
+) -> str {
   let inputs = ir.args(source)
   let outputs = ir.outs(source)
   let axes = len(inputs) - len(outputs)
@@ -153,8 +157,8 @@ local fn reorder_access_issue(source: Op, order: list<int>) -> str {
      len(read_accesses[0]) != 1 || len(write_accesses[0]) != 1 {
     return "requires one indexed read and write of the carried value"
   }
-  let read_form = affine(source, read_accesses[0][0])
-  let write_form = affine(source, write_accesses[0][0])
+  let read_form = affine(m, source, read_accesses[0][0])
+  let write_form = affine(m, source, write_accesses[0][0])
   if len(read_form) != axes + 1 || read_form != write_form {
     return "requires equal affine read and write addresses"
   }
@@ -163,7 +167,7 @@ local fn reorder_access_issue(source: Op, order: list<int>) -> str {
   for axis in 0..axes {
     state += [write_form[axis + 1] != 0]
   }
-  if !injective(inputs, axes, write_form, state) {
+  if !injective(m, inputs, axes, write_form, state) {
     return "cannot prove that state coordinates have distinct addresses"
   }
 
@@ -180,7 +184,7 @@ local fn reorder_access_issue(source: Op, order: list<int>) -> str {
   return ""
 }
 
-fn reorder_issue(source: Op, order: list<int>) -> str {
+fn reorder_issue(m: Mod, source: Op, order: list<int>) -> str {
   if !ir.live(source) || ir.kind(source) != "loop" {
     return "requires a live loop"
   }
@@ -204,22 +208,22 @@ fn reorder_issue(source: Op, order: list<int>) -> str {
     return "requires a terminated loop body"
   }
   for axis in 0..axes {
-    if trip(inputs[axis]) < 0 {
+    if trip(m, inputs[axis]) < 0 {
       return "requires static integer ranges"
     }
   }
-  return reorder_access_issue(source, order)
+  return reorder_access_issue(m, source, order)
 }
 
 fn can_reorder(m: Mod, source: Op, order: list<int>) -> bool {
   let before = ir.revision(m)
-  let legal = reorder_issue(source, order) == ""
+  let legal = reorder_issue(m, source, order) == ""
   assert(ir.revision(m) == before,
          "tile.can_reorder changed the module")
   return legal
 }
 
-local fn role_axes(source: Op, state: bool) -> list<int> {
+local fn role_axes(m: Mod, source: Op, state: bool) -> list<int> {
   if !ir.live(source) || ir.kind(source) != "loop" {
     return []
   }
@@ -233,12 +237,12 @@ local fn role_axes(source: Op, state: bool) -> list<int> {
   for axis in 0..axes {
     identity += [axis]
   }
-  if reorder_issue(source, identity) != "" {
+  if reorder_issue(m, source, identity) != "" {
     return []
   }
   let body_args = ir.args(ir.blks(source)[0])
   let accesses = writes(source, body_args[axes])
-  let form = affine(source, accesses[0][0])
+  let form = affine(m, source, accesses[0][0])
   var out: list<int> = []
   for axis in 0..axes {
     if (form[axis + 1] != 0) == state {
@@ -251,12 +255,12 @@ local fn role_axes(source: Op, state: bool) -> list<int> {
 // Classify a reorderable loop by the affine address of its carried state.
 // State axes select distinct carried elements; reduction axes update an
 // already-selected element. Unsupported loops return no roles.
-fn state_axes(source: Op) -> list<int> {
-  return role_axes(source, true)
+fn state_axes(m: Mod, source: Op) -> list<int> {
+  return role_axes(m, source, true)
 }
 
-fn reduction_axes(source: Op) -> list<int> {
-  return role_axes(source, false)
+fn reduction_axes(m: Mod, source: Op) -> list<int> {
+  return role_axes(m, source, false)
 }
 
 fn reorderable(m: Mod, order: list<int>) -> list<Op> {
@@ -273,7 +277,7 @@ fn reorderable(m: Mod, order: list<int>) -> list<Op> {
 }
 
 fn reorder(m: Mod, source: Op, order: list<int>) -> bool {
-  let issue = reorder_issue(source, order)
+  let issue = reorder_issue(m, source, order)
   assert(issue == "", "tile.reorder " + issue)
   let inputs = ir.args(source)
   let outputs = ir.outs(source)
@@ -360,7 +364,7 @@ local fn reorder_all(
       assert(ir.revision(m) == before,
              "tile.reorder policy changed the module")
       if len(order) != 0 {
-        let issue = reorder_issue(op, order)
+        let issue = reorder_issue(m, op, order)
         assert(issue == "",
                "tile.reorder policy selected an illegal order: " + issue)
         changed = reorder(m, op, order) || changed
