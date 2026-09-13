@@ -1,0 +1,8 @@
+{
+  "matplotlib": "3.10.9",
+  "numpy": "2.4.4",
+  "pandas": "3.0.3",
+  "platform": "macOS-15.7.3-arm64-arm-64bit-Mach-O",
+  "python": "3.14.0",
+  "random_seed": 20260914
+}

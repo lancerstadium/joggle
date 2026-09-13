@@ -60,10 +60,13 @@ or extensibility until the corresponding controlled study is complete.
 - [`baselines/tvm/`](baselines/tvm/): pinned TVM build record and matched
   mechanism-level controls.
 - [`baselines/onnx-mlir/`](baselines/onnx-mlir/): pinned protocol for the
-  end-to-end neural-network compiler baseline; implementation pending.
+  end-to-end neural-network compiler baseline; the first native task is
+  preserved and the remaining contracts are pending.
 - [`model-study.md`](model-study.md): model selection and staged compatibility
   protocol.
 - [`data/`](data/): raw pilot records and provenance.
+- [`figures/`](figures/): scripts, derived summaries, rendered assets, and the
+  figure hand-off report; generated values are never copied manually.
 
 ## Reproduction entry points
 

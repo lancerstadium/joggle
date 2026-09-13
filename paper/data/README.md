@@ -271,6 +271,14 @@ scores reference
 and boxes reference
 `7cc716300e70ca2c8106f5874fd2ccc4579b4ecf04003a359b7f31edeee54600`.
 
+`block-artifact-pilot.csv` puts the exact generated-source byte counts and
+artifact digests for the MobileNetV2, SqueezeNet, and UltraFace block pilots in
+one machine-readable record. `paper/figures/block_tradeoff.py` joins that file
+with the three raw paired-timing records to produce Figure 1 and its derived
+summary. The script rejects missing, nonpositive, or numerically mismatched
+rows. It reports medians and interquartile ranges without a significance test
+because calls repeated within one process are not independent replicates.
+
 `compile-memo-pilot.csv` records one matched, unisolated compiler diagnostic
 on the same 27 MB MobileNetV2 canonical IR at revision `0ba0e2c`. Both rows run
 `spatial.block(m, 2)` with deterministic execution reporting. The control uses

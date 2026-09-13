@@ -343,7 +343,20 @@ peeled non-divisible extents. Its 20 baseline/candidate medians are
 bit-identical between variants and retain their reference errors, while C grows
 67.5%. Together the three runs make cross-model structural selection
 plausible; they still do not establish controlled performance or an automatic
-scheduling policy. A separate UltraFace diagnostic tests whether the artifact
+scheduling policy (Figure 1).
+
+![Three-model block-policy latency and generated-source trade-off.](figures/Fig1.png)
+
+**Figure 1: Descriptive block-policy pilot.** Each point in panel A is one
+adjacent baseline/candidate timed pair; bars show medians and vertical lines
+show interquartile ranges. These are repeated technical calls within one
+unisolated process (`n = 40`, `20`, and `20`), not independent experimental
+units, so no inferential test is reported. Every candidate output is
+bit-identical to its paired baseline. Panel B reports exact generated C source
+byte ratios from the corresponding preserved artifacts. The figure does not
+compare Joggle with a production runtime.
+
+A separate UltraFace diagnostic tests whether the artifact
 module can consume storage facts without an operator case. A single call index
 proves private non-aliasing contracts for 72 of 139 functions; all 40 paired
 calls favor the proved variant, with 20.570/17.680 ms medians and a 1.162
