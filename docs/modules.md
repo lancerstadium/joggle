@@ -223,6 +223,12 @@ and dead-code cleanup to the existing `opt.fold` and `opt.basic`, so
 than an analysis with hidden mutation. Neither function knows about tensors,
 NN operations, or a target.
 
+`opt` applies algebra only to the exact resolved functions that own it. Its
+built-in identities and cleanup recognize `base` scalar functions, not every
+call printed with an operator token. User-defined number formats and operator
+overloads therefore retain their own semantics unless a caller explicitly
+includes them in a `pure` policy passed to `opt.dce`, `opt.cse`, or `opt.fix`.
+
 `opt.expose` is the main connection between semantics and a target. It asks a
 capability function whether an operation is accepted and expands available
 bodies only where needed. `opt.apply` selects compatible ordinary functions:

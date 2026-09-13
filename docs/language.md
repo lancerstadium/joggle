@@ -736,6 +736,12 @@ transforms safely consume a traversal snapshot, while `ir.blk` and
 that still changes the module is a transactional failure, not a successful
 partial fixed point.
 
+A policy entry may be an unqualified call spelling or a resolved symbol such
+as `base.operator +`. The former deliberately covers every matching call the
+policy author selected; the latter covers only that module's function. Built-in
+identity folding and cleanup use resolved `base` symbols, so defining a custom
+`+`, `-`, or `*` never inherits the built-in algebra or purity assumptions.
+
 Canonical printing preserves expression trees with precedence-aware
 parentheses. In particular, `a && (b || c)`, `(a + b) * c`, and
 `a - (b - c)` retain their meaning after print and reparse.

@@ -1,6 +1,18 @@
 module opt
 use ir
 
+local fn matches(m: Mod, op: Op, name: str) -> bool {
+  if ir.callee(op) == name {
+    return true
+  }
+  let target = ir.resolve(m, op)
+  if ir.live(target) {
+    return ir.symbol(target) == name
+  }
+  let builtin = base.replace(name, "base.", "")
+  return builtin != name && ir.callee(op) == builtin
+}
+
 local fn mapped(value: Val, old: list<Val>, next: list<Val>) -> Val {
   for i in 0..len(old) {
     if value == old[i] {
@@ -14,14 +26,14 @@ local fn project(m: Mod) -> bool {
   var changed = false
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" &&
-       ir.callee(op) == "operator []" {
+       matches(m, op, "base.operator []") {
       let args = ir.args(op)
       let outs = ir.outs(op)
       if len(args) == 2 && len(outs) == 1 && ir.is_const(args[1]) &&
          base.kind(ir.constant(args[1])) == "int" {
         let list = ir.def(args[0])
         if ir.live(list) && ir.kind(list) == "call" &&
-           ir.callee(list) == "base.list" {
+           matches(m, list, "base.list") {
           let items = ir.args(list)
           let index = base.int(ir.constant(args[1]))
           if index >= 0 && index < len(items) &&
@@ -352,7 +364,7 @@ fn fold_identity(m: Mod, callee: str, identity: Attr, side: int) -> bool {
   var changed = false
   for op in ir.ops(m) {
     let form = ir.form(op)
-    if ir.callee(op) == callee &&
+    if matches(m, op, callee) &&
        (form == "expr" || form == "let") &&
        (side == 0 || side == 1) {
       let args = ir.args(op)
@@ -384,12 +396,12 @@ fn fold_identity(m: Mod, callee: str, identity: Attr, side: int) -> bool {
 }
 
 fn fold_add_zero(m: Mod) -> bool {
-  var changed = fold_identity(m, "operator +", 0, 1)
-  changed = fold_identity(m, "operator +", 0, 0) || changed
+  var changed = fold_identity(m, "base.operator +", 0, 1)
+  changed = fold_identity(m, "base.operator +", 0, 0) || changed
   return changed
 }
 
-local fn dead(ops: list<Op>, pure: list<str>) -> list<Op> {
+local fn dead(m: Mod, ops: list<Op>, pure: list<str>) -> list<Op> {
   var assigned = {}
   for op in ops {
     let form = ir.form(op)
@@ -405,7 +417,7 @@ local fn dead(ops: list<Op>, pure: list<str>) -> list<Op> {
     if ir.live(op) {
       var allowed = ir.kind(op) == "constant"
       for callee in pure {
-        if ir.kind(op) == "call" && callee == ir.callee(op) {
+        if ir.kind(op) == "call" && matches(m, op, callee) {
           allowed = true
         }
       }
@@ -436,7 +448,7 @@ fn dce(m: Mod, pure: list<str>) -> bool {
   var unused: list<Op> = []
   for fn in ir.fns(m) {
     for block in ir.blks(fn) {
-      unused += dead(ir.ops(block), pure)
+      unused += dead(m, ir.ops(block), pure)
     }
   }
   return len(unused) != 0 && ir.erase(m, unused)
@@ -450,7 +462,7 @@ fn cse(m: Mod, pure: list<str>) -> bool {
     if ir.live(op) {
       var allowed = false
       for callee in pure {
-        if callee == ir.callee(op) {
+        if matches(m, op, callee) {
           allowed = true
         }
       }
@@ -501,17 +513,18 @@ fn cse(m: Mod, pure: list<str>) -> bool {
 
 fn fix(m: Mod, pure: list<str>, limit: int) -> bool {
   base.assert(limit > 0, "opt.fix requires a positive limit")
-  let safe = pure + ["operator +", "operator *"]
+  let safe = pure + ["base.operator +", "base.operator -",
+                     "base.operator *"]
   var changed = false
   var again = true
   var exhausted = false
   for i in 0..limit {
     if again {
       let before = ir.revision(m)
-      fold_identity(m, "operator +", 0, 0)
-      fold_identity(m, "operator +", 0, 1)
-      fold_identity(m, "operator *", 1, 0)
-      fold_identity(m, "operator *", 1, 1)
+      fold_identity(m, "base.operator +", 0, 0)
+      fold_identity(m, "base.operator +", 0, 1)
+      fold_identity(m, "base.operator *", 1, 0)
+      fold_identity(m, "base.operator *", 1, 1)
       cse(m, safe)
       dce(m, safe)
       again = ir.revision(m) != before

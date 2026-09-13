@@ -1,0 +1,15 @@
+module opt.custom
+use base
+
+fn + (left: i32, right: i32) -> i32 {
+  return left - right - i32(1)
+}
+
+fn used(x: i32) -> i32 {
+  return x + i32(0)
+}
+
+fn unused(x: i32) -> i32 {
+  let observed = x + i32(1)
+  return x
+}

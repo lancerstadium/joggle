@@ -99,7 +99,8 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "scalar promotion contract failed (${result}):\n${error}")
 endif()
 execute_process(
-  COMMAND "${TOOL}" run tile.scalarize opt.basic "${bounded}"
+  COMMAND "${TOOL}" run tile.scalarize bounds.fold opt.fold opt.basic
+          "${canonical}"
           -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${scalarized}"

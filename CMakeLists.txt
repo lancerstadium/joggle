@@ -472,6 +472,15 @@ if(JOGGLE_BUILD_TESTS)
       -P ${CMAKE_CURRENT_SOURCE_DIR}/test/bounds.cmake
   )
   add_test(
+    NAME opt-overloads
+    COMMAND
+      ${CMAKE_COMMAND}
+      -DTOOL=$<TARGET_FILE:joggle-tool>
+      -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/opt_custom.jog
+      -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/opt.cmake
+  )
+  add_test(
     NAME cli-emit
     COMMAND
       ${CMAKE_COMMAND}
