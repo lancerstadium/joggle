@@ -108,4 +108,14 @@ joggle run spatial.block canonical.jog --arg '[4, 7]' --arg 4000 \
 
 The cost is a backend-independent proxy: recursively nested, non-terminator
 source operations duplicated per scalar lane. It is useful for a small source
-policy, but it is not a prediction of C bytes, instructions, or latency.
+policy, but it is not a prediction of C bytes, instructions, or latency. When
+the limit cannot hold every candidate, `spatial.block` orders candidates by
+estimated repeated state updates removed per unit of structural duplication.
+The estimate is derived only from the proved reduction axes and their static
+extents. Equal ratios prefer more removed updates and then lower cost. If every
+candidate fits, the original traversal order is preserved exactly.
+
+This is deliberately a replaceable source policy, not hidden target knowledge.
+It does not claim that state traffic predicts latency; experiments can replace
+the ordering while reusing the same checked `split`, `peel`, `reorder`, and
+`scalarize` mechanisms.

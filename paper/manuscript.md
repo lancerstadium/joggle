@@ -175,10 +175,12 @@ Structural transformations also expose policy-facing queries before mutation.
 For scalar promotion, `tile.scalar_cost` returns zero for an illegal candidate
 and otherwise reports lane count times recursive source-body operation count.
 The example blocking policy can enforce a whole-invocation duplication limit
-before applying split, reorder, or scalarize. This metric is deliberately a
-target-neutral proxy rather than a claim to predict emitted bytes or latency;
-the evaluation must determine whether it is informative enough for useful
-selection.
+before applying split, reorder, or scalarize. If candidates compete for that
+limit, the source module ranks the statically proved repeated state updates
+removed per duplication unit; if all fit, it preserves traversal order. These
+metrics are deliberately target-neutral proxies rather than claims to predict
+emitted bytes or latency; the evaluation must determine whether they are
+informative enough for useful selection.
 
 Storage and artifact policy remain separate module functions. `mem.separate`
 proves a deliberately narrow call-site relation from planned slots and

@@ -29,6 +29,7 @@ set(split_scalar "${ROOT}/split-scalar.jog")
 set(split_scalar_list "${ROOT}/split-scalar-list.jog")
 set(split_scalar_bounded "${ROOT}/split-scalar-bounded.jog")
 set(split_scalar_skipped "${ROOT}/split-scalar-skipped.jog")
+set(split_scalar_ranked "${ROOT}/split-scalar-ranked.jog")
 set(split_scalar_source "${ROOT}/split-scalar.c")
 set(split_scalar_program "${ROOT}/split-scalar")
 set(source "${ROOT}/model.c")
@@ -261,6 +262,28 @@ execute_process(
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "a rejected block candidate changed the module")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run spatial.block "${canonical}"
+          --arg 2 --arg 80 -M "${EXAMPLES}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${split_scalar_ranked}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "ranked block composition failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_ranked "${split_scalar_ranked}"
+          -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_QUIET
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "ranked block selection failed (${result}):\n${error}")
 endif()
 execute_process(
   COMMAND "${TOOL}" run bounds.fold opt.fold opt.basic
