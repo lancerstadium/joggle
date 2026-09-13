@@ -2754,23 +2754,19 @@ struct TypeLookup {
   Ty actual;
 };
 
+bool type_constructor(Fn fn) {
+  const std::vector<Ty> returns = fn.returns();
+  return fn.params().empty() && returns.size() == 1 &&
+         returns.front().name() == "Ty";
+}
+
 TypeLookup type_declaration(const Mod& mod, const Env& env, const Ty& type,
                             std::span<const GenericInfo> context) {
-  std::vector<Fn> candidates = mod.find_fns(type.name());
-  const std::string symbol =
-      type.name().find('.') == std::string_view::npos
-          ? std::string(type.name()) + "." + std::string(type.name())
-          : std::string(type.name());
-  for (const Fn candidate : env.resolve_fns(mod, symbol))
-    if (std::find(candidates.begin(), candidates.end(), candidate) ==
-        candidates.end())
-      candidates.push_back(candidate);
+  const std::vector<Fn> candidates = env.resolve_fns(mod, type.name());
   TypeLookup result;
   result.seen = !candidates.empty();
   for (const Fn candidate : candidates) {
-    const std::vector<Ty> returns = candidate.returns();
-    if (!candidate.params().empty() || returns.size() != 1 ||
-        returns.front().name() != "Ty")
+    if (!type_constructor(candidate))
       continue;
     result.arities.push_back(candidate.generics().size());
     if (candidate.generics().size() != type.args().size())
@@ -2895,17 +2891,38 @@ bool verify_type(detail::Store& store, const Mod& mod, const Env& env,
                          std::move(loc));
       return false;
     }
-    std::string symbol(type.name());
-    if (symbol.find('.') == std::string::npos)
-      symbol += "." + symbol;
-    const std::vector<Fn> hidden = env.find_fns(symbol);
-    if (hidden.empty())
-      return true;
-    detail::add_diag(store.diags,
-                     "type '" + std::string(type.name()) + "' requires 'use " +
-                         std::string(hidden.front().module()) + "'",
-                     std::move(loc));
-    return false;
+    std::vector<Fn> hidden;
+    if (type.name().find('.') != std::string_view::npos) {
+      hidden = env.find_fns(type.name());
+    } else {
+      for (const std::string& module : env.modules()) {
+        for (const Fn candidate : env.fns(module)) {
+          if (candidate.name() == type.name() && type_constructor(candidate)) {
+            hidden.push_back(candidate);
+            break;
+          }
+        }
+        if (!hidden.empty())
+          break;
+      }
+    }
+    if (!hidden.empty()) {
+      detail::add_diag(
+          store.diags,
+          "type '" + std::string(type.name()) + "' requires 'use " +
+              std::string(hidden.front().module()) + "'",
+          std::move(loc));
+      return false;
+    }
+    if (type.name().find('.') != std::string_view::npos &&
+        env.declared(type.name())) {
+      detail::add_diag(store.diags,
+                       "type '" + std::string(type.name()) +
+                           "' names a local function in another module",
+                       std::move(loc));
+      return false;
+    }
+    return true;
   }
   const std::vector<Val> constructor_generics = lookup.constructor.generics();
   const auto verify_argument = [&](auto&& self, const Ty& expected,

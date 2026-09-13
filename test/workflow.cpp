@@ -523,6 +523,14 @@ int main(int argc, char** argv) {
         std::string::npos);
   CHECK(!env.resolve(local_client, "script.hidden"));
   CHECK(env.resolve(local_client, "script.local_probe"));
+  CHECK(env.declared("script.hidden_type"));
+  CHECK(!env.find_fn("script.hidden_type"));
+  CHECK(rejects_type(
+      env,
+      "module local.type.client\nuse script\n"
+      "fn bad(x: script.hidden_type<i32>) -> script.hidden_type<i32> { "
+      "return x }\n",
+      "names a local function in another module"));
   joggle::Attr local_result;
   CHECK(joggle::query(env, "script.local_probe", network_cpp, local_result));
   CHECK(local_result.boolean() && *local_result.boolean());
@@ -2432,6 +2440,21 @@ int main(int argc, char** argv) {
                                    dependent_roundtrip));
 
   CHECK(env.load("number"));
+  CHECK(rejects_type(
+      env,
+      "module missing.number\n"
+      "fn bad(x: qreal<8>) -> qreal<8> { return x }\n",
+      "requires 'use number'"));
+  CHECK(rejects_type(
+      env,
+      "module wrong.number\nuse number\n"
+      "fn bad(x: qreal<f32>) -> qreal<f32> { return x }\n",
+      "expected 'int'"));
+  CHECK(rejects_type(
+      env,
+      "module wrong.number\nuse number\n"
+      "fn bad(x: qreal<8, 16>) -> qreal<8, 16> { return x }\n",
+      "expects 1 type argument"));
   joggle::Mod custom_number;
   constexpr std::string_view custom_number_source =
       "module custom.number\n"

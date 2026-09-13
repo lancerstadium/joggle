@@ -10,6 +10,8 @@ local fn hidden(m: Mod) -> bool {
   return ir.revision(m) >= 0
 }
 
+local fn hidden_type<T: Ty>() -> Ty;
+
 fn local_probe(m: Mod) -> bool {
   return hidden(m)
 }

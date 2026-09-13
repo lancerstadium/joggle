@@ -195,9 +195,12 @@ They are normal overloads; the verifier identifies the zero-value-argument
 Local and imported declarations are merged for both lookups, so adding a local
 value function with the same name cannot hide an imported type constructor.
 
-After `use sat`, `sat<8>` resolves to `sat.sat<8>`. No `type` keyword, generated
-class, registry callback, or metadata tag is involved. Constructor arity and
-visibility are verified like function arity and visibility. Unloaded
+After `use sat`, `sat<8>` resolves to `sat.sat<8>`. A constructor does not have
+to repeat its module name: after `use number`, `qreal<8>` resolves to
+`number.qreal<8>` through the same visible function-family lookup. No `type`
+keyword, generated class, registry callback, or metadata tag is involved.
+Constructor arity, argument kinds, imports, and `local` visibility are verified
+like function arity and visibility. Unloaded
 constructors remain open structural types so a source-only parse does not need
 to install every extension; once a matching module is loaded, a missing `use`
 edge or incompatible declaration is an error.
