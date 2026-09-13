@@ -365,6 +365,16 @@ bit-identical to its paired baseline. Panel B reports exact generated C source
 byte ratios from the corresponding preserved artifacts. The figure does not
 compare Joggle with a production runtime.
 
+A follow-up UltraFace diagnostic tests whether the policy can bound this
+growth before mutation. Limits 0, 500, 1,500, and 1,000,000 produce 0, 4, 16,
+and 148 accumulators and C sizes of 197,266, 200,740, 208,137, and 326,858
+bytes. Ten alternating paired calls give median within-pair ratios of 1.039,
+1.052, and 2.260 for the three nonzero limits, with both result tensors
+bit-identical to the common baseline. The small limits therefore control size
+but capture little of the unrestricted speed direction. This is an unisolated
+mechanism pilot, not a Pareto result; it shows that a replaceable policy needs
+a benefit signal or candidate ordering in addition to structural cost.
+
 A separate UltraFace diagnostic tests whether the artifact
 module can consume storage facts without an operator case. A single call index
 proves private non-aliasing contracts for 72 of 139 functions; all 40 paired

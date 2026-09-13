@@ -110,6 +110,40 @@ Other scripts in this directory each regenerate the correspondingly named CSV.
 The provenance and interpretation boundary for every record is documented in
 [`data/README.md`](data/README.md).
 
+Measure the structural-cost frontier of an already prepared model without
+placing artifacts in a temporary directory:
+
+```sh
+python3 paper/measure_block_frontier.py \
+  --tool build/joggle \
+  --modules build/modules \
+  --examples examples \
+  --model UltraFace=build-study/ultraface-block/canonical.jog \
+  --budgets 0,500,1500,1000000 \
+  --out-dir build-study/block-frontier \
+  --output paper/data/block-frontier-pilot.csv
+```
+
+`paper/measure_pair2.py` then strictly compiles one baseline and any number of
+two-result candidates, links each pair to the same alternating harness, and
+writes every raw timing observation. The caller supplies managed input and
+weight artifacts; neither script downloads or invents model data.
+
+```sh
+python3 paper/measure_pair2.py \
+  --model UltraFace \
+  --cc /usr/bin/clang \
+  --baseline build-study/block-frontier/UltraFace/0/model.c \
+  --candidate 500=build-study/block-frontier/UltraFace/500/model.c \
+  --candidate 1500=build-study/block-frontier/UltraFace/1500/model.c \
+  --candidate 1000000=build-study/block-frontier/UltraFace/1000000/model.c \
+  --input build-matrix/ultraface-rfb-320/input.bin \
+  --weights build-study/ultraface-block/weights.bin \
+  --first-count 8840 --second-count 17680 --repetitions 10 \
+  --out-dir build-study/block-frontier/UltraFace/paired \
+  --output paper/data/block-frontier-runtime-pilot.csv
+```
+
 ## Submission gate
 
 A EuroSys submission is justified only if all of the following are complete:

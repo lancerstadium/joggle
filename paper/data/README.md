@@ -279,6 +279,34 @@ summary. The script rejects missing, nonpositive, or numerically mismatched
 rows. It reports medians and interquartile ranges without a significance test
 because calls repeated within one process are not independent replicates.
 
+`block-frontier-pilot.csv` is the first application-scale check of the
+read-only `tile.scalar_cost` mechanism at revision `ce9ebe8`. Starting from the
+same 2,675,643-byte UltraFace canonical IR, it runs the complete block, cleanup,
+memory-plan, static-placement, and external-weight C-emission sequence at cost
+limits 0, 500, 1,500, and 1,000,000. The resulting cleaned bodies contain 0,
+4, 16, and 148 scalar accumulators; C size is 197,266, 200,740, 208,137, and
+326,858 bytes. Thus the structural limit produces intermediate artifacts
+rather than only all-or-nothing behavior.
+
+The same record exposes a compiler-cost boundary. The respective single-run
+block times are 7.39, 11.05, 21.89, and 205.99 seconds, while cleanup takes
+40.39, 43.09, 88.31, and 288.56 seconds. These timings came from an unisolated
+host and are diagnostic observations, not throughput claims. They show that
+unrestricted body replication stresses both the artifact and the compiler,
+and that the current first-fit policy needs a benefit signal in addition to a
+cost limit.
+
+`block-frontier-runtime-pilot.csv` contains the raw alternating measurements
+produced by `paper/measure_pair2.py` from those exact generated sources. With
+ten paired calls per candidate, the median within-pair baseline/candidate
+ratios are 1.039, 1.052, and 2.260 for limits 500, 1,500, and 1,000,000. Both
+result tensors are bit-identical to the paired baseline in every row. The
+small limits greatly reduce source growth but retain little of the unrestricted
+speed direction, so this pilot does not establish a useful Pareto policy. It
+identifies candidate ranking as the next mechanism question. The calls are
+technical repetitions on one unisolated machine and carry no significance or
+production-runtime claim.
+
 `compile-memo-pilot.csv` records one matched, unisolated compiler diagnostic
 on the same 27 MB MobileNetV2 canonical IR at revision `0ba0e2c`. Both rows run
 `spatial.block(m, 2)` with deterministic execution reporting. The control uses
