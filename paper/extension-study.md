@@ -75,9 +75,9 @@ The intended matched comparisons are:
 
 TVM `v0.26.0` at commit
 `c7b458e946bc4266915da582457476bdcd9705ae` is now pinned. Reproducible TVM
-programs pass the implementation and policy contracts; their sources and build
-recipe are preserved under `baselines/tvm/`. The external-kernel and numeric-
-format contracts remain unimplemented, so there is no complete TVM result and
+programs pass the implementation, policy, and external-kernel contracts; their
+sources and build recipe are preserved under `baselines/tvm/`. The numeric-
+format contract remains unimplemented, so there is no complete TVM result and
 no cross-system conclusion yet. RISE/Shine and MLIR assignments remain
 provisional until the same feasibility check is complete. ONNX-MLIR is more
 appropriate for a separate frontend-semantics task than for all four extension

@@ -291,12 +291,12 @@ their named tests. Its three out-of-tree tasks contain 20, 69, and 138 source
 lines; the bundled numeric-format task contains 284 source lines across a
 source semantic module, a native binding, and two target companions. These are
 descriptive implementation footprints, not usability or productivity results.
-The first two frozen contracts now also pass on a pinned TVM `v0.26.0`
-baseline: one generic explicit i-k-j matrix body and one structural schedule
-policy. Their exact experiment sources and build recipe are preserved, but the
-external-kernel and numeric-format contracts remain incomplete. Consequently,
-there is still no full matched RQ2 result and no comparative extensibility
-claim.
+The first three frozen contracts now also pass on a pinned TVM `v0.26.0`
+baseline: one generic explicit i-k-j matrix body, one structural schedule
+policy, and one generic external-call implementation exercised by the unchanged
+C harness. Their exact experiment sources and build recipe are preserved, but
+the numeric-format contract remains incomplete. Consequently, there is still
+no full matched RQ2 result and no comparative extensibility claim.
 
 ## 6. Related work
 

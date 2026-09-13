@@ -10,7 +10,7 @@ TVMScript/TIR functions and schedule primitives, emit C through TVM, compile
 the artifact, execute it, and check the shared fixture. They require Python
 3.10+ with NumPy and the TVM Python package backed by that exact source
 revision. The following source-only build is sufficient; LLVM and RPC are not
-used by these two tasks.
+used by these tasks.
 
 ```sh
 git clone --recursive --branch v0.26.0 \
@@ -46,9 +46,19 @@ PYTHONPATH="$TVM_ROOT/python" \
 "$TVM_ROOT/.venv/bin/python" \
 paper/baselines/tvm/policy.py \
 paper/tasks/policy.json
+
+TVM_LIBRARY_PATH="$TVM_ROOT/build-make/lib" \
+PYTHONPATH="$TVM_ROOT/python" \
+"$TVM_ROOT/.venv/bin/python" \
+paper/baselines/tvm/external_kernel.py \
+paper/tasks/external-kernel.json \
+examples/edge/kernel.c \
+examples/edge/main.c
 ```
 
-Only the two Python programs are baseline implementation source. This README
-and `requirements.txt` are reproducibility metadata. JSON fixtures are shared
-task input and are excluded from source-footprint measurements. The remaining
-two contracts are not yet implemented and must not be reported as TVM results.
+The three Python programs and the external-kernel C bridge and header are
+baseline implementation source. This README and `requirements.txt` are
+reproducibility metadata. JSON fixtures, the supplied kernels, and the supplied
+harness are shared task inputs and are excluded from source-footprint
+measurements. The numeric-format contract is not yet implemented and must not
+be reported as a TVM result.
