@@ -523,6 +523,21 @@ Fn Env::find_fn(std::string_view symbol) const {
   return matches.size() == 1 ? matches.front() : Fn{};
 }
 
+bool Env::declared(std::string_view symbol) const {
+  std::size_t best = 0;
+  bool result = false;
+  for (const auto& [name, module] : impl_->modules) {
+    if (name.size() <= best || symbol.size() <= name.size() ||
+        !symbol.starts_with(name) || symbol[name.size()] != '.')
+      continue;
+    if (!module->find_fns(symbol.substr(name.size() + 1)).empty()) {
+      best = name.size();
+      result = true;
+    }
+  }
+  return result;
+}
+
 std::vector<Fn> Env::resolve_fns(const Mod& from,
                                  std::string_view symbol) const {
   return resolve_fns(from.impl_->store, symbol);

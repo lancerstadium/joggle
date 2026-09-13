@@ -2513,6 +2513,11 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
                              "' requires 'use " +
                              std::string(hidden.front().module()) + "'",
                          op.loc);
+      else if (env.declared(symbol))
+        detail::add_diag(store.diags,
+                         "call to '" + std::string(op.callee) +
+                             "' names a local function in another module",
+                         op.loc);
     }
     return;
   }

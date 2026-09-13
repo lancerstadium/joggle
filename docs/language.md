@@ -230,13 +230,17 @@ For example,
 `sat.add(a, b)` over two `sat<8>` values has result type `sat<8>`, while mixing
 `sat<8>` and `sat<16>` is rejected. Unknown calls remain valid open IR so a
 frontend can transport source operations before a semantic bridge is loaded.
+That openness does not bypass module privacy: a qualified name that exactly
+matches a `local fn` in another loaded package is rejected as inaccessible,
+while a genuinely undeclared source-format operation remains open.
 `Mod::find_fns` returns declarations in the concrete module being edited,
 including its local structure. `Env::fns(module)` and `Env::find_fns` expose
 only the public surface of an installed module; `ir.fns(module)` follows the
-same rule. Their singular `find_fn` forms intentionally return an invalid
-handle when the name is overloaded. `Env::resolve(mod, op)` performs the same
-overload choice as verification, allowing tools to distinguish a resolved call
-from open IR.
+same rule. `Env::declared(symbol)` can test whether an exact qualified symbol
+exists, including a local declaration, without exposing its handle. Their
+singular `find_fn` forms intentionally return an invalid handle when the name
+is overloaded. `Env::resolve(mod, op)` performs the same overload choice as
+verification, allowing tools to distinguish a resolved call from open IR.
 Resolution from a `Fn` uses that function's module and transitive imports, so
 compile-time execution and verification have identical visibility rules.
 

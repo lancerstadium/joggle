@@ -501,6 +501,8 @@ int main(int argc, char** argv) {
   CHECK(env.load("script"));
   for (joggle::Fn fn : env.fns("script"))
     CHECK(fn.name() != "hidden" && !fn.local());
+  CHECK(env.declared("script.hidden"));
+  CHECK(!env.declared("script.missing"));
   CHECK(!env.find_fn("script.hidden"));
   constexpr std::string_view local_client_source =
       "module local.client\n"
@@ -530,6 +532,29 @@ int main(int argc, char** argv) {
   CHECK(joggle::query(env, "script.imported_locals_hidden", network_cpp,
                       local_result));
   CHECK(local_result.boolean() && *local_result.boolean());
+
+  joggle::Mod private_call;
+  CHECK(joggle::parse(env,
+                      "module private_call\n"
+                      "use script\n"
+                      "fn main(m: Mod) -> bool { return script.hidden(m) }\n",
+                      private_call, "private-call.jog"));
+  CHECK(!private_call.verify(env));
+  CHECK(std::any_of(private_call.diags().begin(), private_call.diags().end(),
+                    [](const joggle::Diag& diag) {
+                      return diag.message.find("local function in another "
+                                               "module") !=
+                             std::string::npos;
+                    }));
+
+  joggle::Mod open_transport;
+  CHECK(joggle::parse(
+      env,
+      "module open_transport\n"
+      "use onnx\n"
+      "fn main(x: opaque) -> opaque { return onnx.NotDeclared(x) }\n",
+      open_transport, "open-transport.jog"));
+  CHECK(open_transport.verify(env));
   joggle::Mod scripted_generic_edit;
   CHECK(joggle::parse(env, generic_edit_source, scripted_generic_edit,
                       "scripted-generic-edit.jog"));
