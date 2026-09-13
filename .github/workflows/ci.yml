@@ -81,7 +81,20 @@ jobs:
           -DJOGGLE_BUILD_TFLITE=ON
           -DJOGGLE_BUILD_SAT=ON
       - name: Build
-        run: cmake --build build --parallel 2
+        id: optional-build
+        run: cmake --build build --parallel 2 2>&1 | tee optional-build.log
+      - name: Preserve optional build failure
+        if: ${{ failure() && steps.optional-build.outcome == 'failure' }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          text = Path("optional-build.log").read_text(errors="replace")[-12000:]
+          text = (text.replace("%", "%25")
+                      .replace("\r", "%0D")
+                      .replace("\n", "%0A"))
+          print(f"::error title=Optional module build failed::{text}")
+          PY
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
