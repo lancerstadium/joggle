@@ -11,6 +11,8 @@ pilot records:
   compatibility and its generated frontier table;
 - [spatial-pilot.cmake](spatial-pilot.cmake) rebuilds and checks the canonical
   versus pass-reordered C variants from managed model artifacts;
+- [measure_memo.py](measure_memo.py) runs the paired snapshot-query
+  memoization ablation and rejects non-identical output;
 - [data/](data/) contains pilot measurements and their provenance.
 
 Implemented features are not automatically treated as research contributions.
@@ -93,7 +95,7 @@ blocker.
 | Frontends are separate from semantics | ONNX/TFLite codecs, explicit bridge modules, one pinned Zoo declaration list, and a generated staged table for 12 official models | Frozen controlled subset, task-level accuracy, and broader non-vision evidence |
 | Targets expose only required detail | `c.accepts`, `vm.accepts`, `opt.expose`, preparation tests | A genuinely different external target or simulator study |
 | Transform failure is safe | Transaction and rollback tests, ownership/liveness checks | Fault-injection matrix and diagnostic assessment |
-| Storage and scheduling are replaceable | `mem` and `tile` modules, typed policy callbacks, multi-axis legality, directly composable structural edits, budgeted scalar promotion, deterministic source-call accounting, and value-level helper memoization | Frozen profitability policies, repeated model-scale compile-time measurements, and multi-model performance results |
+| Storage and scheduling are replaceable | `mem` and `tile` modules, typed policy callbacks, multi-axis legality, directly composable structural edits, budgeted scalar promotion, deterministic source-call accounting, and revision-safe query memoization | Frozen profitability policies, repeated model-scale compile-time measurements, and multi-model performance results |
 | C artifacts are usable | Compiled examples, independent weight payload, structured ABI descriptors, generated multi-input/output harnesses, strict compilation, and numerical checks | Frozen execution suite, task metrics, latency distribution, workspace and binary comparisons |
 | VM execution is deterministic | Stable image format, output and step-count tests | Defined use case and overhead comparison |
 
@@ -216,6 +218,14 @@ frozen.
   from 63.42 to 34.26 seconds (1.85x), and both variants printed the same
   28,575,757-byte IR with the same SHA-256. This validates the compiler
   mechanism, not a publication-grade timing claim.
+- Revision-safe memoization subsequently admits explicitly pure IR queries.
+  Handle identity, generation, and store revision participate in the key;
+  result stores remain dependencies, and a call that edits an input store is
+  not inserted. A two-process-per-variant MobileNetV2 ablation reduced
+  deterministic source calls from 2,939,981 to 1,272,463 while all four runs
+  emitted the same 28,565,283-byte IR. Unisolated wall-time medians were 42.099
+  and 28.341 seconds (1.49x). This is a reproducible engineering pilot, not a
+  publication-grade performance result.
 - Exact static strip-mining now removes 82 cloned final-tile guards from that
   factor-two MobileNetV2 block path while retaining guards for padded and
   dynamic ranges. Readable IR falls from 3,910 to 3,664 lines and strict C from

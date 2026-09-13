@@ -217,6 +217,17 @@ The harness mechanism has compiled for both the official MNIST application and
 a two-input/two-output interface. This establishes interface consistency, not
 broader model execution or performance.
 
+Compiler-side scaling has a concrete mechanism pilot but not yet a formal
+result. Snapshot-relative memoization binds IR handles to their generation and
+owning-store revision, rejects insertion when a call edits an input store, and
+revalidates result-store dependencies at each hit. On the exact-split
+MobileNetV2 `spatial.block` path, a mechanically stripped control and the
+checked-in candidate emitted byte-identical IR in four alternating processes.
+Deterministic source calls fell from 2,939,981 to 1,272,463; two-run wall-time
+medians were 42.099 and 28.341 seconds. The host was not isolated and the sample
+is too small for a performance claim. The result currently establishes a safe
+ablation path and identifies repeated structural analysis as measurable work.
+
 Generated C is presently the main negative result. Depending on the model, the
 recorded unisolated pilots are about 7--101 times slower than one-thread ONNX
 Runtime. A retired out-of-tree spatial convolution body improved five matched

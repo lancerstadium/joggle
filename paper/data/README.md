@@ -143,6 +143,24 @@ calls from 4,518,747 to 2,962,531 because cached parents skip their helper
 calls. This single paired run validates the mechanism and identifies remaining
 interpreter work; it is not a publication-grade compile-time result.
 
+`revision-memo-pilot.csv` isolates the subsequent snapshot-query extension at
+revision `4c062d1`. Both variants retain the earlier value-only annotations;
+the control mechanically strips `[memo]` from the 16 named IR-query helpers
+listed in [`paper/measure_memo.py`](../measure_memo.py), while the candidate
+uses the checked-in modules. Two independent processes per variant are run in
+opposite orders on the same exact-split MobileNetV2 input. Every run performs
+10,008 edits and emits the same 28,565,283-byte IR with SHA-256
+`7edee427bc8b964aebda0449e74df0912db0ae5a3c19d1777148fcce0513e282`.
+The canonical input SHA-256 is
+`53c8da8654a481ff661899b428ad93c237e0a598a762ac4286d0af2210c311da`.
+The deterministic source-call count falls from 2,939,981 to 1,272,463
+(-56.7%). The two-run wall-time medians are 42.099 and 28.341 seconds
+(-32.7%, 1.49x). Total cache hits fall because memoized structural parents skip
+large value-helper subtrees; hit count is therefore not an additive measure of
+work. The machine was not isolated or frequency controlled, and two repetitions
+are insufficient for an inferential timing claim. This pilot supports semantic
+preservation and experiment design, not a publication-grade speedup.
+
 `exact-split-pilot.csv` checks the next generic scheduling refinement on the
 same MobileNetV2 path. The earlier `tile.split` always materialized a final-tile
 guard; `ce8f174` omits it only when static bounds prove exact divisibility and
