@@ -181,7 +181,44 @@ allocation, call, comparison, and timing harness from that descriptor, including
 multiple tensor inputs and outputs; it does not maintain a second model ABI in
 handwritten C.
 
-## 4. Evaluation status
+## 4. Implementation
+
+Joggle's host implementation is a C++20 library with a public embedding API
+and a small command-line driver. The host owns parsing, immutable type and
+attribute values, IR storage, verification, overload resolution, module
+loading, and transactional invocation. It does not contain a neural-network
+operator enumeration or target-specific lowering table. Handles carry store
+identity, numeric identity, and generation; edits reject foreign, stale, or
+non-dominating values before changing the module. Successful changes advance a
+store revision, which also bounds snapshot-relative analysis memoization.
+
+Most compiler behavior is written in the same `.jog` language presented to an
+extension author. Bundled modules supply scalar and tensor semantics, ONNX and
+TFLite bridges, conservative bounds, structural loop transforms, storage
+planning, a deterministic virtual machine, and C artifact generation. A module
+is a directory containing one public source file, optional source fragments,
+and at most one optional native library. Dependency closure and visibility are
+derived from `use` declarations; a generated header, dialect table, or pass
+registry is not part of the module contract.
+
+External formats are deliberately split at the transport boundary. Optional
+native codecs decode protobuf or FlatBuffer bytes while preserving source
+symbols and attributes. Source bridge modules perform type refinement and
+semantic conversion explicitly. Consequently, adding another frontend does
+not require adding its operation names to `nn`, `tile`, or the C emitter. The
+same rule applies at the other end: the C and VM modules publish ordinary
+capability predicates, preparation functions, and artifact functions.
+
+The test suite exercises the command-line and embedding paths, module
+installation, native-module loading, malformed input, transaction rollback,
+stale handles, structural edits, generated C execution, VM execution, and
+optional ONNX/TFLite paths. Linux and macOS clean builds and a Linux
+AddressSanitizer/UndefinedBehaviorSanitizer configuration run in continuous
+integration. Large model artifacts remain checksum-pinned external inputs and
+are excluded from the default CI path; the evaluation scripts must therefore
+record explicitly which optional gates were available.
+
+## 5. Evaluation status
 
 The repository currently records pilots, not publication measurements. Ten
 ONNX models execute against stored reference outputs. TinyYOLOv3 retains a
@@ -256,15 +293,101 @@ descriptive implementation footprints, not usability or productivity results.
 Matched baseline implementations and recorded implementation time remain
 necessary for RQ2.
 
-## 5. Required remaining sections
+## 6. Related work
+
+MLIR addresses compiler extensibility by making multiple domain-specific IRs,
+operation interfaces, conversions, and pass infrastructure reusable
+[Lattner et al. 2021](https://doi.org/10.1109/CGO51591.2021.9370308).
+ONNX-MLIR applies that approach to ONNX semantics and loop-oriented lowering
+[Jin et al. 2020](https://arxiv.org/abs/2008.08272), while IREE extends an MLIR
+stack through host/device partitioning, deployment artifacts, and embedded
+runtime configurations
+[Liu et al. 2022](https://doi.org/10.1109/MM.2022.3178068). Joggle does not
+argue that one representation replaces these abstractions. It tests whether a
+smaller source-level module boundary is sufficient for bounded experiments
+whose changes would otherwise cross several of them.
+
+TVM combines graph optimization, tensor programs, schedules, cost models, and
+target code generation
+[Chen et al. 2018](https://www.usenix.org/conference/osdi18/presentation/chen).
+TileLang gives kernel authors explicit control over tiled dataflow, memory,
+layout, and thread binding while building on TVM IR
+[Wang et al. 2025](https://arxiv.org/abs/2504.17577). These systems are the
+appropriate baselines for production code quality or kernel-control tasks.
+Joggle instead exposes loops and storage through ordinary functions and leaves
+hardware concepts in user modules. A matched study must determine whether that
+choice reduces extension coupling; current generated-C pilots establish that
+it does not by itself deliver competitive performance.
+
+Lift and RISE & Shine make typed functional patterns and explicit rewrite
+strategies central to optimization
+[Steuwer et al. 2017](https://doi.org/10.1109/CGO.2017.7863730);
+[Steuwer et al. 2022](https://arxiv.org/abs/2201.03611). Joggle shares their
+emphasis on inspectable functions and transformations but keeps imported calls,
+explicit structured loops, and external declarations in one open function
+representation instead of requiring a closed data-parallel pattern vocabulary.
+This is a design tradeoff to evaluate, not an assertion that either form is
+universally simpler.
+
+TensorFlow Lite Micro targets inference on fragmented, memory-constrained
+microcontrollers through an interpreter and explicitly registered operator
+implementations
+[David et al. 2021](https://proceedings.mlsys.org/paper_files/paper/2021/file/6c44dc73014d66ba49b28d483a8f8b0d-Paper.pdf).
+ncnn is a dependency-light C++ inference framework with optimized CPU and
+Vulkan paths and a registered custom-layer interface
+([project](https://github.com/Tencent/ncnn),
+[extension guide](https://github.com/Tencent/ncnn/wiki/how-to-implement-custom-layer-step-by-step)).
+They define the deployment context Joggle must respect: transparent compiler
+artifacts are useful for research, but cannot be presented as substitutes for
+mature optimized runtimes. A custom-operation comparison is valid only under a
+matched model, target, and oracle.
+
+## 7. Limitations and threats to validity
+
+The present implementation favors visibility and extension over automatic
+optimization. Dependence proofs cover conservative affine cases, scheduling
+policies are manually selected, dynamic shapes remain partial, and generated C
+lacks the packed kernels, vectorization strategy, and broad target tuning of a
+production runtime. The single progressive IR may reduce conversion code for
+some experiments while making abstraction boundaries less explicit for others.
+The evaluation must report both outcomes.
+
+The current authors built both the system and its examples, creating familiarity
+and experimenter bias. Source volume is objective but not a measure of
+comprehension or implementation difficulty. Wall-clock implementation time is
+also sensitive to prior experience and failed attempts. The RQ2 protocol
+therefore freezes task behavior and stopping rules, preserves attempt logs,
+reports dimensions separately, and requires a second-person reproduction; it
+does not combine them into a synthetic ease-of-use score.
+
+Model coverage currently overrepresents static vision networks. Numerical
+agreement with one stored input does not establish task accuracy, robustness,
+or general operator support. Performance pilots were run on one unisolated host
+and cannot support cross-system speed claims. Final results require pinned
+artifacts and revisions, isolated repeated trials with dispersion, task-level
+metrics, at least one non-vision workload, and a second-machine artifact
+reproduction. Unsupported models and transformations that lose performance
+remain part of the reported frontier.
+
+## 8. Conclusion
+
+Joggle explores a deliberately narrow compiler design point for neural-network
+co-design research: one typed function representation and one distributable
+module-function mechanism from imported calls to explicit computation and
+artifacts. The implementation now demonstrates that frontends, semantic
+bodies, structural analyses, loop and storage edits, implementation selection,
+and two artifact paths can share this boundary. It also exposes the boundary's
+costs: model support is incomplete, automatic profitability is absent, and
+generated C remains far behind a production runtime. Whether the design
+meaningfully lowers extension coupling is therefore an empirical question, not
+an implemented feature. The controlled extension and artifact studies must
+answer it before this conclusion can make a stronger claim.
+
+## 9. Submission work remaining
 
 - Motivating extension task and trace through the representation
-- Implementation and module-loading boundary
 - Frozen study design and baseline versions
 - Results generated from committed raw data
-- Related work synthesized from [related-work.md](related-work.md)
-- Threats to validity and explicit limitations
-- Conclusion
 - Data Availability
 - Research-use AI disclosure in Methods
 - Author contributions, funding, conflicts, and ethics declarations for the
