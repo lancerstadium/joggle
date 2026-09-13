@@ -39,12 +39,15 @@ usability.
 | Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths | Freeze and record model-level stage traces |
 | Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM controls pass three contracts; the exact MatMul contract now passes through Joggle and a native, end-to-end ONNX-MLIR extension | Finish the remaining system tasks or preserve their unsupported outcomes; repeat the ONNX-MLIR build from a clean checkout |
 | Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical CSE/analysis scaling pilots | Freeze a fault and diagnostic matrix |
-| Artifact quality | Ten numerical ONNX paths; internal rewrite diagnostics preserve their reference outputs, but they are not system comparisons | Controlled Joggle/ONNX Runtime/ONNX-MLIR results, task accuracy, a second machine, and a materially smaller generated-C gap |
+| Artifact quality | Ten numerical ONNX paths; a clean-revision, 20-trial MobileNetV2 pilot compares generated C with ONNX Runtime; internal rewrite diagnostics remain separate | Broaden the independent-system matrix, add ONNX-MLIR where executable, task accuracy, an isolated second machine, and a materially smaller generated-C gap |
 
 The current generated-C pilots remain roughly 7--101 times slower than
-one-thread ONNX Runtime, depending on the model. This is a blocking result, not
-a hidden caveat. The manuscript must not claim superior speed, compatibility,
-or extensibility until the corresponding controlled study is complete.
+one-thread ONNX Runtime, depending on the model. Under the new balanced
+cross-system protocol, the first clean-revision MobileNetV2 run reports
+209.854 ms versus 6.236 ms median latency, a 33.65x gap over 20 trials. This is
+a blocking result, not a hidden caveat; the run still lacks a host load bound
+and second-machine replication. The manuscript must not claim superior speed,
+compatibility, or extensibility until the corresponding study is complete.
 
 ## Repository map
 

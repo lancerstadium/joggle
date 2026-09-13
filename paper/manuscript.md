@@ -345,8 +345,12 @@ internal records for regression and ablation, but the paper's performance
 table will compare independent systems on identical model, input, thread, and
 correctness contracts while recording each system's compiler and runtime
 versions.
-It remains incomplete until isolated repetitions and a second machine are
-available.
+The first run of that protocol uses a clean revision and 20 balanced,
+fresh-process MobileNetV2 trials. Median latency is 209.854 ms for generated C
+and 6.236 ms for ONNX Runtime 1.26.0, a 33.65x gap; both subjects pass the same
+stored-output contract. This is a one-host pilot rather than a publication
+result because it lacks an explicit load threshold, controlled thermal state,
+and second-machine replication.
 
 The extension-surface study and controlled performance study are not complete.
 One of four system-baseline tasks now passes, but that result does not support
