@@ -494,7 +494,10 @@ infix expression. Pass a `Fn` whenever a transform must preserve an already
 proved implementation identity.
 
 `ir.clone` deep-copies an operation and its nested `Blk`s, while `ir.move`
-changes `Blk`-local order only when all operands and users remain dominated.
+changes order within one function only when all operands and users remain
+dominated. A cross-`Blk` move is limited to immutable calls and constants and
+must not introduce a binding collision; it cannot move a terminator, cross a
+function, or place an operation inside its own nested body.
 `ir.kind(op)` returns `call`,
 `constant`, `loop`, `branch`, `return`, or `yield`; `ir.blks(op)` exposes
 nested bodies. A terminator supplies an insertion point even for an otherwise

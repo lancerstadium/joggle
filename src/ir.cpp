@@ -2337,35 +2337,98 @@ bool Mod::move(Op op, Op before) {
   }
   if (op == before)
     return true;
-  if (op.blk() != before.blk()) {
-    detail::add_diag(store.diags,
-                     "move currently requires one destination Blk",
-                     before.loc());
-    return false;
-  }
   if (op.kind() == Op::Kind::ret || op.kind() == Op::Kind::yield ||
       before.kind() == Op::Kind::yield) {
     detail::add_diag(store.diags, "move cannot reorder a Blk terminator",
                      op.loc());
     return false;
   }
-  auto& order = store.blks[op.blk().id_].data.ops;
-  const std::vector<std::uint32_t> old_order = order;
-  order.erase(std::remove(order.begin(), order.end(), op.id_), order.end());
-  const auto position = std::find(order.begin(), order.end(), before.id_);
-  if (position == order.end()) {
-    order = old_order;
+  const std::uint32_t source = op.blk().id_;
+  const std::uint32_t target = before.blk().id_;
+  if (store.blks[source].data.fn != store.blks[target].data.fn) {
+    detail::add_diag(store.diags,
+                     "move requires operations in the same function",
+                     before.loc());
+    return false;
+  }
+  if (source != target) {
+    const detail::OpData& moved = store.ops[op.id_].data;
+    if ((moved.kind != Op::Kind::call &&
+         moved.kind != Op::Kind::constant) ||
+        (moved.form != Op::Form::hidden &&
+         moved.form != Op::Form::expr && moved.form != Op::Form::let)) {
+      detail::add_diag(
+          store.diags,
+          "cross-Blk move requires an immutable call or constant", op.loc());
+      return false;
+    }
+    std::unordered_set<std::string_view> names;
+    for (const std::uint32_t id : moved.outs) {
+      const std::string& name = store.vals[id].data.name;
+      if (!name.empty())
+        names.insert(name);
+    }
+    const auto conflicts = [&](std::span<const std::uint32_t> values) {
+      return std::any_of(values.begin(), values.end(), [&](std::uint32_t id) {
+        return id < store.vals.size() && store.vals[id].live &&
+               names.contains(store.vals[id].data.name);
+      });
+    };
+    const detail::FnData& owner =
+        store.fns[store.blks[target].data.fn].data;
+    if (conflicts(owner.generic_vals) || conflicts(owner.params) ||
+        conflicts(store.blks[target].data.args)) {
+      detail::add_diag(store.diags,
+                       "cross-Blk move would duplicate a binding name",
+                       before.loc());
+      return false;
+    }
+    for (const std::uint32_t id : store.blks[target].data.ops)
+      if (id != op.id_ && conflicts(store.ops[id].data.outs)) {
+        detail::add_diag(store.diags,
+                         "cross-Blk move would duplicate a binding name",
+                         before.loc());
+        return false;
+      }
+  }
+  for (std::uint32_t block = target; block != detail::none;) {
+    const std::uint32_t parent = store.blks[block].data.parent_op;
+    if (parent == op.id_) {
+      detail::add_diag(store.diags,
+                       "move cannot place an operation in its own body",
+                       before.loc());
+      return false;
+    }
+    block = parent == detail::none ? detail::none
+                                   : store.ops[parent].data.blk;
+  }
+
+  std::vector<std::uint32_t>& source_order = store.blks[source].data.ops;
+  std::vector<std::uint32_t>& target_order = store.blks[target].data.ops;
+  const std::vector<std::uint32_t> old_source = source_order;
+  const std::vector<std::uint32_t> old_target = target_order;
+  source_order.erase(
+      std::remove(source_order.begin(), source_order.end(), op.id_),
+      source_order.end());
+  const auto position =
+      std::find(target_order.begin(), target_order.end(), before.id_);
+  if (position == target_order.end()) {
+    source_order = old_source;
+    target_order = old_target;
     detail::add_diag(store.diags, "move insertion point is not in its Blk",
                      before.loc());
     return false;
   }
-  order.insert(position, op.id_);
+  target_order.insert(position, op.id_);
+  store.ops[op.id_].data.blk = target;
   for (std::uint32_t id = 0; id < store.ops.size(); ++id) {
     if (!store.ops[id].live)
       continue;
     for (const std::uint32_t arg : store.ops[id].data.args) {
       if (!detail::dominates(store, arg, id)) {
-        order = old_order;
+        source_order = old_source;
+        target_order = old_target;
+        store.ops[op.id_].data.blk = source;
         detail::add_diag(store.diags,
                          "move would violate value dominance",
                          store.ops[id].data.loc);

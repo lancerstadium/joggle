@@ -1751,6 +1751,148 @@ int main(int argc, char** argv) {
   scheduled.clear_diags();
   CHECK(scheduled.verify(env));
 
+  joggle::Mod loop_motion;
+  constexpr std::string_view loop_motion_source =
+      "module loop_motion\n"
+      "fn compute(x: i32) -> i32 {\n"
+      "  var total: i32 = 0\n"
+      "  for i in 0..4 {\n"
+      "    let invariant: i32 = pure(x)\n"
+      "    total += invariant\n"
+      "  }\n"
+      "  return total\n"
+      "}\n";
+  CHECK(joggle::parse(env, loop_motion_source, loop_motion,
+                      "loop-motion.jog"));
+  CHECK(loop_motion.verify(env));
+  joggle::Op motion_loop;
+  joggle::Op invariant;
+  for (joggle::Op op : loop_motion.ops()) {
+    if (op.kind() == joggle::Op::Kind::loop)
+      motion_loop = op;
+    if (op.callee() == "pure")
+      invariant = op;
+  }
+  CHECK(motion_loop && invariant);
+  CHECK(invariant.blk() != motion_loop.blk());
+  CHECK(loop_motion.move(invariant, motion_loop));
+  CHECK(invariant.blk() == motion_loop.blk());
+  CHECK(loop_motion.verify(env));
+  const std::string moved_text = joggle::print(loop_motion);
+  CHECK(moved_text.find("let invariant: i32 = pure(x)") <
+        moved_text.find("for i in 0..4"));
+  joggle::Op inside;
+  for (joggle::Op op : motion_loop.blks().front().ops())
+    if (op.kind() != joggle::Op::Kind::yield)
+      inside = op;
+  CHECK(inside);
+  const std::uint64_t before_cyclic_move = loop_motion.revision();
+  CHECK(!loop_motion.move(motion_loop, inside));
+  CHECK(loop_motion.revision() == before_cyclic_move);
+  loop_motion.clear_diags();
+  CHECK(loop_motion.verify(env));
+
+  joggle::Mod colliding_motion;
+  constexpr std::string_view colliding_motion_source =
+      "module colliding_motion\n"
+      "fn compute(x: i32) -> i32 {\n"
+      "  let invariant: i32 = pure(x)\n"
+      "  var total: i32 = invariant\n"
+      "  for i in 0..4 {\n"
+      "    let invariant: i32 = pure(x)\n"
+      "    total += invariant\n"
+      "  }\n"
+      "  return total\n"
+      "}\n";
+  CHECK(joggle::parse(env, colliding_motion_source, colliding_motion,
+                      "colliding-motion.jog"));
+  joggle::Op colliding_loop;
+  joggle::Op colliding_inner;
+  const joggle::Blk colliding_root =
+      colliding_motion.find_fn("compute").body();
+  for (joggle::Op op : colliding_motion.ops()) {
+    if (op.kind() == joggle::Op::Kind::loop)
+      colliding_loop = op;
+    if (op.callee() == "pure" && op.blk() != colliding_root)
+      colliding_inner = op;
+  }
+  CHECK(colliding_loop && colliding_inner);
+  const std::uint64_t before_name_collision = colliding_motion.revision();
+  CHECK(!colliding_motion.move(colliding_inner, colliding_loop));
+  CHECK(colliding_motion.revision() == before_name_collision);
+  colliding_motion.clear_diags();
+  joggle::Attr colliding_report;
+  CHECK(joggle::run(env, "script.hoist_pure", colliding_motion,
+                    colliding_report));
+  const joggle::Attr::Dict* colliding_summary = colliding_report.dict();
+  CHECK(colliding_summary &&
+        colliding_summary->at("changed").boolean() == false);
+  CHECK(colliding_motion.verify(env));
+
+  joggle::Mod hoisted_motion;
+  constexpr std::string_view hoisted_motion_source =
+      "module hoisted_motion\n"
+      "fn compute(x: i32) -> i32 {\n"
+      "  var total: i32 = 0\n"
+      "  for i in 0..4 {\n"
+      "    let first: i32 = pure(x)\n"
+      "    let second: i32 = pure(first)\n"
+      "    let kept: i32 = effect(x)\n"
+      "    total += second + kept\n"
+      "  }\n"
+      "  return total\n"
+      "}\n";
+  CHECK(joggle::parse(env, hoisted_motion_source, hoisted_motion,
+                      "hoisted-motion.jog"));
+  joggle::Attr hoist_report;
+  CHECK(joggle::run(env, "script.hoist_pure", hoisted_motion,
+                    hoist_report));
+  CHECK(hoisted_motion.verify(env));
+  const joggle::Attr::Dict* hoist_summary = hoist_report.dict();
+  CHECK(hoist_summary && hoist_summary->at("changed").boolean() == true);
+  joggle::Op hoisted_loop;
+  std::vector<joggle::Op> pure_ops;
+  joggle::Op effect_op;
+  for (joggle::Op op : hoisted_motion.ops()) {
+    if (op.kind() == joggle::Op::Kind::loop)
+      hoisted_loop = op;
+    if (op.callee() == "pure")
+      pure_ops.push_back(op);
+    if (op.callee() == "effect")
+      effect_op = op;
+  }
+  CHECK(hoisted_loop && pure_ops.size() == 2 && effect_op);
+  CHECK(std::all_of(pure_ops.begin(), pure_ops.end(),
+                    [hoisted_loop](joggle::Op op) {
+                      return op.blk() == hoisted_loop.blk();
+                    }));
+  CHECK(effect_op.blk() != hoisted_loop.blk());
+  joggle::Attr stable_hoist_report;
+  CHECK(joggle::run(env, "script.hoist_pure", hoisted_motion,
+                    stable_hoist_report));
+  const joggle::Attr::Dict* stable_hoist_summary =
+      stable_hoist_report.dict();
+  CHECK(stable_hoist_summary &&
+        stable_hoist_summary->at("changed").boolean() == false);
+
+  joggle::Mod named_motion;
+  CHECK(joggle::parse(env, hoisted_motion_source, named_motion,
+                      "named-motion.jog"));
+  joggle::Attr named_hoist_report;
+  CHECK(joggle::run(env, "script.hoist_named", named_motion,
+                    named_hoist_report));
+  CHECK(named_motion.verify(env));
+  const joggle::Attr::Dict* named_hoist_summary =
+      named_hoist_report.dict();
+  CHECK(named_hoist_summary &&
+        named_hoist_summary->at("changed").boolean() == true);
+  for (joggle::Op op : named_motion.ops()) {
+    if (op.callee() == "pure")
+      CHECK(op.blk() == named_motion.find_fn("compute").body());
+    if (op.callee() == "effect")
+      CHECK(op.blk() != named_motion.find_fn("compute").body());
+  }
+
   joggle::Mod cloned_branch;
   constexpr std::string_view branch_source =
       "module branched\n"

@@ -83,6 +83,15 @@ address-range proofs reject padded state domains before loads or stores are
 hoisted. Automatic profitability selection across interchange, promotion, and
 tiling remains open.
 
+General loop-invariant motion now lives in `opt.hoist`, not in an operator or
+artifact emitter. A module supplies either a short list of calls that are safe
+to speculate or a read-only policy function; constants need no policy. The
+edit crosses blocks only after the core checks function ownership, binding
+collisions, nested-body cycles, and whole-function dominance. It is deliberately
+opt-in: an initial MobileNetV2 pilot preserved generated output but did not
+improve latency, so profitability and target-sensitive placement remain open
+rather than becoming hidden defaults.
+
 `tile.split` now strip-mines an explicitly selected range axis rather than
 assuming the last axis. It inserts adjacent outer and inner axes, preserving
 the original lexicographic order for arbitrary multi-axis loops, and represents

@@ -892,6 +892,18 @@ fn clean_pure(m: Mod) -> bool {
   return opt.fix(m, ["pure"], 8)
 }
 
+fn pure_op(m: Mod, op: Op) -> bool {
+  return ir.callee(op) == "pure"
+}
+
+fn hoist_pure(m: Mod) -> bool {
+  return opt.hoist(m, ir.find("script.pure_op"))
+}
+
+fn hoist_named(m: Mod) -> bool {
+  return opt.hoist(m, ["pure"])
+}
+
 fn clean_tight(m: Mod) -> bool {
   return opt.fix(m, ["pure"], 2)
 }

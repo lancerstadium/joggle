@@ -113,7 +113,7 @@ hard-code these categories.
 | `nn` | Frontend-neutral neural-network semantics expressed in terms of tensor and scalar functions |
 | `quant` | Quantization, dequantization, and quantized tensor computation |
 | `math` | Portable scalar mathematical functions |
-| `opt` | General simplification, dead-code elimination, common-subexpression elimination, exposure, implementation selection, and call fusion |
+| `opt` | General simplification, dead-code elimination, common-subexpression elimination, policy-controlled loop motion, exposure, implementation selection, and call fusion |
 | `bounds` | Conservative integer ranges, representation checks, and exact predicate folding |
 | `stat` | Structural program measurements through user-supplied measurement functions |
 | `mem` | Static tensor-buffer reuse planning and inspectable slot annotations |
@@ -228,6 +228,16 @@ built-in identities and cleanup recognize `base` scalar functions, not every
 call printed with an operator token. User-defined number formats and operator
 overloads therefore retain their own semantics unless a caller explicitly
 includes them in a `pure` policy passed to `opt.dce`, `opt.cse`, or `opt.fix`.
+`opt.hoist(m, safe)` performs policy-controlled loop-invariant code motion. A
+listed call promises both absence of effects and safety when the loop executes
+zero times; this is deliberately stronger than the `pure` policy used by DCE
+and CSE. The `opt.hoist(m, policy)` overload instead accepts an ordinary
+read-only `fn(Mod, Op) -> bool`, so a module may use types, metadata, or target
+facts without changing `opt`. The pass moves immutable calls and constants only
+when their operands already dominate the loop, visits inner loops first, avoids
+binding collisions, and relies on `ir.move` to recheck all def-use dominance
+before committing. Unknown calls, assignments, structured control, and
+loop-carried values stay in place.
 
 `opt.expose` is the main connection between semantics and a target. It asks a
 capability function whether an operation is accepted and expands available
