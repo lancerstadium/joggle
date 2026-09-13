@@ -383,7 +383,8 @@ bool Env::load_one(std::string_view name) {
     std::sort(files.begin() + 1, files.end());
   }
 
-  std::ostringstream source;
+  std::vector<detail::SourcePart> sources;
+  sources.reserve(files.size());
   for (const auto& file : files) {
     std::ifstream input(file);
     if (!input) {
@@ -391,12 +392,14 @@ bool Env::load_one(std::string_view name) {
           {Severity::error, "cannot read module source: " + file.string(), {}});
       return false;
     }
-    source << input.rdbuf() << '\n';
+    std::ostringstream source;
+    source << input.rdbuf();
+    sources.push_back({source.str(), file.string()});
   }
 
   impl_->loading.insert(key);
   auto module = std::make_unique<Mod>();
-  if (!parse(*this, source.str(), *module, files.front().string())) {
+  if (!detail::parse_sources(*this, sources, *module)) {
     impl_->diags.insert(impl_->diags.end(), module->diags().begin(),
                         module->diags().end());
     impl_->loading.erase(key);

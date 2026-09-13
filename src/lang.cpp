@@ -6,6 +6,7 @@
 #include <cctype>
 #include <exception>
 #include <iomanip>
+#include <iterator>
 #include <limits>
 #include <locale>
 #include <map>
@@ -147,6 +148,22 @@ private:
   std::size_t line_ = 1;
   std::size_t column_ = 1;
 };
+
+std::vector<Token> lex(std::span<const detail::SourcePart> sources) {
+  if (sources.empty())
+    return Lexer({}, {}).run();
+
+  std::vector<Token> out;
+  for (std::size_t index = 0; index < sources.size(); ++index) {
+    std::vector<Token> tokens =
+        Lexer(sources[index].text, sources[index].file).run();
+    if (index + 1 != sources.size())
+      tokens.pop_back();
+    out.insert(out.end(), std::make_move_iterator(tokens.begin()),
+               std::make_move_iterator(tokens.end()));
+  }
+  return out;
+}
 
 struct Binding {
   std::uint32_t value = detail::none;
@@ -309,6 +326,9 @@ class Parser {
 public:
   Parser(Env&, std::string_view source, Mod& mod, std::string_view file)
       : store_(mod.impl_->store), tokens_(Lexer(source, file).run()) {}
+
+  Parser(Env&, std::span<const detail::SourcePart> sources, Mod& mod)
+      : store_(mod.impl_->store), tokens_(lex(sources)) {}
 
   bool run() {
     store_ = {};
@@ -1829,6 +1849,12 @@ detail::Store printable_store(const detail::Store& source) {
 
 bool parse(Env& env, std::string_view source, Mod& out, std::string_view file) {
   return Parser(env, source, out, file).run();
+}
+
+bool detail::parse_sources(Env& env,
+                           std::span<const detail::SourcePart> sources,
+                           Mod& out) {
+  return Parser(env, sources, out).run();
 }
 
 bool parse(Env& env, std::string_view source, Attr& out,

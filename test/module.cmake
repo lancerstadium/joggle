@@ -19,10 +19,31 @@ function(invoke expected)
     message(FATAL_ERROR "command unexpectedly succeeded: ${ARGN}\n${output}")
   endif()
   set(COMMAND_OUTPUT "${output}" PARENT_SCOPE)
+  set(COMMAND_ERROR "${error}" PARENT_SCOPE)
 endfunction()
 
 file(REMOVE_RECURSE "${TEST_ROOT}")
 file(MAKE_DIRECTORY "${TEST_ROOT}")
+
+set(fragment_root "${TEST_ROOT}.fragment-source")
+file(REMOVE_RECURSE "${fragment_root}")
+file(MAKE_DIRECTORY "${fragment_root}/fragment_error/lib")
+file(WRITE "${fragment_root}/fragment_error/module.jog"
+     "module fragment_error\nfn declared(x: i32) -> i32;\n")
+file(WRITE "${fragment_root}/fragment_error/lib/broken.jog"
+     "local fn valid(x: i32) -> i32 { return x }\n"
+     "local fn broken( -> i32 { return 0 }\n")
+invoke(fail "${TOOL}" module check fragment_error -M "${fragment_root}")
+set(fragment_diagnostics "${COMMAND_OUTPUT}${COMMAND_ERROR}")
+if(NOT fragment_diagnostics MATCHES "broken.jog:2:")
+  message(FATAL_ERROR
+          "fragment diagnostic lost its source location:\n${fragment_diagnostics}")
+endif()
+if(fragment_diagnostics MATCHES "module.jog:[3-9][0-9]*:")
+  message(FATAL_ERROR
+          "fragment diagnostic was attributed to the entry source:\n${fragment_diagnostics}")
+endif()
+file(REMOVE_RECURSE "${fragment_root}")
 
 invoke(ok "${TOOL}" module list -M "${SOURCE_ROOT}")
 set(expected
