@@ -251,6 +251,7 @@ fn can_reorder(m: Mod, source: Op, order: list<int>) -> bool {
   return legal
 }
 
+[memo]
 local fn role_axes(m: Mod, source: Op, state: bool) -> list<int> {
   if !ir.live(source) || ir.kind(source) != "loop" {
     return []

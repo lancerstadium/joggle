@@ -92,6 +92,7 @@ local fn linked(values: list<Val>, left: Val, right: Val) -> list<Val> {
   return out
 }
 
+[memo]
 local fn related(m: Mod, root: Op, tensor: Val) -> list<Val> {
   let ops = nested(root)
   var out: list<Val> = [tensor]
@@ -151,6 +152,7 @@ local fn related(m: Mod, root: Op, tensor: Val) -> list<Val> {
   return out
 }
 
+[memo]
 local fn access_ops(
   m: Mod, loop: Op, tensor: Val, writes: bool
 ) -> list<Op> {

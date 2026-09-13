@@ -1,14 +1,4 @@
 [memo]
-local fn affine_seen(value: Val, seen: list<Val>) -> bool {
-  for item in seen {
-    if item == value {
-      return true
-    }
-  }
-  return false
-}
-
-[memo]
 local fn affine_integer(type: Ty) -> bool {
   let name = base.name(type)
   return name == "int" || name == "index" ||
@@ -134,9 +124,11 @@ local fn affine_divide(value: list<int>, divisor: int) -> list<int> {
   return out
 }
 
+// Verified SSA definitions are acyclic, so the value is a complete recursion
+// key and shared address expressions can reuse one analysis result.
 [memo]
 local fn affine_in(
-  m: Mod, loop: Op, value: Val, seen: list<Val>
+  m: Mod, loop: Op, value: Val
 ) -> list<int> {
   if !affine_integer(ir.type(value)) {
     return []
@@ -158,18 +150,14 @@ local fn affine_in(
     out[0] = base.int(ir.constant(value))
     return out
   }
-  if affine_seen(value, seen) {
-    return []
-  }
   let op = ir.def(value)
   if !ir.live(op) || ir.kind(op) != "call" {
     return []
   }
   let args = ir.args(op)
   let name = ir.target(m, op)
-  let next = seen + [value]
   if len(args) == 1 {
-    let input = affine_in(m, loop, args[0], next)
+    let input = affine_in(m, loop, args[0])
     if base_op(m, op, "copy") ||
        base_op(m, op, "operator +") ||
        ((name == "base." + text(ir.type(value)) ||
@@ -185,8 +173,8 @@ local fn affine_in(
   if len(args) != 2 {
     return []
   }
-  let left = affine_in(m, loop, args[0], next)
-  let right = affine_in(m, loop, args[1], next)
+  let left = affine_in(m, loop, args[0])
+  let right = affine_in(m, loop, args[1])
   if base_op(m, op, "operator +") {
     return affine_add(left, right, false)
   }
@@ -223,5 +211,5 @@ fn affine(m: Mod, loop: Op, value: Val) -> list<int> {
   assert(len(bodies) == 1 && len(inputs) > len(outputs) &&
          len(ir.args(bodies[0])) == len(inputs),
          "tile.affine requires a structured loop")
-  return affine_in(m, loop, value, [])
+  return affine_in(m, loop, value)
 }
