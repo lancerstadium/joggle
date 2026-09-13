@@ -58,18 +58,21 @@ bool read(const fs::path& directory, Mod& mod,
     return false;
   }
 
-  std::ostringstream source;
+  std::vector<Source> sources;
+  sources.reserve(files.size());
   for (const fs::path& file : files) {
     std::ifstream input(file);
     if (!input) {
       std::cerr << "joggle: cannot open " << file << '\n';
       return false;
     }
-    source << input.rdbuf() << '\n';
+    std::ostringstream source;
+    source << input.rdbuf();
+    sources.push_back({source.str(), file.string()});
   }
 
   Env env;
-  if (!parse(env, source.str(), mod, files.front().string())) {
+  if (!parse(env, sources, mod)) {
     mod.print_diags(stderr);
     return false;
   }

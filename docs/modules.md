@@ -54,6 +54,13 @@ Top-level `fn` declarations are public. `local fn` declarations are
 implementation details. No generated header, export list, registration
 routine, or version suffix in a symbol name is required.
 
+The C++ `parse` overload accepting `std::span<const Source>` applies the same
+rule to embedded callers. Each `Source` owns its text and display path; the
+parser combines their declarations into one `Mod` while retaining the original
+file and line on every diagnostic. The command-line loader, inspection, and
+module lifecycle commands all use this interface, so splitting a large module
+does not degrade error locations.
+
 ## Discovery and lifecycle
 
 Module roots are supplied with repeatable `-M` options. Resolution is by

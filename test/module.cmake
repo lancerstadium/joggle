@@ -43,6 +43,17 @@ if(fragment_diagnostics MATCHES "module.jog:[3-9][0-9]*:")
   message(FATAL_ERROR
           "fragment diagnostic was attributed to the entry source:\n${fragment_diagnostics}")
 endif()
+invoke(fail "${TOOL}" module install
+       "${fragment_root}/fragment_error" "${TEST_ROOT}"
+       -M "${fragment_root}")
+set(fragment_diagnostics "${COMMAND_OUTPUT}${COMMAND_ERROR}")
+if(NOT fragment_diagnostics MATCHES "broken.jog:2:")
+  message(FATAL_ERROR
+          "install diagnostic lost its fragment location:\n${fragment_diagnostics}")
+endif()
+if(EXISTS "${TEST_ROOT}/fragment_error")
+  message(FATAL_ERROR "invalid fragmented module was installed")
+endif()
 file(REMOVE_RECURSE "${fragment_root}")
 
 invoke(ok "${TOOL}" module list -M "${SOURCE_ROOT}")

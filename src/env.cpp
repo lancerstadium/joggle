@@ -383,7 +383,7 @@ bool Env::load_one(std::string_view name) {
     std::sort(files.begin() + 1, files.end());
   }
 
-  std::vector<detail::SourcePart> sources;
+  std::vector<Source> sources;
   sources.reserve(files.size());
   for (const auto& file : files) {
     std::ifstream input(file);
@@ -399,7 +399,7 @@ bool Env::load_one(std::string_view name) {
 
   impl_->loading.insert(key);
   auto module = std::make_unique<Mod>();
-  if (!detail::parse_sources(*this, sources, *module)) {
+  if (!parse(*this, sources, *module)) {
     impl_->diags.insert(impl_->diags.end(), module->diags().begin(),
                         module->diags().end());
     impl_->loading.erase(key);

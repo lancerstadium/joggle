@@ -149,7 +149,7 @@ private:
   std::size_t column_ = 1;
 };
 
-std::vector<Token> lex(std::span<const detail::SourcePart> sources) {
+std::vector<Token> lex(std::span<const Source> sources) {
   if (sources.empty())
     return Lexer({}, {}).run();
 
@@ -327,7 +327,7 @@ public:
   Parser(Env&, std::string_view source, Mod& mod, std::string_view file)
       : store_(mod.impl_->store), tokens_(Lexer(source, file).run()) {}
 
-  Parser(Env&, std::span<const detail::SourcePart> sources, Mod& mod)
+  Parser(Env&, std::span<const Source> sources, Mod& mod)
       : store_(mod.impl_->store), tokens_(lex(sources)) {}
 
   bool run() {
@@ -1851,9 +1851,7 @@ bool parse(Env& env, std::string_view source, Mod& out, std::string_view file) {
   return Parser(env, source, out, file).run();
 }
 
-bool detail::parse_sources(Env& env,
-                           std::span<const detail::SourcePart> sources,
-                           Mod& out) {
+bool parse(Env& env, std::span<const Source> sources, Mod& out) {
   return Parser(env, sources, out).run();
 }
 

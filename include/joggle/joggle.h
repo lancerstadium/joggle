@@ -103,6 +103,11 @@ struct Diag {
   Loc loc;
 };
 
+struct Source {
+  std::string text;
+  std::string file;
+};
+
 namespace detail {
 struct Store;
 class Eval;
@@ -468,6 +473,7 @@ private:
 
 bool parse(Env& env, std::string_view source, Mod& out,
            std::string_view file = {});
+bool parse(Env& env, std::span<const Source> sources, Mod& out);
 bool parse(Env& env, std::string_view source, Attr& out,
            std::string_view file = {});
 std::string print(const Mod& mod);

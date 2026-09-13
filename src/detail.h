@@ -77,11 +77,6 @@ struct QueryData {
   Attr result;
 };
 
-struct SourcePart {
-  std::string text;
-  std::string file;
-};
-
 struct Store {
   std::string name;
   std::uint64_t revision = 0;
@@ -132,7 +127,6 @@ Fn resolve_overload(std::span<const Fn> candidates,
                     std::span<const Val> context = {},
                     std::vector<Ty>* generics = nullptr,
                     std::span<const Ty> expected_returns = {});
-bool parse_sources(Env& env, std::span<const SourcePart> sources, Mod& out);
 
 }  // namespace joggle::detail
 
