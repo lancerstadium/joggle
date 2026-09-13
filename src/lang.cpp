@@ -1186,6 +1186,14 @@ private:
     const auto value = expression(blk, scope);
     if (value == detail::none)
       return false;
+    const std::uint32_t def = store_.vals[value].data.def;
+    if (def == detail::none ||
+        store_.ops[def].data.form != Op::Form::hidden) {
+      if (!meta.empty())
+        return fail("attributes require a new operation statement");
+      semi();
+      return true;
+    }
     show(value, Op::Form::expr);
     if (!attach(value, std::move(meta)))
       return false;
@@ -1730,7 +1738,9 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
           out << render_value(store, op.args[index]);
         }
         out << "] = " << render_value(store, op.args.back());
-      } else
+      } else if (op.kind == Op::Kind::constant)
+        out << attr_text(op.literal);
+      else
         out << render_call(store, op);
       out << '\n';
     } else if (op.kind == Op::Kind::loop) {
