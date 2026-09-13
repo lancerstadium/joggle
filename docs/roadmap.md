@@ -88,12 +88,12 @@ prefers an exact factor per proved state extent in one module traversal. When
 none divides the extent, `tile.peel` separates an aligned prefix from a scalar
 tail before the same split, reorder, and promotion sequence. The legality proof
 permits only leading state coordinates and therefore cannot separate a
-reduction tail. Same-process MobileNetV2 and SqueezeNet diagnostics exercise
-the exact and non-exact paths without inspecting an operator name. Both runs
-are unisolated and substantially increase C source, so they motivate a
-controlled multi-model study rather than a default schedule. Target-dependent
-factor choice, packing, code-size control, and profitability remain policy and
-mechanism gaps.
+reduction tail. Same-process MobileNetV2, SqueezeNet, and two-result UltraFace
+diagnostics exercise exact and non-exact paths without inspecting an operator
+name. The runs are unisolated and substantially increase C source, so they
+motivate a controlled multi-model study rather than a default schedule.
+Target-dependent factor choice, packing, code-size control, and profitability
+remain policy and mechanism gaps.
 
 General loop-invariant motion now lives in `opt.hoist`, not in an operator or
 artifact emitter. A module supplies either a short list of calls that are safe

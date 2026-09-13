@@ -224,6 +224,39 @@ input
 and reference
 `2d1bf2cdedf27bd8c35007baf886388d57f9a74e12056d87463015c4afd02140`.
 
+`ultraface-block-pilot.csv` applies the same revision and source policy to the
+current freshly imported UltraFace RFB-320 semantic fixture. Its two public
+results also exercise the generated multi-result ABI; `paired2.c` is the
+strict C11 same-process harness. The policy changes 37 structurally eligible
+loop bodies, creates 148 local accumulators, and peels 11 non-divisible state
+extents. It does not inspect UltraFace functions or ONNX operators.
+
+After three warm-ups per entry, all 20 paired calls favor the candidate. The
+baseline/candidate medians are 40.632/18.125 ms and the median within-pair ratio
+is 2.244. Both generated results are bit-identical between variants on every
+pair. Independent checks retain maximum absolute errors `2.9802322e-7` for
+scores and `3.5762787e-7` for boxes against the stored ONNX Runtime outputs.
+Baseline/candidate C is 191,957/321,549 bytes (+67.5%). As with the other block
+diagnostics, these are unisolated single-machine measurements and support only
+the mechanism and experimental design, not a final speed claim.
+
+Recorded SHA-256 values are: canonical IR
+`7340007dba3d075ca56d4cac9cd89bd60583fcad195999c8118243de18caf891`,
+blocked IR
+`67efe4401f805ea82e96fcb00099ae1aa8bab07034500eafb02e62b51b844f9f`,
+baseline C
+`ecb7792bea44fadd1c903db2b6d7579178dee5416c88c14fad80d8baf829d5ff`,
+candidate C
+`77009fdb37618dfa17256a5772c6289b45117fe1fd1d429ec702393e28b41ffa`,
+weights
+`35bc27386b99965274a2b8374bdf7c7d6d94c6a544a5d2bccc1c145cca2afd91`,
+input
+`96d173673416a9235b6455baa0f606bd93b81739fe4862f2ecdd692f0167abbb`,
+scores reference
+`9159ef948aed8d2752cfebf28e211b6eee5b0b7eca861a0466e831584a91081b`,
+and boxes reference
+`7cc716300e70ca2c8106f5874fd2ccc4579b4ecf04003a359b7f31edeee54600`.
+
 `compile-memo-pilot.csv` records one matched, unisolated compiler diagnostic
 on the same 27 MB MobileNetV2 canonical IR at revision `0ba0e2c`. Both rows run
 `spatial.block(m, 2)` with deterministic execution reporting. The control uses

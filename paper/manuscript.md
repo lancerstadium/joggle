@@ -287,7 +287,13 @@ calls have 253.762/71.524 ms medians and a 3.544 median pair ratio, with
 bit-identical variant outputs and unchanged `5.2452e-6` reference error.
 Candidate C is 118.9% larger. This second run broadens the mechanism evidence,
 but its unisolated single-machine protocol still precludes a performance
-claim. A second ordinary
+claim. A third paired UltraFace diagnostic changes 37 bodies, including 11
+peeled non-divisible extents. Its 20 baseline/candidate medians are
+40.632/18.125 ms with a 2.244 median pair ratio. Both result tensors are
+bit-identical between variants and retain their reference errors, while C grows
+67.5%. Together the three runs make cross-model structural selection
+plausible; they still do not establish controlled performance or an automatic
+scheduling policy. A second ordinary
 implementation reduces GoogLeNet's static workspace elements by 58.4% and
 slots from 55 to 6, while
 increasing its unisolated median latency by 27.5%. This is a resource tradeoff,
