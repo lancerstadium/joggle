@@ -1,29 +1,32 @@
-# Joggle: A Function-Oriented Compiler Workbench for Neural-Network Co-Design
+# Joggle: Progressive Compilation for Neural-Network Systems Co-Design
 
-Working manuscript for the FSE 2027 Research Papers track. The current file is
+Working manuscript for the EuroSys 2027 fall cycle. The current file is
 an argument draft, not a submission-ready paper. Pilot values are labeled and
 must be replaced by frozen experiment results.
 
 ## Abstract
 
-Neural-network co-design experiments often change more than one compiler
-layer: a researcher may import a conventional model, replace an operator's
-semantics, expose its loops, alter storage or data representation, and emit a
-target-specific artifact. Established compiler stacks support these tasks, but
-their distinct representations and native extension mechanisms can make a
-small experiment depend on substantial compiler infrastructure. Joggle explores
-a narrower design point: one typed function representation in which imported
-calls, reusable semantic bodies, structured loops, storage decisions, and
-target preparation remain inspectable, while decoders, analyses, transforms,
-and emitters are ordinary distributable module functions. We evaluate whether
-this design reduces extension coupling without hiding failure. The planned
-study measures four matched extension tasks, transactional composition, staged
-compatibility on conventional inference models, numerical correctness, and the
-quality of generated artifacts. Current pilots execute ten ONNX models and
-preserve explicit unsupported frontiers on two harder models, but generated C
-remains substantially slower than a one-thread production runtime. The final
-paper will therefore test extension coupling and compositional transparency
-rather than claim production-level inference performance.
+Neural-network systems research often changes several compiler boundaries at
+once: a researcher imports a conventional model, exposes an operator's real
+function body, changes its loop or storage structure, and emits an executable
+for a new device or data representation. Production stacks support such work,
+but distinct graph, tensor, loop, and target abstractions make a small
+cross-layer experiment depend on native compiler infrastructure. Joggle
+explores a smaller systems design: one typed function representation that is
+progressively exposed from imported calls to structured loops and storage
+decisions. Decoders, analyses, transformations, memory policies, and emitters
+are distributable typed module functions rather than privileged pipeline
+stages. Structural legality queries and transactional edits let user policy
+rewrite actual model bodies while preserving explicit failure. We evaluate the
+design through matched extension tasks, compiler cost, staged compatibility on
+conventional models, numerical correctness, workspace, code size, and latency.
+Current pilots execute ten ONNX models; one operator-independent block policy
+selects 31 MobileNetV2, 18 SqueezeNet, and 37 UltraFace bodies and improves
+same-process paired latency while preserving outputs, although code growth and
+uncontrolled measurements still preclude a final speed claim. The completed
+study will test whether progressive compilation provides a practical, honest
+substrate for neural-network systems co-design, not whether it replaces a
+production runtime.
 
 ## 1. Introduction
 

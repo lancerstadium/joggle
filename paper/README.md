@@ -1,4 +1,4 @@
-# FSE 2027 paper workspace
+# EuroSys 2027 paper workspace
 
 This directory contains the manuscript, frozen study contracts, baseline
 implementations, and raw pilot records for the Joggle paper. Implemented
@@ -9,17 +9,22 @@ preserved here.
 ## Target and thesis
 
 The current target is the
-[FSE 2027 Research Papers track](https://conf.researchr.org/track/fse-2027/fse-2027-papers).
-The official deadline is October 2, 2026, Anywhere on Earth. Initial
-submissions use the ACM `acmsmall` format and allow 18 pages of text and
-figures plus 4 pages of references. Review is double anonymous and requires a
-Data Availability section.
+[EuroSys 2027 fall cycle](https://2027.eurosys.org/cfp.html). Titles and
+abstracts are due September 17, 2026, and full papers are due September 24,
+2026; both deadlines are Anywhere on Earth. A submission has at most 12 pages
+of technical content plus references, uses a two-column 10-point-or-larger
+format, and is double blind. Repository links must therefore point to an
+anonymous snapshot rather than this development repository. EuroSys also
+requires disclosure of AI-tool use under ACM policy.
 
-The paper studies one narrow claim: a compiler workbench can let neural-network
-co-design researchers change semantics, loop structure, storage, numeric
-formats, and artifact generation through typed module functions without adding
-a central lowering registry. It does not claim that Joggle replaces production
-runtimes or that fewer source lines imply better usability.
+The paper studies one systems claim: a small progressive compiler can expose
+the real function bodies of conventional neural networks to user-defined
+analysis and transformation, then carry those edits through memory planning
+and executable artifact generation without adding a central lowering registry
+or rebuilding the compiler. Extension surface, compile cost, code size,
+correctness, workspace, and latency all belong to that claim. Joggle does not
+claim to replace production runtimes or equate fewer source lines with better
+usability.
 
 ## Current evidence status
 
@@ -98,7 +103,7 @@ The provenance and interpretation boundary for every record is documented in
 
 ## Submission gate
 
-An FSE submission is justified only if all of the following are complete:
+A EuroSys submission is justified only if all of the following are complete:
 
 1. every reported comparison task has a passing implementation or a preserved,
    documented unsupported outcome;
@@ -107,8 +112,8 @@ An FSE submission is justified only if all of the following are complete:
 3. tables and figures are generated from raw records rather than copied from
    prose;
 4. an anonymized artifact reproduces on a second machine;
-5. the ACM manuscript passes claim-to-evidence, citation, disclosure, and
-   double-anonymity audits.
+5. the 12-page manuscript passes claim-to-evidence, citation, AI-disclosure,
+   and double-anonymity audits.
 
 If these conditions are not met by the venue deadline, the correct outcome is
 to continue the study for a later venue rather than weaken the task contracts
