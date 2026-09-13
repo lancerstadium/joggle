@@ -84,7 +84,7 @@ The paper makes three candidate contributions:
 2. A source module mechanism in which frontend bridges, semantic
    implementations, analyses, transformations, capability checks, and artifact
    generation use ordinary typed functions and a transactional editing API.
-3. An empirical evaluation of extension effort, composition failure,
+3. An empirical evaluation of extension surface, composition failure,
    conventional-model coverage, numerical correctness, and generated-artifact
    quality, including negative compatibility and performance results.
 
@@ -97,7 +97,7 @@ and results are frozen.
 - **RQ1, progressive representation:** Can imported model calls, reusable
   semantics, explicit loops, storage decisions, and target preparation remain
   understandable and verifiable in one function representation?
-- **RQ2, extension cost:** For matched co-design tasks, how many concepts,
+- **RQ2, extension surface:** For matched co-design tasks, how many concepts,
   files, native registrations, generated definitions, core changes, and build
   dependencies does a developer encounter?
 - **RQ3, composition:** Do independently defined modules compose with stable
@@ -135,8 +135,9 @@ A module is a source package with typed functions, dependencies, visibility,
 and optional native bindings. Metadata selects functions for conventions such
 as inference or conversion, but it does not create a second pass language.
 Read-only queries, mutating transforms, decoders, and artifact functions share
-the invocation model. The study will test whether this uniformity lowers real
-extension cost or merely shifts complexity into module code.
+the invocation model. The study will test whether this uniformity reduces the
+surface and coupling of matched extensions or merely shifts complexity into
+module code.
 For structural transforms, an edit of one operation returns its replacement
 `Op`, while a whole-module traversal returns only whether it changed the
 module. This lets a source policy compose checked edits directly without a
@@ -290,8 +291,8 @@ their named tests. Its three out-of-tree tasks contain 20, 69, and 210 source
 lines; the bundled numeric-format task contains 284 source lines across a
 source semantic module, a native binding, and two target companions. These are
 descriptive implementation footprints, not usability or productivity results.
-Matched baseline implementations and recorded implementation time remain
-necessary for RQ2.
+Matched baseline implementations and their exact patches remain necessary for
+RQ2.
 
 ## 6. Related work
 
@@ -354,11 +355,10 @@ The evaluation must report both outcomes.
 
 The current authors built both the system and its examples, creating familiarity
 and experimenter bias. Source volume is objective but not a measure of
-comprehension or implementation difficulty. Wall-clock implementation time is
-also sensitive to prior experience and failed attempts. The RQ2 protocol
-therefore freezes task behavior and stopping rules, preserves attempt logs,
-reports dimensions separately, and requires a second-person reproduction; it
-does not combine them into a synthetic ease-of-use score.
+comprehension, difficulty, or productivity. The RQ2 protocol therefore freezes
+inputs, observable behavior, and forbidden shortcuts; preserves exact patches,
+registrations, dependencies, build records, and diagnostics; and reports each
+dimension separately. It does not combine them into an ease-of-use score.
 
 Model coverage currently overrepresents static vision networks. Numerical
 agreement with one stored input does not establish task accuracy, robustness,

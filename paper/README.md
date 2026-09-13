@@ -58,7 +58,7 @@ paper claims until they have operational definitions and comparative evidence.
 imported, refined, converted, exposed, transformed, and emitted while remaining
 in one readable function IR?
 
-**RQ2 — Extension cost.** What code, coupling, dependencies, and core changes
+**RQ2 — Extension surface.** What code, coupling, dependencies, and core changes
 are required to add a data representation, semantic implementation,
 transformation policy, frontend, or artifact target?
 
@@ -80,7 +80,7 @@ The paper may claim at most three contributions:
 2. A module boundary that uses ordinary functions for decoding, conversion,
    analysis, transformation, capability queries, and artifact generation,
    including capability-driven progressive exposure.
-3. A controlled evaluation of extension cost, composition, correctness, and
+3. A controlled evaluation of extension surface, composition, correctness, and
    generated artifacts on conventional neural-network models.
 
 The third contribution is currently incomplete and is the main submission
@@ -91,7 +91,7 @@ blocker.
 | Candidate claim | Current repository evidence | Missing evidence |
 | --- | --- | --- |
 | One IR spans graph and loop detail | Printer, verifier, semantic bodies, explicit loops, C and VM preparation tests | Model-level stage traces and comparison with multi-IR workflows |
-| Extensions are normal module functions | Source modules, `local fn`, typed configured `ir.invoke`, body expansion, transactional per-call implementation selection, four frozen extension tasks, and a generated footprint pilot | Controlled comparison using matched baseline tasks and implementation-time evidence |
+| Extensions are normal module functions | Source modules, `local fn`, typed configured `ir.invoke`, body expansion, transactional per-call implementation selection, four frozen extension contracts, and a generated footprint pilot | Controlled comparison using matched baseline tasks and exact baseline patches |
 | Frontends are separate from semantics | ONNX/TFLite codecs, explicit bridge modules, one pinned Zoo declaration list, and a generated staged table for 12 official models | Frozen controlled subset, task-level accuracy, and broader non-vision evidence |
 | Targets expose only required detail | `c.accepts`, `vm.accepts`, `opt.expose`, preparation tests | A genuinely different external target or simulator study |
 | Transform failure is safe | Transaction and rollback tests, ownership/liveness checks | Fault-injection matrix and diagnostic assessment |
@@ -245,7 +245,7 @@ or target-aware measurement.
 
 ## Evaluation design
 
-### Study A: extension effort
+### Study A: extension surface
 
 Implement representative tasks in Joggle and selected comparison systems using
 their documented extension paths:
@@ -255,10 +255,12 @@ their documented extension paths:
 - one loop or fusion policy;
 - one artifact target or deterministic simulator.
 
-Record changed files, source lines, generated code, core modifications,
-dependencies, clean build time, implementation time, and failure diagnostics.
-Task specifications and stopping rules must be fixed before measurement.
-Repository size or line count alone is not a usability result.
+Record changed files, source lines, generated code, core and build-system
+modifications, registrations, dependencies, clean build time, oracle commands,
+and unavailable-requirement diagnostics. Task inputs, observable requirements,
+and forbidden shortcuts are fixed in `extension-tasks.json` before baseline
+implementation. Repository size or line count alone is not a usability result,
+and this study does not measure developer productivity.
 
 ### Study B: model coverage and correctness
 
@@ -356,7 +358,8 @@ they enter the manuscript.
 ## Submission blockers
 
 - Freeze the comparison systems and version-pinned experimental protocol.
-- Complete the extension study instead of inferring ease of use from examples.
+- Complete the matched extension study instead of inferring ease of use from
+  examples.
 - Complete the claim-oriented related-work matrix with verified primary
   citations.
 - Freeze a controlled subset of the pinned model declarations and run

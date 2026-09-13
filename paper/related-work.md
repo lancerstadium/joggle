@@ -58,7 +58,7 @@ extension usability. TileLang can test kernel author control, but not frontend
 or module packaging. MLIR, TVM, ONNX-MLIR, and IREE should be studied through
 their documented extension paths and pinned revisions. Repository line count,
 subjective syntax preference, and an unmatched backend benchmark are not valid
-evidence of lower extension cost.
+evidence of lower extension coupling.
 
 The matrix now includes lightweight edge runtimes, but it is not a systematic
 survey. Exact baseline revisions, supported task subsets, and the matched

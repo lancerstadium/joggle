@@ -12,9 +12,12 @@ conversion. TinyYOLOv3 retains 219 unknown results, while SSD-MobileNetV1
 infers every result type and retains 710 ONNX calls after conversion. The
 table does not claim execution, task accuracy, or support for absent models.
 
-`extension-footprint-pilot.csv` is generated from the frozen task manifest by
-`paper/measure_extensions.py`. It validates the named modules and tests, then
-records only mechanically observable footprint: source files, nonblank
+`extension-footprint-pilot.csv` is generated from the schema-2 task manifest by
+`paper/measure_extensions.py`. The manifest freezes system-neutral inputs,
+observable requirements, and forbidden shortcuts alongside each Joggle
+implementation record. The collector validates those inputs and the named
+modules and tests, then records only mechanically observable footprint: source
+files, nonblank
 non-comment source lines, bytes, declared dependencies, and public functions.
 The three out-of-tree tasks range from 20 source lines for an alternative
 matrix body to 210 source lines for a generic external-kernel adapter plus its

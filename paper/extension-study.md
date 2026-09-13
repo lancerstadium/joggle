@@ -5,9 +5,9 @@ neural-network co-design changes without modifying a central compiler registry.
 It does not equate source lines with usability and does not treat the existing
 authors as independent participants.
 
-## Tasks
+## Frozen task contracts
 
-The frozen Joggle-side tasks are listed in
+The system-neutral contracts and the corresponding Joggle records are listed in
 [`extension-tasks.json`](extension-tasks.json):
 
 1. replace a shared matrix implementation with an inspectable loop body;
@@ -15,7 +15,9 @@ The frozen Joggle-side tasks are listed in
 3. connect generic external matrix and convolution kernels;
 4. add a parametric saturating integer format with two target representations.
 
-The first three are out-of-tree extensions. The numeric format is explicitly
+Each contract fixes repository inputs, observable requirements, and forbidden
+shortcuts before a comparison implementation begins. The first three Joggle
+records are out-of-tree extensions. The numeric format is explicitly
 classified as a bundled optional module because it also exercises the native
 module ABI; it must not be reported as a zero-build-system-change task.
 
@@ -26,7 +28,7 @@ records source files, nonblank non-comment source lines, bytes, declared module
 dependencies, public functions, and a digest over the exact source paths and
 bytes. These quantities describe the footprint of the checked-in
 implementation. They do not measure comprehension,
-implementation time, difficulty, or correctness beyond the named tests.
+developer productivity, difficulty, or correctness beyond the named tests.
 
 From a configured sanitizer build with the optional `sat` module:
 
@@ -44,20 +46,21 @@ python3 paper/measure_extensions.py \
 The committed CSV is a reproducibility check and pilot description, not the
 answer to RQ2.
 
-## Controlled comparison required for RQ2
+## Matched comparison required for RQ2
 
-Each comparison system receives a task specification containing only the
-required behavior, input model, expected artifact, numerical oracle, and stop
-conditions. Its implementation must follow the system's documented extension
-path. Before starting, record the system revision, dependencies, build mode,
-developer experience, and any unavailable feature.
+Each comparison system receives the same manifest contract of repository
+inputs, observable requirements, and forbidden shortcuts. Its implementation
+must follow the system's documented extension path. Before starting, record the
+system revision, dependencies, build mode, documented extension path, and any
+unavailable requirement.
 
-For every task collect wall-clock implementation time with interruption logs,
-files and source lines added or changed, generated definitions, native
-registrations, build dependencies, clean build time, test commands, failed
-attempts, and final diagnostics. A second developer must reproduce the result
-from the task specification and artifacts. The paper reports each dimension
-separately; it does not collapse them into an unvalidated effort score.
+For every task collect files and source lines added or changed, framework-core
+and build-system edits, generated definitions, native registrations, new build
+and runtime dependencies, clean build time, oracle commands, and the diagnostic
+for every unavailable requirement. Preserve the final patch and build record so
+another machine can reproduce them from the contract. The paper reports each
+dimension separately; it does not translate them into developer time,
+productivity, or a synthetic ease-of-use score.
 
 The intended matched comparisons are:
 
@@ -75,9 +78,8 @@ task than for all four extension tasks.
 ## Threat controls
 
 - Freeze task text before implementing comparison baselines.
-- Keep training and measured runs separate.
-- Preserve unsuccessful attempts and diagnostics.
-- Report author familiarity and learning material used.
-- Do not infer general usability from one expert or one task.
-- Do not claim independence for repeated work by the same developer.
-- Keep raw timing and command logs, not only derived tables.
+- Keep task construction, implementation, and measurement revisions separate.
+- Preserve the exact final patches, generated definitions, and diagnostics.
+- Report unavailable requirements rather than weakening a task after starting.
+- Do not infer general usability from structural extension measurements.
+- Keep raw build timing and command logs, not only derived tables.

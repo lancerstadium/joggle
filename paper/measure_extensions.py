@@ -5,6 +5,7 @@ import argparse
 import csv
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -73,7 +74,10 @@ def validate(build: Path, tests: list[str], cwd: Path) -> str:
          "--output-on-failure"],
         cwd,
     )
-    executed = sum("Test #" in line for line in result.stdout.splitlines())
+    executed = sum(
+        re.match(r"\s*\d+/\d+\s+Test\s+#\d+:", line) is not None
+        for line in result.stdout.splitlines()
+    )
     if result.returncode != 0 or executed != len(tests):
         sys.stderr.write(result.stdout)
         sys.stderr.write(result.stderr)
@@ -89,6 +93,14 @@ def source_digest(paths: list[Path], repo: Path) -> str:
         digest.update(path.read_bytes())
         digest.update(b"\0")
     return digest.hexdigest()
+
+
+def string_list(value: object) -> bool:
+    return (
+        isinstance(value, list)
+        and bool(value)
+        and all(isinstance(item, str) and bool(item.strip()) for item in value)
+    )
 
 
 def main() -> None:
@@ -108,41 +120,79 @@ def main() -> None:
     module_paths = [path.resolve() for path in args.module_path]
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     tasks = manifest.get("tasks")
-    if manifest.get("schema") != 1 or not isinstance(tasks, list) or not tasks:
-        raise ValueError("extension manifest must use schema 1 and contain tasks")
+    if manifest.get("schema") != 2 or not isinstance(tasks, list) or not tasks:
+        raise ValueError("extension manifest must use schema 2 and contain tasks")
+    if not isinstance(manifest.get("question"), str) or not manifest["question"].strip():
+        raise ValueError("extension manifest requires a nonempty question")
+    for field in ("measurements", "exclusions"):
+        if not string_list(manifest.get(field)):
+            raise ValueError(f"extension manifest requires a string list for {field}")
 
     rows = []
     task_ids: set[str] = set()
     for task in tasks:
-        required = {"id", "scope", "modules", "sources", "tests"}
-        if not isinstance(task, dict) or not required.issubset(task):
-            raise ValueError("each extension task must contain the required fields")
+        required = {"id", "description", "contract", "joggle"}
+        if not isinstance(task, dict) or set(task) != required:
+            raise ValueError("each extension task must contain exactly the required fields")
+        if not isinstance(task["id"], str) or not task["id"].strip():
+            raise ValueError("each extension task requires a nonempty id")
+        if not isinstance(task["description"], str) or not task["description"].strip():
+            raise ValueError(f"extension task {task['id']} requires a description")
         if task["id"] in task_ids:
             raise ValueError(f"duplicate extension task: {task['id']}")
         task_ids.add(task["id"])
-        if not task["modules"] or not task["sources"] or not task["tests"]:
-            raise ValueError(f"extension task {task['id']} has an empty field")
-        paths = [(repo / source).resolve() for source in task["sources"]]
+        contract = task["contract"]
+        implementation = task["joggle"]
+        if not isinstance(contract, dict) or set(contract) != {
+            "inputs", "required", "forbidden"
+        }:
+            raise ValueError(
+                f"extension task {task['id']} has an invalid contract"
+            )
+        if not all(string_list(contract[field]) for field in contract):
+            raise ValueError(f"extension task {task['id']} has an invalid contract list")
+        if not isinstance(implementation, dict) or set(implementation) != {
+            "scope", "modules", "sources", "tests"
+        }:
+            raise ValueError(
+                f"extension task {task['id']} has an invalid Joggle record"
+            )
+        if not isinstance(implementation["scope"], str) or not implementation["scope"].strip():
+            raise ValueError(f"extension task {task['id']} has an invalid scope")
+        if not all(
+            string_list(implementation[field])
+            for field in ("modules", "sources", "tests")
+        ):
+            raise ValueError(f"extension task {task['id']} has an invalid Joggle list")
+        contract_paths = [
+            (repo / source).resolve() for source in contract["inputs"]
+        ]
+        paths = [
+            (repo / source).resolve() for source in implementation["sources"]
+        ]
+        for path in contract_paths:
+            if repo not in path.parents or not path.is_file():
+                raise ValueError(f"invalid extension input: {path}")
         for path in paths:
             if repo not in path.parents or not path.is_file():
                 raise ValueError(f"invalid extension source: {path}")
         dependencies: set[str] = set()
         functions = 0
-        for module in task["modules"]:
+        for module in implementation["modules"]:
             uses, count = module_info(tool, module, module_paths, repo)
             dependencies.update(uses)
             functions += count
         rows.append({
             "schema": manifest["schema"],
             "task": task["id"],
-            "scope": task["scope"],
-            "modules": len(task["modules"]),
+            "scope": implementation["scope"],
+            "modules": len(implementation["modules"]),
             "source_files": len(paths),
             "source_sloc": sum(source_lines(path) for path in paths),
             "source_bytes": sum(path.stat().st_size for path in paths),
             "declared_dependencies": len(dependencies),
             "public_functions": functions,
-            "validation": validate(build, task["tests"], repo),
+            "validation": validate(build, implementation["tests"], repo),
             "source_sha256": source_digest(paths, repo),
         })
 

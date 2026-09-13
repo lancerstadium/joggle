@@ -1,42 +1,146 @@
 {
-  "schema": 1,
+  "schema": 2,
+  "question": "What framework surface must change to implement the same bounded co-design extension?",
+  "measurements": [
+    "authored source files and nonblank noncomment lines",
+    "framework-core and build-system files changed",
+    "native registrations and generated definitions required",
+    "new build and runtime dependencies",
+    "clean build and oracle commands",
+    "unsupported outcome and diagnostic"
+  ],
+  "exclusions": [
+    "developer productivity",
+    "subjective syntax quality",
+    "repository-wide line count",
+    "unmatched runtime performance"
+  ],
   "tasks": [
     {
       "id": "implementation",
-      "description": "Replace a shared tensor implementation with an inspectable loop body.",
-      "scope": "out-of-tree source module",
-      "modules": ["ikj"],
-      "sources": ["examples/ikj/module.jog"],
-      "tests": ["ikj-example"]
+      "description": "Replace a shared matrix implementation with an inspectable loop body.",
+      "contract": {
+        "inputs": [
+          "examples/ikj/model.jog",
+          "examples/ikj/main.c"
+        ],
+        "required": [
+          "provide one generic matrix-multiplication implementation with explicit i-k-j iteration and accumulation",
+          "select that implementation without editing the input model",
+          "emit and compile a standalone artifact for the fixed 2x3 by 3x2 case",
+          "produce 58, 64, 139, and 154 within absolute error 1e-5"
+        ],
+        "forbidden": [
+          "patch the framework core",
+          "replace the oracle with framework-specific expected values",
+          "call a pre-existing matrix kernel instead of expressing the requested body"
+        ]
+      },
+      "joggle": {
+        "scope": "out-of-tree source module",
+        "modules": ["ikj"],
+        "sources": ["examples/ikj/module.jog"],
+        "tests": ["ikj-example"]
+      }
     },
     {
       "id": "policy",
-      "description": "Define a structural cost measure and fusion profitability policy.",
-      "scope": "out-of-tree source module",
-      "modules": ["cost"],
-      "sources": ["examples/cost/module.jog"],
-      "tests": ["cost-example", "cost-configured-example"]
+      "description": "Define a structural cost measure and fusion-selection policy.",
+      "contract": {
+        "inputs": [
+          "examples/cost/model.jog",
+          "test/data/mem.jog",
+          "test/data/mem_main.c"
+        ],
+        "required": [
+          "measure calls and non-call operations with caller-supplied integer weights",
+          "select only legal fusion pairs whose static extent and recursive call count fit caller-supplied limits",
+          "retain the three-loop chain with limits 0 and 100 and reduce it to one loop with limits 100 and 100",
+          "compile and execute the accepted transformation with the unchanged numerical oracle"
+        ],
+        "forbidden": [
+          "patch the framework fusion mechanism or artifact emitter",
+          "identify candidates by neural-network operator name",
+          "mutate the program while evaluating profitability"
+        ]
+      },
+      "joggle": {
+        "scope": "out-of-tree source module",
+        "modules": ["cost"],
+        "sources": ["examples/cost/module.jog"],
+        "tests": [
+          "cost-example",
+          "cost-configured-example",
+          "tile-execution"
+        ]
+      }
     },
     {
       "id": "external-kernel",
-      "description": "Select generic external matrix and convolution kernels through inferred signatures.",
-      "scope": "out-of-tree source module and C implementation",
-      "modules": ["edge"],
-      "sources": ["examples/edge/module.jog", "examples/edge/kernel.c"],
-      "tests": ["edge-example"]
+      "description": "Connect generic external matrix and convolution kernels through inferred signatures.",
+      "contract": {
+        "inputs": [
+          "examples/edge/model.jog",
+          "examples/edge/kernel.c",
+          "examples/edge/main.c"
+        ],
+        "required": [
+          "bind the supplied C matrix kernel at two different static shapes through one generic adapter",
+          "bind the supplied C convolution kernel for the ordinary, constant-weight, and bias-plus-activation cases",
+          "bind the supplied two-result extrema function through the same external-call mechanism",
+          "reject the incompatible layout case rather than silently selecting the kernel",
+          "derive or validate declarations so the unchanged C harness compiles and passes"
+        ],
+        "forbidden": [
+          "patch the input model, framework core, or generic artifact emitter",
+          "copy the supplied C kernel bodies into compiler IR",
+          "register one implementation per concrete matrix shape"
+        ]
+      },
+      "joggle": {
+        "scope": "out-of-tree source module and supplied C implementation",
+        "modules": ["edge"],
+        "sources": [
+          "examples/edge/module.jog",
+          "examples/edge/kernel.c"
+        ],
+        "tests": ["edge-example"]
+      }
     },
     {
       "id": "numeric-format",
-      "description": "Add a parametric saturating integer type with C and VM representations.",
-      "scope": "bundled optional source/native module",
-      "modules": ["sat", "sat.c", "sat.vm"],
-      "sources": [
-        "modules/sat/module.jog",
-        "modules/sat/src/sat.cpp",
-        "modules/sat.c/module.jog",
-        "modules/sat.vm/module.jog"
-      ],
-      "tests": ["sat", "sat-c-execution"]
+      "description": "Add a parametric saturating integer format with two target representations.",
+      "contract": {
+        "inputs": [
+          "test/data/sat.jog",
+          "test/data/sat_c.jog",
+          "test/data/sat_c_main.c",
+          "test/data/sat_vm.jog"
+        ],
+        "required": [
+          "define signed sat<W> for widths 2 through 63 with saturating addition",
+          "participate in generic type checking and operator resolution without enumerating widths",
+          "map nested sat<W> values to configured integer storage and materialize collision-checked helpers",
+          "execute scalar and tensor cases through both generated C and the deterministic VM",
+          "reject invalid widths, mixed widths, missing imports, and helper-name collisions"
+        ],
+        "forbidden": [
+          "add a built-in type or width case to the framework core",
+          "change the C or VM scalar semantics for unrelated types",
+          "specialize one source implementation per tested width"
+        ]
+      },
+      "joggle": {
+        "scope": "bundled optional source/native module",
+        "modules": ["sat", "sat.c", "sat.vm"],
+        "sources": [
+          "modules/sat/module.jog",
+          "modules/sat/src/sat.cpp",
+          "modules/sat.c/module.jog",
+          "modules/sat.vm/module.jog"
+        ],
+        "tests": ["sat", "sat-c-execution"]
+      }
     }
   ]
 }
