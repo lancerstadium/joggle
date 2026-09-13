@@ -83,6 +83,15 @@ address-range proofs reject padded state domains before loads or stores are
 hoisted. Automatic profitability selection across interchange, promotion, and
 tiling remains open.
 
+The source-only `spatial.block` example now accepts an ordered factor list and
+chooses the first exact factor per proved state extent in one module traversal.
+On a same-process MobileNetV2 diagnostic, `[4, 7]` composes ordinary split,
+reorder, and scalar promotion for 31 bodies and gives a stable paired speed
+direction without inspecting an operator name. The run is unisolated and grows
+C source by 75.7%; it therefore motivates controlled multi-model work rather
+than a default schedule. Target-dependent factor choice, non-exact tails,
+packing, and profitability remain policy and mechanism gaps.
+
 General loop-invariant motion now lives in `opt.hoist`, not in an operator or
 artifact emitter. A module supplies either a short list of calls that are safe
 to speculate or a read-only policy function; constants need no policy. The

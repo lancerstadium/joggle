@@ -275,8 +275,15 @@ applies the generic `tile.reorder` pass to 64 instantiated canonical Conv
 bodies without retargeting any call. Its pooled 20-call MobileNetV2 median falls
 from 351.060 to 194.463 ms (1.81x), with identical output hash and unchanged
 `2.0981e-5` reference error. This run remains unisolated and does not close the
-production-runtime gap. A second ordinary implementation reduces
-GoogLeNet's static workspace elements by 58.4% and slots from 55 to 6, while
+production-runtime gap. A later same-process diagnostic selects factors four
+and seven from affine state extents and composes `split`, `reorder`, and
+`scalarize` without inspecting operator names. It changes 31 bodies; all 40
+paired calls favor the candidate, with a 1.559 median pair ratio and
+bit-identical candidate/baseline outputs. Candidate C is 75.7% larger, and the
+machine slows materially during the unisolated run, so this is a mechanism and
+protocol pilot rather than a performance claim. A second ordinary
+implementation reduces GoogLeNet's static workspace elements by 58.4% and
+slots from 55 to 6, while
 increasing its unisolated median latency by 27.5%. This is a resource tradeoff,
 not a Pareto or speedup claim. Final experiments require isolated repeated
 runs, dispersion, fixed revisions and flags, task-level accuracy where

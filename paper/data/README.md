@@ -143,6 +143,47 @@ complete instantiation, preparation, pass, planning, placement, emission,
 strict compilation, interface/payload equality checks, numerical check, and
 four-process measurement from caller-supplied managed artifacts.
 
+`mobilenetv2-block-pilot.csv` is a subsequent same-process diagnostic at
+revision `7cc089a`. Starting from one `c.prepare` result, the candidate invokes
+the ordinary source policy `spatial.block(m, [4, 7])` once. That policy names
+no operator: for each structurally proved affine reduction it selects the
+first factor dividing the innermost state extent, then composes `tile.split`,
+`tile.reorder`, and `tile.scalarize`. It changes 31 loop bodies and creates 160
+local accumulators. The baseline and candidate then use the same cleanup,
+static memory planning, external-weight emission, and Apple Clang 17 strict
+C11 `-O3 -DNDEBUG` compilation.
+
+Both implementations are linked into one process under different entry names.
+After three warm-ups of each entry, every row executes both variants and
+alternates which runs first. The 40 paired baseline/candidate medians are
+116.568/73.012 ms; the median within-pair ratio is 1.559. Candidate output is
+bit-identical to baseline in every row, and both retain maximum absolute error
+`2.0980835e-5` against the stored ONNX Runtime output. All 40 pairs favor the
+candidate. Baseline/candidate C size is 112,518/197,742 bytes, so the speed
+direction costs 75.7% more source. Clang emits grouped-store SLP remarks only
+for the candidate, but repeated optimization-stage remarks are not counted as
+independent vector operations.
+
+The run is intentionally not a publication result. The unisolated machine
+slows materially over the sequence; pairing keeps the two variants adjacent
+but does not control frequency, temperature, or background work. The result
+justifies a controlled multi-model experiment and a user-replaceable factor
+policy. It does not justify a default schedule or a claim against ONNX Runtime.
+The recorded SHA-256 values are: canonical IR
+`1998da2a6a5810ade65aa70514db08ca82a6e2e91c489e22e3d2f560a463be42`,
+blocked IR
+`b5c178752b7de2377cd7686935bd54374272ec844753bbdc8e5be17083c239d3`,
+candidate C
+`5a97014a2f7cbfdf3feb9894026468ac38238fbdb6ea10df347a5fe5790728fa`,
+baseline C
+`d2094ee49a4776aa79670cda3ce352852de7e63dbee8974f4d23698179b8f455`,
+weights
+`c40aa17983eda5de11337934906bbd7bbde107d55f383b4dbfd0f00146f15aaf`,
+input
+`97972f018032f84938f48b7ef79756e473ebcc983558987f93f24cddc01b274a`,
+and reference
+`8411a51bfb945b17a4cd7ebb75a512849a902878c02e8212741ab11d6149bac8`.
+
 `compile-memo-pilot.csv` records one matched, unisolated compiler diagnostic
 on the same 27 MB MobileNetV2 canonical IR at revision `0ba0e2c`. Both rows run
 `spatial.block(m, 2)` with deterministic execution reporting. The control uses

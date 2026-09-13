@@ -28,7 +28,7 @@ runtimes or that fewer source lines imply better usability.
 | Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths | Freeze and record model-level stage traces |
 | Extension surface | Four frozen contracts; all Joggle implementations pass; the exact MatMul contract also passes through Joggle's ONNX, VM, and C paths; pinned TVM controls pass three contracts | Execute the pinned ONNX-MLIR system baseline; keep bare-MLIR observations component-level |
 | Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, and deterministic language mutation tests | Freeze a fault and diagnostic matrix |
-| Artifact quality | Ten numerical ONNX paths and several reproducible pilots, including negative performance results | Isolated repetitions, dispersion, task accuracy, second machine, and a materially smaller generated-C gap |
+| Artifact quality | Ten numerical ONNX paths and several reproducible pilots; a structural block policy now has a same-process, paired MobileNetV2 speed diagnostic | Isolated multi-model repetitions, dispersion, task accuracy, second machine, and a materially smaller generated-C gap |
 
 The current generated-C pilots remain roughly 7--101 times slower than
 one-thread ONNX Runtime, depending on the model. This is a blocking result, not
