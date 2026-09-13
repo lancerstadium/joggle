@@ -96,7 +96,22 @@ jobs:
           print(f"::error title=Optional module build failed::{text}")
           PY
       - name: Test
+        id: optional-test
         run: ctest --test-dir build --output-on-failure
+      - name: Preserve optional test failure
+        if: ${{ failure() && steps.optional-test.outcome == 'failure' }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          text = Path("build/Testing/Temporary/LastTest.log").read_text(
+              errors="replace"
+          )[-12000:]
+          text = (text.replace("%", "%25")
+                      .replace("\r", "%0D")
+                      .replace("\n", "%0A"))
+          print(f"::error title=Optional module tests failed::{text}")
+          PY
 
   sanitize:
     name: Linux sanitizers
