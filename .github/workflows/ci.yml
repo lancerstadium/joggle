@@ -50,7 +50,9 @@ jobs:
               failure = case.find("failure")
               if failure is not None:
                   name = escape(case.get("name", "unnamed test"))
-                  detail = escape((failure.text or "no failure output")[-12000:])
+                  output = case.find("system-out")
+                  detail = (failure.text or "") + (output.text or "" if output is not None else "")
+                  detail = escape((detail or "no failure output")[-12000:])
                   print(f"::error title=CTest {name}::{detail}")
           PY
           {
@@ -101,7 +103,9 @@ jobs:
               failure = case.find("failure")
               if failure is not None:
                   name = escape(case.get("name", "unnamed test"))
-                  detail = escape((failure.text or "no failure output")[-12000:])
+                  output = case.find("system-out")
+                  detail = (failure.text or "") + (output.text or "" if output is not None else "")
+                  detail = escape((detail or "no failure output")[-12000:])
                   print(f"::error title=CTest {name}::{detail}")
           PY
           {
