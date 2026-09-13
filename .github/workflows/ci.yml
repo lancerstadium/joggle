@@ -32,6 +32,10 @@ jobs:
       - name: Preserve CTest failure
         if: ${{ failure() && steps.test.outcome == 'failure' }}
         run: |
+          while IFS= read -r failed_test; do
+            test_name="${failed_test#*:}"
+            echo "::error title=CTest failed::$test_name"
+          done < build/Testing/Temporary/LastTestsFailed.log
           {
             echo '### CTest failure'
             echo '```text'
@@ -62,6 +66,10 @@ jobs:
       - name: Preserve CTest failure
         if: ${{ failure() && steps.test.outcome == 'failure' }}
         run: |
+          while IFS= read -r failed_test; do
+            test_name="${failed_test#*:}"
+            echo "::error title=CTest failed::$test_name"
+          done < build/Testing/Temporary/LastTestsFailed.log
           {
             echo '### CTest failure'
             echo '```text'
