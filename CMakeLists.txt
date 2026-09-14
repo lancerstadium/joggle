@@ -45,7 +45,14 @@ foreach(module base bounds c ir math mem nn opt quant stat tensor tile vm)
   joggle_copy_source_module(${module})
 endforeach()
 
-add_library(joggle src/env.cpp src/eval.cpp src/ir.cpp src/lang.cpp)
+add_library(joggle
+  src/env.cpp
+  src/eval.cpp
+  src/handle.cpp
+  src/ir.cpp
+  src/lang.cpp
+  src/type.cpp
+)
 add_library(Joggle::joggle ALIAS joggle)
 
 add_library(joggle-vm MODULE modules/vm/src/vm.cpp)
