@@ -1,3 +1,5 @@
+cmake_minimum_required(VERSION 3.20)
+
 if(NOT DEFINED OUT OR OUT STREQUAL "")
   message(FATAL_ERROR "set OUT to the model directory")
 endif()
