@@ -1,39 +1,38 @@
-# Joggle: Distributable Typed Modules Across the Compiler Stack
+# Joggle: Whole Compiler Extensions as Typed Modules
 
 ## Abstract
 
-Compiler ecosystems expose different units of extension. Language workbenches
-add syntax and semantics, IR infrastructures add dialects and passes, scheduling
-systems control transformations, and backend interfaces add target code. Each
-boundary is useful, but an extension that crosses several of them is split
-across different definition, registration, execution, and deployment
-mechanisms. This **role fragmentation** affects more than new hardware: it also
-appears in experimental datatypes, analyses, external tools, generated
-policies, validators, and artifact formats.
+Compiler extensions are conventionally packaged by compiler role: language
+workbenches package syntax and semantics, IR ecosystems package dialects and
+passes, scheduling systems package transformations, and backend interfaces
+package target code. Research ideas, however, rarely respect one such boundary.
+A datatype, generated optimization, or emerging target may jointly require new
+program vocabulary, portable meaning, analyses, rewrites, implementation
+choice, and artifact construction. Today the idea is distributed across those
+extension systems and must be revised as a coordinated set.
 
-Joggle explores **typed modules** as one distributable extension unit across
-these roles. A module can introduce program vocabulary, inspect or
-transactionally edit a typed Fn/Blk/Op/Val program, select alternative
-implementations, and produce an artifact through the same dependency and
-invocation model. Progressive exposure reveals implementation detail only when
-a consumer requires it. Installation, composition, rollback, and staged upgrade
-therefore apply to an extension as a whole rather than to one compiler phase.
-We evaluate this mechanism with cross-role extension and revision studies, then
-use inference co-design as a stress domain spanning semantics, representation,
-optimization, specialization, and deployment. The study separates extension
-continuity from generated-code quality; current results establish functional
-breadth but leave competitive whole-model performance as a submission
-requirement.
+Joggle makes this complete object, a **whole compiler extension**, a typed,
+distributable module. The same module language can introduce vocabulary,
+inspect or transactionally edit a typed Fn/Blk/Op/Val program, choose among
+implementations, and construct an artifact. One resolver, invocation model,
+dependency graph, and transactional lifecycle govern all of these functions.
+**Progressive exposure** lets modules reveal implementation detail in place,
+so abstract calls, reusable bodies, loops, storage decisions, and external
+calls can coexist without a mandatory whole-program lowering. We evaluate
+whether this design preserves working semantics and bindings as cross-role
+extensions evolve, and whether it closes real inference paths from imported
+models to deployable code. This separates a new modularity result from the
+independent question of generated-code performance.
 
 ## 1. Introduction
 
 A compiler extension rarely stays in the box where it begins. A new datatype
-needs syntax or schema, type rules, canonical operations, analyses, target
-representations, and diagnostics. An externally generated optimization needs a
-typed input, legal edit surface, validation, rollback, and artifact provenance.
-A new artifact format needs preparation rules and a stable public interface.
-When these concerns use unrelated host mechanisms, the extension is no longer
-one installable and revisable research object.
+needs a type contract, canonical operations, analyses, target representations,
+and diagnostics. An externally generated optimization needs a typed input,
+legal edit surface, validation, rollback, and artifact provenance. A new
+artifact format needs preparation rules and a stable public interface. Joggle's
+premise is that these are not merely adjacent plugins: together they are the
+unit that a researcher installs, tests, shares, and revises.
 
 Emerging hardware makes this general problem unusually visible. A fused
 low-precision projection for an edge processor must connect source recognition,
@@ -53,9 +52,10 @@ abstractions exist. TensorIR made scheduled tensor blocks directly observable;
 and supports partial lowering. [MLIR](https://doi.org/10.1109/CGO51591.2021.9370308),
 [ONNX-MLIR](https://arxiv.org/abs/2008.08272), and [IREE](https://iree.dev/) provide another mature
 answer through dialects, interfaces, conversions, and deployment components.
-The problem is not that these systems have layers. It is that a hardware idea
-whose interface is still evolving can become several coupled extensions owned
-by different layers.
+Joggle introduces a complementary modularization axis. Where these systems
+organize stable compiler roles, Joggle packages the one research concept that
+cuts through those roles. The aim is not fewer abstractions, but one owner,
+interface, dependency graph, and lifecycle for the cross-cutting extension.
 
 Kernel systems attack another part of the problem. [Halide](https://doi.org/10.1145/2491956.2462176) separates algorithms
 from schedules. [Lift](https://doi.org/10.1109/CGO.2017.7863730) and [RISE](https://arxiv.org/abs/2201.03611) expose typed transformations.
@@ -63,10 +63,11 @@ from schedules. [Lift](https://doi.org/10.1109/CGO.2017.7863730) and [RISE](http
 instructions and memories, while [TileLang](https://arxiv.org/abs/2504.17577) and Triton expose tiled computation
 and hardware mapping. Ansor, [Mirage](https://arxiv.org/abs/2405.05751), and [Axon](https://arxiv.org/abs/2606.26344) automate increasingly large
 portions of the search. These systems make local implementations far more
-controllable or efficient than generic compiler code. They do not eliminate
-the surrounding path: a kernel or synthesized instruction still needs model
-semantics, a legal integration point, validation, fallback behavior, and a
-deployable interface.
+controllable or efficient than generic compiler code. Joggle is the connective
+substrate around such implementations: it can retain portable semantics, bind
+a synthesized or handwritten implementation, validate the choice, and carry it
+into an artifact without assigning each responsibility to a different plugin
+category.
 
 This boundary matters wherever producers and consumers of compiler decisions
 evolve independently. Low-bit formats, structured sparsity, parameterized
@@ -78,15 +79,15 @@ oracle, rollback, and artifact provenance. Hard-coding either a new hardware
 vocabulary or an AI chooser into the compiler core makes the next experiment
 depend on the previous abstraction.
 
-Joggle starts from a different observation: **cross-role decisions often share
-a lifecycle before their interfaces stabilize**. Joggle therefore keeps
+Joggle starts from a different observation: **cross-role decisions form one
+extension when they share identity and lifecycle**. Joggle therefore keeps
 program identity stable while exposing implementation progressively. A relation
 can remain an abstract call, acquire a reusable body, expose loops when an
 analysis needs access structure, and select an external implementation when a
 capability becomes available. The whole program need not migrate to a new
 representation before one region can be studied.
 
-The unit of extension is a distributed module of typed functions. A module may
+The unit of extension is a distributable module of typed functions. A module may
 define portable semantics, a custom type, an analysis, a structural rewrite, a
 target-specific selector, a memory policy, or an emitter. These functions use
 one invocation and composition model, so a general analysis and a specialized
@@ -107,7 +108,7 @@ loses performance answers the first question and bounds the second.
 
 This paper makes three contributions:
 
-1. **A distributable typed-module extension model** that hosts vocabulary,
+1. **Whole compiler extensions as typed modules:** vocabulary,
    analysis, transformation, choice, and artifact behavior through one
    dependency, invocation, transaction, and lifecycle mechanism.
 2. **Progressive exposure**, a typed function representation in which abstract
@@ -119,7 +120,7 @@ This paper makes three contributions:
    matched native baselines, complete models, and explicit unsupported
    frontiers.
 
-## 2. Motivation: one extension crosses several compiler roles
+## 2. Motivation: make the extension whole
 
 ### 2.1 One change, several coupled meanings
 
@@ -145,39 +146,46 @@ the kernel begins after recognition, representation, fallback, and much of
 deployment have already been decided. The co-design object is the connected
 model-to-machine experiment.
 
-### 2.2 Strong systems make different boundaries programmable
+### 2.2 Existing systems modularize by role
 
-Existing systems cover the required capabilities, but organize them around
-different stable boundaries. [MLIR](https://doi.org/10.1109/CGO51591.2021.9370308) makes dialects, interfaces, conversions, and
-passes reusable across levels; [ONNX-MLIR](https://arxiv.org/abs/2008.08272) uses those mechanisms to connect model
-semantics to native code and accelerator plugins. [Relax](https://arxiv.org/abs/2311.02103) lets graph functions,
-TensorIR functions, and external library calls coexist, preserves symbolic
-shape information, and supports partial lowering. These systems refute the
-claim that multi-level compilation necessarily loses composition.
+Existing systems cover the required capabilities, but package them around
+different compiler roles. [MLIR](https://doi.org/10.1109/CGO51591.2021.9370308) makes dialects, interfaces, conversions, and passes reusable
+across levels; [ONNX-MLIR](https://arxiv.org/abs/2008.08272) uses those mechanisms to connect model semantics to
+native code and accelerator plugins. [Relax](https://arxiv.org/abs/2311.02103) lets graph functions, TensorIR
+functions, and external library calls coexist while preserving symbolic shape
+information. These systems provide rich horizontal ecosystems: a new operation
+joins an IR vocabulary, a pass joins a pass manager, and a runtime module joins
+deployment.
 
-Kernel-oriented systems choose a later boundary. Halide separates algorithm
+Kernel-oriented systems provide a focused authoring boundary. Halide separates algorithm
 from schedule. TensorIR makes blocks and schedule effects directly observable.
 [TileLang](https://arxiv.org/abs/2504.17577) exposes tiled dataflow with scheduling annotations, while [Exo](https://doi.org/10.1145/3519939.3523446) moves
 instructions, memories, configuration state, and trusted scheduling policy into
-user libraries. These systems refute the claim that target control requires
-modifying a monolithic compiler.
+user libraries. They make a target implementation unusually concise and
+controllable once its surrounding semantic and deployment contracts are fixed.
 
-Automation moves the boundary again. [ACT](https://doi.org/10.1145/3839457) derives sound, complete tensor-
+Automation supplies another producer of implementations. [ACT](https://doi.org/10.1145/3839457) derives sound, complete tensor-
 accelerator backends from parameterized ISA semantics, including instruction
 selection and scratchpad allocation; [ATLAAS](https://arxiv.org/abs/2604.13523) recovers such tensor semantics from
 RTL. [Mirage](https://arxiv.org/abs/2405.05751) and [Axon](https://arxiv.org/abs/2606.26344) search across algebra, fusion, layout, tiling, and target
 instructions. [Ladder](https://www.usenix.org/conference/osdi24/presentation/wang-lei) jointly treats evolving low-precision types, storage,
-access, conversion, and hardware-aware schedules. These systems refute the
-claim that a handwritten module is inherently the most agile solution.
+access, conversion, and hardware-aware schedules. Joggle does not prescribe
+whether a human, search procedure, synthesizer, or agent supplies a choice. It
+provides a typed place to install that producer together with the semantics,
+legality checks, fallback, and artifact actions that make its output usable.
 
-The distinction is therefore not “Joggle is unified while prior systems are
-fragmented.” Each prior system deliberately stabilizes a useful interface. The
-open case is the period in which a research team does not yet know which
-interface should stabilize.
+These systems expose strong extension points inside a role. Joggle makes the
+cross-role idea itself the module. This distinction is concrete: the unit has a
+single public namespace and dependency identity; its functions share structural
+types and live IR handles; mutations share transactions; installation and
+upgrade re-resolve dependent calls; and artifact actions remain dependencies of
+the same unit. No existing capability is renamed as novelty; the contribution is
+the lifecycle that connects them.
 
 ### 2.3 A research extension must close the whole path
 
-We call the resulting cost **temporal coupling**: a revision to one experimental
+When those pieces are packaged separately, the resulting cost is **temporal
+coupling**: a revision to one experimental
 decision forces synchronized changes across separately represented contracts.
 The symptom is not the number of source files or IRs. It is that a previously
 working semantic fallback, target mapping, validator, or artifact becomes
@@ -198,7 +206,7 @@ included.
 TVM and ONNX-MLIR pay larger bootstrap and extension costs in exchange for
 mature abstractions and ecosystems. Kernel DSLs offer a tighter interaction
 loop after model integration and deployment choices have been made. Joggle's
-opportunity is not simply to be smaller; it is to keep these closures connected
+advantage is not simply to be smaller; it is to keep these closures connected
 for a researcher who needs both portable and specialized behavior. Each closure
 is measured separately so that missing performance cannot be disguised as API
 simplicity, and missing deployment cannot be disguised as kernel speed.
@@ -217,9 +225,9 @@ needs typed inputs, bounded edit authority, target feedback, legality checks,
 an oracle, rollback, and artifact provenance. “AI-friendly” is consequently a
 stress test for the compiler control plane, not Joggle's primary claim.
 
-### 2.4 Hypothesis and measurable predictions
+### 2.4 Claim and measurable predictions
 
-Joggle tests whether **progressive exposure** can preserve evolution continuity.
+Joggle makes whole extensions concrete through **progressive exposure**.
 A relation begins as a typed call. A module exposes tensor, loop, storage, target,
 or artifact detail only when a consumer needs it, while portable and specialized
 alternatives remain attached to the same program state. Typed module functions
@@ -452,10 +460,22 @@ language extensions and pluggable analyses. [Polyglot](https://doi.org/10.1007/3
 extensions without duplicating the base compiler. [Spoofax](https://doi.org/10.1145/1869459.1869497) combines declarative syntax,
 analysis, transformation, code generation, and deployable editor services in a
 language workbench. [Nanopass](https://doi.org/10.1017/S0956796805005605) describes a compiler as typed transformations
-between many small, related languages. These systems establish that modular
-language definition, reusable rewrite formalisms, and small transformations are
-not new; their primary object is a language implementation rather than a live
-program moving through target selection and artifact construction.
+between many small, related languages. [MAGIK](https://www.usenix.org/conference/dsl-97/incorporating-application-semantics-and-control-compilation) dynamically loads application-specific
+semantics and transformations with direct access to compiler IR. [LMS](https://www.cs.purdue.edu/homes/rompf/papers/rompf-scala16.pdf) composes
+staged DSL stacks through horizontal IR extensions and vertical transformations
+that may introduce new intermediate languages. These systems make language
+features and compilation behavior modular. Joggle takes their lesson into a
+different lifecycle: the module also owns target choices and artifact actions,
+and remains an installed dependency while those cross-role bindings evolve.
+
+Recent work gives module semantics directly to IR. [Modules for Datalog IR](https://doi.org/10.1145/3689484.3690737)
+provides statically typed, separately compiled modules, explicit required and
+provided relations, partial linking, and bundles. This is the nearest formal
+module comparison. Its modules organize Datalog relations and are linked before
+ordinary compiler passes; Joggle modules additionally execute typed analyses
+and transactional edits over live IR and construct external artifacts. The
+comparison motivates formalizing Joggle's resolver and upgrade semantics rather
+than treating package management as incidental tooling.
 
 [xDSL](https://arxiv.org/abs/2311.07422) takes a complementary sidekick approach: it recreates MLIR-compatible SSA
 infrastructure in Python and exchanges textual IR and declarative definitions
@@ -468,6 +488,15 @@ mutation, target choice, and artifact closure without introducing a new host
 extension category for each role. A matched study must test whether that broader
 boundary remains simpler and equally diagnosable, rather than assuming it from
 the syntax.
+
+[TVM's PackedFunc and runtime Module](https://tvm.apache.org/docs/arch/runtime.html) are the strongest counterexample to a uniform-call
+claim: TVM deliberately uses the same type-erased callable for compiler passes,
+frontend callbacks, compiled functions, device modules, and RPC. Joggle chooses
+a different contract. Calls are structurally typed before execution, module
+source may define both portable semantics and compiler actions, mutations are
+transactional, and package upgrade checks bindings in reverse dependents. The
+paper must evaluate the resulting safety and lifecycle benefits; merely using
+one function syntax is insufficient.
 
 ### Multi-level composition and deployment
 

@@ -1,4 +1,4 @@
-# Research map: where Joggle can and cannot contribute
+# Research map: whole compiler extensions
 
 This document is the evidence ledger for the EuroSys paper. It is not a list of
 systems that resemble Joggle. Its purpose is to expose the strongest competing
@@ -40,16 +40,96 @@ parts of this problem:
   safe, reusable transformation control as novel.
   [Transform dialect, CGO 2025](https://doi.org/10.1145/3696443.3708922)
 
-These comparisons sharpen the open question. Language workbenches primarily
-extend source languages and tooling. MLIR/xDSL primarily make IR vocabularies
-and pass ecosystems extensible. Transform dialect and user-schedulable languages
-primarily control transformations over a payload IR. Joggle's candidate design
-is a **typed runtime module boundary spanning these lines**: a module can add
-program vocabulary, compute or transform the represented program, participate
-in target choice, and close an executable artifact through the same invocation,
-dependency, installation, and rollback model. Whether this breadth remains
-coherent rather than becoming an under-specified universal mechanism is the
-central design risk.
+These comparisons reveal a different modularization axis. Language workbenches
+package language features; MLIR/xDSL package IR vocabulary and passes;
+Transform dialect and user-schedulable languages package transformation
+control; backend interfaces package code generation and runtime integration.
+Joggle packages the **whole compiler extension** that cuts across those roles.
+One typed source module may add vocabulary, compute or transform the represented
+program, select an implementation, and construct an artifact under the same
+namespace, dependencies, resolver, transaction, installation, and upgrade
+lifecycle. Whether this breadth remains coherent rather than becoming an
+under-specified universal mechanism is the central design risk.
+
+This is not the first use of “vertical extension.” LMS explicitly distinguishes
+horizontal IR extension from vertical addition of analyses, transformations,
+and IR levels. Joggle therefore must not claim that direction as new. Its claim
+is stronger and more operational: the cross-role slice is itself a named,
+typed, distributable, and evolvable module rather than an architecture assembled
+from traits, pass classes, registries, and runtime plugins.
+
+### Nearest-prior-work audit
+
+The following matrix is a novelty audit, not a paper result table. A filled cell
+means the cited system makes that property a documented part of its extension
+model; it does not rank implementation quality.
+
+| System | Adds vocabulary or semantics | Runs analyses or IR edits | Unifies compiler and artifact calls | Source-level package lifecycle | Checks dependent bindings on upgrade | One unit spans all roles |
+| --- | --- | --- | --- | --- | --- | --- |
+| JastAdd | yes | yes | no | specification composition | no | no |
+| MAGIK | application semantics | yes, over lcc IR | no | dynamic native extension | no | no |
+| LMS | staged DSL vocabulary | yes | code generation | trait composition | no | pipeline composition, not one package |
+| MLIR | dynamic ops and types | passes and transforms | separate runtime mechanisms | plugin/dialect registration | API version only | no |
+| TVM | extensible runtime objects | PackedFunc passes | yes, via PackedFunc/Module | registry and compiled modules | no module-source upgrade contract | no |
+| Datalog IR modules | typed relations | compiler passes are external | bundles, not native artifacts | separate compilation and partial linking | link-time requirements | no |
+| Joggle | typed vocabulary and semantics | typed transactional functions | typed functions construct artifacts | install/upgrade/uninstall | reverse-dependent call resolution | **yes, by construction** |
+
+This audit prevents three overclaims. MAGIK already gives dynamically loaded
+extensions direct IR edit access. LMS already names horizontal and vertical
+extensibility. TVM already uses one callable abstraction across passes,
+frontends, compiled modules, devices, and RPC. The Joggle claim is the remaining
+conjunction: an extension's vocabulary, compiler actions, choices, and artifact
+actions are source-level members of one typed package whose dependency and
+upgrade semantics cover calls between those roles.
+
+[MAGIK](https://www.usenix.org/conference/dsl-97/incorporating-application-semantics-and-control-compilation),
+[LMS](https://www.cs.purdue.edu/homes/rompf/papers/rompf-scala16.pdf),
+[MLIR dynamic dialects](https://mlir.llvm.org/docs/DefiningDialects/),
+[TVM runtime](https://tvm.apache.org/docs/arch/runtime.html),
+[Datalog IR modules](https://doi.org/10.1145/3689484.3690737)
+
+### The idea stack
+
+The paper should present Joggle as one coherent stack of ideas, not a bag of
+features:
+
+1. **Object — whole extension.** The unit users reason about is the complete
+   research idea, not an operation, pass, schedule, backend, or emitter alone.
+2. **Representation — progressive exposure.** One program may retain an
+   abstract relation while selected functions expose tensor, loop, storage, or
+   external-call detail. Specialization does not erase the portable path.
+3. **Interface — typed compiler functions.** Semantics, analyses, edits,
+   selectors, validators, and artifact builders share structural types and live
+   `Mod`/`Fn`/`Blk`/`Op`/`Val` handles. The producer may be handwritten code,
+   search, synthesis, or an agent without changing the consumer contract.
+4. **Safety — transactional authority.** Read-only functions cannot mutate;
+   mutating functions commit only after verification; stale or foreign handles
+   are rejected. This turns generated policy into a bounded compiler input.
+5. **Lifecycle — continuity.** The module dependency graph governs install,
+   composition, upgrade, rollback, and removal. Upgrade validates call targets
+   and signatures in reverse dependents, not only the upgraded file.
+6. **Outcome — portable specialization.** A module can preserve reference
+   semantics and fallback while adding target-specific implementations and
+   ordinary artifacts. Generality and specialization become alternatives owned
+   by one extension rather than competing compiler architectures.
+
+This stack supports three positive claims that are broader than inference:
+
+- **Agile co-design:** revise a cross-cutting idea without rebuilding or editing
+  a host subsystem for every role it touches.
+- **Open specialization:** add uncommon datatypes, analyses, policies, targets,
+  or artifact formats without asking the core to predict their vocabulary.
+- **Reproducible automation:** generated transformations become versioned,
+  typed, inspectable modules with explicit authority and artifact provenance,
+  rather than opaque scripts or prompts.
+
+Each claim creates an experiment obligation. Agile co-design needs matched
+extension and revision studies. Open specialization needs at least three
+qualitatively different modules plus one non-neural case. Reproducible
+automation needs chooser substitution, adversarial invalid proposals, rollback,
+and replayable artifacts. Whole-model performance remains necessary to show the
+substrate does not make specialization impractical, but it is not the definition
+of the contribution.
 
 Inference and emerging hardware remain the strongest evaluation domain because
 they force all roles to interact. They do not define the system's applicability.
@@ -57,48 +137,50 @@ The paper therefore needs one non-neural extension micro-study to establish that
 the core mechanism is not operator-specific, while reserving full performance
 evaluation for inference where the implementation is mature enough to be fair.
 
-## 1. The problem is not “too many IRs”
+## 1. The contribution is a new unit of modularity
 
-Several tempting versions of the Joggle story are already solved or are too weak
-for EuroSys:
+Joggle's contribution is not a replacement for mature compiler abstractions.
+The nearest systems establish the ingredients and make the remaining unit of
+modularity precise:
 
-- **Reusable multi-level compiler infrastructure.** MLIR explicitly targets
+- **MLIR: extensible IR components.** MLIR explicitly targets
   reusable, extensible infrastructure across abstraction levels, domains,
   targets, and execution environments. A smaller IR is not, by itself, a new
   systems idea. [MLIR, CGO 2021](https://research.google/pubs/mlir-scaling-compiler-infrastructure-for-domain-specific-computation/)
-- **Cross-level composition.** Relax represents graph computation, loop-level
+- **Relax: cross-level program composition.** Relax represents graph computation, loop-level
   tensor programs, and external calls together, with first-class symbolic shape
   tracking. “Joggle can mix abstraction levels” is therefore not a sufficient
   contribution. [Relax, ASPLOS 2025](https://arxiv.org/abs/2311.02103)
-- **User-extensible targets.** Exo externalizes target instructions, memories,
+- **Exo: user-extensible target control.** Exo externalizes target instructions, memories,
   accelerator state, and scheduling policies into user code while checking
   transformation safety. “Users can register hardware behavior” is already an
   established design point. [Exo, PLDI 2022](https://people.csail.mit.edu/yuka/pdf/exo_pldi2022_full.pdf)
-- **Generated accelerator backends.** ACT generates instruction selection and
+- **ACT/ATLAAS: generated accelerator backends.** ACT generates instruction selection and
   memory allocation from parameterized tensor-ISA descriptions; ATLAAS lifts
   RTL-derived semantics into such descriptions. Handwritten modules are not
   automatically more agile than generated backends.
   [ACT](https://act-compiler.github.io/assets/pdf/act-arxiv.pdf),
   [ATLAAS](https://arxiv.org/abs/2604.13523)
-- **Concise high-performance kernels.** TileLang, Triton, Halide, and Exo already
+- **TileLang/Triton: concise high-performance kernels.** TileLang, Triton, Halide, and Exo already
   provide substantially more mature kernel-authoring surfaces than Joggle.
   [TileLang](https://arxiv.org/abs/2504.17577)
-- **Automatic cross-level optimization.** Mirage and Axon jointly explore
+- **Mirage/Axon: automatic cross-level optimization.** Mirage and Axon jointly explore
   algebra, fusion, layout, scheduling, and instruction selection. A generic
   rewrite API is not comparable to their optimizers.
   [Mirage](https://arxiv.org/abs/2405.05751),
   [Axon](https://arxiv.org/abs/2606.26344)
 
-The TVM lineage reinforces this conclusion. Halide/TE separated algorithm from
+The TVM lineage reinforces the opportunity. Halide/TE separated algorithm from
 schedule; TensorIR made schedulable blocks explicit and inspectable; Relay added
 program semantics; Relax restored cross-level composition and dynamic shapes.
 Multiple abstractions were introduced because different information is useful at
 different times, not because compiler designers failed to seek uniformity.
 
-## 2. A sharper systems problem: extension boundaries move
+## 2. The systems problem: extensions are split by role
 
-The literature instead exposes a temporal problem. Most systems make an
-extension productive after one boundary has become stable:
+Most systems make one compiler role programmable. A research concept becomes a
+*whole extension* when it spans several roles and those pieces must be installed,
+validated, revised, and distributed together:
 
 | System family | Boundary made programmable | What is deliberately outside that boundary |
 | --- | --- | --- |
@@ -110,8 +192,10 @@ extension productive after one boundary has become stable:
 | Ladder / sparse edge stacks | A chosen datatype, encoding, mapping, and kernel path | A general mechanism for revising a different vertical experiment |
 | Mirage / Axon | A fixed search/synthesis problem and target model | The surrounding deployment stack and evolving research interface |
 
-These boundaries are sound engineering choices. The unresolved case is early
-model–hardware co-design, where the boundary itself is an experimental variable.
+These are powerful engineering choices. Joggle introduces an orthogonal unit:
+the complete research concept whose implementation crosses them. Early
+model–hardware co-design makes this need visible because the interface itself
+remains an experimental variable.
 A low-precision or sparse idea may revise, together:
 
 1. the source relation or fallback semantics;
@@ -127,16 +211,16 @@ software. ACT shows that scratchpads and parameterized tensor instructions need
 joint formal treatment. Ladder shows that an evolving datatype requires storage,
 access, conversion, schedule, and hardware policy to move together.
 [Ladder, OSDI 2024](https://www.usenix.org/conference/osdi24/presentation/wang-lei)
-These results do not prove Joggle is needed; they establish that vertical change
-is real and that several different fixed boundaries are useful.
+Together, these systems establish both the value of specialized boundaries and
+the recurring need to connect decisions across them.
 
-We call the candidate gap **temporal extensibility**:
+We call the desired property **extension continuity**:
 
-> Can a researcher revise a vertical model–machine experiment while keeping its
+> Can a researcher revise a whole compiler extension while keeping its
 > semantic fallback, structural implementation, target assumptions, selection
 > policy, validation, and emitted artifact connected in one distributable unit?
 
-The quantity of interest is not source brevity. It is **evolution continuity**:
+The quantity of interest is not source brevity. It is continuity:
 how much unrelated host machinery must change, how many contracts must be kept
 in sync, and what previously working paths survive when the experiment changes.
 
@@ -200,9 +284,11 @@ The mechanism has four parts:
    part of the successful result. Producing a pretty IR fragment is not
    deployment.
 
-The novelty, if demonstrated, is therefore not “all compiler concepts are
-functions.” It is that a small common mechanism preserves continuity while a
-vertical extension changes and while different decision makers are substituted.
+The contribution is therefore not “all compiler concepts are functions.” It is
+a first-class whole-extension unit: the same typed module owns its public
+vocabulary, executable compiler behavior, dependencies, safe IR edits,
+implementation choices, and artifact actions, and preserves those relationships
+as the module evolves.
 
 ## 4. Generality and specialization are not opposites
 
@@ -395,24 +481,24 @@ Joggle.
 The working title should describe the mechanism and the unresolved problem, not
 promise an inference-performance victory that has not been measured:
 
-> **Joggle: Distributable Typed Modules Across the Compiler Stack**
+> **Joggle: Whole Compiler Extensions as Typed Modules**
 
-“Typed modules” names the concrete extension unit and remains independent of a
-particular workload or target. Inference co-design is the demanding evaluation
-domain; progressive exposure is the mechanism that lets one module participate
-at increasing levels of implementation detail. The title remains provisional
-until the mechanism and baseline experiments succeed.
+“Whole compiler extensions” names the object that existing role-specific
+mechanisms split. “Typed modules” names Joggle's concrete answer and remains
+independent of a workload or target. Inference co-design is the demanding
+evaluation domain; progressive exposure is the mechanism that lets one module
+participate at increasing levels of implementation detail.
 
 The Motivation should follow this chain:
 
-1. role fragmentation as the general problem across language, IR, transform,
-   target, and artifact extension mechanisms;
+1. a positive object: the whole compiler extension that researchers already
+   reason about but current systems package by role;
 2. concrete cases (a datatype, generated policy, and emerging-hardware path)
    that cross different subsets of those roles;
 3. why strong existing approaches deliberately stabilize different useful
    boundaries rather than simply being “heavy”;
-4. extension continuity as the property Joggle attempts to preserve;
-5. typed modules plus progressive exposure as the hypothesis, including the
+4. extension continuity as the property Joggle preserves;
+5. typed modules plus progressive exposure as the mechanism, including the
    risk that a uniform mechanism becomes under-specified; and
 6. the evidence required to accept or reject that hypothesis.
 

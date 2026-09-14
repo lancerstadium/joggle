@@ -59,6 +59,10 @@ CITATIONS = {
     "https://doi.org/10.1017/S0956796805005605": "sarkar2005nanopass",
     "https://doi.org/10.1145/1869459.1869497": "kats2010spoofax",
     "https://doi.org/10.1007/3-540-36579-6_11": "nystrom2003polyglot",
+    "https://www.usenix.org/conference/dsl-97/incorporating-application-semantics-and-control-compilation": "engler1997magik",
+    "https://www.cs.purdue.edu/homes/rompf/papers/rompf-scala16.pdf": "rompf2016lms",
+    "https://doi.org/10.1145/3689484.3690737": "klopp2024datalogmodules",
+    "https://tvm.apache.org/docs/arch/runtime.html": "tvmRuntimeDocs",
 }
 
 

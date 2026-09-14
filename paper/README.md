@@ -8,7 +8,7 @@ preserved here.
 
 ## Target and thesis
 
-Working title: **Joggle: Distributable Typed Modules Across the Compiler Stack**.
+Working title: **Joggle: Whole Compiler Extensions as Typed Modules**.
 
 The current target is the
 [EuroSys 2027 fall cycle](https://2027.eurosys.org/cfp.html). Titles and
@@ -19,8 +19,8 @@ format, and is double blind. Repository links must therefore point to an
 anonymous snapshot rather than this development repository. EuroSys also
 requires disclosure of AI-tool use under ACM policy.
 
-The paper studies whether **typed modules can preserve extension continuity
-across compiler roles**. A module may add program vocabulary, analysis,
+The paper studies **whole compiler extensions**: cross-role research ideas made
+into typed, distributable modules with extension continuity. A module may add program vocabulary, analysis,
 transformation, target choice, or artifact behavior through the same dependency,
 invocation, installation, rollback, and upgrade model. Progressive exposure
 lets consumers request additional implementation detail without forcing the
