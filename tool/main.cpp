@@ -23,6 +23,7 @@ namespace fs = std::filesystem;
 
 int usage() {
   std::cerr << "usage:\n"
+               "  joggle --version\n"
                "  joggle check <file.jog|-> [-M <module-dir>]...\n"
                "  joggle read <module.fn> <file|-> [-M <module-dir>]...\n"
                "  joggle run <module.fn>... <file.jog|-> "
@@ -267,6 +268,10 @@ int process(int argc, char** argv) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--version") {
+    std::cout << "joggle " JOGGLE_VERSION "\n";
+    return 0;
+  }
   if (argc >= 2 && std::string_view(argv[1]) == "module") {
     const int result = joggle::tool::module(argc, argv);
     return result == 2 ? usage() : result;

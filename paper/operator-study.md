@@ -106,6 +106,45 @@ sample count appears in the caption.
 No table is rendered from placeholder or synthetic values. Until the matched
 records exist, this document is the evidence contract rather than a mock result.
 
+## Executable path
+
+The contraction matrix is now executable rather than only specified. Generate
+all 27 deterministic MatMul cases into the ignored build tree with:
+
+```sh
+.venv-fixtures/bin/python paper/operator_suite.py
+```
+
+Each case has one runtime input, one constant ONNX initializer, one reference
+output, and hashes in `build/operator-study/fixtures/manifest.json`. This avoids
+coupling the study to Joggle's current single-input ONNX application while
+preserving an ordinary ONNX model that every baseline can consume. A case is
+prepared with independent weights and a balanced Joggle/ONNX Runtime manifest:
+
+```sh
+python3 paper/prepare_operator_case.py \
+  --fixture build/operator-study/fixtures/matmul-m1-k128-n128 \
+  --output build/operator-study/prepared/matmul-m1-k128-n128 \
+  --app build/joggle-onnx-app --tool build/joggle \
+  --modules build/modules --cc /usr/bin/cc \
+  --ort-python /path/to/python-with-onnxruntime
+```
+
+`paper/measure_systems.py` then consumes the emitted `systems.json`; it balances
+execution order, checks matching output hashes, and records artifacts, versions,
+host state, and latency without changing the speedup definition above.
+
+The first three local smoke shapes expose the optimization target, but are not
+publication measurements: the generated C is near ONNX Runtime for `M=1` and
+falls far behind as `M` grows. Inspection shows why. The independent weight
+artifact removes a per-inference initializer copy, but the remaining function is
+an untiled `i,j,k` loop nest with a strided weight load. Existing `tile.reorder`
+does not apply because the outer output loop and inner scalar reduction are two
+nested loop operations, not one schedulable loop. The next performance mechanism
+must therefore recognize and rewrite a general nested reduction into an explicit
+output-initialization plus accumulation nest; only then can interchange, blocking,
+packing, and vectorization operate on the real function body.
+
 ## Optimization gate before publication measurement
 
 The current scalar C path is not a credible performance candidate. Publication

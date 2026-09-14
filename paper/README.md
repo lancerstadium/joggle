@@ -90,6 +90,10 @@ is complete.
 - [`operator-study.md`](operator-study.md): exact shape grids, speedup
   convention, baseline fairness, LaTeX layout, and optimization gate for the
   dense operator table.
+- [`operator_suite.py`](operator_suite.py) and
+  [`prepare_operator_case.py`](prepare_operator_case.py): deterministic
+  contraction cases plus generated-C, independent-weight, correctness, and
+  balanced cross-system manifests for every table cell.
 - [`extension-study.md`](extension-study.md): frozen extension protocol,
   fairness rules, and threats.
 - [`extension-tasks.json`](extension-tasks.json) and [`tasks/`](tasks/):

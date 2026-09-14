@@ -260,6 +260,9 @@ endif()
 add_executable(joggle-tool tool/main.cpp tool/module.cpp)
 set_target_properties(joggle-tool PROPERTIES OUTPUT_NAME joggle)
 target_link_libraries(joggle-tool PRIVATE Joggle::joggle)
+target_compile_definitions(
+  joggle-tool PRIVATE JOGGLE_VERSION="${PROJECT_VERSION}"
+)
 
 install(TARGETS joggle joggle-tool EXPORT JoggleTargets)
 install(
@@ -307,6 +310,10 @@ install(
 
 if(JOGGLE_BUILD_TESTS)
   enable_testing()
+  add_test(NAME cli-version COMMAND joggle-tool --version)
+  set_tests_properties(
+    cli-version PROPERTIES PASS_REGULAR_EXPRESSION "^joggle ${PROJECT_VERSION}"
+  )
   add_library(joggle-test-module MODULE test/native.cpp)
   target_compile_features(joggle-test-module PRIVATE cxx_std_20)
   target_include_directories(
