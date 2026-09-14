@@ -118,3 +118,11 @@ joggle_onnx_model(
   ARGS --roundtrip onnx.Gather
   HEAVY
 )
+joggle_onnx_model(
+  NAME xcit-tiny-12-p8-224-opset17
+  SOURCE onnxmodelzoo/xcit_tiny_12_p8_224_Opset17/xcit_tiny_12_p8_224_Opset17.onnx
+  URL https://huggingface.co/onnxmodelzoo/xcit_tiny_12_p8_224_Opset17/resolve/a60050e7fafe21327ad5c78c107695714af2de24/xcit_tiny_12_p8_224_Opset17.onnx
+  SHA256 b5cffe4f64dbee8d1f9c74442a91611b74fd57925599ae46bccf1f7fa3e57093
+  TEST onnx-zoo-xcit-tiny
+  ARGS --frontier 909 onnx.MatMul onnx.LayerNormalization
+)

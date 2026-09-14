@@ -1,14 +1,15 @@
-model,format,decode,infer,convert,expose,emit_c,compile_c,execute,max_abs_error,note
-MNIST-8,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000190734863,official ONNX Zoo input and output
-MobileNetV2-7,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000209808350,official ONNX Zoo input and output
-ResNet18-v1-7,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000050067902,official ONNX Zoo model with symbolic batch N explicitly instantiated as one
-SqueezeNet1.1-7,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000052452087,"official ONNX Zoo model; deterministic seed-0 input and ONNX Runtime 1.26.0 reference"
-SqueezeNet1.0-13-QDQ,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000001341105,"official ONNX Zoo model; deterministic seed-0 input and ONNX Runtime 1.26.0 reference; QDQ boundaries executed"
-UltraFace-RFB-320,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000003576279,"official ONNX Zoo model; scores error 2.9802322e-7 and boxes error 3.5762787e-7"
-TinyYOLOv2-8,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000166893005,"official ONNX Zoo model; symbolic batch instantiated as one; deterministic seed-0 input and ONNX Runtime 1.26.0 reference"
-ShuffleNetV2-12,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000085830689,"official ONNX Zoo model; deterministic seed-0 input and ONNX Runtime 1.26.0 reference; Split/Concat channel-shuffle path"
-DenseNet121-12,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000076293945,"official ONNX Zoo input and output; 910 result types erased before inference and reconstructed to a zero frontier; spatial implementation and external-weight C"
-GoogLeNet-12,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000001564622,"official ONNX Zoo model; LRN and inference-only Dropout with an unused mask; deterministic seed-0 input and ONNX Runtime 1.26.0 reference"
-TinyYOLOv3-11,ONNX,pass,partial,not_run,not_run,not_run,not_run,not_run,,"official ONNX Zoo model; 280 unknown results before inference and 219 after; dynamic Shape/Slice/Tile/Resize chain and Loop subgraphs remain"
-SSD-MobileNetV1-12,ONNX,pass,pass,partial,not_run,not_run,not_run,not_run,,"official ONNX Zoo model; 6790 unknown results inferred to zero; 386 source calls remain after conversion; comparisons, Clip, and statically shaped Tile map to shared function bodies; the remaining frontier is dominated by NonZero, Slice, NonMaxSuppression, If, and Loop"
-MobileNetV2,TFLite,pass,n/a,pass,pass,pass,pass,pass,0.000001013279,"official floating-point TFLite model; 107 constants and 66 calls; strict external-weight C agrees with LiteRT 2.2.0 oracle"
+model,label,format,decode,infer,convert,expose,emit_c,compile_c,execute,max_abs_error,note
+mnist-8,MNIST-8,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000190734863,official ONNX Zoo input and output
+mobilenetv2-7,MobileNetV2-7,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000209808350,official ONNX Zoo input and output
+resnet18-v1-7,ResNet18-v1-7,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000050067902,official ONNX Zoo model with symbolic batch N explicitly instantiated as one
+squeezenet1.1-7,SqueezeNet1.1-7,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000052452087,"official ONNX Zoo model; deterministic seed-0 input and ONNX Runtime 1.26.0 reference"
+squeezenet1.0-13-qdq,SqueezeNet1.0-13-QDQ,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000001341105,"official ONNX Zoo model; deterministic seed-0 input and ONNX Runtime 1.26.0 reference; QDQ boundaries executed"
+ultraface-rfb-320,UltraFace-RFB-320,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000003576279,"official ONNX Zoo model; scores error 2.9802322e-7 and boxes error 3.5762787e-7"
+tinyyolov2-8,TinyYOLOv2-8,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000166893005,"official ONNX Zoo model; symbolic batch instantiated as one; deterministic seed-0 input and ONNX Runtime 1.26.0 reference"
+shufflenet-v2-12,ShuffleNetV2-12,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000085830689,"official ONNX Zoo model; deterministic seed-0 input and ONNX Runtime 1.26.0 reference; Split/Concat channel-shuffle path"
+densenet-12,DenseNet121-12,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000076293945,"official ONNX Zoo input and output; 910 result types erased before inference and reconstructed to a zero frontier; spatial implementation and external-weight C"
+googlenet-12,GoogLeNet-12,ONNX,pass,pass,pass,pass,pass,pass,pass,0.0000001564622,"official ONNX Zoo model; LRN and inference-only Dropout with an unused mask; deterministic seed-0 input and ONNX Runtime 1.26.0 reference"
+tiny-yolov3-11,TinyYOLOv3-11,ONNX,pass,partial,not_run,not_run,not_run,not_run,not_run,,"official ONNX Zoo model; 280 unknown results before inference and 219 after; dynamic Shape/Slice/Tile/Resize chain and Loop subgraphs remain"
+ssd-mobilenetv1-12,SSD-MobileNetV1-12,ONNX,pass,pass,partial,not_run,not_run,not_run,not_run,,"official ONNX Zoo model; 6790 unknown results inferred to zero; 386 source calls remain after conversion; comparisons, Clip, and statically shaped Tile map to shared function bodies; the remaining frontier is dominated by NonZero, Slice, NonMaxSuppression, If, and Loop"
+tflite-mobilenetv2,MobileNetV2,TFLite,pass,n/a,pass,pass,pass,pass,pass,0.000001013279,"official floating-point TFLite model; 107 constants and 66 calls; strict external-weight C agrees with LiteRT 2.2.0 oracle"
+xcit-tiny-12-p8-224-opset17,XCiT-Tiny-12/P8,ONNX,pass,partial,not_run,not_run,not_run,not_run,not_run,,"official ONNX Model Zoo XCiT; 1333 unknown results before inference and 909 after; LayerNormalization, trigonometric position encoding, shape expansion, and attention paths remain"

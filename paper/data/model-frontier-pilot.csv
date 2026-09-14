@@ -11,3 +11,4 @@ schema,model,decode,infer,convert,tensors,nodes,nested_graphs,unknown_before,unk
 1,shufflenet-v2-12,pass,pass,pass,282,261,0,273,0,0
 1,densenet-12,pass,pass,pass,848,910,0,910,0,0
 1,googlenet-12,pass,pass,pass,118,143,0,144,0,0
+1,xcit-tiny-12-p8-224-opset17,pass,partial,not_run,358,1310,0,1333,909,na

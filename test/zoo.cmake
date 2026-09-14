@@ -16,7 +16,7 @@ file(MAKE_DIRECTORY "${OUT}")
 function(joggle_onnx_model)
   cmake_parse_arguments(
     MODEL "HEAVY"
-    "NAME;SOURCE;SHA256;TEST;APP_SOURCE;APP_TOP;APP_SHA256" "ARGS" ${ARGN}
+    "NAME;SOURCE;URL;SHA256;TEST;APP_SOURCE;APP_TOP;APP_SHA256" "ARGS" ${ARGN}
   )
   foreach(field NAME SOURCE SHA256)
     if("${MODEL_${field}}" STREQUAL "")
@@ -33,8 +33,12 @@ function(joggle_onnx_model)
 
   list(REMOVE_ITEM pending "${MODEL_NAME}")
   set(pending "${pending}" PARENT_SCOPE)
-  set(url
-      "https://media.githubusercontent.com/media/onnx/models/${joggle_onnx_zoo_revision}/${MODEL_SOURCE}")
+  if(NOT "${MODEL_URL}" STREQUAL "")
+    set(url "${MODEL_URL}")
+  else()
+    set(url
+        "https://media.githubusercontent.com/media/onnx/models/${joggle_onnx_zoo_revision}/${MODEL_SOURCE}")
+  endif()
   set(output "${OUT}/${MODEL_NAME}.onnx")
   if(EXISTS "${output}")
     file(SHA256 "${output}" actual)
