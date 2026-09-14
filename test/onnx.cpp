@@ -121,6 +121,39 @@ joggle::Attr::Bytes loop_model() {
   return {bytes.begin(), bytes.end()};
 }
 
+joggle::Attr::Bytes if_model() {
+  jogonnx::ModelProto model;
+  model.set_ir_version(8);
+  model.add_opset_import()->set_version(13);
+  auto* graph = model.mutable_graph();
+  graph->set_name("if-capture");
+  tensor_type(graph->add_input(), "condition", {}, 9);
+  tensor_type(graph->add_input(), "x", {4});
+  tensor_type(graph->add_output(), "y", {4});
+  auto* branch = graph->add_node();
+  branch->set_op_type("If");
+  branch->add_input("condition");
+  branch->add_output("y");
+
+  const auto add_arm = [&](std::string name, std::string op,
+                           jogonnx::AttributeProto* attribute) {
+    attribute->set_name(std::move(name));
+    attribute->set_type(jogonnx::AttributeProto::GRAPH);
+    auto* arm = attribute->mutable_g();
+    tensor_type(arm->add_output(), "arm_y", {4});
+    auto* node = arm->add_node();
+    node->set_op_type(std::move(op));
+    node->add_input("x");
+    node->add_output("arm_y");
+  };
+  add_arm("then_branch", "Identity", branch->add_attribute());
+  add_arm("else_branch", "Relu", branch->add_attribute());
+  std::string bytes;
+  if (!model.SerializeToString(&bytes))
+    return {};
+  return {bytes.begin(), bytes.end()};
+}
+
 std::size_t count_calls(const joggle::Mod& mod, std::string_view callee) {
   std::size_t count = 0;
   for (joggle::Fn fn : mod.fns())
@@ -355,6 +388,29 @@ int main(int argc, char** argv) {
                       "multi-output-roundtrip.jog"));
   CHECK(multi_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(multi, multi_roundtrip));
+
+  const std::vector<joggle::Attr> if_args{joggle::Attr(if_model())};
+  CHECK(env.call("onnx.read", if_args, returns));
+  CHECK(returns.size() == 1 && returns.front().string());
+  joggle::Mod if_module;
+  CHECK(joggle::parse(env, *returns.front().string(), if_module,
+                      "if-capture.onnx"));
+  CHECK(if_module.verify(env));
+  CHECK(if_module.fns().size() == 3);
+  CHECK(joggle::run(env, "onnx.nn.convert", if_module));
+  CHECK(if_module.verify(env));
+  CHECK(count_calls(if_module, "onnx.If") == 0);
+  CHECK(if_module.fns().size() == 1);
+  std::size_t structured_branches = 0;
+  for (joggle::Op candidate : if_module.ops())
+    structured_branches += candidate.kind() == joggle::Op::Kind::branch;
+  CHECK(structured_branches == 1);
+  const std::string converted_if_text = joggle::print(if_module);
+  joggle::Mod converted_if_roundtrip;
+  CHECK(joggle::parse(env, converted_if_text, converted_if_roundtrip,
+                      "if-converted-roundtrip.jog"));
+  CHECK(converted_if_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(if_module, converted_if_roundtrip));
 
   const std::vector<joggle::Attr> loop_args{joggle::Attr(loop_model())};
   CHECK(env.call("onnx.read", loop_args, returns));

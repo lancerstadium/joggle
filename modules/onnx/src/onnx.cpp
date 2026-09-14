@@ -102,7 +102,8 @@ std::string shape(const google::protobuf::RepeatedField<std::int64_t>& dims) {
   return out + "]";
 }
 
-std::string type(const jogonnx::ValueInfoProto& value, Names& dimensions) {
+std::string type(const jogonnx::ValueInfoProto& value, Names& dimensions,
+                 const std::set<std::string, std::less<>>& generics) {
   if (!value.has_type() || !value.type().has_tensor_type())
     return "_";
   const auto& tensor = value.type().tensor_type();
@@ -115,8 +116,10 @@ std::string type(const jogonnx::ValueInfoProto& value, Names& dimensions) {
     const auto& dim = tensor.shape().dim(index);
     if (dim.has_dim_value())
       dims += std::to_string(dim.dim_value());
-    else if (dim.has_dim_param() && !dim.dim_param().empty())
-      dims += dimensions.get(dim.dim_param());
+    else if (dim.has_dim_param() && !dim.dim_param().empty()) {
+      const std::string name = dimensions.get(dim.dim_param());
+      dims += generics.contains(name) ? name : "_";
+    }
     else
       dims += "_";
   }
@@ -446,21 +449,22 @@ private:
           out.push_back(name);
       }
     };
+    // A function generic must be bindable by its caller.  ONNX also uses
+    // dim_param for inferred dimensions that appear only on intermediate or
+    // output values.  Those are existential shape unknowns, not generic
+    // parameters of the graph function, and are refined from the body later.
     for (const auto& value : graph.input())
-      remember(value);
-    for (const auto& value : graph.value_info())
-      remember(value);
-    for (const auto& value : graph.output())
       remember(value);
     return out;
   }
 
-  Types types(const jogonnx::GraphProto& graph, const Types& inherited) {
+  Types types(const jogonnx::GraphProto& graph, const Types& inherited,
+              const std::set<std::string, std::less<>>& generics) {
     Types local;
     const auto remember = [&](const jogonnx::ValueInfoProto& value) {
       if (!value.has_name() || value.name().empty())
         return;
-      const std::string value_type = type(value, dimensions_);
+      const std::string value_type = type(value, dimensions_, generics);
       const auto found = local.find(value.name());
       if (found == local.end() || value_type != "_")
         local.insert_or_assign(value.name(), value_type);
@@ -565,7 +569,10 @@ private:
 
     const std::vector<std::string> dimension_names =
         dimensions(source, inherited_dimensions);
-    const Types value_types = types(source, inherited_types);
+    const std::set<std::string, std::less<>> generic_dimensions(
+        dimension_names.begin(), dimension_names.end());
+    const Types value_types =
+        types(source, inherited_types, generic_dimensions);
     const std::vector<std::string> captured = captures(source);
     std::set<std::string, std::less<>> initialized;
     for (const auto& value : source.initializer())
@@ -601,7 +608,7 @@ private:
       first = false;
       ++input_count;
       out << value_meta(input.name()) << names.get(input.name()) << ": "
-          << type(input, dimensions_);
+          << type(input, dimensions_, generic_dimensions);
     }
     for (const std::string& capture : captured) {
       if (!first)
@@ -618,7 +625,7 @@ private:
     for (int index = 0; index < source.output_size(); ++index) {
       if (index)
         out << ", ";
-      out << type(source.output(index), dimensions_);
+      out << type(source.output(index), dimensions_, generic_dimensions);
     }
     if (source.output_size() > 1)
       out << ')';

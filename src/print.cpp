@@ -167,7 +167,7 @@ std::string render_call(const detail::Store& store, const detail::OpData& op) {
   for (std::size_t index = 0; index < op.args.size(); ++index) {
     if (index)
       out += ", ";
-    out += render_value(store, op.args[index]);
+    out += render_value(store, op.args[index], 0, false, true);
   }
   return out + ")";
 }

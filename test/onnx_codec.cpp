@@ -59,6 +59,25 @@ std::string dynamic_model() {
   return model.SerializeToString(&bytes) ? bytes : std::string{};
 }
 
+std::string output_symbol_model() {
+  jogonnx::ModelProto model;
+  model.set_ir_version(9);
+  model.add_opset_import()->set_version(21);
+  auto* graph = model.mutable_graph();
+  tensor_type(graph->add_input(), "input", {4});
+  auto* output = graph->add_output();
+  output->set_name("output");
+  auto* tensor = output->mutable_type()->mutable_tensor_type();
+  tensor->set_elem_type(1);
+  tensor->mutable_shape()->add_dim()->set_dim_param("inferred-only");
+  auto* identity = graph->add_node();
+  identity->set_op_type("Identity");
+  identity->add_input("input");
+  identity->add_output("output");
+  std::string bytes;
+  return model.SerializeToString(&bytes) ? bytes : std::string{};
+}
+
 std::string rank_model() {
   jogonnx::ModelProto model;
   model.set_ir_version(9);
@@ -218,6 +237,28 @@ int main(int argc, char** argv) {
       "tensor<f32, [batch_size, batch_size_1, _]>");
   CHECK(main.params()[0].type() == dynamic);
   CHECK(main.returns().size() == 1 && main.returns()[0] == dynamic);
+
+  const std::string output_symbol_bytes = output_symbol_model();
+  CHECK(!output_symbol_bytes.empty());
+  const auto* output_symbol_first =
+      reinterpret_cast<const std::uint8_t*>(output_symbol_bytes.data());
+  const joggle::Attr::Bytes output_symbol_payload(
+      output_symbol_first,
+      output_symbol_first + output_symbol_bytes.size());
+  const std::vector<joggle::Attr> output_symbol_args{
+      joggle::Attr(output_symbol_payload)};
+  std::vector<joggle::Attr> output_symbol_returns;
+  CHECK(env.call("onnx.read", output_symbol_args,
+                 output_symbol_returns));
+  CHECK(output_symbol_returns.size() == 1 &&
+        output_symbol_returns[0].string());
+  const std::string output_symbol_source(
+      *output_symbol_returns[0].string());
+  CHECK(output_symbol_source.find("fn main(") != std::string::npos);
+  CHECK(output_symbol_source.find("inferred_only: int") ==
+        std::string::npos);
+  CHECK(output_symbol_source.find("-> tensor<f32, [_]>") !=
+        std::string::npos);
 
   joggle::Mod roundtrip;
   CHECK(joggle::parse(env, joggle::print(mod), roundtrip,
