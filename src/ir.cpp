@@ -127,6 +127,9 @@ Ty substitute(const Ty& type, const Bindings& bindings) {
   args.reserve(type.args().size());
   for (const Ty& arg : type.args())
     args.push_back(substitute(arg, bindings));
+  if (type.name() == "len" && args.size() == 1 &&
+      args.front().name() == "[]")
+    return Ty(std::to_string(args.front().args().size()));
   return Ty(std::string(type.name()), args);
 }
 
@@ -144,6 +147,24 @@ bool concrete_term(const Ty& value) {
   if (!value.valid() || value.name() == "_")
     return false;
   return std::all_of(value.args().begin(), value.args().end(), concrete_term);
+}
+
+bool dynamic_term(const Ty& value, const Ty& expected, bool nested = false) {
+  if (!value.valid())
+    return false;
+  if (value.name() == "_")
+    return nested;
+  if (expected.name() == "Ty")
+    return true;
+  if (expected.name() == "list" && expected.args().size() == 1 &&
+      value.name() == "[]") {
+    return std::all_of(value.args().begin(), value.args().end(),
+                       [&](const Ty& item) {
+                         return dynamic_term(item, expected.args().front(),
+                                             true);
+                       });
+  }
+  return concrete_term(value);
 }
 
 Ty generic_kind(const Ty& value) {
@@ -1094,9 +1115,17 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
   for (const Ty& type : initial_fn.returns)
     target_returns.push_back(substitute(type, bindings));
   if (specialized) {
-    if (!std::all_of(generic_args.begin(), generic_args.end(), concrete_term))
+    for (std::size_t index = 0; index < generic_args.size(); ++index) {
+      if (concrete_term(generic_args[index]))
+        continue;
+      const std::uint32_t generic = initial_fn.generic_vals[index];
+      const Ty expected = initial_source.vals[generic].data.type;
+      if (initial_source.vals[generic].data.users.empty() &&
+          dynamic_term(generic_args[index], expected))
+        continue;
       return reject("function clone requires concrete generic arguments",
                     source_fn.loc());
+    }
     const std::array candidates{source_fn};
     std::vector<Ty> resolved_returns;
     std::vector<Ty> resolved_generics;
@@ -1586,11 +1615,14 @@ bool Mod::expand(const Env& env, Op call, Fn callee,
     if (generic.type().name() == "int") {
       const auto number = integer(value);
       if (!number)
-        return reject("cannot materialize an expanded integer parameter",
+        return reject("cannot materialize expanded integer parameter '" +
+                          std::string(generic.name()) + "' from '" +
+                          std::string(value.text()) + "'",
                       call.loc());
       const Val constant = this->constant(call, Attr(*number), Ty("int"));
       if (!constant)
-        return reject("cannot materialize an expanded integer parameter",
+        return reject("cannot materialize expanded integer parameter '" +
+                          std::string(generic.name()) + "'",
                       call.loc());
       values.emplace(generic.id_, constant.id_);
       continue;
@@ -2891,6 +2923,20 @@ bool Mod::retarget(const Env& env, Op call, Fn target,
                        call.loc());
       return rollback();
     }
+  }
+
+  const Ty applied{std::string(call.callee())};
+  if (applied.valid() && !applied.args().empty() &&
+      applied.args().size() <= target.generics().size()) {
+    std::string specialized = symbol + '<';
+    for (std::size_t index = 0; index < applied.args().size(); ++index) {
+      if (index)
+        specialized += ", ";
+      specialized += applied.args()[index].text();
+    }
+    specialized += '>';
+    if (env.resolve(*this, call, specialized, arguments) == target)
+      symbol = std::move(specialized);
   }
 
   if (env.resolve(*this, call, symbol, arguments) != target) {

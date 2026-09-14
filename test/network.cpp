@@ -1502,6 +1502,30 @@ int main(int argc, char** argv) {
   CHECK(nms_converted);
   CHECK(nonzero_converted);
 
+  constexpr std::string_view dynamic_slice_source =
+      "module dynamic.slice\n"
+      "use tensor\n"
+      "fn main(\n"
+      "  x: tensor<i32, [4, 5]>, starts: tensor<i64, [2]>,\n"
+      "  ends: tensor<i64, [2]>, axes: tensor<i64, [2]>,\n"
+      "  steps: tensor<i64, [2]>\n"
+      ") -> tensor<i32, [_, _]> {\n"
+      "  return tensor.slice(x, starts, ends, axes, steps)\n"
+      "}\n";
+  joggle::Mod dynamic_slice;
+  CHECK(joggle::parse(env, dynamic_slice_source, dynamic_slice,
+                      "dynamic-slice.jog"));
+  CHECK(dynamic_slice.verify(env));
+  const joggle::Op dynamic_slice_call =
+      dynamic_slice.find_fn("main").body().ops().front();
+  const joggle::Fn dynamic_slice_body =
+      env.resolve(dynamic_slice, dynamic_slice_call);
+  CHECK(dynamic_slice_body);
+  if (!env.expand(dynamic_slice, dynamic_slice_call, dynamic_slice_body))
+    return dynamic_slice.print_diags(stderr);
+  CHECK(dynamic_slice.verify(env));
+  CHECK(count(dynamic_slice, "tensor.slice") == 0);
+
   constexpr std::string_view static_shape_source =
       "module static.shape\n"
       "use onnx\n"

@@ -278,14 +278,14 @@ local fn convert_slice(m: Mod, op: Op) -> bool {
     values += [ints(m, op, steps)]
     return convert_call(m, op, "tensor.slice", values)
   }
-  if len(inputs) != 5 {
+  if len(inputs) < 3 || len(inputs) > 5 {
     return false
   }
   let control = ir.type(inputs[1])
   if !tensor.valid(control) || len(tensor.dims(control)) != 1 {
     return false
   }
-  for i in 2..5 {
+  for i in 2..len(inputs) {
     if ir.type(inputs[i]) != control {
       return false
     }

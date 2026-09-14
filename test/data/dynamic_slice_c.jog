@@ -1,0 +1,10 @@
+module dynamic_slice_c
+use tensor
+
+fn main(
+  x: tensor<i32, [4, 5]>,
+  starts: tensor<i64, [2]>, ends: tensor<i64, [2]>,
+  axes: tensor<i64, [2]>, steps: tensor<i64, [2]>
+) -> tensor<i32, [_, _]> {
+  return tensor.slice(x, starts, ends, axes, steps)
+}

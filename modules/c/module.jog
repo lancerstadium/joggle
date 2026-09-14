@@ -1451,8 +1451,17 @@ local fn branch(
   let second = block(
     m, bodies[1], depth + 1, blob, data_fns, config, offsets, direct, results
   )
-  var out = pad(depth) + "if (" +
-            expr(m, inputs[0], blob, data_fns, config) +
+  var condition = expr(m, inputs[0], blob, data_fns, config)
+  let source = ir.def(inputs[0])
+  if ir.name(inputs[0]) == "" && ir.live(source) &&
+     ir.kind(source) == "call" && len(ir.args(source)) == 2 &&
+     binary(call_name(m, source)) != "" {
+    let values = ir.args(source)
+    condition = expr(m, values[0], blob, data_fns, config) + " " +
+                binary(call_name(m, source)) + " " +
+                expr(m, values[1], blob, data_fns, config)
+  }
+  var out = pad(depth) + "if (" + condition +
             ") {\n" + first
   if second == "" {
     out += pad(depth) + "}\n"
@@ -1858,6 +1867,15 @@ local fn linkage(m: Mod, fn: Fn) -> str {
   return ""
 }
 
+local fn uses_slot(fn: Fn, slot: int) -> bool {
+  for value in ir.vals(fn) {
+    if mem.planned(value) && mem.slot(value) == slot {
+      return true
+    }
+  }
+  return false
+}
+
 local fn definition(
   m: Mod, fn: Fn, blob: str, data_fns: list<Fn>, config: dict, offsets: dict
 ) -> str {
@@ -1871,10 +1889,12 @@ local fn definition(
     storage = "static "
   }
   for slot in 0..mem.slots(fn) {
-    let type = mem.type(fn, slot)
-    memory += pad(1) + storage + scalar(type, config) + " slot_" +
-              c_name(base.name(type)) + "_" + text(slot) + "[" +
-              text(mem.count(fn, slot)) + "];\n"
+    if uses_slot(fn, slot) {
+      let type = mem.type(fn, slot)
+      memory += pad(1) + storage + scalar(type, config) + " slot_" +
+                c_name(base.name(type)) + "_" + text(slot) + "[" +
+                text(mem.count(fn, slot)) + "];\n"
+    }
   }
   var data_name = ""
   if blob != "" && has_fn(data_fns, fn) {

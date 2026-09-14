@@ -70,7 +70,7 @@ joggle_onnx_model(
   SOURCE validated/vision/object_detection_segmentation/ssd-mobilenetv1/model/ssd_mobilenet_v1_12.onnx
   SHA256 b8fba5e404077d4048d27fcd1667e85e27e192eb9bf51e696c46a3acd7d21058
   TEST onnx-zoo-ssd-mobilenet
-  ARGS --convert-frontier 115 onnx.Loop onnx.NonMaxSuppression onnx.Resize
+  ARGS --convert-frontier 23 onnx.Loop onnx.NonMaxSuppression onnx.Resize
 )
 joggle_onnx_model(
   NAME shufflenet-v2-12

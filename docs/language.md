@@ -193,6 +193,20 @@ that the unknown extent is a type. A named relation uses an ordinary generic,
 for example `fn f<N: int>(x: tensor<f32, [N, 3]>)`; repeated `N` occurrences
 retain equality through the existing unifier.
 
+The intrinsic derived term `len<S>` relates a compile-time list to its length
+without introducing a shape-expression language.  If `S` is bound to
+`[2, 3, 5]`, substitution reduces `len<S>` to the integer term `3` everywhere
+in the signature and body.  This is useful when a reusable function needs the
+rank of a structural shape but must not duplicate it as an independently
+supplied generic.  `len<S>` is well formed only when `S` has list kind.
+
+A specialized function may retain `_` inside a concrete structural term, such
+as the shape `[_, 4]`.  Such a term describes runtime variability and is not an
+uninferred generic.  Specialization therefore accepts it when the corresponding
+generic is used only in types; a generic consumed as a runtime value must still
+be fully materializable.  The distinction keeps dynamic tensor signatures
+expressible while rejecting attempts to execute an unknown compile-time value.
+
 Type construction and value construction may share one name. For example,
 `fn tensor<E: Ty, S: list<int>>() -> Ty` declares the type spelling while
 `fn tensor<E: Ty, S: list<int>>(fill: E) -> tensor<E, S>` constructs a value.

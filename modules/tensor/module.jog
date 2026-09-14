@@ -418,17 +418,154 @@ fn slice_offset<
   return out
 }
 
+local fn slice_runtime<
+  E: Ty, S: list<int>, Y: list<int>, I: Ty, N: int, R: int
+>(
+  x: tensor<E, S>, starts: tensor<I, [N]>, ends: tensor<I, [N]>,
+  axes: tensor<I, [N]>, steps: tensor<I, [N]>
+) -> tensor<E, Y> {
+  assert(N <= R, "tensor.slice has more axes than input dimensions")
+
+  var source_shape = tensor<index, [R]>(index(0))
+  var result_shape = tensor<index, [R]>(index(0))
+  var begin = tensor<index, [N]>(index(0))
+  var stride = tensor<index, [N]>(index(1))
+  [stage: "shape"]
+  for axis in 0..R {
+    let extent = dim(x, index(axis))
+    source_shape[axis] = extent
+    result_shape[axis] = extent
+  }
+  for item in 0..N {
+    var axis = int(axes[item])
+    if axis < 0 {
+      axis += R
+    }
+    assert(axis >= 0 && axis < R, "tensor.slice axis is out of range")
+    let extent = source_shape[axis]
+    let step = index(steps[item])
+    assert(step != index(0), "tensor.slice step cannot be zero")
+    var first = index(starts[item])
+    var last = index(ends[item])
+    var count = index(0)
+    if step > index(0) {
+      if first < index(0) {
+        first += extent
+      }
+      if last < index(0) {
+        last += extent
+      }
+      if first < index(0) {
+        first = index(0)
+      }
+      if first > extent {
+        first = extent
+      }
+      if last < index(0) {
+        last = index(0)
+      }
+      if last > extent {
+        last = extent
+      }
+      if last > first {
+        count = (last - first + step - index(1)) / step
+      }
+    } else {
+      let high = extent - index(1)
+      if first < index(0) {
+        first += extent
+      }
+      if last < -extent {
+        last = -index(1)
+      } else {
+        if last < index(0) {
+          last += extent
+        }
+      }
+      if first < -index(1) {
+        first = -index(1)
+      }
+      if first > high {
+        first = high
+      }
+      if last < -index(1) {
+        last = -index(1)
+      }
+      if last > high {
+        last = high
+      }
+      let magnitude = -step
+      if first > last {
+        count = (first - last + magnitude - index(1)) / magnitude
+      }
+    }
+    begin[item] = first
+    stride[item] = step
+    result_shape[axis] = count
+  }
+
+  var out: tensor<E, Y> = make(E(0), source_shape)
+  var count = index(1)
+  for axis in 0..R {
+    count *= result_shape[axis]
+  }
+  for linear in index(0)..count {
+    var source = index(0)
+    var source_stride = index(1)
+    var result_stride = index(1)
+    for reverse in 0..R {
+      let axis = R - reverse - 1
+      var coordinate = (linear / result_stride) % result_shape[axis]
+      for item in 0..N {
+        var selected = int(axes[item])
+        if selected < 0 {
+          selected += R
+        }
+        if selected == axis {
+          coordinate = begin[item] + coordinate * stride[item]
+        }
+      }
+      source += coordinate * source_stride
+      source_stride *= source_shape[axis]
+      result_stride *= result_shape[axis]
+    }
+    out[linear] = x[source]
+  }
+  return view(out, result_shape)
+}
+
 fn slice<
   E: Ty, S: list<int>, Y: list<int>, I: Ty, N: int
 >(
   x: tensor<E, S>, starts: tensor<I, [N]>, ends: tensor<I, [N]>,
   axes: tensor<I, [N]>, steps: tensor<I, [N]>
 ) -> tensor<E, Y> {
-  var out = tensor<E, Y>(E(0))
-  for i in 0..numel<Y>() {
-    out[i] = x[slice_offset<S>(starts, axes, steps, Y, i)]
+  return slice_runtime<E, S, Y, I, N, len<S>>(
+    x, starts, ends, axes, steps
+  )
+}
+
+fn slice<
+  E: Ty, S: list<int>, Y: list<int>, I: Ty, N: int
+>(
+  x: tensor<E, S>, starts: tensor<I, [N]>, ends: tensor<I, [N]>,
+  axes: tensor<I, [N]>
+) -> tensor<E, Y> {
+  var steps = tensor<I, [N]>(I(1))
+  return slice(x, starts, ends, axes, steps)
+}
+
+fn slice<
+  E: Ty, S: list<int>, Y: list<int>, I: Ty, N: int
+>(
+  x: tensor<E, S>, starts: tensor<I, [N]>, ends: tensor<I, [N]>
+) -> tensor<E, Y> {
+  var axes = tensor<I, [N]>(I(0))
+  var steps = tensor<I, [N]>(I(1))
+  for item in 0..N {
+    axes[item] = I(item)
   }
-  return out
+  return slice(x, starts, ends, axes, steps)
 }
 
 fn concat<E: Ty, L: list<int>, R: list<int>, Y: list<int>>(

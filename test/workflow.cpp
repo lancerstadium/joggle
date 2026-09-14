@@ -341,11 +341,14 @@ int main(int argc, char** argv) {
       std::vector<joggle::Ty>{joggle::Ty("[4]"), joggle::Ty("[4]")}));
   CHECK(generated_fn.revision() == rejected_specialization);
   generated_fn.clear_diags();
-  CHECK(!generated_fn.clone(
-      env, relu_template, "bad_relu",
-      std::vector<joggle::Ty>{joggle::Ty("f32"), joggle::Ty("[_, 4]")}));
-  CHECK(generated_fn.revision() == rejected_specialization);
-  generated_fn.clear_diags();
+  const joggle::Fn dynamic_relu = generated_fn.clone(
+      env, relu_template, "dynamic_relu",
+      std::vector<joggle::Ty>{joggle::Ty("f32"), joggle::Ty("[_, 4]")});
+  CHECK(dynamic_relu && dynamic_relu.generics().empty() &&
+        dynamic_relu.params().front().type() ==
+            joggle::Ty("tensor<f32, [_, 4]>") &&
+        generated_fn.revision() == rejected_specialization + 1);
+  CHECK(generated_fn.verify(env));
   joggle::Mod generated_roundtrip;
   CHECK(joggle::parse(env, joggle::print(generated_fn), generated_roundtrip,
                       "generated-roundtrip.jog"));
@@ -609,6 +612,33 @@ int main(int argc, char** argv) {
   CHECK(generic_call.callee() == "helper<6>" &&
         generic_edit.revision() == rejected_generic_edit);
   generic_edit.clear_diags();
+
+  joggle::Mod derived_generic;
+  constexpr std::string_view derived_generic_source =
+      "module derived_generic\n"
+      "fn vec<N: int>() -> Ty;\n"
+      "fn vec<N: int>(x: i32) -> vec<N>;\n"
+      "fn build<S: list<int>>(x: i32) -> vec<len<S>> {\n"
+      "  return vec<len<S>>(x)\n"
+      "}\n"
+      "fn main(x: i32) -> vec<3> { return build<[2, 3, 5]>(x) }\n";
+  CHECK(joggle::parse(env, derived_generic_source, derived_generic,
+                      "derived-generic.jog"));
+  CHECK(derived_generic.verify(env));
+  const joggle::Fn build = derived_generic.find_fn("build");
+  const joggle::Fn build3 = derived_generic.clone(
+      env, build, "build3", std::vector<joggle::Ty>{joggle::Ty("[2, 3, 5]")});
+  CHECK(build3 && build3.generics().empty() &&
+        build3.returns() == std::vector<joggle::Ty>{joggle::Ty("vec<3>")});
+  CHECK(build3.body().ops().front().callee() == "derived_generic.vec<3>");
+  CHECK(derived_generic.verify(env));
+  joggle::Mod derived_generic_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(derived_generic),
+                      derived_generic_roundtrip,
+                      "derived-generic-roundtrip.jog"));
+  CHECK(derived_generic_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(derived_generic,
+                                   derived_generic_roundtrip));
 
   joggle::Op tensor_add;
   joggle::Op relu_call;

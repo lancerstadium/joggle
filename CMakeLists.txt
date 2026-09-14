@@ -692,6 +692,18 @@ if(JOGGLE_BUILD_TESTS)
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/nonzero_c.cmake
     )
     add_test(
+      NAME dynamic-slice-c-execution
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DTOOL=$<TARGET_FILE:joggle-tool>
+        -DCC=${JOGGLE_TEST_C_COMPILER}
+        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/dynamic_slice_c.jog
+        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/dynamic_slice_c_main.c
+        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/dynamic-slice-c-test
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/dynamic_slice_c.cmake
+    )
+    add_test(
       NAME tile-execution
       COMMAND
         ${CMAKE_COMMAND}

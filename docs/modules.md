@@ -243,6 +243,14 @@ without defining a dynamic buffer class. Static-only targets intentionally
 reject unresolved runtime allocation until an explicit bounding and storage
 preparation policy has run.
 
+`slice` follows the same rule for both constant and runtime controls.  Its
+shared body normalizes positive and negative steps, clamps bounds, derives the
+logical result extents, allocates from the source-shape capacity, copies by
+ordinary coordinate arithmetic, and returns a `view`.  The three-, four-, and
+five-input forms are overloads of that body rather than frontend or emitter
+cases.  Static shape bookkeeping is marked for normal specialization; dynamic
+starts, ends, axes, and steps remain ordinary runtime values.
+
 ## Frontends
 
 A frontend is deliberately split into transport and meaning:

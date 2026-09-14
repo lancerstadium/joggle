@@ -193,8 +193,32 @@ bool merge_binding(Ty& bound, const Ty& actual) {
   return actual.name() == "int" && detail::sized_integer_type(bound.name());
 }
 
+Ty reduce_derived(const Ty& type, const std::vector<std::string>& generics,
+                  const Bindings& bindings) {
+  if (type.args().empty())
+    return type;
+  std::vector<Ty> args;
+  args.reserve(type.args().size());
+  for (const Ty& arg : type.args())
+    args.push_back(reduce_derived(arg, generics, bindings));
+  if (type.name() == "len" && args.size() == 1) {
+    Ty operand = args.front();
+    if (operand.args().empty() && generic(generics, operand.name())) {
+      const auto found = bindings.find(std::string(operand.name()));
+      if (found != bindings.end())
+        operand = found->second;
+    }
+    if (operand.name() == "[]")
+      return Ty(std::to_string(operand.args().size()));
+  }
+  return Ty(std::string(type.name()), args);
+}
+
 bool unify(const Ty& formal, const Ty& actual,
            const std::vector<std::string>& generics, Bindings& bindings) {
+  const Ty reduced_formal = reduce_derived(formal, generics, bindings);
+  if (reduced_formal != formal)
+    return unify(reduced_formal, actual, generics, bindings);
   if (formal.empty() || actual.empty() || formal.name() == "_" ||
       formal.name() == "Attr" || actual.name() == "_" ||
       actual.name() == "Attr")
@@ -247,6 +271,9 @@ Ty substitute(const Ty& type, const std::vector<std::string>& generics,
   args.reserve(type.args().size());
   for (const Ty& arg : type.args())
     args.push_back(substitute(arg, generics, bindings));
+  if (type.name() == "len" && args.size() == 1 &&
+      args.front().name() == "[]")
+    return Ty(std::to_string(args.front().args().size()));
   return Ty(std::string(type.name()), args);
 }
 
@@ -284,6 +311,10 @@ Ty term_kind(const Ty& term, std::span<const GenericInfo> context) {
     if (term.name() == "true" || term.name() == "false")
       return Ty("bool");
     return Ty("Ty");
+  }
+  if (term.name() == "len" && term.args().size() == 1) {
+    const Ty operand = term_kind(term.args().front(), context);
+    return operand.name() == "list" ? Ty("int") : Ty("_");
   }
   return Ty("Ty");
 }

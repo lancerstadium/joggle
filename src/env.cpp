@@ -851,7 +851,13 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
     const Ty applied{std::string(op.callee())};
     if (!applied.valid())
       return Fn{};
-    return match(op, resolve_fns(context, applied.name()));
+    Fn target = match(op, resolve_fns(context, applied.name()));
+    if (target)
+      return target;
+    const std::string prefix = std::string(context.module()) + '.';
+    if (!applied.name().starts_with(prefix))
+      return Fn{};
+    return match(op, resolve_fns(context, applied.name().substr(prefix.size())));
   };
   std::vector<Fn> local_dependencies;
   std::vector<Fn> active_dependencies;
