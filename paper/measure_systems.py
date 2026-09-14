@@ -235,6 +235,22 @@ def git(repo: Path, *arguments: str) -> str:
     return result.stdout.strip()
 
 
+def cpu_model() -> str:
+    cpuinfo = Path("/proc/cpuinfo")
+    if cpuinfo.is_file():
+        for line in cpuinfo.read_text(errors="replace").splitlines():
+            field, separator, value = line.partition(":")
+            if separator and field.strip() in {"model name", "Hardware"}:
+                return value.strip()
+    return platform.processor()
+
+
+def available_cpus() -> list[int] | None:
+    if not hasattr(os, "sched_getaffinity"):
+        return None
+    return sorted(os.sched_getaffinity(0))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True)
@@ -349,7 +365,9 @@ def main() -> None:
                     "node": platform.node(),
                     "platform": platform.platform(),
                     "machine": platform.machine(),
-                    "processor": platform.processor(),
+                    "processor": cpu_model(),
+                    "logical_cpus": os.cpu_count(),
+                    "available_cpus": available_cpus(),
                     "python": sys.version.split()[0],
                 },
                 "thread_environment": THREAD_ENV,

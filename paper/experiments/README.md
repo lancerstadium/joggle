@@ -62,6 +62,14 @@ python3 paper/measure_systems.py \
 Linux experiment hosts may additionally pass `--cpu N`. Unsupported affinity
 requests fail rather than silently producing an unpinned record.
 
+The repository's `linux-performance` workflow is the reproducible CI smoke
+run of this protocol. It uses a GitHub-managed Linux runner, a Release build,
+the dependencies frozen in `requirements.txt`, one dynamically selected CPU,
+and uploads the raw CSV and provenance JSON. Its numbers are useful for
+cross-revision diagnosis, but a shared virtual runner is not a controlled
+publication machine. Final latency claims still require an identified,
+otherwise-idle Linux host and replication on a second machine.
+
 Correctness thresholds belong in each subject command. The checked-in
 MobileNetV2 manifest uses the same `1e-4 + 1e-4 * abs(reference)` elementwise
 bound for generated C and ONNX Runtime. Checksums expose nondeterminism but are

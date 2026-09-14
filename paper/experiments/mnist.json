@@ -22,7 +22,7 @@
         "reference": "build-app/examples/mnist/expected.bin"
       },
       "version_command": [
-        "/usr/bin/clang",
+        "cc",
         "--version"
       ]
     },
