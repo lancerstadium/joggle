@@ -388,6 +388,21 @@ iteration order even when `axis` is not the last iterator; a later checked
 `tile.split(m, loop, factor)` form selects the last iterator. Neither form
 selects a loop or factor on the user's behalf.
 
+An experiment can also collapse an adjacent static pair without introducing a
+new loop representation:
+
+```jog
+if tile.can_merge(m, loop, axis) {
+  let merged = tile.merge(m, loop, axis)
+  assert(ir.live(merged), "axis merge failed")
+}
+```
+
+The replacement loop has one linear iterator. Its body reconstructs the two
+original coordinates, preserving nonzero lower bounds, lexicographic order,
+and all loop-carried values. The shorter form selects the final adjacent pair;
+`tile.mergeable(m)` lets policy code enumerate the same legal edits first.
+
 After splitting a state axis, a pass may legally move only its inner axis
 across a reduction band and promote the resulting tile:
 

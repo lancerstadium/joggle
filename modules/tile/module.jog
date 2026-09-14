@@ -447,6 +447,238 @@ local fn clone_body(
   )
 }
 
+local fn adjacent_axis(source: Op) -> int {
+  return last_axis(source) - 1
+}
+
+fn merge_issue(m: Mod, source: Op, axis: int) -> str {
+  if !ir.live(source) || ir.kind(source) != "loop" {
+    return "requires a live loop"
+  }
+  let bodies = ir.blks(source)
+  let inputs = ir.args(source)
+  let outputs = ir.outs(source)
+  if len(bodies) != 1 || len(inputs) <= len(outputs) {
+    return "requires a structured range loop"
+  }
+  let axes = len(inputs) - len(outputs)
+  let body_args = ir.args(bodies[0])
+  if axes < 2 || len(body_args) != len(inputs) {
+    return "requires at least two loop axes"
+  }
+  if axis < 0 || axis + 1 >= axes {
+    return "requires an adjacent axis pair within the loop rank"
+  }
+  if ir.type(body_args[axis]) != ty("index") ||
+     ir.type(body_args[axis + 1]) != ty("index") {
+    return "requires index iterators"
+  }
+  let left = ir.def(inputs[axis])
+  let right = ir.def(inputs[axis + 1])
+  if !syntax_op(m, left, "operator ..") ||
+     !syntax_op(m, right, "operator ..") {
+    return "requires adjacent range iterators"
+  }
+  let left_bounds = ir.args(left)
+  let right_bounds = ir.args(right)
+  if len(left_bounds) != 2 || len(right_bounds) != 2 {
+    return "requires two-bound ranges"
+  }
+  for bound in left_bounds + right_bounds {
+    if !ir.is_const(bound) || base.kind(ir.constant(bound)) != "int" {
+      return "requires static integer bounds"
+    }
+  }
+  let left_width = base.int(ir.constant(left_bounds[1])) -
+                   base.int(ir.constant(left_bounds[0]))
+  let right_width = base.int(ir.constant(right_bounds[1])) -
+                    base.int(ir.constant(right_bounds[0]))
+  if left_width <= 0 || right_width <= 0 {
+    return "requires non-empty increasing ranges"
+  }
+  if len(affine_mul_int(left_width, right_width)) == 0 {
+    return "range product overflows"
+  }
+  let ops = ir.ops(bodies[0])
+  if len(ops) == 0 || ir.kind(ops[len(ops) - 1]) != "yield" {
+    return "requires a terminated loop body"
+  }
+  return ""
+}
+
+fn merge_issue(m: Mod, source: Op) -> str {
+  return merge_issue(m, source, adjacent_axis(source))
+}
+
+fn can_merge(m: Mod, source: Op, axis: int) -> bool {
+  let before = ir.revision(m)
+  let legal = merge_issue(m, source, axis) == ""
+  assert(ir.revision(m) == before,
+         "tile.can_merge changed the module")
+  return legal
+}
+
+fn can_merge(m: Mod, source: Op) -> bool {
+  return can_merge(m, source, adjacent_axis(source))
+}
+
+fn mergeable(m: Mod, axis: int) -> list<Op> {
+  let before = ir.revision(m)
+  var out: list<Op> = []
+  for op in ir.ops(m) {
+    if can_merge(m, op, axis) {
+      out += [op]
+    }
+  }
+  assert(ir.revision(m) == before,
+         "tile.mergeable changed the module")
+  return out
+}
+
+fn mergeable(m: Mod) -> list<Op> {
+  let before = ir.revision(m)
+  var out: list<Op> = []
+  for op in ir.ops(m) {
+    if can_merge(m, op) {
+      out += [op]
+    }
+  }
+  assert(ir.revision(m) == before,
+         "tile.mergeable changed the module")
+  return out
+}
+
+fn merge(m: Mod, source: Op, axis: int) -> Op {
+  let issue = merge_issue(m, source, axis)
+  assert(issue == "", "tile.merge " + issue)
+
+  let inputs = ir.args(source)
+  let outputs = ir.outs(source)
+  let axes = len(inputs) - len(outputs)
+  let body = ir.blks(source)[0]
+  let body_args = ir.args(body)
+  let left_range = ir.def(inputs[axis])
+  let right_range = ir.def(inputs[axis + 1])
+  let left_bounds = ir.args(left_range)
+  let right_bounds = ir.args(right_range)
+  let left_begin = base.int(ir.constant(left_bounds[0]))
+  let left_end = base.int(ir.constant(left_bounds[1]))
+  let right_begin = base.int(ir.constant(right_bounds[0]))
+  let right_end = base.int(ir.constant(right_bounds[1]))
+  let right_width = right_end - right_begin
+  let product = affine_mul_int(left_end - left_begin, right_width)
+  assert(len(product) == 1, "tile.merge range product overflows")
+
+  let type = ty("index")
+  let zero = keep(m, ir.constant(m, source, 0, type), "merge_zero")
+  let total = keep(
+    m, ir.constant(m, source, product[0], type), "merge_extent"
+  )
+  let inner_extent = keep(
+    m, ir.constant(m, source, right_width, type), "merge_inner_extent"
+  )
+  let outer_begin = keep(
+    m, ir.constant(m, source, left_begin, type), "merge_outer_begin"
+  )
+  let inner_begin = keep(
+    m, ir.constant(m, source, right_begin, type), "merge_inner_begin"
+  )
+  let range = call_like(
+    m, source, left_range, [zero, total], ir.type(inputs[axis])
+  )
+
+  var sources: list<Val> = []
+  var names: list<str> = []
+  for i in 0..axes {
+    if i == axis {
+      sources += [range]
+      names += ["merge_" + text(ir.key(body_args[axis]))]
+    } else {
+      if i != axis + 1 {
+        sources += [inputs[i]]
+        names += [ir.name(body_args[i])]
+      }
+    }
+  }
+  var carried: list<Val> = []
+  for i in axes..len(inputs) {
+    carried += [inputs[i]]
+  }
+
+  let merged = ir.loop(m, source, names, sources, carried)
+  assert(ir.live(merged), "tile.merge could not build the merged loop")
+  let merged_body = ir.blks(merged)[0]
+  let merged_args = ir.args(merged_body)
+  let merged_ops = ir.ops(merged_body)
+  let merged_yield = merged_ops[len(merged_ops) - 1]
+  let linear = merged_args[axis]
+  let outer_offset = keep(
+    m, ir.call(
+      m, merged_yield, base_fn("operator /", 2),
+      [linear, inner_extent], type
+    ),
+    "merge_outer_offset"
+  )
+  let inner_offset = keep(
+    m, ir.call(
+      m, merged_yield, base_fn("operator %", 2),
+      [linear, inner_extent], type
+    ),
+    "merge_inner_offset"
+  )
+  let outer = keep(
+    m, ir.call(
+      m, merged_yield, base_fn("operator +", 2),
+      [outer_begin, outer_offset], type
+    ),
+    "merge_outer"
+  )
+  let inner = keep(
+    m, ir.call(
+      m, merged_yield, base_fn("operator +", 2),
+      [inner_begin, inner_offset], type
+    ),
+    "merge_inner"
+  )
+
+  var old: list<Val> = []
+  var next: list<Val> = []
+  for i in 0..axes {
+    old += [body_args[i]]
+    if i == axis {
+      next += [outer]
+    } else {
+      if i == axis + 1 {
+        next += [inner]
+      } else {
+        var merged_axis = i
+        if i > axis + 1 {
+          merged_axis -= 1
+        }
+        next += [merged_args[merged_axis]]
+      }
+    }
+  }
+  for i in 0..len(outputs) {
+    old += [body_args[axes + i]]
+    next += [merged_args[axes - 1 + i]]
+  }
+  assert(ir.args(m, merged_yield,
+                 clone_body(m, body, merged_body, old, next)),
+         "tile.merge could not connect the merged loop")
+  if len(outputs) != 0 {
+    assert(ir.replace(m, outputs, ir.outs(merged)),
+           "tile.merge could not replace the original loop results")
+  }
+  assert(ir.erase(m, source),
+         "tile.merge could not erase the original loop")
+  return merged
+}
+
+fn merge(m: Mod, source: Op) -> Op {
+  return merge(m, source, adjacent_axis(source))
+}
+
 fn peel_issue(m: Mod, source: Op, axis: int, factor: int) -> str {
   if factor <= 0 {
     return "requires a positive factor"

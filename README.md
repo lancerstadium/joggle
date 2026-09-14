@@ -233,7 +233,9 @@ functions; that ABI escape hatch is distinct from optimizing an inspectable
 body. [`spatial`](examples/spatial) reorders a proved affine reduction, and the
 generic `tile.canon` pass compacts proved affine index trees without another
 Conv overload. The separate `tile.scalarize` mechanism lets an explicit policy
-promote carried output elements when replication is profitable.
+promote carried output elements when replication is profitable, while
+`tile.merge` can linearize adjacent static axes without changing their
+lexicographic order or losing loop-carried state.
 [`compact`](examples/compact)
 demonstrates the distinct case of selecting a fused implementation with
 different workspace behavior.

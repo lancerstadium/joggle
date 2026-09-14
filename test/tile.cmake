@@ -6,6 +6,7 @@ if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
    NOT DEFINED KEEP_MODEL OR NOT DEFINED KEEP_HARNESS OR
    NOT DEFINED RELU_MODEL OR NOT DEFINED RELU_HARNESS OR
    NOT DEFINED MULTI_MODEL OR NOT DEFINED MULTI_HARNESS OR
+   NOT DEFINED MERGE_MODEL OR NOT DEFINED MERGE_HARNESS OR
    NOT DEFINED MODULES OR NOT DEFINED EXAMPLES OR NOT DEFINED ROOT)
   message(FATAL_ERROR
           "tile test requires TOOL, CC, models, harnesses, module roots, and ROOT")
@@ -191,6 +192,84 @@ endif()
 
 file(REMOVE_RECURSE "${ROOT}")
 file(MAKE_DIRECTORY "${ROOT}")
+
+set(merged_raw "${ROOT}/merged-raw.jog")
+set(merged_ir "${ROOT}/merged.jog")
+set(merged_source "${ROOT}/merged.c")
+set(merged_program "${ROOT}/merged")
+execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_mergeable tile_pass.merge_first
+          "${MERGE_MODEL}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${merged_raw}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "adjacent-axis merge failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run c.prepare "${merged_raw}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${merged_ir}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "merged C preparation failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" check "${merged_ir}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "re-reading merged IR failed (${result}):\n${output}${error}")
+endif()
+file(READ "${merged_ir}" merged_text)
+string(REGEX MATCHALL "for [A-Za-z_][A-Za-z0-9_]* in" merged_loops
+       "${merged_text}")
+list(LENGTH merged_loops merged_loop_count)
+if(NOT merged_loop_count EQUAL 2 OR
+   NOT merged_text MATCHES "for merge_[0-9]+ in" OR
+   NOT merged_text MATCHES "for i in [^\n]+, j in" OR
+   NOT merged_text MATCHES "merge_inner_offset_[0-9]+" OR
+   NOT merged_text MATCHES "%")
+  message(FATAL_ERROR
+          "axis merge did not expose one reconstructed loop:\n${merged_text}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${merged_ir}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${merged_source}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "merged C emission failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CC}" -std=c99 -O2 -Wall -Wextra -Wstrict-prototypes -Werror
+          "${merged_source}" "${MERGE_HARNESS}" -o "${merged_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  file(READ "${merged_source}" emitted)
+  message(FATAL_ERROR
+          "merged C did not compile (${result}):\n"
+          "${output}${error}\n${emitted}")
+endif()
+execute_process(
+  COMMAND "${merged_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "merged C returned the wrong result (${result}):\n${output}${error}")
+endif()
 
 set(multi_ir "${ROOT}/multi.jog")
 set(multi_source "${ROOT}/multi.c")

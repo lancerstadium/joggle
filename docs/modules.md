@@ -444,6 +444,14 @@ last axis. `split_issue`, `can_split`, and
 exactly the edit it intends to request. `tile.extents(m, loop)` returns all
 static trip counts, or an empty list when any range is dynamic, so a policy can
 require exact tiles without reimplementing range recognition.
+`tile.merge(m, loop, axis)` performs the inverse structural operation for one
+adjacent pair. It replaces the pair by a zero-based linear axis and reconstructs
+both original coordinates with quotient and remainder inside the same body.
+The mapping preserves the exact lexicographic execution order and every carried
+value, so it does not rely on an operator, tensor rank, or independence guess.
+For now, both ranges must have static integer bounds, positive trip counts, and
+a representable product. `merge_issue`, `can_merge`, and `mergeable` expose the
+same decision without mutation; omitting `axis` selects the final adjacent pair.
 `tile.peel(m, loop, axis, factor)` is the conservative alternative when a
 padded state tile would prevent a later interchange or promotion. It replaces
 one static loop by an aligned prefix and an ordinary scalar tail, returned in
@@ -455,14 +463,15 @@ factor-one requests return the unchanged loop as a one-item list.
 mechanism adds neither masked accesses nor a target-emitter case; a policy may
 compose `split`, `reorder`, and `scalarize` on the returned prefix while leaving
 the tail untouched.
-`tile.splittable(m, factor)` and `tile.unrollable(m, factor)` expose legal loop
-sets; `tile.fusible(m)` exposes the exact pair collection consumed by automatic
-fusion. Enumeration is read-only and returns live `Op` handles, or
+`tile.splittable(m, factor)`, `tile.mergeable(m)`, and
+`tile.unrollable(m, factor)` expose legal loop sets; `tile.fusible(m)` exposes
+the exact pair collection consumed by automatic fusion. Enumeration is
+read-only and returns live `Op` handles, or
 two-operation lists for fusion, so a user policy can inspect ordinary IR
 without reconstructing legality. Fusion recomputes this collection after each
 structural round and skips candidates invalidated by an earlier edit in the
 same round. The matching `reorder_issue`, `scalarize_issue`, `split_issue`,
-`unroll_issue`, and `fuse_issue`
+`merge_issue`, `unroll_issue`, and `fuse_issue`
 functions return the same human-readable reason used by each transform; an
 empty string means the requested edit is legal. Policies can therefore count
 or report rejected alternatives without attempting a mutation and scraping a

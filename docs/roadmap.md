@@ -151,6 +151,14 @@ the original lexicographic order for arbitrary multi-axis loops, and represents
 the tail with ordinary structured control flow. This supplies a composable
 mechanism for later state tiling without a Conv, GEMM, rank, or target case.
 
+The complementary `tile.merge` now collapses one adjacent static axis pair
+into a linear range and reconstructs both original coordinates in the existing
+body. It preserves lexicographic order and arbitrary carried values, rejects
+dynamic, empty, and overflowing domains, and composes across more than two
+axes. The mechanism is target-neutral; deciding when fewer loops outweigh the
+introduced quotient and remainder remains an explicit policy and measurement
+question.
+
 Conservative integer bounds now feed an explicit `bounds.fold` edit for exact
 Boolean predicates. Composing it with ordinary `opt.fold` removes statically
 proved control flow, including no-padding Conv guards, while retaining dynamic

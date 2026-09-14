@@ -784,6 +784,50 @@ fn check_split_noop(m: Mod) -> bool {
   return false
 }
 
+fn check_mergeable(m: Mod) -> bool {
+  let before = ir.revision(m)
+  let candidates = tile.mergeable(m)
+  let second_pair = tile.mergeable(m, 1)
+  let outside = tile.mergeable(m, 2)
+  assert(ir.revision(m) == before,
+         "tile.mergeable must be read-only")
+  assert(len(candidates) == 1 && len(second_pair) == 1 &&
+         len(outside) == 0,
+         "unexpected merge candidate set")
+  let loop = candidates[0]
+  assert(tile.can_merge(m, loop) && tile.can_merge(m, loop, 0) &&
+         tile.merge_issue(m, loop) == "" &&
+         tile.merge_issue(m, loop, 2) ==
+           "requires an adjacent axis pair within the loop rank",
+         "merge legality and rejection reasons disagree")
+  let dynamic = ir.find(m, "dynamic")
+  assert(ir.live(dynamic), "merge check requires the dynamic fixture")
+  var saw_dynamic = false
+  for op in ir.ops(dynamic) {
+    if ir.kind(op) == "loop" {
+      saw_dynamic = true
+      assert(!tile.can_merge(m, op) &&
+             tile.merge_issue(m, op) ==
+               "requires static integer bounds",
+             "dynamic merge boundary was not reported")
+    }
+  }
+  assert(saw_dynamic, "merge check did not find the dynamic loop")
+  assert(ir.revision(m) == before,
+         "tile merge queries changed the module")
+  return true
+}
+
+fn merge_first(m: Mod) -> bool {
+  let candidates = tile.mergeable(m)
+  assert(len(candidates) > 0,
+         "tile_pass.merge_first requires a mergeable loop")
+  let first = tile.merge(m, candidates[0])
+  assert(ir.live(first), "first adjacent-axis merge failed")
+  let second = tile.merge(m, first)
+  return ir.live(second)
+}
+
 fn unroll_first(m: Mod, factor: int) -> bool {
   for op in ir.ops(m) {
     if ir.kind(op) == "loop" {
