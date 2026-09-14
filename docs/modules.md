@@ -362,6 +362,15 @@ forms collect all reads or writes in lexical IR order, so a policy can inspect
 an unfamiliar body without naming its tensors; the three-argument forms retain
 alias-aware selection for one tensor. An empty inner form preserves a known
 access whose address or layout is not provably affine.
+`tile.canon(m, loop)` uses the same proof to replace an affine index expression
+with one deterministic sum of loop coordinates. It changes only index
+operands and returns whether it made an edit. The old expression is erased as
+one checked batch only when every external use is an indexed access being
+rewritten; a value shared with a guard, data operand, range, or unrelated
+operation is retained. `tile.canon(m)` applies the same rule across the module.
+The transform is idempotent and contains no tensor-rank, operator, frontend, or
+artifact case. It therefore removes expanded stride-update chains before C or
+another target without turning that cleanup into an emitter peephole.
 `tile.reorder(m, loop, order)` rebuilds the same loop with a permutation of its
 existing axes. It is deliberately conservative: ranges must be statically
 bounded, the carried state must have one equal affine read/write address, the

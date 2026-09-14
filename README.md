@@ -101,7 +101,7 @@ Conversion, optimization, storage planning, and emission remain explicit:
   -M build/modules > semantic.jog
 
 ./build/joggle run c.prepare bounds.fold opt.fold opt.basic \
-  tile.scalarize opt.basic mem.plan c.noalias semantic.jog \
+  tile.canon mem.plan c.noalias semantic.jog \
   -M build/modules > prepared.jog
 
 ./build/joggle emit c.source prepared.jog \
@@ -116,7 +116,7 @@ are not needed:
 ./build/joggle read onnx.read model.onnx -M build/modules |
   ./build/joggle run onnx.nn.convert opt.basic - -M build/modules |
   ./build/joggle run c.prepare bounds.fold opt.fold opt.basic \
-    tile.scalarize opt.basic mem.plan c.noalias - -M build/modules |
+    tile.canon mem.plan c.noalias - -M build/modules |
   ./build/joggle emit c.source - -M build/modules > model.c
 ```
 
@@ -214,8 +214,10 @@ an inspectable loop body. The [`edge` example](examples/edge) selects a generic
 external kernel while the unchanged model continues to call its semantic
 functions; that ABI escape hatch is distinct from optimizing an inspectable
 body. [`spatial`](examples/spatial) reorders a proved affine reduction, and the
-generic `tile.scalarize` pass promotes its carried output element across the
-reduction without another Conv overload. [`compact`](examples/compact)
+generic `tile.canon` pass compacts proved affine index trees without another
+Conv overload. The separate `tile.scalarize` mechanism lets an explicit policy
+promote carried output elements when replication is profitable.
+[`compact`](examples/compact)
 demonstrates the distinct case of selecting a fused implementation with
 different workspace behavior.
 Neither changes the frontend or C emitter. [Module documentation](docs/modules.md) covers

@@ -363,60 +363,6 @@ fn scalar_cost(m: Mod, source: Op) -> int {
   return scalar_cost(m, source, 1)
 }
 
-local fn index_value(
-  m: Mod,
-  before: Op,
-  type: Ty,
-  form: list<int>,
-  axes: list<Val>
-) -> Val {
-  var out = axes[0]
-  var started = false
-  if form[0] != 0 {
-    out = ir.constant(m, before, form[0], type)
-    assert(ir.live(out), "tile.scalarize could not build an address")
-    started = true
-  }
-  for axis in 0..len(axes) {
-    let coefficient = form[axis + 1]
-    if coefficient != 0 {
-      var coordinate = axes[axis]
-      if ir.type(coordinate) != type {
-        coordinate = ir.call(
-          m, before, text(type), [coordinate], type
-        )
-        assert(ir.live(coordinate),
-               "tile.scalarize could not cast an address coordinate")
-      }
-      var term = coordinate
-      if coefficient != 1 {
-        let scale = ir.constant(m, before, coefficient, type)
-        assert(ir.live(scale),
-               "tile.scalarize could not build an address scale")
-        term = ir.call(
-          m, before, base_fn("operator *", 2), [coordinate, scale], type
-        )
-        assert(ir.live(term),
-               "tile.scalarize could not scale an address coordinate")
-      }
-      if !started {
-        out = term
-        started = true
-      } else {
-        out = ir.call(
-          m, before, base_fn("operator +", 2), [out, term], type
-        )
-        assert(ir.live(out), "tile.scalarize could not extend an address")
-      }
-    }
-  }
-  if !started {
-    out = ir.constant(m, before, 0, type)
-    assert(ir.live(out), "tile.scalarize could not build a zero address")
-  }
-  return out
-}
-
 local fn rebuild_scalar_block(
   m: Mod,
   loop: Op,
@@ -504,7 +450,7 @@ local fn rebuild_scalar_block(
                 let form = affine(m, loop, inputs[input])
                 if len(form) != 0 {
                   clone_old += [inputs[input]]
-                  clone_next += [index_value(
+                  clone_next += [affine_value(
                     m, terminator, ir.type(inputs[input]),
                     form, axis_values
                   )]
@@ -606,7 +552,7 @@ fn scalarize(m: Mod, source: Op, budget: int) -> Op {
       }
     }
     lane_axes += [values]
-    let index = index_value(
+    let index = affine_value(
       m, outer_yield, ir.type(store_args[1]), index_form, values
     )
     indices += [index]

@@ -6,19 +6,19 @@
     {
       "system": "joggle",
       "command": [
-        "build-policy/MobileNetV2/reorder/model",
+        "build-policy/MobileNetV2/canon/model",
         "build-app/examples/mobilenet/input.bin",
-        "build-policy/MobileNetV2/reorder/model.bin",
+        "build-policy/MobileNetV2/canon/model.bin",
         "build-app/examples/mobilenet/expected.bin",
         "3",
         "1"
       ],
       "artifacts": {
-        "source": "build-policy/MobileNetV2/reorder/model.c",
-        "header": "build-policy/MobileNetV2/reorder/model.h",
-        "executable": "build-policy/MobileNetV2/reorder/model",
+        "source": "build-policy/MobileNetV2/canon/model.c",
+        "header": "build-policy/MobileNetV2/canon/model.h",
+        "executable": "build-policy/MobileNetV2/canon/model",
         "input": "build-app/examples/mobilenet/input.bin",
-        "weights": "build-policy/MobileNetV2/reorder/model.bin",
+        "weights": "build-policy/MobileNetV2/canon/model.bin",
         "reference": "build-app/examples/mobilenet/expected.bin"
       },
       "version_command": [

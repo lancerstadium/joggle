@@ -1,0 +1,160 @@
+local fn canon_has(ops: list<Op>, selected: Op) -> bool {
+  for op in ops {
+    if op == selected {
+      return true
+    }
+  }
+  return false
+}
+
+local fn expression_ops(
+  value: Val, scope: list<Op>, seen: list<Op>
+) -> list<Op> {
+  let op = ir.def(value)
+  if !ir.live(op) || !canon_has(scope, op) || canon_has(seen, op) {
+    return seen
+  }
+  var out = seen + [op]
+  for input in ir.args(op) {
+    out = expression_ops(input, scope, out)
+  }
+  return out
+}
+
+local fn exclusive_expression(
+  m: Mod, ops: list<Op>, accesses: list<Op>
+) -> bool {
+  for op in ops {
+    for output in ir.outs(op) {
+      for user in ir.users(output) {
+        if !canon_has(ops, user) &&
+           (!canon_has(accesses, user) || !index_arg(m, user, output)) {
+          return false
+        }
+      }
+    }
+  }
+  return true
+}
+
+local fn affine_value_cost(
+  type: Ty, form: list<int>, axes: list<Val>
+) -> int {
+  var cost = 0
+  var terms = 0
+  if form[0] != 0 {
+    cost += 1
+    terms += 1
+  }
+  for axis in 0..len(axes) {
+    if form[axis + 1] != 0 {
+      if ir.type(axes[axis]) != type {
+        cost += 1
+      }
+      if form[axis + 1] != 1 {
+        cost += 2
+      }
+      terms += 1
+    }
+  }
+  if terms == 0 {
+    return 1
+  }
+  return cost + terms - 1
+}
+
+// Replace exclusively used affine index trees with one deterministic normal
+// form. The selected loop and its access operations remain the same objects;
+// only their index operands change. Once every external use is an index being
+// replaced in this edit, the old tree is erased as one checked batch.
+fn canon(m: Mod, source: Op) -> bool {
+  if !ir.live(source) || ir.kind(source) != "loop" {
+    return false
+  }
+  let bodies = ir.blks(source)
+  let inputs = ir.args(source)
+  let outputs = ir.outs(source)
+  let axes = len(inputs) - len(outputs)
+  if len(bodies) != 1 || axes <= 0 ||
+     len(ir.args(bodies[0])) != len(inputs) {
+    return false
+  }
+
+  let body_args = ir.args(bodies[0])
+  var coordinates: list<Val> = []
+  for axis in 0..axes {
+    coordinates += [body_args[axis]]
+  }
+  let scope = nested(source)
+  let accesses = indexed_ops(m, source)
+  var old: list<Val> = []
+  var next: list<Val> = []
+  var dead: list<Op> = []
+  var changed = false
+
+  for access in accesses {
+    if ir.live(access) {
+      let args = ir.args(access)
+      var replacement = args
+      var end = len(args)
+      if syntax_op(m, access, "operator []=") {
+        end -= 1
+      }
+      var access_changed = false
+      for at in 1..end {
+        let value = args[at]
+        var found = false
+        for known in 0..len(old) {
+          if old[known] == value {
+            replacement[at] = next[known]
+            found = true
+            access_changed = true
+          }
+        }
+        if !found {
+          let form = affine(m, source, value)
+          if len(form) == axes + 1 {
+            let expression = expression_ops(value, scope, [])
+            let ideal = affine_value_cost(ir.type(value), form, coordinates)
+            if len(expression) > ideal &&
+               exclusive_expression(m, expression, accesses) {
+              let canonical = affine_value(
+                m, access, ir.type(value), form, coordinates
+              )
+              old += [value]
+              next += [canonical]
+              for op in expression {
+                if !canon_has(dead, op) {
+                  dead += [op]
+                }
+              }
+              replacement[at] = canonical
+              access_changed = true
+            }
+          }
+        }
+      }
+      if access_changed {
+        assert(ir.args(m, access, replacement),
+               "tile.canon could not replace an affine index")
+        changed = true
+      }
+    }
+  }
+  if len(dead) != 0 {
+    assert(ir.erase(m, dead),
+           "tile.canon could not erase an obsolete affine index")
+  }
+  return changed
+}
+
+fn canon(m: Mod) -> bool {
+  let candidates = ir.ops(m)
+  var changed = false
+  for op in candidates {
+    if ir.live(op) && ir.kind(op) == "loop" {
+      changed = canon(m, op) || changed
+    }
+  }
+  return changed
+}

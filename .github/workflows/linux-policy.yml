@@ -70,7 +70,7 @@ jobs:
             --examples examples \
             --model MobileNetV2=build-app/examples/mobilenet/canonical.jog \
             --out-dir build-policy \
-            --output build-policy/reorder.csv \
+            --output build-policy/variants.csv \
             2>&1 | tee build-policy/transform.log
 
       - name: Preserve transform failure
@@ -90,7 +90,7 @@ jobs:
 
       - name: Package and validate generated C
         run: |
-          root=build-policy/MobileNetV2/reorder
+          root=build-policy/MobileNetV2/canon
           build-app/joggle emit c.header "$root/placed.jog" \
             --arg '"weights"' -M build-app/modules > "$root/model.h"
           build-app/joggle emit c.data "$root/placed.jog" \
@@ -198,7 +198,7 @@ jobs:
         with:
           name: linux-policy-${{ github.sha }}
           path: |
-            build-policy/reorder.csv
+            build-policy/variants.csv
             build-policy/results/
           if-no-files-found: error
           retention-days: 30

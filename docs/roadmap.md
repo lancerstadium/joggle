@@ -109,8 +109,14 @@ the existing budget on the largest reduction extents did not beat the simpler
 reorder policy and increased transform time, so that ranking was not retained
 as behavior. Compiler optimization remarks show that the reordered inner state
 loops already reach loop or SLP vectorization on the development toolchain.
-The next code-quality mechanism must therefore address access/layout reuse or
-state-axis coalescing rather than duplicating more scalar bodies.
+The first follow-up mechanism is now `tile.canon`: it reconstructs an
+exclusively used affine index from the proved form and batch-erases the old
+stride-update tree. On the current MobileNetV2 reorder artifact this reduces C
+source from 196,011 to 152,302 bytes, remains byte-idempotent, preserves the
+stored output exactly, and improves the same-process direction relative to
+reorder alone. These development-host observations justify a controlled Linux
+run; they are not publication performance results. Layout reuse and state-axis
+coalescing remain subsequent mechanisms rather than scalar-body duplication.
 
 Primitive loop edits do not run a hidden whole-module cleanup. In particular,
 `tile.peel` performs only the checked local replacement; a composing policy

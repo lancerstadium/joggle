@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build matched baseline and structural-reorder C variants."""
+"""Build matched baseline, reorder, and affine-canonical C variants."""
 
 from __future__ import annotations
 
@@ -109,7 +109,7 @@ def main() -> None:
 
     for model_name, canonical in selected_models:
         canonical_hash = digest(canonical)
-        for variant in ["baseline", "reorder"]:
+        for variant in ["baseline", "reorder", "canon"]:
             directory = root / model_name / variant
             directory.mkdir(parents=True, exist_ok=True)
             transformed = directory / "transformed.jog"
@@ -127,10 +127,18 @@ def main() -> None:
                     [example_path, module_path]
                 ), transformed)
 
+            normalized = clean
+            canon_seconds = 0.0
+            if variant == "canon":
+                normalized = directory / "normalized.jog"
             clean_seconds = run(invocation(
                 tool, "run", ["bounds.fold", "opt.fold", "opt.basic"],
                 transformed, [module_path]
-            ), clean)
+            ), normalized)
+            if variant == "canon":
+                canon_seconds = run(invocation(
+                    tool, "run", ["tile.canon"], normalized, [module_path]
+                ), clean)
             plan_seconds = run(invocation(
                 tool, "run", ["mem.plan"], clean, [module_path]
             ), planned)
@@ -161,6 +169,7 @@ def main() -> None:
                 "c_sha256": digest(source),
                 "transform_seconds": f"{transform_seconds:.6f}",
                 "clean_seconds": f"{clean_seconds:.6f}",
+                "canon_seconds": f"{canon_seconds:.6f}",
                 "plan_seconds": f"{plan_seconds:.6f}",
                 "place_seconds": f"{place_seconds:.6f}",
                 "emit_seconds": f"{emit_seconds:.6f}",

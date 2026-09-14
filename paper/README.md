@@ -143,6 +143,7 @@ python3 paper/measure_pair.py \
   --model UltraFace --cc /usr/bin/clang \
   --baseline build-study/reorder/UltraFace-study/UltraFace/baseline/model.c \
   --candidate reorder=build-study/reorder/UltraFace-study/UltraFace/reorder/model.c \
+  --candidate canon=build-study/reorder/UltraFace-study/UltraFace/canon/model.c \
   --input build-matrix/ultraface-rfb-320/input.bin \
   --weights build-study/ultraface-block/weights.bin \
   --output-count 8840 --output-count 17680 --repetitions 20 \

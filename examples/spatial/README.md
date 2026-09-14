@@ -68,13 +68,20 @@ does not need a second function body.
 
 The same exposed Conv body can also be improved without an implementation
 override. Here each requested pass changes that body in place: range facts
-remove proved guards, scalar promotion changes the reduction's traffic, and
-ordinary cleanup removes values made dead by those edits.
+remove proved guards, affine canonicalization replaces private stride-update
+trees, scalar promotion changes the reduction's traffic, and ordinary cleanup
+removes values made dead by those edits.
 
 ```sh
-joggle run bounds.fold opt.fold opt.basic tile.scalarize opt.basic \
+joggle run bounds.fold opt.fold opt.basic tile.canon tile.scalarize opt.basic \
   canonical.jog -M build/modules > improved.jog
 ```
+
+`tile.canon` is useful independently of scalar promotion. It rebuilds an
+exclusively used affine index in one normal form and erases the obsolete tree
+as a checked batch. If any part of that tree is also observed by a guard or a
+non-index operand, the access is left unchanged. Applying it twice produces
+byte-identical IR.
 
 For an output-stationary reduction this moves the output access outside the
 reduction band. The resulting source has an outer `n, m, oh, ow` loop, one

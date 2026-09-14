@@ -293,3 +293,55 @@ fn affine(m: Mod, loop: Op, value: Val) -> list<int> {
          "tile.affine requires a structured loop")
   return affine_in(m, loop, value)
 }
+
+// Rebuild a proved affine form from loop coordinates. Keeping construction
+// next to the analysis gives every transform one normal form.
+local fn affine_value(
+  m: Mod,
+  before: Op,
+  type: Ty,
+  form: list<int>,
+  axes: list<Val>
+) -> Val {
+  var out = axes[0]
+  var started = false
+  if form[0] != 0 {
+    out = ir.constant(m, before, form[0], type)
+    assert(ir.live(out), "tile could not build an affine offset")
+    started = true
+  }
+  for axis in 0..len(axes) {
+    let coefficient = form[axis + 1]
+    if coefficient != 0 {
+      var coordinate = axes[axis]
+      if ir.type(coordinate) != type {
+        coordinate = ir.call(m, before, text(type), [coordinate], type)
+        assert(ir.live(coordinate),
+               "tile could not cast an affine coordinate")
+      }
+      var term = coordinate
+      if coefficient != 1 {
+        let scale = ir.constant(m, before, coefficient, type)
+        assert(ir.live(scale), "tile could not build an affine scale")
+        term = ir.call(
+          m, before, base_fn("operator *", 2), [coordinate, scale], type
+        )
+        assert(ir.live(term), "tile could not scale an affine coordinate")
+      }
+      if !started {
+        out = term
+        started = true
+      } else {
+        out = ir.call(
+          m, before, base_fn("operator +", 2), [out, term], type
+        )
+        assert(ir.live(out), "tile could not extend an affine value")
+      }
+    }
+  }
+  if !started {
+    out = ir.constant(m, before, 0, type)
+    assert(ir.live(out), "tile could not build a zero affine value")
+  }
+  return out
+}

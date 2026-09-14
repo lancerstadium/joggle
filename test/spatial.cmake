@@ -11,6 +11,11 @@ set(canonical "${ROOT}/canonical.jog")
 set(bounded "${ROOT}/bounded.jog")
 set(bounded_source "${ROOT}/bounded.c")
 set(bounded_program "${ROOT}/bounded")
+set(canon "${ROOT}/canon.jog")
+set(canon_stable "${ROOT}/canon-stable.jog")
+set(canon_guarded "${ROOT}/canon-guarded.jog")
+set(canon_source "${ROOT}/canon.c")
+set(canon_program "${ROOT}/canon")
 set(prepared "${ROOT}/prepared.jog")
 set(configured "${ROOT}/configured.jog")
 set(disabled "${ROOT}/disabled.jog")
@@ -43,6 +48,22 @@ execute_process(
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "canonical preparation failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run tile.canon "${canonical}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${canon_guarded}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "guarded affine index canonicalization failed (${result}):\n${error}")
+endif()
+file(READ "${canon_guarded}" canon_guarded_text)
+if(NOT canon_guarded_text MATCHES "var xi(_[A-Za-z0-9]+)* =")
+  message(FATAL_ERROR
+          "affine index canonicalization erased a guard-shared tree:\n"
+          "${canon_guarded_text}")
 endif()
 execute_process(
   COMMAND "${TOOL}" query spatial.plan "${canonical}"
@@ -149,6 +170,68 @@ execute_process(
 if(NOT result EQUAL 0)
   message(FATAL_ERROR
           "bounded C returned the wrong result (${result}):\n${output}${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run tile.canon "${bounded}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${canon}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "affine index canonicalization failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" run tile.canon "${canon}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${canon_stable}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "repeated affine index canonicalization failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E compare_files "${canon}" "${canon_stable}"
+  RESULT_VARIABLE result
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "affine index canonicalization is not idempotent")
+endif()
+file(READ "${canon}" canon_text)
+if(canon_text MATCHES "var (xi|wi|yi)(_[A-Za-z0-9]+)* =" OR
+   NOT canon_text MATCHES "out_1\\[int\\(n\\) \\* 4")
+  message(FATAL_ERROR
+          "affine index canonicalization retained a stride chain:\n${canon_text}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${canon}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${canon_source}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "canonical-index C emission failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CC}" -std=c99 -O2 -Wall -Wextra -Wstrict-prototypes -Werror
+          "${canon_source}" "${HARNESS}" -lm -o "${canon_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "canonical-index C did not compile (${result}):\n${output}${error}")
+endif()
+execute_process(
+  COMMAND "${canon_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "canonical-index C returned the wrong result (${result}):\n${output}${error}")
 endif()
 execute_process(
   COMMAND "${TOOL}" run tile_pass.check_scalarize "${canonical}"
