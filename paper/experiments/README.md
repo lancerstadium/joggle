@@ -70,6 +70,14 @@ cross-revision diagnosis, but a shared virtual runner is not a controlled
 publication machine. Final latency claims still require an identified,
 otherwise-idle Linux host and replication on a second machine.
 
+`mobilenetv2-block.json` is a second independent-system comparison whose
+Joggle subject is produced by the out-of-tree `spatial.block` source policy.
+The `linux-policy` workflow starts from the preserved `canonical.jog`, composes
+the public `tile` transforms, rebuilds the ordinary C artifact, validates it,
+and then invokes this manifest. The policy run answers whether that one
+user-visible scheduling choice narrows the external gap; it is not entered as
+a third system or compared to another Joggle row in the measurement runner.
+
 Correctness thresholds belong in each subject command. The checked-in
 MobileNetV2 manifest uses the same `1e-4 + 1e-4 * abs(reference)` elementwise
 bound for generated C and ONNX Runtime. Checksums expose nondeterminism but are

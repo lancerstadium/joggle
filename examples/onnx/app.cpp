@@ -92,7 +92,7 @@ bool tensor(std::string_view path, Bytes& data) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  CHECK(argc == 12);
+  CHECK(argc == 13);
   const std::string_view vm_mode(argv[11]);
   CHECK(vm_mode == "vm" || vm_mode == "no-vm");
   const bool check_vm = vm_mode == "vm";
@@ -163,6 +163,8 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "bounds.fold", model));
   CHECK(joggle::run(env, "opt.fold", model));
   CHECK(joggle::run(env, "opt.basic", model));
+  CHECK(model.verify(env));
+  CHECK(write(argv[12], joggle::print(model)));
   CHECK(joggle::run(env, "tile.scalarize", model));
   CHECK(joggle::run(env, "opt.basic", model));
   CHECK(joggle::run(env, "mem.plan", model));

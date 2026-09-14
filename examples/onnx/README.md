@@ -58,6 +58,7 @@ Each configured case leaves these inspectable artifacts under
 `build-onnx-app/examples/<name>/`:
 
 ```text
+canonical.jog
 model.jog
 model.vm
 model.c
@@ -77,9 +78,11 @@ expected.bin
 result.txt
 ```
 
-`model.jog` is the prepared and statically planned loop-level IR consumed by
-both C forms; `model.vm` is emitted from the same converted model before the
-target-specific preparation step. `model.h` and `model-blob.h` are the
+`canonical.jog` is the exposed and cleaned loop-level IR before optional loop
+policy. `model.jog` additionally applies scalar-state promotion and static
+storage planning, and is consumed by both C forms. `model.vm` is emitted from
+the same converted model before the target-specific preparation step.
+`model.h` and `model-blob.h` are the
 declarations consumed by the two C executions. The two JSON files are the
 matching machine-readable interfaces; the harness sources are generated from
 them and remain beside the artifacts so the exact call, allocation, comparison,

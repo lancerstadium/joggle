@@ -1,0 +1,184 @@
+name: linux-policy
+
+"on":
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/linux-policy.yml
+      - paper/experiments/mobilenetv2-block.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-policy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  block:
+    name: Generic block policy and ONNX Runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: paper/experiments/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libprotobuf-dev protobuf-compiler
+          python3 -m pip install \
+            --disable-pip-version-check \
+            --requirement paper/experiments/requirements.txt
+
+      - name: Fetch pinned MobileNetV2 application
+        run: >-
+          cmake -DOUT=.cache/onnx-zoo -DMODELS=mobilenetv2-7 -DAPP=ON
+          -P test/zoo.cmake
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B build-app \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DJOGGLE_BUILD_ONNX=ON \
+            -DJOGGLE_EXAMPLE_MOBILENET=.cache/onnx-zoo/app/mobilenetv2-7
+          cmake --build build-app --parallel 2
+
+      - name: Produce canonical IR
+        run: >-
+          ctest --test-dir build-app -R '^onnx-app-mobilenet$'
+          --output-on-failure
+
+      - name: Apply source block policy
+        id: transform
+        run: |
+          set -o pipefail
+          mkdir -p build-policy
+          python3 paper/measure_block_frontier.py \
+            --tool build-app/joggle \
+            --modules build-app/modules \
+            --examples examples \
+            --model MobileNetV2=build-app/examples/mobilenet/canonical.jog \
+            --factors 8,4 \
+            --budgets 1000000 \
+            --out-dir build-policy \
+            --output build-policy/frontier.csv \
+            2>&1 | tee build-policy/transform.log
+
+      - name: Preserve transform failure
+        if: ${{ failure() && steps.transform.outcome == 'failure' }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          text = Path("build-policy/transform.log").read_text(
+              errors="replace"
+          )[-12000:]
+          text = (text.replace("%", "%25")
+                      .replace("\r", "%0D")
+                      .replace("\n", "%0A"))
+          print(f"::error title=Block policy failed::{text}")
+          PY
+
+      - name: Package and validate generated C
+        run: |
+          root=build-policy/MobileNetV2/1000000
+          build-app/joggle emit c.header "$root/placed.jog" \
+            --arg '"weights"' -M build-app/modules > "$root/model.h"
+          build-app/joggle emit c.data "$root/placed.jog" \
+            -M build-app/modules > "$root/model.bin"
+          build-app/joggle query c.api "$root/placed.jog" \
+            --arg '"weights"' -M build-app/modules > "$root/api.json"
+          python3 examples/onnx/make_harness.py \
+            "$root/api.json" "$root/harness.c" --header model.h
+          cc -std=c11 -O3 -Wall -Wextra -Wstrict-prototypes -Werror \
+            -I "$root" "$root/model.c" "$root/harness.c" -lm \
+            -o "$root/model"
+          "$root/model" \
+            build-app/examples/mobilenet/input.bin \
+            "$root/model.bin" \
+            build-app/examples/mobilenet/expected.bin 0 1
+
+      - name: Record independent-system timings
+        id: measure
+        run: |
+          set -o pipefail
+          mkdir -p build-policy/results
+          cpu="$(python3 - <<'PY'
+          import os
+          print(min(os.sched_getaffinity(0)))
+          PY
+          )"
+          python3 paper/measure_systems.py \
+            --manifest paper/experiments/mobilenetv2-block.json \
+            --repo . \
+            --output build-policy/results/mobilenetv2-block.csv \
+            --record build-policy/results/mobilenetv2-block.json \
+            --cpu "$cpu" --require-clean \
+            2>&1 | tee build-policy/results/mobilenetv2-block.log
+
+      - name: Preserve measurement failure
+        if: ${{ failure() && steps.measure.outcome == 'failure' }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          text = Path(
+              "build-policy/results/mobilenetv2-block.log"
+          ).read_text(errors="replace")[-12000:]
+          text = (text.replace("%", "%25")
+                      .replace("\r", "%0D")
+                      .replace("\n", "%0A"))
+          print(f"::error title=Policy measurement failed::{text}")
+          PY
+
+      - name: Summarize median
+        run: |
+          python3 - <<'PY'
+          import csv
+          import os
+          import statistics
+          from pathlib import Path
+
+          path = Path("build-policy/results/mobilenetv2-block.csv")
+          rows = list(csv.DictReader(path.open()))
+          samples = {
+              system: [float(row["seconds"]) for row in rows
+                       if row["system"] == system]
+              for system in ("joggle", "onnxruntime")
+          }
+          joggle = statistics.median(samples["joggle"])
+          runtime = statistics.median(samples["onnxruntime"])
+          ratio = joggle / runtime
+          summary = (
+              "## Generic block-policy performance\n\n"
+              "Shared GitHub runner; diagnostic rather than publication data.\n\n"
+              "| Joggle | ONNX Runtime | Joggle / ORT |\n"
+              "|---:|---:|---:|\n"
+              f"| {joggle * 1000:.3f} ms | {runtime * 1000:.3f} ms | "
+              f"{ratio:.2f}x |\n"
+          )
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as stream:
+              stream.write(summary)
+          print(
+              "::notice title=Generic block-policy performance::"
+              f"Joggle {joggle * 1000:.3f} ms, "
+              f"ORT {runtime * 1000:.3f} ms, {ratio:.2f}x"
+          )
+          PY
+
+      - name: Upload raw records
+        uses: actions/upload-artifact@v6
+        with:
+          name: linux-policy-${{ github.sha }}
+          path: |
+            build-policy/frontier.csv
+            build-policy/results/
+          if-no-files-found: error
+          retention-days: 30

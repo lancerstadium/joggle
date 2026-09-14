@@ -20,6 +20,7 @@ set(input "${ROOT}/input.bin")
 set(expected "${ROOT}/expected.bin")
 set(program "${ROOT}/model")
 set(prepared "${ROOT}/model.jog")
+set(canonical "${ROOT}/canonical.jog")
 set(image "${ROOT}/model.vm")
 set(bounds "${ROOT}/bounds.json")
 set(data "${ROOT}/model.bin")
@@ -35,6 +36,7 @@ execute_process(
   COMMAND "${APP}" "${MODEL}" "${INPUT}" "${OUTPUT}"
           "${source}" "${input}" "${expected}" "${MODULES}"
           "${prepared}" "${image}" "${header}" "${vm_mode}"
+          "${canonical}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error
