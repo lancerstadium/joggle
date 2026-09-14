@@ -928,7 +928,7 @@ fn layer_norm<
   return shifted
 }
 
-fn iou<E: Ty>(
+local fn iou<E: Ty>(
   a0: E, a1: E, a2: E, a3: E,
   b0: E, b1: E, b2: E, b3: E,
   center: int

@@ -191,6 +191,10 @@ not acquire neural-network or target knowledge.
 
 `ir.fns(m)` reflects every function in the concrete program `m`, including
 local functions because they are part of that program's editable structure.
+When a body imported from another module is expanded, its private helper
+closure is resolved in the source module, inlined transactionally, and removed.
+This preserves module privacy and lexical overload selection without storing a
+second symbol table in the IR or exposing implementation helpers to targets.
 `ir.fns("name")` instead enumerates an installed package and therefore returns
 only its public functions. The C++ `Mod::fns()` and `Env::fns(name)` forms obey
 the same boundary.

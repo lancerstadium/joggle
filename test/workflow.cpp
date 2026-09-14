@@ -1264,6 +1264,39 @@ int main(int argc, char** argv) {
   CHECK(local_expand_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(local_expand, local_expand_roundtrip));
 
+  joggle::Mod expression_expand;
+  constexpr std::string_view expression_expand_source =
+      "module expression.expand\n"
+      "fn helper(x: i32) -> bool {\n"
+      "  var out = false\n"
+      "  if x > 0 { out = true }\n"
+      "  return out\n"
+      "}\n"
+      "fn main(x: i32) -> bool { return x > 0 && helper(x) }\n";
+  CHECK(joggle::parse(env, expression_expand_source, expression_expand,
+                      "expression-expand.jog"));
+  CHECK(expression_expand.verify(env));
+  joggle::Op expression_call;
+  for (joggle::Op op : expression_expand.find_fn("main").ops())
+    if (op.callee() == "helper")
+      expression_call = op;
+  const joggle::Fn expression_body = env.resolve(expression_expand,
+                                                  expression_call);
+  const std::string expression_text = joggle::print(expression_expand);
+  const std::uint64_t expression_revision = expression_expand.revision();
+  CHECK(expression_call && expression_body &&
+        !env.expand(expression_expand, expression_call, expression_body));
+  CHECK(expression_expand.revision() == expression_revision);
+  CHECK(joggle::print(expression_expand) == expression_text);
+  CHECK(std::any_of(
+      expression_expand.diags().begin(), expression_expand.diags().end(),
+      [](const joggle::Diag& diag) {
+        return diag.message.find("stateful body in an expression region") !=
+               std::string::npos;
+      }));
+  expression_expand.clear_diags();
+  CHECK(expression_expand.verify(env));
+
   joggle::Mod imported_expand;
   constexpr std::string_view imported_expand_source =
       "module imported.expand\n"
@@ -1284,6 +1317,65 @@ int main(int argc, char** argv) {
   CHECK(imported_expand.uses() ==
         std::vector<std::string>({"tensor", "nn"}));
   CHECK(imported_expand.verify(env));
+
+  joggle::Mod lexical_expand;
+  constexpr std::string_view lexical_expand_source =
+      "module lexical.expand\n"
+      "use script\n"
+      "local fn hidden(m: Mod) -> bool { return false }\n"
+      "fn main(m: Mod) -> bool { return script.local_probe(m) }\n";
+  CHECK(joggle::parse(env, lexical_expand_source, lexical_expand,
+                      "lexical-expand.jog"));
+  CHECK(lexical_expand.verify(env));
+  joggle::Op local_probe;
+  for (joggle::Op op : lexical_expand.find_fn("main").ops())
+    if (op.callee() == "script.local_probe")
+      local_probe = op;
+  const std::uint64_t lexical_revision = lexical_expand.revision();
+  const joggle::Fn local_probe_fn = env.resolve(lexical_expand, local_probe);
+  CHECK(local_probe && local_probe_fn &&
+        env.expand(lexical_expand, local_probe, local_probe_fn));
+  CHECK(lexical_expand.revision() == lexical_revision + 1);
+  CHECK(lexical_expand.verify(env));
+  CHECK(lexical_expand.find_fns("hidden").size() == 1);
+  CHECK(lexical_expand.find_fns("script_hidden").empty());
+  const std::string lexical_text = joggle::print(lexical_expand);
+  CHECK(lexical_text.find("ir.revision(m)") != std::string::npos);
+  CHECK(lexical_text.find("local_probe") == std::string::npos);
+  joggle::Mod lexical_roundtrip;
+  CHECK(joggle::parse(env, lexical_text, lexical_roundtrip,
+                      "lexical-expand-roundtrip.jog"));
+  CHECK(lexical_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(lexical_expand, lexical_roundtrip));
+
+  joggle::Mod recursive_closure;
+  constexpr std::string_view recursive_closure_source =
+      "module recursive.closure\n"
+      "use script\n"
+      "fn main(x: i32) -> i32 { return script.recursive_local_probe(x) }\n";
+  CHECK(joggle::parse(env, recursive_closure_source, recursive_closure,
+                      "recursive-closure.jog"));
+  CHECK(recursive_closure.verify(env));
+  joggle::Op recursive_call;
+  for (joggle::Op op : recursive_closure.ops())
+    if (op.callee() == "script.recursive_local_probe")
+      recursive_call = op;
+  const std::string recursive_closure_text = joggle::print(recursive_closure);
+  const std::uint64_t recursive_revision = recursive_closure.revision();
+  const joggle::Fn recursive_target = env.resolve(recursive_closure,
+                                                   recursive_call);
+  CHECK(recursive_call && recursive_target &&
+        !env.expand(recursive_closure, recursive_call, recursive_target));
+  CHECK(recursive_closure.revision() == recursive_revision);
+  CHECK(joggle::print(recursive_closure) == recursive_closure_text);
+  CHECK(std::any_of(
+      recursive_closure.diags().begin(), recursive_closure.diags().end(),
+      [](const joggle::Diag& diag) {
+        return diag.message.find("recursive local function dependency") !=
+               std::string::npos;
+      }));
+  recursive_closure.clear_diags();
+  CHECK(recursive_closure.verify(env));
 
   joggle::Mod batch_expand;
   constexpr std::string_view batch_expand_source =

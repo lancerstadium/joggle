@@ -1498,6 +1498,28 @@ bool Mod::expand(const Env& env, Op call, Fn callee,
     return false;
   }
 
+  const Blk destination_block = call.blk();
+  const Op parent = destination_block.op();
+  const std::vector<Val> parent_outputs = parent ? parent.outs()
+                                                  : std::vector<Val>{};
+  const bool expression_region =
+      parent && parent.kind() == Op::Kind::branch &&
+      parent_outputs.size() == 1 && parent_outputs.front().name().empty();
+  if (expression_region) {
+    for (Op op : callee.ops()) {
+      const Op::Form form = op.form();
+      if (op.kind() != Op::Kind::loop && op.kind() != Op::Kind::branch &&
+          form != Op::Form::var && form != Op::Form::assign &&
+          form != Op::Form::compound && form != Op::Form::index_assign)
+        continue;
+      detail::add_diag(
+          store.diags,
+          "expand cannot place a stateful body in an expression region",
+          call.loc());
+      return false;
+    }
+  }
+
   const auto reject = [&](std::string message, Loc loc = {}) {
     detail::add_diag(store.diags, std::move(message), std::move(loc));
     return false;

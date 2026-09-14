@@ -720,6 +720,22 @@ preserves the caller's visible result bindings. The edit is atomic; a missing
 body, signature mismatch, unrepresentable compile-time argument, or metadata
 whose policy has not been chosen leaves the module unchanged.
 
+Expansion preserves the implementation's lexical module context. Calls that
+already resolve to the same public function in the destination retain their
+short spelling; a collision is retargeted to the exact qualified declaration.
+Local helper dependencies are copied only inside the transaction, recursively
+expanded at their call sites, and removed before the edit commits. They do not
+become public exports or permanent helper functions, and an unrelated local
+function with the same name in the caller cannot capture the call. A recursive
+cycle formed entirely by imported local helpers is rejected transactionally;
+such recursion must remain a public callable boundary or be rewritten as
+structured control flow before expansion.
+Likewise, a body containing mutable statements or nested control flow is not
+inserted into a short-circuit expression region, because that edit has no
+faithful surface syntax and could change evaluation order. The caller can keep
+the function boundary or place the call in an ordinary statement block, where
+the same body expands normally.
+
 `ir.expand(m, ops, fns)` performs the same edit for aligned `list<Op>` and
 `list<Fn>` arguments. Pairs are applied in order and commit as one transaction;
 length mismatch or failure of any pair restores the module. Use the list form

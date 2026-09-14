@@ -16,6 +16,14 @@ fn local_probe(m: Mod) -> bool {
   return hidden(m)
 }
 
+local fn recursive_local(x: i32) -> i32 {
+  return recursive_local(x)
+}
+
+fn recursive_local_probe(x: i32) -> i32 {
+  return recursive_local(x)
+}
+
 fn own_local_visible(m: Mod) -> bool {
   for fn in ir.fns("script") {
     if ir.name(fn) == "hidden" {

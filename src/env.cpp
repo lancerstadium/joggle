@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -844,12 +845,210 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
       return rollback();
   }
 
+  const auto lexical_target = [&](Fn context, Op op) {
+    if (!context || !op || op.kind() != Op::Kind::call)
+      return Fn{};
+    const Ty applied{std::string(op.callee())};
+    if (!applied.valid())
+      return Fn{};
+    return match(op, resolve_fns(context, applied.name()));
+  };
+  std::vector<Fn> local_dependencies;
+  std::vector<Fn> active_dependencies;
+  bool recursive_local_dependency = false;
+  const auto collect_locals = [&](const auto& self, Fn context) -> void {
+    for (Op op : context.ops()) {
+      const Fn target = lexical_target(context, op);
+      if (!target || !target.local() || target.module() == mod.name())
+        continue;
+      if (std::find(active_dependencies.begin(), active_dependencies.end(),
+                    target) != active_dependencies.end()) {
+        recursive_local_dependency = true;
+        continue;
+      }
+      if (std::find(local_dependencies.begin(), local_dependencies.end(),
+                    target) != local_dependencies.end())
+        continue;
+      local_dependencies.push_back(target);
+      active_dependencies.push_back(target);
+      self(self, target);
+      active_dependencies.pop_back();
+    }
+  };
+  for (Fn implementation : implementations) {
+    active_dependencies.push_back(implementation);
+    collect_locals(collect_locals, implementation);
+    active_dependencies.pop_back();
+  }
+  if (recursive_local_dependency) {
+    detail::add_diag(mod.impl_->store.diags,
+                     "expand cannot materialize a recursive local function "
+                     "dependency");
+    return rollback();
+  }
+
+  struct LocalDependency {
+    Fn source;
+    Fn copy;
+  };
+  std::vector<LocalDependency> materialized;
+  std::map<std::string, std::string, std::less<>> local_names;
+  const auto binding = [](std::string_view text) {
+    if (text.empty() ||
+        (!std::isalpha(static_cast<unsigned char>(text.front())) &&
+         text.front() != '_'))
+      return false;
+    return std::all_of(text.begin() + 1, text.end(), [](char ch) {
+      return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_';
+    });
+  };
+  for (Fn dependency : local_dependencies) {
+    const std::string group = std::string(dependency.module()) + "\n" +
+                              std::string(dependency.name());
+    auto found = local_names.find(group);
+    if (found == local_names.end()) {
+      std::string name = binding(dependency.name())
+                             ? std::string(dependency.name())
+                             : std::string("helper");
+      if (!mod.find_fns(name).empty()) {
+        name = std::string(dependency.module()) + '_' +
+               std::string(dependency.name());
+        for (char& ch : name)
+          if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '_')
+            ch = '_';
+        const std::string base = name;
+        for (std::size_t suffix = 1; !mod.find_fns(name).empty(); ++suffix)
+          name = base + '_' + std::to_string(suffix);
+      }
+      found = local_names.emplace(group, std::move(name)).first;
+    }
+    const Fn copy = mod.clone(*this, dependency, found->second);
+    if (!copy)
+      return rollback();
+    materialized.push_back({dependency, copy});
+  }
+
+  const auto mapped_local = [&](Fn source) {
+    for (const LocalDependency& dependency : materialized)
+      if (dependency.source == source)
+        return dependency.copy;
+    return Fn{};
+  };
+  const auto materialized_local = [&](Fn target) {
+    for (const LocalDependency& dependency : materialized)
+      if (dependency.copy == target)
+        return true;
+    return false;
+  };
+  const auto destination_target = [&](Op op) {
+    const Ty applied{std::string(op.callee())};
+    if (!applied.valid())
+      return Fn{};
+    return match(op, resolve_fns(mod, applied.name()));
+  };
+  const auto preserve_calls = [&](Fn source, Fn copy) {
+    for (Op op : copy.ops()) {
+      const Fn target = lexical_target(source, op);
+      if (!target)
+        continue;
+      const Fn local = mapped_local(target);
+      if (local) {
+        if (!mod.retarget(*this, op, local))
+          return false;
+      } else if (!target.local() && target.module() != mod.name() &&
+                 destination_target(op) != target &&
+                 !mod.retarget(*this, op, target)) {
+        return false;
+      }
+    }
+    return true;
+  };
+  for (const LocalDependency& dependency : materialized)
+    if (!preserve_calls(dependency.source, dependency.copy))
+      return rollback();
+
   mod.impl_->store.revision = backup.revision;
   mod.impl_->store.queries.clear();
-  for (std::size_t index = 0; index < calls.size(); ++index)
+  for (std::size_t index = 0; index < calls.size(); ++index) {
+    const std::vector<Op> before_ops = mod.ops();
     if (!mod.expand(*this, calls[index], implementations[index],
                     semantics[index]))
       return rollback();
+    for (Op op : mod.ops()) {
+      if (op.kind() != Op::Kind::call ||
+          std::find(before_ops.begin(), before_ops.end(), op) !=
+              before_ops.end())
+        continue;
+      const Fn target = lexical_target(implementations[index], op);
+      if (!target)
+        continue;
+      const Fn local = mapped_local(target);
+      if (local) {
+        if (!mod.retarget(*this, op, local))
+          return rollback();
+      } else if (!target.local() && target.module() != mod.name() &&
+                 destination_target(op) != target &&
+                 !mod.retarget(*this, op, target)) {
+        return rollback();
+      }
+    }
+  }
+  const std::size_t closure_limit = materialized.size() + 1;
+  bool closure_complete = materialized.empty();
+  for (std::size_t round = 0; round < closure_limit && !closure_complete;
+       ++round) {
+    std::vector<Op> pending;
+    std::vector<Fn> bodies;
+    for (Op op : mod.ops()) {
+      if (op.kind() != Op::Kind::call)
+        continue;
+      const Fn target = resolve(mod, op);
+      if (!materialized_local(target))
+        continue;
+      pending.push_back(op);
+      bodies.push_back(target);
+    }
+    closure_complete = pending.empty();
+    for (std::size_t index = 0; index < pending.size(); ++index)
+      if (!mod.expand(*this, pending[index], bodies[index],
+                      bodies[index].name()))
+        return rollback();
+  }
+  if (!closure_complete) {
+    detail::add_diag(mod.impl_->store.diags,
+                     "expand local function closure did not converge");
+    return rollback();
+  }
+  std::vector<bool> erased(materialized.size(), false);
+  std::size_t erased_count = 0;
+  while (erased_count != materialized.size()) {
+    bool progress = false;
+    for (std::size_t index = 0; index < materialized.size(); ++index) {
+      if (erased[index])
+        continue;
+      bool called = false;
+      for (Op op : mod.ops())
+        if (op.kind() == Op::Kind::call &&
+            resolve(mod, op) == materialized[index].copy) {
+          called = true;
+          break;
+        }
+      if (called)
+        continue;
+      if (!mod.erase(*this, materialized[index].copy))
+        return rollback();
+      erased[index] = true;
+      ++erased_count;
+      progress = true;
+    }
+    if (!progress) {
+      detail::add_diag(mod.impl_->store.diags,
+                       "expand could not release its local function closure");
+      return rollback();
+    }
+  }
+  mod.impl_->store.revision = backup.revision + calls.size();
+  mod.impl_->store.queries.clear();
   const detail::Dom dom(mod.impl_->store);
   for (std::uint32_t id = 0; id < mod.impl_->store.ops.size(); ++id) {
     const detail::OpData& op = mod.impl_->store.ops[id].data;
