@@ -51,7 +51,9 @@ add_library(joggle
   src/handle.cpp
   src/ir.cpp
   src/lang.cpp
+  src/language.cpp
   src/lex.cpp
+  src/print.cpp
   src/type.cpp
 )
 add_library(Joggle::joggle ALIAS joggle)

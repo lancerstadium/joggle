@@ -1,4 +1,6 @@
 #include "detail.h"
+#include "language.h"
+#include "print.h"
 #include "syntax.h"
 
 #include <algorithm>
@@ -6,10 +8,7 @@
 #include <charconv>
 #include <cctype>
 #include <exception>
-#include <iomanip>
-#include <iterator>
 #include <limits>
-#include <locale>
 #include <map>
 #include <set>
 #include <sstream>
@@ -24,6 +23,13 @@ namespace {
 using syntax::Tk;
 using syntax::Token;
 using syntax::lex;
+using detail::GenericInfo;
+using detail::generic_info;
+using detail::generic_names;
+using detail::intrinsic_cast;
+using detail::intrinsic_type;
+using detail::precedence;
+using detail::attr_text;
 
 struct Binding {
   std::uint32_t value = detail::none;
@@ -41,139 +47,9 @@ std::string operator_name(std::string_view spelling) {
   return "operator " + std::string(spelling);
 }
 
-struct GenericInfo {
-  std::string_view name;
-  Ty type;
-};
-
-std::vector<GenericInfo> generic_info(Fn fn) {
-  std::vector<GenericInfo> out;
-  for (const Val generic : fn.generics())
-    out.push_back({generic.name(), generic.type()});
-  return out;
-}
-
-std::vector<GenericInfo> generic_info(const detail::Store& store,
-                                      const detail::FnData& fn) {
-  std::vector<GenericInfo> out;
-  out.reserve(fn.generic_vals.size());
-  for (const std::uint32_t id : fn.generic_vals)
-    out.push_back({store.vals[id].data.name, store.vals[id].data.type});
-  return out;
-}
-
-std::vector<std::string> generic_names(std::span<const GenericInfo> generics) {
-  std::vector<std::string> out;
-  out.reserve(generics.size());
-  for (const GenericInfo& generic : generics)
-    out.emplace_back(generic.name);
-  return out;
-}
-
-int precedence(std::string_view op) {
-  if (op == "||")
-    return 1;
-  if (op == "&&")
-    return 2;
-  if (op == "==" || op == "!=")
-    return 3;
-  if (op == "<" || op == "<=" || op == ">" || op == ">=")
-    return 4;
-  if (op == "|" || op == "^" || op == "&")
-    return 5;
-  if (op == "<<" || op == ">>")
-    return 6;
-  if (op == "+" || op == "-")
-    return 7;
-  if (op == "*" || op == "/" || op == "%")
-    return 8;
-  return -1;
-}
-
 bool supported_operator(std::string_view spelling) {
   return precedence(spelling) >= 0 || spelling == "!" || spelling == "~" ||
          spelling == ".." || spelling == "[]" || spelling == "[]=";
-}
-
-std::string attr_text(const Attr& value) {
-  if (value.empty())
-    return "nil";
-  if (const auto item = value.boolean())
-    return *item ? "true" : "false";
-  if (const auto item = value.integer())
-    return std::to_string(*item);
-  if (const auto item = value.real()) {
-    std::ostringstream out;
-    out.imbue(std::locale::classic());
-    out << std::setprecision(std::numeric_limits<double>::max_digits10)
-        << *item;
-    std::string text = out.str();
-    if (text.find_first_of(".eE") == std::string::npos)
-      text += ".0";
-    return text;
-  }
-  if (const auto item = value.string()) {
-    std::string out = "\"";
-    for (const char ch : *item) {
-      if (ch == '"' || ch == '\\')
-        out.push_back('\\');
-      if (ch == '\n')
-        out += "\\n";
-      else
-        out.push_back(ch);
-    }
-    return out + '"';
-  }
-  if (const auto* item = value.bytes()) {
-    static constexpr char digits[] = "0123456789abcdef";
-    std::string out = "hex\"";
-    out.reserve(item->size() * 2 + 5);
-    for (const std::uint8_t byte : *item) {
-      out.push_back(digits[byte >> 4]);
-      out.push_back(digits[byte & 15]);
-    }
-    return out + '"';
-  }
-  if (const auto* item = value.list()) {
-    std::string out = "[";
-    for (std::size_t index = 0; index < item->size(); ++index) {
-      if (index)
-        out += ", ";
-      out += attr_text((*item)[index]);
-    }
-    return out + ']';
-  }
-  if (const auto* item = value.dict()) {
-    std::string out = "{";
-    std::size_t index = 0;
-    for (const auto& [name, entry] : *item) {
-      if (index++)
-        out += ", ";
-      out += attr_text(Attr(name)) + ": " + attr_text(entry);
-    }
-    return out + '}';
-  }
-  return "nil";
-}
-
-bool intrinsic_cast(std::string_view name) {
-  static constexpr std::string_view names[] = {"f16", "f32", "f64"};
-  for (const std::string_view scalar : names)
-    if (scalar == name)
-      return true;
-  return detail::sized_integer_type(name);
-}
-
-bool intrinsic_type(std::string_view name) {
-  static constexpr std::string_view names[] = {
-      "_",     "nil", "bool", "int", "index", "str", "bytes", "dict", "list",
-      "range", "Ty",  "Attr", "Mod", "Fn",    "Blk", "Op",    "Val",  "meta"};
-  if (intrinsic_cast(name))
-    return true;
-  for (const std::string_view intrinsic : names)
-    if (intrinsic == name)
-      return true;
-  return false;
 }
 
 }  // namespace
