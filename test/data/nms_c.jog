@@ -1,0 +1,12 @@
+module nms_c
+use nn
+
+fn main(
+  boxes: tensor<f32, [1, 4, 4]>,
+  scores: tensor<f32, [1, 2, 4]>,
+  maximum: tensor<i64, []>,
+  overlap: tensor<f32, []>,
+  threshold: tensor<f32, []>
+) -> tensor<i64, [_, 3]> {
+  return nn.nms(boxes, scores, maximum, overlap, threshold, 0)
+}

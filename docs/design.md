@@ -262,6 +262,14 @@ only static tensors.  Capacity is therefore analysis or target policy, never a
 machine-size field in `Ty`.  Rejecting an unbounded value at such a target is a
 visible capability frontier rather than an invented extent.
 
+The bundled C policy represents a dynamic tensor as the same flat element
+pointer used for static tensors. Unknown input axes are adjacent scalar extent
+arguments, and unknown result axes are adjacent extent-result pointers.
+`mem.capacity` determines local storage and the capacity reported to callers;
+the logical extents remain runtime values supplied to `make`, `view`, and
+`dim`. This keeps the ABI explicit and usable by ordinary FFI tools without a
+compiler-owned descriptor layout.
+
 `opt.specialize` is the smaller mechanism for mixed-stage structure. A module
 may mark a loop with an ordinary attribute, then explicitly ask the transform
 to expand loops carrying that key and value. Static iteration structure is

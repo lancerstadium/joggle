@@ -1,0 +1,28 @@
+module dynamic_c
+use tensor
+
+fn prefix() -> tensor<i32, [_, 2]> {
+  let rows: index = index(3)
+
+  var capacity_shape = tensor<index, [2]>(index(0))
+  capacity_shape[0] = index(4)
+  capacity_shape[1] = index(2)
+  var data: tensor<i32, [_, 2]> = tensor.make(i32(0), capacity_shape)
+  for i in index(0)..index(4), j in index(0)..index(2) {
+    data[i, j] = i32(7)
+  }
+
+  var result_shape = tensor<index, [2]>(index(0))
+  result_shape[0] = rows
+  result_shape[1] = index(2)
+  return tensor.view(data, result_shape)
+}
+
+fn sum(x: tensor<i32, [_, 2]>) -> i32 {
+  let rows = tensor.dim(x, index(0))
+  var total = i32(0)
+  for i in index(0)..rows, j in index(0)..index(2) {
+    total += x[i, j]
+  }
+  return total
+}

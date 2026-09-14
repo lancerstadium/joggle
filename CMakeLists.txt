@@ -656,6 +656,30 @@ if(JOGGLE_BUILD_TESTS)
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/mem.cmake
     )
     add_test(
+      NAME dynamic-c-execution
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DTOOL=$<TARGET_FILE:joggle-tool>
+        -DCC=${JOGGLE_TEST_C_COMPILER}
+        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/dynamic_c.jog
+        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/dynamic_c_main.c
+        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/dynamic-c-test
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/dynamic_c.cmake
+    )
+    add_test(
+      NAME nms-c-execution
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DTOOL=$<TARGET_FILE:joggle-tool>
+        -DCC=${JOGGLE_TEST_C_COMPILER}
+        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/nms_c.jog
+        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/nms_c_main.c
+        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/nms-c-test
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/nms_c.cmake
+    )
+    add_test(
       NAME tile-execution
       COMMAND
         ${CMAKE_COMMAND}

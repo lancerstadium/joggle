@@ -122,7 +122,42 @@ local fn capacity_with(
 }
 
 fn capacity(m: Mod, value: Val) -> list<int> {
-  return capacity_with(m, value, bounds.infer(m))
+  if ir.has(value, "mem.capacity") {
+    var recorded: list<int> = []
+    for extent in ir.meta(value, "mem.capacity") {
+      recorded += [base.int(extent)]
+    }
+    return recorded
+  }
+  let source = ir.def(value)
+  if ir.live(source) && ir.kind(source) == "call" &&
+     (ir.target(m, source) == "tensor.view" ||
+      ir.callee(source) == "tensor.view") && len(ir.args(source)) == 2 {
+    return capacity(m, ir.args(source)[0])
+  }
+  if ir.live(source) && ir.kind(source) == "call" &&
+     (ir.target(m, source) == "base.copy" ||
+      ir.target(m, source) == "tensor.write" ||
+      ir.callee(source) == "base.copy" ||
+      ir.callee(source) == "tensor.write") &&
+     len(ir.args(source)) != 0 {
+    return capacity(m, ir.args(source)[0])
+  }
+  let known = bounds.infer(m)
+  let direct = capacity_with(m, value, known)
+  if len(direct) != 0 || !ir.live(source) || ir.name(value) == "" {
+    return direct
+  }
+  let fn = ir.owner(ir.blk(source))
+  for candidate in ir.vals(fn) {
+    if ir.name(candidate) == ir.name(value) {
+      let inherited = capacity_with(m, candidate, known)
+      if len(inherited) != 0 {
+        return inherited
+      }
+    }
+  }
+  return []
 }
 
 fn bound(m: Mod) -> bool {

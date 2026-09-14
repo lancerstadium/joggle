@@ -2367,6 +2367,14 @@ private:
     } else if (name == "type" && args.size() == 1) {
       if (const auto* value = as<Val>(args[0]))
         return Items{Item(value->type())};
+      if (const auto* mod = as<Mod*>(args[0]); mod && *mod) {
+        const std::uint64_t before = (*mod)->revision();
+        if (!(*mod)->verify(env_)) {
+          fail("ir.type requires a valid module", loc);
+          return std::nullopt;
+        }
+        return Items{Item(Attr((*mod)->revision() != before))};
+      }
     } else if (name == "type" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
       auto values = handles<Val>(args[1]);

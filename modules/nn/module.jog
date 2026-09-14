@@ -928,7 +928,7 @@ fn layer_norm<
   return shifted
 }
 
-local fn iou<E: Ty>(
+fn iou<E: Ty>(
   a0: E, a1: E, a2: E, a3: E,
   b0: E, b1: E, b2: E, b3: E,
   center: int
@@ -1023,13 +1023,16 @@ fn nms<E: Ty, I: Ty, B: list<int>, S: list<int>>(
           let chosen = (batch * box_count + best) * index(4)
           for candidate in index(0)..box_count {
             let other = (batch * box_count + candidate) * index(4)
-            if !blocked[candidate] && iou(
-              boxes[chosen], boxes[chosen + index(1)],
-              boxes[chosen + index(2)], boxes[chosen + index(3)],
-              boxes[other], boxes[other + 1],
-              boxes[other + 2], boxes[other + 3], center
-            ) > overlap_threshold[0] {
-              blocked[candidate] = true
+            if !blocked[candidate] {
+              let overlap = iou(
+                boxes[chosen], boxes[chosen + index(1)],
+                boxes[chosen + index(2)], boxes[chosen + index(3)],
+                boxes[other], boxes[other + 1],
+                boxes[other + 2], boxes[other + 3], center
+              )
+              if overlap > overlap_threshold[0] {
+                blocked[candidate] = true
+              }
             }
           }
         } else {

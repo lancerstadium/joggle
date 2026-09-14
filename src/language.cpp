@@ -47,7 +47,8 @@ int precedence(std::string_view op) {
 }
 
 bool intrinsic_cast(std::string_view name) {
-  static constexpr std::string_view names[] = {"f16", "f32", "f64"};
+  static constexpr std::string_view names[] = {
+      "f16", "f32", "f64", "int", "index"};
   for (const std::string_view scalar : names)
     if (scalar == name)
       return true;

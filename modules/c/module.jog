@@ -170,6 +170,68 @@ local fn count(type: Ty) -> int {
   return out
 }
 
+local fn storage_count(m: Mod, value: Val) -> int {
+  let shape = mem.capacity(m, value)
+  assert(len(shape) == len(tensor.dims(ir.type(value))),
+         "c: dynamic tensor has no finite capacity: " + ir.name(value))
+  var out = 1
+  for extent in shape {
+    assert(extent >= 0 && (extent == 0 ||
+           out <= 9223372036854775807 / extent),
+           "c: dynamic tensor capacity overflows")
+    out *= extent
+  }
+  return out
+}
+
+local fn allocation_count(m: Mod, value: Val) -> int {
+  if tensor.static(ir.type(value)) {
+    return count(ir.type(value))
+  }
+  return storage_count(m, value)
+}
+
+local fn extent(m: Mod, value: Val, axis: int) -> str {
+  let dims = tensor.dims(ir.type(value))
+  assert(axis >= 0 && axis < len(dims), "c: tensor axis is out of range")
+  if base.kind(dims[axis]) == "int" {
+    return text(base.int(dims[axis]))
+  }
+  let source = ir.def(value)
+  if ir.live(source) && ir.kind(source) == "call" &&
+     (ir.target(m, source) == "tensor.make" ||
+      ir.target(m, source) == "tensor.view" ||
+      ir.callee(source) == "tensor.make" ||
+      ir.callee(source) == "tensor.view") && len(ir.args(source)) == 2 {
+    return val(ir.args(source)[1]) + "[" + text(axis) + "]"
+  }
+  return val(value) + "_dim_" + text(axis)
+}
+
+local fn logical_count(m: Mod, value: Val) -> str {
+  let dims = tensor.dims(ir.type(value))
+  var out = "1"
+  for axis in 0..len(dims) {
+    out = "(" + out + " * " + extent(m, value, axis) + ")"
+  }
+  return out
+}
+
+local fn dimension(
+  m: Mod, value: Val, axis: Val, blob: str,
+  data_fns: list<Fn>, config: dict
+) -> str {
+  let dims = tensor.dims(ir.type(value))
+  assert(len(dims) != 0, "c: tensor.dim requires a non-scalar tensor")
+  let selected = expr(m, axis, blob, data_fns, config)
+  var out = extent(m, value, 0)
+  for i in 1..len(dims) {
+    out = "(" + selected + " == " + text(i) + " ? " +
+          extent(m, value, i) + " : " + out + ")"
+  }
+  return out
+}
+
 [memo]
 local fn pad(depth: int) -> str {
   var out = ""
@@ -253,6 +315,9 @@ local fn expr(
   if name == "operator []" {
     return index(m, inputs[0], inputs, blob, data_fns, config)
   }
+  if ir.target(m, op) == "tensor.dim" && len(inputs) == 2 {
+    return dimension(m, inputs[0], inputs[1], blob, data_fns, config)
+  }
   let binary_op = binary(name)
   if binary_op != "" && len(inputs) == 2 {
     return "(" + expr(m, inputs[0], blob, data_fns, config) + " " +
@@ -312,13 +377,13 @@ local fn index(
 ) -> str {
   let type = ir.type(value)
   if tensor.valid(type) {
-    let shape = tensor.shape(type)
-    assert(len(indices) == 2 || len(indices) == len(shape) + 1,
+    let dims = tensor.dims(type)
+    assert(len(indices) == 2 || len(indices) == len(dims) + 1,
            "c: tensor index must be linear or match its rank")
     var out = expr(m, indices[1], blob, data_fns, config)
     if len(indices) != 2 {
       for i in 2..len(indices) {
-        out = "(" + out + " * " + text(shape[i - 1]) + " + " +
+        out = "(" + out + " * " + extent(m, value, i - 1) + " + " +
               expr(m, indices[i], blob, data_fns, config) + ")"
       }
     }
@@ -417,8 +482,7 @@ local fn data_name(m: Mod, requested: str) -> str {
 [memo]
 local fn supported(type: Ty, config: dict) -> bool {
   if tensor.valid(type) {
-    return tensor.static(type) &&
-           scalar_name(base.name(tensor.elem(type)), config)
+    return scalar_name(base.name(tensor.elem(type)), config)
   }
   return scalar_name(base.name(type), config)
 }
@@ -455,8 +519,12 @@ local fn external_call(m: Mod, op: Op, config: dict) -> bool {
     return false
   }
   if name == "base.list" || name == "operator .." ||
-     name == "base.copy" || name == "operator []" ||
+     name == "base.copy" || name == "base.assert" ||
+     name == "operator []" ||
      name == "operator []=" ||
+     ir.symbol(fn) == "tensor.make" ||
+     ir.symbol(fn) == "tensor.view" ||
+     ir.symbol(fn) == "tensor.dim" ||
      (len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
       ir.symbol(fn) == "tensor.tensor") ||
      (binary(name) != "" && len(inputs) == 2 && len(outputs) == 1) ||
@@ -495,6 +563,14 @@ local fn args(
       out += ", "
     }
     out += expr(m, values[i], blob, data_fns, config)
+    if tensor.valid(ir.type(values[i])) {
+      let dims = tensor.dims(ir.type(values[i]))
+      for axis in 0..len(dims) {
+        if base.kind(dims[axis]) != "int" {
+          out += ", " + extent(m, values[i], axis)
+        }
+      }
+    }
   }
   return out
 }
@@ -536,6 +612,9 @@ local fn binary_types(
   let left = ir.type(inputs[0])
   let right = ir.type(inputs[1])
   let result = ir.type(output)
+  let compatible = same_repr(left, right, config) ||
+                   (number(left, config) && number(right, config) &&
+                    (ir.is_const(inputs[0]) || ir.is_const(inputs[1])))
   if op == "operator &&" || op == "operator ||" {
     return class(left, config) != "" && class(right, config) != "" &&
            result == ty("bool")
@@ -543,7 +622,7 @@ local fn binary_types(
   if op == "operator ==" || op == "operator !=" ||
      op == "operator <" || op == "operator <=" ||
      op == "operator >" || op == "operator >=" {
-    return same_repr(left, right, config) && result == ty("bool")
+    return compatible && result == ty("bool")
   }
   if op == "operator <<" || op == "operator >>" {
     return integer(left, config) && integer(right, config) &&
@@ -554,8 +633,8 @@ local fn binary_types(
     return integer(left, config) && integer(right, config) &&
            same_repr(left, right, config) && same_repr(result, left, config)
   }
-  return number(left, config) && number(right, config) &&
-         same_repr(left, right, config) && same_repr(result, left, config)
+  return number(left, config) && number(right, config) && compatible &&
+         same_repr(result, left, config)
 }
 
 local fn unary_types(
@@ -623,10 +702,41 @@ local fn accepts_with(m: Mod, op: Op, config: dict) -> bool {
   if name == "base.list" || name == "operator .." {
     return true
   }
+  if name == "base.assert" || ir.target(m, op) == "base.assert" {
+    return len(inputs) == 2 && len(outputs) == 1 &&
+           ir.type(inputs[0]) == ty("bool") &&
+           ir.type(inputs[1]) == ty("str") &&
+           ir.type(outputs[0]) == ty("bool")
+  }
   if name == "base.copy" {
     return len(inputs) == 1 && len(outputs) == 1 &&
            ir.type(inputs[0]) == ir.type(outputs[0]) &&
            supported(ir.type(outputs[0]), config)
+  }
+  let resolved = ir.target(m, op)
+  if resolved == "tensor.make" {
+    return len(inputs) == 2 && len(outputs) == 1 &&
+           tensor.valid(ir.type(outputs[0])) &&
+           supported(ir.type(outputs[0]), config) &&
+           supported(ir.type(inputs[1]), config) &&
+           len(mem.capacity(m, outputs[0])) ==
+             len(tensor.dims(ir.type(outputs[0])))
+  }
+  if resolved == "tensor.view" {
+    return len(inputs) == 2 && len(outputs) == 1 &&
+           tensor.valid(ir.type(inputs[0])) &&
+           tensor.valid(ir.type(outputs[0])) &&
+           supported(ir.type(inputs[0]), config) &&
+           supported(ir.type(outputs[0]), config) &&
+           supported(ir.type(inputs[1]), config) &&
+           len(mem.capacity(m, outputs[0])) ==
+             len(tensor.dims(ir.type(outputs[0])))
+  }
+  if resolved == "tensor.dim" {
+    return len(inputs) == 2 && len(outputs) == 1 &&
+           tensor.valid(ir.type(inputs[0])) &&
+           supported(ir.type(inputs[0]), config) &&
+           integer(ir.type(outputs[0]), config)
   }
   if name == "operator []" {
     if len(outputs) != 1 || len(inputs) < 2 ||
@@ -672,12 +782,28 @@ fn accepts(m: Mod, op: Op, config: dict) -> bool {
   return accepts_with(m, op, config)
 }
 
+fn frontier(m: Mod) -> list<str> {
+  return opt.frontier(m, ir.find("c.accepts", [ty("Mod"), ty("Op")]))
+}
+
+fn frontier(m: Mod, config: dict) -> list<str> {
+  return opt.frontier(
+    m, ir.find("c.accepts", [ty("Mod"), ty("Op"), ty("dict")]), config
+  )
+}
+
 local fn prepare_with(m: Mod, config: dict) -> bool {
   let limit = len(ir.ops(m)) + 1
   let accept = ir.find(
     "c.accepts", [ty("Mod"), ty("Op"), ty("dict")]
   )
   var changed = opt.expose(m, accept, config, limit)
+  if ir.type(m) {
+    changed = true
+  }
+  if opt.expose(m, accept, config, limit) {
+    changed = true
+  }
   if opt.specialize(m, "stage", "shape") {
     changed = true
   }
@@ -773,6 +899,49 @@ local fn tensor_new(
            expr(m, inputs[0], blob, data_fns, config) + ";\n"
   }
   return out
+}
+
+local fn tensor_make(
+  m: Mod, op: Op, depth: int, blob: str,
+  data_fns: list<Fn>, config: dict
+) -> str {
+  let outputs = ir.outs(op)
+  let inputs = ir.args(op)
+  assert(len(outputs) == 1 && len(inputs) == 2,
+         "c: tensor.make requires a fill and shape")
+  let output = outputs[0]
+  let n = storage_count(m, output)
+  let indent = pad(depth)
+  var out = ""
+  if !reuses(op) && !mem.planned(output) {
+    var storage = n
+    if storage == 0 {
+      storage = 1
+    }
+    out = indent + scalar(tensor.elem(ir.type(output)), config) + " " +
+          val(output) + "[" + text(storage) + "];\n"
+  }
+  if !ir.has(op, "mem.fill") || ir.meta(op, "mem.fill") != false {
+    out += indent + "for (" + index_type(config) +
+           " i = 0; i < " + text(n) + "; ++i) " + val(output) +
+           "[i] = " + expr(m, inputs[0], blob, data_fns, config) + ";\n"
+  }
+  return out
+}
+
+local fn tensor_view(
+  op: Op, depth: int, config: dict
+) -> str {
+  let outputs = ir.outs(op)
+  let inputs = ir.args(op)
+  assert(len(outputs) == 1 && len(inputs) == 2,
+         "c: tensor.view requires data and shape")
+  let output = outputs[0]
+  if reuses(op) || val(output) == val(inputs[0]) {
+    return ""
+  }
+  return pad(depth) + scalar(tensor.elem(ir.type(output)), config) + "* " +
+         val(output) + " = " + val(inputs[0]) + ";\n"
 }
 
 local fn payload_data(op: Op) -> Attr {
@@ -876,15 +1045,32 @@ local fn copy(
       let target = direct_result(output, direct, results)
       if target == "" {
         out = indent + scalar(tensor.elem(type), config) + " " + val(output) +
-              "[" + text(count(type)) + "];\n"
+              "[" + text(allocation_count(m, output)) + "];\n"
       } else {
         out = indent + scalar(tensor.elem(type), config) + "* " + val(output) +
               " = " + target + ";\n"
       }
     }
     if val(output) != val(input) {
+      var copied = ""
+      if tensor.static(type) {
+        copied = text(count(type))
+      } else {
+        var capacity = mem.capacity(m, input)
+        var bounded = input
+        if len(capacity) != len(tensor.dims(type)) {
+          capacity = mem.capacity(m, output)
+          bounded = output
+        }
+        if len(capacity) == len(tensor.dims(type)) {
+          copied = text(storage_count(m, bounded))
+        } else {
+          copied = logical_count(m, input)
+        }
+      }
       out += indent + "memcpy(" + val(output) + ", " + val(input) + ", " +
-             text(count(type) * width(tensor.elem(type), config)) + ");\n"
+             "(" + copied + ") * " +
+             text(width(tensor.elem(type), config)) + ");\n"
     }
     return out
   }
@@ -919,8 +1105,34 @@ local fn call(
   let outputs = ir.outs(op)
   let indent = pad(depth)
   assert(accepts_with(m, op, config), "c: call must be prepared: " + name)
+  let resolved = ir.target(m, op)
+  if resolved == "tensor.make" {
+    return tensor_make(m, op, depth, blob, data_fns, config)
+  }
+  if resolved == "tensor.view" {
+    return tensor_view(op, depth, config)
+  }
+  if resolved == "tensor.dim" {
+    assert(len(inputs) == 2 && len(outputs) == 1,
+           "c: tensor.dim requires data and axis")
+    if ir.name(outputs[0]) == "" {
+      return ""
+    }
+    return indent + lhs(op, outputs[0], config) + " = " +
+           dimension(m, inputs[0], inputs[1], blob, data_fns, config) + ";\n"
+  }
   if name == "base.list" || name == "operator .." {
     return ""
+  }
+  if name == "base.assert" || resolved == "base.assert" {
+    assert(len(inputs) == 2 && len(outputs) == 1,
+           "c: assert requires condition and message")
+    var out = indent + "assert(" +
+              expr(m, inputs[0], blob, data_fns, config) + ");\n"
+    if ir.name(outputs[0]) != "" {
+      out += indent + lhs(op, outputs[0], config) + " = true;\n"
+    }
+    return out
   }
   if name == "base.copy" {
     return copy(m, op, depth, blob, data_fns, config, direct, results)
@@ -1027,7 +1239,8 @@ local fn call(
           let target = direct_result(output, direct, results)
           if target == "" {
             out += indent + scalar(tensor.elem(type), config) + " " +
-                   val(output) + "[" + text(count(type)) + "];\n"
+                   val(output) + "[" +
+                   text(allocation_count(m, output)) + "];\n"
           } else {
             out += indent + scalar(tensor.elem(type), config) + "* " +
                    val(output) + " = " + target + ";\n"
@@ -1041,6 +1254,14 @@ local fn call(
       }
       if tensor.valid(type) {
         actuals += val(output)
+        let dims = tensor.dims(type)
+        for axis in 0..len(dims) {
+          if base.kind(dims[axis]) != "int" {
+            out += indent + index_type(config) + " " + val(output) +
+                   "_dim_" + text(axis) + ";\n"
+            actuals += ", &" + val(output) + "_dim_" + text(axis)
+          }
+        }
       } else {
         actuals += "&" + val(output)
       }
@@ -1056,7 +1277,7 @@ local fn call(
       let target = direct_result(output, direct, results)
       if target == "" {
         out = indent + scalar(tensor.elem(type), config) + " " + val(output) +
-              "[" + text(count(type)) + "];\n"
+              "[" + text(allocation_count(m, output)) + "];\n"
       } else {
         if returned_only(output) {
           destination = target
@@ -1069,7 +1290,16 @@ local fn call(
     if actuals != "" {
       actuals += ", "
     }
-    out += indent + callee + "(" + actuals + destination + ");\n"
+    actuals += destination
+    let dims = tensor.dims(type)
+    for axis in 0..len(dims) {
+      if base.kind(dims[axis]) != "int" {
+        out += indent + index_type(config) + " " + val(output) +
+               "_dim_" + text(axis) + ";\n"
+        actuals += ", &" + val(output) + "_dim_" + text(axis)
+      }
+    }
+    out += indent + callee + "(" + actuals + ");\n"
     return out
   }
   if ir.name(output) == "" {
@@ -1103,11 +1333,23 @@ local fn ret(
     }
     if tensor.valid(ir.type(value)) {
       if direct_result(value, direct, results) != output {
-        let n = count(ir.type(value))
+        var n = ""
+        if tensor.static(ir.type(value)) {
+          n = text(count(ir.type(value)))
+        } else {
+          n = logical_count(m, value)
+        }
         out += indent + "for (" + index_type(config) + " " + iterator +
-               " = 0; " + iterator + " < " + text(n) + "; ++" + iterator +
+               " = 0; " + iterator + " < " + n + "; ++" + iterator +
                ") " + output + "[" + iterator + "] = " + val(value) + "[" +
                iterator + "];\n"
+      }
+      let dims = tensor.dims(ir.type(value))
+      for axis in 0..len(dims) {
+        if base.kind(dims[axis]) != "int" {
+          out += indent + "*" + output + "_dim_" + text(axis) + " = " +
+                 extent(m, value, axis) + ";\n"
+        }
       }
     } else {
       out += indent + "*" + output + " = " +
@@ -1281,7 +1523,7 @@ local fn result_values(fn: Fn) -> list<Val> {
   return out
 }
 
-local fn direct_labels(fn: Fn) -> list<str> {
+local fn direct_labels(m: Mod, fn: Fn) -> list<str> {
   let types = ir.returns(fn)
   let returned = result_values(fn)
   var out: list<str> = []
@@ -1289,7 +1531,8 @@ local fn direct_labels(fn: Fn) -> list<str> {
     var name = ""
     if len(returned) == len(types) && tensor.valid(types[i]) {
       for op in ir.ops(fn) {
-        if ir.kind(op) == "call" && !reuses(op) {
+        if ir.kind(op) == "call" && !reuses(op) &&
+           ir.target(m, op) != "tensor.view" {
           for value in ir.outs(op) {
             if tensor.valid(ir.type(value)) && !mem.planned(value) &&
                label(value) == label(returned[i]) {
@@ -1403,7 +1646,10 @@ local fn signature_text(
     }
     let type = params[i]
     if tensor.valid(type) {
-      let elements = count(type)
+      var elements = 0
+      if tensor.static(type) {
+        elements = count(type)
+      }
       out += "const " + scalar(tensor.elem(type), config)
       if bounded && elements > 0 {
         out += " " + names[i] + "["
@@ -1417,6 +1663,14 @@ local fn signature_text(
           out += " restrict"
         }
         out += " " + names[i]
+      }
+      let dims = tensor.dims(type)
+      for axis in 0..len(dims) {
+        if base.kind(dims[axis]) != "int" {
+          out += ", " + index_type(config) + " " + names[i] +
+                 "_dim_" + text(axis)
+          arguments += 1
+        }
       }
     } else {
       out += scalar(type, config) + " " + names[i]
@@ -1441,7 +1695,10 @@ local fn signature_text(
       }
       let type = returns[i]
       if tensor.valid(type) {
-        let elements = count(type)
+        var elements = 0
+        if tensor.static(type) {
+          elements = count(type)
+        }
         out += scalar(tensor.elem(type), config)
         if bounded && elements > 0 {
           out += " " + results[i] + "["
@@ -1455,6 +1712,14 @@ local fn signature_text(
             out += " restrict"
           }
           out += " " + results[i]
+        }
+        let dims = tensor.dims(type)
+        for axis in 0..len(dims) {
+          if base.kind(dims[axis]) != "int" {
+            out += ", " + index_type(config) + "* " + results[i] +
+                   "_dim_" + text(axis)
+            arguments += 1
+          }
         }
       } else {
         out += scalar(type, config) + "* " + results[i]
@@ -1615,7 +1880,7 @@ local fn definition(
   if blob != "" && has_fn(data_fns, fn) {
     data_name = blob
   }
-  let direct = direct_labels(fn)
+  let direct = direct_labels(m, fn)
   let results = result_names(fn, data_name)
   return linkage(m, fn) +
          signature(m, fn, blob, data_fns, config, true) + " {\n" +
@@ -1875,6 +2140,7 @@ local fn source_headers(
             value_headers(fns, config)
   out += [type_header(ty("index"), config)]
   var needs_string = false
+  var needs_assert = false
   for op in ir.ops(m) {
     if external_call(m, op, config) {
       for value in ir.args(op) {
@@ -1889,9 +2155,17 @@ local fn source_headers(
         len(ir.outs(op)) == 1 && tensor.valid(ir.type(ir.outs(op)[0]))) {
       needs_string = true
     }
+    if ir.kind(op) == "call" &&
+       (ir.callee(op) == "base.assert" ||
+        ir.target(m, op) == "base.assert") {
+      needs_assert = true
+    }
   }
   if needs_string {
     out += ["string.h"]
+  }
+  if needs_assert {
+    out += ["assert.h"]
   }
   return out
 }
@@ -1963,7 +2237,7 @@ fn header(m: Mod, blob: str, config: dict) -> str {
 }
 
 local fn api_value(
-  type: Ty, name: str, pointer: bool, config: dict
+  type: Ty, name: str, pointer: bool, config: dict, capacity: list<int>
 ) -> dict {
   var out: dict = {}
   out["name"] = name
@@ -1971,12 +2245,38 @@ local fn api_value(
   out["pointer"] = pointer
   if tensor.valid(type) {
     let element = tensor.elem(type)
-    let elements = count(type)
+    var storage = capacity
+    var shape: list<Attr> = []
+    for dim in tensor.dims(type) {
+      if base.kind(dim) == "int" {
+        shape += [base.int(dim)]
+      } else {
+        shape += ["_"]
+      }
+    }
+    var elements = -1
+    if tensor.static(type) {
+      elements = count(type)
+      storage = tensor.shape(type)
+    } else {
+      if len(storage) == len(tensor.dims(type)) {
+        elements = 1
+        for extent in storage {
+          elements *= extent
+        }
+      }
+    }
     out["c"] = scalar(element, config)
     out["kind"] = class(element, config)
-    out["shape"] = tensor.shape(type)
+    out["shape"] = shape
+    out["capacity"] = storage
+    out["dynamic"] = !tensor.static(type)
     out["elements"] = elements
-    out["bytes"] = elements * width(element, config)
+    if elements < 0 {
+      out["bytes"] = -1
+    } else {
+      out["bytes"] = elements * width(element, config)
+    }
     return out
   }
   out["c"] = scalar(type, config)
@@ -2000,7 +2300,9 @@ local fn api_with(m: Mod, blob: str, config: dict) -> list<dict> {
     var params: list<dict> = []
     for param in ir.params(fn) {
       let type = ir.type(param)
-      params += [api_value(type, val(param), tensor.valid(type), config)]
+      params += [api_value(
+        type, val(param), tensor.valid(type), config, mem.capacity(m, param)
+      )]
     }
     var data = ""
     if blob != "" && owned(m, fn) && has_fn(data_fns, fn) {
@@ -2008,6 +2310,7 @@ local fn api_with(m: Mod, blob: str, config: dict) -> list<dict> {
     }
     let types = ir.returns(fn)
     let names = result_names(fn, data)
+    let returned = result_values(fn)
     var results: list<dict> = []
     for i in 0..len(types) {
       var name = names[i]
@@ -2015,7 +2318,11 @@ local fn api_with(m: Mod, blob: str, config: dict) -> list<dict> {
       if direct {
         name = ""
       }
-      results += [api_value(types[i], name, !direct, config)]
+      var capacity: list<int> = []
+      if len(returned) == len(types) {
+        capacity = mem.capacity(m, returned[i])
+      }
+      results += [api_value(types[i], name, !direct, config, capacity)]
     }
     var entry: dict = {}
     entry["name"] = symbol(m, fn, config)

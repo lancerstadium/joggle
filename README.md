@@ -336,6 +336,12 @@ attach a finite `mem.capacity` when one is provable. `mem.plan` consumes that
 same fact for local storage; unbounded values remain explicit instead of being
 silently heap allocated or assigned a target-specific limit.
 
+The C artifact keeps these tensors as flat pointers. Unknown input axes become
+adjacent `index` arguments and unknown output axes become adjacent `index*`
+results; `c.api` reports logical shape and proved capacity separately. This
+supports deterministic bounded dynamic results without a runtime tensor
+descriptor or hidden allocation.
+
 `c.prepare`, `mem.plan`, and the artifact functions are independent.
 Emission never performs hidden conversion, scheduling, or storage planning.
 The deterministic `vm` module provides a second execution path and reports

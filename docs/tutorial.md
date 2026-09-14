@@ -863,6 +863,13 @@ tensor results use an output-pointer parameter. If a `tensor` or `nn` call has
 not been exposed, emission fails and names that call rather than performing an
 implicit lowering.
 
+Bounded dynamic tensors use the same flat representation. For example, a
+parameter `x: tensor<i32, [_, 2]>` is emitted as `const int32_t* x,
+int64_t x_dim_0`. A result of the same type is emitted as `int32_t* out,
+int64_t* out_dim_0`. Run `mem.plan` before emission when a local
+`tensor.make` needs deterministic fixed-capacity storage. `tensor.view` changes
+the returned logical extents without allocating or introducing a descriptor.
+
 The corresponding application interface is available as structured JSON:
 
 ```sh
@@ -875,7 +882,9 @@ reports exact C declarations together with shapes, element and byte counts,
 representation classes, pointer passing, result names, and payload use.
 Harnesses can consume this record instead of parsing `model.h`. Configured ABI
 dictionaries are accepted by the matching `c.api` overloads just as they are
-by preparation and emission. The ONNX example's `make_harness.py` is one such
+by preparation and emission. For a dynamic tensor, the record separates its
+logical `shape` from its proved `capacity`; unknown allocation size is reported
+as `-1`, not guessed. The ONNX example's `make_harness.py` is one such
 consumer; it is not part of the compiler core or another ABI definition.
 
 Passing a data name to `c.source` and `c.header` externalizes tensor constants.

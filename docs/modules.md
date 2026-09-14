@@ -532,6 +532,11 @@ format terms as normal scalar arguments without declaring every model shape.
 `vm` emits a deterministic image and reports executed steps. Neither receives
 privileged access to the IR.
 
+`c.frontier(m)` returns the distinct resolved calls outside that boundary;
+the configured overload evaluates the same question under a custom scalar
+ABI. It is the read-only counterpart of `c.prepare`, so tests and research
+modules can inspect target coverage without scraping diagnostics.
+
 External payload offsets are indexed once by stable `Val` identity before
 function definitions are rendered. Pure ABI, type, naming, and ownership
 queries opt into the language's snapshot-aware memo contract. These are
@@ -548,6 +553,15 @@ It calls the same local naming, signature, and payload-dependency functions as
 rules to allocate buffers. In particular, a scalar is marked as a pointer when
 it is one member of a multi-result C interface, but remains a direct value when
 it is the function's sole result.
+
+A tensor with unknown dimensions still uses a flat pointer ABI. Each dynamic
+input axis contributes an adjacent `index` extent argument; each dynamic result
+axis contributes an adjacent `index*` extent result. No descriptor structure or
+second tensor type is introduced. `c.api` reports `_` in the logical shape,
+the proved `mem.capacity` separately, and `-1` for size and byte count when no
+finite capacity is known. A caller can therefore allocate deterministic output
+storage from the capacity while receiving the actual logical extent at run
+time.
 
 Non-empty fixed-shape tensors retain their exact minimum element count across
 private C call boundaries through standard C11 array parameters. Public
@@ -605,6 +619,10 @@ classified as pure; indexed writes remain effects. Immutable scalar bindings
 are emitted as C `const` values. Compound updates retain their C operators,
 and integral updates by the operator's identity are omitted without editing
 the IR. Runtime element loops and data-dependent indexing remain visible.
+After body expansion it refreshes inferred value types through `ir.type(m)`;
+this commits the same fixed-point inference used by verification and is needed
+because an edit may expose new concrete generic calls. It does not create a
+typed side table or another IR.
 
 For a function with one return path, an unplanned local tensor that reaches a
 pointer result is backed directly by that result buffer. The emitter retains
