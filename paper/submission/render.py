@@ -186,7 +186,7 @@ def render(source: str) -> tuple[str, int]:
         elif token.type == "bullet_list_close":
             lines.extend([r"\end{itemize}", ""])
         elif token.type == "list_item_open":
-            lines.append(r"\item ")
+            lines.append(r"\item")
         elif token.type == "html_block":
             pass
         elif token.type not in {

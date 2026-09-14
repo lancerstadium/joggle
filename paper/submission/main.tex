@@ -92,17 +92,17 @@ succeeds and where a dedicated representation is necessary.
 The paper makes three candidate contributions:
 
 \begin{enumerate}
-\item 
+\item
 A function-oriented compiler design that progressively exposes conventional
 neural-network models from schema calls to structured loop bodies without a
 mandatory representation boundary.
 
-\item 
+\item
 A source module mechanism in which frontend bridges, semantic
 implementations, analyses, transformations, capability checks, and artifact
 generation use ordinary typed functions and a transactional editing API.
 
-\item 
+\item
 An empirical evaluation of extension surface, composition failure,
 conventional-model coverage, numerical correctness, and generated-artifact
 quality, including negative compatibility and performance results.
@@ -115,21 +115,21 @@ and results are frozen.
 
 \section{Research questions}
 \begin{itemize}
-\item 
+\item
 \textbf{RQ1, progressive representation:} Can imported model calls, reusable
 semantics, explicit loops, storage decisions, and target preparation remain
 understandable and verifiable in one function representation?
 
-\item 
+\item
 \textbf{RQ2, extension surface:} Across an end-to-end ONNX-MLIR baseline and
 task-specific mechanism controls, which files, native registrations,
 generated definitions, core changes, and build dependencies are required?
 
-\item 
+\item
 \textbf{RQ3, composition:} Do independently defined modules compose with stable
 output, transactional failure, and useful unsupported-frontier diagnostics?
 
-\item 
+\item
 \textbf{RQ4, artifact quality:} Under matched model, threading, and correctness
 contracts, how do generated artifacts compare with independent production
 systems? Separately, can user modules change real function bodies without a
