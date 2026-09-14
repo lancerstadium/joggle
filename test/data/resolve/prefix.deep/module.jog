@@ -1,0 +1,4 @@
+module prefix.deep
+
+fn Num() -> Ty;
+fn pick(x: f32) -> f32 { return x }

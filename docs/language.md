@@ -236,7 +236,12 @@ imports; a qualified call intentionally selects one module namespace. Generic
 library code therefore uses an imported unqualified name when downstream
 modules are meant to contribute overloads. Artifact modules inspect the
 resolved `Fn` symbol rather than depending on whichever spelling survived in
-the source text.
+the source text. Namespace splitting is also visibility-relative: when visible
+module names overlap, the longest visible module that exports the remaining
+function name wins. Loading an unrelated package with a longer name cannot
+shadow a function in the caller's existing dependency closure. Structural type
+constructors use the same visibility-relative split, so their meaning is
+equally independent of unrelated load order.
 For example,
 `sat.add(a, b)` over two `sat<8>` values has result type `sat<8>`, while mixing
 `sat<8>` and `sat<16>` is rejected. Unknown calls remain valid open IR so a

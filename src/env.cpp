@@ -594,14 +594,22 @@ std::vector<Fn> Env::resolve_fns(const detail::Store& from,
   const std::vector<const Mod*>& modules = visible->second;
 
   if (symbol.find('.') != std::string_view::npos) {
-    std::vector<Fn> matches = find_fns(symbol);
-    if (!matches.empty() && std::any_of(modules.begin(), modules.end(),
-                                       [&](const Mod* module) {
-                                         return module->name() ==
-                                                matches.front().module();
-                                       }))
-      return matches;
-    return {};
+    std::size_t best = 0;
+    std::vector<Fn> matches;
+    for (const Mod* module : modules) {
+      const std::string_view name = module->name();
+      if (name.size() <= best || symbol.size() <= name.size() ||
+          !symbol.starts_with(name) || symbol[name.size()] != '.')
+        continue;
+      std::vector<Fn> candidates =
+          module->find_fns(symbol.substr(name.size() + 1));
+      std::erase_if(candidates, [](Fn fn) { return fn.local(); });
+      if (candidates.empty())
+        continue;
+      best = name.size();
+      matches = std::move(candidates);
+    }
+    return matches;
   }
 
   std::vector<Fn> matches = local(symbol);

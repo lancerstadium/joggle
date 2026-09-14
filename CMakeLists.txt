@@ -342,6 +342,10 @@ if(JOGGLE_BUILD_TESTS)
     "${CMAKE_CURRENT_BINARY_DIR}/modules/tile_pass/module.jog"
     COPYONLY
   )
+  file(
+    COPY test/data/resolve/
+    DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/modules"
+  )
   add_executable(joggle-workflow-test test/workflow.cpp)
   target_link_libraries(joggle-workflow-test PRIVATE Joggle::joggle)
   add_executable(joggle-network-test test/network.cpp)

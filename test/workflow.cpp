@@ -138,6 +138,53 @@ int main(int argc, char** argv) {
   CHECK(env.loaded("tensor"));
   CHECK((env.modules() == std::vector<std::string>{"base", "tensor"}));
 
+  CHECK(env.load("prefix"));
+  joggle::Mod short_prefix;
+  CHECK(joggle::parse(env,
+                      "module short.prefix\n"
+                      "use prefix\n"
+                      "fn id(x: prefix.deep.Num) -> prefix.deep.Num {\n"
+                      "  return x\n"
+                      "}\n"
+                      "fn main(x: i32) -> i32 {\n"
+                      "  return prefix.deep.pick(x)\n"
+                      "}\n",
+                      short_prefix, "short-prefix.jog"));
+  CHECK(short_prefix.verify(env));
+  const joggle::Op short_call =
+      short_prefix.find_fn("main").body().ops().front();
+  const joggle::Fn short_target = env.resolve(short_prefix, short_call);
+  CHECK(short_target && short_target.module() == "prefix" &&
+        short_target.name() == "deep.pick");
+  CHECK(env.load("prefix.deep"));
+  CHECK(short_prefix.verify(env));
+  const joggle::Fn stable_short_target =
+      env.resolve(short_prefix, short_call);
+  CHECK(stable_short_target == short_target);
+  const joggle::Fn global_prefix = env.find_fn("prefix.deep.pick");
+  CHECK(global_prefix && global_prefix.module() == "prefix.deep");
+  CHECK(global_prefix.params().front().type() == joggle::Ty("f32"));
+  const joggle::Fn global_prefix_type = env.find_fn("prefix.deep.Num");
+  CHECK(global_prefix_type && global_prefix_type.module() == "prefix.deep");
+
+  joggle::Mod long_prefix;
+  CHECK(joggle::parse(env,
+                      "module long.prefix\n"
+                      "use prefix.deep\n"
+                      "fn id(x: prefix.deep.Num) -> prefix.deep.Num {\n"
+                      "  return x\n"
+                      "}\n"
+                      "fn main(x: f32) -> f32 {\n"
+                      "  return prefix.deep.pick(x)\n"
+                      "}\n",
+                      long_prefix, "long-prefix.jog"));
+  CHECK(long_prefix.verify(env));
+  const joggle::Op long_call =
+      long_prefix.find_fn("main").body().ops().front();
+  const joggle::Fn long_target = env.resolve(long_prefix, long_call);
+  CHECK(long_target && long_target.module() == "prefix.deep" &&
+        long_target.name() == "pick");
+
   const std::array<joggle::Source, 2> split_sources{
       joggle::Source{
           "module split\n"
