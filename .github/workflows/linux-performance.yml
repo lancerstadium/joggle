@@ -43,11 +43,12 @@ jobs:
         id: fetch
         run: |
           set -o pipefail
+          mkdir -p build-app
           for model in mnist-8 mobilenetv2-7; do
             fetched=false
             for attempt in 1 2 3; do
               if cmake -DOUT=.cache/onnx-zoo -DMODELS="$model" -DAPP=ON \
-                  -P test/zoo.cmake 2>&1 | tee -a model-fetch.log; then
+                  -P test/zoo.cmake 2>&1 | tee -a build-app/model-fetch.log; then
                 fetched=true
                 break
               fi
@@ -64,7 +65,9 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          text = Path("model-fetch.log").read_text(errors="replace")[-12000:]
+          text = Path("build-app/model-fetch.log").read_text(
+              errors="replace"
+          )[-12000:]
           text = (text.replace("%", "%25")
                       .replace("\r", "%0D")
                       .replace("\n", "%0A"))
@@ -88,7 +91,7 @@ jobs:
           set -o pipefail
           ctest --test-dir build-app \
             -R '^onnx-app-(mnist|mobilenet)$' \
-            --output-on-failure 2>&1 | tee application-test.log
+            --output-on-failure 2>&1 | tee build-app/application-test.log
 
       - name: Preserve application failure
         if: ${{ failure() && steps.validate.outcome == 'failure' }}
@@ -96,7 +99,9 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          text = Path("application-test.log").read_text(errors="replace")[-12000:]
+          text = Path("build-app/application-test.log").read_text(
+              errors="replace"
+          )[-12000:]
           text = (text.replace("%", "%25")
                       .replace("\r", "%0D")
                       .replace("\n", "%0A"))
@@ -104,7 +109,9 @@ jobs:
           PY
 
       - name: Record independent-system timings
+        id: measure
         run: |
+          set -o pipefail
           mkdir -p build-app/performance
           cpu="$(python3 - <<'PY'
           import os
@@ -116,13 +123,29 @@ jobs:
             --repo . \
             --output build-app/performance/mnist.csv \
             --record build-app/performance/mnist.json \
-            --cpu "$cpu" --require-clean
+            --cpu "$cpu" --require-clean \
+            2>&1 | tee build-app/performance/mnist.log
           python3 paper/measure_systems.py \
             --manifest paper/experiments/mobilenetv2.json \
             --repo . \
             --output build-app/performance/mobilenetv2.csv \
             --record build-app/performance/mobilenetv2.json \
-            --cpu "$cpu" --require-clean
+            --cpu "$cpu" --require-clean \
+            2>&1 | tee build-app/performance/mobilenetv2.log
+
+      - name: Preserve measurement failure
+        if: ${{ failure() && steps.measure.outcome == 'failure' }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          logs = Path("build-app/performance").glob("*.log")
+          text = "\n".join(path.read_text(errors="replace") for path in logs)
+          text = (text[-12000:].replace("%", "%25")
+                                .replace("\r", "%0D")
+                                .replace("\n", "%0A"))
+          print(f"::error title=System measurement failed::{text}")
+          PY
 
       - name: Summarize medians
         run: |
