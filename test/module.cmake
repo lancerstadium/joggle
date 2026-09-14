@@ -56,6 +56,15 @@ if(EXISTS "${TEST_ROOT}/fragment_error")
 endif()
 file(REMOVE_RECURSE "${fragment_root}")
 
+foreach(action IN ITEMS check info)
+  invoke(fail "${TOOL}" module "${action}" "../base" -M "${SOURCE_ROOT}")
+  set(name_diagnostics "${COMMAND_OUTPUT}${COMMAND_ERROR}")
+  if(NOT name_diagnostics MATCHES "invalid module name")
+    message(FATAL_ERROR
+            "module ${action} inspected an invalid identity:\n${name_diagnostics}")
+  endif()
+endforeach()
+
 set(graph_root "${TEST_ROOT}.module-graph")
 file(REMOVE_RECURSE "${graph_root}")
 foreach(module IN ITEMS graph.leaf graph.left graph.right graph.top

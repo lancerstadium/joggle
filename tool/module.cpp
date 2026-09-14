@@ -294,13 +294,13 @@ int check(std::string_view name, const std::vector<fs::path>& roots) {
 }
 
 int info(std::string_view name, const std::vector<fs::path>& roots) {
+  if (check(name, roots) != 0)
+    return 1;
   const fs::path directory = locate(name, roots);
   if (directory.empty()) {
     std::cerr << "joggle: module not found: " << name << '\n';
     return 1;
   }
-  if (check(name, roots) != 0)
-    return 1;
 
   Mod mod;
   std::vector<fs::path> files;

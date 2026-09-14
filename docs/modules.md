@@ -57,6 +57,12 @@ Together with the sorted `lib/*.jog` fragments it forms one module. Top-level
 implementation details. No generated header, export list, registration
 routine, or version suffix in a symbol name is required.
 
+Module identities are dot-qualified names whose segments contain only letters,
+digits, and underscores and begin with a letter or underscore. The parser,
+embedding loader, and command-line loading commands use the same validation;
+empty names, empty segments, path separators, and traversal components are
+rejected before the search roots are inspected.
+
 The C++ `parse` overload accepting `std::span<const Source>` applies the same
 rule to embedded callers. Each `Source` owns its text and display path; the
 parser combines their declarations into one `Mod` while retaining the original

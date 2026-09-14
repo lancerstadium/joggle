@@ -85,6 +85,20 @@ int main(int argc, char** argv) {
   env.path(argv[2]);
   env.path(argv[3]);
 
+  for (const std::string_view name : {
+           std::string_view{}, std::string_view("../tensor"),
+           std::string_view("tensor/child"),
+           std::string_view("tensor\\child"),
+           std::string_view(".tensor"), std::string_view("tensor."),
+           std::string_view("tensor..child")}) {
+    CHECK(!env.load(name));
+    CHECK(!env.diags().empty());
+    CHECK(env.diags().back().message.find("invalid module name") !=
+          std::string::npos);
+    env.clear_diags();
+  }
+  CHECK(env.modules().empty());
+
   joggle::Mod invalid_module_name;
   CHECK(!joggle::parse(env, "module invalid.\n", invalid_module_name,
                        "invalid-module-name.jog"));

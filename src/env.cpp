@@ -299,6 +299,11 @@ Env& Env::operator=(Env&&) noexcept = default;
 void Env::path(std::string path) { impl_->paths.emplace_back(std::move(path)); }
 
 bool Env::load(std::string_view name) {
+  if (!detail::valid_qualified_name(name)) {
+    detail::add_diag(impl_->diags,
+                     "invalid module name '" + std::string(name) + "'");
+    return false;
+  }
   const std::string key(name);
   if (impl_->modules.contains(key))
     return true;
