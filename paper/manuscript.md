@@ -593,12 +593,6 @@ artifacts, and the first unmet mandatory requirement separately. These
 dimensions will appear as aligned panels rather than a pass/fail or aggregate
 ``ease'' score.
 
-![Authored extension surface for four frozen tasks. Bars report measured source
-files, nonblank non-comment lines, and source bytes; all axes start at zero. A
-cross marks a system that stopped before a measurable implementation, while
-hatching marks measured partial source that still stopped at a mandatory
-endpoint.](figures/extension-surface.pdf)
-
 All four Joggle tasks reach their required artifacts. The matching TVM controls
 reach the computation, policy, and external-kernel artifacts but stop at the
 custom-type registration required by the numeric-format task. ONNX-MLIR reaches
