@@ -411,6 +411,19 @@ outcome at its first mandatory case, and two remain incomplete. These results
 do not support a general claim that Joggle is easier to extend, more compatible,
 or faster than another compiler.
 
+**Table 3. Frozen extension tasks and observed authored source surface.**
+
+| Task | Joggle | TVM control | ONNX-MLIR system path |
+| --- | --- | --- | --- |
+| implementation | pass, 20 lines | pass, 62 lines | pass, 167 lines in six files |
+| policy | pass, 69 lines | pass, 126 lines | incomplete |
+| external kernel | pass, 138 lines | pass, 355 lines | unsupported at first required MatMul case |
+| numeric format | pass, 284 lines | incomplete | incomplete |
+
+Lines are nonblank, non-comment authored source under each frozen task's
+inclusion rules. They expose where an extension crosses files and registration
+boundaries; they do not measure development time, comprehension, or usability.
+
 The first reproducible extension-footprint pilot freezes four tasks and runs
 their named tests. Its three out-of-tree tasks contain 20, 69, and 138 source
 lines; the bundled numeric-format task contains 284 source lines across a
