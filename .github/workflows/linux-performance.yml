@@ -8,6 +8,7 @@ name: linux-performance
       - .github/workflows/linux-performance.yml
       - examples/onnx/app.cpp
       - modules/**
+      - paper/measure_systems.py
       - test/models.cmake
       - test/zoo.cmake
 
