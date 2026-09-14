@@ -25,8 +25,9 @@ void tensor_type(jogonnx::ValueInfoProto* value, std::string name,
   value->set_name(std::move(name));
   auto* tensor = value->mutable_type()->mutable_tensor_type();
   tensor->set_elem_type(element);
+  auto* tensor_shape = tensor->mutable_shape();
   for (const std::int64_t extent : shape)
-    tensor->mutable_shape()->add_dim()->set_dim_value(extent);
+    tensor_shape->add_dim()->set_dim_value(extent);
 }
 
 joggle::Attr::Bytes multi_output_model() {
