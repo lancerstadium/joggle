@@ -51,10 +51,10 @@ std::vector<fs::path> source_files(const fs::path& directory) {
 }
 
 bool read(const fs::path& directory, Mod& mod,
-          std::vector<fs::path>& files) {
+          std::vector<fs::path>& files, DiagFormat format) {
   files = source_files(directory);
   if (files.empty()) {
-    std::cerr << "joggle: no module.jog in " << directory << '\n';
+    print_error(stderr, "no module.jog in " + directory.string(), format);
     return false;
   }
 
@@ -63,7 +63,7 @@ bool read(const fs::path& directory, Mod& mod,
   for (const fs::path& file : files) {
     std::ifstream input(file);
     if (!input) {
-      std::cerr << "joggle: cannot open " << file << '\n';
+      print_error(stderr, "cannot open " + file.string(), format);
       return false;
     }
     std::ostringstream source;
@@ -73,7 +73,7 @@ bool read(const fs::path& directory, Mod& mod,
 
   Env env;
   if (!parse(env, sources, mod)) {
-    mod.print_diags(stderr);
+    print_diags(stderr, mod.diags(), format);
     return false;
   }
   return true;
@@ -227,7 +227,8 @@ std::string declaration(Fn fn) {
   return out.str();
 }
 
-bool compatible(const Mod& installed, const Mod& replacement) {
+bool compatible(const Mod& installed, const Mod& replacement,
+                DiagFormat format) {
   std::multiset<std::string> available;
   for (Fn fn : replacement.fns())
     if (!fn.local())
@@ -238,8 +239,10 @@ bool compatible(const Mod& installed, const Mod& replacement) {
     const std::string required = signature(fn);
     const auto found = available.find(required);
     if (found == available.end()) {
-      std::cerr << "joggle: incompatible upgrade removes declaration: "
-                << installed.name() << '.' << required << '\n';
+      print_error(stderr,
+                  "incompatible upgrade removes declaration: " +
+                      std::string(installed.name()) + "." + required,
+                  format, fn.loc());
       return false;
     }
     available.erase(found);
@@ -248,7 +251,7 @@ bool compatible(const Mod& installed, const Mod& replacement) {
 }
 
 bool copy_module(const fs::path& source, const fs::path& staging,
-                 std::string_view name) {
+                 std::string_view name, DiagFormat format) {
   std::error_code error;
   fs::create_directories(staging, error);
   if (!error)
@@ -256,31 +259,31 @@ bool copy_module(const fs::path& source, const fs::path& staging,
   if (!error)
     return true;
   fs::remove_all(staging);
-  std::cerr << "joggle: cannot stage module: " << error.message() << '\n';
+  print_error(stderr, "cannot stage module: " + error.message(), format);
   return false;
 }
 
 bool validate(const fs::path& staging, const fs::path& root,
               const std::vector<fs::path>& dependencies,
-              std::string_view name) {
+              std::string_view name, DiagFormat format) {
   Env env;
   env.path(staging.string());
   env.path(root.string());
   add_paths(env, dependencies);
   const bool valid = env.load(name);
   if (!valid)
-    env.print_diags(stderr);
+    print_diags(stderr, env.diags(), format);
   return valid;
 }
 
 bool affected_modules(std::string_view name, const fs::path& root,
-                      std::vector<std::string>& out) {
+                      std::vector<std::string>& out, DiagFormat format) {
   std::map<std::string, std::vector<std::string>, std::less<>> uses;
   for (const auto& [directory_name, directory] : available({root})) {
     (void)directory_name;
     Mod declaration;
     std::vector<fs::path> files;
-    if (!read(directory, declaration, files))
+    if (!read(directory, declaration, files, format))
       return false;
     uses.emplace(std::string(declaration.name()), declaration.uses());
   }
@@ -321,7 +324,7 @@ Fn resolve_call(const Env& env, Fn owner, Op call) {
 }
 
 bool preserves_resolutions(const Env& installed, const Env& replacement,
-                           const Mod& dependent) {
+                           const Mod& dependent, DiagFormat format) {
   for (Fn fn : dependent.fns()) {
     for (Op call : fn.ops()) {
       const Fn old_target = resolve_call(installed, fn, call);
@@ -330,9 +333,12 @@ bool preserves_resolutions(const Env& installed, const Env& replacement,
       const Fn new_target = resolve_call(replacement, fn, call);
       if (new_target && symbol(new_target) == symbol(old_target))
         continue;
-      std::cerr << "joggle: upgrade would break installed module '"
-                << dependent.name() << "': call to '" << call.callee()
-                << "' no longer resolves to " << symbol(old_target) << '\n';
+      print_error(stderr,
+                  "upgrade would break installed module '" +
+                      std::string(dependent.name()) + "': call to '" +
+                      std::string(call.callee()) + "' no longer resolves to " +
+                      symbol(old_target),
+                  format, call.loc());
       return false;
     }
   }
@@ -341,9 +347,9 @@ bool preserves_resolutions(const Env& installed, const Env& replacement,
 
 bool validate_upgrade(const fs::path& staging, const fs::path& root,
                       const std::vector<fs::path>& dependencies,
-                      std::string_view name) {
+                      std::string_view name, DiagFormat format) {
   std::vector<std::string> affected;
-  if (!affected_modules(name, root, affected))
+  if (!affected_modules(name, root, affected, format))
     return false;
 
   Env installed;
@@ -355,26 +361,26 @@ bool validate_upgrade(const fs::path& staging, const fs::path& root,
   replacement.path(root.string());
   add_paths(replacement, dependencies);
   if (!replacement.load(name)) {
-    replacement.print_diags(stderr);
+    print_diags(stderr, replacement.diags(), format);
     return false;
   }
   for (const std::string& module : affected) {
     if (!installed.load(module)) {
-      std::cerr << "joggle: cannot validate installed module '" << module
-                << "' before upgrade\n";
-      installed.print_diags(stderr);
+      print_error(stderr, "cannot validate installed module '" + module +
+                              "' before upgrade", format);
+      print_diags(stderr, installed.diags(), format);
       return false;
     }
     if (!replacement.load(module)) {
-      std::cerr << "joggle: upgrade would break installed module '" << module
-                << "'\n";
-      replacement.print_diags(stderr);
+      print_error(stderr, "upgrade would break installed module '" + module +
+                              "'", format);
+      print_diags(stderr, replacement.diags(), format);
       return false;
     }
     Mod dependent;
     std::vector<fs::path> files;
-    if (!read(root / module, dependent, files) ||
-        !preserves_resolutions(installed, replacement, dependent))
+    if (!read(root / module, dependent, files, format) ||
+        !preserves_resolutions(installed, replacement, dependent, format))
       return false;
   }
   return true;
@@ -388,28 +394,30 @@ int list(const std::vector<fs::path>& roots) {
   return 0;
 }
 
-int check(std::string_view name, const std::vector<fs::path>& roots) {
+int check(std::string_view name, const std::vector<fs::path>& roots,
+          DiagFormat format) {
   Env env;
   add_paths(env, roots);
   if (!env.load(name)) {
-    env.print_diags(stderr);
+    print_diags(stderr, env.diags(), format);
     return 1;
   }
   return 0;
 }
 
-int info(std::string_view name, const std::vector<fs::path>& roots) {
-  if (check(name, roots) != 0)
+int info(std::string_view name, const std::vector<fs::path>& roots,
+         DiagFormat format) {
+  if (check(name, roots, format) != 0)
     return 1;
   const fs::path directory = locate(name, roots);
   if (directory.empty()) {
-    std::cerr << "joggle: module not found: " << name << '\n';
+    print_error(stderr, "module not found: " + std::string(name), format);
     return 1;
   }
 
   Mod mod;
   std::vector<fs::path> files;
-  if (!read(directory, mod, files))
+  if (!read(directory, mod, files, format))
     return 1;
 
   std::cout << "module " << mod.name() << '\n';
@@ -438,43 +446,44 @@ int info(std::string_view name, const std::vector<fs::path>& roots) {
 }
 
 int install(const fs::path& source, const fs::path& root,
-            const std::vector<fs::path>& dependencies) {
+            const std::vector<fs::path>& dependencies, DiagFormat format) {
   if (!safe_tree(source)) {
-    std::cerr << "joggle: module must contain only regular files and "
-                 "directories: "
-              << source << '\n';
+    print_error(stderr,
+                "module must contain only regular files and directories: " +
+                    source.string(),
+                format);
     return 1;
   }
 
   Mod declaration;
   std::vector<fs::path> files;
-  if (!read(source, declaration, files))
+  if (!read(source, declaration, files, format))
     return 1;
   const std::string name(declaration.name());
   if (name.empty()) {
-    std::cerr << "joggle: module has no name\n";
+    print_error(stderr, "module has no name", format);
     return 1;
   }
 
   std::error_code error;
   fs::create_directories(root, error);
   if (error) {
-    std::cerr << "joggle: cannot create module directory " << root << ": "
-              << error.message() << '\n';
+    print_error(stderr, "cannot create module directory " + root.string() +
+                            ": " + error.message(), format);
     return 1;
   }
   const fs::path target = root / name;
   if (fs::exists(target)) {
-    std::cerr << "joggle: module already installed: " << name << '\n';
+    print_error(stderr, "module already installed: " + name, format);
     return 1;
   }
 
   const fs::path staging = stage(root, "install", name);
   const fs::path staged = staging / name;
-  if (!copy_module(source, staging, name))
+  if (!copy_module(source, staging, name, format))
     return 1;
 
-  if (!validate(staging, root, dependencies, name)) {
+  if (!validate(staging, root, dependencies, name, format)) {
     fs::remove_all(staging);
     return 1;
   }
@@ -482,7 +491,7 @@ int install(const fs::path& source, const fs::path& root,
   fs::rename(staged, target, error);
   if (error) {
     fs::remove_all(staging);
-    std::cerr << "joggle: cannot install module: " << error.message() << '\n';
+    print_error(stderr, "cannot install module: " + error.message(), format);
     return 1;
   }
   fs::remove(staging, error);
@@ -491,46 +500,50 @@ int install(const fs::path& source, const fs::path& root,
 }
 
 int upgrade(const fs::path& source, const fs::path& root,
-            const std::vector<fs::path>& dependencies) {
+            const std::vector<fs::path>& dependencies, DiagFormat format) {
   if (!safe_tree(source)) {
-    std::cerr << "joggle: module must contain only regular files and "
-                 "directories: "
-              << source << '\n';
+    print_error(stderr,
+                "module must contain only regular files and directories: " +
+                    source.string(),
+                format);
     return 1;
   }
 
   Mod replacement;
   std::vector<fs::path> replacement_files;
-  if (!read(source, replacement, replacement_files))
+  if (!read(source, replacement, replacement_files, format))
     return 1;
   const std::string name(replacement.name());
   if (name.empty()) {
-    std::cerr << "joggle: module has no name\n";
+    print_error(stderr, "module has no name", format);
     return 1;
   }
 
   const fs::path target = root / name;
   if (!safe_tree(target)) {
-    std::cerr << "joggle: module is not safely installed: " << name << '\n';
+    print_error(stderr, "module is not safely installed: " + name, format);
     return 1;
   }
   Mod installed;
   std::vector<fs::path> installed_files;
-  if (!read(target, installed, installed_files))
+  if (!read(target, installed, installed_files, format))
     return 1;
   if (installed.name() != name) {
-    std::cerr << "joggle: installed directory declares '" << installed.name()
-              << "', refusing to upgrade it as '" << name << "'\n";
+    print_error(stderr,
+                "installed directory declares '" +
+                    std::string(installed.name()) +
+                    "', refusing to upgrade it as '" + name + "'",
+                format);
     return 1;
   }
-  if (!compatible(installed, replacement))
+  if (!compatible(installed, replacement, format))
     return 1;
 
   const fs::path staging = stage(root, "upgrade", name);
   const fs::path staged = staging / name;
-  if (!copy_module(source, staging, name))
+  if (!copy_module(source, staging, name, format))
     return 1;
-  if (!validate_upgrade(staging, root, dependencies, name)) {
+  if (!validate_upgrade(staging, root, dependencies, name, format)) {
     std::error_code ignored;
     fs::remove_all(staging, ignored);
     return 1;
@@ -541,8 +554,8 @@ int upgrade(const fs::path& source, const fs::path& root,
   fs::rename(target, backup, error);
   if (error) {
     fs::remove_all(staging);
-    std::cerr << "joggle: cannot detach installed module: "
-              << error.message() << '\n';
+    print_error(stderr,
+                "cannot detach installed module: " + error.message(), format);
     return 1;
   }
   fs::rename(staged, target, error);
@@ -550,12 +563,14 @@ int upgrade(const fs::path& source, const fs::path& root,
     std::error_code rollback;
     fs::rename(backup, target, rollback);
     if (rollback) {
-      std::cerr << "joggle: upgrade failed and the prior module remains at "
-                << backup << ": " << rollback.message() << '\n';
+      print_error(stderr,
+                  "upgrade failed and the prior module remains at " +
+                      backup.string() + ": " + rollback.message(),
+                  format);
       return 1;
     }
     fs::remove_all(staging);
-    std::cerr << "joggle: cannot commit upgrade: " << error.message() << '\n';
+    print_error(stderr, "cannot commit upgrade: " + error.message(), format);
     return 1;
   }
 
@@ -563,8 +578,9 @@ int upgrade(const fs::path& source, const fs::path& root,
   if (!error)
     fs::remove(staging, error);
   if (error) {
-    std::cerr << "joggle: module was upgraded but cleanup failed: "
-              << error.message() << '\n';
+    print_error(stderr,
+                "module was upgraded but cleanup failed: " + error.message(),
+                format);
     return 1;
   }
   std::cout << "upgraded " << name << " in " << root.string() << '\n';
@@ -572,7 +588,7 @@ int upgrade(const fs::path& source, const fs::path& root,
 }
 
 bool find_dependents(std::string_view name, const fs::path& root,
-                     std::vector<std::string>& out) {
+                     std::vector<std::string>& out, DiagFormat format) {
   const fs::path target = (root / name).lexically_normal();
   for (const auto& [directory_name, directory] : available({root})) {
     (void)directory_name;
@@ -581,7 +597,7 @@ bool find_dependents(std::string_view name, const fs::path& root,
 
     Mod declaration;
     std::vector<fs::path> files;
-    if (!read(directory, declaration, files))
+    if (!read(directory, declaration, files, format))
       return false;
     const std::vector<std::string> dependencies = declaration.uses();
     if (std::find(dependencies.begin(), dependencies.end(), name) !=
@@ -593,26 +609,31 @@ bool find_dependents(std::string_view name, const fs::path& root,
   return true;
 }
 
-int uninstall(std::string_view name, const fs::path& root) {
+int uninstall(std::string_view name, const fs::path& root,
+              DiagFormat format) {
   const fs::path target = root / name;
   Mod declaration;
   std::vector<fs::path> files;
-  if (!read(target, declaration, files))
+  if (!read(target, declaration, files, format))
     return 1;
   if (declaration.name() != name) {
-    std::cerr << "joggle: module declares '" << declaration.name()
-              << "', refusing to uninstall it as '" << name << "'\n";
+    print_error(stderr,
+                "module declares '" + std::string(declaration.name()) +
+                    "', refusing to uninstall it as '" + std::string(name) +
+                    "'",
+                format);
     return 1;
   }
 
   std::vector<std::string> dependents;
-  if (!find_dependents(name, root, dependents))
+  if (!find_dependents(name, root, dependents, format))
     return 1;
   if (!dependents.empty()) {
-    std::cerr << "joggle: cannot uninstall " << name << "; required by";
+    std::string message = "cannot uninstall " + std::string(name) +
+                          "; required by";
     for (const std::string& dependent : dependents)
-      std::cerr << ' ' << dependent;
-    std::cerr << '\n';
+      message += " " + dependent;
+    print_error(stderr, std::move(message), format);
     return 1;
   }
 
@@ -620,13 +641,15 @@ int uninstall(std::string_view name, const fs::path& root) {
   std::error_code error;
   fs::rename(target, staging, error);
   if (error) {
-    std::cerr << "joggle: cannot detach module: " << error.message() << '\n';
+    print_error(stderr, "cannot detach module: " + error.message(), format);
     return 1;
   }
   fs::remove_all(staging, error);
   if (error) {
-    std::cerr << "joggle: module was detached but cleanup failed at "
-              << staging << ": " << error.message() << '\n';
+    print_error(stderr,
+                "module was detached but cleanup failed at " +
+                    staging.string() + ": " + error.message(),
+                format);
     return 1;
   }
   std::cout << "uninstalled " << name << " from " << root.string() << '\n';
@@ -635,7 +658,7 @@ int uninstall(std::string_view name, const fs::path& root) {
 
 }  // namespace
 
-int module(int argc, char** argv) {
+int module(int argc, char** argv, DiagFormat format) {
   if (argc < 3)
     return 2;
   const std::string_view action = argv[2];
@@ -648,18 +671,19 @@ int module(int argc, char** argv) {
   if (action == "info" || action == "check") {
     if (argc < 4 || !paths(argc, argv, 4, roots))
       return 2;
-    return action == "info" ? info(argv[3], roots) : check(argv[3], roots);
+    return action == "info" ? info(argv[3], roots, format)
+                            : check(argv[3], roots, format);
   }
   if (action == "install" || action == "upgrade") {
     if (argc < 5 || !paths(argc, argv, 5, roots))
       return 2;
-    return action == "install" ? install(argv[3], argv[4], roots)
-                               : upgrade(argv[3], argv[4], roots);
+    return action == "install" ? install(argv[3], argv[4], roots, format)
+                               : upgrade(argv[3], argv[4], roots, format);
   }
   if (action == "uninstall") {
     if (argc != 5)
       return 2;
-    return uninstall(argv[3], argv[4]);
+    return uninstall(argv[3], argv[4], format);
   }
   return 2;
 }

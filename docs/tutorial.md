@@ -14,6 +14,17 @@ Then verify and canonically print the real matrix-multiplication fixture:
 ./build/joggle check test/data/matmul.jog -M modules
 ```
 
+Automation can select canonical structured failures without changing successful
+output or learning another serialization format:
+
+```sh
+./build/joggle --diagnostics jog check test/data/matmul.jog -M modules
+```
+
+The failure value is an attribute list on standard error. Entries always carry
+`severity` and `message`; source-backed failures also carry `file`, `line`, and
+`column`.
+
 Run the textual add-zero transform and print its result:
 
 ```sh

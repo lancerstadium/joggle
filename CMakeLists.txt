@@ -257,7 +257,7 @@ if(JOGGLE_BUILD_SAT)
   )
 endif()
 
-add_executable(joggle-tool tool/main.cpp tool/module.cpp)
+add_executable(joggle-tool tool/diag.cpp tool/main.cpp tool/module.cpp)
 set_target_properties(joggle-tool PROPERTIES OUTPUT_NAME joggle)
 target_link_libraries(joggle-tool PRIVATE Joggle::joggle)
 target_compile_definitions(
@@ -454,6 +454,15 @@ if(JOGGLE_BUILD_TESTS)
       -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
       -DROOT=${CMAKE_CURRENT_BINARY_DIR}/stream-test
       -P ${CMAKE_CURRENT_SOURCE_DIR}/test/stream.cmake
+  )
+  add_test(
+    NAME cli-diagnostics
+    COMMAND
+      ${CMAKE_COMMAND}
+      -DTOOL=$<TARGET_FILE:joggle-tool>
+      -DMODEL=${CMAKE_CURRENT_BINARY_DIR}/modules/bad/module.jog
+      -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/diagnostics.cmake
   )
   add_test(
     NAME cost-example

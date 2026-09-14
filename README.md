@@ -57,6 +57,17 @@ Check a program and run a transformation:
 The output is normal `.jog` text. It can be inspected, committed, checked, or
 passed to another function.
 
+All commands accept the global prefix `--diagnostics text|jog`. `text` is the
+default for people. `jog` writes failures as one canonical attribute list to
+standard error, using the same grammar as module metadata and `--arg` values:
+
+```sh
+./build/joggle --diagnostics jog check test/data/matmul.jog -M build/modules
+```
+
+Successful standard output is unchanged, so a tool can request structured
+failures without changing an existing model or artifact pipeline.
+
 ## Language
 
 ```jog

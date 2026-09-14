@@ -423,6 +423,23 @@ The embedding equivalent is `parse(env, text, attr)` followed by the existing
 `run` or `query` overload taking `span<const Attr>`. There is no target-specific
 option registry or second configuration grammar.
 
+### Diagnostics
+
+Every command accepts `--diagnostics text|jog` before the command name. The
+default `text` form is source-oriented. The `jog` form writes one canonical
+`list<dict<str, Attr>>` to standard error:
+
+```text
+[{"column": 4, "file": "model.jog", "line": 9,
+  "message": "unresolved function: missing", "severity": "error"}]
+```
+
+`file`, `line`, and `column` are omitted when a failure has no source location.
+The representation is ordinary `Attr` syntax, not a second data model: an
+embedding, script, or generated procedure can parse it with the same attribute
+parser used for module metadata and `--arg`. Successful command output retains
+its normal program, query, or artifact representation.
+
 Calls inside that function remain ordinary calls. Compile-time execution
 supports structured `for` and `if`, scalar operators, lists, and the universal
 `Mod`, `Fn`, `Blk`, `Op`, and `Val` handles exposed by `ir`. Failed execution is

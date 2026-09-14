@@ -1,5 +1,7 @@
 #include "module.h"
 
+#include "diag.h"
+
 #include "joggle/joggle.h"
 
 #include <cstdio>
@@ -23,6 +25,7 @@ namespace fs = std::filesystem;
 
 int usage() {
   std::cerr << "usage:\n"
+               "  joggle [--diagnostics text|jog] <command> ...\n"
                "  joggle --version\n"
                "  joggle check <file.jog|-> [-M <module-dir>]...\n"
                "  joggle read <module.fn> <file|-> [-M <module-dir>]...\n"
@@ -64,30 +67,34 @@ bool options(int argc, char** argv, int first, bool allow_report,
   return true;
 }
 
-bool load_uses(joggle::Env& env, const joggle::Mod& mod) {
+bool load_uses(joggle::Env& env, const joggle::Mod& mod,
+               joggle::tool::DiagFormat format) {
   for (const std::string& dependency : mod.uses()) {
     if (!env.load(dependency)) {
-      env.print_diags(stderr);
+      joggle::tool::print_diags(stderr, env.diags(), format);
       return false;
     }
   }
   return true;
 }
 
-bool input(std::string_view file, bool binary, std::string& contents) {
+bool input(std::string_view file, bool binary, std::string& contents,
+           joggle::tool::DiagFormat format) {
   std::ifstream stream;
   std::istream* source = &std::cin;
   if (file != "-") {
     stream.open(std::string(file), std::ios::binary);
     if (!stream) {
-      std::cerr << "joggle: cannot open " << file << '\n';
+      joggle::tool::print_error(
+          stderr, "cannot open " + std::string(file), format);
       return false;
     }
     source = &stream;
   }
 #if defined(_WIN32)
   else if (binary && _setmode(_fileno(stdin), _O_BINARY) == -1) {
-    std::cerr << "joggle: cannot set standard input to binary mode\n";
+    joggle::tool::print_error(
+        stderr, "cannot set standard input to binary mode", format);
     return false;
   }
 #else
@@ -96,15 +103,18 @@ bool input(std::string_view file, bool binary, std::string& contents) {
   std::ostringstream buffer;
   buffer << source->rdbuf();
   if (source->bad()) {
-    std::cerr << "joggle: cannot read "
-              << (file == "-" ? "standard input" : std::string(file)) << '\n';
+    joggle::tool::print_error(
+        stderr,
+        "cannot read " +
+            (file == "-" ? std::string("standard input") : std::string(file)),
+        format);
     return false;
   }
   contents = std::move(buffer).str();
   return true;
 }
 
-int process(int argc, char** argv) {
+int process(int argc, char** argv, joggle::tool::DiagFormat format) {
   if (argc < 3)
     return usage();
 
@@ -153,7 +163,7 @@ int process(int argc, char** argv) {
     return usage();
 
   std::string source;
-  if (!input(file, decode, source))
+  if (!input(file, decode, source, format))
     return 1;
   const std::string source_name = file == "-" ? "<stdin>" : file;
 
@@ -166,7 +176,7 @@ int process(int argc, char** argv) {
   for (const std::string& text : argument_sources) {
     joggle::Attr argument;
     if (!joggle::parse(env, text, argument, "<argument>")) {
-      env.print_diags(stderr);
+      joggle::tool::print_diags(stderr, env.diags(), format);
       return 1;
     }
     arguments.push_back(std::move(argument));
@@ -175,7 +185,7 @@ int process(int argc, char** argv) {
     for (const std::string& function : functions) {
       const std::size_t dot = function.rfind('.');
       if (dot == std::string::npos || !env.load(function.substr(0, dot))) {
-        env.print_diags(stderr);
+        joggle::tool::print_diags(stderr, env.diags(), format);
         return 1;
       }
     }
@@ -191,11 +201,12 @@ int process(int argc, char** argv) {
     const std::vector<joggle::Attr> args{joggle::Attr(std::move(bytes))};
     std::vector<joggle::Attr> returns;
     if (!env.call(function, args, returns)) {
-      env.print_diags(stderr);
+      joggle::tool::print_diags(stderr, env.diags(), format);
       return 1;
     }
     if (returns.size() != 1 || !returns.front().string()) {
-      std::cerr << "joggle: read function must return one str\n";
+      joggle::tool::print_error(
+          stderr, "read function must return one str", format);
       return 1;
     }
     source = std::string(*returns.front().string());
@@ -203,15 +214,15 @@ int process(int argc, char** argv) {
 
   joggle::Mod mod;
   if (!joggle::parse(env, source, mod, source_name))
-    return mod.print_diags(stderr);
-  if (!load_uses(env, mod))
+    return joggle::tool::print_diags(stderr, mod.diags(), format);
+  if (!load_uses(env, mod, format))
     return 1;
   if (!mod.verify(env))
-    return mod.print_diags(stderr);
+    return joggle::tool::print_diags(stderr, mod.diags(), format);
   if (inspect || emit) {
     joggle::Attr result;
     if (!joggle::query(env, function, mod, result, arguments)) {
-      env.print_diags(stderr);
+      joggle::tool::print_diags(stderr, env.diags(), format);
       return 1;
     }
     if (inspect) {
@@ -223,14 +234,16 @@ int process(int argc, char** argv) {
     } else if (const auto* value = result.bytes()) {
 #if defined(_WIN32)
       if (_setmode(_fileno(stdout), _O_BINARY) == -1) {
-        std::cerr << "joggle: cannot set standard output to binary mode\n";
+        joggle::tool::print_error(
+            stderr, "cannot set standard output to binary mode", format);
         return 1;
       }
 #endif
       if (std::fwrite(value->data(), 1, value->size(), stdout) != value->size())
         return 1;
     } else {
-      std::cerr << "joggle: emit function must return str or bytes\n";
+      joggle::tool::print_error(
+          stderr, "emit function must return str or bytes", format);
       return 1;
     }
     return 0;
@@ -250,15 +263,19 @@ int process(int argc, char** argv) {
                         : joggle::run(env, names, mod, arguments);
     }
     if (!ran) {
-      mod.print_diags(stderr);
-      env.print_diags(stderr);
+      std::vector<joggle::Diag> diagnostics(mod.diags().begin(),
+                                            mod.diags().end());
+      diagnostics.insert(diagnostics.end(), env.diags().begin(),
+                         env.diags().end());
+      joggle::tool::print_diags(stderr, diagnostics, format);
       return 1;
     }
   }
   if (report_file) {
     std::ofstream output(*report_file, std::ios::binary | std::ios::trunc);
     if (!output || !(output << joggle::print(report) << '\n')) {
-      std::cerr << "joggle: cannot write report " << *report_file << '\n';
+      joggle::tool::print_error(
+          stderr, "cannot write report " + report_file->string(), format);
       return 1;
     }
   }
@@ -268,13 +285,24 @@ int process(int argc, char** argv) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  joggle::tool::DiagFormat format = joggle::tool::DiagFormat::text;
+  if (argc >= 2 && std::string_view(argv[1]) == "--diagnostics") {
+    if (argc < 3 || !joggle::tool::parse_diag_format(argv[2], format)) {
+      joggle::tool::print_error(
+          stderr, "diagnostics format must be 'text' or 'jog'",
+          joggle::tool::DiagFormat::text);
+      return usage();
+    }
+    argc -= 2;
+    argv += 2;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--version") {
     std::cout << "joggle " JOGGLE_VERSION "\n";
     return 0;
   }
   if (argc >= 2 && std::string_view(argv[1]) == "module") {
-    const int result = joggle::tool::module(argc, argv);
+    const int result = joggle::tool::module(argc, argv, format);
     return result == 2 ? usage() : result;
   }
-  return process(argc, argv);
+  return process(argc, argv, format);
 }
