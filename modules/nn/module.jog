@@ -302,15 +302,11 @@ fn batch_norm<E: Ty, N: int, C: int, H: int, W: int>(
   variance: tensor<E, [C]>,
   epsilon: f64
 ) -> tensor<E, [N, C, H, W]> {
-  var denominator = tensor<E, [C]>(E(0))
-  for c in 0..C {
-    denominator[c] = sqrt(variance[c] + E(epsilon))
-  }
   var out = tensor<E, [N, C, H, W]>(E(0))
   for i in 0..N * C * H * W {
     let c = i / (H * W) % C
     out[i] = (x[i] - mean[c]) /
-             denominator[c] * scale[c] + bias[c]
+             sqrt(variance[c] + E(epsilon)) * scale[c] + bias[c]
   }
   return out
 }
