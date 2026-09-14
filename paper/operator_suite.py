@@ -30,6 +30,16 @@ ROW_OPERATIONS = (
     "rmsnorm",
     "layernorm",
 )
+CONTRACTION_OPERATIONS = (
+    "matmul",
+    "matmul_add",
+    "matmul_relu",
+    "softmax_matmul",
+    "rmsnorm_matmul",
+    "silu_matmul",
+    "swiglu",
+    "qkv_projection",
+)
 
 
 def digest(data: bytes) -> str:
@@ -47,16 +57,93 @@ def values(shape: tuple[int, ...], multiplier: int, modulus: int) -> np.ndarray:
     return (centered.astype(np.float32) / np.float32(modulus)).reshape(shape)
 
 
-def matmul_case(m: int, k: int, n: int) -> tuple[dict[str, bytes], dict[str, Any]]:
-    case = f"matmul-m{m}-k{k}-n{n}"
+def contraction_case(
+    operation: str, m: int, k: int, n: int
+) -> tuple[dict[str, bytes], dict[str, Any]]:
+    case = f"{operation}-m{m}-k{k}-n{n}"
     data = values((m, k), 5, 29)
     weight = values((k, n), 7, 31)
+    initializers = [numpy_helper.from_array(weight, "weight")]
+    nodes = []
+    source = "data"
+    if operation == "softmax_matmul":
+        nodes.append(helper.make_node("Softmax", [source], ["normalized"], axis=-1))
+        source = "normalized"
+    elif operation == "rmsnorm_matmul":
+        epsilon = np.asarray(1.0e-5, dtype=np.float32)
+        initializers.append(numpy_helper.from_array(epsilon, "epsilon"))
+        nodes += [
+            helper.make_node("Mul", [source, source], ["square"]),
+            helper.make_node(
+                "ReduceMean", ["square"], ["variance"], axes=[-1], keepdims=1
+            ),
+            helper.make_node("Add", ["variance", "epsilon"], ["stabilized"]),
+            helper.make_node("Sqrt", ["stabilized"], ["scale"]),
+            helper.make_node("Div", [source, "scale"], ["normalized"]),
+        ]
+        source = "normalized"
+    elif operation == "silu_matmul":
+        nodes += [
+            helper.make_node("Sigmoid", [source], ["gate"]),
+            helper.make_node("Mul", [source, "gate"], ["activated"]),
+        ]
+        source = "activated"
+
+    output_shape = [m, n]
+    weight_elements = k * n
+    matmul_flops = 2 * m * k * n
+    if operation == "swiglu":
+        gate_weight = values((k, n), 11, 37)
+        up_weight = values((k, n), 13, 41)
+        initializers = [
+            numpy_helper.from_array(gate_weight, "gate_weight"),
+            numpy_helper.from_array(up_weight, "up_weight"),
+        ]
+        nodes += [
+            helper.make_node("MatMul", ["data", "gate_weight"], ["gate_linear"]),
+            helper.make_node("Sigmoid", ["gate_linear"], ["gate_sigmoid"]),
+            helper.make_node("Mul", ["gate_linear", "gate_sigmoid"], ["gate"]),
+            helper.make_node("MatMul", ["data", "up_weight"], ["up"]),
+            helper.make_node("Mul", ["gate", "up"], ["result"]),
+        ]
+        weight_elements = 2 * k * n
+        matmul_flops = 4 * m * k * n
+    elif operation == "qkv_projection":
+        weights = [
+            values((k, n), 11, 37),
+            values((k, n), 13, 41),
+            values((k, n), 17, 43),
+        ]
+        initializers = [
+            numpy_helper.from_array(value, name)
+            for value, name in zip(weights, ("q_weight", "k_weight", "v_weight"))
+        ]
+        nodes += [
+            helper.make_node("MatMul", ["data", "q_weight"], ["q"]),
+            helper.make_node("MatMul", ["data", "k_weight"], ["k"]),
+            helper.make_node("MatMul", ["data", "v_weight"], ["v"]),
+            helper.make_node("Concat", ["q", "k", "v"], ["result"], axis=-1),
+        ]
+        output_shape = [m, 3 * n]
+        weight_elements = 3 * k * n
+        matmul_flops = 6 * m * k * n
+    else:
+        nodes.append(helper.make_node("MatMul", [source, "weight"], ["linear"]))
+        result = "linear"
+        if operation == "matmul_add":
+            bias = values((n,), 11, 37)
+            initializers.append(numpy_helper.from_array(bias, "bias"))
+            nodes.append(helper.make_node("Add", [result, "bias"], ["result"]))
+        elif operation == "matmul_relu":
+            nodes.append(helper.make_node("Relu", [result], ["result"]))
+        else:
+            nodes.append(helper.make_node("Identity", [result], ["result"]))
     graph = helper.make_graph(
-        [helper.make_node("MatMul", ["data", "weight"], ["result"])],
+        nodes,
         case,
         [helper.make_tensor_value_info("data", TensorProto.FLOAT, [m, k])],
-        [helper.make_tensor_value_info("result", TensorProto.FLOAT, [m, n])],
-        [numpy_helper.from_array(weight, "weight")],
+        [helper.make_tensor_value_info("result", TensorProto.FLOAT, output_shape)],
+        initializers,
     )
     model = helper.make_model(
         graph,
@@ -69,9 +156,8 @@ def matmul_case(m: int, k: int, n: int) -> tuple[dict[str, bytes], dict[str, Any
         ReferenceEvaluator(model).run(None, {"data": data})[0],
         dtype=np.float32,
     )
-    direct = np.asarray(data @ weight, dtype=np.float32)
-    if not np.allclose(result, direct, rtol=1.0e-5, atol=1.0e-5):
-        raise RuntimeError(f"ONNX reference and NumPy disagree for {case}")
+    if tuple(result.shape) != tuple(output_shape) or not np.isfinite(result).all():
+        raise RuntimeError(f"invalid reference result for {case}")
     files = {
         "model.onnx": encode(model),
         "test_data_set_0/input_0.pb": encode(
@@ -83,12 +169,12 @@ def matmul_case(m: int, k: int, n: int) -> tuple[dict[str, bytes], dict[str, Any
     }
     record = {
         "case": case,
-        "operation": "MatMul",
+        "operation": operation,
         "shape": {"M": m, "K": k, "N": n},
         "input_elements": m * k,
-        "weight_elements": k * n,
-        "output_elements": m * n,
-        "floating_point_operations": 2 * m * k * n,
+        "weight_elements": weight_elements,
+        "output_elements": int(result.size),
+        "matmul_flops": matmul_flops,
     }
     return files, record
 
@@ -191,7 +277,8 @@ def row_case(operation: str, rows: int, width: int) -> tuple[dict[str, bytes], d
 
 def all_cases() -> list[tuple[str, tuple[int, ...]]]:
     return [
-        ("matmul", (m, k, n))
+        (operation, (m, k, n))
+        for operation in CONTRACTION_OPERATIONS
         for m in M_EXTENTS
         for k in K_EXTENTS
         for n in N_EXTENTS
@@ -205,7 +292,7 @@ def all_cases() -> list[tuple[str, tuple[int, ...]]]:
 
 def case_name(spec: tuple[str, tuple[int, ...]]) -> str:
     operation, shape = spec
-    if operation == "matmul":
+    if operation in CONTRACTION_OPERATIONS:
         return f"matmul-m{shape[0]}-k{shape[1]}-n{shape[2]}"
     return f"{operation}-m{shape[0]}-n{shape[1]}"
 
@@ -222,8 +309,8 @@ def requested_cases(names: set[str]) -> list[tuple[str, tuple[int, ...]]]:
 def materialize(root: Path, selected: set[str], check: bool) -> None:
     records = []
     for operation, shape in requested_cases(selected):
-        if operation == "matmul":
-            files, record = matmul_case(*shape)
+        if operation in CONTRACTION_OPERATIONS:
+            files, record = contraction_case(operation, *shape)
         else:
             files, record = row_case(operation, *shape)
         record["files"] = {

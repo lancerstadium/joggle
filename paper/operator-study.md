@@ -38,8 +38,11 @@ copying Axon's accelerator-scale 1K–16K grid.
 
 ### B. Contractions and transformer subgraphs
 
-Rows: MatMul, Transpose+MatMul, RMSNorm+MatMul, Softmax+MatMul, QKV projection,
-and gated-MLP subgraphs only after each has one shared semantic fixture.
+Rows: MatMul, MatMul+Add, MatMul+ReLU, Softmax+MatMul, RMSNorm+MatMul,
+SiLU+MatMul, SwiGLU, and QKV projection. These are executable semantic
+fixtures. Composite rows are ordinary ONNX subgraphs, so every system receives
+the same opportunity to fuse or retain intermediates; Joggle does not receive
+a pre-fused operator.
 
 Columns are the complete Cartesian product `M × K × N`, with
 `M ∈ {1, 16, 128}` and `K,N ∈ {128, 256, 512}`: 27 measured shapes plus one
@@ -116,18 +119,23 @@ records exist, this document is the evidence contract rather than a mock result.
 
 ## Executable path
 
-The contraction matrix is now executable rather than only specified. Generate
-all 27 deterministic MatMul cases into the ignored build tree with:
+The contraction matrix is now executable rather than only specified. The
+generator materializes eight rows over 27 shapes (216 contraction cases), plus
+the 200 two-dimensional cases, into the ignored build tree with:
 
 ```sh
 .venv-fixtures/bin/python paper/operator_suite.py
 ```
 
-Each case has one runtime input, one constant ONNX initializer, one reference
-output, and hashes in `build/operator-study/fixtures/manifest.json`. This avoids
-coupling the study to Joggle's current single-input ONNX application while
-preserving an ordinary ONNX model that every baseline can consume. A case is
-prepared with independent weights and a balanced Joggle/ONNX Runtime manifest:
+Each case has one runtime input, constant ONNX initializers, one reference
+output, and hashes in `build/operator-study/fixtures/manifest.json`. Multi-
+projection rows retain every initializer and report their total immutable
+weight elements. The recorded `matmul_flops` counts only matrix products; it
+does not pretend that exponentials, reductions, or activations are equivalent
+FLOPs. This avoids coupling the study to Joggle's current single-input ONNX
+application while preserving an ordinary ONNX model that every baseline can
+consume. A case is prepared with independent weights and a balanced
+Joggle/ONNX Runtime manifest:
 
 ```sh
 python3 paper/prepare_operator_case.py \
