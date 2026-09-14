@@ -1,0 +1,36 @@
+module topk_c
+use tensor
+
+local fn input() -> tensor<f32, [2, 4]> {
+  var x = tensor<f32, [2, 4]>(f32(0))
+  x[0] = f32(3)
+  x[1] = f32(7)
+  x[2] = f32(7)
+  x[3] = f32(-1)
+  x[4] = f32(4)
+  x[5] = f32(2)
+  x[6] = f32(9)
+  x[7] = f32(5)
+  return x
+}
+
+fn largest() -> tensor<f32, [2, 2]> {
+  let k = tensor<i64, [1]>(i64(2))
+  let values: tensor<f32, [2, 2]>,
+      indices: tensor<i64, [2, 2]> = tensor.topk(input(), k, 1, true)
+  return values
+}
+
+fn indices() -> tensor<i64, [2, 2]> {
+  let k = tensor<i64, [1]>(i64(2))
+  let values: tensor<f32, [2, 2]>,
+      indices: tensor<i64, [2, 2]> = tensor.topk(input(), k, 1, true)
+  return indices
+}
+
+fn smallest() -> tensor<f32, [2, 2]> {
+  let k = tensor<i64, [1]>(i64(2))
+  let values: tensor<f32, [2, 2]>,
+      indices: tensor<i64, [2, 2]> = tensor.topk(input(), k, 1, false)
+  return values
+}

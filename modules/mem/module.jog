@@ -343,7 +343,14 @@ fn plan(m: Mod, fn: Fn) -> bool {
       let type = ir.type(value)
       let name = ir.name(value)
       let count = allocated(value)
+      let definition = ir.def(value)
+      var aliases = false
+      if ir.live(definition) && ir.kind(definition) == "call" {
+        aliases = ir.target(m, definition) == "tensor.view" ||
+                  ir.callee(definition) == "tensor.view"
+      }
       if tensor.valid(type) && count >= 0 && name != "" &&
+         !aliases &&
          !ir.is_const(value) && !has(parameters, name) &&
          !has(returned, name) && !has(bindings, name) {
         bindings[name] = len(names)

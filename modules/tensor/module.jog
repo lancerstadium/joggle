@@ -299,8 +299,11 @@ fn write<E: Ty, S: list<int>, T: list<int>>(
   data: tensor<E, S>, at: index, value: tensor<E, T>
 ) -> tensor<E, S> {
   var out = data
-  let width = numel<T>()
-  for i in 0..width {
+  var width = index(1)
+  for axis in 0..len(T) {
+    width *= dim(value, index(axis))
+  }
+  for i in index(0)..width {
     out[at * width + i] = value[i]
   }
   return out
@@ -403,6 +406,71 @@ fn gather<E: Ty, D: list<int>, S: list<int>, Y: list<int>>(
     out[target] = data[source]
   }
   return out
+}
+
+// Deterministic selection along one logical axis.  Scanning candidates in
+// ascending index order and replacing only on a strict improvement gives the
+// ONNX tie rule (the lower index wins) without embedding source-format policy
+// in a backend.
+fn topk<E: Ty, S: list<int>, Y: list<int>>(
+  x: tensor<E, S>, count_value: tensor<i64, [1]>, axis: int, largest: bool
+) -> (tensor<E, Y>, tensor<i64, Y>) {
+  assert(axis >= 0 && axis < len(S), "tensor.topk axis is out of range")
+  let extent = dim(x, index(axis))
+  let count = index(count_value[0])
+  assert(count > index(0) && count <= extent,
+         "tensor.topk count is out of range")
+
+  var outer = index(1)
+  for dim_index in 0..axis {
+    outer *= dim(x, index(dim_index))
+  }
+  var inner = index(1)
+  for dim_index in axis + 1..len(S) {
+    inner *= dim(x, index(dim_index))
+  }
+
+  var output_shape = tensor<index, [len<S>]>(index(0))
+  for dim_index in 0..len(S) {
+    output_shape[dim_index] = dim(x, index(dim_index))
+  }
+  output_shape[axis] = count
+  var values: tensor<E, Y> = make(E(0), output_shape)
+  var indices: tensor<i64, Y> = make(i64(0), output_shape)
+
+  var blocked_shape = tensor<index, [1]>(index(0))
+  blocked_shape[0] = extent
+  for group in index(0)..outer, offset in index(0)..inner {
+    var blocked: tensor<bool, [_]> = make(false, blocked_shape)
+    for selected in index(0)..count {
+      var found = false
+      var best = index(0)
+      var best_value = E(0)
+      for candidate in index(0)..extent {
+        let source = (group * extent + candidate) * inner + offset
+        let candidate_value = x[source]
+        var better = false
+        if found {
+          if largest {
+            better = candidate_value > best_value
+          } else {
+            better = candidate_value < best_value
+          }
+        }
+        if !blocked[candidate] && (!found || better) {
+          found = true
+          best = candidate
+          best_value = candidate_value
+        }
+      }
+      assert(found, "tensor.topk could not select a candidate")
+      let target = (group * count + selected) * inner + offset
+      values[target] = best_value
+      indices[target] = i64(best)
+      blocked[best] = true
+    }
+  }
+  return view(values, output_shape), view(indices, output_shape)
 }
 
 fn slice_offset(

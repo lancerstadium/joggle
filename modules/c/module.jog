@@ -937,7 +937,8 @@ local fn tensor_view(
   assert(len(outputs) == 1 && len(inputs) == 2,
          "c: tensor.view requires data and shape")
   let output = outputs[0]
-  if reuses(op) || val(output) == val(inputs[0]) {
+  if len(ir.users(output)) == 0 || reuses(op) ||
+     val(output) == val(inputs[0]) {
     return ""
   }
   return pad(depth) + scalar(tensor.elem(ir.type(output)), config) + "* " +

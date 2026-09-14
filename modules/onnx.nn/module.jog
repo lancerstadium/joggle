@@ -2051,7 +2051,16 @@ local fn loop_type(m: Mod, op: Op) -> bool {
   let info = base.get(attrs(op), "body", {})
   let inputs = base.get(info, "inputs", -1)
   let params = ir.params(body)
-  let results = ir.returns(body)
+  let bodies = ir.blks(body)
+  if len(bodies) != 1 {
+    return false
+  }
+  let body_ops = ir.ops(bodies[0])
+  if len(body_ops) == 0 ||
+     ir.kind(body_ops[len(body_ops) - 1]) != "return" {
+    return false
+  }
+  let returned = ir.args(body_ops[len(body_ops) - 1])
   let args = ir.args(op)
   let outputs = ir.outs(op)
   if inputs < 2 || len(params) < inputs ||
@@ -2063,7 +2072,7 @@ local fn loop_type(m: Mod, op: Op) -> bool {
   for i in 2..inputs {
     changed = set_type(m, params[i], ir.type(args[i])) || changed
   }
-  if len(results) != len(outputs) + 1 {
+  if len(returned) != len(outputs) + 1 {
     return changed
   }
   let carried = inputs - 2
@@ -2072,7 +2081,7 @@ local fn loop_type(m: Mod, op: Op) -> bool {
   }
   var types: list<Ty> = []
   for i in 0..len(outputs) {
-    var type = results[i + 1]
+    var type = ir.type(returned[i + 1])
     if !tensor.valid(type) {
       return changed
     }

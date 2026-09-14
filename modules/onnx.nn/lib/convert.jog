@@ -41,11 +41,14 @@ local fn shape_value(
   for axis in 0..len(dims) {
     var extent = leading
     if axis != 0 {
-      assert(base.kind(dims[axis]) == "int" && base.int(dims[axis]) >= 0,
-             "onnx.nn: dynamic trailing dimension is unsupported")
-      extent = ir.constant(
-        m, before, base.int(dims[axis]), ty("index")
-      )
+      extent = zero
+      if base.kind(dims[axis]) == "int" {
+        assert(base.int(dims[axis]) >= 0,
+               "onnx.nn: negative scan dimension")
+        extent = ir.constant(
+          m, before, base.int(dims[axis]), ty("index")
+        )
+      }
     }
     let at = ir.constant(m, before, axis, ty("index"))
     let updated = ir.call(
@@ -58,6 +61,85 @@ local fn shape_value(
     shape = updated
   }
   return shape
+}
+
+local fn scan_shape(
+  m: Mod, before: Op, leading: Val, sample: Val
+) -> Val {
+  let rank = len(tensor.dims(ir.type(sample))) + 1
+  let shape_type = tensor.type(ty("index"), [rank])
+  let zero = ir.constant(m, before, 0, ty("index"))
+  var shape = ir.call(m, before, "tensor.tensor", [zero], shape_type)
+  for axis in 0..rank {
+    var extent = leading
+    if axis != 0 {
+      let sample_axis = ir.constant(m, before, axis - 1, ty("index"))
+      extent = ir.call(
+        m, before, "tensor.dim", [sample, sample_axis], ty("index")
+      )
+    }
+    let at = ir.constant(m, before, axis, ty("index"))
+    shape = ir.call(
+      m, before, "tensor.operator []=", [shape, at, extent], shape_type
+    )
+  }
+  return shape
+}
+
+local fn trimmed_scan_shape(
+  m: Mod, before: Op, leading: Val, storage: Val
+) -> Val {
+  let rank = len(tensor.dims(ir.type(storage)))
+  let shape_type = tensor.type(ty("index"), [rank])
+  let zero = ir.constant(m, before, 0, ty("index"))
+  var shape = ir.call(m, before, "tensor.tensor", [zero], shape_type)
+  for axis in 0..rank {
+    var extent = leading
+    if axis != 0 {
+      let storage_axis = ir.constant(m, before, axis, ty("index"))
+      extent = ir.call(
+        m, before, "tensor.dim", [storage, storage_axis], ty("index")
+      )
+    }
+    let at = ir.constant(m, before, axis, ty("index"))
+    shape = ir.call(
+      m, before, "tensor.operator []=", [shape, at, extent], shape_type
+    )
+  }
+  return shape
+}
+
+local fn initialize_scan(
+  m: Mod, before: Op, storage: Val, sample: Val,
+  leading: Val, written: Val
+) -> Val {
+  var dynamic = false
+  for dim in tensor.dims(ir.type(sample)) {
+    if base.kind(dim) != "int" {
+      dynamic = true
+    }
+  }
+  if !dynamic {
+    return storage
+  }
+  let zero_index = ir.constant(m, before, 0, ty("index"))
+  let first = ir.call(
+    m, before, "operator ==", [written, zero_index], ty("bool")
+  )
+  let branch = ir.branch(m, before, first, [storage])
+  assert(ir.live(branch), "onnx.nn: could not guard scan allocation")
+  let then_body = ir.blks(branch)[0]
+  let then_storage = ir.args(then_body)[0]
+  let then_yield = ir.ops(then_body)[0]
+  let shape = scan_shape(m, then_yield, leading, sample)
+  let fill = zero(m, then_yield, tensor.elem(ir.type(storage)))
+  let allocated = ir.call(
+    m, then_yield, "tensor.make", [fill, shape], ir.type(storage)
+  )
+  let assigned = ir.assign(m, then_yield, then_storage, allocated)
+  assert(ir.live(assigned) && ir.args(m, then_yield, [assigned]),
+         "onnx.nn: could not initialize dynamic scan storage")
+  return ir.outs(branch)[0]
 }
 
 local fn zero(m: Mod, before: Op, type: Ty) -> Val {
@@ -443,6 +525,74 @@ local fn convert_split(m: Mod, op: Op) -> bool {
       sizes += [size]
     }
   }
+  if len(sizes) == 0 && kind(shape[axis]) != "int" {
+    for output in outputs {
+      let result = ir.type(output)
+      if !tensor.valid(result) || tensor.elem(result) != tensor.elem(input) ||
+         len(tensor.dims(result)) != len(shape) {
+        return false
+      }
+      for dim in 0..len(shape) {
+        if dim != axis &&
+           known_mismatch(shape[dim], tensor.dims(result)[dim]) {
+          return false
+        }
+      }
+    }
+    let axis_index = ir.constant(m, op, axis, ty("index"))
+    let extent = ir.call(
+      m, op, "tensor.dim", [inputs[0], axis_index], ty("index")
+    )
+    let pieces = ir.constant(m, op, len(outputs), ty("index"))
+    let remainder = ir.call(
+      m, op, "operator %", [extent, pieces], ty("index")
+    )
+    let zero_index = ir.constant(m, op, 0, ty("index"))
+    let divisible = ir.call(
+      m, op, "operator ==", [remainder, zero_index], ty("bool")
+    )
+    let message = ir.constant(
+      m, op, "tensor split extent is not divisible", ty("str")
+    )
+    ir.call(m, op, "base.assert", [divisible, message], ty("bool"))
+    let size = ir.call(
+      m, op, "operator /", [extent, pieces], ty("index")
+    )
+    let axis_i64 = ir.constant(m, op, axis, ty("i64"))
+    let axes = ir.call(
+      m, op, "tensor.tensor", [axis_i64], ty("tensor<i64, [1]>")
+    )
+    for i in 0..len(outputs) {
+      let begin_factor = ir.constant(m, op, i, ty("index"))
+      let end_factor = ir.constant(m, op, i + 1, ty("index"))
+      let begin_index = ir.call(
+        m, op, "operator *", [size, begin_factor], ty("index")
+      )
+      let end_index = ir.call(
+        m, op, "operator *", [size, end_factor], ty("index")
+      )
+      let begin_i64 = ir.call(m, op, "i64", [begin_index], ty("i64"))
+      let end_i64 = ir.call(m, op, "i64", [end_index], ty("i64"))
+      let starts = ir.call(
+        m, op, "tensor.tensor", [begin_i64], ty("tensor<i64, [1]>")
+      )
+      let ends = ir.call(
+        m, op, "tensor.tensor", [end_i64], ty("tensor<i64, [1]>")
+      )
+      let next = ir.call(
+        m, op, "tensor.slice", [inputs[0], starts, ends, axes],
+        ir.type(outputs[i])
+      )
+      if !ir.live(next) {
+        return false
+      }
+      carry(m, outputs[i], next)
+      if !ir.replace(m, outputs[i], next) {
+        return false
+      }
+    }
+    return ir.erase(m, op)
+  }
   if len(sizes) != len(outputs) {
     return false
   }
@@ -480,6 +630,43 @@ local fn convert_split(m: Mod, op: Op) -> bool {
     start += sizes[i]
   }
   return ir.erase(m, op)
+}
+
+[phase: "compute", on: "onnx.TopK"]
+local fn convert_topk(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 2 {
+    return false
+  }
+  let source = ir.type(inputs[0])
+  let count = ir.type(inputs[1])
+  let values = ir.type(outputs[0])
+  let indices = ir.type(outputs[1])
+  if !tensor.valid(source) || count != ty("tensor<i64, [1]>") ||
+     !tensor.valid(values) || !tensor.valid(indices) ||
+     tensor.elem(values) != tensor.elem(source) ||
+     tensor.elem(indices) != ty("i64") ||
+     tensor.dims(values) != tensor.dims(indices) {
+    return false
+  }
+  let rank = len(tensor.dims(source))
+  var axis = base.get(attrs(op), "axis", -1)
+  if axis < 0 {
+    axis += rank
+  }
+  if axis < 0 || axis >= rank {
+    return false
+  }
+  let largest = base.get(attrs(op), "largest", 1)
+  let sorted = base.get(attrs(op), "sorted", 1)
+  if (largest != 0 && largest != 1) ||
+     (sorted != 0 && sorted != 1) {
+    return false
+  }
+  inputs += [ir.constant(m, op, axis, ty("int"))]
+  inputs += [ir.constant(m, op, largest == 1, ty("bool"))]
+  return convert_call(m, op, "tensor.topk", inputs)
 }
 
 [phase: "shape", on: "onnx.OneHot"]
@@ -1622,10 +1809,6 @@ local fn fill_if_arm(
     return false
   }
   for i in 0..len(source_ops) - 1 {
-    if base.replace(ir.callee(source_ops[i]), "onnx.", "") !=
-       ir.callee(source_ops[i]) {
-      return false
-    }
     let copy = ir.clone(m, source_ops[i], terminator, old, next)
     if !ir.live(copy) {
       return false
@@ -1734,13 +1917,10 @@ local fn convert_loop(m: Mod, op: Op) -> bool {
     return false
   }
   for i in 0..len(body_ops) - 1 {
-    if ir.kind(body_ops[i]) == "return" ||
-       base.replace(ir.callee(body_ops[i]), "onnx.", "") !=
-         ir.callee(body_ops[i]) {
+    if ir.kind(body_ops[i]) == "return" {
       return false
     }
   }
-
   let returned = ir.args(body_ops[len(body_ops) - 1])
   let carried_count = input_count - 2
   let scan_count = len(outputs) - carried_count
@@ -1760,6 +1940,7 @@ local fn convert_loop(m: Mod, op: Op) -> bool {
       return false
     }
   }
+  var scan_types: list<Ty> = []
   for i in 0..scan_count {
     let output_type = ir.type(outputs[carried_count + i])
     let sample_type = ir.type(returned[1 + carried_count + i])
@@ -1772,14 +1953,19 @@ local fn convert_loop(m: Mod, op: Op) -> bool {
        len(dims) == 0 || dims[0] != ty("_") {
       return false
     }
-    for axis in 1..len(dims) {
-      if dims[axis] != tensor.dims(sample_type)[axis - 1] ||
-         base.kind(dims[axis]) != "int" {
-        return false
-      }
+    let expected = shaped(
+      tensor.elem(sample_type), [ty("_")] + tensor.dims(sample_type)
+    )
+    if !compatible_shape(output_type, expected) {
+      return false
+    }
+    scan_types += [expected]
+  }
+  for i in 0..scan_count {
+    if !ir.type(m, outputs[carried_count + i], scan_types[i]) {
+      return false
     }
   }
-
   let trip = scalar(m, op, inputs[0])
   let condition = scalar(m, op, inputs[1])
   if !ir.live(trip) || !ir.live(condition) {
@@ -1899,8 +2085,11 @@ local fn convert_loop(m: Mod, op: Op) -> bool {
   }
   let written_at = then_args[count_index]
   for i in 0..scan_count {
-    let storage = then_args[1 + carried_count + i]
+    let scan_storage = then_args[1 + carried_count + i]
     let sample = mapped(returned[1 + carried_count + i], old, next)
+    let storage = initialize_scan(
+      m, then_yield, scan_storage, sample, trip_index, written_at
+    )
     let written = ir.call(
       m, then_yield, "tensor.write", [storage, written_at, sample],
       ir.type(storage)
@@ -1926,8 +2115,9 @@ local fn convert_loop(m: Mod, op: Op) -> bool {
   }
   for i in 0..scan_count {
     let output_type = ir.type(outputs[carried_count + i])
-    let shape = shape_value(
-      m, op, tensor.dims(output_type), loop_outputs[count_index]
+    let shape = trimmed_scan_shape(
+      m, op, loop_outputs[count_index],
+      loop_outputs[1 + carried_count + i]
     )
     let viewed = ir.call(
       m, op, "tensor.view",
@@ -1953,14 +2143,28 @@ fn convert(m: Mod, rules: list<Fn>) -> bool {
   changed = ir.use(m, "nn") || changed
   changed = ir.use(m, "quant") || changed
   changed = ir.use(m, "tensor") || changed
-  for phase in ["data", "compute", "shape", "control", "cleanup"] {
-    let selected = ir.where(rules, "phase", phase)
-    for op in ir.ops(m) {
-      for rule in ir.where(selected, "on", ir.callee(op)) {
-        changed = ir.invoke<bool>(m, op, rule) || changed
+  var again = true
+  var exhausted = false
+  let limit = len(ir.ops(m)) + 1
+  for round in 0..limit {
+    if again {
+      var round_changed = false
+      for phase in ["data", "compute", "shape", "control", "cleanup"] {
+        let selected = ir.where(rules, "phase", phase)
+        for op in ir.ops(m) {
+          for rule in ir.where(selected, "on", ir.callee(op)) {
+            round_changed = ir.invoke<bool>(m, op, rule) || round_changed
+          }
+        }
+      }
+      again = round_changed
+      changed = again || changed
+      if round == limit - 1 && again {
+        exhausted = true
       }
     }
   }
+  base.assert(!exhausted, "onnx.nn.convert did not converge")
   return changed
 }
 
