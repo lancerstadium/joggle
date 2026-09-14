@@ -91,6 +91,11 @@ protocol is recorded in
 implementation-task fixture is checked in under `fixtures/implementation` and
 is executed by Joggle's normal ONNX path. Fixtures for the other contracts must
 be frozen before their ONNX-MLIR implementations or measurements begin.
+The policy fixture is now frozen under `fixtures/policy`: it is the contract's
+four length-four inputs expressed as an unchanged three-`Add` ONNX chain with
+the same expected result. The numeric-format task still lacks a system-neutral
+ONNX input because ONNX cannot directly encode the task's new scalar type; its
+input boundary must be specified before an ONNX-MLIR implementation begins.
 
 TVM `v0.26.0` at commit
 `c7b458e946bc4266915da582457476bdcd9705ae` is now pinned. Reproducible TVM

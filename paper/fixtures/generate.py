@@ -70,6 +70,65 @@ def implementation(contract: dict[str, Any]) -> dict[str, bytes]:
     }
 
 
+def policy(contract: dict[str, Any]) -> dict[str, bytes]:
+    fusion = contract["fusion"]
+    extent = int(fusion["extent"])
+    names = ("a", "b", "c", "d")
+    inputs = {
+        name: np.asarray(fusion["inputs"][name], dtype=np.float32)
+        for name in names
+    }
+    if extent <= 0 or any(value.shape != (extent,) for value in inputs.values()):
+        raise ValueError("policy fixture inputs must match the positive static extent")
+    expected = np.asarray(fusion["expected"], dtype=np.float32)
+    if expected.shape != (extent,):
+        raise ValueError("policy fixture output must match the static extent")
+    actual = inputs["a"] + inputs["b"] + inputs["c"] + inputs["d"]
+    tolerance = float(fusion["absolute_tolerance"])
+    if not np.allclose(actual, expected, rtol=0.0, atol=tolerance):
+        raise ValueError("policy fixture disagrees with its frozen oracle")
+
+    graph = helper.make_graph(
+        [
+            helper.make_node("Add", ["a", "b"], ["ab"]),
+            helper.make_node("Add", ["ab", "c"], ["abc"]),
+            helper.make_node("Add", ["abc", "d"], ["result"]),
+        ],
+        "joggle_extension_policy",
+        [
+            helper.make_tensor_value_info(name, TensorProto.FLOAT, [extent])
+            for name in names
+        ],
+        [helper.make_tensor_value_info("result", TensorProto.FLOAT, [extent])],
+    )
+    model = helper.make_model(
+        graph,
+        producer_name="joggle-extension-study",
+        producer_version="1",
+        opset_imports=[helper.make_opsetid("", 13)],
+        ir_version=8,
+    )
+    onnx.checker.check_model(model)
+    reference = ReferenceEvaluator(model).run(None, inputs)[0]
+    if not np.allclose(reference, expected, rtol=0.0, atol=tolerance):
+        raise ValueError("ONNX reference evaluator disagrees with the policy oracle")
+    files = {
+        "model.onnx": encode(model),
+        "test_data_set_0/output_0.pb": encode(
+            numpy_helper.from_array(expected, "result")
+        ),
+    }
+    files.update(
+        {
+            f"test_data_set_0/input_{index}.pb": encode(
+                numpy_helper.from_array(inputs[name], name)
+            )
+            for index, name in enumerate(names)
+        }
+    )
+    return files
+
+
 def materialize(
     root: Path,
     files: dict[str, bytes],
@@ -103,14 +162,17 @@ def materialize(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--fixture",
+        choices=("implementation", "policy"),
+        default="implementation",
+    )
+    parser.add_argument(
         "--task",
         type=Path,
-        default=Path("paper/tasks/implementation.json"),
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("paper/fixtures/implementation"),
     )
     parser.add_argument(
         "--check",
@@ -119,13 +181,17 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    contract_bytes = args.task.read_bytes()
+    task = args.task or Path(f"paper/tasks/{args.fixture}.json")
+    output = args.output or Path(f"paper/fixtures/{args.fixture}")
+
+    contract_bytes = task.read_bytes()
     contract = json.loads(contract_bytes)
+    generators = {"implementation": implementation, "policy": policy}
     materialize(
-        args.output,
-        implementation(contract),
+        output,
+        generators[args.fixture](contract),
         args.check,
-        args.task,
+        task,
         contract_bytes,
     )
 

@@ -13,6 +13,11 @@ Model Zoo studies.
 - `manifest.json`: generator, dependency versions, contract digest, and file
   digests.
 
+`policy/` contains the fixed four-input chain from the policy contract. Its
+three opset-13 `Add` calls expose three elementwise loop bodies before a
+system-specific fusion policy runs. Both the permissive and rejecting policy
+cases consume this unchanged model and the same four-element numerical oracle.
+
 Regenerate or verify it from the repository root with Python 3.11 or 3.12 in an
 isolated environment:
 
@@ -21,6 +26,8 @@ python3.12 -m venv .venv-fixtures
 .venv-fixtures/bin/python -m pip install -r paper/fixtures/requirements.txt
 .venv-fixtures/bin/python paper/fixtures/generate.py
 .venv-fixtures/bin/python paper/fixtures/generate.py --check
+.venv-fixtures/bin/python paper/fixtures/generate.py --fixture policy
+.venv-fixtures/bin/python paper/fixtures/generate.py --fixture policy --check
 ```
 
 The dependencies are generation-only. Building or running Joggle does not
