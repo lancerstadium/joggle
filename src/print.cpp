@@ -83,6 +83,31 @@ namespace {
 std::string render_value(const detail::Store& store, std::uint32_t value,
                          int parent = 0, bool right = false);
 
+bool needs_literal_binding(const detail::Store& store,
+                           const detail::OpData& op) {
+  if (op.kind != Op::Kind::constant || op.form != Op::Form::hidden ||
+      !op.literal.bytes() || op.outs.size() != 1)
+    return false;
+  const std::uint32_t value = op.outs.front();
+  return value < store.vals.size() && store.vals[value].live &&
+         store.vals[value].data.type.name() == "tensor";
+}
+
+std::string literal_name(const detail::Store& store, std::uint32_t value) {
+  if (value < store.vals.size() && !store.vals[value].data.name.empty())
+    return store.vals[value].data.name;
+  std::string name = "_data" + std::to_string(value);
+  const auto occupied = [&](std::string_view candidate) {
+    return std::any_of(store.vals.begin(), store.vals.end(),
+                       [&](const auto& slot) {
+                         return slot.live && slot.data.name == candidate;
+                       });
+  };
+  while (occupied(name))
+    name.push_back('_');
+  return name;
+}
+
 std::string render_call(const detail::Store& store, const detail::OpData& op) {
   if (op.callee == "base.list") {
     std::string out = "[";
@@ -156,7 +181,8 @@ std::string render_value(const detail::Store& store, std::uint32_t value,
       }
     }
   }
-  if (op.kind == Op::Kind::constant && op.form == Op::Form::hidden)
+  if (op.kind == Op::Kind::constant && op.form == Op::Form::hidden &&
+      !needs_literal_binding(store, op))
     return attr_text(op.literal);
   if (op.kind == Op::Kind::call && op.form == Op::Form::hidden) {
     std::string text = render_call(store, op);
@@ -173,6 +199,8 @@ std::string render_value(const detail::Store& store, std::uint32_t value,
       return "(" + text + ")";
     return text;
   }
+  if (data.name.empty() && needs_literal_binding(store, op))
+    return literal_name(store, value);
   return data.name.empty() ? "value" : data.name;
 }
 
@@ -215,10 +243,11 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
     if (id >= store.ops.size() || !store.ops[id].live)
       continue;
     const detail::OpData& op = store.ops[id].data;
+    const bool bound_literal = needs_literal_binding(store, op);
     if (((op.kind == Op::Kind::call || op.kind == Op::Kind::constant ||
           (op.kind == Op::Kind::branch &&
            op.logic != detail::Logic::none)) &&
-         op.form == Op::Form::hidden) ||
+         op.form == Op::Form::hidden && !bound_literal) ||
         op.kind == Op::Kind::yield)
       continue;
     render_meta(out, op.meta, depth);
@@ -227,15 +256,17 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
       const auto result = op.outs.empty() ? detail::none : op.outs[0];
       const std::string name =
           result == detail::none ? "" : store.vals[result].data.name;
-      if (op.form == Op::Form::let || op.form == Op::Form::var) {
+      if (op.form == Op::Form::let || op.form == Op::Form::var ||
+          bound_literal) {
         out << (op.form == Op::Form::var ? "var " : "let ");
         for (std::size_t index = 0; index < op.outs.size(); ++index) {
           if (index)
             out << ", ";
           const detail::ValData& value = store.vals[op.outs[index]].data;
           render_inline_meta(out, value.meta);
-          out << value.name;
-          if (value.type_annotation)
+          out << (bound_literal ? literal_name(store, op.outs[index])
+                                : value.name);
+          if (value.type_annotation || bound_literal)
             out << ": " << value.type.text();
         }
         out << " = "

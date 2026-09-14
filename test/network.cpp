@@ -1486,12 +1486,69 @@ int main(int argc, char** argv) {
     if (op.blk().fn().name() == "tile" && op.callee() == "tensor.tile")
       tiled = true;
     if (op.blk().fn().name() == "dynamic_tile" &&
-        op.callee() == "onnx.Tile")
+        op.callee() == "tensor.tile")
       dynamic_tile = true;
   }
   CHECK(expanded);
   CHECK(tiled);
   CHECK(dynamic_tile);
+
+  constexpr std::string_view static_shape_source =
+      "module static.shape\n"
+      "use onnx\n"
+      "fn cls(x: tensor<f32, [1, 1, 192]>) "
+      "-> tensor<f32, [1, 1, 192]> {\n"
+      "  let shape: tensor<i64, [3]> = onnx.tensor(\n"
+      "    7, [3], hex\"0100000000000000ffffffffffffffff"
+      "ffffffffffffffff\"\n"
+      "  )\n"
+      "  let size: tensor<i64, [1]> = onnx.tensor(\n"
+      "    7, [1], hex\"0300000000000000\"\n"
+      "  )\n"
+      "  [onnx: {value: {data: hex\"0100000000000000\", "
+      "shape: [1], type: 7}}]\n"
+      "  let one = onnx.ConstantOfShape(size)\n"
+      "  let minus: tensor<i64, []> = onnx.tensor(\n"
+      "    7, [], hex\"ffffffffffffffff\"\n"
+      "  )\n"
+      "  let neg = onnx.Mul(one, minus)\n"
+      "  let missing = onnx.Equal(shape, neg)\n"
+      "  let target = onnx.Where(missing, one, shape)\n"
+      "  let out = onnx.Expand(x, target)\n"
+      "  return out\n"
+      "}\n"
+      "fn grid(x: tensor<f32, [28, 1]>) "
+      "-> tensor<f32, [1, 56, 1]> {\n"
+      "  let size: tensor<i64, [1]> = onnx.tensor(\n"
+      "    7, [1], hex\"0300000000000000\"\n"
+      "  )\n"
+      "  [onnx: {value: {data: hex\"0100000000000000\", "
+      "shape: [1], type: 7}}]\n"
+      "  let shape = onnx.ConstantOfShape(size)\n"
+      "  let expanded = onnx.Expand(x, shape)\n"
+      "  let repeats: tensor<i64, [3]> = onnx.tensor(\n"
+      "    7, [3], hex\"01000000000000000200000000000000"
+      "0100000000000000\"\n"
+      "  )\n"
+      "  let out = onnx.Tile(expanded, repeats)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod static_shape;
+  CHECK(joggle::parse(env, static_shape_source, static_shape,
+                      "static-shape.jog"));
+  CHECK(static_shape.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", static_shape));
+  CHECK(static_shape.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.convert", static_shape));
+  CHECK(static_shape.verify(env));
+  for (joggle::Op op : static_shape.ops())
+    CHECK(op.callee().rfind("onnx.", 0) != 0);
+  const std::string static_shape_text = joggle::print(static_shape);
+  joggle::Mod static_shape_roundtrip;
+  CHECK(joggle::parse(env, static_shape_text, static_shape_roundtrip,
+                      "static-shape-roundtrip.jog"));
+  CHECK(static_shape_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(static_shape, static_shape_roundtrip));
 
   constexpr std::string_view invalid_conv_source =
       "module invalid.conv\n"

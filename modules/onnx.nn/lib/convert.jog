@@ -154,14 +154,26 @@ local fn convert_slice(m: Mod, op: Op) -> bool {
   let expected = tensor.sliced(
     tensor.dims(input), starts, ends, selected, steps
   )
-  if len(expected) == 0 || tensor.dims(output) != expected {
+  if len(expected) != 0 && tensor.dims(output) == expected {
+    var values: list<Val> = [inputs[0]]
+    values += [ints(m, op, starts)]
+    values += [ints(m, op, selected)]
+    values += [ints(m, op, steps)]
+    return convert_call(m, op, "tensor.slice", values)
+  }
+  if len(inputs) != 5 {
     return false
   }
-  var values: list<Val> = [inputs[0]]
-  values += [ints(m, op, starts)]
-  values += [ints(m, op, selected)]
-  values += [ints(m, op, steps)]
-  return convert_call(m, op, "tensor.slice", values)
+  let control = ir.type(inputs[1])
+  if !tensor.valid(control) || len(tensor.dims(control)) != 1 {
+    return false
+  }
+  for i in 2..5 {
+    if ir.type(inputs[i]) != control {
+      return false
+    }
+  }
+  return convert_call(m, op, "tensor.slice")
 }
 
 [phase: "shape", on: "onnx.Concat"]
@@ -651,10 +663,13 @@ local fn convert_expand(m: Mod, op: Op) -> bool {
   let input = ir.type(inputs[0])
   let result = ir.type(outputs[0])
   let shape = shape_terms(inputs[1])
-  if !tensor.valid(input) || !tensor.valid(result) ||
-     !tensor.static(result) ||
-     result != shaped(tensor.elem(input), shape) ||
-     !tensor.broadcastable(tensor.dims(input), shape) {
+  if !tensor.valid(input) || !tensor.valid(result) {
+    return false
+  }
+  let expanded = tensor.broadcast_shape(tensor.dims(input), shape)
+  if !tensor.static(result) || len(expanded) == 0 ||
+     result != shaped(tensor.elem(input), expanded) ||
+     !tensor.broadcastable(tensor.dims(input), expanded) {
     return false
   }
   return convert_call(m, op, "tensor.broadcast", [inputs[0]])
@@ -670,8 +685,19 @@ local fn convert_tile(m: Mod, op: Op) -> bool {
   let input = ir.type(inputs[0])
   let result = ir.type(outputs[0])
   let repeats = const_ints(inputs[1])
-  if !tensor.valid(input) || !tensor.valid(result) ||
-     !tensor.static(input) || !tensor.static(result) ||
+  if !tensor.valid(input) || !tensor.valid(result) {
+    return false
+  }
+  if len(repeats) == 0 {
+    let repeat_type = ir.type(inputs[1])
+    if !tensor.valid(repeat_type) ||
+       len(tensor.dims(repeat_type)) != 1 ||
+       tensor.dims(repeat_type)[0] != ty(len(tensor.dims(input))) {
+      return false
+    }
+    return convert_call(m, op, "tensor.tile")
+  }
+  if !tensor.static(input) || !tensor.static(result) ||
      len(repeats) != len(tensor.dims(input)) {
     return false
   }
@@ -1175,7 +1201,9 @@ local fn convert_transpose(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.permute", inputs)
 }
 
-[phase: "compute", on: ["onnx.ReduceMean", "onnx.ReduceSum"]]
+[phase: "compute", on: [
+  "onnx.ReduceMean", "onnx.ReduceSum", "onnx.ReduceMin", "onnx.ReduceMax"
+]]
 local fn convert_mean(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1192,6 +1220,12 @@ local fn convert_mean(m: Mod, op: Op) -> bool {
   var callee = "tensor.mean"
   if ir.callee(op) == "onnx.ReduceSum" {
     callee = "tensor.sum"
+  }
+  if ir.callee(op) == "onnx.ReduceMin" {
+    callee = "tensor.min"
+  }
+  if ir.callee(op) == "onnx.ReduceMax" {
+    callee = "tensor.max"
   }
   return convert_call(m, op, callee, inputs)
 }
@@ -1223,13 +1257,20 @@ local fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
   let stride = base.get(meta, "strides", [1, 1])
   let dilation = base.get(meta, "dilations", [1, 1])
   let pad = spatial_pad(op, kernel)
-  if len(kernel) != 2 || len(stride) != 2 || len(pad) != 4 ||
-     len(dilation) != 2 {
+  if len(kernel) != 2 || len(stride) != 2 || len(dilation) != 2 {
     return false
   }
   inputs += [ints(m, op, kernel)]
   inputs += [ints(m, op, stride)]
-  inputs += [ints(m, op, pad)]
+  if len(pad) == 4 {
+    inputs += [ints(m, op, pad)]
+  } else {
+    let mode = base.get(meta, "auto_pad", "NOTSET")
+    if mode != "SAME_UPPER" && mode != "SAME_LOWER" {
+      return false
+    }
+    inputs += [ir.constant(m, op, mode, ty("str"))]
+  }
   inputs += [ints(m, op, dilation)]
   inputs += [ints(m, op, [0, 1, 2, 3])]
   return convert_call(m, op, callee, inputs)
@@ -1248,6 +1289,30 @@ local fn convert_avg_pool(m: Mod, op: Op) -> bool {
 [phase: "compute", on: "onnx.MaxPool"]
 local fn convert_max_pool(m: Mod, op: Op) -> bool {
   return convert_pool(m, op, "nn.max_pool2d")
+}
+
+[phase: "compute", on: "onnx.Resize"]
+local fn convert_resize(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 ||
+     !tensor.valid(ir.type(inputs[0])) ||
+     !tensor.valid(ir.type(outputs[0])) ||
+     ir.type(inputs[2]) != ty("tensor<f32, [4]>") {
+    return false
+  }
+  let meta = attrs(op)
+  if base.get(meta, "mode", "nearest") != "nearest" ||
+     base.get(meta, "coordinate_transformation_mode", "half_pixel") !=
+       "asymmetric" ||
+     base.get(meta, "nearest_mode", "round_prefer_floor") != "floor" {
+    return false
+  }
+  return convert_call(
+    m, op, "nn.resize2d", [
+      inputs[0], inputs[2], ints(m, op, [0, 1, 2, 3])
+    ]
+  )
 }
 
 [phase: "shape", on: "onnx.Identity"]

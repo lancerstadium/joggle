@@ -238,7 +238,18 @@ local fn spatial_pad(op: Op, kernel: list<int>) -> list<int> {
     return none
   }
   if kind(shape[2]) != "int" || kind(shape[3]) != "int" {
-    return none
+    if stride[0] != 1 || stride[1] != 1 {
+      return none
+    }
+    let ph = dilation[0] * (kernel[0] - 1)
+    let pw = dilation[1] * (kernel[1] - 1)
+    var top = ph / 2
+    var left = pw / 2
+    if mode == "SAME_LOWER" {
+      top = (ph + 1) / 2
+      left = (pw + 1) / 2
+    }
+    return [top, left, ph - top, pw - left]
   }
   let h = int(shape[2])
   let w = int(shape[3])
@@ -438,7 +449,7 @@ local fn tensor_data(op: Op) -> Attr {
   return ir.meta(op)
 }
 
-local fn const_ints(value: Val) -> list<int> {
+local fn literal_ints(value: Val) -> list<int> {
   var out: list<int> = []
   let type = ir.type(value)
   if !tensor.valid(type) {
@@ -469,6 +480,171 @@ local fn const_ints(value: Val) -> list<int> {
     out += [signed(data, i * width, width)]
   }
   return out
+}
+
+local fn static_count(type: Ty) -> int {
+  if !tensor.valid(type) {
+    return -1
+  }
+  var out = 1
+  for dim in tensor.dims(type) {
+    if kind(dim) != "int" || int(dim) < 0 {
+      return -1
+    }
+    out *= int(dim)
+  }
+  return out
+}
+
+local fn splat(value: int, count: int) -> list<int> {
+  var out: list<int> = []
+  if count < 0 {
+    return out
+  }
+  for i in 0..count {
+    out += [value]
+  }
+  return out
+}
+
+local fn selected(values: list<int>, index: int, count: int) -> int {
+  base.assert(
+    len(values) == 1 || len(values) == count,
+    "static tensor broadcast is incompatible"
+  )
+  if len(values) == 1 {
+    return values[0]
+  }
+  return values[index]
+}
+
+local fn const_ints(value: Val) -> list<int> {
+  let literal = literal_ints(value)
+  if len(literal) != 0 {
+    return literal
+  }
+  let producer = ir.def(value)
+  if !ir.live(producer) {
+    return []
+  }
+  let callee = ir.callee(producer)
+  let inputs = ir.args(producer)
+  let count = static_count(ir.type(value))
+
+  if callee == "base.list" {
+    var out: list<int> = []
+    for input in inputs {
+      if !ir.is_const(input) || base.kind(ir.constant(input)) != "int" {
+        return []
+      }
+      out += [base.int(ir.constant(input))]
+    }
+    return out
+  }
+
+  if callee == "tensor.shape" && len(inputs) == 1 {
+    let input = ir.type(inputs[0])
+    if !tensor.valid(input) {
+      return []
+    }
+    var out: list<int> = []
+    for dim in tensor.dims(input) {
+      if kind(dim) != "int" || int(dim) < 0 {
+        return []
+      }
+      out += [int(dim)]
+    }
+    return out
+  }
+
+  if (callee == "onnx.ConstantOfShape" || callee == "tensor.fill") &&
+     count >= 0 {
+    if callee == "tensor.fill" && len(inputs) == 1 {
+      let fill = const_ints(inputs[0])
+      if len(fill) == 1 {
+        return splat(fill[0], count)
+      }
+      return []
+    }
+    let meta = attrs(producer)
+    if !base.has(meta, "value") {
+      return splat(0, count)
+    }
+    let value_attr = meta["value"]
+    if base.kind(value_attr) != "dict" ||
+       !base.has(value_attr, "data") ||
+       base.kind(value_attr["data"]) != "bytes" {
+      return []
+    }
+    let elem = tensor.elem(ir.type(value))
+    var width = 0
+    if elem == ty("i32") {
+      width = 4
+    }
+    if elem == ty("i64") {
+      width = 8
+    }
+    if width == 0 || base.size(value_attr["data"]) != width {
+      return []
+    }
+    return splat(signed(value_attr["data"], 0, width), count)
+  }
+
+  if (callee == "onnx.Mul" || callee == "nn.mul" ||
+      callee == "base.operator *") && len(inputs) == 2 && count >= 0 {
+    let left = const_ints(inputs[0])
+    let right = const_ints(inputs[1])
+    if (len(left) != 1 && len(left) != count) ||
+       (len(right) != 1 && len(right) != count) {
+      return []
+    }
+    var out: list<int> = []
+    for i in 0..count {
+      out += [selected(left, i, count) * selected(right, i, count)]
+    }
+    return out
+  }
+
+  if (callee == "onnx.Equal" || callee == "operator ==") &&
+     len(inputs) == 2 && count >= 0 {
+    let left = const_ints(inputs[0])
+    let right = const_ints(inputs[1])
+    if (len(left) != 1 && len(left) != count) ||
+       (len(right) != 1 && len(right) != count) {
+      return []
+    }
+    var out: list<int> = []
+    for i in 0..count {
+      var equal = 0
+      if selected(left, i, count) == selected(right, i, count) {
+        equal = 1
+      }
+      out += [equal]
+    }
+    return out
+  }
+
+  if (callee == "onnx.Where" || callee == "nn.where") &&
+     len(inputs) == 3 && count >= 0 {
+    let condition = const_ints(inputs[0])
+    let left = const_ints(inputs[1])
+    let right = const_ints(inputs[2])
+    if (len(condition) != 1 && len(condition) != count) ||
+       (len(left) != 1 && len(left) != count) ||
+       (len(right) != 1 && len(right) != count) {
+      return []
+    }
+    var out: list<int> = []
+    for i in 0..count {
+      if selected(condition, i, count) != 0 {
+        out += [selected(left, i, count)]
+      } else {
+        out += [selected(right, i, count)]
+      }
+    }
+    return out
+  }
+  return []
 }
 
 local fn int_vector_len(value: Val) -> int {
@@ -1032,21 +1208,33 @@ local fn slice_type(m: Mod, op: Op) -> bool {
 
 local fn resize_result(op: Op) -> Ty {
   let inputs = ir.args(op)
-  if len(inputs) != 4 {
+  if len(inputs) != 3 && len(inputs) != 4 {
     return ty("_")
   }
   let input = ir.type(inputs[0])
   if !tensor.valid(input) {
     return ty("_")
   }
-  let shape = shape_terms(inputs[3])
-  if len(shape) != len(tensor.dims(input)) {
+  let source = tensor.dims(input)
+  var shape: list<Ty> = []
+  if len(inputs) == 4 {
+    shape = shape_terms(inputs[3])
+  }
+  if len(shape) == len(source) {
+    for dim in shape {
+      if kind(dim) == "int" && int(dim) <= 0 {
+        return ty("_")
+      }
+    }
+    return shaped(tensor.elem(input), shape)
+  }
+  let scales = ir.type(inputs[2])
+  if !tensor.valid(scales) || len(tensor.dims(scales)) != 1 ||
+     tensor.dims(scales)[0] != ty(len(source)) {
     return ty("_")
   }
-  for dim in shape {
-    if kind(dim) == "int" && int(dim) <= 0 {
-      return ty("_")
-    }
+  for dim in source {
+    shape += [ty("_")]
   }
   return shaped(tensor.elem(input), shape)
 }
@@ -1130,16 +1318,11 @@ local fn expand_type(m: Mod, op: Op) -> bool {
       return false
     }
   }
-  let shift = len(shape) - len(source_shape)
-  for axis in 0..len(source_shape) {
-    let source = source_shape[axis]
-    let target = shape[shift + axis]
-    if kind(source) == "int" && kind(target) == "int" &&
-       source != ty(1) && source != target {
-      return false
-    }
+  let result = tensor.broadcast_shape(source_shape, shape)
+  if len(result) == 0 {
+    return false
   }
-  return set_type(m, outputs[0], shaped(tensor.elem(input), shape))
+  return set_type(m, outputs[0], shaped(tensor.elem(input), result))
 }
 
 [phase: "infer", on: "onnx.Tile"]
@@ -1848,7 +2031,9 @@ local fn reduce_result(op: Op) -> Ty {
   )
 }
 
-[phase: "infer", on: ["onnx.ReduceMean", "onnx.ReduceSum"]]
+[phase: "infer", on: [
+  "onnx.ReduceMean", "onnx.ReduceSum", "onnx.ReduceMin", "onnx.ReduceMax"
+]]
 local fn reduce_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
@@ -2080,7 +2265,9 @@ local fn pool_type(m: Mod, op: Op) -> bool {
     return false
   }
   let shape = tensor.dims(x)
-  if len(shape) != 4 || !positive(shape[2]) || !positive(shape[3]) {
+  if len(shape) != 4 ||
+     (kind(shape[2]) == "int" && int(shape[2]) <= 0) ||
+     (kind(shape[3]) == "int" && int(shape[3]) <= 0) {
     return false
   }
   let meta = attrs(op)
@@ -2091,9 +2278,7 @@ local fn pool_type(m: Mod, op: Op) -> bool {
   let kernel = meta["kernel_shape"]
   let stride = base.get(meta, "strides", [1, 1])
   let dilation = base.get(meta, "dilations", [1, 1])
-  let pad = spatial_pad(op, kernel)
-  if len(kernel) != 2 || len(stride) != 2 || len(pad) != 4 ||
-     len(dilation) != 2 {
+  if len(kernel) != 2 || len(stride) != 2 || len(dilation) != 2 {
     return false
   }
   if kernel[0] <= 0 || kernel[1] <= 0 ||
@@ -2101,14 +2286,29 @@ local fn pool_type(m: Mod, op: Op) -> bool {
      dilation[0] <= 0 || dilation[1] <= 0 {
     return false
   }
-  let h = (int(shape[2]) + pad[0] + pad[2] -
-           dilation[0] * (kernel[0] - 1) - 1) / stride[0] + 1
-  let w = (int(shape[3]) + pad[1] + pad[3] -
-           dilation[1] * (kernel[1] - 1) - 1) / stride[1] + 1
-  if h <= 0 || w <= 0 {
+  var h = ty("_")
+  var w = ty("_")
+  let mode = base.get(meta, "auto_pad", "NOTSET")
+  if mode == "SAME_UPPER" || mode == "SAME_LOWER" {
+    h = same_extent(shape[2], stride[0])
+    w = same_extent(shape[3], stride[1])
+  } else {
+    let pad = spatial_pad(op, kernel)
+    if len(pad) != 4 {
+      return false
+    }
+    h = conv_extent(
+      shape[2], pad[0], pad[2], kernel[0], stride[0], dilation[0]
+    )
+    w = conv_extent(
+      shape[3], pad[1], pad[3], kernel[1], stride[1], dilation[1]
+    )
+  }
+  if (kind(shape[2]) == "int" && h == ty("_")) ||
+     (kind(shape[3]) == "int" && w == ty("_")) {
     return false
   }
-  let result: list<Ty> = [shape[0], shape[1], ty(h), ty(w)]
+  let result: list<Ty> = [shape[0], shape[1], h, w]
   return set_type(
     m, outputs[0], shaped(tensor.elem(x), result)
   )

@@ -355,6 +355,53 @@ fn slice<E: Ty, S: list<int>, Y: list<int>>(
   return out
 }
 
+fn slice_offset<
+  S: list<int>, I: Ty, N: int
+>(
+  starts: tensor<I, [N]>, axes: tensor<I, [N]>,
+  steps: tensor<I, [N]>, result: list<int>, linear: int
+) -> int {
+  var out = 0
+  var source_stride = 1
+  var result_stride = 1
+  for reverse in 0..len(S) {
+    let dim = len(S) - reverse - 1
+    var start = 0
+    var step = 1
+    for item in 0..N {
+      var axis = int(axes[item])
+      if axis < 0 {
+        axis += len(S)
+      }
+      if axis == dim {
+        start = int(starts[item])
+        step = int(steps[item])
+        if start < 0 {
+          start += S[dim]
+        }
+      }
+    }
+    let coordinate = (linear / result_stride) % result[dim]
+    out += (start + coordinate * step) * source_stride
+    source_stride *= S[dim]
+    result_stride *= result[dim]
+  }
+  return out
+}
+
+fn slice<
+  E: Ty, S: list<int>, Y: list<int>, I: Ty, N: int
+>(
+  x: tensor<E, S>, starts: tensor<I, [N]>, ends: tensor<I, [N]>,
+  axes: tensor<I, [N]>, steps: tensor<I, [N]>
+) -> tensor<E, Y> {
+  var out = tensor<E, Y>(E(0))
+  for i in 0..numel<Y>() {
+    out[i] = x[slice_offset<S>(starts, axes, steps, Y, i)]
+  }
+  return out
+}
+
 fn concat<E: Ty, L: list<int>, R: list<int>, Y: list<int>>(
   left: tensor<E, L>, right: tensor<E, R>, axis: int
 ) -> tensor<E, Y> {
@@ -773,6 +820,14 @@ fn tile<E: Ty, S: list<int>, T: list<int>>(
   return out
 }
 
+fn tile<
+  E: Ty, S: list<int>, T: list<int>, I: Ty, N: int
+>(
+  x: tensor<E, S>, repeats: tensor<I, [N]>
+) -> tensor<E, T> {
+  return tile(x)
+}
+
 fn cast<A: Ty, B: Ty, S: list<int>>(
   x: tensor<A, S>
 ) -> tensor<B, S> {
@@ -1037,6 +1092,46 @@ fn sum<E: Ty, S: list<int>, Y: list<int>>(
   for line in 0..tensor.numel<Y>() {
     for item in 0..count {
       out[line] = out[line] + x[reduce_offset(S, axes, line, item)]
+    }
+  }
+  return out
+}
+
+fn min<E: Ty, S: list<int>, Y: list<int>>(
+  x: tensor<E, S>, axes: list<int>
+) -> tensor<E, Y> {
+  var count = 1
+  for axis in axes {
+    count *= S[axis]
+  }
+  var out = tensor<E, Y>(E(0))
+  for line in 0..tensor.numel<Y>() {
+    out[line] = x[reduce_offset(S, axes, line, 0)]
+    for item in 1..count {
+      let value = x[reduce_offset(S, axes, line, item)]
+      if value < out[line] {
+        out[line] = value
+      }
+    }
+  }
+  return out
+}
+
+fn max<E: Ty, S: list<int>, Y: list<int>>(
+  x: tensor<E, S>, axes: list<int>
+) -> tensor<E, Y> {
+  var count = 1
+  for axis in axes {
+    count *= S[axis]
+  }
+  var out = tensor<E, Y>(E(0))
+  for line in 0..tensor.numel<Y>() {
+    out[line] = x[reduce_offset(S, axes, line, 0)]
+    for item in 1..count {
+      let value = x[reduce_offset(S, axes, line, item)]
+      if value > out[line] {
+        out[line] = value
+      }
     }
   }
   return out
