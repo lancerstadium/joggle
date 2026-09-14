@@ -426,7 +426,6 @@ fn peel(m: Mod, source: Op, axis: int, factor: int) -> list<Op> {
          "tile.peel could not replace the original loop results")
   assert(ir.erase(m, source),
          "tile.peel could not erase the original loop")
-  opt.dce(m, [])
   return [prefix, tail]
 }
 

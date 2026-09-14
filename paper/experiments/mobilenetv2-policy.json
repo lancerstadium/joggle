@@ -1,24 +1,24 @@
 {
   "schema": 2,
-  "study": "mobilenetv2-block",
+  "study": "mobilenetv2-policy",
   "trials": 20,
   "subjects": [
     {
       "system": "joggle",
       "command": [
-        "build-policy/MobileNetV2/1000000/model",
+        "build-policy/MobileNetV2/reorder/model",
         "build-app/examples/mobilenet/input.bin",
-        "build-policy/MobileNetV2/1000000/model.bin",
+        "build-policy/MobileNetV2/reorder/model.bin",
         "build-app/examples/mobilenet/expected.bin",
         "3",
         "1"
       ],
       "artifacts": {
-        "source": "build-policy/MobileNetV2/1000000/model.c",
-        "header": "build-policy/MobileNetV2/1000000/model.h",
-        "executable": "build-policy/MobileNetV2/1000000/model",
+        "source": "build-policy/MobileNetV2/reorder/model.c",
+        "header": "build-policy/MobileNetV2/reorder/model.h",
+        "executable": "build-policy/MobileNetV2/reorder/model",
         "input": "build-app/examples/mobilenet/input.bin",
-        "weights": "build-policy/MobileNetV2/1000000/model.bin",
+        "weights": "build-policy/MobileNetV2/reorder/model.bin",
         "reference": "build-app/examples/mobilenet/expected.bin"
       },
       "version_command": [

@@ -102,6 +102,12 @@ using `tile.scalar_cost` before any split or reorder. Target-dependent factor
 choice, packing, direct artifact-size modelling, and profitability remain
 policy and mechanism gaps.
 
+Primitive loop edits do not run a hidden whole-module cleanup. In particular,
+`tile.peel` performs only the checked local replacement; a composing policy
+may apply many edits and invoke `opt.dce` once at its boundary. This keeps the
+single-edit API predictable and prevents repeated full-program scans on large
+function bodies.
+
 General loop-invariant motion now lives in `opt.hoist`, not in an operator or
 artifact emitter. A module supplies either a short list of calls that are safe
 to speculate or a read-only policy function; constants need no policy. The

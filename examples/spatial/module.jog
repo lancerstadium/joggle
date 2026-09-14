@@ -1,5 +1,6 @@
 module spatial
 use ir
+use opt
 use tile
 
 local fn block_order(m: Mod, op: Op, inner: int) -> list<int> {
@@ -241,6 +242,9 @@ local fn block(
         }
       }
     }
+  }
+  if changed {
+    opt.dce(m, [])
   }
   return changed
 }

@@ -9,8 +9,8 @@ name: linux-policy
       - examples/onnx/app.cpp
       - examples/spatial/**
       - modules/**
-      - paper/measure_block_frontier.py
-      - paper/experiments/mobilenetv2-block.json
+      - paper/measure_reorder.py
+      - paper/experiments/mobilenetv2-policy.json
 
 permissions:
   contents: read
@@ -20,8 +20,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  block:
-    name: Generic block policy and ONNX Runtime
+  policy:
+    name: Generic loop policy and ONNX Runtime
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -59,20 +59,18 @@ jobs:
           ctest --test-dir build-app -R '^onnx-app-mobilenet$'
           --output-on-failure
 
-      - name: Apply source block policy
+      - name: Apply source loop policy
         id: transform
         run: |
           set -o pipefail
           mkdir -p build-policy
-          python3 paper/measure_block_frontier.py \
+          python3 paper/measure_reorder.py \
             --tool build-app/joggle \
             --modules build-app/modules \
             --examples examples \
             --model MobileNetV2=build-app/examples/mobilenet/canonical.jog \
-            --factors 8,4 \
-            --budgets 1000000 \
             --out-dir build-policy \
-            --output build-policy/frontier.csv \
+            --output build-policy/reorder.csv \
             2>&1 | tee build-policy/transform.log
 
       - name: Preserve transform failure
@@ -87,12 +85,12 @@ jobs:
           text = (text.replace("%", "%25")
                       .replace("\r", "%0D")
                       .replace("\n", "%0A"))
-          print(f"::error title=Block policy failed::{text}")
+          print(f"::error title=Loop policy failed::{text}")
           PY
 
       - name: Package and validate generated C
         run: |
-          root=build-policy/MobileNetV2/1000000
+          root=build-policy/MobileNetV2/reorder
           build-app/joggle emit c.header "$root/placed.jog" \
             --arg '"weights"' -M build-app/modules > "$root/model.h"
           build-app/joggle emit c.data "$root/placed.jog" \
@@ -127,12 +125,12 @@ jobs:
             --cpu "$cpu" --require-clean \
             2>&1 | tee build-policy/results/mobilenetv2-plain.log
           python3 paper/measure_systems.py \
-            --manifest paper/experiments/mobilenetv2-block.json \
+            --manifest paper/experiments/mobilenetv2-policy.json \
             --repo . \
-            --output build-policy/results/mobilenetv2-block.csv \
-            --record build-policy/results/mobilenetv2-block.json \
+            --output build-policy/results/mobilenetv2-policy.csv \
+            --record build-policy/results/mobilenetv2-policy.json \
             --cpu "$cpu" --require-clean \
-            2>&1 | tee build-policy/results/mobilenetv2-block.log
+            2>&1 | tee build-policy/results/mobilenetv2-policy.log
 
       - name: Preserve measurement failure
         if: ${{ failure() && steps.measure.outcome == 'failure' }}
@@ -141,7 +139,7 @@ jobs:
           from pathlib import Path
 
           text = Path(
-              "build-policy/results/mobilenetv2-block.log"
+              "build-policy/results/mobilenetv2-policy.log"
           ).read_text(errors="replace")[-12000:]
           text = (text.replace("%", "%25")
                       .replace("\r", "%0D")
@@ -169,29 +167,29 @@ jobs:
               }
 
           plain = medians("plain")
-          blocked = medians("block")
+          policy = medians("policy")
           summary = (
-              "## Same-run generic block-policy ablation\n\n"
+              "## Same-run generic loop-policy diagnostic\n\n"
               "One pinned CPU on one GitHub runner; diagnostic rather than "
               "publication data.\n\n"
-              "| Plain | Blocked | ORT beside plain | ORT beside blocked | "
-              "Blocked / Plain |\n"
+              "| Plain | Policy | ORT beside plain | ORT beside policy | "
+              "Policy / Plain |\n"
               "|---:|---:|---:|---:|---:|\n"
               f"| {plain['joggle'] * 1000:.3f} ms | "
-              f"{blocked['joggle'] * 1000:.3f} ms | "
+              f"{policy['joggle'] * 1000:.3f} ms | "
               f"{plain['onnxruntime'] * 1000:.3f} ms | "
-              f"{blocked['onnxruntime'] * 1000:.3f} ms | "
-              f"{blocked['joggle'] / plain['joggle']:.2f}x |\n"
+              f"{policy['onnxruntime'] * 1000:.3f} ms | "
+              f"{policy['joggle'] / plain['joggle']:.2f}x |\n"
           )
           with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as stream:
               stream.write(summary)
           print(
-              "::notice title=Same-run block-policy ablation::"
+              "::notice title=Same-run loop-policy diagnostic::"
               f"plain {plain['joggle'] * 1000:.3f} ms, "
-              f"blocked {blocked['joggle'] * 1000:.3f} ms, "
+              f"policy {policy['joggle'] * 1000:.3f} ms, "
               f"ORT/plain-run {plain['onnxruntime'] * 1000:.3f} ms, "
-              f"ORT/blocked-run {blocked['onnxruntime'] * 1000:.3f} ms, "
-              f"blocked/plain {blocked['joggle'] / plain['joggle']:.2f}x"
+              f"ORT/policy-run {policy['onnxruntime'] * 1000:.3f} ms, "
+              f"policy/plain {policy['joggle'] / plain['joggle']:.2f}x"
           )
           PY
 
@@ -200,7 +198,7 @@ jobs:
         with:
           name: linux-policy-${{ github.sha }}
           path: |
-            build-policy/frontier.csv
+            build-policy/reorder.csv
             build-policy/results/
           if-no-files-found: error
           retention-days: 30

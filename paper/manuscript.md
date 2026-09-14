@@ -333,9 +333,13 @@ pointwise 1x1 path, without an ONNX or Conv condition. Reordering all recognized
 loops preserves the official output with maximum absolute difference
 `2.09808349609375e-5` under strict generated C. This is a legality and coverage
 result, not a latency result. The existing scalar-blocking example takes more
-than four minutes when naively applied to this enlarged set on the development
-host, so batched policy application and controlled Linux measurements remain
-required before the mechanism supports an artifact-quality claim.
+than four minutes when its primitive peel edits each trigger a hidden
+whole-module cleanup. Moving cleanup to the composing policy boundary makes a
+bounded 4,000-unit structural run complete in 40.52 seconds, including cleanup,
+planning, placement, and C emission, on the development host. Its generated C
+remains a negative latency diagnostic, so the reproducible Linux policy run now
+evaluates the lightweight reorder rather than presenting scalar blocking as an
+optimized artifact.
 
 Source emission exposed a third repeated-work boundary on the placed UltraFace
 IR. The original external-payload path rescanned the full operation sequence
