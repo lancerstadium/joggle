@@ -419,8 +419,11 @@ fn splittable(m: Mod, factor: int) -> list<Op> {
 
 local fn clone_body(
   m: Mod, source: Blk, target: Blk,
-  old: list<Val>, next: list<Val>
+  old: list<Val>, next: list<Val>,
+  replace_old: list<Val>, replace_next: list<Val>
 ) -> list<Val> {
+  assert(len(replace_old) == len(replace_next),
+         "tile requires paired clone replacements")
   let source_ops = ir.ops(source)
   let target_ops = ir.ops(target)
   assert(len(source_ops) > 0 && len(target_ops) > 0 &&
@@ -439,12 +442,31 @@ local fn clone_body(
     let target_outputs = ir.outs(copy)
     assert(len(source_outputs) == len(target_outputs),
            "tile cloned an inconsistent operation")
-    old_values += source_outputs
-    next_values += target_outputs
+    for output in 0..len(source_outputs) {
+      var replaced = false
+      for candidate in 0..len(replace_old) {
+        if source_outputs[output] == replace_old[candidate] {
+          old_values += [source_outputs[output]]
+          next_values += [replace_next[candidate]]
+          replaced = true
+        }
+      }
+      if !replaced {
+        old_values += [source_outputs[output]]
+        next_values += [target_outputs[output]]
+      }
+    }
   }
   return mapped(
     ir.args(source_ops[len(source_ops) - 1]), old_values, next_values
   )
+}
+
+local fn clone_body(
+  m: Mod, source: Blk, target: Blk,
+  old: list<Val>, next: list<Val>
+) -> list<Val> {
+  return clone_body(m, source, target, old, next, [], [])
 }
 
 local fn adjacent_axis(source: Op) -> int {
@@ -548,6 +570,48 @@ fn mergeable(m: Mod) -> list<Op> {
   return out
 }
 
+// Rewrite one affine form from the source axes to the merged iteration space.
+// For adjacent coordinates a and b with inner width W,
+//   ca * a + cb * b == cb * linear + ca * begin_a + cb * begin_b
+// exactly when ca == cb * W.
+local fn merge_form(
+  form: list<int>, axes: int, axis: int,
+  inner_extent: int, outer_begin: int, inner_begin: int
+) -> list<int> {
+  if len(form) != axes + 1 {
+    return []
+  }
+  let outer_scale = affine_mul_int(form[axis + 2], inner_extent)
+  if len(outer_scale) != 1 || form[axis + 1] != outer_scale[0] {
+    return []
+  }
+  let outer_offset = affine_mul_int(form[axis + 1], outer_begin)
+  let inner_offset = affine_mul_int(form[axis + 2], inner_begin)
+  if len(outer_offset) != 1 || len(inner_offset) != 1 {
+    return []
+  }
+  let with_outer = affine_add_int(form[0], outer_offset[0])
+  if len(with_outer) != 1 {
+    return []
+  }
+  let offset = affine_add_int(with_outer[0], inner_offset[0])
+  if len(offset) != 1 {
+    return []
+  }
+
+  var out: list<int> = [offset[0]]
+  for i in 0..axes {
+    if i == axis {
+      out += [form[axis + 2]]
+    } else {
+      if i != axis + 1 {
+        out += [form[i + 1]]
+      }
+    }
+  }
+  return out
+}
+
 fn merge(m: Mod, source: Op, axis: int) -> Op {
   let issue = merge_issue(m, source, axis)
   assert(issue == "", "tile.merge " + issue)
@@ -641,6 +705,38 @@ fn merge(m: Mod, source: Op, axis: int) -> Op {
     "merge_inner"
   )
 
+  var replace_old: list<Val> = []
+  var replace_next: list<Val> = []
+  var coordinates: list<Val> = []
+  for i in 0..axes - 1 {
+    coordinates += [merged_args[i]]
+  }
+  let scope = nested(source)
+  let accesses = indexed_ops(m, source)
+  for access in accesses {
+    let args = ir.args(access)
+    var end = len(args)
+    if syntax_op(m, access, "operator []=") {
+      end -= 1
+    }
+    for at in 1..end {
+      let value = args[at]
+      if !known(value, replace_old) {
+        let form = affine(m, source, value)
+        let compressed = merge_form(
+          form, axes, axis, right_width, left_begin, right_begin
+        )
+        let expression = expression_ops(value, scope, [])
+        if len(compressed) == axes && len(expression) != 0 &&
+           exclusive_expression(m, expression, accesses) {
+          replace_old += [value]
+          replace_next += [affine_value(
+            m, merged_yield, ir.type(value), compressed, coordinates
+          )]
+        }
+      }
+    }
+  }
   var old: list<Val> = []
   var next: list<Val> = []
   for i in 0..axes {
@@ -663,8 +759,13 @@ fn merge(m: Mod, source: Op, axis: int) -> Op {
     old += [body_args[axes + i]]
     next += [merged_args[axes - 1 + i]]
   }
-  assert(ir.args(m, merged_yield,
-                 clone_body(m, body, merged_body, old, next)),
+  assert(ir.args(
+           m, merged_yield,
+           clone_body(
+             m, body, merged_body, old, next,
+             replace_old, replace_next
+           )
+         ),
          "tile.merge could not connect the merged loop")
   if len(outputs) != 0 {
     assert(ir.replace(m, outputs, ir.outs(merged)),

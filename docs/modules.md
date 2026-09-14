@@ -449,6 +449,9 @@ adjacent pair. It replaces the pair by a zero-based linear axis and reconstructs
 both original coordinates with quotient and remainder inside the same body.
 The mapping preserves the exact lexicographic execution order and every carried
 value, so it does not rely on an operator, tensor rank, or independence guess.
+When an exclusively address-used affine value is dense across the selected
+pair, the same proof rewrites that value directly onto the merged coordinate;
+other coordinate uses retain explicit quotient and remainder reconstruction.
 For now, both ranges must have static integer bounds, positive trip counts, and
 a representable product. `merge_issue`, `can_merge`, and `mergeable` expose the
 same decision without mutation; omitting `axis` selects the final adjacent pair.

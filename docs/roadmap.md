@@ -155,9 +155,11 @@ The complementary `tile.merge` now collapses one adjacent static axis pair
 into a linear range and reconstructs both original coordinates in the existing
 body. It preserves lexicographic order and arbitrary carried values, rejects
 dynamic, empty, and overflowing domains, and composes across more than two
-axes. The mechanism is target-neutral; deciding when fewer loops outweigh the
-introduced quotient and remainder remains an explicit policy and measurement
-question.
+axes. An exclusively address-used affine expression whose adjacent
+coefficients match the range radix is rebuilt directly from the merged axis;
+non-address coordinate uses retain explicit quotient and remainder. The
+mechanism is target-neutral; deciding when fewer loops outweigh the remaining
+coordinate reconstruction remains an explicit policy and measurement question.
 
 Conservative integer bounds now feed an explicit `bounds.fold` edit for exact
 Boolean predicates. Composing it with ordinary `opt.fold` removes statically

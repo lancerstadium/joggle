@@ -234,6 +234,7 @@ if(NOT merged_loop_count EQUAL 2 OR
    NOT merged_text MATCHES "for merge_[0-9]+ in" OR
    NOT merged_text MATCHES "for i in [^\n]+, j in" OR
    NOT merged_text MATCHES "merge_inner_offset_[0-9]+" OR
+   NOT merged_text MATCHES "x\[merge_[0-9]+\]" OR
    NOT merged_text MATCHES "%")
   message(FATAL_ERROR
           "axis merge did not expose one reconstructed loop:\n${merged_text}")
