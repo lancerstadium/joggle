@@ -105,12 +105,12 @@ local fn scalar_block_issue(
     let inputs = ir.args(op)
     let outputs = ir.outs(op)
     if op == load {
-      if len(inputs) != 2 || len(outputs) != 1 || inputs[0] != active {
+      if len(inputs) < 2 || len(outputs) != 1 || inputs[0] != active {
         return "requires a scalar load from the current carried state"
       }
     } else {
       if op == store {
-        if len(inputs) != 3 || len(outputs) != 1 ||
+        if len(inputs) < 3 || len(outputs) != 1 ||
            inputs[0] != active || ir.type(outputs[0]) != ir.type(active) {
           return "requires a type-stable store to the current carried state"
         }
@@ -186,7 +186,7 @@ local fn scalar_lanes(
 }
 
 local fn bounded_state(
-  m: Mod, source: Op, state: Val, index: Val
+  m: Mod, source: Op, state: Val, indices: list<Val>
 ) -> bool {
   let type = ir.type(state)
   if !tensor.static(type) {
@@ -204,7 +204,7 @@ local fn bounded_state(
     capacity = product[0]
   }
 
-  let form = affine(m, source, index)
+  let form = address_form(m, source, state, indices)
   let bounds = affine_bounds(m, source, form)
   return len(bounds) == 2 && bounds[0] >= 0 && bounds[1] < capacity
 }
@@ -275,13 +275,21 @@ fn scalarize_issue(m: Mod, source: Op, budget: int) -> str {
   let load_outs = ir.outs(load_ops[0])
   let store_args = ir.args(store_ops[0])
   let store_outs = ir.outs(store_ops[0])
-  if len(load_args) != 2 || len(load_outs) != 1 ||
-     len(store_args) != 3 || len(store_outs) != 1 ||
-     ir.type(load_args[1]) != ir.type(store_args[1]) ||
-     ir.type(load_outs[0]) != ir.type(store_args[2]) {
+  if len(load_args) < 2 || len(load_outs) != 1 ||
+     len(store_args) != len(load_args) + 1 || len(store_outs) != 1 ||
+     ir.type(load_outs[0]) != ir.type(store_args[len(store_args) - 1]) {
     return "requires compatible scalar indexed accesses"
   }
-  if !bounded_state(m, source, store_args[0], store_args[1]) {
+  for i in 1..len(load_args) {
+    if ir.type(load_args[i]) != ir.type(store_args[i]) {
+      return "requires compatible scalar indexed accesses"
+    }
+  }
+  var store_indices: list<Val> = []
+  for i in 1..len(store_args) - 1 {
+    store_indices += [store_args[i]]
+  }
+  if !bounded_state(m, source, store_args[0], store_indices) {
     return "cannot prove carried-state address bounds"
   }
   return scalar_block_issue(
@@ -395,7 +403,8 @@ local fn rebuild_scalar_block(
     } else {
       if op == store {
         let value = state_value(
-          inputs[2], state_values, scalar_values, old_values, next_values
+          inputs[len(inputs) - 1],
+          state_values, scalar_values, old_values, next_values
         )
         let target = state_value(
           inputs[0], state_values, scalar_values, old_values, next_values
@@ -475,6 +484,20 @@ local fn rebuild_scalar_block(
   )
 }
 
+local fn scalar_indices(
+  m: Mod, loop: Op, before: Op,
+  args: list<Val>, end: int, axes: list<Val>
+) -> list<Val> {
+  var out: list<Val> = []
+  for i in 1..end {
+    let form = affine(m, loop, args[i])
+    assert(len(form) != 0,
+           "tile.scalarize lost an affine access coordinate")
+    out += [affine_value(m, before, ir.type(args[i]), form, axes)]
+  }
+  return out
+}
+
 fn scalarize(m: Mod, source: Op, budget: int) -> Op {
   let issue = scalarize_issue(m, source, budget)
   assert(issue == "", "tile.scalarize " + issue)
@@ -494,7 +517,6 @@ fn scalarize(m: Mod, source: Op, budget: int) -> Op {
   let store = stores[0]
   let load_args = ir.args(load)
   let store_args = ir.args(store)
-  let index_form = affine(m, source, store_args[1])
   let accesses = indexed_ops(m, source)
 
   var outer_names: list<str> = []
@@ -516,7 +538,7 @@ fn scalarize(m: Mod, source: Op, budget: int) -> Op {
   let zero = ir.constant(m, outer_yield, 0, ty("index"))
   assert(ir.live(zero), "tile.scalarize could not build an axis placeholder")
   var lane_axes: list<list<Val>> = []
-  var indices: list<Val> = []
+  var store_indices: list<list<Val>> = []
   var initial: list<Val> = []
   for lane in 0..lanes {
     var coordinates: list<int> = []
@@ -552,14 +574,17 @@ fn scalarize(m: Mod, source: Op, budget: int) -> Op {
       }
     }
     lane_axes += [values]
-    let index = affine_value(
-      m, outer_yield, ir.type(store_args[1]), index_form, values
+    let load_index = scalar_indices(
+      m, source, outer_yield, load_args, len(load_args), values
     )
-    indices += [index]
+    let store_index = scalar_indices(
+      m, source, outer_yield, store_args, len(store_args) - 1, values
+    )
+    store_indices += [store_index]
+    let load_next = [outer_args[first]] + load_index
     let initial_load = ir.clone(
       m, load, outer_yield,
-      [load_args[0], load_args[1]],
-      [outer_args[first], index]
+      load_args, load_next
     )
     assert(ir.live(initial_load) && len(ir.outs(initial_load)) == 1,
            "tile.scalarize could not move a state load")
@@ -614,10 +639,11 @@ fn scalarize(m: Mod, source: Op, budget: int) -> Op {
 
   var result = outer_args[first]
   for lane in 0..lanes {
+    let store_next =
+      [result] + store_indices[lane] + [ir.outs(inner)[lane]]
     let final_store = ir.clone(
       m, store, outer_yield,
-      [store_args[0], store_args[1], store_args[2]],
-      [result, indices[lane], ir.outs(inner)[lane]]
+      store_args, store_next
     )
     assert(ir.live(final_store) && len(ir.outs(final_store)) == 1,
            "tile.scalarize could not move a state store")

@@ -315,6 +315,11 @@ fn check_multidimensional_reorder(m: Mod) -> bool {
          ir.name(arguments[1]) == "depth" &&
          ir.name(arguments[2]) == "column",
          "multidimensional reorder produced the wrong axis order")
+  assert(tile.scalar_cost(m, reordered, 3) > 0,
+         "multidimensional state could not be scalarized")
+  let scalarized = tile.scalarize(m, reordered, 3)
+  assert(ir.live(scalarized),
+         "multidimensional scalarization did not produce a loop")
   return true
 }
 

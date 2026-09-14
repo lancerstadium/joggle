@@ -212,7 +212,11 @@ local fn block(
       if len(state) > 0 && len(extents) > len(state) {
         let axis = state[len(state) - 1]
         let selected_factor = factor(extents[axis], factors)
-        let unit = tile.scalar_cost(m, source)
+        let full_cost = tile.scalar_cost(m, source, extents[axis])
+        var unit = 0
+        if full_cost > 0 && extents[axis] > 0 {
+          unit = full_cost / extents[axis]
+        }
         var fits = unit > 0
         if bounded && fits {
           fits = unit <= (limit - spent) / selected_factor
