@@ -6,6 +6,123 @@ local fn ints(m: Mod, before: Op, value: Attr) -> Val {
   return ir.call(m, before, "base.list", items, ty("list", [ty("int")]))
 }
 
+local fn mapped(value: Val, old: list<Val>, next: list<Val>) -> Val {
+  for i in 0..len(old) {
+    if value == old[i] {
+      return next[i]
+    }
+  }
+  return value
+}
+
+local fn scalar(m: Mod, before: Op, value: Val) -> Val {
+  let type = ir.type(value)
+  assert(tensor.valid(type) && len(tensor.dims(type)) == 0,
+         "onnx.nn: scalar tensor expected")
+  let zero = ir.constant(m, before, 0, ty("index"))
+  return ir.call(
+    m, before, "operator []", [value, zero], tensor.elem(type)
+  )
+}
+
+local fn shape_value(
+  m: Mod, before: Op, dims: list<Ty>, leading: Val
+) -> Val {
+  assert(len(dims) != 0 && dims[0] == ty("_"),
+         "onnx.nn: dynamic leading dimension expected")
+  let shape_type = tensor.type(ty("index"), [len(dims)])
+  let zero_literal = ir.constant(m, before, 0, ty("int"))
+  let zero = ir.call(m, before, "index", [zero_literal], ty("index"))
+  var shape = ir.call(m, before, "tensor.tensor", [zero], shape_type)
+  var shape_name = local_name(before, "shape_", 0)
+  assert(ir.live(shape) && shape_name != "" &&
+         ir.rename(m, shape, shape_name),
+         "onnx.nn: could not create runtime shape")
+  for axis in 0..len(dims) {
+    var extent = leading
+    if axis != 0 {
+      assert(base.kind(dims[axis]) == "int" && base.int(dims[axis]) >= 0,
+             "onnx.nn: dynamic trailing dimension is unsupported")
+      extent = ir.constant(
+        m, before, base.int(dims[axis]), ty("index")
+      )
+    }
+    let at = ir.constant(m, before, axis, ty("index"))
+    let updated = ir.call(
+      m, before, "tensor.operator []=", [shape, at, extent], shape_type
+    )
+    shape_name = local_name(before, "shape_", axis + 1)
+    assert(ir.live(updated) && shape_name != "" &&
+           ir.rename(m, updated, shape_name),
+           "onnx.nn: could not update runtime shape")
+    shape = updated
+  }
+  return shape
+}
+
+local fn zero(m: Mod, before: Op, type: Ty) -> Val {
+  let name = base.name(type)
+  if name == "f16" || name == "bf16" || name == "f32" || name == "f64" {
+    return ir.constant(m, before, 0.0, type)
+  }
+  if name == "bool" {
+    return ir.constant(m, before, false, type)
+  }
+  return ir.constant(m, before, 0, type)
+}
+
+local fn local_name(before: Op, stem: str, ordinal: int) -> str {
+  let owner = ir.owner(ir.blk(before))
+  var attempt = ordinal
+  for unused in 0..len(ir.vals(owner)) + 2 {
+    let candidate = stem + text(attempt)
+    var taken = false
+    for value in ir.vals(owner) {
+      if ir.name(value) == candidate {
+        taken = true
+      }
+    }
+    if !taken {
+      return candidate
+    }
+    attempt += 1
+  }
+  return ""
+}
+
+local fn local_copy(
+  m: Mod, before: Op, value: Val, stem: str, ordinal: int
+) -> Val {
+  let copy = ir.call(m, before, "base.copy", [value], ir.type(value))
+  let name = local_name(before, stem, ordinal)
+  assert(ir.live(copy) && name != "" && ir.rename(m, copy, name),
+         "onnx.nn: could not create loop state")
+  return copy
+}
+
+local fn scalar_tensor(
+  m: Mod, before: Op, element: Ty, stem: str, ordinal: int
+) -> Val {
+  let value = zero(m, before, element)
+  let dims: list<int> = []
+  let result_type = tensor.type(element, dims)
+  let result = ir.call(m, before, "tensor.tensor", [value], result_type)
+  let name = local_name(before, stem, ordinal)
+  assert(ir.live(result) && name != "" && ir.rename(m, result, name),
+         "onnx.nn: could not create an optional scalar")
+  return result
+}
+
+local fn optional_scalar(
+  m: Mod, before: Op, inputs: list<Val>, position: int,
+  element: Ty, stem: str, ordinal: int
+) -> Val {
+  if position < len(inputs) && ir.type(inputs[position]) != ty("nil") {
+    return inputs[position]
+  }
+  return scalar_tensor(m, before, element, stem, ordinal)
+}
+
 local fn convert_call(m: Mod, op: Op, callee: str) -> bool {
   if !ir.retarget(m, op, callee, ir.args(op)) {
     return false
@@ -1315,9 +1432,300 @@ local fn convert_resize(m: Mod, op: Op) -> bool {
   )
 }
 
+[phase: "compute", on: "onnx.NonMaxSuppression"]
+local fn convert_nms(m: Mod, op: Op) -> bool {
+  let source_inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(source_inputs) < 2 || len(source_inputs) > 5 || len(outputs) != 1 {
+    return false
+  }
+  let boxes = ir.type(source_inputs[0])
+  let scores = ir.type(source_inputs[1])
+  let result = ir.type(outputs[0])
+  if !tensor.valid(boxes) || !tensor.valid(scores) ||
+     !tensor.valid(result) || len(tensor.dims(boxes)) != 3 ||
+     len(tensor.dims(scores)) != 3 ||
+     tensor.elem(boxes) != tensor.elem(scores) ||
+     tensor.dims(boxes)[2] != ty(4) ||
+     known_mismatch(tensor.dims(boxes)[0], tensor.dims(scores)[0]) ||
+     known_mismatch(tensor.dims(boxes)[1], tensor.dims(scores)[2]) ||
+     result != shaped(ty("i64"), [ty("_"), ty(3)]) {
+    return false
+  }
+  var inputs: list<Val> = [source_inputs[0], source_inputs[1]]
+  let maximum_value = optional_scalar(
+    m, op, source_inputs, 2, ty("i64"), "nms_default_", 0
+  )
+  let overlap_value = optional_scalar(
+    m, op, source_inputs, 3, tensor.elem(boxes), "nms_default_", 1
+  )
+  let score_value = optional_scalar(
+    m, op, source_inputs, 4, tensor.elem(boxes), "nms_default_", 2
+  )
+  if !ir.live(maximum_value) || !ir.live(overlap_value) ||
+     !ir.live(score_value) {
+    return false
+  }
+  inputs += [maximum_value, overlap_value, score_value]
+  let maximum = ir.type(maximum_value)
+  if !tensor.valid(maximum) || len(tensor.dims(maximum)) != 0 ||
+     tensor.elem(maximum) != ty("i64") {
+    return false
+  }
+  for i in 3..5 {
+    let threshold = ir.type(inputs[i])
+    if !tensor.valid(threshold) || len(tensor.dims(threshold)) != 0 ||
+       tensor.elem(threshold) != tensor.elem(boxes) {
+      return false
+    }
+  }
+  let center = base.get(attrs(op), "center_point_box", 0)
+  if center != 0 && center != 1 {
+    return false
+  }
+  inputs += [ir.constant(m, op, center, ty("int"))]
+  return convert_call(m, op, "nn.nms", inputs)
+}
+
 [phase: "shape", on: "onnx.Identity"]
 local fn convert_identity(m: Mod, op: Op) -> bool {
   return convert_unary(m, op, "base.copy")
+}
+
+[phase: "control", on: "onnx.Loop"]
+local fn convert_loop(m: Mod, op: Op) -> bool {
+  let body = onnx.graph(m, op, "body")
+  if !ir.live(body) {
+    return false
+  }
+  let info = base.get(attrs(op), "body", {})
+  let input_count = base.int(base.get(info, "inputs", -1))
+  let captures = base.get(info, "captures", [])
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  let params = ir.params(body)
+  let bodies = ir.blks(body)
+  if input_count < 2 || len(inputs) < input_count ||
+     len(params) != input_count + len(captures) || len(bodies) != 1 {
+    return false
+  }
+  let body_ops = ir.ops(bodies[0])
+  if len(body_ops) == 0 ||
+     ir.kind(body_ops[len(body_ops) - 1]) != "return" {
+    return false
+  }
+  for i in 0..len(body_ops) - 1 {
+    if ir.kind(body_ops[i]) == "return" ||
+       base.replace(ir.callee(body_ops[i]), "onnx.", "") !=
+         ir.callee(body_ops[i]) {
+      return false
+    }
+  }
+
+  let returned = ir.args(body_ops[len(body_ops) - 1])
+  let carried_count = input_count - 2
+  let scan_count = len(outputs) - carried_count
+  if scan_count < 0 || len(returned) != 1 + carried_count + scan_count {
+    return false
+  }
+  let trip_type = ir.type(inputs[0])
+  let condition_type = ir.type(inputs[1])
+  if !tensor.valid(trip_type) || len(tensor.dims(trip_type)) != 0 ||
+     !tensor.valid(condition_type) || len(tensor.dims(condition_type)) != 0 ||
+     tensor.elem(condition_type) != ty("bool") {
+    return false
+  }
+  for i in 0..carried_count {
+    if ir.type(inputs[i + 2]) != ir.type(outputs[i]) ||
+       ir.type(returned[i + 1]) != ir.type(outputs[i]) {
+      return false
+    }
+  }
+  for i in 0..scan_count {
+    let output_type = ir.type(outputs[carried_count + i])
+    let sample_type = ir.type(returned[1 + carried_count + i])
+    if !tensor.valid(output_type) || !tensor.valid(sample_type) ||
+       tensor.elem(output_type) != tensor.elem(sample_type) {
+      return false
+    }
+    let dims = tensor.dims(output_type)
+    if len(dims) != len(tensor.dims(sample_type)) + 1 ||
+       len(dims) == 0 || dims[0] != ty("_") {
+      return false
+    }
+    for axis in 1..len(dims) {
+      if dims[axis] != tensor.dims(sample_type)[axis - 1] ||
+         base.kind(dims[axis]) != "int" {
+        return false
+      }
+    }
+  }
+
+  let trip = scalar(m, op, inputs[0])
+  let condition = scalar(m, op, inputs[1])
+  if !ir.live(trip) || !ir.live(condition) {
+    return false
+  }
+  var trip_index = trip
+  if ir.type(trip) != ty("index") {
+    trip_index = ir.call(m, op, "index", [trip], ty("index"))
+  }
+  let begin = ir.constant(m, op, 0, ty("index"))
+  let range = ir.call(
+    m, op, "operator ..", [begin, trip_index], ty("range")
+  )
+
+  var state: list<Val> = []
+  let condition_state = local_copy(
+    m, op, inputs[1], "loop_condition_", 0
+  )
+  if !ir.live(condition_state) {
+    return false
+  }
+  state += [condition_state]
+  for i in 0..carried_count {
+    let carried = local_copy(
+      m, op, inputs[i + 2], "loop_value_", i
+    )
+    if !ir.live(carried) {
+      return false
+    }
+    state += [carried]
+  }
+  for i in 0..scan_count {
+    let output_type = ir.type(outputs[carried_count + i])
+    let shape = shape_value(m, op, tensor.dims(output_type), trip_index)
+    if !ir.live(shape) {
+      return false
+    }
+    let fill = zero(m, op, tensor.elem(output_type))
+    let storage = ir.call(
+      m, op, "tensor.make", [fill, shape], output_type
+    )
+    if !ir.live(storage) {
+      return false
+    }
+    let storage_name = local_name(op, "loop_scan_", i)
+    if storage_name == "" || !ir.rename(m, storage, storage_name) {
+      return false
+    }
+    state += [storage]
+  }
+  let count_index = len(state)
+  let count = ir.constant(m, op, 0, ty("index"))
+  let count_name = local_name(op, "loop_count_", 0)
+  if count_name == "" || !ir.rename(m, count, count_name) {
+    return false
+  }
+  state += [count]
+
+  let loop = ir.loop(m, op, ["iteration"], [range], state)
+  if !ir.live(loop) {
+    return false
+  }
+  carry(m, op, loop)
+  let loop_body = ir.blks(loop)[0]
+  let loop_args = ir.args(loop_body)
+  let loop_yield = ir.ops(loop_body)[0]
+  let active = scalar(m, loop_yield, loop_args[1])
+  if !ir.live(active) {
+    return false
+  }
+  var current: list<Val> = []
+  for i in 1..len(loop_args) {
+    current += [loop_args[i]]
+  }
+  let branch = ir.branch(m, loop_yield, active, current)
+  if !ir.live(branch) {
+    return false
+  }
+  let then_body = ir.blks(branch)[0]
+  let then_args = ir.args(then_body)
+  let then_yield = ir.ops(then_body)[0]
+
+  var old: list<Val> = []
+  var next: list<Val> = []
+  let iteration_i64 = ir.call(
+    m, then_yield, "i64", [loop_args[0]], ty("i64")
+  )
+  let iteration = ir.call(
+    m, then_yield, "tensor.tensor", [iteration_i64], ir.type(params[0])
+  )
+  old += [params[0], params[1]]
+  next += [iteration, then_args[0]]
+  for i in 0..carried_count {
+    old += [params[i + 2]]
+    next += [then_args[i + 1]]
+  }
+  for i in 0..len(captures) {
+    let position = base.int(captures[i])
+    if position < 0 || position >= len(inputs) {
+      return false
+    }
+    old += [params[input_count + i]]
+    next += [inputs[position]]
+  }
+  for i in 0..len(body_ops) - 1 {
+    let copy = ir.clone(m, body_ops[i], then_yield, old, next)
+    if !ir.live(copy) {
+      return false
+    }
+    old += ir.outs(body_ops[i])
+    next += ir.outs(copy)
+  }
+
+  var yielded: list<Val> = [mapped(returned[0], old, next)]
+  for i in 0..carried_count {
+    yielded += [mapped(returned[i + 1], old, next)]
+  }
+  let written_at = then_args[count_index]
+  for i in 0..scan_count {
+    let storage = then_args[1 + carried_count + i]
+    let sample = mapped(returned[1 + carried_count + i], old, next)
+    let written = ir.call(
+      m, then_yield, "tensor.write", [storage, written_at, sample],
+      ir.type(storage)
+    )
+    if !ir.live(written) {
+      return false
+    }
+    yielded += [written]
+  }
+  let one = ir.constant(m, then_yield, 1, ty("index"))
+  yielded += [ir.call(
+    m, then_yield, "operator +", [written_at, one], ty("index")
+  )]
+  if !ir.args(m, then_yield, yielded) ||
+     !ir.args(m, loop_yield, ir.outs(branch)) {
+    return false
+  }
+
+  let loop_outputs = ir.outs(loop)
+  var replacements: list<Val> = []
+  for i in 0..carried_count {
+    replacements += [loop_outputs[i + 1]]
+  }
+  for i in 0..scan_count {
+    let output_type = ir.type(outputs[carried_count + i])
+    let shape = shape_value(
+      m, op, tensor.dims(output_type), loop_outputs[count_index]
+    )
+    let viewed = ir.call(
+      m, op, "tensor.view",
+      [loop_outputs[1 + carried_count + i], shape], output_type
+    )
+    if !ir.live(viewed) {
+      return false
+    }
+    replacements += [viewed]
+  }
+  for i in 0..len(outputs) {
+    carry(m, outputs[i], replacements[i])
+  }
+  if !ir.replace(m, outputs, replacements) || !ir.erase(m, op) {
+    return false
+  }
+  return true
 }
 
 fn convert(m: Mod, rules: list<Fn>) -> bool {
@@ -1325,7 +1733,7 @@ fn convert(m: Mod, rules: list<Fn>) -> bool {
   changed = ir.use(m, "nn") || changed
   changed = ir.use(m, "quant") || changed
   changed = ir.use(m, "tensor") || changed
-  for phase in ["data", "compute", "shape", "cleanup"] {
+  for phase in ["data", "compute", "shape", "control", "cleanup"] {
     let selected = ir.where(rules, "phase", phase)
     for op in ir.ops(m) {
       for rule in ir.where(selected, "on", ir.callee(op)) {

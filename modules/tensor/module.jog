@@ -4,6 +4,21 @@ use base
 fn tensor<E: Ty, S: list<int>>() -> Ty;
 fn tensor<E: Ty, S: list<int>>(fill: E) -> tensor<E, S>;
 
+// Runtime extents stay ordinary values.  `make` owns storage for the supplied
+// logical shape; `view` gives existing storage a logical shape without changing
+// its element representation.  Targets may keep these calls or prepare them
+// into bounded storage, but dynamic dimensions never become a second tensor
+// type.
+fn make<E: Ty, I: Ty, S: list<int>, R: int>(
+  fill: E, shape: tensor<I, [R]>
+) -> tensor<E, S>;
+fn view<E: Ty, I: Ty, S: list<int>, T: list<int>, R: int>(
+  data: tensor<E, S>, shape: tensor<I, [R]>
+) -> tensor<E, T>;
+fn dim<E: Ty, S: list<int>>(
+  data: tensor<E, S>, axis: index
+) -> index;
+
 [memo]
 fn valid(type: Ty) -> bool {
   if name(type) != "tensor" {
@@ -226,6 +241,20 @@ fn numel<S: list<int>>() -> int {
     size *= extent
   }
   return size
+}
+
+// Write one dense trailing slice at a runtime leading coordinate.  This is an
+// ordinary body rather than a scan/NMS intrinsic; structured-control bridges
+// use it when constructing variable-length results.
+fn write<E: Ty, S: list<int>, T: list<int>>(
+  data: tensor<E, S>, at: index, value: tensor<E, T>
+) -> tensor<E, S> {
+  var out = data
+  let width = numel<T>()
+  for i in 0..width {
+    out[at * width + i] = value[i]
+  }
+  return out
 }
 
 fn extent(shape: list<int>, axes: list<int>, axis: int) -> int {

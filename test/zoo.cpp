@@ -257,7 +257,8 @@ int main(int argc, char** argv) {
   }
 
   CHECK(env.load("onnx.nn"));
-  CHECK(joggle::run(env, "onnx.nn.infer", model));
+  if (!joggle::run(env, "onnx.nn.infer", model))
+    return env.print_diags(stderr);
   CHECK(model.verify(env));
   const Stats inferred = inspect(model);
   std::printf("%s: %zu tensors, %zu nodes, %zu unknown before, %zu after\n",
@@ -283,7 +284,8 @@ int main(int argc, char** argv) {
   }
   CHECK(inferred.unknown == 0);
 
-  CHECK(joggle::run(env, "onnx.nn.convert", model));
+  if (!joggle::run(env, "onnx.nn.convert", model))
+    return env.print_diags(stderr);
   CHECK(model.verify(env));
   const Stats converted = inspect(model);
   if (converted.nodes != 0) {
@@ -301,7 +303,8 @@ int main(int argc, char** argv) {
   }
   CHECK(converted.nodes == 0);
   const std::string converted_text = joggle::print(model);
-  CHECK(joggle::run(env, "onnx.nn.convert", model));
+  if (!joggle::run(env, "onnx.nn.convert", model))
+    return env.print_diags(stderr);
   CHECK(joggle::print(model) == converted_text);
 
   joggle::Mod converted_roundtrip;

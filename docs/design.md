@@ -237,6 +237,31 @@ complete loop coverage from the ordinary `Blk/Op/Val` structure. The proof is
 deliberately independent of semantic function names and remains conservative
 when control flow or addressing obscures coverage.
 
+### Runtime tensor extents
+
+An unknown dimension remains part of the ordinary structural tensor type, for
+example `tensor<i64, [_, 3]>`.  Joggle does not introduce a dynamic-tensor
+descriptor type or a second IR.  Runtime extents are ordinary tensor values:
+`tensor.make(fill, shape)` creates storage with a logical shape,
+`tensor.view(data, shape)` changes the visible logical shape, and
+`tensor.dim(data, axis)` reads one runtime extent.  `tensor.write` has an
+ordinary function body and writes one dense trailing slice at a runtime leading
+coordinate.
+
+This small value-level boundary is enough to express variable-length scans and
+selection results.  The ONNX bridge translates `Loop` into normal structured
+loops and branches, clones the nested function body, accumulates scan slices,
+and trims the result with its produced length.  NMS maps to one shared `nn.nms`
+body built from the same functions.  Neither operation becomes a core IR kind
+or an emitter case.
+
+Allocation policy remains separate from semantics.  A general runtime may
+implement `make` directly; a deterministic edge workflow must prove upper
+bounds and prepare it into fixed storage before invoking a target that accepts
+only static tensors.  Capacity is therefore analysis or target policy, never a
+machine-size field in `Ty`.  Rejecting an unbounded value at such a target is a
+visible capability frontier rather than an invented extent.
+
 `opt.specialize` is the smaller mechanism for mixed-stage structure. A module
 may mark a loop with an ordinary attribute, then explicitly ask the transform
 to expand loops carrying that key and value. Static iteration structure is

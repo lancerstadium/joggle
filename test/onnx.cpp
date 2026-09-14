@@ -411,6 +411,28 @@ int main(int argc, char** argv) {
                       "loop-capture-roundtrip.jog"));
   CHECK(loop_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(loop_model, loop_roundtrip));
+  CHECK(joggle::run(env, "onnx.nn.convert", loop_model));
+  CHECK(loop_model.verify(env));
+  CHECK(count_calls(loop_model, "onnx.Loop") == 0);
+  CHECK(count_calls(loop_model, "tensor.make") == 1);
+  CHECK(count_calls(loop_model, "tensor.write") == 1);
+  CHECK(count_calls(loop_model, "tensor.view") == 1);
+  std::size_t structured_loops = 0;
+  for (joggle::Op candidate : loop_model.ops())
+    structured_loops += candidate.kind() == joggle::Op::Kind::loop;
+  CHECK(structured_loops == 1);
+  const std::string converted_loop_text = joggle::print(loop_model);
+  joggle::Mod converted_loop_roundtrip;
+  if (!joggle::parse(env, converted_loop_text, converted_loop_roundtrip,
+                     "loop-converted-roundtrip.jog")) {
+    std::fputs(converted_loop_text.c_str(), stderr);
+    return converted_loop_roundtrip.print_diags(stderr);
+  }
+  if (!converted_loop_roundtrip.verify(env)) {
+    std::fputs(converted_loop_text.c_str(), stderr);
+    return converted_loop_roundtrip.print_diags(stderr);
+  }
+  CHECK(joggle::structurally_equal(loop_model, converted_loop_roundtrip));
 
   const std::size_t convs = count_calls(model, "onnx.Conv");
   const std::size_t norms = count_calls(model, "onnx.BatchNormalization");

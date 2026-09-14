@@ -231,6 +231,14 @@ than a hard-coded neural-network enum.
 Keeping both independent prevents a frontend schema or target emitter from
 becoming the semantic definition.
 
+`tensor` also owns the minimal runtime-shape vocabulary. `make`, `view`, and
+`dim` consume ordinary values and preserve the existing `tensor<E, S>` type
+constructor; `write` is an inspectable dense-slice body. These functions let a
+semantic module express scans, filtering, and other variable-result algorithms
+without defining a dynamic buffer class. Static-only targets intentionally
+reject unresolved runtime allocation until an explicit bounding and storage
+preparation policy has run.
+
 ## Frontends
 
 A frontend is deliberately split into transport and meaning:

@@ -1479,6 +1479,7 @@ int main(int argc, char** argv) {
   bool expanded = false;
   bool tiled = false;
   bool dynamic_tile = false;
+  bool nms_converted = false;
   for (joggle::Op op : shape_relations.ops()) {
     if (op.blk().fn().name() == "expand" &&
         op.callee() == "tensor.broadcast")
@@ -1488,10 +1489,13 @@ int main(int argc, char** argv) {
     if (op.blk().fn().name() == "dynamic_tile" &&
         op.callee() == "tensor.tile")
       dynamic_tile = true;
+    if (op.blk().fn().name() == "nms" && op.callee() == "nn.nms")
+      nms_converted = true;
   }
   CHECK(expanded);
   CHECK(tiled);
   CHECK(dynamic_tile);
+  CHECK(nms_converted);
 
   constexpr std::string_view static_shape_source =
       "module static.shape\n"
@@ -2145,5 +2149,37 @@ int main(int argc, char** argv) {
     CHECK(op.callee() != "nn.add");
   }
   CHECK(retained);
+
+  constexpr std::string_view nms_source =
+      "module nms.semantic\n"
+      "use nn\n"
+      "fn main(\n"
+      "  boxes: tensor<f32, [1, 4, 4]>,\n"
+      "  scores: tensor<f32, [1, 2, 4]>,\n"
+      "  maximum: tensor<i64, []>,\n"
+      "  overlap: tensor<f32, []>, threshold: tensor<f32, []>\n"
+      ") -> tensor<i64, [_, 3]> {\n"
+      "  return nn.nms(boxes, scores, maximum, overlap, threshold, 0)\n"
+      "}\n";
+  joggle::Mod nms;
+  CHECK(joggle::parse(env, nms_source, nms, "nms-semantic.jog"));
+  CHECK(nms.verify(env));
+  joggle::Op nms_call;
+  for (joggle::Op op : nms.ops())
+    if (op.callee() == "nn.nms")
+      nms_call = op;
+  CHECK(nms_call);
+  const joggle::Fn nms_body = env.resolve(nms, nms_call);
+  CHECK(nms_body && env.expand(nms, nms_call, nms_body));
+  CHECK(nms.verify(env));
+  CHECK(count(nms, "nn.nms") == 0);
+  CHECK(count(nms, "tensor.make") == 2);
+  CHECK(count(nms, "tensor.view") == 1);
+  const std::string nms_text = joggle::print(nms);
+  joggle::Mod nms_roundtrip;
+  CHECK(joggle::parse(env, nms_text, nms_roundtrip,
+                      "nms-semantic-roundtrip.jog"));
+  CHECK(nms_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(nms, nms_roundtrip));
   return 0;
 }

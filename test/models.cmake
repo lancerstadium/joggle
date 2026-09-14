@@ -56,7 +56,7 @@ joggle_onnx_model(
   SOURCE validated/vision/object_detection_segmentation/tiny-yolov3/model/tiny-yolov3-11.onnx
   SHA256 f715cc2d99740d22d312777e20d9de2b2ecdc250155be8fd3752ce7e8b823521
   TEST onnx-zoo-tinyyolov3
-  ARGS --convert-frontier 5 onnx.Loop onnx.NonMaxSuppression
+  ARGS onnx.Loop onnx.NonMaxSuppression
 )
 joggle_onnx_model(
   NAME ultraface-rfb-320
