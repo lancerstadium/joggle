@@ -8,6 +8,7 @@
 #include <map>
 #include <set>
 #include <sstream>
+#include <system_error>
 #include <utility>
 
 #if defined(_WIN32)
@@ -27,6 +28,12 @@ namespace {
 std::uint64_t next_env_id() {
   static std::atomic<std::uint64_t> next{1};
   return next.fetch_add(1, std::memory_order_relaxed);
+}
+
+void clear_absent(std::error_code& error) {
+  if (error == std::errc::no_such_file_or_directory ||
+      error == std::errc::not_a_directory)
+    error.clear();
 }
 
 struct Native {
@@ -373,9 +380,22 @@ bool Env::load_one(std::string_view name) {
   }
 
   std::filesystem::path directory;
+  std::error_code file_error;
   for (const auto& root : impl_->paths) {
     const auto candidate = root / key;
-    if (std::filesystem::is_regular_file(candidate / "module.jog")) {
+    const bool found = std::filesystem::is_regular_file(
+        candidate / "module.jog", file_error);
+    clear_absent(file_error);
+    if (file_error) {
+      impl_->diags.push_back(
+          {Severity::error,
+           "cannot inspect module source '" +
+               (candidate / "module.jog").string() + "': " +
+               file_error.message(),
+           {}});
+      return false;
+    }
+    if (found) {
       directory = candidate;
       break;
     }
@@ -387,10 +407,31 @@ bool Env::load_one(std::string_view name) {
 
   std::vector<std::filesystem::path> files{directory / "module.jog"};
   const auto library = directory / "lib";
-  if (std::filesystem::is_directory(library)) {
-    for (const auto& item : std::filesystem::directory_iterator(library)) {
-      if (item.is_regular_file() && item.path().extension() == ".jog")
-        files.push_back(item.path());
+  const bool has_library = std::filesystem::is_directory(library, file_error);
+  clear_absent(file_error);
+  if (file_error) {
+    impl_->diags.push_back(
+        {Severity::error,
+         "cannot inspect module fragments '" + library.string() + "': " +
+             file_error.message(),
+         {}});
+    return false;
+  }
+  if (has_library) {
+    std::filesystem::directory_iterator items(library, file_error), end;
+    while (!file_error && items != end) {
+      const bool regular = items->is_regular_file(file_error);
+      if (!file_error && regular && items->path().extension() == ".jog")
+        files.push_back(items->path());
+      items.increment(file_error);
+    }
+    if (file_error) {
+      impl_->diags.push_back(
+          {Severity::error,
+           "cannot enumerate module fragments '" + library.string() +
+               "': " + file_error.message(),
+           {}});
+      return false;
     }
     std::sort(files.begin() + 1, files.end());
   }
@@ -442,12 +483,38 @@ bool Env::load_one(std::string_view name) {
 
   std::filesystem::path native;
   const auto native_dir = directory / "native";
-  if (std::filesystem::is_directory(native_dir)) {
+  const bool has_native =
+      std::filesystem::is_directory(native_dir, file_error);
+  clear_absent(file_error);
+  if (file_error) {
+    impl_->diags.push_back(
+        {Severity::error,
+         "cannot inspect native module directory '" + native_dir.string() +
+             "': " + file_error.message(),
+         {}});
+    impl_->modules.erase(key);
+    impl_->loading.erase(key);
+    return false;
+  }
+  if (has_native) {
     const std::string leaf = key.substr(key.rfind('.') + 1);
     for (const std::string_view extension : {".so", ".dylib", ".dll"}) {
       const auto candidate =
           native_dir / ("joggle_" + leaf + std::string(extension));
-      if (std::filesystem::is_regular_file(candidate)) {
+      const bool found =
+          std::filesystem::is_regular_file(candidate, file_error);
+      clear_absent(file_error);
+      if (file_error) {
+        impl_->diags.push_back(
+            {Severity::error,
+             "cannot inspect native module '" + candidate.string() +
+                 "': " + file_error.message(),
+             {}});
+        impl_->modules.erase(key);
+        impl_->loading.erase(key);
+        return false;
+      }
+      if (found) {
         native = candidate;
         break;
       }

@@ -220,9 +220,12 @@ Before a public artifact release:
 
 The deterministic robustness gate now mutates complete `.jog` programs,
 serialized attributes, and public `Ty` constructor inputs. Every accepted value
-must print, reparse, and reproduce the same structure. Module-directory loading,
-native ABI calls, ONNX protobufs, and TFLite FlatBuffers still need independent
-fuzz or property-test harnesses rather than being claimed by this parser gate.
+must print, reparse, and reproduce the same structure. A separate module-loader
+gate distinguishes absent optional directories from filesystem failures and
+checks that cyclic source, fragment, and native paths diagnose and roll back
+without exceptions. Randomized directory trees, native ABI calls, ONNX
+protobufs, and TFLite FlatBuffers still need independent fuzz or property-test
+harnesses rather than being claimed by these gates.
 
 ## Paper readiness
 
