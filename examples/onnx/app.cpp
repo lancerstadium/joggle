@@ -168,6 +168,9 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "tile.scalarize", model));
   CHECK(joggle::run(env, "opt.basic", model));
   CHECK(joggle::run(env, "mem.plan", model));
+  // The generated application ABI owns distinct input, output, and immutable
+  // weight buffers. Make that boundary contract explicit before C emission.
+  CHECK(joggle::run(env, "c.noalias", model));
   const std::vector<joggle::Attr> placement{joggle::Attr("static")};
   CHECK(joggle::run(env, "c.place", model, placement));
   CHECK(model.verify(env));

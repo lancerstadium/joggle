@@ -111,11 +111,15 @@ joggle run onnx.nn.convert opt.basic model.jog \
   -M modules > semantic.jog
 
 joggle run c.prepare bounds.fold opt.fold opt.basic \
-  tile.scalarize opt.basic mem.plan semantic.jog \
+  tile.scalarize opt.basic mem.plan c.noalias semantic.jog \
   -M modules > prepared.jog
 
 joggle emit c.source prepared.jog -M modules > model.c
 ```
+
+This example uses `c.noalias` only because its application ABI guarantees
+disjoint input, output, and weight buffers. It is an explicit caller contract,
+not an inferred property of arbitrary exported functions.
 
 Several `run` functions form one transaction. If a later function fails, all
 earlier mutations in that invocation are rolled back. `query` and `emit`

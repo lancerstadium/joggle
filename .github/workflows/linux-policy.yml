@@ -6,6 +6,9 @@ name: linux-policy
     branches: [main]
     paths:
       - .github/workflows/linux-policy.yml
+      - examples/onnx/app.cpp
+      - modules/c/module.jog
+      - paper/measure_block_frontier.py
       - paper/experiments/mobilenetv2-block.json
 
 permissions:

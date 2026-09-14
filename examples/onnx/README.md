@@ -11,7 +11,8 @@ pipeline used by applications:
 6. fold proved bounds and the scalar expressions they simplify;
 7. promote proved reduction state from memory to scalar values;
 8. plan static tensor storage;
-9. emit C and its header, compile them, and compare with the official output.
+9. state the application's disjoint input/output/weight ABI contract;
+10. emit C and its header, compile them, and compare with the official output.
 
 The current protobuf extractor used by the two configured application gates is
 limited to one `f32` input and output. The C application boundary is not: the
@@ -79,8 +80,9 @@ result.txt
 ```
 
 `canonical.jog` is the exposed and cleaned loop-level IR before optional loop
-policy. `model.jog` additionally applies scalar-state promotion and static
-storage planning, and is consumed by both C forms. `model.vm` is emitted from
+policy. `model.jog` additionally applies scalar-state promotion, static
+storage planning, and the application's explicit `c.noalias` ABI contract;
+it is consumed by both C forms. `model.vm` is emitted from
 the same converted model before the target-specific preparation step.
 `model.h` and `model-blob.h` are the
 declarations consumed by the two C executions. The two JSON files are the

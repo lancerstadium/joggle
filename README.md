@@ -101,7 +101,7 @@ Conversion, optimization, storage planning, and emission remain explicit:
   -M build/modules > semantic.jog
 
 ./build/joggle run c.prepare bounds.fold opt.fold opt.basic \
-  tile.scalarize opt.basic mem.plan semantic.jog \
+  tile.scalarize opt.basic mem.plan c.noalias semantic.jog \
   -M build/modules > prepared.jog
 
 ./build/joggle emit c.source prepared.jog \
@@ -116,12 +116,14 @@ are not needed:
 ./build/joggle read onnx.read model.onnx -M build/modules |
   ./build/joggle run onnx.nn.convert opt.basic - -M build/modules |
   ./build/joggle run c.prepare bounds.fold opt.fold opt.basic \
-    tile.scalarize opt.basic mem.plan - -M build/modules |
+    tile.scalarize opt.basic mem.plan c.noalias - -M build/modules |
   ./build/joggle emit c.source - -M build/modules > model.c
 ```
 
 Named files remain preferable when an experiment must preserve and inspect
-each progressive state.
+each progressive state. The example includes `c.noalias` because its generated
+application owns disjoint input, output, and weight buffers; omit that explicit
+contract when a caller may alias them.
 
 `c.prepare` also specializes the tensor library's explicitly marked shape
 bookkeeping. This removes compile-time rank traversal without teaching the C

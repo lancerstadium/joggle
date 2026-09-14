@@ -136,9 +136,10 @@ def main() -> None:
                 str(tool), "run", "bounds.fold", "opt.fold", "opt.basic",
                 str(blocked), "-M", str(module_path)
             ], clean)
-            plan_seconds = run(command(
-                tool, "run", "mem.plan", clean, module_path
-            ), planned)
+            plan_seconds = run([
+                str(tool), "run", "mem.plan", "c.noalias", str(clean),
+                "-M", str(module_path)
+            ], planned)
             place_seconds = run(command(
                 tool, "run", "c.place", planned, module_path,
                 json.dumps("static")
