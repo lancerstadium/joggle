@@ -149,11 +149,16 @@ def version(
         env,
         timeout,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stderr=subprocess.PIPE,
     )
     if result.returncode != 0:
         fail(f"version command failed ({result.returncode}): {' '.join(command)}")
+    # A runtime may emit discovery warnings on stderr before printing its
+    # version on stdout. Prefer the command's result stream, while retaining a
+    # stderr-only fallback for conventional tools that report versions there.
     lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not lines:
+        lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
     if not lines:
         fail(f"version command produced no text: {' '.join(command)}")
     return lines[0]

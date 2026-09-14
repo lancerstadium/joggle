@@ -101,6 +101,11 @@ def run(runner: Path, repo: Path, root: Path) -> None:
         "right",
     ]:
         raise AssertionError("system identities are absent from provenance")
+    if any(
+        item["version"] != "protocol-subject 1"
+        for item in provenance["subjects"]
+    ):
+        raise AssertionError("version output was displaced by stderr diagnostics")
 
     document = json.loads(manifest.read_text(encoding="utf-8"))
     for mode, timeout, expected_error in (
@@ -178,6 +183,7 @@ def main() -> None:
         subject(args.subject)
         return
     if args.version_subject:
+        print("irrelevant discovery warning", file=sys.stderr)
         print("protocol-subject 1")
         return
     if args.runner is None or args.repo is None or args.root is None:
