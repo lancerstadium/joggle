@@ -39,6 +39,27 @@ set(split_scalar_program "${ROOT}/split-scalar")
 set(source "${ROOT}/model.c")
 set(program "${ROOT}/model")
 set(plan "${ROOT}/plan.attr")
+set(cache "${ROOT}/cache.jog")
+
+execute_process(
+  COMMAND "${TOOL}" run spatial.cache
+          "${CMAKE_CURRENT_LIST_DIR}/data/tile_form.jog"
+          --arg 3 --arg 2 -M "${EXAMPLES}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${cache}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "structural cache policy failed (${result}):\n${error}")
+endif()
+file(READ "${cache}" cache_text)
+if(NOT cache_text MATCHES
+   "for row in [^\n]*column_tile[^\n]*depth_tile[^\n]*depth[^\n]*column")
+  message(FATAL_ERROR
+          "structural cache policy produced the wrong loop order:\n"
+          "${cache_text}")
+endif()
 
 execute_process(
   COMMAND "${TOOL}" run c.prepare mem.plan "${MODEL}" -M "${MODULES}"

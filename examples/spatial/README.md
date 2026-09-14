@@ -53,6 +53,22 @@ uses `tile.state_axes`, `tile.reduction_axes`, and the whole-loop
 higher than reuse and moves the best suffix of state axes inside the unchanged
 reduction band. The score is deliberately visible source policy, not a hidden
 target heuristic. Correctness belongs to `tile.reorder`.
+
+`spatial.cache(m, columns, depth)` is a deliberately parameterized policy for
+rank-three contractions. It recognizes state and reduction axes rather than a
+function or operator name, strip-mines the innermost result and reduction axes,
+and leaves the result axis innermost for vectorization:
+
+```sh
+joggle run spatial.cache contraction.jog --arg 128 --arg 32 \
+  -M examples -M build/modules > tiled.jog
+```
+
+The factors are visible experimental inputs, not compiler defaults. Nearby
+legal choices can improve or degrade the same program, so a target policy or a
+bounded search should select them. Both use the same `tile.split` and
+`tile.reorder` legality and edit mechanisms.
+
 Before editing, the transform requires static integer ranges, one
 carried state, equal affine read/write addresses, an injective address map for
 state axes, and unchanged relative order within both state and reduction axes.

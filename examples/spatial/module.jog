@@ -178,6 +178,36 @@ fn apply(m: Mod) -> bool {
   return tile.reorder(m, ir.find("spatial.choose"))
 }
 
+// Strip-mine the innermost result and reduction axes of ordinary rank-three
+// contractions. This is policy: structural legality remains in tile and the
+// factors remain explicit experimental choices.
+fn cache(m: Mod, columns: int, depth: int) -> bool {
+  assert(columns > 1 && depth > 1,
+         "spatial.cache requires factors greater than one")
+  let candidates = ir.ops(m)
+  var changed = false
+  for source in candidates {
+    if ir.live(source) && ir.kind(source) == "loop" &&
+       tile.state_axes(m, source) == [0, 1] &&
+       tile.reduction_axes(m, source) == [2] {
+      let shape = tile.extents(m, source)
+      if len(shape) == 3 && shape[1] % columns == 0 &&
+         shape[2] % depth == 0 {
+        let column_tiles = tile.split(m, source, 1, columns)
+        let depth_tiles = tile.split(m, column_tiles, 3, depth)
+        let ordered = tile.reorder(m, depth_tiles, [0, 1, 3, 4, 2])
+        assert(ir.live(ordered),
+               "spatial.cache could not order a selected contraction")
+        changed = true
+      }
+    }
+  }
+  if changed {
+    opt.dce(m, [])
+  }
+  return changed
+}
+
 [memo]
 local fn factor(extent: int, factors: list<int>) -> int {
   var tail = 1

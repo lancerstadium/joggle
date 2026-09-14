@@ -82,6 +82,11 @@ def main() -> None:
         help="module pass to apply to the canonical function body; repeatable",
     )
     parser.add_argument(
+        "--pass-arg", dest="pass_args", action="append", default=[],
+        help=("typed Joggle argument passed to the requested pass sequence; "
+              "repeatable"),
+    )
+    parser.add_argument(
         "--module-root", type=Path, action="append", default=[],
         help="additional module search root used by requested passes; repeatable",
     )
@@ -169,7 +174,10 @@ def main() -> None:
             write(target, checked(command))
             transform_commands.append(command)
 
-        transform(args.passes, paths["canonical_ir"], stages["scheduled"])
+        transform(
+            args.passes, paths["canonical_ir"], stages["scheduled"],
+            args.pass_args,
+        )
         transform(
             ["bounds.fold", "opt.fold", "opt.basic", "tile.scalarize",
              "opt.basic"],

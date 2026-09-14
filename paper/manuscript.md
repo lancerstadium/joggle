@@ -614,7 +614,10 @@ conversions, and pass machinery reusable
 ONNX-MLIR applies that organization to ONNX semantics and loop-oriented
 lowering [Jin et al. 2020](https://arxiv.org/abs/2008.08272), while TinyIREE
 extends an MLIR-based path to embedded deployment artifacts and runtimes
-[Liu et al. 2022](https://doi.org/10.1109/MM.2022.3178068). These boundaries
+[Liu et al. 2022](https://doi.org/10.1109/MM.2022.3178068). Glow instead lowers
+a graph through a high-level operator IR to an address-only instruction IR,
+using the split to reduce backend scope and expose static memory optimization
+[Rotem et al. 2018](https://arxiv.org/abs/1805.00907). These boundaries
 are not accidental overhead: they support independent evolution, optimization
 contracts, and broad target coverage. They become a research cost when one
 experiment must restate the same semantic or hardware decision at several
@@ -638,17 +641,24 @@ beyond loop-only schedules
 exposes tiled dataflow, layout, memory, and thread decisions on TVM IR
 [Wang et al. 2025](https://arxiv.org/abs/2504.17577). These systems show that
 control must be both expressive and economical; merely exposing loops is
-insufficient. Joggle differs in scope: it does not prescribe a tile, worker, or
-instruction model in the core, and asks user modules to add those policies to
-ordinary functions. The cost is visible in the current C results: without a
-mature contraction, packing, and vector policy, openness does not yield
-competitive code.
+insufficient. Tiramisu exposes a richer affine schedule surface
+[Baghdadi et al. 2019](https://doi.org/10.1109/CGO.2019.8661197), while TensorIR
+represents schedulable blocks and explicit tensorization mappings
+[Feng et al. 2023](https://doi.org/10.1145/3575693.3576933). Joggle differs in
+scope: it does not prescribe a tile, worker, or instruction model in the core,
+and asks user modules to add those policies to ordinary functions. The cost is
+visible in the current C results: without a mature contraction, packing, and
+vector policy, openness does not yield competitive code.
 
 **Automatic transformation and search.** Ansor learns a cost model while
 exploring generated tensor programs
 [Zheng et al. 2020](https://www.usenix.org/conference/osdi20/presentation/zheng);
 ROLLER reduces tuning cost by constructing programs from hardware-aligned tiles
 [Zhu et al. 2022](https://www.usenix.org/conference/osdi22/presentation/zhu).
+Bolt identifies a complementary failure mode: a legal searched schedule can
+remain far below a vendor path when the hardware-native primitive is opaque,
+and therefore searches configurable native templates rather than replacing
+them [Xing et al. 2022](https://proceedings.mlsys.org/paper_files/paper/2022/hash/1f8053a67ec8e0b57455713cefdd8218-Abstract.html).
 Welder makes memory traffic across operators explicit through a tile graph
 [Shi et al. 2023](https://www.usenix.org/conference/osdi23/presentation/shi),
 whereas Ladder jointly exposes custom numeric types, data transformations, and
@@ -692,6 +702,23 @@ on the same serialized computation, input, threading policy, and host.
 Workload coverage alone is not evidence of useful edge compilation; latency,
 peak workspace, artifact footprint, correctness, and unsupported cases must be
 reported together.
+
+**Compiler correctness and evidence.** A compact representation does not make
+transformations trustworthy by construction. NNSmith generates valid neural
+graphs and uses differential execution to expose semantic failures
+[Liu et al. 2023](https://doi.org/10.1145/3575693.3575707), whereas HirGen
+targets high-level IR structure and optimization coverage
+[Ma et al. 2023](https://doi.org/10.1145/3597926.3598053). An empirical study of
+2,717 reports across five compilers found recurring semantic, compatibility,
+memory, environment, and documentation faults
+[Zheng et al. 2021](https://doi.org/10.1109/ISSRE52982.2021.00030), and
+metamorphic testing provides useful relations when an exact oracle is absent
+[Xiao et al. 2022](https://doi.org/10.1145/3489048.3522655). These results make
+Joggle's verification, transaction rollback, parser mutation tests, and
+frontend-versus-artifact numerical checks part of the system claim rather than
+engineering appendix material. The remaining gap is explicit: module loading,
+serialized frontends, native ABI boundaries, and arbitrary IR edit sequences
+still need dedicated generative tests before submission.
 
 ## 7. Limitations and threats to validity
 

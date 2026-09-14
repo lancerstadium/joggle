@@ -92,6 +92,10 @@ or timed-out run is not silently converted into unsupported.
   timing enters the table. Record maximum absolute and relative error.
 - Freeze tuning budgets. Plot best-so-far against measured candidates before
   comparing a tuned Joggle result with an untuned baseline.
+- Parameterized policies use repeatable `--pass-arg` values in
+  `prepare_operator_case.py`; each argument is preserved in the command
+  manifest. A reported winner must retain every measured candidate, including
+  slowdowns, rather than replacing the search history with its best point.
 
 ## LaTeX contract
 

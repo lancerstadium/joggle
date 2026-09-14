@@ -35,6 +35,14 @@ CITATIONS = {
     "https://www.usenix.org/conference/osdi20/presentation/ma": "ma2020rammer",
     "https://doi.org/10.1109/TC.2021.3066883": "burrello2021dory",
     "https://proceedings.neurips.cc/paper_files/paper/2020/hash/86c51678350f656dcc7f490a43946ee5-Abstract.html": "lin2020mcunet",
+    "https://arxiv.org/abs/1805.00907": "rotem2018glow",
+    "https://doi.org/10.1109/CGO.2019.8661197": "baghdadi2019tiramisu",
+    "https://doi.org/10.1145/3575693.3576933": "feng2023tensorir",
+    "https://proceedings.mlsys.org/paper_files/paper/2022/hash/1f8053a67ec8e0b57455713cefdd8218-Abstract.html": "xing2022bolt",
+    "https://doi.org/10.1145/3575693.3575707": "liu2023nnsmith",
+    "https://doi.org/10.1145/3597926.3598053": "ma2023hirgen",
+    "https://doi.org/10.1109/ISSRE52982.2021.00030": "zheng2021compilerbugs",
+    "https://doi.org/10.1145/3489048.3522655": "xiao2022metamorphic",
 }
 
 

@@ -629,7 +629,10 @@ conversions, and pass machinery reusable
 ONNX-MLIR applies that organization to ONNX semantics and loop-oriented
 lowering \cite{jin2020onnxmlir}, while TinyIREE
 extends an MLIR-based path to embedded deployment artifacts and runtimes
-\cite{liu2022tinyiree}. These boundaries
+\cite{liu2022tinyiree}. Glow instead lowers
+a graph through a high-level operator IR to an address-only instruction IR,
+using the split to reduce backend scope and expose static memory optimization
+\cite{rotem2018glow}. These boundaries
 are not accidental overhead: they support independent evolution, optimization
 contracts, and broad target coverage. They become a research cost when one
 experiment must restate the same semantic or hardware decision at several
@@ -653,17 +656,24 @@ beyond loop-only schedules
 exposes tiled dataflow, layout, memory, and thread decisions on TVM IR
 \cite{wang2025tilelang}. These systems show that
 control must be both expressive and economical; merely exposing loops is
-insufficient. Joggle differs in scope: it does not prescribe a tile, worker, or
-instruction model in the core, and asks user modules to add those policies to
-ordinary functions. The cost is visible in the current C results: without a
-mature contraction, packing, and vector policy, openness does not yield
-competitive code.
+insufficient. Tiramisu exposes a richer affine schedule surface
+\cite{baghdadi2019tiramisu}, while TensorIR
+represents schedulable blocks and explicit tensorization mappings
+\cite{feng2023tensorir}. Joggle differs in
+scope: it does not prescribe a tile, worker, or instruction model in the core,
+and asks user modules to add those policies to ordinary functions. The cost is
+visible in the current C results: without a mature contraction, packing, and
+vector policy, openness does not yield competitive code.
 
 \textbf{Automatic transformation and search.} Ansor learns a cost model while
 exploring generated tensor programs
 \cite{zheng2020ansor};
 ROLLER reduces tuning cost by constructing programs from hardware-aligned tiles
 \cite{zhu2022roller}.
+Bolt identifies a complementary failure mode: a legal searched schedule can
+remain far below a vendor path when the hardware-native primitive is opaque,
+and therefore searches configurable native templates rather than replacing
+them \cite{xing2022bolt}.
 Welder makes memory traffic across operators explicit through a tile graph
 \cite{shi2023welder},
 whereas Ladder jointly exposes custom numeric types, data transformations, and
@@ -707,6 +717,23 @@ on the same serialized computation, input, threading policy, and host.
 Workload coverage alone is not evidence of useful edge compilation; latency,
 peak workspace, artifact footprint, correctness, and unsupported cases must be
 reported together.
+
+\textbf{Compiler correctness and evidence.} A compact representation does not make
+transformations trustworthy by construction. NNSmith generates valid neural
+graphs and uses differential execution to expose semantic failures
+\cite{liu2023nnsmith}, whereas HirGen
+targets high-level IR structure and optimization coverage
+\cite{ma2023hirgen}. An empirical study of
+2,717 reports across five compilers found recurring semantic, compatibility,
+memory, environment, and documentation faults
+\cite{zheng2021compilerbugs}, and
+metamorphic testing provides useful relations when an exact oracle is absent
+\cite{xiao2022metamorphic}. These results make
+Joggle's verification, transaction rollback, parser mutation tests, and
+frontend-versus-artifact numerical checks part of the system claim rather than
+engineering appendix material. The remaining gap is explicit: module loading,
+serialized frontends, native ABI boundaries, and arbitrary IR edit sequences
+still need dedicated generative tests before submission.
 
 \section{Limitations and threats to validity}
 The present implementation favors visibility and extension over automatic
