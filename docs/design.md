@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Joggle is a small compiler workbench for researchers who change program
+Joggle is a small compiler infrastructure for researchers who change program
 semantics, representation, analysis, transformation policy, or artifact
 generation together. Its job is to keep those choices visible and composable
 without requiring a new host-side extension mechanism for every compiler role.
@@ -295,7 +295,7 @@ Joggle is not currently:
 - a promise that one schedule performs well on every device.
 
 Those facilities may be integrated as modules or external tools. Keeping them
-outside the core lets the workbench remain small enough for a researcher to
+outside the core lets the system remain small enough for a researcher to
 understand and modify.
 
 ## Evidence standard

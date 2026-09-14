@@ -63,6 +63,9 @@ CITATIONS = {
     "https://www.cs.purdue.edu/homes/rompf/papers/rompf-scala16.pdf": "rompf2016lms",
     "https://doi.org/10.1145/3689484.3690737": "klopp2024datalogmodules",
     "https://tvm.apache.org/docs/arch/runtime.html": "tvmRuntimeDocs",
+    "https://www.usenix.org/conference/atc25/presentation/wu-ruofan": "wu2025plus",
+    "https://arxiv.org/abs/2505.18574": "hong2025autocomp",
+    "https://mast.stanford.edu/pubs/argus_agentic_gpu_optimization_guided_by_data_flow_invariants/": "mai2026argus",
 }
 
 
@@ -273,7 +276,7 @@ def render(source: str) -> tuple[str, int]:
 \renewcommand\footnotetextcopyrightpermission[1]{{}}
 \acmConference[EuroSys '27]{{Twenty-Second European Conference on Computer Systems}}{{April 19--23, 2027}}{{Rabat, Morocco}}
 \acmYear{{2027}}
-\title[Joggle: Typed Modules]{{{escape(title)}}}
+\title[Joggle]{{{escape(title)}}}
 \author{{Anonymous Author(s)}}
 \affiliation{{\institution{{Anonymous}}}}
 \ccsdesc[500]{{Software and its engineering~Compilers}}
@@ -282,7 +285,7 @@ def render(source: str) -> tuple[str, int]:
 \begin{{abstract}}
 {' '.join(abstract)}
 \end{{abstract}}
-\keywords{{compiler extensibility, module systems, intermediate representation, compiler construction, inference compilation}}
+\keywords{{malleable compilation, progressive intermediate representation, compiler infrastructure, hardware-software co-design, program optimization}}
 \maketitle
 """
     ending = r"""

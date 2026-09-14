@@ -1,6 +1,6 @@
 # Joggle
 
-Joggle is a small C++20 workbench for building and distributing compiler
+Joggle is a small C++20 compiler infrastructure for building and distributing
 extensions that cross conventional subsystem boundaries. Program vocabulary,
 analysis, transformation, implementation choice, and artifact generation can
 live in ordinary typed modules over one readable function IR instead of each

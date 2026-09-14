@@ -1,4 +1,4 @@
-# Research map: whole compiler extensions
+# Research map: malleable compilation and progressive IR
 
 This document is the evidence ledger for the EuroSys paper. It is not a list of
 systems that resemble Joggle. Its purpose is to expose the strongest competing
@@ -10,11 +10,11 @@ evidence. A work enters the manuscript bibliography only after its metadata and
 the claim attached to it have both been checked. The target remains at least 50
 *used* references, but citation count is not an evaluation metric.
 
-## The broader compiler-extensibility landscape
+## The problem is not another missing extension point
 
 Joggle must be situated as compiler infrastructure before inference becomes the
-evaluation domain. Three older and newer research lines already address major
-parts of this problem:
+evaluation domain. Older systems already establish almost every individual
+ingredient that a superficial novelty claim might name:
 
 - **Language workbenches and modular compilers.** JastAdd composes declarative
   attributes and rewrites into modular language extensions; Spoofax integrates
@@ -40,23 +40,43 @@ parts of this problem:
   safe, reusable transformation control as novel.
   [Transform dialect, CGO 2025](https://doi.org/10.1145/3696443.3708922)
 
-These comparisons reveal a different modularization axis. Language workbenches
-package language features; MLIR/xDSL package IR vocabulary and passes;
-Transform dialect and user-schedulable languages package transformation
-control; backend interfaces package code generation and runtime integration.
-Joggle packages the **whole compiler extension** that cuts across those roles.
-One typed source module may add vocabulary, compute or transform the represented
-program, select an implementation, and construct an artifact under the same
-namespace, dependencies, resolver, transaction, installation, and upgrade
-lifecycle. Whether this breadth remains coherent rather than becoming an
-under-specified universal mechanism is the central design risk.
+These works are antecedents, not the definition of Joggle's contribution.
+Language workbenches establish modular syntax and semantics; MLIR/xDSL establish
+open IR ecosystems; the Transform dialect establishes programmable, checked
+transformation; TVM establishes reusable compiler and runtime functions. A
+conjunction of old features is not by itself a new systems problem.
 
-This is not the first use of “vertical extension.” LMS explicitly distinguishes
-horizontal IR extension from vertical addition of analyses, transformations,
-and IR levels. Joggle therefore must not claim that direction as new. Its claim
-is stronger and more operational: the cross-role slice is itself a named,
-typed, distributable, and evolvable module rather than an architecture assembled
-from traits, pass classes, registries, and runtime plugins.
+The new operating condition is **continuous specialization**. Model structures,
+numeric formats, target capabilities, and optimization producers change while a
+compiler experiment is still being constructed. Production stacks repeatedly
+respond by adding useful representation and registration boundaries; specialized
+DSLs shorten one part of the path by fixing the surrounding boundary. Joggle
+asks whether a program and its compiler configuration can instead acquire
+specialized detail locally, without replacing the program representation or
+rebuilding the host for each new compiler role.
+
+### AI-era pressure: more moving interfaces and more authors
+
+The paper must ground this condition in current systems rather than merely
+prefixing an old extensibility problem with “AI”:
+
+| Changed condition | Consequence for compiler infrastructure | Joggle hypothesis |
+| --- | --- | --- |
+| Model families converge but continue to add local structures and fusions | Hard-wired graph rules lag; fixed templates break on small structural variation | Keep abstract relations and exposed bodies in one editable program |
+| Datatypes and machine primitives evolve together | Semantics, storage, access, scheduling, and artifact contracts must be revised as one experiment | Add specialization through ordinary typed modules rather than a new host category |
+| Experts, search, synthesis, and agents all produce compiler decisions | Inputs, authority, feedback, rejection, and replay must not depend on the producer | Give every producer the same typed functions, structural diagnostics, and transactions |
+| A successful experiment must move between people and machines | A source patch or one-off optimization trace is not a reproducible compiler configuration | Install, resolve, upgrade, and retain the module and its dependency closure |
+
+[PluS](https://www.usenix.org/conference/atc25/presentation/wu-ruofan)
+provides direct evidence for the first row: recent expert graph optimizations
+arrive faster than rule-based compiler support, while template systems are
+sensitive to model variation. [Ladder](https://www.usenix.org/conference/osdi24/presentation/wang-lei)
+provides the datatype-to-hardware example. [Autocomp](https://arxiv.org/abs/2505.18574)
+and [ARGUS](https://mast.stanford.edu/pubs/argus_agentic_gpu_optimization_guided_by_data_flow_invariants/)
+show that generated optimization depends on correctness, performance, and
+structured compiler feedback. These papers motivate the changed operating
+condition; Joggle must still demonstrate that progressive IR materially shortens
+the path from a change to a checked artifact.
 
 ### Nearest-prior-work audit
 
@@ -93,11 +113,13 @@ upgrade semantics cover calls between those roles.
 The paper should present Joggle as one coherent stack of ideas, not a bag of
 features:
 
-1. **Object — whole extension.** The unit users reason about is the complete
-   research idea, not an operation, pass, schedule, backend, or emitter alone.
-2. **Representation — progressive exposure.** One program may retain an
+1. **Problem — continuous specialization.** The source program, optimization
+   strategy, and target interface evolve concurrently; time to a checked
+   artifact is a first-class systems cost.
+2. **Representation — progressive IR.** One program may retain an
    abstract relation while selected functions expose tensor, loop, storage, or
-   external-call detail. Specialization does not erase the portable path.
+   external-call detail. Specialization is local and does not erase the portable
+   path.
 3. **Interface — typed compiler functions.** Semantics, analyses, edits,
    selectors, validators, and artifact builders share structural types and live
    `Mod`/`Fn`/`Blk`/`Op`/`Val` handles. The producer may be handwritten code,
@@ -105,17 +127,17 @@ features:
 4. **Safety — transactional authority.** Read-only functions cannot mutate;
    mutating functions commit only after verification; stale or foreign handles
    are rejected. This turns generated policy into a bounded compiler input.
-5. **Lifecycle — continuity.** The module dependency graph governs install,
+5. **Reproduction — module lifecycle.** The dependency graph governs install,
    composition, upgrade, rollback, and removal. Upgrade validates call targets
    and signatures in reverse dependents, not only the upgraded file.
-6. **Outcome — portable specialization.** A module can preserve reference
+6. **Outcome — malleable compilation.** A module can preserve reference
    semantics and fallback while adding target-specific implementations and
-   ordinary artifacts. Generality and specialization become alternatives owned
-   by one extension rather than competing compiler architectures.
+   ordinary artifacts. Generality and specialization become coexisting program
+   states rather than competing compiler architectures.
 
 This stack supports three positive claims that are broader than inference:
 
-- **Agile co-design:** revise a cross-cutting idea without rebuilding or editing
+- **Short idea-to-artifact path:** revise a cross-cutting idea without rebuilding or editing
   a host subsystem for every role it touches.
 - **Open specialization:** add uncommon datatypes, analyses, policies, targets,
   or artifact formats without asking the core to predict their vocabulary.
@@ -232,7 +254,7 @@ actual researcher-facing problem has five closures:
    requires a C++20 toolchain, CMake, LLVM, Python/FFI packaging, and selected
    optional SDKs; ONNX-MLIR requires a pinned LLVM/MLIR build and project-specific
    dependencies. These are justified costs of their ecosystems, but they matter
-   for a research workbench and must be measured rather than described as
+   for a research system and must be measured rather than described as
    “heavy.”
 2. **Extension closure:** all source, declarations, registrations, build changes,
    and runtime pieces required for one independently distributable extension.
@@ -476,31 +498,30 @@ across stages, who makes decisions, target/runtime assumptions, artifact
 contract, evaluation scope, and the strongest counterexample it creates for
 Joggle.
 
-## 9. Consequence for title and narrative
+## 9. Frozen title and narrative
 
-The working title should describe the mechanism and the unresolved problem, not
-promise an inference-performance victory that has not been measured:
+> **Joggle: Malleable Compilation with a Progressive Intermediate
+> Representation**
 
-> **Joggle: Whole Compiler Extensions as Typed Modules**
-
-“Whole compiler extensions” names the object that existing role-specific
-mechanisms split. “Typed modules” names Joggle's concrete answer and remains
-independent of a workload or target. Inference co-design is the demanding
-evaluation domain; progressive exposure is the mechanism that lets one module
-participate at increasing levels of implementation detail.
+The project owner froze this title on 2026-09-15. It names the system property
+(malleable compilation) and mechanism (progressive intermediate representation)
+without restricting the system to inference, edge devices, emerging hardware,
+or agents. Those are motivating conditions and evaluation domains, not the
+definition of Joggle.
 
 The Motivation should follow this chain:
 
-1. a positive object: the whole compiler extension that researchers already
-   reason about but current systems package by role;
-2. concrete cases (a datatype, generated policy, and emerging-hardware path)
-   that cross different subsets of those roles;
-3. why strong existing approaches deliberately stabilize different useful
-   boundaries rather than simply being “heavy”;
-4. extension continuity as the property Joggle preserves;
-5. typed modules plus progressive exposure as the mechanism, including the
-   risk that a uniform mechanism becomes under-specified; and
-6. the evidence required to accept or reject that hypothesis.
+1. continuous specialization as the new operating condition;
+2. TVM's six-generation evolution as evidence that each new demand adds useful
+   representation boundaries and therefore lengthens the research path;
+3. why broad compiler infrastructures and narrow kernel DSLs occupy two strong
+   but different points in the generality--specialization tradeoff;
+4. progressive IR as a way to add special detail locally while retaining one
+   typed program and editing model;
+5. typed modules as reproducible compiler configuration, including a compact
+   interface that humans and generated procedures can both use safely; and
+6. measured idea-to-artifact path, diagnostics, artifacts, and performance as
+   evidence required to accept or reject the hypothesis.
 
 This work used AI-assisted search and synthesis. Every citation and quantitative
 claim must be checked against the linked primary source and the final artifact;

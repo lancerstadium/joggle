@@ -8,7 +8,9 @@ preserved here.
 
 ## Target and thesis
 
-Working title: **Joggle: Whole Compiler Extensions as Typed Modules**.
+Frozen title: **Joggle: Malleable Compilation with a Progressive Intermediate
+Representation**. Do not revise it unless the project owner explicitly reopens
+the title decision.
 
 The current target is the
 [EuroSys 2027 fall cycle](https://2027.eurosys.org/cfp.html). Titles and
@@ -19,14 +21,14 @@ format, and is double blind. Repository links must therefore point to an
 anonymous snapshot rather than this development repository. EuroSys also
 requires disclosure of AI-tool use under ACM policy.
 
-The paper studies **whole compiler extensions**: cross-role research ideas made
-into typed, distributable modules with extension continuity. A module may add program vocabulary, analysis,
-transformation, target choice, or artifact behavior through the same dependency,
-invocation, installation, rollback, and upgrade model. Progressive exposure
-lets consumers request additional implementation detail without forcing the
-entire program through a fixed lowering sequence. Emerging hardware, inference,
-and generated optimization policies are demanding instances of this problem,
-not definitions of the system.
+The paper studies **malleable compilation** under continuous specialization.
+Joggle's progressive intermediate representation lets individual functions
+acquire tensor, loop, storage, or external-implementation detail without forcing
+the entire program through a fixed sequence of representations. Typed text
+modules make new semantics and compiler behavior installable, replaceable, and
+reproducible without defining a host plugin class for each role. Inference,
+emerging hardware, and generated optimization policies are demanding instances
+of this problem, not definitions of the system.
 
 The claim is not that one IR is universally superior, that all compiler concepts
 are semantically identical, or that fewer source lines prove usability. The
