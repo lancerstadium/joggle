@@ -135,6 +135,22 @@ python3 paper/prepare_operator_case.py \
 execution order, checks matching output hashes, and records artifacts, versions,
 host state, and latency without changing the speedup definition above.
 
+After every case has a clean `record.json` and `runs.csv`, generate the dense
+native-LaTeX table and its auditable cell summary with:
+
+```sh
+python3 paper/render_operator_table.py \
+  --fixtures build/operator-study/fixtures/manifest.json \
+  --runs-root build/operator-study/sweep \
+  --output build/operator-study/sweep/operator-table.tex \
+  --summary build/operator-study/sweep/operator-summary.csv
+```
+
+The renderer refuses mixed hosts, mixed revisions, dirty measurements, missing
+systems, nonpositive timings, or malformed shapes. The emitted fragment uses
+`booktabs`, `graphicx`, `xcolor`, and `colortbl`; it is a table, not a rasterized
+heatmap.
+
 `--pass` is repeatable and names an ordinary module function. The runner applies
 the requested policy to the canonical body, then runs the same cleanup, memory,
 alias, placement, and emission sequence used by the baseline path. This keeps
