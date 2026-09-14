@@ -663,6 +663,8 @@ if(JOGGLE_BUILD_TESTS)
         -DKEEP_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_keep_main.c
         -DRELU_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_relu.jog
         -DRELU_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_relu_main.c
+        -DMULTI_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_multi.jog
+        -DMULTI_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_multi_main.c
         -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
         -DEXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/examples
         -DROOT=${CMAKE_CURRENT_BINARY_DIR}/tile-test

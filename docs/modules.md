@@ -457,6 +457,15 @@ functions return the same human-readable reason used by each transform; an
 empty string means the requested edit is legal. Policies can therefore count
 or report rejected alternatives without attempting a mutation and scraping a
 failed transaction.
+Fusion compares affine tensor addresses rather than iterator names or operator
+names. It accepts equal multi-axis iteration spaces and a dense row-major
+producer consumed by one flattened loop. When a private intermediate is
+initialized by a tensor fill, scalarized across a reduction, and read
+pointwise, the fill/load/store chain is forwarded as scalar state. Repeated
+fusion is covered by a print-and-reparse regression that includes nested loop
+and branch state. Fixed-width and custom integer casts remain conservative;
+only the core lossless `int`/`index` coordinate conversion is transparent to
+affine analysis.
 Factor one is a legal no-op for split and unroll and is therefore omitted from
 their candidate collections.
 These modules are intentionally separate: storage and scheduling policy can be

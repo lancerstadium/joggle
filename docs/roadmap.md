@@ -88,6 +88,18 @@ reject padded state domains before loads or stores are hoisted. Target latency,
 emitted size, and automatic profitability selection across interchange,
 promotion, and tiling remain open.
 
+`tile.fuse` now proves pointwise correspondence from affine addresses across
+equal multi-axis loops or a dense multi-axis-to-linear boundary. It can forward
+a private scalarized reduction through following pointwise computation without
+materializing the producer tensor, and it recomputes legal pairs after every
+edit. A MobileNetV2 development diagnostic reduces 155 top-level source loops
+to 55, external-payload C source from 150,624 to 136,452 bytes, and planned
+workspace from 2,860,032 to 2,107,392 `f32` elements while preserving the
+reference output within the existing tolerance. These are structural and
+correctness observations on an uncontrolled host, not latency evidence. The
+next evaluation step is an independently dispatched Linux comparison against
+the unchanged baseline and ONNX Runtime.
+
 The source-only `spatial.block` example now accepts an ordered factor list and
 prefers an exact factor per proved state extent in one module traversal. When
 none divides the extent, `tile.peel` separates an aligned prefix from a scalar
@@ -265,6 +277,11 @@ preserving the single public IR. The remaining large `ir.cpp` and `eval.cpp`
 files still need dependency-led separation of construction/inference and
 runtime values/intrinsics; file size alone is not a reason to create another
 public abstraction.
+The structured-operation clone contract now propagates substituted carried
+state names through nested block arguments, loop/branch results, and
+assignments. A repeated-fusion regression must print, reparse, compile as
+strict C, and execute correctly. This closes a real-model failure without
+creating a printer repair pass.
 
 ## Paper readiness
 
@@ -300,17 +317,19 @@ The working evidence plan and outline are in
 The intended submission deadline is close, so work is ordered by evidence
 value:
 
-1. Freeze public terminology, documentation responsibilities, and exact paper
-   claims.
-2. Finish the reproducible experiment harness and extension study before
-   adding convenience APIs.
-3. Run model correctness, generated-code, and controlled extension
-   measurements; archive raw outputs immediately.
-4. Decide whether the evidence supports submission. If it does, freeze the
-   artifact and write from the evidence map. If it does not, continue the
-   engineering study rather than inflate claims.
-5. After the submission decision, resume broader operator coverage and
-   scheduling features.
+1. Run the new fusion path and its unchanged baseline as independently
+   dispatched, pinned Linux jobs; archive raw correctness, workspace, source,
+   binary, compiler-diagnostic, and timing records.
+2. Repeat the structural and numerical checks on the selected multi-model
+   corpus, reporting unsupported boundaries instead of adding operator cases.
+3. Update the paper's mechanism figure, claim-evidence map, tables, abstract,
+   and title only from committed records.
+4. Apply targeted maintenance when an experiment exposes a core contract
+   failure. Defer broad `ir.cpp`/`eval.cpp` file splitting until after the
+   evidence freeze unless it blocks reproducibility.
+5. Run citation, anonymity, artifact, and independent-review gates before the
+   submission decision. Resume broader coverage and scheduling work after that
+   decision.
 
 ## Compatibility policy
 

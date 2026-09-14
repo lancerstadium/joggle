@@ -965,10 +965,15 @@ Op Mod::clone(Op source, Op before, std::span<const Val> old_values,
       if (old_id == source.id_ &&
           (old.form == Op::Form::let || old.form == Op::Form::var))
         value.name = copy_name(value.name);
-      else if (old_id == source.id_ &&
-               (old.form == Op::Form::assign ||
-                old.form == Op::Form::compound ||
-                old.form == Op::Form::index_assign)) {
+      else if (old.form == Op::Form::assign ||
+               old.form == Op::Form::compound ||
+               old.form == Op::Form::index_assign) {
+        const auto mapped_name = substituted_names.find(value.name);
+        if (mapped_name != substituted_names.end() &&
+            !mapped_name->second.empty())
+          value.name = mapped_name->second;
+      } else if (old.kind == Op::Kind::loop ||
+                 old.kind == Op::Kind::branch) {
         const auto mapped_name = substituted_names.find(value.name);
         if (mapped_name != substituted_names.end() &&
             !mapped_name->second.empty())
@@ -997,6 +1002,10 @@ Op Mod::clone(Op source, Op before, std::span<const Val> old_values,
           store.blks[old_blk].data.ops;
       for (const std::uint32_t old_arg : old_args) {
         detail::ValData value = store.vals[old_arg].data;
+        const auto mapped_name = substituted_names.find(value.name);
+        if (mapped_name != substituted_names.end() &&
+            !mapped_name->second.empty())
+          value.name = mapped_name->second;
         value.users.clear();
         const auto value_id = static_cast<std::uint32_t>(store.vals.size());
         store.vals.push_back({std::move(value), 1, true});

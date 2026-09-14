@@ -5,6 +5,7 @@ if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
    NOT DEFINED EFFECT_FUSE_MODEL OR
    NOT DEFINED KEEP_MODEL OR NOT DEFINED KEEP_HARNESS OR
    NOT DEFINED RELU_MODEL OR NOT DEFINED RELU_HARNESS OR
+   NOT DEFINED MULTI_MODEL OR NOT DEFINED MULTI_HARNESS OR
    NOT DEFINED MODULES OR NOT DEFINED EXAMPLES OR NOT DEFINED ROOT)
   message(FATAL_ERROR
           "tile test requires TOOL, CC, models, harnesses, module roots, and ROOT")
@@ -177,6 +178,74 @@ endif()
 
 file(REMOVE_RECURSE "${ROOT}")
 file(MAKE_DIRECTORY "${ROOT}")
+
+set(multi_ir "${ROOT}/multi.jog")
+set(multi_source "${ROOT}/multi.c")
+set(multi_program "${ROOT}/multi")
+execute_process(
+  COMMAND "${TOOL}" run tile.scalarize tile.fuse c.prepare "${MULTI_MODEL}"
+          -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${multi_ir}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "multi-axis fusion failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" check "${multi_ir}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "re-reading multi-axis fused IR failed (${result}):\n"
+          "${output}${error}")
+endif()
+file(READ "${multi_ir}" multi_text)
+string(REGEX MATCHALL "for [A-Za-z_][A-Za-z0-9_]* in" multi_loops
+       "${multi_text}")
+list(LENGTH multi_loops multi_loop_count)
+if(NOT multi_loop_count EQUAL 3 OR multi_text MATCHES "var first" OR
+   multi_text MATCHES "first\\[" OR multi_text MATCHES "var sum" OR
+   multi_text MATCHES "sum\\[")
+  message(FATAL_ERROR
+          "multi-axis fusion retained its intermediate:\n${multi_text}")
+endif()
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${multi_ir}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${multi_source}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "multi-axis C emission failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CC}" -std=c99 -O2 -Wall -Wextra -Wstrict-prototypes -Werror
+          "${multi_source}" "${MULTI_HARNESS}" -lm -o "${multi_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  file(READ "${multi_source}" emitted)
+  message(FATAL_ERROR
+          "multi-axis fused C did not compile (${result}):\n"
+          "${output}${error}\n${emitted}")
+endif()
+execute_process(
+  COMMAND "${multi_program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "multi-axis fused C returned the wrong result (${result}):\n"
+          "${output}${error}")
+endif()
 
 set(tiled_sum "${ROOT}/tiled-sum.jog")
 set(tiled "${ROOT}/tiled.jog")

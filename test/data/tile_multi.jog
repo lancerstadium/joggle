@@ -1,0 +1,40 @@
+module tile_multi
+use tensor
+
+fn chain(
+  a: tensor<f32, [2, 3]>,
+  b: tensor<f32, [2, 3]>,
+  c: tensor<f32, [2, 3]>
+) -> tensor<f32, [2, 3]> {
+  var first = tensor<f32, [2, 3]>(f32(0))
+  for row in 0..2, column in 0..3 {
+    first[int(row), int(column)] =
+      a[int(row), int(column)] + b[int(row), int(column)]
+  }
+  var out = tensor<f32, [2, 3]>(f32(0))
+  for i in 0..2, j in 0..3 {
+    out[i, j] = first[i, j] * c[i, j]
+  }
+  return out
+}
+
+fn reduce(x: tensor<f32, [2, 3, 4]>) -> tensor<f32, [2, 3]> {
+  var sum = tensor<f32, [2, 3]>(f32(0))
+  for i in 0..2, j in 0..3, k in 0..4 {
+    let index = i * 3 + j
+    sum[index] = sum[index] + x[index * 4 + k]
+  }
+  var out = tensor<f32, [2, 3]>(f32(0))
+  for row in 0..2, column in 0..3 {
+    let value = sum[row * 3 + column]
+    out[row, column] = value + f32(1)
+  }
+  var activated = tensor<f32, [2, 3]>(f32(0))
+  for row in 0..2, column in 0..3 {
+    let value = out[row, column]
+    if value > f32(1) {
+      activated[row, column] = value
+    }
+  }
+  return activated
+}

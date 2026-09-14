@@ -7,6 +7,18 @@ local fn affine_integer(type: Ty) -> bool {
          name == "u32" || name == "u64"
 }
 
+// `int` and `index` are the core's two unbounded coordinate spellings. Their
+// conversion cannot discard coordinate information. Fixed-width and custom
+// integer conversions remain unsupported because proving them lossless needs
+// an explicit representation or range contract.
+[memo]
+local fn affine_coordinate_cast(source: Ty, result: Ty) -> bool {
+  let left = base.name(source)
+  let right = base.name(result)
+  return (left == "int" || left == "index") &&
+         (right == "int" || right == "index")
+}
+
 [memo]
 local fn affine_zero(axes: int) -> list<int> {
   var out: list<int> = [0]
@@ -234,6 +246,7 @@ local fn affine_in(
     let input = affine_in(m, loop, args[0])
     if base_op(m, op, "copy") ||
        base_op(m, op, "operator +") ||
+       affine_coordinate_cast(ir.type(args[0]), ir.type(value)) ||
        ((name == "base." + text(ir.type(value)) ||
          name == text(ir.type(value))) &&
         ir.type(args[0]) == ir.type(value)) {
