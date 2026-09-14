@@ -1,9 +1,10 @@
 # ONNX-MLIR system baseline
 
-This directory defines the primary system-level baseline for RQ2. The first
-matched implementation task now has a preserved native pilot; the other three
-contracts remain incomplete. The pilot is not a complete ONNX-MLIR comparison
-and does not support a broad extensibility claim.
+This directory defines the primary system-level baseline for RQ2. The matched
+implementation task has a preserved native pilot. The external-kernel task now
+has a reproducible unsupported outcome at its first mandatory matrix case; the
+policy and numeric-format contracts remain incomplete. These records do not
+support a broad extensibility claim.
 
 ## Frozen revision and documented path
 
@@ -50,7 +51,7 @@ generated-C paths. The preserved ONNX-MLIR implementation and result are under
 | --- | --- | --- |
 | implementation | Accelerator-scoped pass and lowering for standard matrix operations | Imported ONNX, explicit i-k-j body in preserved IR, native artifact, numerical oracle |
 | policy | Accelerator-scoped analysis and transformation pass | Frozen limits, unchanged model, preserved pre/post IR, legality and numerical oracles |
-| external-kernel | Accelerator conversion to the supplied C kernels | Generic shape handling, declarations, linked artifact, rejection diagnostic, unchanged C oracle |
+| external-kernel | Documented `--ops-for-call` path, then accelerator conversion if required | Generic shape handling, declarations, linked artifact, rejection diagnostic, unchanged C oracle |
 | numeric-format | Registered dialect/type plus conversions within the ONNX-MLIR driver | Parametric type, nested conversion, collision checks, two target paths, positive and negative oracles |
 
 If a requirement cannot be expressed through the documented operation or
@@ -109,6 +110,26 @@ preserves the emitted loop nest, while
 digests, configuration, extension surface, and the oracle. The dependency
 build was resumed incrementally, so no clean-build duration is reported for
 this pilot.
+
+## External-kernel unsupported boundary
+
+The frozen external-kernel contract first requires one generic adapter to bind
+the supplied C matrix kernel at two static shapes. The first shape is identical
+to the checked-in `2x3` by `3x2` MatMul fixture. At the pinned revision, the
+driver documents `--ops-for-call=Conv MatMul` as its example for replacing
+loop lowering with `krnl.call`. Running that exact option on the fixture exits
+successfully, but the preserved output contains three `affine.for` operations
+and no `krnl.call`.
+
+Source inspection explains the result without modifying the baseline. Conv
+registers a generic call pattern and receives the `opsForCall` option. MatMul
+registers only its ordinary lowering pattern and does not receive the option.
+Consequently the first mandatory case cannot reach the supplied external
+kernel through the documented path. The exact command output, emitted MLIR,
+digests, source observations, and boundary decision are preserved under
+[`external-kernel/`](external-kernel/). This is an unsupported outcome, not a
+failed build and not evidence that ONNX-MLIR cannot be extended through a new
+accelerator or source change.
 
 ## Measurement boundary
 

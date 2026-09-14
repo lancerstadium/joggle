@@ -83,7 +83,12 @@ external dependency. These are descriptive facts, not a claim that source
 volume measures usability. The exact sources, emitted IR, configuration,
 digests, and oracle are under `paper/baselines/onnx-mlir/implementation/`.
 Because the LLVM dependency build was resumed incrementally, this pilot reports
-no clean-build duration. The other three ONNX-MLIR contracts remain open.
+no clean-build duration. The external-kernel task now has a separately
+preserved unsupported outcome: the documented `--ops-for-call=MatMul` option
+accepts the frozen first matrix case but emits ordinary affine loops rather
+than `krnl.call`. Exact output and source evidence are under
+`paper/baselines/onnx-mlir/external-kernel/`. The policy and numeric-format
+contracts remain open.
 
 `instance-specialization-pilot.csv` records the first four-model evaluation of
 compiler-owned call-site instances. Each automatic variant starts from the

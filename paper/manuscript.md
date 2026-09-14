@@ -381,9 +381,10 @@ controls host load or thermal state, and neither has second-machine
 replication.
 
 The extension-surface study and controlled performance study are not complete.
-One of four system-baseline tasks now passes, but that result does not support
-a general claim that Joggle is easier to extend, more compatible, or faster
-than another compiler.
+One of four system-baseline tasks passes, one has a preserved unsupported
+outcome at its first mandatory case, and two remain incomplete. These results
+do not support a general claim that Joggle is easier to extend, more compatible,
+or faster than another compiler.
 
 The first reproducible extension-footprint pilot freezes four tasks and runs
 their named tests. Its three out-of-tree tasks contain 20, 69, and 138 source
@@ -412,10 +413,19 @@ also requires one generated native registration and five global macro
 definitions, but changes no existing framework-core file and adds no external
 dependency. Joggle's matching body contains 20 source lines and TVM's control
 contains 62. These are separately reported surface observations, not measures
-of difficulty, comprehension, or developer time. The remaining ONNX-MLIR
-contracts and a clean-build repetition are incomplete, so there is still no
-full matched RQ2 result or comparative extensibility claim. Standalone MLIR
-type/dialect experiments may
+of difficulty, comprehension, or developer time.
+
+The external-kernel task exposes a distinct documented-path boundary. Although
+the ONNX-MLIR driver describes `--ops-for-call=Conv MatMul` as its example,
+running `--ops-for-call=MatMul` on the frozen `2x3` by `3x2` input emits three
+ordinary affine loops and no `krnl.call`. At the pinned revision, Conv registers
+the generic call pattern and receives the option, whereas MatMul registers only
+its ordinary lowering. The exact successful command, emitted IR, source
+digests, and failed mandatory requirement are preserved as an unsupported
+outcome; no later requirement is counted as passing after that failure. The
+policy and numeric-format contracts and a clean-build repetition remain
+incomplete, so there is still no full matched RQ2 result or comparative
+extensibility claim. Standalone MLIR type/dialect experiments may
 decompose registration and conversion work, but cannot be reported as the
 system comparison because they omit ONNX ingestion and artifact generation.
 

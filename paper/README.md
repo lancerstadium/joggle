@@ -37,7 +37,7 @@ usability.
 | Question | Evidence present | Blocking work |
 | --- | --- | --- |
 | Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths | Freeze and record model-level stage traces |
-| Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM controls pass three contracts; the exact MatMul contract now passes through Joggle and a native, end-to-end ONNX-MLIR extension | Finish the remaining system tasks or preserve their unsupported outcomes; repeat the ONNX-MLIR build from a clean checkout |
+| Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM controls pass three contracts; the exact MatMul implementation passes through native ONNX-MLIR; its documented external-call option has a preserved unsupported MatMul outcome | Finish the policy and numeric-format system tasks or preserve their unsupported outcomes; repeat the ONNX-MLIR build from a clean checkout |
 | Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical CSE/analysis scaling pilots | Freeze a fault and diagnostic matrix |
 | Artifact quality | Ten numerical ONNX paths; clean-revision, 20-trial MobileNetV2 and MNIST pilots compare generated C with ONNX Runtime; internal rewrite diagnostics remain separate | Broaden the independent-system matrix, add ONNX-MLIR where executable, task accuracy, an isolated second machine, and a materially smaller generated-C gap |
 
