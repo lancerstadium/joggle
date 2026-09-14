@@ -1,40 +1,46 @@
-# Joggle: Typed Modules for Extensible Compilation
+# Joggle: Distributable Typed Modules Across the Compiler Stack
 
 ## Abstract
 
-Extensible compilers expose different units of change: language workbenches add
-syntax and semantics, multi-level infrastructures add IR dialects and passes,
-and scheduling systems control transformations over a chosen payload. Research
-that crosses these boundaries must still coordinate several definition,
-registration, execution, and deployment mechanisms. The cost is most visible
-when the boundary itself is experimental, as in new datatypes, storage formats,
-instructions, or generated optimization policies.
+Compiler ecosystems expose different units of extension. Language workbenches
+add syntax and semantics, IR infrastructures add dialects and passes, scheduling
+systems control transformations, and backend interfaces add target code. Each
+boundary is useful, but an extension that crosses several of them is split
+across different definition, registration, execution, and deployment
+mechanisms. This **role fragmentation** affects more than new hardware: it also
+appears in experimental datatypes, analyses, external tools, generated
+policies, validators, and artifact formats.
 
-Joggle explores **typed modules** as one runtime extension unit across the
-compiler stack. A module can introduce program vocabulary, compute over or
-transactionally edit a typed Fn/Blk/Op/Val program, select portable or
-specialized implementations, and close an executable artifact. Progressive
-exposure reveals tensor, loop, storage, and target detail only when a consumer
-requires it; ordinary installation and dependency rules apply to every role.
-We evaluate the design through inference co-design because it simultaneously
-stresses semantics, representation, optimization, hardware specialization, and
-deployment. The study measures bootstrap and extension closure, controlled
-revisions, chooser substitution, complete artifacts, and generated-code quality
-against native compiler paths. Current results establish functional breadth but
-leave competitive whole-model performance as a submission requirement.
+Joggle explores **typed modules** as one distributable extension unit across
+these roles. A module can introduce program vocabulary, inspect or
+transactionally edit a typed Fn/Blk/Op/Val program, select alternative
+implementations, and produce an artifact through the same dependency and
+invocation model. Progressive exposure reveals implementation detail only when
+a consumer requires it. Installation, composition, rollback, and staged upgrade
+therefore apply to an extension as a whole rather than to one compiler phase.
+We evaluate this mechanism with cross-role extension and revision studies, then
+use inference co-design as a stress domain spanning semantics, representation,
+optimization, specialization, and deployment. The study separates extension
+continuity from generated-code quality; current results establish functional
+breadth but leave competitive whole-model performance as a submission
+requirement.
 
 ## 1. Introduction
 
-An accelerator idea is not complete when its kernel runs. Consider a fused
-low-precision projection for an edge processor. To evaluate it in a real model,
-a researcher must identify the source computation, introduce the packed value
-and constant formats, expose the right tensor body, choose loop and layout
-structure, place temporary storage, map the computation to the new instruction,
-retain a fallback, and produce an artifact that an application can call. These
-choices are not independent. Changing the format changes legal loads; changing
-the layout changes packing and tiling; changing the instruction changes the
-artifact interface. The research object is a decision that spans the compiler,
-not a standalone kernel.
+A compiler extension rarely stays in the box where it begins. A new datatype
+needs syntax or schema, type rules, canonical operations, analyses, target
+representations, and diagnostics. An externally generated optimization needs a
+typed input, legal edit surface, validation, rollback, and artifact provenance.
+A new artifact format needs preparation rules and a stable public interface.
+When these concerns use unrelated host mechanisms, the extension is no longer
+one installable and revisable research object.
+
+Emerging hardware makes this general problem unusually visible. A fused
+low-precision projection for an edge processor must connect source recognition,
+packed values and constants, portable semantics, loop and layout structure,
+storage, instruction selection, fallback, and an application-callable artifact.
+Changing its group size can invalidate every one of those decisions. The kernel
+is important, but the research object spans the compiler.
 
 Production compiler stacks divide this path into specialized representations
 and subsystems. This is a successful design: graph or functional IRs preserve
@@ -62,23 +68,23 @@ the surrounding path: a kernel or synthesized instruction still needs model
 semantics, a legal integration point, validation, fallback behavior, and a
 deployable interface.
 
-This boundary matters more as both models and machines evolve. Low-bit formats,
-structured sparsity, parameterized instructions, and heterogeneous memories
-change together. Agentic optimizers add another producer of compiler decisions.
+This boundary matters wherever producers and consumers of compiler decisions
+evolve independently. Low-bit formats, structured sparsity, parameterized
+instructions, and heterogeneous memories are one case. Agentic optimizers add
+another producer of compiler decisions.
 An agent can propose a schedule or kernel, but reproducible compilation still
 requires a typed input, bounded edit authority, target feedback, a correctness
 oracle, rollback, and artifact provenance. Hard-coding either a new hardware
 vocabulary or an AI chooser into the compiler core makes the next experiment
 depend on the previous abstraction.
 
-Joggle starts from a different observation: **the decisions in a vertical
-inference change share a lifecycle before their interfaces stabilize**. Joggle
-therefore keeps program identity stable while exposing its implementation
-progressively. An imported operation can be related to a reusable tensor
-function, expanded into loops when a transformation needs access structure,
-and replaced by a target call when a capability becomes available. The program
-does not have to migrate wholesale from a graph IR to a loop IR before one
-subgraph can be changed.
+Joggle starts from a different observation: **cross-role decisions often share
+a lifecycle before their interfaces stabilize**. Joggle therefore keeps
+program identity stable while exposing implementation progressively. A relation
+can remain an abstract call, acquire a reusable body, expose loops when an
+analysis needs access structure, and select an external implementation when a
+capability becomes available. The whole program need not migrate to a new
+representation before one region can be studied.
 
 The unit of extension is a distributed module of typed functions. A module may
 define portable semantics, a custom type, an analysis, a structural rewrite, a
@@ -101,18 +107,19 @@ loses performance answers the first question and bounds the second.
 
 This paper makes three contributions:
 
-1. **Progressive exposure**, a typed function representation in which imported
-   relations, reusable tensor bodies, explicit loops, storage decisions, and
-   target calls remain observable states of one program.
-2. **A uniform, distributable extension model** that hosts general compiler
-   mechanisms and specialized hardware policies as typed module functions, with
-   capability-directed exposure, checked selection, and transactional edits.
+1. **A distributable typed-module extension model** that hosts vocabulary,
+   analysis, transformation, choice, and artifact behavior through one
+   dependency, invocation, transaction, and lifecycle mechanism.
+2. **Progressive exposure**, a typed function representation in which abstract
+   relations, reusable bodies, explicit loops, storage decisions, and external
+   calls remain observable states of one program, allowing modules to cross
+   abstraction boundaries without a mandatory whole-program lowering.
 3. **A closure-oriented evaluation methodology** that measures bootstrap,
    extension/revision, interaction, deployment, and performance costs using
    matched native baselines, complete models, and explicit unsupported
    frontiers.
 
-## 2. Motivation: the extension boundary is an experimental variable
+## 2. Motivation: one extension crosses several compiler roles
 
 ### 2.1 One change, several coupled meanings
 

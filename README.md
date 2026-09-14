@@ -1,21 +1,27 @@
 # Joggle
 
-Joggle is a small C++20 compiler workbench for neural-network software/hardware
-co-design research. It keeps imported networks, reusable semantics, explicit
-loops, storage decisions, and target preparation in one readable function IR.
-Extensions are ordinary distributable modules rather than new compiler
-subsystems.
+Joggle is a small C++20 workbench for building and distributing compiler
+extensions that cross conventional subsystem boundaries. Program vocabulary,
+analysis, transformation, implementation choice, and artifact generation can
+live in ordinary typed modules over one readable function IR instead of each
+requiring a separate host-side registry or plugin hierarchy.
 
-Joggle is pre-1.0 research software. It can import selected ONNX and TFLite
-models and execute selected ONNX models through generated C and a deterministic
-VM, but it is not yet a production inference runtime.
+The bundled modules currently concentrate on neural-network inference because
+that workload stresses semantics, tensor and loop structure, storage policy,
+specialized computation, and deployment together. Joggle is pre-1.0 research
+software: it can import selected ONNX and TFLite models and execute selected
+models through generated C and a deterministic VM, but it is not yet a
+production inference runtime.
 
 ## Why Joggle
 
-Co-design experiments often cross boundaries that established compilers keep
-separate: a new data format changes operator semantics, loop structure, memory
-layout, and target code together. Joggle provides a compact workbench in which
-those decisions can be inspected and replaced independently:
+Compiler experiments often cross boundaries that established systems make
+independently extensible. A datatype can affect syntax, type rules, analyses,
+representation, and artifacts; a generated policy needs typed inspection,
+checked edits, validation, and rollback; a hardware experiment adds semantics,
+layout, selection, and deployment together. Joggle keeps such decisions in one
+distributable lifecycle while allowing them to be inspected and replaced
+independently:
 
 - one `.jog` language for modules and readable IR;
 - one `Mod/Fn/Blk/Op/Val/Ty/Attr` object model;

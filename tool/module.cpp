@@ -275,6 +275,116 @@ bool validate(const fs::path& staging, const fs::path& root,
   return valid;
 }
 
+bool affected_modules(std::string_view name, const fs::path& root,
+                      std::vector<std::string>& out) {
+  std::map<std::string, std::vector<std::string>, std::less<>> uses;
+  for (const auto& [directory_name, directory] : available({root})) {
+    (void)directory_name;
+    Mod declaration;
+    std::vector<fs::path> files;
+    if (!read(directory, declaration, files))
+      return false;
+    uses.emplace(std::string(declaration.name()), declaration.uses());
+  }
+
+  std::set<std::string, std::less<>> affected{std::string(name)};
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (const auto& [module, dependencies] : uses) {
+      if (affected.contains(module))
+        continue;
+      if (std::any_of(dependencies.begin(), dependencies.end(),
+                      [&](const std::string& dependency) {
+                        return affected.contains(dependency);
+                      })) {
+        affected.insert(module);
+        changed = true;
+      }
+    }
+  }
+
+  affected.erase(std::string(name));
+  out.assign(affected.begin(), affected.end());
+  return true;
+}
+
+std::string symbol(Fn fn) {
+  return std::string(fn.module()) + '.' + signature(fn);
+}
+
+Fn resolve_call(const Env& env, Fn owner, Op call) {
+  if (call.callee().empty())
+    return {};
+  bool ambiguous = false;
+  const std::vector<Fn> candidates =
+      env.resolve_fns(owner, call.callee());
+  return env.match(call, candidates, &ambiguous);
+}
+
+bool preserves_resolutions(const Env& installed, const Env& replacement,
+                           const Mod& dependent) {
+  for (Fn fn : dependent.fns()) {
+    for (Op call : fn.ops()) {
+      const Fn old_target = resolve_call(installed, fn, call);
+      if (!old_target)
+        continue;
+      const Fn new_target = resolve_call(replacement, fn, call);
+      if (new_target && symbol(new_target) == symbol(old_target))
+        continue;
+      std::cerr << "joggle: upgrade would break installed module '"
+                << dependent.name() << "': call to '" << call.callee()
+                << "' no longer resolves to " << symbol(old_target) << '\n';
+      return false;
+    }
+  }
+  return true;
+}
+
+bool validate_upgrade(const fs::path& staging, const fs::path& root,
+                      const fs::path& source,
+                      const std::vector<fs::path>& dependencies,
+                      std::string_view name) {
+  std::vector<std::string> affected;
+  if (!affected_modules(name, root, affected))
+    return false;
+
+  Env installed;
+  installed.path(root.string());
+  installed.path(source.parent_path().string());
+  add_paths(installed, dependencies);
+
+  Env replacement;
+  replacement.path(staging.string());
+  replacement.path(root.string());
+  replacement.path(source.parent_path().string());
+  add_paths(replacement, dependencies);
+  if (!replacement.load(name)) {
+    replacement.print_diags(stderr);
+    return false;
+  }
+  for (const std::string& module : affected) {
+    if (!installed.load(module)) {
+      std::cerr << "joggle: cannot validate installed module '" << module
+                << "' before upgrade\n";
+      installed.print_diags(stderr);
+      return false;
+    }
+    if (!replacement.load(module)) {
+      std::cerr << "joggle: upgrade would break installed module '" << module
+                << "'\n";
+      replacement.print_diags(stderr);
+      return false;
+    }
+    Mod dependent;
+    std::vector<fs::path> files;
+    if (!read(root / module, dependent, files) ||
+        !preserves_resolutions(installed, replacement, dependent))
+      return false;
+  }
+  return true;
+}
+
 int list(const std::vector<fs::path>& roots) {
   for (const auto& [name, ignored] : available(roots)) {
     (void)ignored;
@@ -425,7 +535,7 @@ int upgrade(const fs::path& source, const fs::path& root,
   const fs::path staged = staging / name;
   if (!copy_module(source, staging, name))
     return 1;
-  if (!validate(staging, root, source, dependencies, name)) {
+  if (!validate_upgrade(staging, root, source, dependencies, name)) {
     std::error_code ignored;
     fs::remove_all(staging, ignored);
     return 1;

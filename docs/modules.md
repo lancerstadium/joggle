@@ -85,11 +85,15 @@ joggle module upgrade path/to/source installed-modules -M modules
 joggle module uninstall my_module installed-modules
 ```
 
-Installation and upgrade validate the candidate and its dependency closure
-before replacing an installed module. Source-only modules remain readable and
-portable. A native boundary is optional and should be used only for facilities
-that cannot be expressed economically in `.jog`, such as binary decoding or
-executing a host artifact.
+Installation validates the candidate and its dependency closure before making
+it visible. Upgrade additionally reloads the transitive reverse-dependency
+closure against the staged candidate and checks that every previously resolved
+call still selects the same qualified declaration. Removing a transitive
+namespace edge or introducing an overload that retargets an installed caller is
+therefore rejected before any installed bytes change. Source-only modules
+remain readable and portable. A native boundary is optional and should be used
+only for facilities that cannot be expressed economically in `.jog`, such as
+binary decoding or executing a host artifact.
 
 The native value ABI checks declarations in both directions. `nil`, `bool`,
 floating scalars, `int`/`index`/digit-width integer scalars, `str`, and `bytes`

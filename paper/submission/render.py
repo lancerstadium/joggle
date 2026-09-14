@@ -278,7 +278,7 @@ def render(source: str) -> tuple[str, int]:
 \begin{{abstract}}
 {' '.join(abstract)}
 \end{{abstract}}
-\keywords{{inference compilation, compiler extensibility, co-design, intermediate representation, edge inference}}
+\keywords{{compiler extensibility, module systems, intermediate representation, compiler construction, inference compilation}}
 \maketitle
 """
     ending = r"""

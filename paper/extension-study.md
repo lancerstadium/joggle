@@ -8,7 +8,8 @@ one “extensibility” number:
    mechanism;
 2. **module lifecycle:** can source-only and native modules be validated,
    installed, upgraded, resolved with their dependency closure, and uninstalled
-   without rebuilding the host;
+   without rebuilding the host, while a staged upgrade preserves the resolved
+   calls of its transitive reverse dependencies;
 3. **vertical closure:** can one inference/hardware idea retain semantics,
    fallback, representation, structural policy, target binding, validation, and
    artifact behavior; and

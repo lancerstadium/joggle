@@ -189,10 +189,18 @@ set(upgrade_source "${TEST_ROOT}.upgrade")
 set(incompatible_source "${TEST_ROOT}.incompatible")
 set(invalid_source "${TEST_ROOT}.invalid-upgrade")
 set(dependent_source "${TEST_ROOT}.dependent")
+set(provider_source "${TEST_ROOT}.provider")
+set(facade_source "${TEST_ROOT}.facade")
+set(facade_upgrade_source "${TEST_ROOT}.facade-upgrade")
+set(client_source "${TEST_ROOT}.client")
 file(REMOVE_RECURSE "${upgrade_source}" "${incompatible_source}"
-                    "${invalid_source}" "${dependent_source}")
+                    "${invalid_source}" "${dependent_source}"
+                    "${provider_source}" "${facade_source}"
+                    "${facade_upgrade_source}" "${client_source}")
 file(MAKE_DIRECTORY "${upgrade_source}" "${incompatible_source}"
-                    "${invalid_source}" "${dependent_source}")
+                    "${invalid_source}" "${dependent_source}"
+                    "${provider_source}" "${facade_source}"
+                    "${facade_upgrade_source}" "${client_source}")
 file(COPY "${BUILD_ROOT}/sample/" DESTINATION "${upgrade_source}")
 file(READ "${upgrade_source}/module.jog" upgrade_module)
 string(REPLACE "fn keep<T: Ty>(x: T) -> T;"
@@ -243,6 +251,42 @@ file(WRITE "${dependent_source}/module.jog"
      "module dependent\nuse sample\nfn call(x: i32) -> i32 { return sample.ping(x) }\n")
 invoke(ok "${TOOL}" module install "${dependent_source}" "${TEST_ROOT}"
        -M "${TEST_ROOT}")
+
+# Preserving every old declaration is not sufficient when a new overload
+# silently retargets an installed dependent. Validate the reverse-dependency
+# closure against the staged candidate before committing it.
+file(WRITE "${provider_source}/module.jog"
+     "module provider\nfn choose<T: Ty>(x: T) -> T { return x }\n")
+file(WRITE "${facade_source}/module.jog"
+     "module facade\nuse provider\nfn keep(x: i32) -> i32 { return x }\n")
+file(WRITE "${facade_upgrade_source}/module.jog"
+     "module facade\nuse provider\n"
+     "fn keep(x: i32) -> i32 { return x }\n"
+     "fn choose(x: i32) -> i32 { return x + 1 }\n")
+file(WRITE "${client_source}/module.jog"
+     "module client\nuse facade\n"
+     "fn call(x: i32) -> i32 { return choose(x) }\n")
+invoke(ok "${TOOL}" module install "${provider_source}" "${TEST_ROOT}")
+invoke(ok "${TOOL}" module install "${facade_source}" "${TEST_ROOT}"
+       -M "${TEST_ROOT}")
+invoke(ok "${TOOL}" module install "${client_source}" "${TEST_ROOT}"
+       -M "${TEST_ROOT}")
+invoke(fail "${TOOL}" module upgrade "${facade_upgrade_source}"
+       "${TEST_ROOT}" -M "${TEST_ROOT}")
+if(NOT COMMAND_ERROR MATCHES
+   "upgrade would break installed module 'client'")
+  message(FATAL_ERROR
+          "dependent-breaking upgrade lacked a precise diagnostic:\n${COMMAND_ERROR}")
+endif()
+file(READ "${TEST_ROOT}/facade/module.jog" retained_facade)
+file(READ "${facade_source}/module.jog" expected_facade)
+if(NOT retained_facade STREQUAL expected_facade)
+  message(FATAL_ERROR "dependent-breaking upgrade changed the installed facade")
+endif()
+invoke(ok "${TOOL}" module uninstall client "${TEST_ROOT}")
+invoke(ok "${TOOL}" module uninstall facade "${TEST_ROOT}")
+invoke(ok "${TOOL}" module uninstall provider "${TEST_ROOT}")
+
 invoke(fail "${TOOL}" module uninstall sample "${TEST_ROOT}")
 if(NOT EXISTS "${TEST_ROOT}/sample/module.jog" OR
    NOT EXISTS "${TEST_ROOT}/dependent/module.jog")
@@ -256,7 +300,9 @@ endif()
 invoke(fail "${TOOL}" module uninstall sample "${TEST_ROOT}")
 
 file(REMOVE_RECURSE "${upgrade_source}" "${incompatible_source}"
-                    "${invalid_source}" "${dependent_source}")
+                    "${invalid_source}" "${dependent_source}"
+                    "${provider_source}" "${facade_source}"
+                    "${facade_upgrade_source}" "${client_source}")
 
 file(GLOB residue "${TEST_ROOT}/*" "${TEST_ROOT}/.*")
 foreach(path IN LISTS residue)

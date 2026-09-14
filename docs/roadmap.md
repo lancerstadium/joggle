@@ -270,6 +270,14 @@ Randomized directory trees, native ABI calls, ONNX protobufs, and TFLite
 FlatBuffers still need independent fuzz or property-test harnesses rather than
 being claimed by these gates.
 
+Staged upgrades now preserve more than the replaced module's public signature.
+The tool computes its transitive reverse-dependency closure, reloads those
+installed modules with the candidate first on the search path, and rejects any
+call whose previously resolved qualified declaration would disappear or
+change. The old installation remains byte-identical on failure. Compatibility
+of persistent metadata and native state across revisions remains outside this
+pre-1.0 contract.
+
 The C++ implementation now keeps immutable attributes/types, structural
 handles, value-family analysis, metadata editing, tokenization, parsing,
 canonical printing, and verification in separate translation units while
@@ -287,14 +295,16 @@ creating a printer repair pass.
 
 The paper is organized around four questions:
 
-1. Can conventional inference workloads remain in one readable function IR
-   while progressively exposing only the detail required by an experiment?
-2. Does the function-and-module boundary reduce the work and coupling needed to
-   add a format, semantic implementation, transform, or target?
-3. Do independently written modules compose safely, with useful diagnostics
-   and deterministic artifacts?
-4. Can user-defined scheduling and storage policies improve edge-inference
-   artifacts without core changes, and what overhead does the workbench add?
+1. Can one typed module participate in vocabulary, analysis, transformation,
+   choice, and artifact roles without adding a host-side extension category?
+2. Can a program expose more implementation detail to one consumer without a
+   mandatory whole-program transition or loss of readable identity?
+3. Do independently written modules compose and evolve safely, with useful
+   diagnostics, rollback, dependency-aware upgrades, and deterministic
+   artifacts?
+4. In the inference stress domain, can user-defined scheduling and storage
+   policies improve complete artifacts without core changes, and what overhead
+   does the workbench add?
 
 A submission is ready only when:
 

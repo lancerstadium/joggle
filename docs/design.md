@@ -2,10 +2,12 @@
 
 ## Purpose
 
-Joggle is a small compiler workbench for researchers who change neural-network
-semantics, loop structure, storage policy, data representation, or target code
-generation together. Its job is to make those choices visible and composable
-without requiring a new compiler framework for every experiment.
+Joggle is a small compiler workbench for researchers who change program
+semantics, representation, analysis, transformation policy, or artifact
+generation together. Its job is to keep those choices visible and composable
+without requiring a new host-side extension mechanism for every compiler role.
+Neural-network inference is the most developed workload because it exercises
+all of these roles at once; it is not a boundary of the core abstraction.
 
 Every stage operates on the same typed function IR. A frontend call, an exposed
 tensor body, a loop transform, a storage decision, and target preparation are

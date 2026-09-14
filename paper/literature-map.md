@@ -349,17 +349,22 @@ collapsed into one opaque failure count.
 
 ## 7. Related-work organization for the paper
 
-The final Related Work should argue by mechanism, not by project chronology:
+The final Related Work should argue by the extension boundary each system makes
+programmable, not by project chronology:
 
-1. **Multi-level compiler composition:** MLIR, ONNX-MLIR, Relay/Relax,
+1. **Language and compiler construction:** JastAdd, Polyglot, Spoofax,
+   Nanopass, Silver, xDSL. These establish modular syntax, semantics, passes,
+   and lightweight IR construction; the question is whether one installed unit
+   also remains continuous through target choice and artifacts.
+2. **Multi-level compiler composition:** MLIR, ONNX-MLIR, Relay/Relax,
    TensorIR, IREE, Glow.
-2. **Controllable tensor and kernel construction:** Lift/RISE/Elevate, Halide,
+3. **Controllable tensor and kernel construction:** Lift/RISE/Elevate, Halide,
    Exo, Triton, TileLang, TACO, HeteroCL.
-3. **Automatic transformation and synthesis:** Ansor, Roller, Welder, Mirage,
+4. **Automatic transformation and synthesis:** Ansor, Roller, Welder, Mirage,
    Axon, ACT, ATLAAS, LLM-aided compilation.
-4. **Representation/hardware co-design:** Ladder, SparseTIR, PULP-NN, DORY,
+5. **Representation/hardware co-design:** Ladder, SparseTIR, PULP-NN, DORY,
    MCUNet, VTA, sparse-MCU stacks.
-5. **Deployment closure and reliability:** ONNX Runtime, LiteRT/TFLM, ncnn,
+6. **Deployment closure and reliability:** ONNX Runtime, LiteRT/TFLM, ncnn,
    IREE, ExecuTorch, NNSmith, HirGen, metamorphic testing.
 
 Each paragraph must end with a precise distinction, not a generic “unlike prior
@@ -390,7 +395,7 @@ Joggle.
 The working title should describe the mechanism and the unresolved problem, not
 promise an inference-performance victory that has not been measured:
 
-> **Joggle: Typed Modules for Extensible Compilation**
+> **Joggle: Distributable Typed Modules Across the Compiler Stack**
 
 “Typed modules” names the concrete extension unit and remains independent of a
 particular workload or target. Inference co-design is the demanding evaluation
@@ -400,12 +405,16 @@ until the mechanism and baseline experiments succeed.
 
 The Motivation should follow this chain:
 
-1. a concrete vertical change whose semantics, representation, target behavior,
-   choice, and artifact evolve together;
-2. why three strong existing approaches each solve a different stable boundary;
-3. why the cost is temporal coupling rather than merely the number of IRs;
-4. the progressive-exposure hypothesis and its failure cases; and
-5. the evidence required to accept the hypothesis.
+1. role fragmentation as the general problem across language, IR, transform,
+   target, and artifact extension mechanisms;
+2. concrete cases (a datatype, generated policy, and emerging-hardware path)
+   that cross different subsets of those roles;
+3. why strong existing approaches deliberately stabilize different useful
+   boundaries rather than simply being “heavy”;
+4. extension continuity as the property Joggle attempts to preserve;
+5. typed modules plus progressive exposure as the hypothesis, including the
+   risk that a uniform mechanism becomes under-specified; and
+6. the evidence required to accept or reject that hypothesis.
 
 This work used AI-assisted search and synthesis. Every citation and quantitative
 claim must be checked against the linked primary source and the final artifact;
