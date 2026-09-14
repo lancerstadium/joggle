@@ -12,6 +12,30 @@ import numpy as np
 from PyRuntime import OMExecutionSession
 
 
+def values(contract: dict) -> tuple[list[np.ndarray], np.ndarray, float]:
+    if "fusion" in contract:
+        case = contract["fusion"]
+        inputs = [
+            np.asarray(case["inputs"][name], dtype=np.float32)
+            for name in ("a", "b", "c", "d")
+        ]
+    else:
+        case = contract
+        inputs = [
+            np.asarray(case["left"], dtype=np.float32).reshape(
+                case["left_shape"]
+            ),
+            np.asarray(case["right"], dtype=np.float32).reshape(
+                case["right_shape"]
+            ),
+        ]
+    return (
+        inputs,
+        np.asarray(case["expected"], dtype=np.float32),
+        float(case["absolute_tolerance"]),
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("library", type=Path)
@@ -23,21 +47,14 @@ def main() -> int:
     args = parser.parse_args()
 
     contract = json.loads(args.contract.read_text(encoding="utf-8"))
-    left = np.asarray(contract["left"], dtype=np.float32).reshape(
-        contract["left_shape"]
-    )
-    right = np.asarray(contract["right"], dtype=np.float32).reshape(
-        contract["right_shape"]
-    )
-    expected = np.asarray(contract["expected"], dtype=np.float32)
+    inputs, expected, tolerance = values(contract)
 
     session = OMExecutionSession(str(args.library.resolve()))
-    outputs = session.run([left, right])
+    outputs = session.run(inputs)
     if len(outputs) != 1:
         raise RuntimeError(f"expected one result, received {len(outputs)}")
 
     actual = np.asarray(outputs[0], dtype=np.float32).reshape(-1)
-    tolerance = float(contract["absolute_tolerance"])
     if actual.shape != expected.shape or not np.allclose(
         actual, expected, atol=tolerance, rtol=0.0
     ):

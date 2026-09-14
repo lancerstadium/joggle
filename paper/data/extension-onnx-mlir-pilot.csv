@@ -1,2 +1,3 @@
 schema,system,version,revision,task,source_files,source_sloc,source_bytes,core_files,build_files,native_registrations,new_dependencies,generated_artifacts,validation,source_sha256
 1,ONNX-MLIR,0.4.2,4a13c34aa695b228599d637cdb772c19b4b18dba,implementation,6,167,7290,0,3,1,0,2,pass,3ecc1959dbc0c17d903604fd4556022d1631311765cd7da084434345a84c2c1b
+1,ONNX-MLIR,0.4.2,4a13c34aa695b228599d637cdb772c19b4b18dba,policy,7,201,7835,0,3,1,0,4,pass,9dde36966efd7b4f14c1cbe53d9c16ca4aa5ad3565707d584ab79c4d0e2904c6

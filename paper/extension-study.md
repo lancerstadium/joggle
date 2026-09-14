@@ -108,8 +108,10 @@ end to end through the documented accelerator path: the unchanged ONNX fixture
 lowers to an explicit `i-k-j` loop nest, compiles to a native shared library,
 and passes the numerical oracle. The exact six-file extension, emitted IR, and
 result record are preserved under `baselines/onnx-mlir/implementation/`. The
-other three contracts and a clean-build repetition remain incomplete, so there
-is no complete system comparison or cross-system extensibility conclusion yet.
+policy task also passes through a separate accelerator-scoped analysis and
+transformation. The external-kernel task is unsupported at its first mandatory
+case, while numeric format and an uninterrupted clean-build repetition remain
+incomplete, so there is no complete cross-system extensibility conclusion yet.
 RISE/Shine remains provisional; standalone MLIR observations may explain
 plumbing cost but cannot close RQ2.
 

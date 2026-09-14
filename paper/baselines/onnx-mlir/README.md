@@ -1,18 +1,20 @@
 # ONNX-MLIR system baseline
 
 This directory defines the primary system-level baseline for RQ2. The matched
-implementation task has a preserved native pilot. The external-kernel task now
-has a reproducible unsupported outcome at its first mandatory matrix case; the
-policy and numeric-format contracts remain incomplete. These records do not
+implementation and policy tasks have preserved native results. The external-
+kernel task has a reproducible unsupported outcome at its first mandatory
+matrix case; the numeric-format contract remains incomplete. These records do not
 support a broad extensibility claim.
 
-The policy input now has a documented-path probe under [`policy/`](policy/).
+Before implementing the policy extension, the policy input was checked through
+the documented built-in path under [`policy/`](policy/).
 Default ONNX-MLIR fusion lowers the unchanged three-`Add` model to one affine
 loop; `--disable-krnl-op-fusion` preserves three. This establishes the two
 structural endpoints, but the global Boolean does not implement the contract's
 caller-defined operation weights, maximum extent, or maximum call count. The
-task therefore remains incomplete pending an accelerator-scoped policy
-implementation; the existing flag is not counted as a pass.
+built-in flag was therefore not counted as a pass. The subsequent independent
+accelerator-scoped implementation and result are preserved in the same
+directory.
 
 ## Frozen revision and documented path
 
@@ -118,6 +120,46 @@ preserves the emitted loop nest, while
 digests, configuration, extension surface, and the oracle. The dependency
 build was resumed incrementally, so no clean-build duration is reported for
 this pilot.
+
+## Native policy result
+
+The policy task uses a separate `Policy` accelerator rather than the built-in
+global switch. Its analysis counts calls and other operations with
+caller-supplied weights, then discovers one-result, one-use, equal-shape
+producer-consumer pairs without matching ONNX operator names. Caller-supplied
+extent and call-count limits select whether the normal ONNX-MLIR pipeline may
+fuse those pairs. At this revision the underlying hook remains module-wide:
+the extension can select between the two fusion endpoints but cannot apply a
+different decision to each candidate inside one module.
+
+The preserved extension contains seven authored files and 201 non-comment
+source lines. On the frozen policy fixture, the rejecting configuration accepts
+zero of two candidates and emits three affine loops; the accepting
+configuration accepts both and emits one. Both shared libraries return
+`[28, 32, 36, 40]` with zero maximum absolute error. A separate one-call
+measurement fixture reports costs 5 and 9 for weight pairs `(4, 1)` and
+`(7, 2)`, respectively.
+
+Reproduction copies [`policy/src/`](policy/src/) and
+[`policy/test/`](policy/test/) into the pinned checkout, configures with
+`ONNX_MLIR_ACCELERATORS=Policy` and the same five empty infrastructure macros
+shown above, and invokes `onnx-mlir` twice:
+
+```sh
+build-policy/Release/bin/onnx-mlir --maccel=Policy --O0 --EmitMLIR \
+  --policy-max-extent=0 --policy-max-calls=100 \
+  --policy-report -o reject /path/to/policy/model.onnx
+build-policy/Release/bin/onnx-mlir --maccel=Policy --O0 --EmitMLIR \
+  --policy-max-extent=100 --policy-max-calls=100 \
+  --policy-report -o accept /path/to/policy/model.onnx
+```
+
+[`policy/result.json`](policy/result.json) records the exact configuration,
+digests, measurements, structural counts, and numerical oracles.
+[`policy/check.py`](policy/check.py) verifies the preserved source and IR record
+without requiring the external checkout. Because the first fresh configuration
+encountered an unused StableHLO dependency and the successful build resumed
+after disabling it, no uninterrupted clean-build duration is reported.
 
 ## External-kernel unsupported boundary
 

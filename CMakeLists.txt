@@ -521,6 +521,12 @@ if(JOGGLE_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/paper/render_tables.py --check
     )
     add_test(
+      NAME onnx-mlir-policy-record
+      COMMAND
+        ${JOGGLE_TEST_PYTHON}
+        ${CMAKE_CURRENT_SOURCE_DIR}/paper/baselines/onnx-mlir/policy/check.py
+    )
+    add_test(
       NAME measure-systems
       COMMAND
         ${JOGGLE_TEST_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/test/measure_systems.py

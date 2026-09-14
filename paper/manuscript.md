@@ -477,8 +477,8 @@ policy runs report the same processor class.
 ### 5.5 Extension surface
 
 The extension-surface study and controlled performance study are not complete.
-One of four system-baseline tasks passes, one has a preserved unsupported
-outcome at its first mandatory case, and two remain incomplete. These results
+Two of four system-baseline tasks pass, one has a preserved unsupported
+outcome at its first mandatory case, and one remains incomplete. These results
 do not support a general claim that Joggle is easier to extend, more compatible,
 or faster than another compiler.
 
@@ -488,10 +488,22 @@ or faster than another compiler.
 | Task | Joggle | TVM control | ONNX-MLIR system path |
 | --- | --- | --- | --- |
 | implementation | pass, 20 lines | pass, 62 lines | pass, 167 lines in six files |
-| policy | pass, 69 lines | pass, 126 lines | incomplete; global Boolean only |
+| policy | pass, 69 lines | pass, 126 lines | pass, 201 lines |
 | external-kernel | pass, 138 lines | pass, 355 lines | unsupported at first required MatMul case |
 | numeric-format | pass, 284 lines | incomplete | incomplete |
 <!-- END GENERATED: extension-surface -->
+
+The ONNX-MLIR policy result is a separate accelerator-scoped implementation,
+not a relabeling of its built-in fusion flag. In 201 non-comment lines across
+seven files, it assigns caller-supplied weights to calls and other operations
+and discovers one-result, one-use, equal-shape producer-consumer pairs without
+matching ONNX operator names. On the unchanged fixture it finds two pairs: an
+extent limit of zero accepts none and preserves three affine loops, while a
+limit of 100 accepts both and produces one loop. Both native artifacts pass the
+same oracle with zero maximum absolute error, and the independent measurement
+fixture reports the expected weighted costs 5 and 9. The underlying ONNX-MLIR
+hook is still module-wide, however, so this result demonstrates an
+accelerator-scoped policy path rather than per-candidate selective fusion.
 
 Lines are nonblank, non-comment authored source under each frozen task's
 inclusion rules. They expose where an extension crosses files and registration
@@ -534,7 +546,7 @@ the generic call pattern and receives the option, whereas MatMul registers only
 its ordinary lowering. The exact successful command, emitted IR, source
 digests, and failed mandatory requirement are preserved as an unsupported
 outcome; no later requirement is counted as passing after that failure. The
-policy and numeric-format contracts and a clean-build repetition remain
+numeric-format contract and an uninterrupted clean-build repetition remain
 incomplete, so there is still no full matched RQ2 result or comparative
 extensibility claim. Standalone MLIR type/dialect experiments may
 decompose registration and conversion work, but cannot be reported as the

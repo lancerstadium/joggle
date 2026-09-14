@@ -102,8 +102,9 @@ no clean-build duration. The external-kernel task now has a separately
 preserved unsupported outcome: the documented `--ops-for-call=MatMul` option
 accepts the frozen first matrix case but emits ordinary affine loops rather
 than `krnl.call`. Exact output and source evidence are under
-`paper/baselines/onnx-mlir/external-kernel/`. The policy and numeric-format
-contracts remain open.
+`paper/baselines/onnx-mlir/external-kernel/`. The policy task now passes through
+a separately preserved accelerator extension; the numeric-format contract
+remains open.
 
 `instance-specialization-pilot.csv` records the first four-model evaluation of
 compiler-owned call-site instances. Each automatic variant starts from the
