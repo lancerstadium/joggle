@@ -49,9 +49,11 @@ reports 139.679 ms for the ordinary artifact and 102.638 ms after generic loop
 reordering and affine-index canonicalization, with adjacent ONNX Runtime
 medians of 8.387 and 8.382 ms. Thus the module policy reduces latency by 26.5%
 and generated source by 20.8% within that runner, but remains 12.24x slower
-than the adjacent production runtime. These are blocking results, not hidden
-caveats: the shared runners lack a host-load bound, controlled thermal state,
-and isolated second-machine replication. The manuscript must not claim
+than the adjacent production runtime. A separate dispatch reproduces
+byte-identical artifacts and correct outputs on an Intel Xeon runner; its
+MobileNetV2 and MNIST gaps are 23.66x and 10.59x. These are blocking results,
+not hidden caveats: the shared runners lack a host-load bound, controlled
+thermal state, and an isolated independently managed host. The manuscript must not claim
 superior speed, compatibility, or extensibility until the corresponding study
 is complete.
 

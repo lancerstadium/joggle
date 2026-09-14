@@ -381,10 +381,14 @@ of 8.387 and 8.382 ms. The policy is therefore 0.73x the ordinary artifact in
 that job while remaining 12.24x slower than the adjacent production runtime.
 The differing ordinary-artifact medians
 between the two shared runners illustrate why only the within-job policy ratio
-is interpreted. Every subject passes the common stored-output contract. These
-remain CI diagnostics rather than publication results: neither workflow
-controls host load or thermal state, and neither has second-machine
-replication.
+is interpreted. A separate dispatch emits byte-identical artifacts on an Intel
+Xeon Platinum 8370C runner and reproduces every stored-output check. Its
+MobileNetV2 Joggle/ONNX Runtime medians are 173.787/7.345 ms, a 23.66x gap;
+MNIST reports 0.570/0.054 ms, a 10.59x gap. Repeating the policy workflow gives
+canonical/plain ratios of 0.7348 and 0.7358 despite different absolute times.
+These remain shared-runner diagnostics rather than publication results: the
+workflows do not control host load, temperature, or frequency, and the policy
+runs report the same processor class.
 
 ### 5.4 Extension surface
 
@@ -508,10 +512,11 @@ dimension separately. It does not combine them into an ease-of-use score.
 
 Model coverage currently overrepresents static vision networks. Numerical
 agreement with one stored input does not establish task accuracy, robustness,
-or general operator support. Performance pilots were run on one unisolated host
-and cannot support cross-system speed claims. Final results require pinned
+or general operator support. Performance pilots now include shared Linux
+runners from two CPU classes, but they cannot support cross-system speed claims
+without load, frequency, and thermal control. Final results require pinned
 artifacts and revisions, isolated repeated trials with dispersion, task-level
-metrics, at least one non-vision workload, and a second-machine artifact
+metrics, at least one non-vision workload, and an independently managed artifact
 reproduction. Unsupported models and transformations that lose performance
 remain part of the reported frontier.
 
