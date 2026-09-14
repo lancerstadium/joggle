@@ -1722,7 +1722,8 @@ local fn convert_loop(m: Mod, op: Op) -> bool {
   for i in 0..len(outputs) {
     carry(m, outputs[i], replacements[i])
   }
-  if !ir.replace(m, outputs, replacements) || !ir.erase(m, op) {
+  if !ir.replace(m, outputs, replacements) || !ir.erase(m, op) ||
+     !ir.erase(m, body) {
     return false
   }
   return true

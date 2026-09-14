@@ -41,7 +41,8 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "bounds folding failed (${result}):\n${error}")
 endif()
 file(READ "${bounded}" text)
-if(text MATCHES "if i >= 2" OR NOT text MATCHES "if j < 10")
+if(text MATCHES "if i >= 2" OR NOT text MATCHES "if j < 10" OR
+   text MATCHES "tensor.dim" OR NOT text MATCHES "return 3")
   message(FATAL_ERROR
           "bounds folding changed the wrong conditions:\n${text}")
 endif()

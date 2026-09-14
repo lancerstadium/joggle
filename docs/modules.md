@@ -274,8 +274,10 @@ whose result interval is exactly `[0, 0]` or `[1, 1]`; unknown and mixed
 conditions remain untouched. It deliberately leaves control-flow selection
 and dead-code cleanup to the existing `opt.fold` and `opt.basic`, so
 `bounds.fold opt.fold opt.basic` is an explicit composable pipeline rather
-than an analysis with hidden mutation. Neither function knows about tensors,
-NN operations, or a target.
+than an analysis with hidden mutation. A resolved `tensor.dim` of a static
+tensor contributes one exact integer fact, allowing runtime-shape code to
+collapse after specialization. No tensor contents, NN operation, allocation
+policy, or target rule is otherwise built into the analysis.
 
 `opt` applies algebra only to the exact resolved functions that own it. Its
 built-in identities and cleanup recognize `base` scalar functions, not every

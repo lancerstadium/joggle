@@ -1,6 +1,7 @@
 module bounds
 use base
 use ir
+use tensor
 
 local fn integer(type: Ty) -> bool {
   let name = base.name(type)
@@ -234,7 +235,31 @@ local fn result(m: Mod, op: Op, known: dict) -> list<int> {
     return []
   }
   let inputs = ir.args(op)
-  let name = base_call(m, op)
+  if ir.target(m, op) == "tensor.dim" && len(inputs) == 2 {
+    let source = ir.type(inputs[0])
+    var axis = get(known, inputs[1])
+    if len(axis) != 2 {
+      let cast = ir.def(inputs[1])
+      if ir.live(cast) && ir.kind(cast) == "call" &&
+         len(ir.args(cast)) == 1 && ir.is_const(ir.args(cast)[0]) &&
+         base.kind(ir.constant(ir.args(cast)[0])) == "int" {
+        let exact = base.int(ir.constant(ir.args(cast)[0]))
+        axis = [exact, exact]
+      }
+    }
+    if tensor.valid(source) && tensor.static(source) && len(axis) == 2 &&
+       axis[0] == axis[1] && axis[0] >= 0 &&
+       axis[0] < len(tensor.shape(source)) {
+      let extent = tensor.shape(source)[axis[0]]
+      return [extent, extent]
+    }
+    return []
+  }
+  var name = base_call(m, op)
+  if name == "" && len(inputs) == 1 &&
+     ir.callee(op) == base.name(ir.type(outputs[0])) {
+    name = ir.callee(op)
+  }
   if name == "" {
     return []
   }
@@ -472,15 +497,25 @@ local fn predicate(m: Mod, op: Op) -> bool {
          name == "operator !"
 }
 
+local fn dimension(m: Mod, op: Op) -> bool {
+  return ir.kind(op) == "call" && len(ir.outs(op)) == 1 &&
+         ir.target(m, op) == "tensor.dim"
+}
+
 fn fold(m: Mod) -> bool {
   let known = infer(m)
   var changed = false
   for op in ir.ops(m) {
-    if ir.live(op) && predicate(m, op) {
+    if ir.live(op) && (predicate(m, op) || dimension(m, op)) {
       let bound = get(known, ir.outs(op)[0])
       if len(bound) == 2 && bound[0] == bound[1] {
-        assert(ir.replace(m, op, bound[0] != 0),
-               "bounds.fold could not replace an exact predicate")
+        if predicate(m, op) {
+          assert(ir.replace(m, op, bound[0] != 0),
+                 "bounds.fold could not replace an exact predicate")
+        } else {
+          assert(ir.replace(m, op, bound[0]),
+                 "bounds.fold could not replace an exact dimension")
+        }
         changed = true
       }
     }

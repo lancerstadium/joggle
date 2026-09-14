@@ -417,6 +417,7 @@ int main(int argc, char** argv) {
   CHECK(count_calls(loop_model, "tensor.make") == 1);
   CHECK(count_calls(loop_model, "tensor.write") == 1);
   CHECK(count_calls(loop_model, "tensor.view") == 1);
+  CHECK(loop_model.fns().size() == 1);
   std::size_t structured_loops = 0;
   for (joggle::Op candidate : loop_model.ops())
     structured_loops += candidate.kind() == joggle::Op::Kind::loop;

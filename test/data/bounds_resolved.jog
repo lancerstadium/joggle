@@ -1,5 +1,10 @@
 module bounds.resolved
 use base
+use tensor
+
+fn dimension(x: tensor<f32, [2, 3, 4]>) -> index {
+  return tensor.dim(x, index(1))
+}
 
 fn mixed() -> int {
   var total = 0
