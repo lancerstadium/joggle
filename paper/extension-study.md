@@ -1,11 +1,28 @@
 # Extension study protocol
 
-This study tests whether Joggle's function-and-module boundary supports bounded
-neural-network co-design changes without modifying a central compiler registry.
-It does not equate source lines with usability and does not treat the existing
-authors as independent participants.
+This workspace contains four different studies that must not be collapsed into
+one “extensibility” number:
 
-## Frozen task contracts
+1. **role breadth:** can an installed typed module contribute vocabulary,
+   analysis, mutation, target choice, and artifact behavior through one public
+   mechanism;
+2. **module lifecycle:** can source-only and native modules be validated,
+   installed, upgraded, resolved with their dependency closure, and uninstalled
+   without rebuilding the host;
+3. **vertical closure:** can one inference/hardware idea retain semantics,
+   fallback, representation, structural policy, target binding, validation, and
+   artifact behavior; and
+4. **evolution continuity:** what breaks when that complete idea is revised after
+   the initial implementations are frozen.
+
+The existing four contracts cover role breadth. They do not by themselves prove
+vertical closure, evolution continuity, usability, or generality. The module
+lifecycle is covered by project tests but still needs clean-install measurements.
+The vertical and revision studies remain submission blockers. Source lines are
+never treated as developer productivity, and the existing authors are not
+treated as independent participants.
+
+## Role-breadth contracts
 
 The system-neutral contracts and the corresponding Joggle records are listed in
 [`extension-tasks.json`](extension-tasks.json):
@@ -16,7 +33,8 @@ The system-neutral contracts and the corresponding Joggle records are listed in
 4. add a parametric saturating integer format with two target representations.
 
 Each contract fixes repository inputs, observable requirements, and forbidden
-shortcuts before a comparison implementation begins. The first three Joggle
+shortcuts before a comparison implementation begins. They are capability probes,
+not four independent user studies. The first three Joggle
 records are out-of-tree extensions. The numeric format is explicitly
 classified as a bundled optional module because it also exercises the native
 module ABI; it must not be reported as a zero-build-system-change task.
@@ -48,7 +66,7 @@ python3 paper/measure_extensions.py \
 The committed CSV is a reproducibility check and pilot description, not the
 answer to RQ2.
 
-## Matched comparison required for RQ2
+## Matched role-breadth comparison
 
 Each comparison system receives the same manifest contract of repository
 inputs, observable requirements, and forbidden shortcuts. Its implementation
@@ -64,8 +82,8 @@ another machine can reproduce them from the contract. The paper reports each
 dimension separately; it does not translate them into developer time,
 productivity, or a synthetic ease-of-use score.
 
-The comparison has two levels. They answer different questions and must not be
-collapsed into one ranking.
+The role-breadth comparison has two levels. They answer different questions and
+must not be collapsed into one ranking or substituted for the revision study.
 
 1. **System-level extension path.** ONNX-MLIR is the primary baseline for the
    complete neural-network compiler workflow: ingest the same ONNX fixture,

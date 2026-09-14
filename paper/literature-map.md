@@ -10,6 +10,53 @@ evidence. A work enters the manuscript bibliography only after its metadata and
 the claim attached to it have both been checked. The target remains at least 50
 *used* references, but citation count is not an evaluation metric.
 
+## The broader compiler-extensibility landscape
+
+Joggle must be situated as compiler infrastructure before inference becomes the
+evaluation domain. Three older and newer research lines already address major
+parts of this problem:
+
+- **Language workbenches and modular compilers.** JastAdd composes declarative
+  attributes and rewrites into modular language extensions; Spoofax integrates
+  syntax, analysis, transformation, code generation, and separately deployable
+  editor plugins; Nanopass makes successive languages and small typed passes
+  explicit. These systems show that modular language definition, one reusable
+  transformation formalism, and incremental compiler construction are not new.
+  [JastAdd](https://doi.org/10.1016/j.scico.2007.02.003),
+  [Spoofax](https://doi.org/10.1145/1869459.1869497),
+  [Nanopass](https://doi.org/10.1017/S0956796805005605)
+- **Extensible IR ecosystems.** MLIR makes new operations, types, interfaces,
+  dialects, and passes coexist in one infrastructure. xDSL deliberately trades
+  production-compiler coupling for a Python sidekick that shares textual IR and
+  declarative IR definitions with MLIR. This is the closest broad alternative to
+  a lightweight research substrate and must become a primary baseline rather
+  than a passing citation.
+  [MLIR](https://research.google/pubs/mlir-scaling-compiler-infrastructure-for-domain-specific-computation/),
+  [xDSL](https://arxiv.org/abs/2311.07422)
+- **Controllable compilation.** The MLIR Transform dialect provides a uniform,
+  extensible IR for selecting payload operations, composing existing compiler
+  transformations, checking pre/postconditions, and integrating search without
+  rebuilding the compiler for each script. Joggle cannot claim fine-grained,
+  safe, reusable transformation control as novel.
+  [Transform dialect, CGO 2025](https://doi.org/10.1145/3696443.3708922)
+
+These comparisons sharpen the open question. Language workbenches primarily
+extend source languages and tooling. MLIR/xDSL primarily make IR vocabularies
+and pass ecosystems extensible. Transform dialect and user-schedulable languages
+primarily control transformations over a payload IR. Joggle's candidate design
+is a **typed runtime module boundary spanning these lines**: a module can add
+program vocabulary, compute or transform the represented program, participate
+in target choice, and close an executable artifact through the same invocation,
+dependency, installation, and rollback model. Whether this breadth remains
+coherent rather than becoming an under-specified universal mechanism is the
+central design risk.
+
+Inference and emerging hardware remain the strongest evaluation domain because
+they force all roles to interact. They do not define the system's applicability.
+The paper therefore needs one non-neural extension micro-study to establish that
+the core mechanism is not operator-specific, while reserving full performance
+evaluation for inference where the implementation is mature enough to be fair.
+
 ## 1. The problem is not “too many IRs”
 
 Several tempting versions of the Joggle story are already solved or are too weak
@@ -343,12 +390,13 @@ Joggle.
 The working title should describe the mechanism and the unresolved problem, not
 promise an inference-performance victory that has not been measured:
 
-> **Joggle: Distributable Compiler Extensions for Agile Inference Co-Design**
+> **Joggle: Typed Modules for Extensible Compilation**
 
-“Progressive exposure” is the mechanism name inside the paper. “Distributable
-extensions” names the concrete unit a researcher installs and revises; “agile
-inference co-design” names the intended benefit. The title remains provisional
-until E1 and E3 succeed.
+“Typed modules” names the concrete extension unit and remains independent of a
+particular workload or target. Inference co-design is the demanding evaluation
+domain; progressive exposure is the mechanism that lets one module participate
+at increasing levels of implementation detail. The title remains provisional
+until the mechanism and baseline experiments succeed.
 
 The Motivation should follow this chain:
 

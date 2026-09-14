@@ -53,6 +53,12 @@ CITATIONS = {
     "https://onnx.ai/onnx-mlir/AddCustomAccelerators.html": "onnxmlirAccelDocs",
     "https://onnx.ai/onnx-mlir/BuildOnLinuxOSX.html": "onnxmlirBuildDocs",
     "https://iree.dev/": "ireeDocs",
+    "https://doi.org/10.1145/3696443.3708922": "lucke2025transform",
+    "https://arxiv.org/abs/2311.07422": "fehr2023xdsl",
+    "https://doi.org/10.1016/j.scico.2007.02.003": "ekman2007jastadd",
+    "https://doi.org/10.1017/S0956796805005605": "sarkar2005nanopass",
+    "https://doi.org/10.1145/1869459.1869497": "kats2010spoofax",
+    "https://doi.org/10.1007/3-540-36579-6_11": "nystrom2003polyglot",
 }
 
 
@@ -263,7 +269,7 @@ def render(source: str) -> tuple[str, int]:
 \renewcommand\footnotetextcopyrightpermission[1]{{}}
 \acmConference[EuroSys '27]{{Twenty-Second European Conference on Computer Systems}}{{April 19--23, 2027}}{{Rabat, Morocco}}
 \acmYear{{2027}}
-\title[Joggle: Distributable Extensions]{{{escape(title)}}}
+\title[Joggle: Typed Modules]{{{escape(title)}}}
 \author{{Anonymous Author(s)}}
 \affiliation{{\institution{{Anonymous}}}}
 \ccsdesc[500]{{Software and its engineering~Compilers}}

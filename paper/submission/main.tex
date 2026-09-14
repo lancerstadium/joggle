@@ -7,28 +7,31 @@
 \renewcommand\footnotetextcopyrightpermission[1]{}
 \acmConference[EuroSys '27]{Twenty-Second European Conference on Computer Systems}{April 19--23, 2027}{Rabat, Morocco}
 \acmYear{2027}
-\title[Joggle: Distributable Extensions]{Joggle: Distributable Compiler Extensions for Agile Inference Co-Design}
+\title[Joggle: Typed Modules]{Joggle: Typed Modules for Extensible Compilation}
 \author{Anonymous Author(s)}
 \affiliation{\institution{Anonymous}}
 \ccsdesc[500]{Software and its engineering~Compilers}
 \ccsdesc[300]{Computer systems organization~Embedded systems}
 \begin{document}
 \begin{abstract}
-Model--hardware co-design changes more than a kernel. A new representation or
-instruction can simultaneously revise source semantics, tensor structure,
-storage, selection policy, validation, and the deployed artifact. Existing
-compilers make each of these concerns extensible, but usually after a particular
-boundary---dialect, tensor program, kernel, or ISA---has stabilized. During
-co-design, that boundary is itself an experimental variable. Joggle is a lightweight compiler substrate for this period of change. Its
-\textbf{progressive exposure} mechanism preserves one typed program while modules
-selectively reveal tensor, loop, storage, target, and artifact detail. Portable
-and specialized implementations coexist; handwritten rules, search, synthesis,
-and generated policies use the same checked choice interface. The evaluation
-tests whether this design preserves a working model-to-artifact path across
-unforeseen hardware revisions, and whether generic target policies convert that
-continuity into competitive latency and memory use. Current whole-model results
-establish artifact correctness but also expose a substantial generated-code
-performance gap; closing and explaining that gap is a submission requirement.
+Extensible compilers expose different units of change: language workbenches add
+syntax and semantics, multi-level infrastructures add IR dialects and passes,
+and scheduling systems control transformations over a chosen payload. Research
+that crosses these boundaries must still coordinate several definition,
+registration, execution, and deployment mechanisms. The cost is most visible
+when the boundary itself is experimental, as in new datatypes, storage formats,
+instructions, or generated optimization policies. Joggle explores \textbf{typed modules} as one runtime extension unit across the
+compiler stack. A module can introduce program vocabulary, compute over or
+transactionally edit a typed Fn/Blk/Op/Val program, select portable or
+specialized implementations, and close an executable artifact. Progressive
+exposure reveals tensor, loop, storage, and target detail only when a consumer
+requires it; ordinary installation and dependency rules apply to every role.
+We evaluate the design through inference co-design because it simultaneously
+stresses semantics, representation, optimization, hardware specialization, and
+deployment. The study measures bootstrap and extension closure, controlled
+revisions, chooser substitution, complete artifacts, and generated-code quality
+against native compiler paths. Current results establish functional breadth but
+leave competitive whole-model performance as a submission requirement.
 \end{abstract}
 \keywords{inference compilation, compiler extensibility, co-design, intermediate representation, edge inference}
 \maketitle
@@ -436,6 +439,29 @@ sequences. This question determines whether a uniform extension mechanism is a
 usable substrate or merely moves complexity into interpreted module code.
 
 \section{Related work}
+\subsection{Extensible compiler construction}
+\cite{ekman2007jastadd} uses rewritable reference-attributed grammars to build modular
+language extensions and pluggable analyses. \cite{nystrom2003polyglot} scales Java-like language
+extensions without duplicating the base compiler. \cite{kats2010spoofax} combines declarative syntax,
+analysis, transformation, code generation, and deployable editor services in a
+language workbench. \cite{sarkar2005nanopass} describes a compiler as typed transformations
+between many small, related languages. These systems establish that modular
+language definition, reusable rewrite formalisms, and small transformations are
+not new; their primary object is a language implementation rather than a live
+program moving through target selection and artifact construction.
+
+\cite{fehr2023xdsl} takes a complementary sidekick approach: it recreates MLIR-compatible SSA
+infrastructure in Python and exchanges textual IR and declarative definitions
+with the production ecosystem. The \cite{lucke2025transform} exposes precise,
+composable compiler transformations, pre/postconditions, and search integration
+as transform IR without requiring a custom pass for each policy. Both are close
+comparisons for research accessibility and controllable compilation. Joggle's
+question is whether one installed typed module can span vocabulary, analysis,
+mutation, target choice, and artifact closure without introducing a new host
+extension category for each role. A matched study must test whether that broader
+boundary remains simpler and equally diagnosable, rather than assuming it from
+the syntax.
+
 \subsection{Multi-level composition and deployment}
 TVM's IR evolution does not show that successive abstractions should be
 collapsed. TE made tensor computation schedulable; TensorIR made blocks and

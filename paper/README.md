@@ -8,7 +8,7 @@ preserved here.
 
 ## Target and thesis
 
-Working title: **Joggle: Distributable Compiler Extensions for Agile Inference Co-Design**.
+Working title: **Joggle: Typed Modules for Extensible Compilation**.
 
 The current target is the
 [EuroSys 2027 fall cycle](https://2027.eurosys.org/cfp.html). Titles and
@@ -19,16 +19,22 @@ format, and is double blind. Repository links must therefore point to an
 anonymous snapshot rather than this development repository. EuroSys also
 requires disclosure of AI-tool use under ACM policy.
 
-The paper studies **temporal extensibility**: whether a model--machine extension
-can remain working while its semantic, representation, structural, target,
-selection, validation, and artifact contracts evolve together. Joggle's proposed
-mechanism is progressive exposure over typed functions. Its claim is not that
-one IR is superior, that all compiler concepts are identical, or that fewer
-source lines prove usability. The required evidence is a controlled revision
-study, chooser substitution through one checked interface, generic target
-policies that improve complete artifacts, and explicit representation/failure
-boundaries. Extension surface, compile cost, code size, correctness, workspace,
-latency, and diagnostic quality all belong to that claim.
+The paper studies whether **typed modules can serve as one coherent runtime
+extension unit across a compiler stack**. A module may add program vocabulary,
+analysis, transformation, target choice, or artifact behavior through the same
+dependency, invocation, installation, and rollback model. Progressive exposure
+lets consumers request additional implementation detail without forcing the
+entire program through a fixed lowering sequence. Temporal extensibility is one
+important consequence, not the definition of the system.
+
+The claim is not that one IR is universally superior, that all compiler concepts
+are semantically identical, or that fewer source lines prove usability. The
+required evidence includes cross-role module composition, clean package
+lifecycle and diagnostics, controlled revision studies, chooser substitution,
+generic target policies that improve complete artifacts, and explicit
+representation/failure boundaries. Inference and emerging hardware provide the
+main stress domain because they exercise every role at once; the mechanism is
+not operator- or device-specific.
 
 ## Current evidence status
 
