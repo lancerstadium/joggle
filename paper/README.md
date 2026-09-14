@@ -8,8 +8,8 @@ preserved here.
 
 ## Target and thesis
 
-Working title: **Joggle: One Function IR for Extensible Inference
-Compilation**.
+Working title: **Joggle: Malleable Inference Compilation with a Progressive
+Function IR**.
 
 The current target is the
 [EuroSys 2027 fall cycle](https://2027.eurosys.org/cfp.html). Titles and

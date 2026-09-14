@@ -1,4 +1,4 @@
-# Joggle: One Function IR for Extensible Inference Compilation
+# Joggle: Malleable Inference Compilation with a Progressive Function IR
 
 Working manuscript for the EuroSys 2027 fall cycle. The current file is
 an argument draft, not a submission-ready paper. Pilot values are labeled and
