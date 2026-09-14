@@ -257,7 +257,9 @@ integration. Large model artifacts remain checksum-pinned external inputs and
 are excluded from the default CI path; the evaluation scripts must therefore
 record explicitly which optional gates were available.
 
-## 5. Evaluation status
+## 5. Evaluation
+
+### 5.1 Protocol, compatibility, and correctness
 
 The repository currently records pilots, not publication measurements. Ten
 ONNX models execute against stored reference outputs. TinyYOLOv3 retains a
@@ -295,6 +297,8 @@ header, structured API, and generated harness agree under strict C11 warnings.
 The harness mechanism has compiled for both the official MNIST application and
 a two-input/two-output interface. This establishes interface consistency, not
 broader model execution or performance.
+
+### 5.2 Compiler cost
 
 Compiler-side scaling has a concrete mechanism pilot but not yet a formal
 result. Snapshot-relative memoization binds IR handles to their generation and
@@ -348,6 +352,8 @@ interpreted source-function bodies falls from 2,099,082 to 237,342 after memo
 hits, and both variants emit byte-identical 329,117-byte C. This is a
 single-host mechanism diagnostic, not a controlled compiler-throughput claim.
 
+### 5.3 Artifact quality
+
 Generated C is presently the main negative result. Depending on the model, the
 recorded unisolated pilots are about 7--101 times slower than one-thread ONNX
 Runtime. Internal A/B runs of structural rewrites are therefore excluded from
@@ -379,6 +385,8 @@ is interpreted. Every subject passes the common stored-output contract. These
 remain CI diagnostics rather than publication results: neither workflow
 controls host load or thermal state, and neither has second-machine
 replication.
+
+### 5.4 Extension surface
 
 The extension-surface study and controlled performance study are not complete.
 One of four system-baseline tasks passes, one has a preserved unsupported
