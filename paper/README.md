@@ -36,10 +36,10 @@ usability.
 
 | Question | Evidence present | Blocking work |
 | --- | --- | --- |
-| Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths | Freeze and record model-level stage traces |
+| Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths; twelve pinned Zoo stage records, of which ten complete semantic conversion | Turn the stage records into one compact generated table or trace figure |
 | Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM controls pass three contracts; the exact MatMul implementation passes through native ONNX-MLIR; its documented external-call option has a preserved unsupported MatMul outcome | Finish the policy and numeric-format system tasks or preserve their unsupported outcomes; repeat the ONNX-MLIR build from a clean checkout |
-| Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical CSE/analysis scaling pilots | Freeze a fault and diagnostic matrix |
-| Artifact quality | Ten numerical ONNX paths; clean-revision, 20-trial MobileNetV2 and MNIST pilots compare generated C with ONNX Runtime; internal rewrite diagnostics remain separate | Broaden the independent-system matrix, add ONNX-MLIR where executable, task accuracy, an isolated second machine, and a materially smaller generated-C gap |
+| Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical CSE/analysis scaling pilots | Freeze a fault and diagnostic matrix; do not expand parser/printer internals unless a case exposes a correctness defect |
+| Artifact quality | Ten numerical ONNX paths; clean-revision, 20-trial MobileNetV2 and MNIST records compare generated C with ONNX Runtime on two shared-runner CPU classes; internal rewrite diagnostics remain separate | Add an identified isolated Linux host with dispersion and task accuracy, or narrow the paper claim explicitly to artifact correctness and transformation reach |
 
 The current generated-C pilots remain slower than one-thread ONNX Runtime. At
 revision `418a34e`, the balanced GitHub Linux smoke run reports MobileNetV2 at
@@ -189,6 +189,20 @@ python3 paper/measure_pair.py \
 ```
 
 ## Submission gate
+
+With the abstract deadline on September 17 and the paper deadline on September
+24, work is ordered by claim risk rather than component completeness:
+
+1. freeze the title, abstract, author list, conflicts, and scope of the artifact
+   claim for abstract registration;
+2. close the extension matrix with a passing result or preserved unsupported
+   outcome for every ONNX-MLIR task retained in the paper;
+3. run the frozen system manifests on an identified, otherwise-idle Linux host
+   and report dispersion rather than only medians;
+4. generate the model-frontier and performance figures/tables from raw records,
+   then complete the 12-page anonymous manuscript and audits;
+5. defer parser/printer/verifier refactoring and new frontend or backend breadth
+   unless they block one of the preceding experiments.
 
 A EuroSys submission is justified only if all of the following are complete:
 

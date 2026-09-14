@@ -259,7 +259,55 @@ record explicitly which optional gates were available.
 
 ## 5. Evaluation
 
-### 5.1 Protocol, compatibility, and correctness
+### 5.1 Experimental method
+
+We use three protocols, each aligned with a research question and each kept
+separate from its results. First, the model study measures progressive
+representation (RQ1) with checksum-pinned ONNX Model Zoo subjects. For every
+available model, the harness records four ordered gates: protobuf decoding and
+canonical round trip, result-type inference, source-call conversion, and
+semantic round trip. A model passes only the gates it actually reaches; a model
+missing from the configured cache is omitted rather than counted. A separate
+execution gate compiles generated C with strict C11 warnings and compares one
+fixed input against the stored Zoo output. This is a test of the compiled
+numerical path, not dataset accuracy or general operator coverage.
+
+Second, the extension study measures the structural surface of co-design
+changes (RQ2 and RQ3). Before implementing a comparison, we freeze its input,
+observable requirements, oracle, counted files, and forbidden shortcuts. The
+four tasks replace a matrix implementation, define a structural scheduling
+policy, connect external matrix and convolution kernels, and add a parametric
+saturating integer format. Joggle and each comparison system must follow their
+documented extension path. We retain authored nonblank, non-comment lines,
+files crossed, generated definitions, native registrations, build changes,
+dependencies, artifacts, and diagnostics. A failed mandatory requirement is
+reported as unsupported; we neither weaken the task nor substitute a smaller
+standalone example. These measurements expose extension boundaries, but do not
+measure developer time, comprehension, or usability.
+
+Third, the artifact study measures RQ4 with schema-2 manifests that name one
+Joggle artifact and one independently implemented ONNX Runtime subject. Each
+command performs three untimed warm-ups, times one inference, validates its
+output, and exits; the runner launches a fresh process for each subject in each
+of 20 trials. Rotated and reversed ordering balances position over complete
+cycles. Both subjects receive one-thread environment settings and, on Linux,
+are pinned to the same available CPU. The runner rejects malformed protocol
+rows, validation failure, a dirty checkout, or unavailable affinity, and
+records compiler/runtime versions, commands, host state, artifact hashes, and
+raw samples. We report medians because the present shared-runner records are
+diagnostic; publication measurements additionally require an identified idle
+host, an explicit load threshold, stable power and thermal conditions,
+dispersion, and independent-machine replication.
+
+The generic MobileNetV2 policy is a within-workflow ablation, not an
+independent-system comparison. One workflow creates plain and transformed C
+from the same canonical program, verifies both against the same stored output,
+then runs each artifact in a separate balanced manifest beside ONNX Runtime on
+one pinned CPU. This design attributes the within-run artifact difference to
+the checked-in transformation under the recorded build and input contract; it
+does not make Joggle competitive with ONNX Runtime or control the shared host.
+
+### 5.2 Compatibility and correctness
 
 The repository currently records pilots, not publication measurements. Ten
 ONNX models execute against stored reference outputs. TinyYOLOv3 retains a
@@ -298,7 +346,7 @@ The harness mechanism has compiled for both the official MNIST application and
 a two-input/two-output interface. This establishes interface consistency, not
 broader model execution or performance.
 
-### 5.2 Compiler cost
+### 5.3 Compiler cost
 
 Compiler-side scaling has a concrete mechanism pilot but not yet a formal
 result. Snapshot-relative memoization binds IR handles to their generation and
@@ -352,7 +400,7 @@ interpreted source-function bodies falls from 2,099,082 to 237,342 after memo
 hits, and both variants emit byte-identical 329,117-byte C. This is a
 single-host mechanism diagnostic, not a controlled compiler-throughput claim.
 
-### 5.3 Artifact quality
+### 5.4 Artifact quality
 
 Generated C is presently the main negative result. Depending on the model, the
 recorded unisolated pilots are about 7--101 times slower than one-thread ONNX
@@ -403,7 +451,7 @@ These remain shared-runner diagnostics rather than publication results. The
 workflows do not control host load, temperature, or frequency, and the two
 policy runs report the same processor class.
 
-### 5.4 Extension surface
+### 5.5 Extension surface
 
 The extension-surface study and controlled performance study are not complete.
 One of four system-baseline tasks passes, one has a preserved unsupported
@@ -559,13 +607,3 @@ generated C remains far behind a production runtime. Whether the design
 meaningfully lowers extension coupling is therefore an empirical question, not
 an implemented feature. The controlled extension and artifact studies must
 answer it before this conclusion can make a stronger claim.
-
-## 9. Submission work remaining
-
-- Motivating extension task and trace through the representation
-- Frozen study design and baseline versions
-- Results generated from committed raw data
-- Data Availability
-- Research-use AI disclosure in Methods
-- Author contributions, funding, conflicts, and ethics declarations for the
-  camera-ready package
