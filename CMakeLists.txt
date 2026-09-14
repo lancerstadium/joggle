@@ -704,6 +704,18 @@ if(JOGGLE_BUILD_TESTS)
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/dynamic_slice_c.cmake
     )
     add_test(
+      NAME range-c-execution
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DTOOL=$<TARGET_FILE:joggle-tool>
+        -DCC=${JOGGLE_TEST_C_COMPILER}
+        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/range_c.jog
+        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/range_c_main.c
+        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/range-c-test
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/range_c.cmake
+    )
+    add_test(
       NAME tile-execution
       COMMAND
         ${CMAKE_COMMAND}

@@ -1,0 +1,18 @@
+module range_c
+use tensor
+
+fn main() -> tensor<i32, [_]> {
+  let start = tensor<i32, []>(i32(9))
+  let stop = tensor<i32, []>(i32(-2))
+  let step = tensor<i32, []>(i32(-3))
+  let out: tensor<i32, [_]> = tensor.range<4>(start, stop, step)
+  return out
+}
+
+fn fractional() -> tensor<f32, [_]> {
+  let start = tensor<f32, []>(f32(0.5))
+  let stop = tensor<f32, []>(f32(2.0))
+  let step = tensor<f32, []>(f32(0.6))
+  let out: tensor<f32, [_]> = tensor.range<3>(start, stop, step)
+  return out
+}

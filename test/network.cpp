@@ -1493,6 +1493,7 @@ int main(int argc, char** argv) {
   bool dynamic_tile = false;
   bool nms_converted = false;
   bool nonzero_converted = false;
+  bool range_converted = false;
   for (joggle::Op op : shape_relations.ops()) {
     if (op.blk().fn().name() == "expand" &&
         op.callee() == "tensor.broadcast")
@@ -1509,6 +1510,8 @@ int main(int argc, char** argv) {
       nms_converted = true;
     if (op.blk().fn().name() == "nonzero" && op.callee() == "nn.nonzero")
       nonzero_converted = true;
+    if (op.blk().fn().name() == "range" && op.callee() == "tensor.range")
+      range_converted = true;
   }
   CHECK(expanded);
   CHECK(dynamic_expanded);
@@ -1516,6 +1519,7 @@ int main(int argc, char** argv) {
   CHECK(dynamic_tile);
   CHECK(nms_converted);
   CHECK(nonzero_converted);
+  CHECK(range_converted);
 
   constexpr std::string_view dynamic_broadcast_source =
       "module dynamic.broadcast\n"

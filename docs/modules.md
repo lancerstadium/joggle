@@ -257,6 +257,14 @@ the logical extents, and performs the same trailing-axis coordinate mapping as
 the static body.  A frontend therefore passes a dynamic shape value through;
 it does not ask an emitter to implement an `Expand` opcode.
 
+`range` constructs a variable-length tensor from scalar start, stop, and step
+values.  One generic arithmetic body handles integer, floating-point,
+ascending, descending, and fractional sequences through normal scalar
+overload resolution.  The implicit form uses runtime-shaped storage;
+`range<C>(...)` states a compile-time capacity for deterministic targets and
+checks the runtime count against it.  Capacity is therefore a selected policy
+at the semantic boundary, not a hidden machine limit or a backend opcode.
+
 ## Frontends
 
 A frontend is deliberately split into transport and meaning:

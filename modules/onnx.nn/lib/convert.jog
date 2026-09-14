@@ -311,6 +311,26 @@ local fn convert_nonzero(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "nn.nonzero")
 }
 
+[phase: "compute", on: "onnx.Range"]
+local fn convert_range(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 {
+    return false
+  }
+  let result = ir.type(outputs[0])
+  if !tensor.valid(result) || tensor.dims(result) != [ty("_")] {
+    return false
+  }
+  let element = tensor.elem(result)
+  if element != ty("i16") && element != ty("i32") &&
+     element != ty("i64") && element != ty("f32") &&
+     element != ty("f64") {
+    return false
+  }
+  return convert_call(m, op, "tensor.range")
+}
+
 [phase: "shape", on: "onnx.Concat"]
 local fn convert_concat(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)

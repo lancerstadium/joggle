@@ -19,6 +19,55 @@ fn dim<E: Ty, S: list<int>>(
   data: tensor<E, S>, axis: index
 ) -> index;
 
+local fn range_count<E: Ty>(first: E, last: E, step: E) -> index {
+  assert(step != E(0), "tensor.range step cannot be zero")
+  var count = index(0)
+  if step > E(0) && last > first {
+    count = index((last - first) / step)
+    if first + E(count) * step < last {
+      count += index(1)
+    }
+  }
+  if step < E(0) && last < first {
+    count = index((last - first) / step)
+    if first + E(count) * step > last {
+      count += index(1)
+    }
+  }
+  return count
+}
+
+fn range<E: Ty, Y: list<int>>(
+  start: tensor<E, []>, stop: tensor<E, []>, delta: tensor<E, []>
+) -> tensor<E, Y> {
+  let first = start[index(0)]
+  let step = delta[index(0)]
+  let count = range_count(first, stop[index(0)], step)
+  var shape = tensor<index, [1]>(index(0))
+  shape[index(0)] = count
+  var out: tensor<E, Y> = make(E(0), shape)
+  for item in index(0)..count {
+    out[item] = first + E(item) * step
+  }
+  return view(out, shape)
+}
+
+fn range<C: int, E: Ty, Y: list<int>>(
+  start: tensor<E, []>, stop: tensor<E, []>, delta: tensor<E, []>
+) -> tensor<E, Y> {
+  let first = start[index(0)]
+  let step = delta[index(0)]
+  let count = range_count(first, stop[index(0)], step)
+  assert(count <= index(C), "tensor.range exceeds its capacity")
+  var shape = tensor<index, [1]>(index(0))
+  shape[index(0)] = count
+  var out = tensor<E, [C]>(E(0))
+  for item in index(0)..count {
+    out[item] = first + E(item) * step
+  }
+  return view(out, shape)
+}
+
 [memo]
 fn valid(type: Ty) -> bool {
   if name(type) != "tensor" {
