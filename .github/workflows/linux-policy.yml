@@ -7,7 +7,8 @@ name: linux-policy
     paths:
       - .github/workflows/linux-policy.yml
       - examples/onnx/app.cpp
-      - modules/c/module.jog
+      - examples/spatial/**
+      - modules/**
       - paper/measure_block_frontier.py
       - paper/experiments/mobilenetv2-block.json
 

@@ -1158,6 +1158,9 @@ int main(int argc, char** argv) {
     if (target && target.module() == "math" && target.name() == "sqrt") {
       CHECK(op.outs().size() == 1 &&
             op.outs().front().type() == joggle::Ty("f32"));
+      const joggle::Op channel_loop = op.blk().op();
+      CHECK(channel_loop && channel_loop.kind() == joggle::Op::Kind::loop);
+      CHECK(channel_loop.blk() == norm_network.find_fn("main").body());
       ++sqrt_calls;
     }
   }
