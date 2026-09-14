@@ -82,10 +82,25 @@ jobs:
         run: cmake --build build-app --parallel 2
 
       - name: Generate and validate application artifacts
-        run: >-
-          ctest --test-dir build-app
-          -R '^onnx-app-(mnist|mobilenet)$'
-          --output-on-failure
+        id: validate
+        run: |
+          set -o pipefail
+          ctest --test-dir build-app \
+            -R '^onnx-app-(mnist|mobilenet)$' \
+            --output-on-failure 2>&1 | tee application-test.log
+
+      - name: Preserve application failure
+        if: ${{ failure() && steps.validate.outcome == 'failure' }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          text = Path("application-test.log").read_text(errors="replace")[-12000:]
+          text = (text.replace("%", "%25")
+                      .replace("\r", "%0D")
+                      .replace("\n", "%0A"))
+          print(f"::error title=ONNX application validation failed::{text}")
+          PY
 
       - name: Record independent-system timings
         run: |
