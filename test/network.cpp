@@ -1365,6 +1365,12 @@ int main(int argc, char** argv) {
       "  let out = onnx.Expand(x, shape)\n"
       "  return out\n"
       "}\n"
+      "fn dynamic_expand(\n"
+      "  x: tensor<f32, []>, shape: tensor<i64, [2]>\n"
+      ") -> tensor<f32, [_, _]> {\n"
+      "  let out = onnx.Expand(x, shape)\n"
+      "  return out\n"
+      "}\n"
       "fn tile(x: tensor<f32, [1, 3]>) -> tensor<f32, [2, 3]> {\n"
       "  let repeats: tensor<i64, [2]> = onnx.tensor(\n"
       "    7, [2], hex\"02000000000000000100000000000000\"\n"
@@ -1443,9 +1449,13 @@ int main(int argc, char** argv) {
       CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [_]>"));
     if (op.callee() == "onnx.NonMaxSuppression")
       CHECK(op.outs()[0].type() == joggle::Ty("tensor<i64, [_, 3]>"));
-    if (op.callee() == "onnx.Expand" ||
+    if ((op.callee() == "onnx.Expand" &&
+         op.blk().fn().name() == "expand") ||
         (op.callee() == "onnx.Tile" && op.blk().fn().name() == "tile"))
       CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [2, 3]>"));
+    if (op.callee() == "onnx.Expand" &&
+        op.blk().fn().name() == "dynamic_expand")
+      CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [_, _]>"));
     if (op.callee() == "onnx.TopK") {
       if (op.blk().fn().name() == "topk") {
         CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [2, 3]>"));
@@ -1478,6 +1488,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "onnx.nn.convert", shape_relations));
   CHECK(shape_relations.verify(env));
   bool expanded = false;
+  bool dynamic_expanded = false;
   bool tiled = false;
   bool dynamic_tile = false;
   bool nms_converted = false;
@@ -1486,6 +1497,9 @@ int main(int argc, char** argv) {
     if (op.blk().fn().name() == "expand" &&
         op.callee() == "tensor.broadcast")
       expanded = true;
+    if (op.blk().fn().name() == "dynamic_expand" &&
+        op.callee() == "tensor.broadcast" && op.args().size() == 2)
+      dynamic_expanded = true;
     if (op.blk().fn().name() == "tile" && op.callee() == "tensor.tile")
       tiled = true;
     if (op.blk().fn().name() == "dynamic_tile" &&
@@ -1497,10 +1511,37 @@ int main(int argc, char** argv) {
       nonzero_converted = true;
   }
   CHECK(expanded);
+  CHECK(dynamic_expanded);
   CHECK(tiled);
   CHECK(dynamic_tile);
   CHECK(nms_converted);
   CHECK(nonzero_converted);
+
+  constexpr std::string_view dynamic_broadcast_source =
+      "module dynamic.broadcast\n"
+      "use onnx\n"
+      "use tensor\n"
+      "fn main(x: tensor<f32, []>, shape: tensor<i64, [2]>) "
+      "-> tensor<f32, [_, _]> { return onnx.Expand(x, shape) }\n";
+  joggle::Mod dynamic_broadcast;
+  CHECK(joggle::parse(env, dynamic_broadcast_source, dynamic_broadcast,
+                      "dynamic-broadcast.jog"));
+  CHECK(dynamic_broadcast.verify(env));
+  const joggle::Op dynamic_broadcast_call =
+      dynamic_broadcast.find_fn("main").body().ops().front();
+  if (!dynamic_broadcast.retarget(env, dynamic_broadcast_call,
+                                  "tensor.broadcast",
+                                  dynamic_broadcast_call.args()))
+    return dynamic_broadcast.print_diags(stderr);
+  CHECK(dynamic_broadcast.verify(env));
+  const joggle::Fn dynamic_broadcast_body =
+      env.resolve(dynamic_broadcast, dynamic_broadcast_call);
+  CHECK(dynamic_broadcast_body);
+  if (!env.expand(dynamic_broadcast, dynamic_broadcast_call,
+                  dynamic_broadcast_body))
+    return dynamic_broadcast.print_diags(stderr);
+  CHECK(dynamic_broadcast.verify(env));
+  CHECK(count(dynamic_broadcast, "tensor.broadcast") == 0);
 
   constexpr std::string_view dynamic_slice_source =
       "module dynamic.slice\n"

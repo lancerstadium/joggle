@@ -939,6 +939,63 @@ fn broadcast<E: Ty, S: list<int>, T: list<int>>(
   return out
 }
 
+local fn broadcast_runtime<
+  E: Ty, S: list<int>, T: list<int>, I: Ty, R: int, P: int
+>(
+  x: tensor<E, S>, target: tensor<I, [R]>
+) -> tensor<E, T> {
+  assert(R >= P, "tensor.broadcast target rank is smaller than input rank")
+  var source_shape = tensor<index, [P]>(index(0))
+  var result_shape = tensor<index, [R]>(index(0))
+  [stage: "shape"]
+  for axis in 0..P {
+    source_shape[axis] = dim(x, index(axis))
+  }
+  for axis in 0..R {
+    let extent = index(target[axis])
+    assert(extent >= index(0), "tensor.broadcast extent is negative")
+    result_shape[axis] = extent
+  }
+  let shift = R - P
+  for axis in 0..P {
+    let source = source_shape[axis]
+    let result = result_shape[shift + axis]
+    assert(source == index(1) || source == result,
+           "tensor.broadcast shapes are incompatible")
+  }
+
+  var out: tensor<E, T> = make(E(0), result_shape)
+  var count = index(1)
+  for axis in 0..R {
+    count *= result_shape[axis]
+  }
+  for linear in index(0)..count {
+    var source = index(0)
+    var source_stride = index(1)
+    var result_stride = index(1)
+    for reverse in 0..P {
+      let source_axis = P - reverse - 1
+      let result_axis = source_axis + shift
+      if source_shape[source_axis] != index(1) {
+        source += (linear / result_stride) % result_shape[result_axis] *
+                  source_stride
+      }
+      source_stride *= source_shape[source_axis]
+      result_stride *= result_shape[result_axis]
+    }
+    out[linear] = x[source]
+  }
+  return view(out, result_shape)
+}
+
+fn broadcast<
+  E: Ty, S: list<int>, T: list<int>, I: Ty, R: int
+>(
+  x: tensor<E, S>, target: tensor<I, [R]>
+) -> tensor<E, T> {
+  return broadcast_runtime<E, S, T, I, R, len<S>>(x, target)
+}
+
 fn tiled(shape: list<Ty>, repeats: list<int>) -> list<Ty> {
   var out: list<Ty> = []
   if len(shape) != len(repeats) {

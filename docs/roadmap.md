@@ -241,7 +241,8 @@ Coverage should be measured by end-to-end models, not operator counts:
 - report unsupported frontiers without format-specific target cases.
 
 The SSD-MobileNet regression currently converts all 92 runtime-control Slice
-sites through the shared tensor body and leaves 23 source calls.  The remaining
+sites and four runtime-shape Expand sites through shared tensor bodies, leaving
+19 source calls.  The remaining
 frontier is concentrated in dynamic broadcast/index families and nested
 control flow, not a missing Slice emitter.  The next coverage step should add
 shared runtime-shape and selection mechanisms for those families, then use the

@@ -836,6 +836,30 @@ void infer_regions(detail::Store& store, const detail::OpData& op) {
   }
 }
 
+void infer_returns(detail::Store& store) {
+  for (const auto& slot : store.fns) {
+    if (!slot.live || slot.data.external)
+      continue;
+    const detail::FnData& fn = slot.data;
+    for (const std::uint32_t blk : fn.blks) {
+      if (blk >= store.blks.size() || !store.blks[blk].live)
+        continue;
+      for (const std::uint32_t id : store.blks[blk].data.ops) {
+        if (id >= store.ops.size() || !store.ops[id].live)
+          continue;
+        const detail::OpData& op = store.ops[id].data;
+        if (op.kind != Op::Kind::ret || op.args.size() != fn.returns.size())
+          continue;
+        for (std::size_t index = 0; index < op.args.size(); ++index) {
+          detail::ValData& value = store.vals[op.args[index]].data;
+          if (value.type.name() == "_" && fn.returns[index].name() != "_")
+            value.type = fn.returns[index];
+        }
+      }
+    }
+  }
+}
+
 struct TypeLookup {
   Fn constructor;
   bool seen = false;
@@ -1196,6 +1220,7 @@ bool Mod::verify(const Env& env) {
     before.reserve(store.vals.size());
     for (const auto& value : store.vals)
       before.push_back(value.data.type);
+    infer_returns(store);
     for (auto& op : store.ops) {
       if (!op.live)
         continue;

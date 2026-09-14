@@ -251,6 +251,12 @@ five-input forms are overloads of that body rather than frontend or emitter
 cases.  Static shape bookkeeping is marked for normal specialization; dynamic
 starts, ends, axes, and steps remain ordinary runtime values.
 
+`broadcast` likewise has one overload for a structural target shape and one
+for a runtime shape tensor.  The runtime body checks compatibility, constructs
+the logical extents, and performs the same trailing-axis coordinate mapping as
+the static body.  A frontend therefore passes a dynamic shape value through;
+it does not ask an emitter to implement an `Expand` opcode.
+
 ## Frontends
 
 A frontend is deliberately split into transport and meaning:

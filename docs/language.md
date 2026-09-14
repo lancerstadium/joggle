@@ -237,6 +237,11 @@ compared, so a concrete but wrong-result candidate cannot hide a valid generic
 candidate. The choice is independent of declaration order.
 Conflicting bindings, wrong argument counts, and wrong concrete types receive
 source-located diagnostics.
+When an unannotated intermediate is returned, the declared function result is
+also propagated back to that value before call resolution.  Thus binding
+`f(x)` to `y` and then returning `y` has the same result context as
+`return f(x)`.  This bidirectional step is structural and applies equally to
+frontend calls and user functions; it is not tied to an operation name.
 Calls whose argument or expected result contains a surrounding function's
 generic may remain unresolved until that generic is bound. Verification allows
 this only when at least one visible overload has a structurally possible arity

@@ -802,12 +802,14 @@ local fn convert_expand(m: Mod, op: Op) -> bool {
     return false
   }
   let expanded = tensor.broadcast_shape(tensor.dims(input), shape)
-  if !tensor.static(result) || len(expanded) == 0 ||
-     result != shaped(tensor.elem(input), expanded) ||
-     !tensor.broadcastable(tensor.dims(input), expanded) {
-    return false
+  let literal = const_ints(inputs[1])
+  if len(literal) == len(shape) && len(literal) != 0 &&
+     tensor.static(result) && len(expanded) != 0 &&
+     result == shaped(tensor.elem(input), expanded) &&
+     tensor.broadcastable(tensor.dims(input), expanded) {
+    return convert_call(m, op, "tensor.broadcast", [inputs[0]])
   }
-  return convert_call(m, op, "tensor.broadcast", [inputs[0]])
+  return convert_call(m, op, "tensor.broadcast")
 }
 
 [phase: "compute", on: "onnx.Tile"]
