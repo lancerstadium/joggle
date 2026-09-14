@@ -60,6 +60,9 @@ is complete.
 ## Repository map
 
 - [`manuscript.md`](manuscript.md): evidence-bounded working paper text.
+- [`render_tables.py`](render_tables.py): regenerates the manuscript's model,
+  performance, policy, and extension tables from preserved CSV/JSON records;
+  `--check` is part of the normal test suite and rejects stale transcription.
 - [`references.bib`](references.bib): source-verified bibliography for every
   related-work citation currently used by the manuscript.
 - [`related-work.md`](related-work.md): claim-oriented comparisons grounded in

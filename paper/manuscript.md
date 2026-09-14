@@ -327,6 +327,25 @@ None adds an ONNX operator to the target emitter. Models absent from the configu
 omitted, not counted as passes. Structural completion is kept separate from
 the ten-model numerical execution claim above.
 
+<!-- BEGIN GENERATED: model-frontier -->
+**Table 1. Pinned ONNX Model Zoo structural frontier.**
+
+| Model | Nodes | Type inference | Semantic conversion |
+| --- | ---: | --- | --- |
+| mnist-8 | 12 | pass | pass |
+| mobilenetv2-7 | 155 | pass | pass |
+| squeezenet1.1-7 | 66 | pass | pass |
+| squeezenet1.0-13-qdq | 171 | pass | pass |
+| resnet18-v1-7 | 69 | pass | pass |
+| tinyyolov2-8 | 33 | pass | pass |
+| tiny-yolov3-11 | 291 | partial (219 unknown) | not_run |
+| ultraface-rfb-320 | 242 | pass | pass |
+| ssd-mobilenetv1-12 | 5985 | pass | partial (386 calls) |
+| shufflenet-v2-12 | 261 | pass | pass |
+| densenet-12 | 910 | pass | pass |
+| googlenet-12 | 143 | pass | pass |
+<!-- END GENERATED: model-frontier -->
+
 DenseNet exposes both progress and a compiler-scaling boundary. After
 conversion and selection of the then-current out-of-tree spatial
 implementation used by smaller models, its 65,429,147-byte IR did not complete
@@ -419,12 +438,13 @@ table will compare independent systems on identical model, input, thread, and
 correctness contracts while recording each system's compiler and runtime
 versions.
 
-Table 1 reports two independently dispatched system runs. Each subject runs in
+Table 2 reports two independently dispatched system runs. Each subject runs in
 a fresh process under a one-thread contract, and each cell is the median of 20
 trials. The generated model, input, weights, reference, and executable have
 identical hashes across CPU classes, and every stored-output check passes.
 
-**Table 1. Independent-system Linux diagnostics (median milliseconds).**
+<!-- BEGIN GENERATED: systems -->
+**Table 2. Independent-system Linux diagnostics (median milliseconds).**
 
 | CPU class | Model | Joggle C | ONNX Runtime | Joggle / ORT |
 | --- | --- | ---: | ---: | ---: |
@@ -432,20 +452,23 @@ identical hashes across CPU classes, and every stored-output check passes.
 | AMD EPYC 7763 | MNIST | 0.530 | 0.050 | 10.55x |
 | Intel Xeon 8370C | MobileNetV2 | 173.787 | 7.345 | 23.66x |
 | Intel Xeon 8370C | MNIST | 0.570 | 0.054 | 10.59x |
+<!-- END GENERATED: systems -->
 
 The cross-CPU results reproduce correctness and the negative performance
-boundary, not one stable slowdown factor. Table 2 instead measures the generic
+boundary, not one stable slowdown factor. Table 3 instead measures the generic
 MobileNetV2 policy within each workflow execution on one pinned CPU. Reordering
 54 affine-proved bodies and canonicalizing their index trees reduces generated
 source from 192,209 to 152,275 bytes. The canonical/plain latency ratio changes
 from 0.7348 to 0.7358 even though absolute latency changes substantially.
 
-**Table 2. MobileNetV2 module-policy diagnostics (median milliseconds).**
+<!-- BEGIN GENERATED: policy -->
+**Table 3. MobileNetV2 module-policy diagnostics (median milliseconds).**
 
 | Run | Plain C | Canonical C | Canon / plain | Adjacent ORT | Canon / ORT |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | A | 139.679 | 102.638 | 0.7348 | 8.382 | 12.24x |
 | B | 178.796 | 131.557 | 0.7358 | 11.261 | 11.68x |
+<!-- END GENERATED: policy -->
 
 These remain shared-runner diagnostics rather than publication results. The
 workflows do not control host load, temperature, or frequency, and the two
@@ -459,14 +482,16 @@ outcome at its first mandatory case, and two remain incomplete. These results
 do not support a general claim that Joggle is easier to extend, more compatible,
 or faster than another compiler.
 
-**Table 3. Frozen extension tasks and observed authored source surface.**
+<!-- BEGIN GENERATED: extension-surface -->
+**Table 4. Frozen extension tasks and observed authored source surface.**
 
 | Task | Joggle | TVM control | ONNX-MLIR system path |
 | --- | --- | --- | --- |
 | implementation | pass, 20 lines | pass, 62 lines | pass, 167 lines in six files |
 | policy | pass, 69 lines | pass, 126 lines | incomplete |
-| external kernel | pass, 138 lines | pass, 355 lines | unsupported at first required MatMul case |
-| numeric format | pass, 284 lines | incomplete | incomplete |
+| external-kernel | pass, 138 lines | pass, 355 lines | unsupported at first required MatMul case |
+| numeric-format | pass, 284 lines | incomplete | incomplete |
+<!-- END GENERATED: extension-surface -->
 
 Lines are nonblank, non-comment authored source under each frozen task's
 inclusion rules. They expose where an extension crosses files and registration

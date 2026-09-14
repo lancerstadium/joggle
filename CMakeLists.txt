@@ -515,6 +515,12 @@ if(JOGGLE_BUILD_TESTS)
   find_program(JOGGLE_TEST_PYTHON NAMES python3 python)
   if(JOGGLE_TEST_PYTHON)
     add_test(
+      NAME paper-tables
+      COMMAND
+        ${JOGGLE_TEST_PYTHON}
+        ${CMAKE_CURRENT_SOURCE_DIR}/paper/render_tables.py --check
+    )
+    add_test(
       NAME measure-systems
       COMMAND
         ${JOGGLE_TEST_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/test/measure_systems.py
