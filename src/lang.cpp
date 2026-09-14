@@ -2965,6 +2965,106 @@ bool verify_type(detail::Store& store, const Mod& mod, const Env& env,
   return true;
 }
 
+void verify_bindings(detail::Store& store, std::uint32_t fn_id) {
+  if (fn_id >= store.fns.size() || !store.fns[fn_id].live)
+    return;
+  const detail::FnData& fn = store.fns[fn_id].data;
+  std::set<std::string, std::less<>> visible;
+  std::set<std::string, std::less<>> declared;
+  const auto declare = [&](std::uint32_t value, const Loc& loc) {
+    if (value >= store.vals.size() || !store.vals[value].live)
+      return;
+    const std::string& name = store.vals[value].data.name;
+    if (name.empty())
+      return;
+    if (!detail::valid_binding(name)) {
+      detail::add_diag(store.diags, "invalid binding name '" + name + "'",
+                       loc);
+      return;
+    }
+    if (!declared.insert(name).second)
+      detail::add_diag(store.diags,
+                       "binding '" + name +
+                           "' is already declared in this scope",
+                       loc);
+    visible.insert(name);
+  };
+  for (const std::uint32_t generic : fn.generic_vals)
+    declare(generic, fn.loc);
+  for (const std::uint32_t param : fn.params)
+    declare(param, fn.loc);
+
+  std::unordered_set<std::uint32_t> visited;
+  const auto block = [&](const auto& self, std::uint32_t blk,
+                         std::set<std::string, std::less<>> scope,
+                         std::set<std::string, std::less<>> local) -> void {
+    if (blk >= store.blks.size() || !store.blks[blk].live ||
+        !visited.insert(blk).second)
+      return;
+    for (const std::uint32_t op_id : store.blks[blk].data.ops) {
+      if (op_id >= store.ops.size() || !store.ops[op_id].live)
+        continue;
+      const detail::OpData& op = store.ops[op_id].data;
+      for (std::size_t child_index = 0; child_index < op.blks.size();
+           ++child_index) {
+        const std::uint32_t child = op.blks[child_index];
+        std::set<std::string, std::less<>> child_scope = scope;
+        std::set<std::string, std::less<>> child_local;
+        if (op.kind == Op::Kind::loop) {
+          for (std::size_t index = 0; index < op.iter_names.size(); ++index) {
+            const std::string& name = op.iter_names[index];
+            if (!detail::valid_binding(name))
+              detail::add_diag(store.diags,
+                               "invalid loop variable '" + name + "'",
+                               op.loc);
+            if (!child_local.insert(name).second)
+              detail::add_diag(store.diags,
+                               "duplicate loop variable '" + name + "'",
+                               op.loc);
+            if (scope.contains(name))
+              detail::add_diag(store.diags,
+                               "loop variable '" + name +
+                                   "' is already visible",
+                               op.loc);
+            child_scope.insert(name);
+            if (child >= store.blks.size() || !store.blks[child].live ||
+                index >= store.blks[child].data.args.size())
+              continue;
+            const std::uint32_t argument =
+                store.blks[child].data.args[index];
+            if (argument < store.vals.size() && store.vals[argument].live &&
+                store.vals[argument].data.name != name)
+              detail::add_diag(store.diags,
+                               "loop variable and block argument names differ",
+                               op.loc);
+          }
+        }
+        self(self, child, std::move(child_scope), std::move(child_local));
+      }
+      if (op.form != Op::Form::let && op.form != Op::Form::var)
+        continue;
+      for (const std::uint32_t output : op.outs) {
+        if (output >= store.vals.size() || !store.vals[output].live)
+          continue;
+        const std::string& name = store.vals[output].data.name;
+        if (name.empty())
+          continue;
+        if (!detail::valid_binding(name))
+          detail::add_diag(store.diags,
+                           "invalid binding name '" + name + "'", op.loc);
+        if (!local.insert(name).second)
+          detail::add_diag(store.diags,
+                           "binding '" + name +
+                               "' is already declared in this scope",
+                           op.loc);
+        scope.insert(name);
+      }
+    }
+  };
+  if (!fn.blks.empty())
+    block(block, fn.blks.front(), std::move(visible), std::move(declared));
+}
+
 }  // namespace
 
 Fn detail::resolve_overload(std::span<const Fn> candidates,
@@ -3008,6 +3108,8 @@ bool Mod::verify(const Env& env) {
       detail::add_diag(store.diags,
                        "module dependency cycle through: " + dependency);
   }
+  for (std::uint32_t fn = 0; fn < store.fns.size(); ++fn)
+    verify_bindings(store, fn);
   for (const auto& fn_slot : store.fns) {
     if (!fn_slot.live)
       continue;

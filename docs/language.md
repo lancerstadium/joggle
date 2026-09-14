@@ -887,6 +887,12 @@ CLI form is `joggle run fn1 fn2 ... model.jog`. A source wrapper, embedding
 sequence, and CLI sequence therefore differ only in where the list of calls is
 chosen, not in their IR or function semantics.
 
+Individual `ir` mutations are composable steps rather than transaction
+boundaries. A transform may create a replacement with the old binding name and
+then remove the old definition before it returns. Final verification mirrors
+the source parser's lexical rules; unresolved duplicate declarations or a loop
+variable that hides a visible binding reject and roll back the complete `run`.
+
 Embedding code may additionally call
 `run(env, names, mod, report, elapsed)`. For one name, `elapsed` is a
 `chrono::nanoseconds`; for a span it is a vector aligned with the supplied

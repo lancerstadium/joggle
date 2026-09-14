@@ -1071,6 +1071,29 @@ fn invalidate_call(m: Mod) -> bool {
   return false
 }
 
+fn duplicate_local(m: Mod) -> bool {
+  for f in ir.fns(m) {
+    for value in ir.vals(f) {
+      if ir.name(value) == "right" {
+        return ir.rename(m, value, "left")
+      }
+    }
+  }
+  return false
+}
+
+fn hide_loop_input(m: Mod) -> bool {
+  for op in ir.ops(m) {
+    if ir.kind(op) == "loop" {
+      let body_args = ir.args(ir.blks(op)[0])
+      if len(body_args) != 0 {
+        return ir.rename(m, body_args[0], "n")
+      }
+    }
+  }
+  return false
+}
+
 fn rebuild_tagged(m: Mod) -> bool {
   var changed = false
   for f in ir.fns(m) {

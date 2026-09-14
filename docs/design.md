@@ -148,6 +148,14 @@ a module revision used by analyses and diagnostics. Native calls likewise
 publish result attributes only after every declared result has been written
 and type-checked; failure leaves the caller's prior result vector unchanged.
 
+Primitive edits may temporarily expose both sides of a replacement inside one
+compile-time function. The transaction commits only after the verifier repeats
+the parser's lexical-scope checks, including unique function bindings, unique
+local declarations, and non-shadowing loop variables. A function that leaves
+duplicate source bindings therefore fails with the exact scope diagnostic and
+restores the input module; transformations do not need an operator-specific
+combined edit to remain atomic.
+
 This avoids pass subclasses and a global registry. A transform conventionally
 has a signature such as:
 

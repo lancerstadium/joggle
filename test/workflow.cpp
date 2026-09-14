@@ -3649,6 +3649,17 @@ int main(int argc, char** argv) {
                      control_rollback));
   CHECK(joggle::print(control_rollback) == built_control_text);
   CHECK(control_rollback.revision() == control_revision);
+  env.clear_diags();
+  CHECK(!joggle::run(env, "script.hide_loop_input", control_rollback));
+  CHECK(joggle::print(control_rollback) == built_control_text);
+  CHECK(control_rollback.revision() == control_revision);
+  bool kept_loop_scope_detail = false;
+  for (const joggle::Diag& diag : env.diags())
+    kept_loop_scope_detail =
+        kept_loop_scope_detail ||
+        diag.message.find("loop variable 'n' is already visible") !=
+            std::string::npos;
+  CHECK(kept_loop_scope_detail);
   control_rollback.clear_diags();
   CHECK(joggle::run(env, "script.rename_control", scripted_control));
   CHECK(scripted_control.verify(env));
@@ -3681,6 +3692,51 @@ int main(int argc, char** argv) {
     kept_verify_detail = kept_verify_detail ||
                          diag.message.find("base.len") != std::string::npos;
   CHECK(kept_verify_detail);
+  env.clear_diags();
+
+  joggle::Mod duplicate_edit;
+  CHECK(joggle::parse(env,
+                      "module duplicate.edit\n"
+                      "fn main(x: i32) -> i32 {\n"
+                      "  let left = x + 1\n"
+                      "  let right = left + 1\n"
+                      "  return right\n"
+                      "}\n",
+                      duplicate_edit, "duplicate-edit.jog"));
+  CHECK(duplicate_edit.verify(env));
+  const std::string before_duplicate_edit = joggle::print(duplicate_edit);
+  const std::uint64_t before_duplicate_edit_revision =
+      duplicate_edit.revision();
+  CHECK(!joggle::run(env, "script.duplicate_local", duplicate_edit));
+  CHECK(joggle::print(duplicate_edit) == before_duplicate_edit);
+  CHECK(duplicate_edit.revision() == before_duplicate_edit_revision);
+  bool kept_duplicate_detail = false;
+  for (const joggle::Diag& diag : env.diags())
+    kept_duplicate_detail =
+        kept_duplicate_detail ||
+        diag.message.find("already declared in this scope") !=
+            std::string::npos;
+  CHECK(kept_duplicate_detail);
+
+  joggle::Mod nested_shadow;
+  CHECK(joggle::parse(env,
+                      "module nested.shadow\n"
+                      "fn main(x: i32, flag: bool) -> i32 {\n"
+                      "  let value = x + 1\n"
+                      "  if flag {\n"
+                      "    let value = x + 2\n"
+                      "  }\n"
+                      "  return value\n"
+                      "}\n",
+                      nested_shadow, "nested-shadow.jog"));
+  CHECK(nested_shadow.verify(env));
+  joggle::Mod nested_shadow_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(nested_shadow),
+                      nested_shadow_roundtrip,
+                      "nested-shadow-roundtrip.jog"));
+  CHECK(nested_shadow_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(nested_shadow,
+                                   nested_shadow_roundtrip));
 
   joggle::Mod immutable;
   CHECK(!joggle::parse(env,
