@@ -3097,6 +3097,8 @@ int main(int argc, char** argv) {
   CHECK(env.call("sample.ping", arguments, returns));
   CHECK(returns.size() == 1);
   CHECK(returns[0].integer() == 42);
+  CHECK(env.call("sample.wide", arguments, returns));
+  CHECK(returns.size() == 1 && returns[0].integer() == 42);
   const std::vector<joggle::Attr> bytes{
       joggle::Attr(joggle::Attr::Bytes{0, 127, 255})};
   CHECK(env.call("sample.echo", bytes, returns));
@@ -3107,11 +3109,21 @@ int main(int argc, char** argv) {
   CHECK(returns.size() == 1 && returns[0].string() == "hello");
   CHECK(env.call("sample.empty", {}, returns));
   CHECK(returns.size() == 1 && returns[0].string() == "");
+  const std::vector<joggle::Attr> nothing{joggle::Attr{}};
+  CHECK(env.call("sample.nothing", nothing, returns));
+  CHECK(returns.size() == 1 && returns[0].empty());
   const std::vector<joggle::Attr> committed_returns = returns;
   CHECK(!env.call("sample.partial", {}, returns));
   CHECK(returns == committed_returns);
   CHECK(!env.diags().empty() &&
         env.diags().back().message.find("did not write every return") !=
+            std::string::npos);
+  env.clear_diags();
+  CHECK(!env.call("sample.produce", arguments, returns));
+  CHECK(returns == committed_returns);
+  CHECK(!env.diags().empty() &&
+        env.diags().back().message.find(
+            "return type does not match native declaration") !=
             std::string::npos);
   env.clear_diags();
   joggle::Mod mod;

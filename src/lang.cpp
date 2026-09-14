@@ -301,11 +301,7 @@ bool intrinsic_cast(std::string_view name) {
   for (const std::string_view scalar : names)
     if (scalar == name)
       return true;
-  if (name.size() < 2 || (name.front() != 'i' && name.front() != 'u'))
-    return false;
-  return std::all_of(name.begin() + 1, name.end(), [](char ch) {
-    return std::isdigit(static_cast<unsigned char>(ch));
-  });
+  return detail::sized_integer_type(name);
 }
 
 bool intrinsic_type(std::string_view name) {
@@ -2133,17 +2129,11 @@ bool generic(const std::vector<std::string>& names, std::string_view name) {
   return std::find(names.begin(), names.end(), name) != names.end();
 }
 
-bool sized_integer(std::string_view name) {
-  if (name.size() < 2 || (name.front() != 'i' && name.front() != 'u'))
-    return false;
-  return std::all_of(name.begin() + 1, name.end(), [](char ch) {
-    return std::isdigit(static_cast<unsigned char>(ch));
-  });
-}
-
 bool index_integer(std::string_view left, std::string_view right) {
-  return (left == "index" && (right == "int" || sized_integer(right))) ||
-         (right == "index" && (left == "int" || sized_integer(left)));
+  return (left == "index" &&
+          (right == "int" || detail::sized_integer_type(right))) ||
+         (right == "index" &&
+          (left == "int" || detail::sized_integer_type(left)));
 }
 
 bool merge_binding(Ty& bound, const Ty& actual) {
@@ -2153,11 +2143,11 @@ bool merge_binding(Ty& bound, const Ty& actual) {
     bound = actual;
     return true;
   }
-  if (bound.name() == "int" && sized_integer(actual.name())) {
+  if (bound.name() == "int" && detail::sized_integer_type(actual.name())) {
     bound = actual;
     return true;
   }
-  return actual.name() == "int" && sized_integer(bound.name());
+  return actual.name() == "int" && detail::sized_integer_type(bound.name());
 }
 
 bool unify(const Ty& formal, const Ty& actual,
@@ -2174,8 +2164,10 @@ bool unify(const Ty& formal, const Ty& actual,
     }
     return merge_binding(found->second, actual);
   }
-  if ((formal.name() == "int" && sized_integer(actual.name())) ||
-      (actual.name() == "int" && sized_integer(formal.name())) ||
+  if ((formal.name() == "int" &&
+       detail::sized_integer_type(actual.name())) ||
+      (actual.name() == "int" &&
+       detail::sized_integer_type(formal.name())) ||
       index_integer(formal.name(), actual.name()))
     return true;
   if (formal.name() != actual.name())

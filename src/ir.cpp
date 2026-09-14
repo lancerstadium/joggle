@@ -309,13 +309,6 @@ bool concrete_term(const Ty& value) {
   return std::all_of(value.args().begin(), value.args().end(), concrete_term);
 }
 
-bool sized_integer_term(std::string_view name) {
-  return name.size() > 1 && (name.front() == 'i' || name.front() == 'u') &&
-         std::all_of(name.begin() + 1, name.end(), [](char ch) {
-           return std::isdigit(static_cast<unsigned char>(ch));
-         });
-}
-
 Ty generic_kind(const Ty& value) {
   if (integer(value))
     return Ty("int");
@@ -362,6 +355,17 @@ bool detail::valid_qualified_name(std::string_view text) {
   return valid_qualified_name_impl(text);
 }
 
+bool detail::sized_integer_type(std::string_view name) noexcept {
+  return name.size() > 1 && (name.front() == 'i' || name.front() == 'u') &&
+         std::all_of(name.begin() + 1, name.end(), [](char ch) {
+           return std::isdigit(static_cast<unsigned char>(ch));
+         });
+}
+
+bool detail::integer_type(std::string_view name) noexcept {
+  return name == "int" || name == "index" || sized_integer_type(name);
+}
+
 bool detail::type_constructor(Fn fn) {
   const std::vector<Ty> returns = fn.returns();
   return fn.params().empty() && returns.size() == 1 &&
@@ -376,11 +380,7 @@ bool detail::literal_matches(const Attr& value, const Ty& type) {
     return value.empty();
   if (name == "bool")
     return value.boolean().has_value();
-  if (name == "int" || name == "index" ||
-      (name.size() > 1 && (name.front() == 'i' || name.front() == 'u') &&
-       std::all_of(name.begin() + 1, name.end(), [](char ch) {
-         return std::isdigit(static_cast<unsigned char>(ch));
-       })))
+  if (integer_type(name))
     return value.integer().has_value();
   if (name == "f16" || name == "f32" || name == "f64")
     return value.real().has_value();
@@ -1734,8 +1734,7 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
   const auto materialize = [&](const auto& self, const Ty& expected,
                                const Ty& value) -> std::optional<std::uint32_t> {
     Ty type = expected.name() == "_" ? generic_kind(value) : expected;
-    if (type.name() == "int" || type.name() == "index" ||
-        sized_integer_term(type.name())) {
+    if (detail::integer_type(type.name())) {
       const auto number = integer(value);
       if (!number)
         return std::nullopt;

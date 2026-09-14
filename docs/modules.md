@@ -91,6 +91,15 @@ portable. A native boundary is optional and should be used only for facilities
 that cannot be expressed economically in `.jog`, such as binary decoding or
 executing a host artifact.
 
+The native value ABI checks declarations in both directions. `nil`, `bool`,
+floating scalars, `int`/`index`/digit-width integer scalars, `str`, and `bytes`
+map to their corresponding tagged values; `_` and `Attr` accept any of those
+encodable tags. A user-defined type is not inferred from its spelling and
+cannot accidentally cross as an integer merely because its name begins with
+`i` or `u`; a module must provide an explicit representation boundary for such
+a type. Lists, dictionaries, and IR handles stay inside compile-time execution
+until the ABI grows an explicit representation for them.
+
 ## Composition
 
 There is no built-in pipeline object. Users compose module functions explicitly:

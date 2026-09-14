@@ -118,6 +118,8 @@ void add_diag(std::vector<Diag>& diags, std::string message, Loc loc = {});
 int print_diags(std::FILE* file, const std::vector<Diag>& diags);
 bool valid_binding(std::string_view text);
 bool valid_qualified_name(std::string_view text);
+bool sized_integer_type(std::string_view name) noexcept;
+bool integer_type(std::string_view name) noexcept;
 bool type_constructor(Fn fn);
 bool literal_matches(const Attr& value, const Ty& type);
 void touch(Store& store);

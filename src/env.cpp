@@ -220,6 +220,12 @@ const joggle_api native_api{abi_version,    sizeof(joggle_api), bind_native,
 
 bool scalar_matches(const Ty& type, const Attr& value) {
   const std::string_view name = type.text();
+  if (name == "_" || name == "Attr")
+    return value.empty() || value.boolean().has_value() ||
+           value.integer().has_value() || value.real().has_value() ||
+           value.string().has_value() || value.bytes() != nullptr;
+  if (name == "nil")
+    return value.empty();
   if (name == "bool")
     return value.boolean().has_value();
   if (name == "f16" || name == "f32" || name == "f64")
@@ -228,13 +234,14 @@ bool scalar_matches(const Ty& type, const Attr& value) {
     return value.string().has_value();
   if (name == "bytes")
     return value.bytes() != nullptr;
-  if (name == "int" || name == "index" ||
-      (name.size() > 1 && (name.front() == 'i' || name.front() == 'u')))
+  if (detail::integer_type(name))
     return value.integer().has_value();
-  return true;
+  return false;
 }
 
 Ty scalar_type(const Attr& value) {
+  if (value.empty())
+    return Ty("nil");
   if (value.boolean())
     return Ty("bool");
   if (value.integer())

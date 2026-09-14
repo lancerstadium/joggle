@@ -1675,11 +1675,7 @@ private:
     const std::string_view name = op.callee().substr(9);
     const std::vector<Val>& args = op_args(op);
     const auto integer_type = [](Ty type) {
-      const std::string_view name = type.name();
-      return name == "int" || name == "index" || name == "i8" ||
-             name == "i16" || name == "i32" || name == "i64" ||
-             name == "u8" || name == "u16" || name == "u32" ||
-             name == "u64";
+      return detail::integer_type(type.name());
     };
     const auto both = [&](auto predicate) {
       return args.size() == 2 && predicate(args[0].type()) &&
@@ -1874,10 +1870,7 @@ private:
     const std::vector<Val>& outputs = op_outs(op);
     const auto scalar = [](Ty type) {
       const std::string_view name = type.name();
-      return name == "bool" || name == "int" || name == "index" ||
-             name == "i8" || name == "i16" || name == "i32" ||
-             name == "i64" || name == "u8" || name == "u16" ||
-             name == "u32" || name == "u64" || name == "str" ||
+      return name == "bool" || detail::integer_type(name) || name == "str" ||
              name == "bytes";
     };
     if (outputs.empty() || inputs.size() < outputs.size() ||
