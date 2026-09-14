@@ -155,6 +155,9 @@ def extension_surface() -> str:
     external = document("paper/baselines/onnx-mlir/external-kernel/result.json")
     if external.get("task") != "external-kernel" or external.get("status") != "unsupported":
         raise ValueError("unexpected ONNX-MLIR external-kernel result")
+    policy_probe = document("paper/baselines/onnx-mlir/policy/probe.json")
+    if policy_probe.get("task") != "policy" or policy_probe.get("status") != "incomplete":
+        raise ValueError("unexpected ONNX-MLIR policy probe")
 
     def observed(records: dict[str, dict[str, str]], task: str) -> str:
         record = records.get(task)
@@ -175,6 +178,8 @@ def extension_surface() -> str:
         onnx_value = observed(onnx, task)
         if task == "external-kernel":
             onnx_value = "unsupported at first required MatMul case"
+        elif task == "policy":
+            onnx_value = "incomplete; global Boolean only"
         body.append([task, observed(joggle, task), observed(tvm, task), onnx_value])
     return (
         "**Table 4. Frozen extension tasks and observed authored source surface.**\n\n"

@@ -488,7 +488,7 @@ or faster than another compiler.
 | Task | Joggle | TVM control | ONNX-MLIR system path |
 | --- | --- | --- | --- |
 | implementation | pass, 20 lines | pass, 62 lines | pass, 167 lines in six files |
-| policy | pass, 69 lines | pass, 126 lines | incomplete |
+| policy | pass, 69 lines | pass, 126 lines | incomplete; global Boolean only |
 | external-kernel | pass, 138 lines | pass, 355 lines | unsupported at first required MatMul case |
 | numeric-format | pass, 284 lines | incomplete | incomplete |
 <!-- END GENERATED: extension-surface -->

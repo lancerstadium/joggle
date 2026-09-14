@@ -6,6 +6,14 @@ has a reproducible unsupported outcome at its first mandatory matrix case; the
 policy and numeric-format contracts remain incomplete. These records do not
 support a broad extensibility claim.
 
+The policy input now has a documented-path probe under [`policy/`](policy/).
+Default ONNX-MLIR fusion lowers the unchanged three-`Add` model to one affine
+loop; `--disable-krnl-op-fusion` preserves three. This establishes the two
+structural endpoints, but the global Boolean does not implement the contract's
+caller-defined operation weights, maximum extent, or maximum call count. The
+task therefore remains incomplete pending an accelerator-scoped policy
+implementation; the existing flag is not counted as a pass.
+
 ## Frozen revision and documented path
 
 - repository: <https://github.com/onnx/onnx-mlir>

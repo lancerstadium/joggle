@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "task": "policy",
+  "status": "incomplete",
+  "observed": "2026-09-14",
+  "system": {
+    "name": "ONNX-MLIR",
+    "revision": "4a13c34aa695b228599d637cdb772c19b4b18dba",
+    "version": "0.4.2",
+    "onnx_version": "1.21.0",
+    "llvm_revision": "1053047a4be7d1fece3adaf5e7597f838058c947",
+    "host": "arm64-apple-darwin24.6.0",
+    "build": "optimized with assertions"
+  },
+  "contract": {
+    "path": "paper/tasks/policy.json",
+    "sha256": "b48aae114cbc966334a5bee6b549358e9ae74cd09a9ff076188d264e7865bd6d"
+  },
+  "input": {
+    "path": "paper/fixtures/policy/model.onnx",
+    "sha256": "c77fc2af50c6c834ca686c76ea2177ccb7b1aebdbf81eff00434715b1cd93524"
+  },
+  "probes": [
+    {
+      "command": ["onnx-mlir", "--O0", "--EmitMLIR", "-o", "default", "model.onnx"],
+      "output": "default.mlir",
+      "sha256": "2d003de66c90b0359fc5b58b51ec1d14120fbb42b2960d90d2825e53a5343c19",
+      "affine_for_count": 1
+    },
+    {
+      "command": ["onnx-mlir", "--O0", "--EmitMLIR", "--disable-krnl-op-fusion", "-o", "disabled", "model.onnx"],
+      "output": "disabled.mlir",
+      "sha256": "46b32193ed877fdc2b958520452ed13b195d074f27fc5e99bbeb8433b1b9d73d",
+      "affine_for_count": 3
+    }
+  ],
+  "source_audit": [
+    {
+      "path": "src/Compiler/CompilerOptions.cpp",
+      "sha256": "6e102da4923c3db46e97675b15e6e43093029906121db3b299d4c01e711b6781",
+      "observation": "lines 245-250 define one global Boolean that disables fusion"
+    },
+    {
+      "path": "src/Conversion/ONNXToKrnl/Math/Elementwise.cpp",
+      "sha256": "0014bf70945d19bfd55f2e6a1b142823b6d655e4b1a173b1545cc73aeeb235bb",
+      "observation": "findFusibleOps returns immediately when the global Boolean is set; otherwise it follows the built-in fusibility checks"
+    }
+  ],
+  "boundary": "The built-in global switch reproduces the contract's one-loop and three-loop endpoints, but it does not implement the caller-defined weighted measure, max-extent policy, or max-call policy. An accelerator-scoped analysis and transformation is still required before this task can pass."
+}
