@@ -263,7 +263,7 @@ def render(source: str) -> tuple[str, int]:
 \renewcommand\footnotetextcopyrightpermission[1]{{}}
 \acmConference[EuroSys '27]{{Twenty-Second European Conference on Computer Systems}}{{April 19--23, 2027}}{{Rabat, Morocco}}
 \acmYear{{2027}}
-\title[Joggle: Malleable Compilation]{{{escape(title)}}}
+\title[Joggle: Distributable Extensions]{{{escape(title)}}}
 \author{{Anonymous Author(s)}}
 \affiliation{{\institution{{Anonymous}}}}
 \ccsdesc[500]{{Software and its engineering~Compilers}}

@@ -343,10 +343,11 @@ Joggle.
 The working title should describe the mechanism and the unresolved problem, not
 promise an inference-performance victory that has not been measured:
 
-> **Joggle: Malleable Compilation for Evolving Models and Machines**
+> **Joggle: Distributable Compiler Extensions for Agile Inference Co-Design**
 
-“Progressive exposure” is the mechanism name inside the paper. “Evolving models
-and machines” states the temporal systems problem. The title remains provisional
+“Progressive exposure” is the mechanism name inside the paper. “Distributable
+extensions” names the concrete unit a researcher installs and revises; “agile
+inference co-design” names the intended benefit. The title remains provisional
 until E1 and E3 succeed.
 
 The Motivation should follow this chain:

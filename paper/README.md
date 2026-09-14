@@ -8,7 +8,7 @@ preserved here.
 
 ## Target and thesis
 
-Working title: **Joggle: Malleable Compilation for Evolving Models and Machines**.
+Working title: **Joggle: Distributable Compiler Extensions for Agile Inference Co-Design**.
 
 The current target is the
 [EuroSys 2027 fall cycle](https://2027.eurosys.org/cfp.html). Titles and

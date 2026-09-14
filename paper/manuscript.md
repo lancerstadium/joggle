@@ -1,4 +1,4 @@
-# Joggle: Malleable Compilation for Evolving Models and Machines
+# Joggle: Distributable Compiler Extensions for Agile Inference Co-Design
 
 ## Abstract
 
@@ -104,9 +104,10 @@ This paper makes three contributions:
 2. **A uniform, distributable extension model** that hosts general compiler
    mechanisms and specialized hardware policies as typed module functions, with
    capability-directed exposure, checked selection, and transactional edits.
-3. **A cross-layer evaluation methodology** that combines matched extension
-   tasks with real model execution, code quality, compiler cost, peak memory,
-   artifact footprint, and explicit unsupported frontiers.
+3. **A closure-oriented evaluation methodology** that measures bootstrap,
+   extension/revision, interaction, deployment, and performance costs using
+   matched native baselines, complete models, and explicit unsupported
+   frontiers.
 
 ## 2. Motivation: the extension boundary is an experimental variable
 
@@ -164,13 +165,33 @@ fragmented.” Each prior system deliberately stabilizes a useful interface. The
 open case is the period in which a research team does not yet know which
 interface should stabilize.
 
-### 2.3 Temporal coupling is the cost to remove
+### 2.3 A research extension must close the whole path
 
 We call the resulting cost **temporal coupling**: a revision to one experimental
 decision forces synchronized changes across separately represented contracts.
 The symptom is not the number of source files or IRs. It is that a previously
 working semantic fallback, target mapping, validator, or artifact becomes
 invalid even though the research team intended one conceptual revision.
+
+Temporal coupling is only one source of friction. A usable research compiler
+must also close five practical paths. **Bootstrap closure** is the dependency,
+configuration, build, disk, and time cost before the first program can be
+inspected. **Extension closure** is the complete set of declarations,
+registrations, build changes, and runtime pieces required for one distributable
+idea. **Interaction closure** is whether its semantics and implementation
+choices can be inspected, composed, replaced, and debugged through a coherent
+public model. **Deployment closure** carries constants, workspace, ABI,
+fallback, validation, and provenance to an ordinary artifact. **Performance
+closure** asks whether the artifact remains useful after all of those costs are
+included.
+
+TVM and ONNX-MLIR pay larger bootstrap and extension costs in exchange for
+mature abstractions and ecosystems. Kernel DSLs offer a tighter interaction
+loop after model integration and deployment choices have been made. Joggle's
+opportunity is not simply to be smaller; it is to keep these closures connected
+for a researcher who needs both portable and specialized behavior. Each closure
+is measured separately so that missing performance cannot be disguised as API
+simplicity, and missing deployment cannot be disguised as kernel speed.
 
 This cost matters beyond novel accelerators. Low-bit formats evolve with pack
 layouts and conversion kernels; structured sparsity evolves with metadata and
