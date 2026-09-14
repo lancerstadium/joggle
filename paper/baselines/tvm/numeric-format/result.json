@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "recorded_at": "2026-09-14T17:49:14+08:00",
+  "task": "numeric-format",
+  "status": "unsupported",
+  "system": "TVM",
+  "version": "v0.26.0",
+  "revision": "c7b458e946bc4266915da582457476bdcd9705ae",
+  "blocking_requirement": "define signed sat<W> for widths 2 through 63 with saturating addition",
+  "contract_sha256": "2e80bbb12b304ffd7280725b0f60b5f2ed6b5df4560b6fbfb1ca938e0a44e9c6",
+  "format_map_sha256": "26f3841512d7ee2faec81c11e4edd25a801c50f33d2773bf1dea83768084c861",
+  "probe_source_sha256": "db45840dd9366075bfcb8bca846e512e2411224920a921eb99d29a1c265961a0",
+  "probe": {
+    "target_datatype_module": {
+      "status": "unsupported",
+      "diagnostic": "ImportError: cannot import name 'datatype' from 'tvm.target'"
+    },
+    "parametric_dtype": {
+      "status": "unsupported",
+      "diagnostic": "ValueError: Function dtype.get_custom_type_code not found"
+    },
+    "registration_source_present": false
+  },
+  "source_observation": {
+    "expected_registration_module": "python/tvm/target/datatype.py",
+    "present": false
+  },
+  "later_requirements_evaluated": false,
+  "decision": "The pinned public Python and datatype paths cannot register or parse one parameterized custom scalar type. A storage-int64 clamp program would test an operator implementation rather than the frozen type-system requirement and is not counted."
+}

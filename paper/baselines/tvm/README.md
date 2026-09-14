@@ -66,9 +66,25 @@ paper/measure_baselines.py \
 --output paper/data/extension-tvm-pilot.csv
 ```
 
-The three Python programs and the external-kernel C bridge and header are
+The three passing Python programs and the external-kernel C bridge and header are
 baseline implementation source. This README and `requirements.txt` are
 reproducibility metadata. JSON fixtures, the supplied kernels, and the supplied
 harness are shared task inputs and are excluded from source-footprint
-measurements. The numeric-format contract is not yet implemented and must not
-be reported as a TVM result.
+measurements.
+
+## Numeric-format unsupported boundary
+
+The frozen numeric-format task first requires one registered parametric scalar
+type `sat<W>` for widths 2 through 63. At the pinned revision, importing the
+previous custom-datatype registration surface from `tvm.target` fails, the
+corresponding `python/tvm/target/datatype.py` source is absent, and constructing
+`DataType("custom[sat]5")` fails because `dtype.get_custom_type_code` is not
+registered. [`numeric_format_probe.py`](numeric_format_probe.py) reproduces
+these checks against the shared contract and format map;
+[`numeric-format/result.json`](numeric-format/result.json) preserves the exact
+revision, diagnostics, and digests.
+
+The later storage, C, VM, and rejection requirements are not counted after the
+first mandatory requirement fails. Implementing saturation over ordinary
+`int64` TIR would be a useful operator program, but would not satisfy the
+contract's type-system requirement and is therefore not substituted here.

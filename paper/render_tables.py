@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import re
 import statistics
@@ -28,6 +29,10 @@ def document(path: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError(f"document must be an object: {path}")
     return value
+
+
+def digest(path: str) -> str:
+    return hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
 
 
 def table(headers: list[str], body: list[list[str]], right: set[int]) -> str:
@@ -158,6 +163,19 @@ def extension_surface() -> str:
     policy_result = document("paper/baselines/onnx-mlir/policy/result.json")
     if policy_result.get("task") != "policy" or policy_result.get("status") != "pass":
         raise ValueError("unexpected ONNX-MLIR policy result")
+    tvm_numeric = document("paper/baselines/tvm/numeric-format/result.json")
+    if (
+        tvm_numeric.get("task") != "numeric-format"
+        or tvm_numeric.get("status") != "unsupported"
+    ):
+        raise ValueError("unexpected TVM numeric-format result")
+    for field, path in (
+        ("contract_sha256", "paper/tasks/numeric-format.json"),
+        ("format_map_sha256", "paper/fixtures/numeric-format/format-map.json"),
+        ("probe_source_sha256", "paper/baselines/tvm/numeric_format_probe.py"),
+    ):
+        if tvm_numeric.get(field) != digest(path):
+            raise ValueError(f"TVM numeric-format {field} changed")
 
     def observed(records: dict[str, dict[str, str]], task: str) -> str:
         record = records.get(task)
@@ -175,10 +193,13 @@ def extension_surface() -> str:
         if not isinstance(item, dict) or not isinstance(item.get("id"), str):
             raise ValueError("extension task must have an id")
         task = item["id"]
+        tvm_value = observed(tvm, task)
+        if task == "numeric-format":
+            tvm_value = "unsupported at custom-type registration"
         onnx_value = observed(onnx, task)
         if task == "external-kernel":
             onnx_value = "unsupported at first required MatMul case"
-        body.append([task, observed(joggle, task), observed(tvm, task), onnx_value])
+        body.append([task, observed(joggle, task), tvm_value, onnx_value])
     return (
         "**Table 4. Frozen extension tasks and observed authored source surface.**\n\n"
         + table(

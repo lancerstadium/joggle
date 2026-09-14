@@ -490,7 +490,7 @@ or faster than another compiler.
 | implementation | pass, 20 lines | pass, 62 lines | pass, 167 lines in six files |
 | policy | pass, 69 lines | pass, 126 lines | pass, 201 lines |
 | external-kernel | pass, 138 lines | pass, 355 lines | unsupported at first required MatMul case |
-| numeric-format | pass, 284 lines | incomplete | incomplete |
+| numeric-format | pass, 284 lines | unsupported at custom-type registration | incomplete |
 <!-- END GENERATED: extension-surface -->
 
 The ONNX-MLIR policy result is a separate accelerator-scoped implementation,
@@ -526,9 +526,13 @@ zero maximum absolute error.
 The first three frozen contracts now also pass on a pinned TVM `v0.26.0`
 baseline: one generic explicit i-k-j matrix body, one structural schedule
 policy, and one generic external-call implementation exercised by the unchanged
-C harness. Their exact experiment sources and build recipe are preserved, but
-the numeric-format contract remains incomplete. These are mechanism-level
-controls, not a substitute for an end-to-end neural-network compiler. The
+C harness. Its numeric-format task stops at the first mandatory requirement.
+The pinned Python surface cannot import the custom-datatype registration module,
+the corresponding source module is absent, and parsing `custom[sat]5` reports
+that `dtype.get_custom_type_code` is unavailable. We therefore preserve an
+unsupported result rather than substitute an ordinary int64 clamp program,
+which would test an operator body rather than a parametric type. These are
+mechanism-level controls, not a substitute for an end-to-end neural-network compiler. The
 ONNX-MLIR implementation task uses its documented accelerator path and adds
 six files containing 167 nonblank, non-comment lines: the conversion and
 accelerator class, three build files, and a runtime compatibility symbol. It
@@ -546,7 +550,7 @@ the generic call pattern and receives the option, whereas MatMul registers only
 its ordinary lowering. The exact successful command, emitted IR, source
 digests, and failed mandatory requirement are preserved as an unsupported
 outcome; no later requirement is counted as passing after that failure. The
-numeric-format contract and an uninterrupted clean-build repetition remain
+ONNX-MLIR numeric-format contract and an uninterrupted clean-build repetition remain
 incomplete, so there is still no full matched RQ2 result or comparative
 extensibility claim. Standalone MLIR type/dialect experiments may
 decompose registration and conversion work, but cannot be reported as the

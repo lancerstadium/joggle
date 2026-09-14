@@ -103,7 +103,9 @@ TVM `v0.26.0` at commit
 `c7b458e946bc4266915da582457476bdcd9705ae` is now pinned. Reproducible TVM
 programs pass the implementation, policy, and external-kernel contracts; their
 sources and build recipe are preserved under `baselines/tvm/`. The numeric-
-format contract remains unimplemented, so there is no complete TVM result.
+format task has a preserved unsupported result at its first mandatory
+custom-type requirement: the pinned public Python surface can neither import
+the custom-datatype registration module nor construct `custom[sat]5`.
 ONNX-MLIR is pinned at commit
 `4a13c34aa695b228599d637cdb772c19b4b18dba`. Its implementation task now passes
 end to end through the documented accelerator path: the unchanged ONNX fixture

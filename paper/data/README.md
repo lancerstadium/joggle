@@ -82,9 +82,12 @@ pinned record under `paper/baselines/tvm/`. Before running a task, the collector
 requires the exact TVM revision and a clean TVM checkout. It then runs the exact
 recorded command, accepts only the task's structured pass report, and hashes the
 measured implementation sources. The three completed TVM tasks contain 62, 126,
-and 355 source lines, respectively. These are raw matched-task footprints, not
-an extensibility ranking: the numeric-format comparison, clean-build timing,
-and independent-machine reproduction are still missing.
+and 355 source lines, respectively. The numeric-format task stops at its first
+mandatory requirement because the pinned release exposes no working public
+custom-datatype registration path; its exact probe and unsupported record are
+under `paper/baselines/tvm/numeric-format/`. These are raw matched-task
+footprints and boundaries, not an extensibility ranking. Clean-build timing and
+independent-machine reproduction are still missing.
 
 `extension-onnx-mlir-pilot.csv` records the first end-to-end system-baseline
 task at ONNX-MLIR `4a13c34a` and its documented LLVM revision. A six-file,
