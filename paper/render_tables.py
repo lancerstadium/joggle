@@ -176,6 +176,14 @@ def extension_surface() -> str:
     ):
         if tvm_numeric.get(field) != digest(path):
             raise ValueError(f"TVM numeric-format {field} changed")
+    onnx_numeric = document(
+        "paper/baselines/onnx-mlir/numeric-format/result.json"
+    )
+    if (
+        onnx_numeric.get("task") != "numeric-format"
+        or onnx_numeric.get("status") != "unsupported"
+    ):
+        raise ValueError("unexpected ONNX-MLIR numeric-format result")
 
     def observed(records: dict[str, dict[str, str]], task: str) -> str:
         record = records.get(task)
@@ -196,9 +204,17 @@ def extension_surface() -> str:
         tvm_value = observed(tvm, task)
         if task == "numeric-format":
             tvm_value = "unsupported at custom-type registration"
-        onnx_value = observed(onnx, task)
         if task == "external-kernel":
             onnx_value = "unsupported at first required MatMul case"
+        elif task == "numeric-format":
+            record = onnx.get(task)
+            if record is None or record["source_sha256"] != onnx_numeric[
+                "implementation"
+            ]["source_sha256"]:
+                raise ValueError("ONNX-MLIR numeric-format surface changed")
+            onnx_value = "unsupported at second executable target"
+        else:
+            onnx_value = observed(onnx, task)
         body.append([task, observed(joggle, task), tvm_value, onnx_value])
     return (
         "**Table 4. Frozen extension tasks and observed authored source surface.**\n\n"

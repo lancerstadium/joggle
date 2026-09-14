@@ -37,7 +37,7 @@ usability.
 | Question | Evidence present | Blocking work |
 | --- | --- | --- |
 | Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths; a generated table covers twelve pinned Zoo stage records, of which ten complete semantic conversion | Reproduce the frozen frontier and executable subset in the anonymous artifact |
-| Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM controls pass three contracts and preserve an unsupported custom-type boundary; ONNX-MLIR passes the implementation and policy tasks, while its documented external-call option has a preserved unsupported MatMul outcome; the shared numeric-format ONNX graph and format map are frozen | Execute the ONNX-MLIR numeric-format contract or preserve its first unsupported requirement; repeat the ONNX-MLIR build without interruption from a clean checkout |
+| Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM controls pass three contracts and preserve an unsupported custom-type boundary; ONNX-MLIR passes the implementation and policy tasks, has a preserved unsupported external-call boundary, and carries the numeric-format fixture through a parameterized type to exact native execution before stopping at the required second executable target | Repeat the ONNX-MLIR build without interruption from a clean checkout |
 | Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical CSE/analysis scaling pilots | Freeze a fault and diagnostic matrix; do not expand parser/printer internals unless a case exposes a correctness defect |
 | Artifact quality | Ten numerical ONNX paths; clean-revision, 20-trial MobileNetV2 and MNIST records compare generated C with ONNX Runtime on two shared-runner CPU classes; internal rewrite diagnostics remain separate | Add an identified isolated Linux host with dispersion and task accuracy, or narrow the paper claim explicitly to artifact correctness and transformation reach |
 
@@ -75,9 +75,9 @@ is complete.
   Joggle and system-level baselines; these are not model benchmarks.
 - [`baselines/tvm/`](baselines/tvm/): pinned TVM build record and matched
   mechanism-level controls.
-- [`baselines/onnx-mlir/`](baselines/onnx-mlir/): pinned protocol for the
-  end-to-end neural-network compiler baseline; the first native task is
-  preserved and the remaining contracts are pending.
+- [`baselines/onnx-mlir/`](baselines/onnx-mlir/): pinned protocol, sources,
+  artifacts, passing tasks, and preserved unsupported boundaries for the
+  end-to-end neural-network compiler baseline.
 - [`model-study.md`](model-study.md): model selection and staged compatibility
   protocol.
 - [`data/`](data/): raw pilot records and provenance.

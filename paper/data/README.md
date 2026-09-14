@@ -89,8 +89,8 @@ under `paper/baselines/tvm/numeric-format/`. These are raw matched-task
 footprints and boundaries, not an extensibility ranking. Clean-build timing and
 independent-machine reproduction are still missing.
 
-`extension-onnx-mlir-pilot.csv` records the first end-to-end system-baseline
-task at ONNX-MLIR `4a13c34a` and its documented LLVM revision. A six-file,
+`extension-onnx-mlir-pilot.csv` records the end-to-end system-baseline tasks at
+ONNX-MLIR `4a13c34a` and its documented LLVM revision. A six-file,
 167-line accelerator extension imports the unchanged ONNX fixture, emits the
 required explicit `i-k-j` affine loop nest, produces a native shared library,
 and returns `[58, 64, 139, 154]` with zero maximum absolute error. The preserved
@@ -106,8 +106,11 @@ preserved unsupported outcome: the documented `--ops-for-call=MatMul` option
 accepts the frozen first matrix case but emits ordinary affine loops rather
 than `krnl.call`. Exact output and source evidence are under
 `paper/baselines/onnx-mlir/external-kernel/`. The policy task now passes through
-a separately preserved accelerator extension; the numeric-format contract
-remains open.
+a separately preserved accelerator extension. The numeric-format record adds
+a 516-line accelerator/test surface and preserves imported, typed, and lowered
+IR, four generated helpers, deterministic rejection cases, and an exact native
+oracle over all five outputs. It remains unsupported at the required second
+executable target; emitted intermediate IR is not counted as a second run.
 
 `instance-specialization-pilot.csv` records the first four-model evaluation of
 compiler-owned call-site instances. Each automatic variant starts from the

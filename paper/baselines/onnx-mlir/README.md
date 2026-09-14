@@ -3,8 +3,9 @@
 This directory defines the primary system-level baseline for RQ2. The matched
 implementation and policy tasks have preserved native results. The external-
 kernel task has a reproducible unsupported outcome at its first mandatory
-matrix case; the numeric-format contract remains incomplete. These records do not
-support a broad extensibility claim.
+matrix case. The numeric-format task reaches exact native execution and has a
+preserved unsupported boundary at the required second executable target. These
+records do not support a broad extensibility claim.
 
 Before implementing the policy extension, the policy input was checked through
 the documented built-in path under [`policy/`](policy/).
@@ -180,6 +181,24 @@ digests, source observations, and boundary decision are preserved under
 [`external-kernel/`](external-kernel/). This is an unsupported outcome, not a
 failed build and not evidence that ONNX-MLIR cannot be extended through a new
 accelerator or source change.
+
+## Numeric-format unsupported boundary
+
+The separate `Sat` accelerator consumes the unchanged numeric-format ONNX
+fixture and its node-to-width map. It registers the parameterized
+`!sat.int<W>` type, replaces mapped additions with typed `sat.add` operations,
+and lowers nested scalar and tensor element types through an int64 carrier.
+One generic implementation derives signed bounds from `W` and generates four
+reused shape/width helpers; an incompatible pre-existing symbol is rejected.
+
+The native shared library returns all five frozen outputs exactly. Preserved
+tests also reject invalid and mixed widths, absent accelerator registration,
+missing and duplicate mappings, and helper collisions. The typed and lowered
+IR and the complete 516-line accelerator/test surface are under
+[`numeric-format/`](numeric-format/). The result remains unsupported at the
+fourth mandatory requirement: ONNX-MLIR provides the native path but no second
+executable C or deterministic-VM target matching the frozen contract. Emitted
+ONNX or LLVM IR is not treated as an independent execution path.
 
 ## Measurement boundary
 

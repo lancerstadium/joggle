@@ -114,8 +114,13 @@ and passes the numerical oracle. The exact six-file extension, emitted IR, and
 result record are preserved under `baselines/onnx-mlir/implementation/`. The
 policy task also passes through a separate accelerator-scoped analysis and
 transformation. The external-kernel task is unsupported at its first mandatory
-case, while numeric format and an uninterrupted clean-build repetition remain
-incomplete, so there is no complete cross-system extensibility conclusion yet.
+case. For numeric format, a separate accelerator registers `!sat.int<W>`,
+materializes nested tensor element types, emits collision-checked helpers, and
+executes every frozen scalar and tensor case through a native artifact with
+zero error. ONNX-MLIR exposes no second executable C or deterministic-VM target
+corresponding to the frozen requirement, so that task is preserved as
+unsupported at the second target rather than relabeled as a pass. An
+uninterrupted clean-build repetition remains incomplete.
 RISE/Shine remains provisional; standalone MLIR observations may explain
 plumbing cost but cannot close RQ2.
 

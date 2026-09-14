@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "recorded_at": "2026-09-14T18:18:00+08:00",
+  "task": "numeric-format",
+  "status": "unsupported",
+  "system": "ONNX-MLIR",
+  "revision": "4a13c34aa695b228599d637cdb772c19b4b18dba",
+  "llvm_revision": "1053047a4be7d1fece3adaf5e7597f838058c947",
+  "host": {
+    "architecture": "arm64",
+    "operating_system": "Darwin 24.6.0",
+    "compiler": "Apple clang 17.0.0 (clang-1700.6.3.2)"
+  },
+  "configuration": {
+    "build_type": "Release",
+    "assertions": true,
+    "stablehlo": false,
+    "accelerators": ["Sat"],
+    "global_macro_definitions": 5
+  },
+  "implementation": {
+    "files": 14,
+    "source_lines": 516,
+    "source_bytes": 21385,
+    "source_sha256": "5ed6baef2a9d0fffe183f6d85a83a26eb1b4d8a53623aa1b8fd91ae6c9a87a9f",
+    "framework_core_files_changed": 0,
+    "build_files": 3,
+    "native_registration_entries": 1,
+    "runtime_init_symbols": 1,
+    "new_external_dependencies": 0
+  },
+  "requirements": [
+    {
+      "name": "parameterized sat<W> and saturating addition",
+      "status": "pass",
+      "evidence": "The registered !sat.int<W> type accepts widths 2 through 63 and one generic sat.add lowering emits signed bounds from W."
+    },
+    {
+      "name": "generic type checking and operator resolution",
+      "status": "pass",
+      "evidence": "One width-independent pass validates nested operand and result types; the mixed-width test is rejected."
+    },
+    {
+      "name": "nested storage conversion and collision-checked helpers",
+      "status": "pass",
+      "evidence": "Tensor element types are converted through an int64 carrier and generated shape-specific helpers are reused or rejected on a symbol/type/width collision."
+    },
+    {
+      "name": "execute scalar and tensor cases through two targets",
+      "status": "unsupported",
+      "evidence": "The native shared-library path executes every frozen case exactly. ONNX-MLIR has no second executable C or deterministic-VM target corresponding to the frozen contract. Emitted ONNX and LLVM IR are intermediate forms, not a second execution path."
+    },
+    {
+      "name": "negative diagnostics",
+      "status": "observed",
+      "evidence": "Invalid widths, mixed widths, absent accelerator registration, missing node mappings, duplicate mappings, and helper collisions all fail deterministically."
+    }
+  ],
+  "outputs": {
+    "imported_ir": "imported.mlir",
+    "imported_ir_sha256": "643f902b778dd39c59833a4c79c86049e31593b9f7f1aa73fe6ff5abaa92f926",
+    "materialized_ir": "materialized.mlir",
+    "materialized_ir_sha256": "9c76ed1f51b25cf8a0228fecd3a3e50a14a7d6892500a4d801157a483b6c6761",
+    "lowered_ir": "lowered.mlir",
+    "lowered_ir_sha256": "85f765065ec498dcbb6af08961547de2f9fc74430a355f345dfbc66ffc18bceb",
+    "shared_library_sha256": "4fe34b4022473c2b2dd0d91250588c0c0f6c32c07a45ed824db3a5c6d3627228"
+  },
+  "oracle": {
+    "expected": [[15], [-16], [127], [2047], [15, 15, -16, -16]],
+    "actual": [[15], [-16], [127], [2047], [15, 15, -16, -16]],
+    "maximum_absolute_error": 0.0,
+    "status": "pass"
+  },
+  "boundary": "ONNX-MLIR can host the parameterized type and lower the unchanged ONNX fixture to a correct native artifact, but it does not provide the contract's second executable target representation. The task is therefore unsupported at that mandatory requirement rather than relabeled as a pass."
+}

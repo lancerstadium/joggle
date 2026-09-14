@@ -1,0 +1,6 @@
+{
+  "operations": [
+    {"node": "scalar_0_add", "width": 5},
+    {"node": "scalar_0_add", "width": 8}
+  ]
+}

@@ -477,8 +477,8 @@ policy runs report the same processor class.
 ### 5.5 Extension surface
 
 The extension-surface study and controlled performance study are not complete.
-Two of four system-baseline tasks pass, one has a preserved unsupported
-outcome at its first mandatory case, and one remains incomplete. These results
+Two of four system-baseline tasks pass and two have preserved unsupported
+outcomes at explicit mandatory requirements. These results
 do not support a general claim that Joggle is easier to extend, more compatible,
 or faster than another compiler.
 
@@ -490,7 +490,7 @@ or faster than another compiler.
 | implementation | pass, 20 lines | pass, 62 lines | pass, 167 lines in six files |
 | policy | pass, 69 lines | pass, 126 lines | pass, 201 lines |
 | external-kernel | pass, 138 lines | pass, 355 lines | unsupported at first required MatMul case |
-| numeric-format | pass, 284 lines | unsupported at custom-type registration | incomplete |
+| numeric-format | pass, 284 lines | unsupported at custom-type registration | unsupported at second executable target |
 <!-- END GENERATED: extension-surface -->
 
 The ONNX-MLIR policy result is a separate accelerator-scoped implementation,
@@ -550,9 +550,16 @@ the generic call pattern and receives the option, whereas MatMul registers only
 its ordinary lowering. The exact successful command, emitted IR, source
 digests, and failed mandatory requirement are preserved as an unsupported
 outcome; no later requirement is counted as passing after that failure. The
-ONNX-MLIR numeric-format contract and an uninterrupted clean-build repetition remain
-incomplete, so there is still no full matched RQ2 result or comparative
-extensibility claim. Standalone MLIR type/dialect experiments may
+numeric-format accelerator defines one parameterized `!sat.int<W>` type,
+materializes five mapped additions in scalar and nested tensor positions, and
+generates four reusable shape/width helpers with collision checks. Its native
+artifact returns `[15]`, `[-16]`, `[127]`, `[2047]`, and
+`[15, 15, -16, -16]` exactly; invalid widths, mixed widths, missing
+registration and mappings, duplicate mappings, and helper collisions are
+rejected. ONNX-MLIR has no second executable C or deterministic-VM target
+corresponding to the frozen requirement, so the task stops at that mandatory
+boundary. An uninterrupted clean-build repetition remains incomplete.
+Standalone MLIR type/dialect experiments may
 decompose registration and conversion work, but cannot be reported as the
 system comparison because they omit ONNX ingestion and artifact generation.
 
