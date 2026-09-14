@@ -111,6 +111,12 @@ if(NOT result EQUAL 0)
 endif()
 file(READ "${restricted_source}" restricted_text)
 if(NOT restricted_text MATCHES
+   "static void separation_distinct\\(const float left\\[restrict static 4\\], const float right\\[restrict static 4\\], float out_out\\[restrict static 4\\]\\);")
+  message(FATAL_ERROR
+          "source prototype does not match its bounded definition:\n"
+          "${restricted_text}")
+endif()
+if(NOT restricted_text MATCHES
    "static void separation_distinct\\(const float left\\[restrict static 4\\], const float right\\[restrict static 4\\], float [A-Za-z0-9_]+\\[restrict static 4\\]\\) \\{")
   message(FATAL_ERROR
           "proved private call did not receive restrict:\n${restricted_text}")
@@ -177,11 +183,11 @@ if(NOT emitted MATCHES "float\\* out = out_out;" OR
           "prepared C did not write a returned tensor directly:\n${emitted}")
 endif()
 if(NOT emitted MATCHES
-   "void open_add\\(const float a\\[static 4\\], const float b\\[static 4\\], float out_out\\[static 4\\]\\) \\{" OR
-   emitted MATCHES
-   "void open_add\\(const float a\\[static 4\\], const float b\\[static 4\\], float out_out\\[static 4\\]\\);")
+   "void open_add\\(const float a\\[static 4\\], const float b\\[static 4\\], float out_out\\[static 4\\]\\);" OR
+   NOT emitted MATCHES
+   "void open_add\\(const float a\\[static 4\\], const float b\\[static 4\\], float out_out\\[static 4\\]\\) \\{")
   message(FATAL_ERROR
-          "C tensor bounds were not limited to the definition:\n${emitted}")
+          "C tensor bounds differed between source declarations:\n${emitted}")
 endif()
 execute_process(
   COMMAND "${TOOL}" emit c.header "${prepared}" -M "${MODULES}"
@@ -193,6 +199,10 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "prepared C header emission failed (${result}):\n${error}")
 endif()
 file(READ "${open_header}" emitted_header)
+if(emitted_header MATCHES "\\[static [0-9]+\\]")
+  message(FATAL_ERROR
+          "public C header imposed definition-only bounds:\n${emitted_header}")
+endif()
 if(emitted_header MATCHES "open_offset")
   message(FATAL_ERROR
           "prepared C header exposed an unmarked helper:\n${emitted_header}")

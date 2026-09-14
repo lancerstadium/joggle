@@ -1894,7 +1894,7 @@ local fn source_headers(
 
 local fn prototypes(
   m: Mod, fns: list<Fn>, calls: list<Op>, blob: str,
-  data_fns: list<Fn>, config: dict
+  data_fns: list<Fn>, config: dict, definition_syntax: bool
 ) -> str {
   var declarations = ""
   var names: list<str> = []
@@ -1916,7 +1916,9 @@ local fn prototypes(
     }
     names += [name]
     declarations += linkage(m, fn) +
-                    signature(m, fn, blob, data_fns, config, false) + ";\n"
+                    signature(
+                      m, fn, blob, data_fns, config, definition_syntax
+                    ) + ";\n"
   }
   return declarations
 }
@@ -1929,7 +1931,7 @@ local fn header_with(m: Mod, blob: str, config: dict) -> str {
   if blob != "" {
     data_fns = data_functions(m)
   }
-  let declarations = prototypes(m, fns, calls, blob, data_fns, config)
+  let declarations = prototypes(m, fns, calls, blob, data_fns, config, false)
   return "#pragma once\n\n" +
          includes(type_headers(fns, config)) + "\n" +
          "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n" +
@@ -2078,7 +2080,7 @@ local fn emit(m: Mod, blob: str, config: dict) -> str {
   if blob != "" {
     offsets = payload_offsets(m, config)
   }
-  let declarations = prototypes(m, fns, calls, blob, data_fns, config)
+  let declarations = prototypes(m, fns, calls, blob, data_fns, config, true)
   var definitions = ""
   for fn in fns {
     definitions += definition(m, fn, blob, data_fns, config, offsets) + "\n"

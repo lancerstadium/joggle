@@ -6,6 +6,7 @@ name: linux-performance
     branches: [main]
     paths:
       - .github/workflows/linux-performance.yml
+      - modules/c/module.jog
       - test/models.cmake
       - test/zoo.cmake
 
