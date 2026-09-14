@@ -508,6 +508,41 @@ int main(int argc, char** argv) {
   CHECK(function_edit_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(function_edit, function_edit_roundtrip));
 
+  joggle::Mod deferred_caller;
+  CHECK(joggle::parse(env,
+                      "module deferred.caller\n"
+                      "fn choose(x: i32) -> i32 { return x }\n"
+                      "fn choose(x: f32) -> f32 { return x }\n"
+                      "fn apply<T: Ty>(x: T) -> T { return choose(x) }\n"
+                      "fn exact(x: f32) -> f32 { return choose(x) }\n",
+                      deferred_caller, "deferred-caller.jog"));
+  CHECK(deferred_caller.verify(env));
+  joggle::Fn integer_choice;
+  for (const joggle::Fn choice : deferred_caller.find_fns("choose"))
+    if (choice.params().front().type() == joggle::Ty("i32"))
+      integer_choice = choice;
+  CHECK(integer_choice);
+  const std::string deferred_before = joggle::print(deferred_caller);
+  const std::uint64_t deferred_revision = deferred_caller.revision();
+  CHECK(!deferred_caller.rename(env, integer_choice, "integer_choice"));
+  CHECK(integer_choice.name() == "choose" &&
+        joggle::print(deferred_caller) == deferred_before);
+  CHECK(deferred_caller.revision() == deferred_revision);
+  CHECK(!deferred_caller.diags().empty() &&
+        deferred_caller.diags().back().message.find("deferred caller") !=
+            std::string::npos);
+  deferred_caller.clear_diags();
+  CHECK(!deferred_caller.erase(env, integer_choice));
+  CHECK(integer_choice && joggle::print(deferred_caller) == deferred_before);
+  CHECK(deferred_caller.revision() == deferred_revision);
+  CHECK(!deferred_caller.diags().empty() &&
+        deferred_caller.diags().back().message.find("deferred caller") !=
+            std::string::npos);
+  deferred_caller.clear_diags();
+  CHECK(deferred_caller.erase(env, deferred_caller.find_fn("apply")));
+  CHECK(deferred_caller.erase(env, integer_choice));
+  CHECK(!integer_choice && deferred_caller.verify(env));
+
   joggle::Mod nested_return;
   constexpr std::string_view nested_return_source =
       "module nested_return\n"

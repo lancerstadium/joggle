@@ -2931,8 +2931,19 @@ bool Mod::erase(const Env& env, Fn fn) {
         store.blks[blk].data.fn == fn.id_)
       continue;
     const Op call(&store, id, store.ops[id].generation);
-    if (env.resolve(*this, call) == fn)
+    const Fn resolved = env.resolve(*this, call);
+    if (resolved == fn)
       return reject("cannot erase a function with live callers", call.loc());
+    if (resolved)
+      continue;
+    const Ty applied{std::string(call.callee())};
+    const std::string_view symbol =
+        applied.args().empty() ? call.callee() : applied.name();
+    const std::vector<Fn> candidates = env.resolve_fns(*this, symbol);
+    if (std::find(candidates.begin(), candidates.end(), fn) !=
+        candidates.end())
+      return reject("cannot erase a function with a deferred caller",
+                    call.loc());
   }
 
   const detail::FnData& data = store.fns[fn.id_].data;
@@ -3130,8 +3141,20 @@ bool Mod::rename(const Env& env, Fn fn, std::string name) {
     if (!store.ops[id].live || store.ops[id].data.kind != Op::Kind::call)
       continue;
     const Op call(&store, id, store.ops[id].generation);
-    if (env.resolve(*this, call) == fn)
+    const Fn resolved = env.resolve(*this, call);
+    if (resolved == fn) {
       calls.push_back(id);
+      continue;
+    }
+    if (resolved)
+      continue;
+    const Ty applied{std::string(call.callee())};
+    const std::string_view symbol =
+        applied.args().empty() ? call.callee() : applied.name();
+    const std::vector<Fn> candidates = env.resolve_fns(*this, symbol);
+    if (std::find(candidates.begin(), candidates.end(), fn) !=
+        candidates.end())
+      return reject("function rename has a deferred caller", call.loc());
   }
 
   detail::Store backup = store;

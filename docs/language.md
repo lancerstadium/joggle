@@ -606,9 +606,16 @@ or a partly rewritten signature.
 `ir.rename(m, fn, name)` changes a local function symbol and every call that
 resolves to that exact overload. It retains short call spelling when resolution
 stays unique and qualifies only collisions. An alpha-equivalent overload at the
-new name rejects the edit. `ir.erase(m, fn)` rejects a function with callers
-outside its own body; otherwise the function, generics, parameters, nested
-blocks, operations, and results become invalid together.
+new name rejects the edit. A generic-dependent call that still includes the
+function in its candidate set also rejects the rename because one call spelling
+cannot preserve two overload families after only one candidate moves.
+`ir.erase(m, fn)` rejects a function with callers
+outside its own body. This includes a generic-dependent call that cannot yet
+select one overload but still contains the function in its visible candidate
+set; deleting that overload would otherwise change the meaning of a later
+specialization. Calls already resolved to a different overload do not block
+deletion. Otherwise the function, generics, parameters, nested blocks,
+operations, and results become invalid together.
 
 `ir.constant` checks the representation of intrinsic literals, including
 nested lists, before editing the module. User-defined type constructors retain
