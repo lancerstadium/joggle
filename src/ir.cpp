@@ -3395,9 +3395,10 @@ bool Mod::retarget(const Env& env, Op call, Fn target,
 
 bool Mod::set(Fn fn, std::string key, Attr value) {
   auto& store = impl_->store;
-  if (!fn.valid() || fn.store_ != &store || key.empty()) {
+  if (!fn.valid() || fn.store_ != &store ||
+      !detail::valid_qualified_name(key)) {
     detail::add_diag(store.diags,
-                     "set requires a live function and non-empty key");
+                     "set requires a live function and valid metadata key");
     return false;
   }
   Attr::Dict& meta = store.fns[fn.id_].data.meta;
@@ -3411,9 +3412,10 @@ bool Mod::set(Fn fn, std::string key, Attr value) {
 
 bool Mod::set(Val item, std::string key, Attr value) {
   auto& store = impl_->store;
-  if (!item.valid() || item.store_ != &store || key.empty()) {
+  if (!item.valid() || item.store_ != &store ||
+      !detail::valid_qualified_name(key)) {
     detail::add_diag(store.diags,
-                     "set requires a live value and non-empty key");
+                     "set requires a live value and valid metadata key");
     return false;
   }
   const std::unordered_set<std::uint32_t> related = family(store, item.id_);
@@ -3445,8 +3447,8 @@ bool Mod::set(std::span<const Val> items, std::string key,
   };
   if (items.size() != values.size())
     return reject("set requires one metadata value per IR value");
-  if (items.empty() || key.empty())
-    return reject("set requires values and a non-empty key");
+  if (items.empty() || !detail::valid_qualified_name(key))
+    return reject("set requires values and a valid metadata key");
   for (Val item : items)
     if (!item.valid() || item.store_ != &store)
       return reject("set requires live values in this module");
@@ -3503,9 +3505,10 @@ bool Mod::set(std::span<const Val> items, std::string key,
 
 bool Mod::set(Op op, std::string key, Attr value) {
   auto& store = impl_->store;
-  if (!op.valid() || op.store_ != &store || key.empty()) {
+  if (!op.valid() || op.store_ != &store ||
+      !detail::valid_qualified_name(key)) {
     detail::add_diag(store.diags,
-                     "set requires a live operation and non-empty key");
+                     "set requires a live operation and valid metadata key");
     return false;
   }
   const detail::OpData& data = store.ops[op.id_].data;
@@ -3527,9 +3530,10 @@ bool Mod::set(Op op, std::string key, Attr value) {
 
 bool Mod::unset(Fn fn, std::string_view key) {
   auto& store = impl_->store;
-  if (!fn.valid() || fn.store_ != &store || key.empty()) {
+  if (!fn.valid() || fn.store_ != &store ||
+      !detail::valid_qualified_name(key)) {
     detail::add_diag(store.diags,
-                     "unset requires a live function and non-empty key");
+                     "unset requires a live function and valid metadata key");
     return false;
   }
   if (!store.fns[fn.id_].data.meta.erase(std::string(key)))
@@ -3540,9 +3544,10 @@ bool Mod::unset(Fn fn, std::string_view key) {
 
 bool Mod::unset(Val item, std::string_view key) {
   auto& store = impl_->store;
-  if (!item.valid() || item.store_ != &store || key.empty()) {
+  if (!item.valid() || item.store_ != &store ||
+      !detail::valid_qualified_name(key)) {
     detail::add_diag(store.diags,
-                     "unset requires a live value and non-empty key");
+                     "unset requires a live value and valid metadata key");
     return false;
   }
   const std::unordered_set<std::uint32_t> related = family(store, item.id_);
@@ -3562,9 +3567,10 @@ bool Mod::unset(Val item, std::string_view key) {
 
 bool Mod::unset(Op op, std::string_view key) {
   auto& store = impl_->store;
-  if (!op.valid() || op.store_ != &store || key.empty()) {
+  if (!op.valid() || op.store_ != &store ||
+      !detail::valid_qualified_name(key)) {
     detail::add_diag(store.diags,
-                     "unset requires a live operation and non-empty key");
+                     "unset requires a live operation and valid metadata key");
     return false;
   }
   if (!store.ops[op.id_].data.meta.erase(std::string(key)))

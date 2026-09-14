@@ -1687,6 +1687,12 @@ int main(int argc, char** argv) {
         annotated_ops[1].meta("place")->string() == "edge");
   CHECK(annotated_ops.back().meta("trace") &&
         annotated_ops.back().meta("trace")->boolean() == true);
+  const std::string before_invalid_meta = joggle::print(annotated);
+  const std::uint64_t before_invalid_meta_revision = annotated.revision();
+  CHECK(!annotated.set(annotated_fn, "bad key", joggle::Attr(true)));
+  CHECK(joggle::print(annotated) == before_invalid_meta);
+  CHECK(annotated.revision() == before_invalid_meta_revision);
+  annotated.clear_diags();
   CHECK(annotated.set(annotated_ops[1], "layout", joggle::Attr("packed")));
   CHECK(annotated.unset(annotated_ops[1], "cost"));
   CHECK(!annotated_ops[1].meta("cost"));
@@ -1701,6 +1707,18 @@ int main(int argc, char** argv) {
                       "annotated-roundtrip.jog"));
   CHECK(annotated_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(annotated, annotated_roundtrip));
+
+  joggle::Mod invalid_meta_name;
+  CHECK(!joggle::parse(env,
+                       "module invalid.meta\n[bad.] fn f() -> ();\n",
+                       invalid_meta_name, "invalid-meta-name.jog"));
+  CHECK(std::any_of(invalid_meta_name.diags().begin(),
+                    invalid_meta_name.diags().end(),
+                    [](const joggle::Diag& diag) {
+                      return diag.loc.line == 2 &&
+                             diag.message.find("invalid metadata name") !=
+                                 std::string::npos;
+                    }));
 
   joggle::Mod selective;
   constexpr std::string_view selective_source =

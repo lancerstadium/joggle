@@ -914,7 +914,9 @@ fn placed(x: tensor<f32, [4]>) -> tensor<f32, [4]> {
 
 A bare name means `true`; values use normal `Attr` literals. Repeated brackets
 are accepted and canonical printing merges them in key order. Duplicate keys
-are errors. On a statement, the dictionary belongs to its root `Op`, whether
+are errors. Keys follow the same dotted-identifier spelling in parsed source
+and IR edits, ensuring every annotated module remains printable and
+round-trippable. On a statement, the dictionary belongs to its root `Op`, whether
 that operation is a call, loop, condition, or return. `Fn::meta` and `Op::meta`
 expose those dictionaries to C++; `Val::meta` exposes binding attributes.
 Overloaded `ir.has`, `ir.meta`, `ir.set`, and `ir.unset` cover all three handle

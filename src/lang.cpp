@@ -467,6 +467,8 @@ private:
         const Token key = take();
         if (key.kind != Tk::name)
           return fail("expected metadata name", key.loc);
+        if (!detail::valid_qualified_name(key.text))
+          return fail("invalid metadata name '" + key.text + "'", key.loc);
         Attr value(true);
         if (match(":")) {
           Ty ignored;
