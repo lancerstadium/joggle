@@ -7,47 +7,51 @@
 \renewcommand\footnotetextcopyrightpermission[1]{}
 \acmConference[EuroSys '27]{Twenty-Second European Conference on Computer Systems}{April 19--23, 2027}{Rabat, Morocco}
 \acmYear{2027}
-\title[Joggle: Malleable Inference Compilation]{Joggle: Malleable Inference Compilation with a Progressive Function IR}
+\title[Joggle: Progressive Exposure]{Joggle: Progressive Exposure for Inference Compiler Experiments}
 \author{Anonymous Author(s)}
 \affiliation{\institution{Anonymous}}
 \ccsdesc[500]{Software and its engineering~Compilers}
 \ccsdesc[300]{Computer systems organization~Embedded systems}
 \begin{document}
 \begin{abstract}
-Inference co-design experiments often alter source semantics, loop structure,
-storage policy, and executable artifacts together. Production compilers expose
-these decisions through distinct graph, tensor, loop, and target abstractions,
-so a bounded experiment can require new representation objects, conversions,
-pass registrations, and backend cases. Joggle tests whether one typed function
-IR can provide a smaller extension boundary without moving the same complexity
-into operator-specific compiler code. Imported operations, reusable tensor
-semantics, explicit loops, memory decisions, and artifact calls remain
-\nolinkurl{Fn}/\nolinkurl{Blk}/\nolinkurl{Op}/\nolinkurl{Val} objects. Decoders, analyses, transformations, planners,
-and emitters are ordinary typed module functions. Transactional editing and
-whole-program verification make a failed composition leave the input unchanged.
-We evaluate this design with frozen extension tasks, staged execution of
-conventional models, compiler cost, numerical correctness, workspace, code
-size, and latency. The current implementation executes ten ONNX models through
-strictly compiled C. On MobileNetV2, an operator-independent affine policy
-rewrites 54 loop bodies, reduces generated source by 20.8\%, and reduces latency
-by 26.5\% in a same-runner Linux diagnostic while preserving the stored output;
-the result remains 12.24 times slower than one-thread ONNX Runtime. These results
-show that separately distributed modules can change real inference bodies and
-carry the edits to executable artifacts. They also expose the boundary of the
-approach: one extensible representation does not substitute for production
-kernel libraries or automatic target tuning.
+An inference co-design idea rarely fits inside one kernel. A numeric format,
+layout, fused computation, or target primitive must be connected to a source
+model, exposed as editable computation, carried through storage and scheduling
+decisions, and closed into a callable artifact. Production compilers provide
+each capability, but usually across representation and registration boundaries;
+kernel languages provide excellent local control, but begin after several of
+those decisions have already been fixed. Joggle is a compact compiler workbench
+for experiments that deliberately cross these boundaries. Imported calls,
+reusable tensor definitions, explicit loops, storage facts, and artifact calls
+remain states of one typed function representation. Frontends, analyses,
+transformations, capability checks, and emitters are installable typed
+functions rather than privileged host subsystems. A target exposes only the
+function bodies it cannot already accept, and failed edits roll back instead of
+leaving a partially transformed program. We evaluate whether this uniformity survives real models and artifacts rather
+than only small language examples. The current corpus executes ten ONNX models
+through strictly compiled C; a 1,310-node XCiT model infers all 1,333 initially
+unknown results and stops at seven shape-driven positional-embedding calls.
+Matched studies measure extension surface, compiler work, numerical error,
+workspace, artifact size, and latency. A structural MobileNetV2 policy changes
+54 loop bodies and reduces latency by 26.5\% in a same-runner diagnostic, yet the
+result remains 12.24 times slower than one-thread ONNX Runtime. This negative
+result is part of the contribution: Joggle makes a research decision and its
+missing target mechanisms visible in the same executable path. It is not a
+replacement for a production compiler; it is a small control plane for
+building, composing, and measuring cross-layer inference experiments.
 \end{abstract}
 \keywords{inference compilation, compiler extensibility, co-design, intermediate representation, edge inference}
 \maketitle
 \section{Introduction}
-The unit of change in neural-network hardware/software co-design is rarely an
-isolated graph operator. A new numeric format changes types and constants; a
-new accelerator primitive changes the implementation chosen for a family of
-calls; a storage experiment changes lifetimes and interfaces; and a scheduling
-study must observe and rewrite loops before an artifact target accepts the
-program. These changes cross boundaries that production compilers introduce
-for good reasons, including stable frontend semantics, target-independent
-optimization, scheduling, code generation, and runtime deployment.
+A short kernel is often a long compiler experiment. Consider replacing an
+RMS-normalized projection with a packed low-precision implementation on an edge
+processor. The arithmetic may occupy a few lines, but the experiment must also
+identify the source relation, represent the new values and constants, expose a
+legal loop and layout, place or pack storage, select a fallback, and preserve an
+external ABI. If these decisions live in different compiler subsystems, the
+researcher repeatedly translates one hypothesis into several local extension
+mechanisms. The scientific variable is no longer a single piece of code; it is
+the consistency of a change across the stack.
 
 MLIR makes such multi-level systems reusable through extensible dialects and
 passes \cite{lattner2021mlir}.
@@ -60,23 +64,24 @@ stack through deployment artifacts and runtimes that scale to embedded systems
 capabilities and deployment breadth beyond the scope of a small research
 workbench.
 
-This paper asks a different question: what is the smallest compiler substrate
-that remains useful when a co-design researcher must change several of these
-boundaries at once? “Small” alone is not a contribution. Removing distinct IRs
-can merely move complexity into special cases, weaken verification, or produce
-poor code. A useful answer must preserve typed structure, permit independent
-extensions, compose deterministically, expose unsupported programs, and
-produce executable artifacts whose limitations can be measured.
+These systems solve deployment at a scale that Joggle does not attempt. The
+question here is narrower: what is the smallest compiler substrate on which a
+researcher can change several decisions together, inspect the resulting
+program, and measure the final artifact? Smallness is not sufficient. A
+single-representation compiler can merely hide the old boundaries in name
+switches, weaken invariants, or emit uniformly poor code. The representation
+must therefore keep typed structure, independent composition, explicit failure,
+and artifact closure while remaining small enough to modify as part of an
+experiment.
 
-Joggle tests one answer. Its program state consists of functions, blocks,
-operations, values, structural types, and open attributes. An operation may
-initially call a source-schema function such as an ONNX operation, later call
-an inspectable neural-network function, and finally contain explicit loops and
-scalar operations after function expansion. It does not migrate between graph,
-tensor, loop, and target IR object models. Module functions inspect or mutate
-this state through the same public API; reading a model, inferring types,
-selecting an implementation, planning storage, and emitting C are explicit
-invocations rather than privileged pipeline stages.
+Joggle tests a simple organizing rule: \textbf{keep the program stable; expose the
+implementation progressively}. Its program state contains only functions,
+blocks, operations, values, structural types, and open attributes. An operation
+can begin as an ONNX call, be retargeted to an inspectable tensor function, and
+be expanded into loops and scalar operations when a consumer needs that detail.
+The objects do not migrate into a second graph, loop, or target IR. Reading a
+model, inferring types, choosing an implementation, editing loops, planning
+storage, and emitting C are explicit function invocations over the same state.
 
 This design is influenced by the function and rewrite orientation of Lift
 \cite{steuwer2017lift} and RISE \& Shine
@@ -89,29 +94,32 @@ concepts to user modules and asks whether the core function representation is
 sufficient to host them. The evaluation must determine where that choice
 succeeds and where a dedicated representation is necessary.
 
-The paper makes three candidate contributions:
+The paper makes three contributions:
 
 \begin{enumerate}
 \item
-A function-oriented compiler design that progressively exposes conventional
-neural-network models from schema calls to structured loop bodies without a
-mandatory representation boundary.
+\textbf{Progressive function representation.} Source relations, reusable tensor
+semantics, structured loops, and artifact-facing calls are observable states
+of one program. Capability queries decide how much implementation to expose;
+no mandatory graph-to-loop conversion owns that transition.
 
 \item
-A source module mechanism in which frontend bridges, semantic
-implementations, analyses, transformations, capability checks, and artifact
-generation use ordinary typed functions and a transactional editing API.
+\textbf{A uniform extension boundary.} Source modules define semantic functions,
+analyses, edits, selectors, codecs, and emitters with one typed invocation
+model. Transactional edits, overload resolution, and explicit frontiers keep
+independently distributed extensions checkable.
 
 \item
-An empirical evaluation of extension surface, composition failure,
-conventional-model coverage, numerical correctness, and generated-artifact
-quality, including negative compatibility and performance results.
+\textbf{An artifact-centered evaluation.} Frozen extension tasks and conventional
+models measure continuity, composition failure, compiler cost, numerical
+correctness, workspace, code size, and latency. Slowdowns and incomplete
+frontiers remain first-class results rather than being hidden by a support
+percentage.
 
 \end{enumerate}
 
-The first two items are implemented design candidates. The third remains the
-submission-critical study; no contribution claim is final until its protocol
-and results are frozen.
+The first two contributions are implemented. The third is still being frozen
+for submission; all values identified as pilots remain diagnostic.
 
 \section{Motivation: a co-design experiment is a vertical change}
 \subsection{The kernel is only one decision}
@@ -400,9 +408,13 @@ after inference; SSD-MobileNetV1 infers all result types but retains 386 source
 calls after conversion. The source-call reduction comes from shared
 broadcast-capable comparison functions, a maximum/minimum Clip composition,
 and a generic tensor-tiling function reached through source-semantic mappings.
-None adds an ONNX operator to the target emitter. Models absent from the configured cache are
-omitted, not counted as passes. Structural completion is kept separate from
-the ten-model numerical execution claim above.
+XCiT-Tiny exercises a different path: all 1,333 initially unknown results are
+inferred across its 1,310 nodes, including trigonometric positional encoding,
+broadcasted selection, reductions, and LayerNormalization. Conversion leaves
+seven dynamic positional-embedding calls (four \nolinkurl{Expand}, three \nolinkurl{Tile}). None
+of these additions introduces an ONNX case in the target emitter. Models absent
+from the configured cache are omitted, not counted as passes. Structural
+completion is kept separate from the ten-model numerical execution claim above.
 
 DenseNet exposes both progress and a compiler-scaling boundary. After
 conversion and selection of the then-current out-of-tree spatial

@@ -10,9 +10,14 @@ separate from scientific progress.
 - [x] Mechanical Markdown-to-LaTeX rendering with unsupported-input failure.
 - [x] Ten-page build within the 12-page technical-content limit.
 - [x] Both current diagnostic tables fit without clipping.
-- [x] Bibliography resolves 23 cited works without undefined citations.
+- [x] Bibliography resolves 31 cited works without undefined citations.
 - [x] Literature ledger classifies 64 candidates and verifies 49 against
       primary records.
+- [x] Deterministic operator corpus covers 416 cases: eight pointwise/
+      normalization rows and eight contraction/Transformer rows.
+- [x] XCiT-Tiny infers all 1,333 initially unknown results; its seven-call
+      conversion frontier is preserved rather than reported as end-to-end
+      support.
 
 ## Submission blockers
 
@@ -22,7 +27,7 @@ separate from scientific progress.
       extension boundary concrete.
 - [ ] Freeze the title, abstract, research questions, and three contributions
       after the evidence tables stop changing.
-- [ ] Expand the 23 cited works toward at least 50 relevant citations and run
+- [ ] Expand the 31 cited works toward at least 50 relevant citations and run
       an independent claim-to-source audit; every comparison claim needs a
       primary source and a verified bibliography entry.
 - [ ] Add artifact, AI-use, conflicts, ethics, and reproducibility disclosures

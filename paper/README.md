@@ -8,8 +8,8 @@ preserved here.
 
 ## Target and thesis
 
-Working title: **Joggle: Malleable Inference Compilation with a Progressive
-Function IR**.
+Working title: **Joggle: Progressive Exposure for Inference Compiler
+Experiments**.
 
 The current target is the
 [EuroSys 2027 fall cycle](https://2027.eurosys.org/cfp.html). Titles and
@@ -36,7 +36,7 @@ usability.
 
 | Question | Evidence present | Blocking work |
 | --- | --- | --- |
-| Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths; machine-readable records cover the pinned Zoo stages, with ten models completing semantic conversion | Reproduce the frozen frontier and executable subset in the anonymous artifact |
+| Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths; ten models complete semantic conversion, while XCiT-Tiny infers all 1,333 initially unknown results and leaves seven dynamic positional-embedding calls | Close or preserve the seven-call XCiT conversion boundary, then reproduce the frozen frontier and executable subset in the anonymous artifact |
 | Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM controls pass three contracts and preserve an unsupported custom-type boundary; ONNX-MLIR passes the implementation and policy tasks, has a preserved unsupported external-call boundary, and carries the numeric-format fixture through a parameterized type to exact native execution before stopping at the required second executable target | Repeat the ONNX-MLIR build without interruption from a clean checkout |
 | Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical CSE/analysis scaling pilots | Freeze a fault and diagnostic matrix; do not expand parser/printer internals unless a case exposes a correctness defect |
 | Artifact quality | Ten numerical ONNX paths; clean-revision, 20-trial MobileNetV2 and MNIST records compare generated C with ONNX Runtime on two shared-runner CPU classes; internal rewrite diagnostics remain separate; a TFLite-to-C application study and matched LiteRT diagnostic are reproducible in `linux-tflite` | Validate the TFLite study on Linux, then add an identified isolated host with dispersion and task accuracy, or narrow the paper claim explicitly to artifact correctness and transformation reach |
@@ -92,8 +92,10 @@ is complete.
   dense operator table.
 - [`operator_suite.py`](operator_suite.py) and
   [`prepare_operator_case.py`](prepare_operator_case.py): deterministic
-  contraction cases plus generated-C, independent-weight, correctness, and
-  balanced cross-system manifests for every table cell.
+  generation of 416 operator/subgraph cases (216 contraction and Transformer
+  cases plus 200 pointwise/normalization cases), followed by generated-C,
+  independent-weight, correctness, and balanced cross-system manifests for
+  every table cell.
 - [`extension-study.md`](extension-study.md): frozen extension protocol,
   fairness rules, and threats.
 - [`extension-tasks.json`](extension-tasks.json) and [`tasks/`](tasks/):
@@ -231,17 +233,23 @@ python3 paper/measure_pair.py \
 ## Submission gate
 
 With the abstract deadline on September 17 and the paper deadline on September
-24, work is ordered by claim risk rather than component completeness:
+24, work is ordered by claim risk rather than component completeness. As of
+September 14, the abstract/title freeze has three days and the full evidence
+package has ten days:
 
 1. freeze the title, abstract, author list, conflicts, and scope of the artifact
    claim for abstract registration;
-2. close the extension matrix with a passing result or preserved unsupported
-   outcome for every ONNX-MLIR task retained in the paper;
-3. run the frozen system manifests on an identified, otherwise-idle Linux host
-   and report dispersion rather than only medians;
-4. generate the operator-speedup table and model-level figures from raw records,
-   then complete the 12-page anonymous manuscript and audits;
-5. defer parser/printer/verifier refactoring and new frontend or backend breadth
+2. run the frozen whole-model manifests on an identified, otherwise-idle Linux
+   host and report latency dispersion, peak workspace, compile time, executable
+   size, weight size, and numerical/task correctness;
+3. fill the dense operator matrices against one-thread ONNX Runtime first, then
+   retain TVM and ONNX-MLIR only where identical model, input, thread, target,
+   and timing boundaries can be reproduced;
+4. close the extension matrix with a passing result or preserved unsupported
+   outcome for every retained comparison task;
+5. generate the model-level small multiples and native-LaTeX speedup tables
+   from raw records, then complete the 12-page anonymous manuscript and audits;
+6. defer parser/printer/verifier refactoring and new frontend or backend breadth
    unless they block one of the preceding experiments.
 
 A EuroSys submission is justified only if all of the following are complete:
