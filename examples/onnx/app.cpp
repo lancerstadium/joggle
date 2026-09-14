@@ -116,6 +116,7 @@ int main(int argc, char** argv) {
   CHECK(env.load("opt"));
   CHECK(env.load("c"));
   CHECK(env.load("mem"));
+  CHECK(env.load("tile"));
   joggle::Mod model;
   CHECK(joggle::parse(env, *read_result.front().string(), model, argv[1]));
   CHECK(model.verify(env));
@@ -161,6 +162,8 @@ int main(int argc, char** argv) {
   }
   CHECK(joggle::run(env, "bounds.fold", model));
   CHECK(joggle::run(env, "opt.fold", model));
+  CHECK(joggle::run(env, "opt.basic", model));
+  CHECK(joggle::run(env, "tile.scalarize", model));
   CHECK(joggle::run(env, "opt.basic", model));
   CHECK(joggle::run(env, "mem.plan", model));
   const std::vector<joggle::Attr> placement{joggle::Attr("static")};

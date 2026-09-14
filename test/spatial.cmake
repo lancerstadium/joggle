@@ -596,7 +596,7 @@ if(NOT result EQUAL 0)
 endif()
 file(READ "${source}" text)
 if(NOT text MATCHES
-   "void model_main\\(const float\\* x, const float\\* weight, float\\* [A-Za-z_][A-Za-z0-9_]*\\)")
+   "void model_main\\(const float x\\[static 9\\], const float weight\\[static 4\\], float [A-Za-z_][A-Za-z0-9_]*\\[static 4\\]\\)")
   message(FATAL_ERROR
           "spatial C did not preserve the public function and value names:\n${text}")
 endif()

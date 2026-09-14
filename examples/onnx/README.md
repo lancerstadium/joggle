@@ -9,8 +9,9 @@ pipeline used by applications:
 4. expose and execute the deterministic VM image;
 5. expose the same computation for C;
 6. fold proved bounds and the scalar expressions they simplify;
-7. plan static tensor storage;
-8. emit C and its header, compile them, and compare with the official output.
+7. promote proved reduction state from memory to scalar values;
+8. plan static tensor storage;
+9. emit C and its header, compile them, and compare with the official output.
 
 The current protobuf extractor used by the two configured application gates is
 limited to one `f32` input and output. The C application boundary is not: the
