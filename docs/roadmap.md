@@ -218,6 +218,12 @@ Before a public artifact release:
 - keep generated files, downloaded models, and measurements out of source
   directories.
 
+The deterministic robustness gate now mutates complete `.jog` programs,
+serialized attributes, and public `Ty` constructor inputs. Every accepted value
+must print, reparse, and reproduce the same structure. Module-directory loading,
+native ABI calls, ONNX protobufs, and TFLite FlatBuffers still need independent
+fuzz or property-test harnesses rather than being claimed by this parser gate.
+
 ## Paper readiness
 
 The paper is organized around four questions:

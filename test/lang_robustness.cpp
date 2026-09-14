@@ -95,6 +95,14 @@ bool stable_attr(joggle::Env& env, std::string_view source) {
          joggle::print(second) == canonical;
 }
 
+bool stable_type(std::string_view source) {
+  const joggle::Ty first{std::string(source)};
+  if (!first.valid())
+    return true;
+  const joggle::Ty second{std::string(first.text())};
+  return second.valid() && second == first && second.text() == first.text();
+}
+
 }  // namespace
 
 int main() {
@@ -115,12 +123,24 @@ int main() {
       R"([1, "two", false, [3]])",
       R"({"name": "value", "rank": 4})",
   };
+  constexpr std::array<std::string_view, 8> types{
+      "i32",
+      "index",
+      "tensor<f32, [1, 3, 224, 224]>",
+      "sat<7>",
+      "packed<u4, [16, 32]>",
+      "layout<tensor<i8, [N, C]>, blocked<8>>",
+      "list<tensor<f16, [4]>>",
+      "[1, 2, width<8>]",
+  };
 
   joggle::Env env;
   for (const std::string_view source : modules)
     CHECK(stable_module(env, source));
   for (const std::string_view source : attributes)
     CHECK(stable_attr(env, source));
+  for (const std::string_view source : types)
+    CHECK(stable_type(source));
 
   joggle::Mod visible_constant;
   CHECK(joggle::parse(env, "module constant\nfn main() -> i32 { 7 return 0 }\n",
@@ -142,6 +162,8 @@ int main() {
     const std::string_view attribute =
         attributes[random.index(attributes.size())];
     CHECK(stable_attr(env, mutate(std::string(attribute), random)));
+    const std::string_view type = types[random.index(types.size())];
+    CHECK(stable_type(mutate(std::string(type), random)));
   }
   return 0;
 }
