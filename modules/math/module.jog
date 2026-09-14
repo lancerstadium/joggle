@@ -10,6 +10,11 @@ fn ceil(x: f32) -> f32;
 [c: {name: "ceil", include: "math.h"}, vm: "ceil"]
 fn ceil(x: f64) -> f64;
 
+[c: {name: "cosf", include: "math.h"}, vm: "cos"]
+fn cos(x: f32) -> f32;
+[c: {name: "cos", include: "math.h"}, vm: "cos"]
+fn cos(x: f64) -> f64;
+
 [c: {name: "erff", include: "math.h"}, vm: "erf"]
 fn erf(x: f32) -> f32;
 [c: {name: "erf", include: "math.h"}, vm: "erf"]
@@ -34,6 +39,11 @@ fn fmod(x: f64, y: f64) -> f64;
 fn log(x: f32) -> f32;
 [c: {name: "log", include: "math.h"}, vm: "log"]
 fn log(x: f64) -> f64;
+
+[c: {name: "sinf", include: "math.h"}, vm: "sin"]
+fn sin(x: f32) -> f32;
+[c: {name: "sin", include: "math.h"}, vm: "sin"]
+fn sin(x: f64) -> f64;
 
 [c: {name: "powf", include: "math.h"}, vm: "pow"]
 fn pow(x: f32, y: f32) -> f32;

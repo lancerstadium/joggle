@@ -40,10 +40,12 @@ The main text states the completed corpus and named unsupported frontiers; the
 artifact retains per-model residual counts. A compact appendix table may list
 those raw counts if space permits, without ratio shading or pass/partial cells.
 
-Required additions before drawing: one pinned XCiT/ViT-class model and one
-compact transformer language model, alongside the existing official ONNX Zoo
-CNN/detection suite and TFLite MobileNetV2. GPT-2 may be retained as a heavy
-frontier probe, but it does not replace a compact edge-relevant language model.
+The pinned XCiT-Tiny model now has a zero type-inference frontier and a seven-
+call conversion frontier in positional embedding. The remaining required
+addition is one compact transformer language model, alongside the existing
+official ONNX Zoo CNN/detection suite and TFLite MobileNetV2. GPT-2 may be
+retained as a heavy frontier probe, but it does not replace a compact
+edge-relevant language model.
 
 ## Tables 2--4 — Operator and shape speedups
 

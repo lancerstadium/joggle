@@ -140,8 +140,8 @@ local fn unary(m: Mod, op: Op) -> str {
 local fn float_unary(code: str) -> bool {
   return code == "copy" || code == "neg" || code == "abs" ||
          code == "ceil" || code == "erf" || code == "exp" ||
-         code == "floor" || code == "log" || code == "sqrt" ||
-         code == "tanh"
+         code == "floor" || code == "log" || code == "cos" ||
+         code == "sin" || code == "sqrt" || code == "tanh"
 }
 
 local fn float_binary(code: str) -> bool {

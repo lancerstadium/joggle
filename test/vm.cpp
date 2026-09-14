@@ -175,7 +175,7 @@ int main(int argc, char** argv) {
   const double unary_math_expected =
       std::abs(1.5) + std::floor(1.5) + std::log(1.5) + std::erf(1.5) +
       std::exp(1.5) + std::ceil(1.5) + std::tanh(1.5) +
-      std::nearbyint(1.5);
+      std::nearbyint(1.5) + std::sin(1.5) + std::cos(1.5);
   CHECK(std::abs(real(result) - unary_math_expected) < 1.0e-12 &&
         unary_math_steps > root_steps);
 

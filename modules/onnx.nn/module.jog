@@ -116,10 +116,47 @@ local fn dropout_type(m: Mod, op: Op) -> bool {
   return changed
 }
 
+local fn layer_norm_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 2 || len(inputs) > 3 ||
+     len(outputs) < 1 || len(outputs) > 3 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return false
+  }
+  let shape = tensor.dims(input)
+  var axis = base.get(attrs(op), "axis", -1)
+  if axis < 0 {
+    axis += len(shape)
+  }
+  if axis < 0 || axis >= len(shape) {
+    return false
+  }
+  var changed = set_type(m, outputs[0], input)
+  if len(outputs) > 1 {
+    var reduced = shape
+    for dim in axis..len(shape) {
+      reduced[dim] = ty(1)
+    }
+    let saved = shaped(ty("f32"), reduced)
+    changed = set_type(m, outputs[1], saved) || changed
+    if len(outputs) > 2 {
+      changed = set_type(m, outputs[2], saved) || changed
+    }
+  }
+  return changed
+}
+
 local fn unary_rules() -> list<list<str>> {
   return [
     ["onnx.Relu", "nn.relu"],
+    ["onnx.Abs", "nn.abs"],
     ["onnx.Sqrt", "nn.sqrt"],
+    ["onnx.Cos", "nn.cos"],
+    ["onnx.Sin", "nn.sin"],
     ["onnx.Reciprocal", "nn.recip"],
     ["onnx.Tanh", "nn.tanh"],
     ["onnx.Exp", "nn.exp"],
@@ -133,7 +170,8 @@ local fn unary_rules() -> list<list<str>> {
 }
 
 [phase: "infer", on: [
-  "onnx.Relu", "onnx.Dropout", "onnx.Sqrt", "onnx.Reciprocal",
+  "onnx.Relu", "onnx.Abs", "onnx.Dropout", "onnx.Sqrt", "onnx.Reciprocal",
+  "onnx.Cos", "onnx.Sin",
   "onnx.Tanh", "onnx.Exp", "onnx.Floor", "onnx.Log", "onnx.Erf",
   "onnx.Sigmoid", "onnx.Ceil", "onnx.Round",
   "onnx.BatchNormalization", "onnx.LeakyRelu", "onnx.Softmax",
@@ -156,6 +194,11 @@ local fn infer_unary(m: Mod, op: Op) -> bool {
     return same_type(m, op)
   }
   return false
+}
+
+[phase: "infer", on: "onnx.LayerNormalization"]
+local fn infer_layer_norm(m: Mod, op: Op) -> bool {
+  return layer_norm_type(m, op)
 }
 
 local fn spatial_pad(op: Op, kernel: list<int>) -> list<int> {
@@ -306,6 +349,36 @@ local fn compare_type(m: Mod, op: Op) -> bool {
     return false
   }
   return broadcast_type(m, op, ty("bool"))
+}
+
+[phase: "infer", on: "onnx.Where"]
+local fn where_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 {
+    return false
+  }
+  let condition = ir.type(inputs[0])
+  let left = ir.type(inputs[1])
+  let right = ir.type(inputs[2])
+  if !tensor.valid(condition) || tensor.elem(condition) != ty("bool") ||
+     !tensor.valid(left) || !tensor.valid(right) ||
+     tensor.elem(left) != tensor.elem(right) {
+    return false
+  }
+  var shape = tensor.broadcast_shape(
+    tensor.dims(condition), tensor.dims(left)
+  )
+  if !tensor.broadcastable(tensor.dims(condition), shape) ||
+     !tensor.broadcastable(tensor.dims(left), shape) {
+    return false
+  }
+  let next = tensor.broadcast_shape(shape, tensor.dims(right))
+  if !tensor.broadcastable(shape, next) ||
+     !tensor.broadcastable(tensor.dims(right), next) {
+    return false
+  }
+  return set_type(m, outputs[0], shaped(tensor.elem(left), next))
 }
 
 [phase: "infer", on: ["onnx.Max", "onnx.Min"]]
@@ -1718,17 +1791,35 @@ local fn transpose_type(m: Mod, op: Op) -> bool {
 local fn reduce_axes(op: Op, rank: int) -> list<int> {
   let meta = attrs(op)
   var axes: list<int> = []
-  if base.has(meta, "axes") {
-    for value in meta["axes"] {
-      var axis = value
-      if axis < 0 {
-        axis += rank
+  let inputs = ir.args(op)
+  if len(inputs) == 2 {
+    axes = const_ints(inputs[1])
+    if len(axes) == 0 {
+      let axes_type = ir.type(inputs[1])
+      if !tensor.valid(axes_type) ||
+         tensor.dims(axes_type) != [ty(0)] {
+        return [rank]
       }
-      axes += [axis]
     }
   } else {
+    if base.has(meta, "axes") {
+      for value in meta["axes"] {
+        axes += [value]
+      }
+    } else {
+      for axis in 0..rank {
+        axes += [axis]
+      }
+    }
+  }
+  if len(axes) == 0 && base.get(meta, "noop_with_empty_axes", 0) == 0 {
     for axis in 0..rank {
       axes += [axis]
+    }
+  }
+  for index in 0..len(axes) {
+    if axes[index] < 0 {
+      axes[index] = axes[index] + rank
     }
   }
   return axes
@@ -1736,7 +1827,7 @@ local fn reduce_axes(op: Op, rank: int) -> list<int> {
 
 local fn reduce_result(op: Op) -> Ty {
   let inputs = ir.args(op)
-  if len(inputs) != 1 {
+  if len(inputs) < 1 || len(inputs) > 2 {
     return ty("_")
   }
   let input = ir.type(inputs[0])
@@ -1757,7 +1848,7 @@ local fn reduce_result(op: Op) -> Ty {
   )
 }
 
-[phase: "infer", on: "onnx.ReduceMean"]
+[phase: "infer", on: ["onnx.ReduceMean", "onnx.ReduceSum"]]
 local fn reduce_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {

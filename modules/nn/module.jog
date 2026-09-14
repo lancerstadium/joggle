@@ -623,6 +623,51 @@ fn sqrt<E: Ty, S: list<int>>(
   return out
 }
 
+fn cos<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = cos(x[i])
+  }
+  return out
+}
+
+fn sin<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = sin(x[i])
+  }
+  return out
+}
+
+fn where<
+  E: Ty,
+  C: list<int>,
+  L: list<int>,
+  R: list<int>,
+  Y: list<int>
+>(
+  condition: tensor<bool, C>,
+  left: tensor<E, L>,
+  right: tensor<E, R>
+) -> tensor<E, Y> {
+  let selected: tensor<bool, Y> = tensor.broadcast(condition)
+  let a: tensor<E, Y> = tensor.broadcast(left)
+  let b: tensor<E, Y> = tensor.broadcast(right)
+  var out = tensor<E, Y>(E(0))
+  for i in 0..tensor.numel<Y>() {
+    if selected[i] {
+      out[i] = a[i]
+    } else {
+      out[i] = b[i]
+    }
+  }
+  return out
+}
+
 fn abs<E: Ty, S: list<int>>(
   x: tensor<E, S>
 ) -> tensor<E, S> {
@@ -760,4 +805,49 @@ fn softmax<E: Ty, S: list<int>>(
     }
   }
   return out
+}
+
+fn layer_norm<
+  E: Ty, S: list<int>, P: list<int>
+>(
+  x: tensor<E, S>, scale: tensor<E, P>, axis: int, epsilon: f64
+) -> tensor<E, S> {
+  var width = 1
+  for dim in axis..len(S) {
+    width *= S[dim]
+  }
+  let lines = tensor.numel<S>() / width
+  var out = tensor<E, S>(E(0))
+  for line in 0..lines {
+    let first = line * width
+    var mean = E(0)
+    for column in 0..width {
+      mean += x[first + column]
+    }
+    mean = mean / E(width)
+    var variance = E(0)
+    for column in 0..width {
+      let centered = x[first + column] - mean
+      variance += centered * centered
+    }
+    variance = variance / E(width)
+    let inverse = E(1) / sqrt(variance + E(epsilon))
+    for column in 0..width {
+      let index = first + column
+      let parameter = tensor.broadcast_offset(P, S, index)
+      out[index] = (x[index] - mean) * inverse * scale[parameter]
+    }
+  }
+  return out
+}
+
+fn layer_norm<
+  E: Ty, S: list<int>, P: list<int>, B: list<int>
+>(
+  x: tensor<E, S>, scale: tensor<E, P>, bias: tensor<E, B>,
+  axis: int, epsilon: f64
+) -> tensor<E, S> {
+  let normalized: tensor<E, S> = layer_norm(x, scale, axis, epsilon)
+  let shifted: tensor<E, S> = add(normalized, bias)
+  return shifted
 }

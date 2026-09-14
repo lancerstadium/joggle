@@ -43,11 +43,15 @@ python3 paper/collect_models.py \
 The collector first asks CTest for the exact configured
 `onnx-zoo-record` set, runs that set, validates one schema-1 record per model,
 and rejects inconsistent stage/frontier combinations. The current local pilot
-contains twelve models: ten complete semantic conversion, TinyYOLOv3 stops at
-type inference with 219 unknown results, and SSD-MobileNetV1 stops at semantic
-conversion with 386 ONNX calls. GoogLeNet adds LRN and an inference-only
-Dropout with an unused mask result; both map to ordinary shared functions
-before the canonical round trip.
+contains thirteen models: ten complete semantic conversion, TinyYOLOv3 stops
+at type inference with 219 unknown results, and SSD-MobileNetV1 stops at
+semantic conversion with 386 ONNX calls. XCiT-Tiny exercises a ViT-class path:
+all 1,333 initially unknown results are inferred, and conversion stops at seven
+shape-driven positional-embedding calls (four `Expand`, three `Tile`). Its
+trigonometric encoding, reductions, broadcasted selection, clipping, and
+LayerNormalization otherwise map to ordinary shared functions. GoogLeNet adds
+LRN and an inference-only Dropout with an unused mask result; both map to
+ordinary shared functions before the canonical round trip.
 
 These records are structural regression and compatibility evidence. They do
 not establish task accuracy, supported-operator percentage, generated-C

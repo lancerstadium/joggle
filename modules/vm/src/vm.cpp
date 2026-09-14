@@ -234,10 +234,12 @@ enum class Unary {
   neg,
   abs,
   ceil,
+  cos,
   erf,
   exp,
   floor,
   log,
+  sin,
   sqrt,
   tanh,
   lnot,
@@ -373,6 +375,8 @@ bool floating_unary(Unary op, T input, Value& output, Kind kind) {
     result = std::abs(input);
   else if (op == Unary::ceil)
     result = std::ceil(input);
+  else if (op == Unary::cos)
+    result = std::cos(input);
   else if (op == Unary::erf)
     result = std::erf(input);
   else if (op == Unary::exp)
@@ -381,6 +385,8 @@ bool floating_unary(Unary op, T input, Value& output, Kind kind) {
     result = std::floor(input);
   else if (op == Unary::log)
     result = std::log(input);
+  else if (op == Unary::sin)
+    result = std::sin(input);
   else if (op == Unary::sqrt)
     result = std::sqrt(input);
   else if (op == Unary::tanh)
@@ -565,10 +571,12 @@ bool unary_code(std::string_view text, Unary& out) {
   if (text == "neg") out = Unary::neg;
   else if (text == "abs") out = Unary::abs;
   else if (text == "ceil") out = Unary::ceil;
+  else if (text == "cos") out = Unary::cos;
   else if (text == "erf") out = Unary::erf;
   else if (text == "exp") out = Unary::exp;
   else if (text == "floor") out = Unary::floor;
   else if (text == "log") out = Unary::log;
+  else if (text == "sin") out = Unary::sin;
   else if (text == "sqrt") out = Unary::sqrt;
   else if (text == "tanh") out = Unary::tanh;
   else if (text == "lnot") out = Unary::lnot;

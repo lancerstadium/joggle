@@ -396,7 +396,8 @@ local fn convert_unary(m: Mod, op: Op, callee: str) -> bool {
 }
 
 [phase: "compute", on: [
-  "onnx.Relu", "onnx.Sqrt", "onnx.Reciprocal",
+  "onnx.Relu", "onnx.Abs", "onnx.Sqrt", "onnx.Reciprocal",
+  "onnx.Cos", "onnx.Sin",
   "onnx.Tanh", "onnx.Exp", "onnx.Floor", "onnx.Log", "onnx.Erf",
   "onnx.Sigmoid", "onnx.Ceil", "onnx.Round"
 ]]
@@ -408,6 +409,48 @@ local fn convert_unary(m: Mod, op: Op) -> bool {
     }
   }
   return false
+}
+
+[phase: "compute", on: "onnx.Where"]
+local fn convert_where(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 ||
+     !tensor.valid(ir.type(outputs[0])) {
+    return false
+  }
+  return convert_call(m, op, "nn.where")
+}
+
+[phase: "compute", on: "onnx.LayerNormalization"]
+local fn convert_layer_norm(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 2 || len(inputs) > 3 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) || tensor.elem(input) != ty("f32") ||
+     ir.type(outputs[0]) != input {
+    return false
+  }
+  let meta = attrs(op)
+  if base.get(meta, "stash_type", 1) != 1 {
+    return false
+  }
+  var axis = base.get(meta, "axis", -1)
+  let rank = len(tensor.dims(input))
+  if axis < 0 {
+    axis += rank
+  }
+  if axis < 0 || axis >= rank {
+    return false
+  }
+  inputs += [ir.constant(m, op, axis, ty("int"))]
+  inputs += [
+    ir.constant(m, op, base.get(meta, "epsilon", 0.00001), ty("f64"))
+  ]
+  return convert_call(m, op, "nn.layer_norm", inputs)
 }
 
 [phase: "compute", on: "onnx.Dropout"]
@@ -649,21 +692,38 @@ local fn convert_tile(m: Mod, op: Op) -> bool {
 local fn convert_clip(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
-  if len(inputs) != 3 || len(outputs) != 1 {
+  if len(inputs) < 1 || len(inputs) > 3 || len(outputs) != 1 {
     return false
   }
   let input = ir.type(inputs[0])
-  let lower = ir.type(inputs[1])
-  let upper = ir.type(inputs[2])
-  if !tensor.valid(input) || !tensor.valid(lower) || !tensor.valid(upper) ||
-     ir.type(outputs[0]) != input ||
-     tensor.elem(input) != tensor.elem(lower) ||
-     tensor.elem(input) != tensor.elem(upper) ||
-     !tensor.broadcastable(tensor.dims(lower), tensor.dims(input)) ||
-     !tensor.broadcastable(tensor.dims(upper), tensor.dims(input)) {
+  if !tensor.valid(input) || ir.type(outputs[0]) != input {
     return false
   }
-  return convert_call(m, op, "nn.clip")
+  var values: list<Val> = [inputs[0]]
+  var callee = "base.copy"
+  if len(inputs) > 1 && ir.type(inputs[1]) != ty("nil") {
+    let lower = ir.type(inputs[1])
+    if !tensor.valid(lower) || tensor.elem(input) != tensor.elem(lower) ||
+       !tensor.broadcastable(tensor.dims(lower), tensor.dims(input)) {
+      return false
+    }
+    values += [inputs[1]]
+    callee = "nn.maximum"
+  }
+  if len(inputs) > 2 && ir.type(inputs[2]) != ty("nil") {
+    let upper = ir.type(inputs[2])
+    if !tensor.valid(upper) || tensor.elem(input) != tensor.elem(upper) ||
+       !tensor.broadcastable(tensor.dims(upper), tensor.dims(input)) {
+      return false
+    }
+    values += [inputs[2]]
+    if len(values) == 3 {
+      callee = "nn.clip"
+    } else {
+      callee = "nn.minimum"
+    }
+  }
+  return convert_call(m, op, callee, values)
 }
 
 local fn convert_binary_result(
@@ -1115,11 +1175,11 @@ local fn convert_transpose(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.permute", inputs)
 }
 
-[phase: "compute", on: "onnx.ReduceMean"]
+[phase: "compute", on: ["onnx.ReduceMean", "onnx.ReduceSum"]]
 local fn convert_mean(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
-  if len(inputs) != 1 || len(outputs) != 1 {
+  if len(inputs) < 1 || len(inputs) > 2 || len(outputs) != 1 {
     return false
   }
   let expected = reduce_result(op)
@@ -1127,8 +1187,13 @@ local fn convert_mean(m: Mod, op: Op) -> bool {
     return false
   }
   let axes = reduce_axes(op, len(tensor.dims(ir.type(inputs[0]))))
+  inputs = [inputs[0]]
   inputs += [ints(m, op, axes)]
-  return convert_call(m, op, "tensor.mean", inputs)
+  var callee = "tensor.mean"
+  if ir.callee(op) == "onnx.ReduceSum" {
+    callee = "tensor.sum"
+  }
+  return convert_call(m, op, callee, inputs)
 }
 
 local fn convert_pool(m: Mod, op: Op, callee: str) -> bool {

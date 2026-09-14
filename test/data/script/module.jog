@@ -414,6 +414,9 @@ fn tensor_type_probe(m: Mod) -> bool {
   let broadcast = tensor.broadcast_shape(dims, [ty(1), ty(3)])
   let empty: list<Ty> = []
   let empty_broadcast = tensor.broadcast_shape(empty, empty)
+  let inferred_broadcast = tensor.broadcast_shape(
+    [ty(1), ty(784), ty("_")], [ty(1), ty(784), ty(192)]
+  )
   return ir.revision(m) >= 0 &&
          tensor.valid(original) && tensor.static(original) &&
          tensor.elem(original) == ty("f32") &&
@@ -421,6 +424,10 @@ fn tensor_type_probe(m: Mod) -> bool {
          tensor.valid(dynamic) && !tensor.static(dynamic) &&
          tensor.type(ty("f32"), dims) == dynamic &&
          reversed == [ty(3), ty("N")] && broadcast == dims &&
+         inferred_broadcast == [ty(1), ty(784), ty(192)] &&
+         tensor.broadcastable(
+           [ty(1), ty(784), ty("_")], inferred_broadcast
+         ) &&
          len(empty_broadcast) == 0 &&
          tensor.refined(ty("tensor<f32, [_, 3]>"), dynamic) == dynamic &&
          tensor.refined(ty("tensor<i32, [_, 3]>"), dynamic) == ty("_") &&
