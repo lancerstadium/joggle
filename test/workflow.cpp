@@ -185,6 +185,24 @@ int main(int argc, char** argv) {
   CHECK(long_target && long_target.module() == "prefix.deep" &&
         long_target.name() == "pick");
 
+  joggle::Mod parent_prefix;
+  CHECK(joggle::parse(env,
+                      "module prefix\n"
+                      "use prefix.deep\n"
+                      "fn id(x: prefix.deep.Num) -> prefix.deep.Num {\n"
+                      "  return x\n"
+                      "}\n"
+                      "fn main(x: f32) -> f32 {\n"
+                      "  return prefix.deep.pick(x)\n"
+                      "}\n",
+                      parent_prefix, "parent-prefix.jog"));
+  CHECK(parent_prefix.verify(env));
+  const joggle::Op parent_call =
+      parent_prefix.find_fn("main").body().ops().front();
+  const joggle::Fn parent_target = env.resolve(parent_prefix, parent_call);
+  CHECK(parent_target && parent_target.module() == "prefix.deep" &&
+        parent_target.name() == "pick");
+
   const std::array<joggle::Source, 2> split_sources{
       joggle::Source{
           "module split\n"

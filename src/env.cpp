@@ -563,10 +563,6 @@ std::vector<Fn> Env::resolve_fns(const detail::Store& from,
     return result;
   };
 
-  const std::string own_prefix = from.name + ".";
-  if (symbol.starts_with(own_prefix))
-    return local(symbol.substr(own_prefix.size()));
-
   auto visible = impl_->visibility.find(from.uses);
   if (visible == impl_->visibility.end()) {
     std::vector<std::string> pending = from.uses;
@@ -596,6 +592,18 @@ std::vector<Fn> Env::resolve_fns(const detail::Store& from,
   if (symbol.find('.') != std::string_view::npos) {
     std::size_t best = 0;
     std::vector<Fn> matches;
+    const auto consider = [&](std::string_view name,
+                              std::vector<Fn> candidates) {
+      if (name.size() <= best || symbol.size() <= name.size() ||
+          !symbol.starts_with(name) || symbol[name.size()] != '.' ||
+          candidates.empty())
+        return;
+      best = name.size();
+      matches = std::move(candidates);
+    };
+    if (symbol.size() > from.name.size() && symbol.starts_with(from.name) &&
+        symbol[from.name.size()] == '.')
+      consider(from.name, local(symbol.substr(from.name.size() + 1)));
     for (const Mod* module : modules) {
       const std::string_view name = module->name();
       if (name.size() <= best || symbol.size() <= name.size() ||
@@ -604,10 +612,7 @@ std::vector<Fn> Env::resolve_fns(const detail::Store& from,
       std::vector<Fn> candidates =
           module->find_fns(symbol.substr(name.size() + 1));
       std::erase_if(candidates, [](Fn fn) { return fn.local(); });
-      if (candidates.empty())
-        continue;
-      best = name.size();
-      matches = std::move(candidates);
+      consider(name, std::move(candidates));
     }
     return matches;
   }
