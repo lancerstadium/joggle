@@ -41,6 +41,12 @@ usability.
 | Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical CSE/analysis scaling pilots | Freeze a fault and diagnostic matrix; do not expand parser/printer internals unless a case exposes a correctness defect |
 | Artifact quality | Ten numerical ONNX paths; clean-revision, 20-trial MobileNetV2 and MNIST records compare generated C with ONNX Runtime on two shared-runner CPU classes; internal rewrite diagnostics remain separate | Add an identified isolated Linux host with dispersion and task accuracy, or narrow the paper claim explicitly to artifact correctness and transformation reach |
 
+The current fusion study is deliberately pending evidence: one workflow builds
+unfused and fused MobileNetV2 artifacts from the same canonical IR, validates
+both against the pinned reference, and records each beside ONNX Runtime on the
+same pinned runner CPU. Its numbers must not enter the manuscript until the raw
+records and structural deltas have been reviewed.
+
 The current generated-C pilots remain slower than one-thread ONNX Runtime. At
 revision `418a34e`, the balanced GitHub Linux smoke run reports MobileNetV2 at
 167.315 versus 10.346 ms (16.17x) and MNIST at 0.530 versus 0.050 ms (10.55x)

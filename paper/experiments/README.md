@@ -82,6 +82,15 @@ rather than two configurations of Joggle. The scalar-blocking policy has a
 separate structural frontier experiment; it is not presented as the optimized
 artifact after its controlled budget pilot increased latency.
 
+`mobilenetv2-unfused.json` and `mobilenetv2-fusion.json` form a same-job
+ablation of the public `tile.fuse` transform. Each manifest still contains one
+Joggle configuration and the independent ONNX Runtime control; the workflow
+runs them consecutively on the same pinned runner CPU. The companion
+`measure_fusion.py` script starts both Joggle artifacts from the same canonical
+IR and applies identical cleanup, storage planning, placement, and emission.
+The result is a mechanism diagnostic, not an independent-system comparison or
+a controlled-host publication result.
+
 Correctness thresholds belong in each subject command. The checked-in
 MobileNetV2 manifest uses the same `1e-4 + 1e-4 * abs(reference)` elementwise
 bound for generated C and ONNX Runtime. Checksums expose nondeterminism but are
