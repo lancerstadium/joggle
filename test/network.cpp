@@ -1,5 +1,6 @@
 #include "joggle/joggle.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <set>
 #include <string>
@@ -2175,6 +2176,28 @@ int main(int argc, char** argv) {
   CHECK(count(nms, "nn.nms") == 0);
   CHECK(count(nms, "tensor.make") == 2);
   CHECK(count(nms, "tensor.view") == 1);
+  CHECK(joggle::run(env, "bounds.fold", nms));
+  CHECK(joggle::run(env, "mem.bound", nms));
+  std::set<std::vector<std::int64_t>> capacities;
+  for (joggle::Op op : nms.ops()) {
+    if (op.callee() != "tensor.make" || op.outs().size() != 1)
+      continue;
+    const joggle::Attr* capacity = op.outs()[0].meta("mem.capacity");
+    CHECK(capacity && capacity->list());
+    std::vector<std::int64_t> shape;
+    for (const joggle::Attr& extent : *capacity->list()) {
+      CHECK(extent.integer());
+      shape.push_back(*extent.integer());
+    }
+    capacities.insert(std::move(shape));
+  }
+  const std::set<std::vector<std::int64_t>> expected_capacities{{4}, {8, 3}};
+  CHECK(capacities == expected_capacities);
+  const std::string bounded_nms = joggle::print(nms);
+  CHECK(joggle::run(env, "mem.bound", nms));
+  CHECK(joggle::print(nms) == bounded_nms);
+  CHECK(joggle::run(env, "mem.plan", nms));
+  CHECK(nms.verify(env));
   const std::string nms_text = joggle::print(nms);
   joggle::Mod nms_roundtrip;
   CHECK(joggle::parse(env, nms_text, nms_roundtrip,

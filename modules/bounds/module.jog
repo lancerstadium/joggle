@@ -231,7 +231,7 @@ local fn base_call(m: Mod, op: Op) -> str {
 
 local fn result(m: Mod, op: Op, known: dict) -> list<int> {
   let outputs = ir.outs(op)
-  if len(outputs) != 1 || !integer(ir.type(outputs[0])) {
+  if len(outputs) != 1 {
     return []
   }
   let inputs = ir.args(op)
@@ -255,10 +255,19 @@ local fn result(m: Mod, op: Op, known: dict) -> list<int> {
     }
     return []
   }
+  var type = ir.type(outputs[0])
   var name = base_call(m, op)
-  if name == "" && len(inputs) == 1 &&
-     ir.callee(op) == base.name(ir.type(outputs[0])) {
-    name = ir.callee(op)
+  if name == "" && len(inputs) == 1 {
+    let written = ir.callee(op)
+    if written == base.name(type) || integer(base.ty(written)) {
+      name = written
+      if !integer(type) {
+        type = base.ty(written)
+      }
+    }
+  }
+  if !integer(type) {
+    return []
   }
   if name == "" {
     return []
@@ -299,9 +308,9 @@ local fn result(m: Mod, op: Op, known: dict) -> list<int> {
       return logical(name, left, right)
     }
   }
-  if len(inputs) == 1 && base.name(ir.type(outputs[0])) == name {
+  if len(inputs) == 1 && base.name(type) == name {
     let value = get(known, inputs[0])
-    let target_limits = limits(ir.type(outputs[0]))
+    let target_limits = limits(type)
     if len(value) == 2 && len(target_limits) == 2 &&
        value[0] >= target_limits[0] && value[1] <= target_limits[1] {
       return value

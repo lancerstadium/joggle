@@ -169,6 +169,12 @@ when coefficient-wise exact or when the quotient is constant over a static
 loop box. General correlated division, branch-sensitive range refinement, and
 symbolic shape constraints remain open rather than being approximated.
 
+The same interval facts now prove finite storage for runtime shapes assembled
+through ordinary `tensor` writes. `mem.bound` records only a checked capacity
+shape, and `mem.plan` consumes it without moving logical extents into `Ty` or
+introducing a device model. General data-dependent output sizes without a
+finite interval remain an explicit frontier.
+
 The goal is not an automatic scheduler. It is a small, inspectable substrate on
 which a researcher can implement and compare scheduling policies.
 

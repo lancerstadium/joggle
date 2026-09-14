@@ -956,7 +956,11 @@ joggle emit c.source build/examples/planned.jog \
 ```
 
 `mem.plan` is an ordinary idempotent transform. It handles fixed-shape local
-tensors, excludes parameters, constants, and returned bindings, and reuses a
+tensors and dynamic `tensor.make` results whose runtime extents have finite
+nonnegative bounds. The underlying `mem.bound` transform records the proved
+capacity shape as open `mem.capacity` metadata; an unknown extent, a mismatch
+with a fixed type dimension, or element-count overflow remains unplanned. The
+planner excludes parameters, constants, and returned bindings, and reuses a
 slot only after the prior binding's last real use. Returned bindings represent
 caller-owned storage rather than local workspace; a target may consequently
 write the last tensor computation directly into its result buffer. `c.source`

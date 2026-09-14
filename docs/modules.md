@@ -338,10 +338,14 @@ type. Exact attributes and membership in list-valued attributes are supported.
 This keeps implementation discovery, schedule annotations, placement facts,
 and value-format tags in ordinary module code rather than separate registries.
 
-`mem.plan` assigns reusable static slots to local tensor values after lifetimes
-and shapes are known. Parameters, constants, and returned bindings remain
-outside the local workspace, allowing an artifact target to use caller-owned
-result storage directly. The same pass marks a constructor fill as removable
+`mem.bound` derives a finite `mem.capacity` for a dynamic `tensor.make` when
+its runtime shape is assembled by ordinary tensor writes and every extent has
+a nonnegative integer upper bound. Static dimensions must agree exactly;
+overflow and an unproved extent reject the proof. `mem.plan` revalidates these
+facts and assigns reusable slots to bounded dynamic and static local tensors.
+Parameters, constants, and returned bindings remain outside the local
+workspace, allowing an artifact target to use caller-owned result storage
+directly. The same pass marks a constructor fill as removable
 only when Def-Use structure proves that one loop unconditionally writes the
 complete linear or rectangular tensor domain before yielding it. This proof
 uses no neural-network operation names; partial, conditional, indirect, and

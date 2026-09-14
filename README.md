@@ -330,6 +330,12 @@ marks the constructor fill as dead. Targets may honor that fact; the C module
 omits the redundant fill loop. A constructor with any unproven coverage keeps
 its original fill, so users do not need an unsafe allocation primitive.
 
+Dynamic logical shapes do not require a second tensor type. `mem.bound` traces
+ordinary runtime shape construction and conservative integer intervals to
+attach a finite `mem.capacity` when one is provable. `mem.plan` consumes that
+same fact for local storage; unbounded values remain explicit instead of being
+silently heap allocated or assigned a target-specific limit.
+
 `c.prepare`, `mem.plan`, and the artifact functions are independent.
 Emission never performs hidden conversion, scheduling, or storage planning.
 The deterministic `vm` module provides a second execution path and reports

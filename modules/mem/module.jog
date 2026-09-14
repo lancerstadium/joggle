@@ -1,5 +1,6 @@
 module mem
 use base
+use bounds
 use ir
 use tensor
 
@@ -9,6 +10,167 @@ local fn elements(type: Ty) -> int {
     out *= extent
   }
   return out
+}
+
+local fn elements(shape: list<int>) -> int {
+  var out = 1
+  for extent in shape {
+    if extent < 0 || (extent != 0 && out > 9223372036854775807 / extent) {
+      return -1
+    }
+    out *= extent
+  }
+  return out
+}
+
+local fn interval(m: Mod, value: Val, known: dict) -> list<int> {
+  let inferred = bounds.get(known, value)
+  if len(inferred) == 2 {
+    return inferred
+  }
+  if ir.is_const(value) && base.kind(ir.constant(value)) == "int" {
+    let exact = base.int(ir.constant(value))
+    return [exact, exact]
+  }
+  let cast = ir.def(value)
+  if ir.live(cast) && ir.kind(cast) == "call" &&
+     len(ir.args(cast)) == 1 &&
+     (ir.callee(cast) == base.name(ir.type(value)) ||
+      ir.target(m, cast) == "base." + base.name(ir.type(value))) {
+    return interval(m, ir.args(cast)[0], known)
+  }
+  return []
+}
+
+local fn shape_values(
+  m: Mod, shape: Val, known: dict
+) -> list<Val> {
+  let type = ir.type(shape)
+  if !tensor.valid(type) || !tensor.static(type) ||
+     len(tensor.shape(type)) != 1 {
+    return []
+  }
+  let count = tensor.shape(type)[0]
+  let source = ir.def(shape)
+  if !ir.live(source) || ir.kind(source) != "call" {
+    return []
+  }
+  let target = ir.target(m, source)
+  let inputs = ir.args(source)
+  if target == "tensor.tensor" && len(inputs) == 1 {
+    var out: list<Val> = []
+    for i in 0..count {
+      out += [inputs[0]]
+    }
+    return out
+  }
+  if (target != "tensor.operator []=" &&
+      ir.callee(source) != "operator []=") || len(inputs) != 3 {
+    return []
+  }
+  var out = shape_values(m, inputs[0], known)
+  let index = interval(m, inputs[1], known)
+  if len(out) != count || len(index) != 2 || index[0] != index[1] ||
+     index[0] < 0 || index[0] >= count {
+    return []
+  }
+  out[index[0]] = inputs[2]
+  return out
+}
+
+local fn capacity_with(
+  m: Mod, value: Val, known: dict
+) -> list<int> {
+  let type = ir.type(value)
+  if !tensor.valid(type) {
+    return []
+  }
+  if tensor.static(type) {
+    return tensor.shape(type)
+  }
+  let source = ir.def(value)
+  if !ir.live(source) || ir.kind(source) != "call" ||
+     (ir.target(m, source) != "tensor.make" &&
+      ir.callee(source) != "tensor.make") || len(ir.args(source)) != 2 {
+    return []
+  }
+  let values = shape_values(m, ir.args(source)[1], known)
+  let dims = tensor.dims(type)
+  if len(values) != len(dims) {
+    return []
+  }
+  var out: list<int> = []
+  for axis in 0..len(dims) {
+    let extent = interval(m, values[axis], known)
+    if len(extent) != 2 || extent[0] < 0 || extent[1] < extent[0] {
+      return []
+    }
+    if base.kind(dims[axis]) == "int" {
+      let fixed = base.int(dims[axis])
+      if extent[0] != fixed || extent[1] != fixed {
+        return []
+      }
+      out += [fixed]
+    } else {
+      out += [extent[1]]
+    }
+  }
+  if elements(out) < 0 {
+    return []
+  }
+  return out
+}
+
+fn capacity(m: Mod, value: Val) -> list<int> {
+  return capacity_with(m, value, bounds.infer(m))
+}
+
+fn bound(m: Mod) -> bool {
+  let known = bounds.infer(m)
+  var changed = false
+  for fn in ir.fns(m) {
+    var desired: dict = {}
+    for value in ir.vals(fn) {
+      let source = ir.def(value)
+      let owns = ir.live(source) && ir.kind(source) == "call" &&
+                  (ir.target(m, source) == "tensor.make" ||
+                   ir.callee(source) == "tensor.make")
+      if owns {
+        let shape = capacity_with(m, value, known)
+        if len(shape) != 0 && ir.name(value) != "" {
+          desired[ir.name(value)] = shape
+        }
+      }
+    }
+    for value in ir.vals(fn) {
+      let name = ir.name(value)
+      if name != "" && base.has(desired, name) {
+        changed = ir.set(
+          m, value, "mem.capacity", desired[name]
+        ) || changed
+      } else {
+        if ir.has(value, "mem.capacity") {
+          changed = ir.unset(m, value, "mem.capacity") || changed
+        }
+      }
+    }
+  }
+  return changed
+}
+
+local fn allocated(value: Val) -> int {
+  let type = ir.type(value)
+  if tensor.valid(type) && tensor.static(type) {
+    return elements(type)
+  }
+  if ir.has(value, "mem.capacity") {
+    var shape: list<int> = []
+    for extent in ir.meta(value, "mem.capacity") {
+      shape += [base.int(extent)]
+    }
+    return elements(shape)
+  }
+  return -1
 }
 
 local fn full_range(source: Val, count: int) -> bool {
@@ -145,13 +307,14 @@ fn plan(m: Mod, fn: Fn) -> bool {
     for value in ir.outs(ops[at]) {
       let type = ir.type(value)
       let name = ir.name(value)
-      if tensor.valid(type) && tensor.static(type) && name != "" &&
+      let count = allocated(value)
+      if tensor.valid(type) && count >= 0 && name != "" &&
          !ir.is_const(value) && !has(parameters, name) &&
          !has(returned, name) && !has(bindings, name) {
         bindings[name] = len(names)
         names += [name]
         types += [tensor.elem(type)]
-        counts += [elements(type)]
+        counts += [count]
         firsts += [at]
       }
     }
@@ -256,7 +419,7 @@ fn plan(m: Mod, fn: Fn) -> bool {
 }
 
 fn plan(m: Mod) -> bool {
-  var changed = false
+  var changed = bound(m)
   for fn in ir.fns(m) {
     if len(ir.blks(fn)) != 0 {
       changed = plan(m, fn) || changed

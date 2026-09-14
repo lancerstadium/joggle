@@ -81,7 +81,25 @@ using detail::precedence;
 namespace {
 
 std::string render_value(const detail::Store& store, std::uint32_t value,
-                         int parent = 0, bool right = false);
+                         int parent = 0, bool right = false,
+                         bool typed_literal = false);
+
+bool needs_literal_type(const detail::Store& store, std::uint32_t value,
+                        const Attr& literal) {
+  if (value >= store.vals.size() || !store.vals[value].live)
+    return false;
+  const Ty& type = store.vals[value].data.type;
+  return (literal.integer() && type.name() != "int") ||
+         (literal.real() && type.name() != "f64");
+}
+
+std::string render_literal(const detail::Store& store, std::uint32_t value,
+                           const Attr& literal) {
+  const std::string text = attr_text(literal);
+  if (!needs_literal_type(store, value, literal))
+    return text;
+  return std::string(store.vals[value].data.type.text()) + "(" + text + ")";
+}
 
 bool needs_literal_binding(const detail::Store& store,
                            const detail::OpData& op) {
@@ -155,7 +173,7 @@ std::string render_call(const detail::Store& store, const detail::OpData& op) {
 }
 
 std::string render_value(const detail::Store& store, std::uint32_t value,
-                         int parent, bool right) {
+                         int parent, bool right, bool typed_literal) {
   if (value >= store.vals.size() || !store.vals[value].live)
     return "<invalid>";
   const detail::ValData& data = store.vals[value].data;
@@ -183,7 +201,8 @@ std::string render_value(const detail::Store& store, std::uint32_t value,
   }
   if (op.kind == Op::Kind::constant && op.form == Op::Form::hidden &&
       !needs_literal_binding(store, op))
-    return attr_text(op.literal);
+    return typed_literal ? render_literal(store, value, op.literal)
+                         : attr_text(op.literal);
   if (op.kind == Op::Kind::call && op.form == Op::Form::hidden) {
     std::string text = render_call(store, op);
     int level = 10;
@@ -266,7 +285,9 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
           render_inline_meta(out, value.meta);
           out << (bound_literal ? literal_name(store, op.outs[index])
                                 : value.name);
-          if (value.type_annotation || bound_literal)
+          if (value.type_annotation || bound_literal ||
+              (op.kind == Op::Kind::constant &&
+               needs_literal_type(store, op.outs[index], op.literal)))
             out << ": " << value.type.text();
         }
         out << " = "
@@ -300,7 +321,7 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
             out << ", ";
           out << render_value(store, op.args[index]);
         }
-        out << "] = " << render_value(store, op.args.back());
+        out << "] = " << render_value(store, op.args.back(), 0, false, true);
       } else if (op.kind == Op::Kind::constant)
         out << attr_text(op.literal);
       else
