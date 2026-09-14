@@ -13,14 +13,16 @@ must be generated from Joggle's preserved records.
 schedule/layout, storage, and artifact interfaces, but existing systems expose
 these decisions through several extension surfaces.
 
-This is the Motivation figure. Its left side follows one running change (a
-low-precision fused projection mapped to an external edge instruction) through
-the five decisions. Its right side is a measured extension-surface matrix for
-Joggle, ONNX-MLIR, TVM, and one kernel/edge control. Cells contain the number of
-distinct definitions or registrations touched, not subjective checkmarks.
-Generated code, framework boilerplate, build dependencies, and unsupported
-boundaries use separate encodings. The existing “pass, N lines” table moves to
-the appendix once this matrix is complete.
+This is the Motivation and infrastructure-comparison figure. Its top strip
+follows one running change (a low-precision fused projection mapped to an
+external edge instruction) through the five decisions. Below it, aligned
+grouped-bar panels report authored source files, authored source lines, native
+registrations, build files, new dependencies, and generated artifacts for the
+four frozen tasks. Joggle, ONNX-MLIR, and TVM retain one shared legend and task
+order. A system that stops at a mandatory boundary receives a hatched
+``unsupported'' marker at that task, not a zero-height bar. No panel combines
+these dimensions into an ease score, and the old “pass, N lines” table is not
+part of the manuscript.
 
 ## Appendix coverage record — Workload compilation frontier
 
@@ -69,9 +71,9 @@ does not render or populate this table.
 **Claim.** Malleability has measurable compile-time, artifact-size, workspace,
 correctness, and latency consequences across workloads.
 
-Use aligned small multiples with one shared legend, following the supplied
-multi-panel example. Panels have complementary roles rather than repeating one
-metric:
+Use a two-row aligned small-multiple layout with one shared legend, following
+the supplied multi-panel example. Columns preserve the same model order and
+panels have complementary roles rather than repeating one metric:
 
 - compilation and transformation time;
 - generated source/binary/weight size;

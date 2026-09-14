@@ -258,7 +258,8 @@ performance measurements.
 mechanism on the two-result UltraFace RFB-320 fixture at revision `e840fd4`.
 `paper/measure_reorder.py` starts both variants from the identical
 2,675,643-byte canonical IR and runs matched cleanup, memory planning, static
-placement, and external-weight C emission. The source policy reorders 37 loop
+no-alias annotation, placement, and external-weight C emission. The source
+policy reorders 37 loop
 bodies. Generated C grows from 197,266 to 197,851 bytes, or 0.30%; the input IR
 grows by 816 bytes and the cleaned IR by 585 bytes.
 
@@ -266,9 +267,11 @@ The current runner also emits a `canon` variant. It starts from the same
 reordered IR, runs the matched cleanup first, and then applies `tile.canon`
 before the unchanged planning, placement, and emission stages. Its separate
 `canon_seconds` column keeps affine-index normalization cost out of cleanup
-time. Historical two-variant CSVs above remain pilot records from their named
-revisions; they are not silently reinterpreted as measurements of the new
-variant.
+time. Current records additionally carry `noalias_ir_bytes`,
+`noalias_ir_sha256`, and `noalias_seconds`. Historical CSVs predate those
+columns and remain pilot records from their named revisions; they are not
+silently reinterpreted as measurements of the new variant or the corrected
+ABI contract.
 
 `paper/measure_pair.py` strictly compiles those exact sources into one process
 and alternates call order for 20 pairs. All 20 pairs favor the reordered

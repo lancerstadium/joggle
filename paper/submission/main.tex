@@ -590,149 +590,132 @@ workflows do not control host load, temperature, or frequency, and the two
 policy runs report the same processor class.
 
 \subsection{Extension surface}
-The extension-surface study and controlled performance study are not complete.
-Two of four system-baseline tasks pass and two have preserved unsupported
-outcomes at explicit mandatory requirements. These results
-do not support a general claim that Joggle is easier to extend, more compatible,
-or faster than another compiler.
+The extension study freezes four vertical tasks: add a reusable computation,
+add a structural scheduling policy, route a family of calls to an external
+kernel, and introduce a parameterized numeric format. Each task has the same
+input program, observable result, and forbidden shortcuts. We record authored
+files and lines, native registrations, build changes, dependencies, generated
+artifacts, and the first unmet mandatory requirement separately. These
+dimensions will appear as aligned panels rather than a pass/fail or aggregate
+``ease'' score.
 
-\begin{table*}[t]
+\begin{figure*}[t]
 \centering
-\scriptsize
-\caption{Frozen extension tasks and observed authored source surface}
-\label{tab:frozen-extension-tasks-and-observed-authored-source-surface}
-\begin{tabularx}{\textwidth}{@{}lXXX@{}}
-\toprule
-Task & Joggle & TVM control & ONNX-MLIR system path \\
-\midrule
-implementation & pass, 20 lines & pass, 62 lines & pass, 167 lines in six files \\
-policy & pass, 69 lines & pass, 126 lines & pass, 201 lines \\
-external-kernel & pass, 138 lines & pass, 355 lines & unsupported at first required MatMul case \\
-numeric-format & pass, 284 lines & unsupported at custom-type registration & unsupported at second executable target \\
-\bottomrule
-\end{tabularx}
-\end{table*}
+\includegraphics[width=\textwidth]{../figures/extension-surface.pdf}
+\caption{Authored extension surface for four frozen tasks. Bars report measured source
+files, nonblank non-comment lines, and source bytes; all axes start at zero. A
+cross marks a system that stopped before a measurable implementation, while
+hatching marks measured partial source that still stopped at a mandatory
+endpoint.}
+\label{fig:authored-extension-surface-for-four-frozen-tasks-bars-report-measured-source-files-nonblank-non-comment-lines-and-source-bytes-all-axes-start-at-zero-a-cross-marks-a-system-that-stopped-before-a-measurable-implementation-while-hatching-marks-measured-partial-source-that-still-stopped-at-a-mandatory-endpoint}
+\end{figure*}
 
-The ONNX-MLIR policy result is a separate accelerator-scoped implementation,
-not a relabeling of its built-in fusion flag. In 201 non-comment lines across
-seven files, it assigns caller-supplied weights to calls and other operations
-and discovers one-result, one-use, equal-shape producer-consumer pairs without
-matching ONNX operator names. On the unchanged fixture it finds two pairs: an
-extent limit of zero accepts none and preserves three affine loops, while a
-limit of 100 accepts both and produces one loop. Both native artifacts pass the
-same oracle with zero maximum absolute error, and the independent measurement
-fixture reports the expected weighted costs 5 and 9. The underlying ONNX-MLIR
-hook is still module-wide, however, so this result demonstrates an
-accelerator-scoped policy path rather than per-candidate selective fusion.
+All four Joggle tasks reach their required artifacts. The matching TVM controls
+reach the computation, policy, and external-kernel artifacts but stop at the
+custom-type registration required by the numeric-format task. ONNX-MLIR reaches
+the computation and accelerator-scoped policy artifacts; its documented generic
+call path does not capture the first required MatMul case, and its
+numeric-format extension has no second executable target required by the task.
+These are preserved unsupported boundaries, not failures silently replaced by
+weaker tasks. Every successful executable reproduces its shared oracle.
 
-Lines are nonblank, non-comment authored source under each frozen task's
-inclusion rules. They expose where an extension crosses files and registration
-boundaries; they do not measure development time, comprehension, or usability.
-
-The first reproducible extension-footprint pilot freezes four tasks and runs
-their named tests. Its three out-of-tree tasks contain 20, 69, and 138 source
-lines; the bundled numeric-format task contains 284 source lines across a
-source semantic module, a native binding, and two target companions. These are
-descriptive implementation footprints, not usability or productivity results.
-The implementation contract now also has a generated, digest-pinned opset-13
-ONNX fixture with its exact \nolinkurl{2x3} and \nolinkurl{3x2} inputs. Joggle imports that model,
-expands the ordinary \nolinkurl{ikj} function, and reproduces the same TensorProto oracle
-through both its deterministic VM and strictly compiled C. The same model now
-passes a native ONNX-MLIR \nolinkurl{0.4.2} extension at pinned revision \nolinkurl{4a13c34a} and
-its documented LLVM revision. The preserved lowered IR contains explicit
-\nolinkurl{i-k-j} affine loops, and its shared library returns \nolinkurl{[58, 64, 139, 154]} with
-zero maximum absolute error.
-
-The first three frozen contracts now also pass on a pinned TVM \nolinkurl{v0.26.0}
-baseline: one generic explicit i-k-j matrix body, one structural schedule
-policy, and one generic external-call implementation exercised by the unchanged
-C harness. Its numeric-format task stops at the first mandatory requirement.
-The pinned Python surface cannot import the custom-datatype registration module,
-the corresponding source module is absent, and parsing \nolinkurl{custom[sat]5} reports
-that \nolinkurl{dtype.get_custom_type_code} is unavailable. We therefore preserve an
-unsupported result rather than substitute an ordinary int64 clamp program,
-which would test an operator body rather than a parametric type. These are
-mechanism-level controls, not a substitute for an end-to-end neural-network compiler. The
-ONNX-MLIR implementation task uses its documented accelerator path and adds
-six files containing 167 nonblank, non-comment lines: the conversion and
-accelerator class, three build files, and a runtime compatibility symbol. It
-also requires one generated native registration and five global macro
-definitions, but changes no existing framework-core file and adds no external
-dependency. Joggle's matching body contains 20 source lines and TVM's control
-contains 62. These are separately reported surface observations, not measures
-of difficulty, comprehension, or developer time.
-
-The external-kernel task exposes a distinct documented-path boundary. Although
-the ONNX-MLIR driver describes \nolinkurl{--ops-for-call=Conv MatMul} as its example,
-running \nolinkurl{--ops-for-call=MatMul} on the frozen \nolinkurl{2x3} by \nolinkurl{3x2} input emits three
-ordinary affine loops and no \nolinkurl{krnl.call}. At the pinned revision, Conv registers
-the generic call pattern and receives the option, whereas MatMul registers only
-its ordinary lowering. The exact successful command, emitted IR, source
-digests, and failed mandatory requirement are preserved as an unsupported
-outcome; no later requirement is counted as passing after that failure. The
-numeric-format accelerator defines one parameterized \nolinkurl{!sat.int<W>} type,
-materializes five mapped additions in scalar and nested tensor positions, and
-generates four reusable shape/width helpers with collision checks. Its native
-artifact returns \nolinkurl{[15]}, \nolinkurl{[-16]}, \nolinkurl{[127]}, \nolinkurl{[2047]}, and
-\nolinkurl{[15, 15, -16, -16]} exactly; invalid widths, mixed widths, missing
-registration and mappings, duplicate mappings, and helper collisions are
-rejected. ONNX-MLIR has no second executable C or deterministic-VM target
-corresponding to the frozen requirement, so the task stops at that mandatory
-boundary. An uninterrupted clean-build repetition remains incomplete.
-Standalone MLIR type/dialect experiments may
-decompose registration and conversion work, but cannot be reported as the
-system comparison because they omit ONNX ingestion and artifact generation.
+The current measurements describe implementation surface, not developer time
+or usability. They also reveal why a single line count is misleading: source,
+registration, build, and artifact obligations have different meanings, and an
+unsupported endpoint cannot be plotted as zero work. The final infrastructure
+figure therefore uses one panel per dimension, one shared system legend, and a
+distinct unsupported marker. A general claim of lower extension coupling
+remains blocked until a clean independent reproduction confirms every retained
+row.
 
 \section{Related work}
-MLIR addresses compiler extensibility by making multiple domain-specific IRs,
-operation interfaces, conversions, and pass infrastructure reusable
-\cite{lattner2021mlir}.
-ONNX-MLIR applies that approach to ONNX semantics and loop-oriented lowering
-\cite{jin2020onnxmlir}, exposes documented
-operation-generation and accelerator integration paths, and produces native
-artifacts (\href{https://onnx.ai/onnx-mlir/}{official documentation}). It is
-therefore the system-level comparator. IREE extends an MLIR stack through
-host/device partitioning, deployment artifacts, and embedded runtime
-configurations
-\cite{liu2022tinyiree}. Joggle does not
-argue that one representation replaces these abstractions. It tests whether a
-smaller source-level module boundary is sufficient for bounded experiments
-whose changes would otherwise cross several of them.
-
-TVM combines graph optimization, tensor programs, schedules, cost models, and
-target code generation
+\textbf{Inference compiler and deployment stacks.} TVM connects graph optimization,
+tensor programs, schedules, cost models, and target code generation
 \cite{chen2018tvm}.
-TileLang gives kernel authors explicit control over tiled dataflow, memory,
-layout, and thread binding while building on TVM IR
-\cite{wang2025tilelang}. These systems are the
-appropriate baselines for production code quality or kernel-control tasks.
-Joggle instead exposes loops and storage through ordinary functions and leaves
-hardware concepts in user modules. A matched study must determine whether that
-choice reduces extension coupling; current generated-C pilots establish that
-it does not by itself deliver competitive performance.
+MLIR instead makes a family of domain-specific representations, interfaces,
+conversions, and pass machinery reusable
+\cite{lattner2021mlir};
+ONNX-MLIR applies that organization to ONNX semantics and loop-oriented
+lowering \cite{jin2020onnxmlir}, while TinyIREE
+extends an MLIR-based path to embedded deployment artifacts and runtimes
+\cite{liu2022tinyiree}. These boundaries
+are not accidental overhead: they support independent evolution, optimization
+contracts, and broad target coverage. They become a research cost when one
+experiment must restate the same semantic or hardware decision at several
+boundaries. Joggle's question is therefore narrower than replacing a production
+stack: can a bounded vertical experiment retain typed structure while using one
+public edit surface from imported relation to artifact? ONNX-MLIR is the closest
+system comparator and TVM the tensor-compiler control; neither source size nor
+one successful extension establishes that Joggle is generally easier to extend.
 
-Lift and RISE \& Shine make typed functional patterns and explicit rewrite
-strategies central to optimization
+\textbf{Author-controlled tensor programs.} Halide separates an algorithm from a
+schedule \cite{ragankelley2013halide};
+Lift and RISE make typed data-parallel structure and rewrite strategies explicit
 \cite{steuwer2017lift};
-\cite{steuwer2022rise}. Joggle shares their
-emphasis on inspectable functions and transformations but keeps imported calls,
-explicit structured loops, and external declarations in one open function
-representation instead of requiring a closed data-parallel pattern vocabulary.
-This is a design tradeoff to evaluate, not an assertion that either form is
-universally simpler.
+\cite{steuwer2022rise}. Exo goes further by
+externalizing target instructions, memories, and scheduling policy into user
+libraries while checking transformed programs
+\cite{ikarashi2022exo}. Hidet embeds
+composable task mappings in tensor programs to express assignment and ordering
+beyond loop-only schedules
+\cite{ding2023hidet}, and TileLang
+exposes tiled dataflow, layout, memory, and thread decisions on TVM IR
+\cite{wang2025tilelang}. These systems show that
+control must be both expressive and economical; merely exposing loops is
+insufficient. Joggle differs in scope: it does not prescribe a tile, worker, or
+instruction model in the core, and asks user modules to add those policies to
+ordinary functions. The cost is visible in the current C results: without a
+mature contraction, packing, and vector policy, openness does not yield
+competitive code.
 
-TensorFlow Lite Micro targets inference on fragmented, memory-constrained
-microcontrollers through an interpreter and explicitly registered operator
-implementations
-\cite{david2021tflm}.
-ncnn is a dependency-light C++ inference framework with optimized CPU and
-Vulkan paths and a registered custom-layer interface
-(\href{https://github.com/Tencent/ncnn}{project},
-\href{https://github.com/Tencent/ncnn/wiki/how-to-implement-custom-layer-step-by-step}{extension guide}).
-They define the deployment context Joggle must respect: transparent compiler
-artifacts are useful for research, but cannot be presented as substitutes for
-mature optimized runtimes. A custom-operation comparison is valid only under a
-matched model, target, and oracle.
+\textbf{Automatic transformation and search.} Ansor learns a cost model while
+exploring generated tensor programs
+\cite{zheng2020ansor};
+ROLLER reduces tuning cost by constructing programs from hardware-aligned tiles
+\cite{zhu2022roller}.
+Welder makes memory traffic across operators explicit through a tile graph
+\cite{shi2023welder},
+whereas Ladder jointly exposes custom numeric types, data transformations, and
+hardware-aware schedules
+\cite{wang2024ladder}.
+Graph and tensor superoptimizers enlarge a different dimension: TASO generates
+verified graph substitutions
+\cite{jia2019taso}, Tensat uses equality
+saturation to avoid committing to a rewrite order
+\cite{yang2021tensat}, Glenside makes layout-aware
+access patterns rewritable
+\cite{smith2021glenside}, and Mirage and
+Axon search across several levels
+\cite{wu2024mirage};
+\cite{kothari2026axon}. Axon additionally
+synthesizes target instructions from semantic specifications and reports target
+execution as most of its search cost. These works do not make an experimental
+control plane unnecessary: every search still requires semantics, legal
+candidates, target feedback, fallbacks, and an artifact boundary. Joggle's
+intended role is to host such a chooser as an optional module, not to claim a
+new search algorithm. The submission must therefore measure candidate
+generation, rejection, execution, and caching rather than only the winner.
+
+\textbf{Whole-model and edge co-design.} Rammer co-schedules inter- and
+intra-operator work using hardware-neutral task abstractions
+\cite{ma2020rammer},
+demonstrating that operator-local scheduling can leave important parallelism
+hidden. At the extreme edge, TensorFlow Lite Micro uses a compact interpreter
+and explicitly selected kernels
+\cite{david2021tflm};
+DORY couples topology-aware tiling, explicit transfers, and generated C for
+scratchpad-based MCUs
+\cite{burrello2021dory}; MCUNet
+co-designs the network search space with whole-network memory scheduling
+\cite{lin2020mcunet}.
+ncnn provides a lightweight optimized runtime and a custom-layer path, making
+it a useful deployment control rather than an IR lineage. These systems clarify
+Joggle's evaluation boundary. Transparent AOT C can simplify inspection and
+unusual target integration, but must be compared against mature runtime paths
+on the same serialized computation, input, threading policy, and host.
+Workload coverage alone is not evidence of useful edge compilation; latency,
+peak workspace, artifact footprint, correctness, and unsupported cases must be
+reported together.
 
 \section{Limitations and threats to validity}
 The present implementation favors visibility and extension over automatic

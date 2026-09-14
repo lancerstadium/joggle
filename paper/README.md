@@ -81,16 +81,15 @@ is complete.
   `--check` is part of the normal test suite and rejects stale transcription.
 - [`references.bib`](references.bib): source-verified bibliography for every
   related-work citation currently used by the manuscript.
-- [`literature-map.md`](literature-map.md): the 64-work candidate pool,
-  verification state, comparison role, pain-point synthesis, and priority
-  order used to grow the bibliography beyond 50 actually cited works.
+- [`literature-map.md`](literature-map.md): the claim-oriented 64-work
+  literature ledger, verification state, comparison role, pain-point
+  synthesis, and priority order used to grow the bibliography beyond 50
+  actually cited works.
 - [`figure-plan.md`](figure-plan.md): the evidence contract replacing pass
   tables with measured dense matrices and shared-legend model panels.
 - [`operator-study.md`](operator-study.md): exact shape grids, speedup
   convention, baseline fairness, LaTeX layout, and optimization gate for the
   dense operator table.
-- [`related-work.md`](related-work.md): claim-oriented comparisons grounded in
-  primary papers and official documentation.
 - [`extension-study.md`](extension-study.md): frozen extension protocol,
   fairness rules, and threats.
 - [`extension-tasks.json`](extension-tasks.json) and [`tasks/`](tasks/):
@@ -184,6 +183,12 @@ python3 paper/measure_pair.py \
   --out-dir build-study/reorder/UltraFace-study/UltraFace/paired \
   --output paper/data/reorder-ultraface-runtime-pilot.csv
 ```
+
+The builder gives every variant the same external ABI contract.  After
+storage planning, `c.noalias` records disjoint exported tensor arguments and
+`c.place` assigns storage.  The CSV keeps the no-alias stage's time, byte
+count, and hash separate so the contract is auditable rather than hidden in
+placement.
 
 Measure the structural-cost frontier of an already prepared model without
 placing artifacts in a temporary directory:

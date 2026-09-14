@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import json
 import re
 import statistics
@@ -29,10 +28,6 @@ def document(path: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError(f"document must be an object: {path}")
     return value
-
-
-def digest(path: str) -> str:
-    return hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
 
 
 def table(headers: list[str], body: list[list[str]], right: set[int]) -> str:
@@ -128,84 +123,6 @@ def policy() -> str:
     )
 
 
-def indexed(path: str) -> dict[str, dict[str, str]]:
-    return {row["task"]: row for row in rows(path)}
-
-
-def extension_surface() -> str:
-    tasks = document("paper/extension-tasks.json").get("tasks")
-    if not isinstance(tasks, list):
-        raise ValueError("extension manifest has no task list")
-    joggle = indexed("paper/data/extension-footprint-pilot.csv")
-    tvm = indexed("paper/data/extension-tvm-pilot.csv")
-    onnx = indexed("paper/data/extension-onnx-mlir-pilot.csv")
-    external = document("paper/baselines/onnx-mlir/external-kernel/result.json")
-    if external.get("task") != "external-kernel" or external.get("status") != "unsupported":
-        raise ValueError("unexpected ONNX-MLIR external-kernel result")
-    policy_result = document("paper/baselines/onnx-mlir/policy/result.json")
-    if policy_result.get("task") != "policy" or policy_result.get("status") != "pass":
-        raise ValueError("unexpected ONNX-MLIR policy result")
-    tvm_numeric = document("paper/baselines/tvm/numeric-format/result.json")
-    if (
-        tvm_numeric.get("task") != "numeric-format"
-        or tvm_numeric.get("status") != "unsupported"
-    ):
-        raise ValueError("unexpected TVM numeric-format result")
-    for field, path in (
-        ("contract_sha256", "paper/tasks/numeric-format.json"),
-        ("format_map_sha256", "paper/fixtures/numeric-format/format-map.json"),
-        ("probe_source_sha256", "paper/baselines/tvm/numeric_format_probe.py"),
-    ):
-        if tvm_numeric.get(field) != digest(path):
-            raise ValueError(f"TVM numeric-format {field} changed")
-    onnx_numeric = document(
-        "paper/baselines/onnx-mlir/numeric-format/result.json"
-    )
-    if (
-        onnx_numeric.get("task") != "numeric-format"
-        or onnx_numeric.get("status") != "unsupported"
-    ):
-        raise ValueError("unexpected ONNX-MLIR numeric-format result")
-
-    def observed(records: dict[str, dict[str, str]], task: str) -> str:
-        record = records.get(task)
-        if record is None:
-            return "incomplete"
-        if record["validation"] != "pass":
-            raise ValueError(f"unexpected validation for {task}")
-        suffix = f", {record['source_sloc']} lines"
-        if task == "implementation" and record.get("source_files") == "6":
-            suffix += " in six files"
-        return "pass" + suffix
-
-    body: list[list[str]] = []
-    for item in tasks:
-        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
-            raise ValueError("extension task must have an id")
-        task = item["id"]
-        tvm_value = observed(tvm, task)
-        if task == "numeric-format":
-            tvm_value = "unsupported at custom-type registration"
-        if task == "external-kernel":
-            onnx_value = "unsupported at first required MatMul case"
-        elif task == "numeric-format":
-            record = onnx.get(task)
-            if record is None or record["source_sha256"] != onnx_numeric[
-                "implementation"
-            ]["source_sha256"]:
-                raise ValueError("ONNX-MLIR numeric-format surface changed")
-            onnx_value = "unsupported at second executable target"
-        else:
-            onnx_value = observed(onnx, task)
-        body.append([task, observed(joggle, task), tvm_value, onnx_value])
-    return (
-        "**Table 3. Frozen extension tasks and observed authored source surface.**\n\n"
-        + table(
-            ["Task", "Joggle", "TVM control", "ONNX-MLIR system path"], body, set()
-        )
-    )
-
-
 def replace(text: str, name: str, rendered: str) -> str:
     begin = f"<!-- BEGIN GENERATED: {name} -->"
     end = f"<!-- END GENERATED: {name} -->"
@@ -220,7 +137,6 @@ def render(text: str) -> str:
     for name, value in (
         ("systems", systems()),
         ("policy", policy()),
-        ("extension-surface", extension_surface()),
     ):
         text = replace(text, name, value)
     return text

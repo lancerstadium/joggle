@@ -24,6 +24,17 @@ CITATIONS = {
     "https://arxiv.org/abs/2405.05751": "wu2024mirage",
     "https://arxiv.org/abs/2606.26344": "kothari2026axon",
     "https://proceedings.mlsys.org/paper_files/paper/2021/file/6c44dc73014d66ba49b28d483a8f8b0d-Paper.pdf": "david2021tflm",
+    "https://www.usenix.org/conference/osdi22/presentation/zhu": "zhu2022roller",
+    "https://www.usenix.org/conference/osdi23/presentation/shi": "shi2023welder",
+    "https://www.usenix.org/conference/osdi24/presentation/wang-lei": "wang2024ladder",
+    "https://doi.org/10.1145/3575693.3575702": "ding2023hidet",
+    "https://doi.org/10.1145/3519939.3523446": "ikarashi2022exo",
+    "https://doi.org/10.1145/3460945.3464953": "smith2021glenside",
+    "https://doi.org/10.1145/3341301.3359630": "jia2019taso",
+    "https://arxiv.org/abs/2101.01332": "yang2021tensat",
+    "https://www.usenix.org/conference/osdi20/presentation/ma": "ma2020rammer",
+    "https://doi.org/10.1109/TC.2021.3066883": "burrello2021dory",
+    "https://proceedings.neurips.cc/paper_files/paper/2020/hash/86c51678350f656dcc7f490a43946ee5-Abstract.html": "lin2020mcunet",
 }
 
 
@@ -91,6 +102,25 @@ def plain(token: Token) -> str:
         for child in token.children or []
         if child.type in {"text", "code_inline"}
     )
+
+
+def figure(token: Token) -> str | None:
+    children = token.children or []
+    if len(children) != 1 or children[0].type != "image":
+        return None
+    source = children[0].attrGet("src") or ""
+    if not re.fullmatch(r"[A-Za-z0-9_./-]+\.pdf", source) or ".." in source:
+        raise ValueError(f"figure must be a repository-local PDF: {source}")
+    caption = children[0].content
+    label = "fig:" + re.sub(r"[^a-z0-9]+", "-", caption.lower()).strip("-")
+    return "\n".join([
+        r"\begin{figure*}[t]",
+        r"\centering",
+        rf"\includegraphics[width=\textwidth]{{../{source}}}",
+        rf"\caption{{{escape(caption)}}}",
+        rf"\label{{{label}}}",
+        r"\end{figure*}",
+    ])
 
 
 def table(tokens: list[Token], start: int, caption: str | None) -> tuple[str, int]:
@@ -164,6 +194,11 @@ def render(source: str) -> tuple[str, int]:
             index += 3
             continue
         if token.type == "paragraph_open":
+            image = figure(tokens[index + 1])
+            if image is not None:
+                lines.extend([image, ""])
+                index += 3
+                continue
             rendered = inline(tokens[index + 1])
             raw = plain(tokens[index + 1])
             match = re.fullmatch(r"Table\s+\d+\.\s+(.+)", raw)

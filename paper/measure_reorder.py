@@ -115,6 +115,7 @@ def main() -> None:
             transformed = directory / "transformed.jog"
             clean = directory / "clean.jog"
             planned = directory / "planned.jog"
+            noalias = directory / "noalias.jog"
             placed = directory / "placed.jog"
             source = directory / "model.c"
 
@@ -142,8 +143,11 @@ def main() -> None:
             plan_seconds = run(invocation(
                 tool, "run", ["mem.plan"], clean, [module_path]
             ), planned)
+            noalias_seconds = run(invocation(
+                tool, "run", ["c.noalias"], planned, [module_path]
+            ), noalias)
             place_seconds = run(invocation(
-                tool, "run", ["c.place"], planned, [module_path],
+                tool, "run", ["c.place"], noalias, [module_path],
                 ['"static"']
             ), placed)
             emit_seconds = run(invocation(
@@ -162,15 +166,18 @@ def main() -> None:
                 "canonical_ir_bytes": canonical.stat().st_size,
                 "transformed_ir_bytes": transformed.stat().st_size,
                 "clean_ir_bytes": clean.stat().st_size,
+                "noalias_ir_bytes": noalias.stat().st_size,
                 "c_bytes": source.stat().st_size,
                 "canonical_ir_sha256": canonical_hash,
                 "transformed_ir_sha256": digest(transformed),
                 "clean_ir_sha256": digest(clean),
+                "noalias_ir_sha256": digest(noalias),
                 "c_sha256": digest(source),
                 "transform_seconds": f"{transform_seconds:.6f}",
                 "clean_seconds": f"{clean_seconds:.6f}",
                 "canon_seconds": f"{canon_seconds:.6f}",
                 "plan_seconds": f"{plan_seconds:.6f}",
+                "noalias_seconds": f"{noalias_seconds:.6f}",
                 "place_seconds": f"{place_seconds:.6f}",
                 "emit_seconds": f"{emit_seconds:.6f}",
             })

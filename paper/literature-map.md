@@ -80,7 +80,7 @@ mechanism-level comparison, and contextual citation respectively.
 | V | Lift: A Functional Data-Parallel IR for High-Performance GPU Code Generation | M | Typed rewrite exploration; closed pattern vocabulary versus open functions |
 | V | RISE & Shine: Language-Oriented Compiler Design | M | Explicit high/low languages and strategy control |
 | Q | Elevate: A Language to Write Composable Program Optimization Strategies | M | User-authored strategy language and predictable rewrites |
-| Q | Halide: A Language and Compiler for Optimizing Parallelism, Locality, and Recomputation | M | Algorithm/schedule separation and expert control |
+| V | Halide: A Language and Compiler for Optimizing Parallelism, Locality, and Recomputation | M | Algorithm/schedule separation and expert control |
 | V | Tiramisu: A Polyhedral Compiler for Expressing Fast and Portable Code | M | Explicit schedule commands over affine computations |
 | Q | PolyMage: Automatic Optimization for Image Processing Pipelines | C | Pipeline fusion, tiling, and storage optimization |
 | Q | TACO: A Language and Compiler for Optimizing Sparse Tensor Algebra | M | Format-aware tensor algebra and code generation |
@@ -88,7 +88,7 @@ mechanism-level comparison, and contextual citation respectively.
 | Q | HeteroCL: A Multi-Paradigm Programming Infrastructure for Software-Defined Reconfigurable Computing | M | Custom types, schedules, and heterogeneous hardware co-design |
 | V | TensorIR: An Abstraction for Automatic Tensorized Program Optimization | M | Schedulable tensor programs and tensorization boundaries |
 | V | Triton: An Intermediate Language and Compiler for Tiled Neural Network Computations | M | Programmable tiled GPU kernels |
-| Q | Exo: A Language for Productivity and Performance of High-Performance Numerical Libraries | M | User-controlled scheduling with externally supplied instructions |
+| V | Exocompilation for Productive Programming of Hardware Accelerators | M | User-controlled scheduling with externally supplied instructions and memories |
 | V | TileLang: A Composable Tiled Programming Model for AI Systems | M | Tile-level control; intentionally not an end-to-end frontend baseline |
 | V | Hidet: Task-Mapping Programming Paradigm for Deep Learning Tensor Programs | M | Hardware mapping abstraction and inference latency focus |
 
@@ -104,8 +104,8 @@ mechanism-level comparison, and contextual citation respectively.
 | V | Mirage: A Multi-Level Superoptimizer for Tensor Programs | M | Uniform multi-level search plus probabilistic equivalence |
 | V | Axon: A Synthesizing Superoptimizer for Tensor Programs | M | Semantic specification, ISA synthesis, SMT equivalence, tiling and fusion |
 | V | Pure Tensor Program Rewriting via Access Patterns (Glenside) | M | Equality saturation and layout discovery without operator-name rules |
-| Q | Tensat: Automatically Optimizing Tensor Computation Graphs with Equality Saturation | M | Graph rewrite saturation and extraction cost |
-| Q | TASO: Optimizing Deep Learning Computation with Automatic Generation of Graph Substitutions | M | Generated graph substitutions and formal equivalence conditions |
+| V | Equality Saturation for Tensor Graph Superoptimization (Tensat) | M | Graph rewrite saturation and extraction cost |
+| V | TASO: Optimizing Deep Learning Computation with Automatic Generation of Graph Substitutions | M | Generated graph substitutions and formal equivalence conditions |
 | V | egg: Fast and Extensible Equality Saturation | C | General rewrite infrastructure used by tensor optimizers |
 | V | BOLT: Bridging the Gap between Auto-tuners and Hardware-native Performance | M | Fast generated kernels versus vendor libraries |
 | V | AStitch: Enabling a New Multi-dimensional Optimization Space for Memory-Intensive ML Training and Inference on Modern SIMT Architectures | M | Whole-subgraph fusion and memory scheduling |
@@ -156,8 +156,8 @@ mechanism-level comparison, and contextual citation respectively.
 | V | An Image Is Worth 16x16 Words: Transformers for Image Recognition at Scale | C | ViT adds attention to a conventional static vision task |
 | Q | Language Models are Unsupervised Multitask Learners (GPT-2) | C | Autoregressive language-model workload and state/cache boundary |
 
-The pool currently contains 64 candidate works: 45 primary-record checks and
-19 queued checks. The counts are intentionally visible so a partially verified
+The pool currently contains 64 candidate works: 49 primary-record checks and
+15 queued checks. The counts are intentionally visible so a partially verified
 search cannot be mistaken for a finished bibliography.
 
 ## Pain-point synthesis for Section 2

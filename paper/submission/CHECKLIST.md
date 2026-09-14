@@ -8,9 +8,11 @@ separate from scientific progress.
 
 - [x] Anonymous two-column review layout.
 - [x] Mechanical Markdown-to-LaTeX rendering with unsupported-input failure.
-- [x] Eight-page build: seven technical pages and one reference page.
-- [x] All four current tables fit without clipping or unreadable text.
-- [x] Bibliography resolves without undefined citations.
+- [x] Ten-page build within the 12-page technical-content limit.
+- [x] Both current diagnostic tables fit without clipping.
+- [x] Bibliography resolves 23 cited works without undefined citations.
+- [x] Literature ledger classifies 64 candidates and verifies 49 against
+      primary records.
 
 ## Submission blockers
 
@@ -20,8 +22,9 @@ separate from scientific progress.
       extension boundary concrete.
 - [ ] Freeze the title, abstract, research questions, and three contributions
       after the evidence tables stop changing.
-- [ ] Expand and audit related work; every comparison claim needs a primary
-      source and a verified bibliography entry.
+- [ ] Expand the 23 cited works toward at least 50 relevant citations and run
+      an independent claim-to-source audit; every comparison claim needs a
+      primary source and a verified bibliography entry.
 - [ ] Add artifact, AI-use, conflicts, ethics, and reproducibility disclosures
       required by the venue.
 - [ ] Run a strict systems-paper review, revise, then repeat the review once.
