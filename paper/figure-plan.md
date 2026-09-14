@@ -1,9 +1,9 @@
 # Figure evidence plan
 
 The manuscript will not use a pass/partial checklist as a main result. Main
-figures follow the two visual patterns supplied by the project owner: compact
-cell-shaded matrices for high-dimensional operator results, and aligned small
-multiples with one shared legend for model-level measurements. The visual
+tables and figures follow the two visual patterns supplied by the project owner:
+compact cell-shaded LaTeX tables for high-dimensional results, and aligned
+small multiples with one shared legend for model-level measurements. The visual
 language is a style reference only; all values, labels, groupings, and captions
 must be generated from Joggle's preserved records.
 
@@ -22,44 +22,49 @@ Generated code, framework boilerplate, build dependencies, and unsupported
 boundaries use separate encodings. The existing “pass, N lines” table moves to
 the appendix once this matrix is complete.
 
-## Figure 2 — Workload and operator frontier
+## Appendix coverage record — Workload compilation frontier
 
 **Claim.** The progressive representation is exercised by distinct model
 families, and failures identify specific semantic capabilities rather than a
 single opaque compatibility percentage.
 
-Rows are grouped as CNN classification, detection, quantized CNN, vision
-transformer, and language/attention. Columns form an ordered frontier:
-decode, infer, relate to shared semantics, expose function bodies, emit,
-compile, and execute. A cell contains a measured count: unknown results,
-remaining source calls, unexposed calls, or zero at a completed stage. Color
-encodes the normalized remaining fraction; completed cells are visually quiet,
-and not-run cells are blank with a distinct hatch. This replaces the current
-pass/partial table. A side strip lists model size and dominant operator family.
+This evidence is not encoded with the supplied speedup-table visual grammar.
+The main text states the completed corpus and named unsupported frontiers; the
+artifact retains per-model residual counts. A compact appendix table may list
+those raw counts if space permits, without ratio shading or pass/partial cells.
 
 Required additions before drawing: one pinned XCiT/ViT-class model and one
 compact transformer language model, alongside the existing official ONNX Zoo
 CNN/detection suite and TFLite MobileNetV2. GPT-2 may be retained as a heavy
 frontier probe, but it does not replace a compact edge-relevant language model.
 
-## Figure 3 — Operator and shape envelope
+## Main LaTeX table — Operator and shape speedups
 
 **Claim.** Target-aware policies change performance only in identifiable
 operator/shape regions; no single optimization should be advertised from one
 MobileNet aggregate.
 
-The layout follows the dense matrix example. Rows are computation families:
-elementwise/broadcast, reductions, pooling, convolution/depthwise convolution,
-matrix contraction, normalization, and attention subgraphs. Columns are grouped
-by shape regime (small edge, channel-heavy CNN, sequence length, and projection
-width). Separate row groups compare Joggle generated C against ONNX Runtime or
-LiteRT, then against TVM-generated kernels where the semantics and host match.
-ncnn is added only for the selected edge operator/model it natively represents.
-Cells show latency ratio and restrained ratio shading; unsupported synthesis is
-an explicit dash. The geometric mean appears only within a semantically coherent
-row group.
+This is a native two-column LaTeX table following the supplied dense-table
+example. Every shaded cell has exactly one meaning: baseline median latency
+divided by Joggle median latency, so values above 1.0 are Joggle speedups and
+values below 1.0 are slowdowns. Rows are inference computations such as Add,
+ReLU, SiLU, LayerNorm, Softmax, MatMul, convolution, and depthwise convolution.
+The horizontal axis is deliberately broad rather than a handful of examples.
+The exact grids are frozen in `operator-study.md`: 25 `M×N` cases, 27
+`M×K×N` cases, 24 spatial/depthwise cases, and 20 pointwise-convolution cases.
+Shape families use separate tables when their arity differs; they are not
+forced into one misleading common axis.
 
-## Figure 4 — Artifact quality across model families
+Row sections identify the baseline (one-thread ONNX Runtime, TVM-generated C,
+and LiteRT only for a matched TFLite path). All systems consume the same input
+buffers and semantic instance, run on the same isolated Linux host, and use the
+same warm-up and trial policy. A dash means the baseline cannot synthesize that
+case. Cell shading encodes the speedup ratio itself, not support, stage state,
+or an unrelated count. A geometric mean is printed only for a semantically
+coherent row section. Until those matched measurements exist, the manuscript
+does not render or populate this table.
+
+## Figure 2 — Artifact quality across model families
 
 **Claim.** Malleability has measurable compile-time, artifact-size, workspace,
 correctness, and latency consequences across workloads.
@@ -80,7 +85,7 @@ never pooled across different serialized models or different machines. Shared
 GitHub runners remain diagnostic and are visually separated from controlled
 host data.
 
-## Figure 5 — Where automation attaches
+## Figure 3 — Where automation attaches
 
 **Claim.** Joggle is an experimental control plane on which manual rules,
 schedule languages, learned search, or synthesis can choose the same exposed
@@ -106,4 +111,3 @@ an integration opportunity and the boundary evaluated by the paper.
   readable text at final two-column size.
 - Negative results, including slower fused code or an unexposed modern-model
   frontier, remain in the main evidence when they bound the claim.
-

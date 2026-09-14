@@ -1,0 +1,126 @@
+# Operator and shape study
+
+## Purpose
+
+This study measures generated-code quality. It does not measure parser coverage,
+extension footprint, or the speed of one Joggle pass against another. The main
+paper artifact is a native LaTeX speedup table in the visual grammar of the
+provided Axon example. Every shaded cell is the same quantity:
+
+```text
+speedup = median latency of the named baseline / median Joggle latency
+```
+
+Thus `1.0` is parity, a value above `1.0` favors Joggle, and a value below `1.0`
+is an observed Joggle slowdown. The table must not invert this convention for a
+negative result.
+
+## Matrices
+
+Different computation arities use separate matrices. Forcing pointwise,
+contraction, and convolution workloads onto one ambiguous shape axis would make
+the table dense but uninterpretable.
+
+### A. Two-dimensional and last-axis computations
+
+Rows: Add, Multiply, ReLU, SiLU, RMSNorm, LayerNorm, Softmax, ReduceSum, and
+Cumsum when supported by all compared paths.
+
+Columns are the complete Cartesian product `M × N`, with
+`M ∈ {1, 4, 16, 64, 256}` and `N ∈ {64, 128, 256, 512, 1024}`: 25 measured
+shapes plus one geometric-mean column. These values cover vector-like batch-1
+edge inference, small batches, token blocks, and channel/hidden widths without
+copying Axon's accelerator-scale 1K–16K grid.
+
+### B. Contractions and transformer subgraphs
+
+Rows: MatMul, Transpose+MatMul, RMSNorm+MatMul, Softmax+MatMul, QKV projection,
+and gated-MLP subgraphs only after each has one shared semantic fixture.
+
+Columns are the complete Cartesian product `M × K × N`, with
+`M ∈ {1, 16, 128}` and `K,N ∈ {128, 256, 512}`: 27 measured shapes plus one
+geometric-mean column. `M=1` is decode-like, `M=16` is a short token block, and
+`M=128` is prefill-like; `K,N` exercise edge-sized hidden/projection widths.
+
+### C. Convolution families
+
+Convolution uses an explicit tuple header
+`H×W / Cin×Cout / K / stride / groups`; it is not abbreviated as `M×N`.
+The initial grid contains 24 cases:
+
+- `H=W ∈ {7, 14, 28, 56}`;
+- `(Cin,Cout) ∈ {(16,16), (32,32), (32,64)}`;
+- standard 3×3 convolution and depthwise 3×3 convolution;
+- stride one, NCHW, batch one.
+
+Pointwise 1×1 convolution receives a separate 20-case grid over
+`H=W ∈ {7,14,28,56}` and
+`(Cin,Cout) ∈ {(16,16),(16,32),(32,32),(32,64),(64,64)}`. These cases expose
+the weight-packing, reduction-order, and channel-blocking problems hidden by a
+single MobileNet total.
+
+## Baseline sections
+
+The primary table has independent row sections rather than mixing denominators:
+
+1. **vs one-thread ONNX Runtime** on an exactly identical generated ONNX
+   fixture and input;
+2. **vs TVM** after a frozen tuning budget and an untuned/default row are both
+   preserved;
+3. **vs ONNX-MLIR** for the identical ONNX fixture and native target;
+4. **vs LiteRT** only when the source is an identical TFLite FlatBuffer, never
+   a separately converted model.
+
+A system is omitted from a row only when its preserved build or compilation
+record identifies an unsupported case. The cell then contains a dash; a failed
+or timed-out run is not silently converted into unsupported.
+
+## Measurement contract
+
+- Run on one identified, otherwise-idle Linux machine with fixed affinity,
+  one software thread, recorded governor/frequency state, compiler versions,
+  and host-load rejection.
+- Generate all fixtures deterministically and hash model, input, expected
+  output, source, weights, binary, and command manifest.
+- Use each system's documented native interface. Time repeated invocations
+  after construction and warm-up; exclude model loading and compilation from
+  inference latency, but report them separately.
+- Use balanced system order, at least 20 outer trials, sufficient inner
+  iterations for sub-millisecond cases, median and dispersion, and a checksum
+  that depends on every output.
+- Validate every candidate against the same high-precision fixture before its
+  timing enters the table. Record maximum absolute and relative error.
+- Freeze tuning budgets. Plot best-so-far against measured candidates before
+  comparing a tuned Joggle result with an untuned baseline.
+
+## LaTeX contract
+
+The table is emitted directly as `table*`/`tabular`, with rotated shape headers,
+`booktabs` group rules, compact numeric cells, and one baseline label spanning
+each row section. Cell color is a monotonic function of speedup and never of
+support or correctness. A restrained four-bin legend is fixed before results
+are inspected: `<0.5×`, `0.5–0.9×`, `0.9–1.1×`, and `>1.1×`. Exact values remain
+printed in every cell. The geometric mean excludes unsupported cells and its
+sample count appears in the caption.
+
+No table is rendered from placeholder or synthetic values. Until the matched
+records exist, this document is the evidence contract rather than a mock result.
+
+## Optimization gate before publication measurement
+
+The current scalar C path is not a credible performance candidate. Publication
+measurement begins only after generic mechanisms, not operator-name cases,
+cover the following sequence:
+
+1. canonical affine loop/access form and contiguous-axis analysis;
+2. legal interchange and multi-level tiling over explicit loop bodies;
+3. constant-weight packing with artifact provenance;
+4. alignment, no-alias, and vector-width facts exposed by a target module;
+5. vector code generation or a demonstrably reliable compiler-vectorization
+   contract;
+6. fusion profitability based on residency/traffic, not loop-count reduction;
+7. bounded candidate generation, target measurement, selection, and cache.
+
+This gate explains the present ONNX Runtime gap rather than hiding it: Joggle
+currently has only fragments of items 1, 2, and 4, and no mature implementation
+of items 3, 5, 6, or 7.

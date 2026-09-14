@@ -390,35 +390,16 @@ Across executed models, the stored maximum absolute differences range from
 approximately `1.34e-7` to `2.10e-5`. These checks establish numerical paths,
 not task-level accuracy.
 
-The structural compatibility table is now generated directly from twelve
-pinned Zoo tests rather than transcribed from test output. Ten models complete
-semantic conversion and canonical round trip. TinyYOLOv3 retains 219 unknown
-results after inference; SSD-MobileNetV1 infers all result types but retains
-386 source calls after conversion. The source-call reduction comes from shared
+The structural compatibility record is generated directly from pinned Zoo
+tests rather than transcribed from test output. Ten models complete semantic
+conversion and canonical round trip. TinyYOLOv3 retains 219 unknown results
+after inference; SSD-MobileNetV1 infers all result types but retains 386 source
+calls after conversion. The source-call reduction comes from shared
 broadcast-capable comparison functions, a maximum/minimum Clip composition,
 and a generic tensor-tiling function reached through source-semantic mappings.
 None adds an ONNX operator to the target emitter. Models absent from the configured cache are
 omitted, not counted as passes. Structural completion is kept separate from
 the ten-model numerical execution claim above.
-
-<!-- BEGIN GENERATED: model-frontier -->
-**Table 1. Pinned ONNX Model Zoo structural frontier.**
-
-| Model | Nodes | Type inference | Semantic conversion |
-| --- | ---: | --- | --- |
-| mnist-8 | 12 | pass | pass |
-| mobilenetv2-7 | 155 | pass | pass |
-| squeezenet1.1-7 | 66 | pass | pass |
-| squeezenet1.0-13-qdq | 171 | pass | pass |
-| resnet18-v1-7 | 69 | pass | pass |
-| tinyyolov2-8 | 33 | pass | pass |
-| tiny-yolov3-11 | 291 | partial (219 unknown) | not_run |
-| ultraface-rfb-320 | 242 | pass | pass |
-| ssd-mobilenetv1-12 | 5985 | pass | partial (386 calls) |
-| shufflenet-v2-12 | 261 | pass | pass |
-| densenet-12 | 910 | pass | pass |
-| googlenet-12 | 143 | pass | pass |
-<!-- END GENERATED: model-frontier -->
 
 DenseNet exposes both progress and a compiler-scaling boundary. After
 conversion and selection of the then-current out-of-tree spatial
@@ -512,6 +493,19 @@ table will compare independent systems on identical model, input, thread, and
 correctness contracts while recording each system's compiler and runtime
 versions.
 
+This gap is not mysterious and should not be normalized as the cost of
+malleability. The present backend emits portable scalar loops. It has no mature
+weight packing, cache blocking, SIMD code selection, target-tuned kernel
+library, or empirical schedule search. In contrast, the production runtime is
+itself an optimized execution system, not a neutral C interpreter. We have not
+yet completed matched throughput measurements against TVM or ONNX-MLIR, so the
+paper makes no claim about their ordering. The conservative expectation is that
+a tuned TVM path, and any ONNX-MLIR path that obtains stronger loop/vector or
+library code, will also beat the current artifact. The planned operator study
+will locate the loss across 25 two-dimensional, 27 contraction, and separate
+convolution shapes before choosing general tiling, packing, vectorization, and
+target-feedback mechanisms.
+
 A clean same-job Linux diagnostic also separates fusion legality from
 profitability. Starting from byte-identical MobileNetV2 canonical IR, greedy
 `tile.fuse` reduces represented loops from 156 to 110 and external-weight C
@@ -537,13 +531,13 @@ second negative runtime comparison. It is not pooled with ONNX Runtime because
 the serialized model and production stack differ, and it is not controlled-host
 performance.
 
-Table 2 reports two independently dispatched system runs. Each subject runs in
+Table 1 reports two independently dispatched system runs. Each subject runs in
 a fresh process under a one-thread contract, and each cell is the median of 20
 trials. The generated model, input, weights, reference, and executable have
 identical hashes across CPU classes, and every stored-output check passes.
 
 <!-- BEGIN GENERATED: systems -->
-**Table 2. Independent-system Linux diagnostics (median milliseconds).**
+**Table 1. Independent-system Linux diagnostics (median milliseconds).**
 
 | CPU class | Model | Joggle C | ONNX Runtime | Joggle / ORT |
 | --- | --- | ---: | ---: | ---: |
@@ -554,14 +548,14 @@ identical hashes across CPU classes, and every stored-output check passes.
 <!-- END GENERATED: systems -->
 
 The cross-CPU results reproduce correctness and the negative performance
-boundary, not one stable slowdown factor. Table 3 instead measures the generic
+boundary, not one stable slowdown factor. Table 2 instead measures the generic
 MobileNetV2 policy within each workflow execution on one pinned CPU. Reordering
 54 affine-proved bodies and canonicalizing their index trees reduces generated
 source from 192,209 to 152,275 bytes. The canonical/plain latency ratio changes
 from 0.7348 to 0.7358 even though absolute latency changes substantially.
 
 <!-- BEGIN GENERATED: policy -->
-**Table 3. MobileNetV2 module-policy diagnostics (median milliseconds).**
+**Table 2. MobileNetV2 module-policy diagnostics (median milliseconds).**
 
 | Run | Plain C | Canonical C | Canon / plain | Adjacent ORT | Canon / ORT |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -582,7 +576,7 @@ do not support a general claim that Joggle is easier to extend, more compatible,
 or faster than another compiler.
 
 <!-- BEGIN GENERATED: extension-surface -->
-**Table 4. Frozen extension tasks and observed authored source surface.**
+**Table 3. Frozen extension tasks and observed authored source surface.**
 
 | Task | Joggle | TVM control | ONNX-MLIR system path |
 | --- | --- | --- | --- |

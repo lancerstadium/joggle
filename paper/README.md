@@ -36,7 +36,7 @@ usability.
 
 | Question | Evidence present | Blocking work |
 | --- | --- | --- |
-| Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths; a generated table covers twelve pinned Zoo stage records, of which ten complete semantic conversion | Reproduce the frozen frontier and executable subset in the anonymous artifact |
+| Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths; machine-readable records cover the pinned Zoo stages, with ten models completing semantic conversion | Reproduce the frozen frontier and executable subset in the anonymous artifact |
 | Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM controls pass three contracts and preserve an unsupported custom-type boundary; ONNX-MLIR passes the implementation and policy tasks, has a preserved unsupported external-call boundary, and carries the numeric-format fixture through a parameterized type to exact native execution before stopping at the required second executable target | Repeat the ONNX-MLIR build without interruption from a clean checkout |
 | Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical CSE/analysis scaling pilots | Freeze a fault and diagnostic matrix; do not expand parser/printer internals unless a case exposes a correctness defect |
 | Artifact quality | Ten numerical ONNX paths; clean-revision, 20-trial MobileNetV2 and MNIST records compare generated C with ONNX Runtime on two shared-runner CPU classes; internal rewrite diagnostics remain separate; a TFLite-to-C application study and matched LiteRT diagnostic are reproducible in `linux-tflite` | Validate the TFLite study on Linux, then add an identified isolated host with dispersion and task accuracy, or narrow the paper claim explicitly to artifact correctness and transformation reach |
@@ -76,7 +76,7 @@ is complete.
 ## Repository map
 
 - [`manuscript.md`](manuscript.md): evidence-bounded working paper text.
-- [`render_tables.py`](render_tables.py): regenerates the manuscript's model,
+- [`render_tables.py`](render_tables.py): regenerates the manuscript's
   performance, policy, and extension tables from preserved CSV/JSON records;
   `--check` is part of the normal test suite and rejects stale transcription.
 - [`references.bib`](references.bib): source-verified bibliography for every
@@ -86,6 +86,9 @@ is complete.
   order used to grow the bibliography beyond 50 actually cited works.
 - [`figure-plan.md`](figure-plan.md): the evidence contract replacing pass
   tables with measured dense matrices and shared-legend model panels.
+- [`operator-study.md`](operator-study.md): exact shape grids, speedup
+  convention, baseline fairness, LaTeX layout, and optimization gate for the
+  dense operator table.
 - [`related-work.md`](related-work.md): claim-oriented comparisons grounded in
   primary papers and official documentation.
 - [`extension-study.md`](extension-study.md): frozen extension protocol,
@@ -227,7 +230,7 @@ With the abstract deadline on September 17 and the paper deadline on September
    outcome for every ONNX-MLIR task retained in the paper;
 3. run the frozen system manifests on an identified, otherwise-idle Linux host
    and report dispersion rather than only medians;
-4. generate the model-frontier and performance figures/tables from raw records,
+4. generate the operator-speedup table and model-level figures from raw records,
    then complete the 12-page anonymous manuscript and audits;
 5. defer parser/printer/verifier refactoring and new frontend or backend breadth
    unless they block one of the preceding experiments.

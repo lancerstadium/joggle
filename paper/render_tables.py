@@ -47,24 +47,6 @@ def table(headers: list[str], body: list[list[str]], right: set[int]) -> str:
     return "\n".join(out)
 
 
-def model_frontier() -> str:
-    body: list[list[str]] = []
-    for row in rows("paper/data/model-frontier-pilot.csv"):
-        infer = row["infer"]
-        if infer != "pass":
-            infer += f" ({row['unknown_after']} unknown)"
-        convert = row["convert"]
-        if convert == "partial":
-            convert += f" ({row['source_calls_after']} calls)"
-        body.append([row["model"], row["nodes"], infer, convert])
-    return (
-        "**Table 1. Pinned ONNX Model Zoo structural frontier.**\n\n"
-        + table(
-            ["Model", "Nodes", "Type inference", "Semantic conversion"], body, {1}
-        )
-    )
-
-
 def median(path: str, system: str) -> float:
     records = rows(path)
     samples = [float(row["seconds"]) for row in records if row["system"] == system]
@@ -109,7 +91,7 @@ def systems() -> str:
                  f"{runtime * 1000:.3f}", f"{joggle / runtime:.2f}x"]
             )
     return (
-        "**Table 2. Independent-system Linux diagnostics (median milliseconds).**\n\n"
+        "**Table 1. Independent-system Linux diagnostics (median milliseconds).**\n\n"
         + table(
             ["CPU class", "Model", "Joggle C", "ONNX Runtime", "Joggle / ORT"],
             body,
@@ -136,7 +118,7 @@ def policy() -> str:
              f"{canon / runtime:.2f}x"]
         )
     return (
-        "**Table 3. MobileNetV2 module-policy diagnostics (median milliseconds).**\n\n"
+        "**Table 2. MobileNetV2 module-policy diagnostics (median milliseconds).**\n\n"
         + table(
             ["Run", "Plain C", "Canonical C", "Canon / plain",
              "Adjacent ORT", "Canon / ORT"],
@@ -217,7 +199,7 @@ def extension_surface() -> str:
             onnx_value = observed(onnx, task)
         body.append([task, observed(joggle, task), tvm_value, onnx_value])
     return (
-        "**Table 4. Frozen extension tasks and observed authored source surface.**\n\n"
+        "**Table 3. Frozen extension tasks and observed authored source surface.**\n\n"
         + table(
             ["Task", "Joggle", "TVM control", "ONNX-MLIR system path"], body, set()
         )
@@ -236,7 +218,6 @@ def replace(text: str, name: str, rendered: str) -> str:
 
 def render(text: str) -> str:
     for name, value in (
-        ("model-frontier", model_frontier()),
         ("systems", systems()),
         ("policy", policy()),
         ("extension-surface", extension_surface()),
