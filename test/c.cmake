@@ -183,11 +183,11 @@ if(NOT emitted MATCHES "float\\* out = out_out;" OR
           "prepared C did not write a returned tensor directly:\n${emitted}")
 endif()
 if(NOT emitted MATCHES
-   "void open_add\\(const float a\\[static 4\\], const float b\\[static 4\\], float out_out\\[static 4\\]\\);" OR
+   "void open_add\\(const float\\* a, const float\\* b, float\\* out_out\\);" OR
    NOT emitted MATCHES
-   "void open_add\\(const float a\\[static 4\\], const float b\\[static 4\\], float out_out\\[static 4\\]\\) \\{")
+   "void open_add\\(const float\\* a, const float\\* b, float\\* out_out\\) \\{")
   message(FATAL_ERROR
-          "C tensor bounds differed between source declarations:\n${emitted}")
+          "public C signatures differed between declarations:\n${emitted}")
 endif()
 execute_process(
   COMMAND "${TOOL}" emit c.header "${prepared}" -M "${MODULES}"
@@ -299,7 +299,7 @@ if(NOT result EQUAL 0)
 endif()
 file(READ "${noalias_source}" noalias_text)
 if(NOT noalias_text MATCHES
-   "void open_add\\(const float a\\[restrict static 4\\], const float b\\[restrict static 4\\], float out_out\\[restrict static 4\\]\\) \\{" OR
+   "void open_add\\(const float\\* restrict a, const float\\* restrict b, float\\* restrict out_out\\) \\{" OR
    noalias_text MATCHES
    "void open_add\\(const float\\* restrict a, const float\\* restrict b, float\\* restrict out_out\\);")
   message(FATAL_ERROR

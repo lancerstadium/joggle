@@ -1382,12 +1382,15 @@ local fn signature_text(
   blob: str,
   config: dict,
   definition: bool,
+  bounded: bool,
   noalias: bool
 ) -> str {
   assert(len(params) == len(names) && len(returns) == len(results),
          "c: signature names do not match its types")
   assert(definition || !noalias,
          "c: noalias qualifiers belong only to definitions")
+  assert(definition || !bounded,
+         "c: bounded parameters belong only to definitions")
   var out = "void"
   if len(returns) == 1 && !tensor.valid(returns[0]) {
     out = scalar(returns[0], config)
@@ -1402,7 +1405,7 @@ local fn signature_text(
     if tensor.valid(type) {
       let elements = count(type)
       out += "const " + scalar(tensor.elem(type), config)
-      if definition && elements > 0 {
+      if bounded && elements > 0 {
         out += " " + names[i] + "["
         if noalias {
           out += "restrict "
@@ -1440,7 +1443,7 @@ local fn signature_text(
       if tensor.valid(type) {
         let elements = count(type)
         out += scalar(tensor.elem(type), config)
-        if definition && elements > 0 {
+        if bounded && elements > 0 {
           out += " " + results[i] + "["
           if noalias {
             out += "restrict "
@@ -1483,7 +1486,8 @@ local fn signature(
   return signature_text(
     symbol(m, fn, config), types, names, ir.returns(fn),
     result_names(fn, data), data, config,
-    definition, definition && noalias_enabled(fn)
+    definition, definition && ir.local(fn),
+    definition && noalias_enabled(fn)
   )
 }
 
@@ -1536,7 +1540,7 @@ local fn external_signature(m: Mod, op: Op, config: dict) -> str {
   }
   return signature_text(
     symbol(m, fn, config), types, names, returns, results, "", config,
-    false, false
+    false, false, false
   )
 }
 
@@ -1917,7 +1921,8 @@ local fn prototypes(
     names += [name]
     declarations += linkage(m, fn) +
                     signature(
-                      m, fn, blob, data_fns, config, definition_syntax
+                      m, fn, blob, data_fns, config,
+                      definition_syntax && ir.local(fn)
                     ) + ";\n"
   }
   return declarations

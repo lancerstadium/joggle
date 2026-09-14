@@ -495,18 +495,19 @@ rules to allocate buffers. In particular, a scalar is marked as a pointer when
 it is one member of a multi-result C interface, but remains a direct value when
 it is the function's sole result.
 
-Non-empty fixed-shape tensors retain their exact minimum element count in C
-function definitions through standard C11 array parameters. Prototypes and the
-public header use the compatible pointer spelling, keeping the interface valid
-for both C and C++ consumers. This is a type-preserving ABI fact, not an
-alignment, layout, or non-aliasing claim.
+Non-empty fixed-shape tensors retain their exact minimum element count across
+private C call boundaries through standard C11 array parameters. Public
+definitions, prototypes, and headers use one consistent pointer spelling,
+keeping the interface warning-clean and valid for both C and C++ consumers.
+This is a type-preserving ABI fact, not an alignment, layout, or non-aliasing
+claim.
 
 `[c: {noalias: true}]` is an explicit contract on one function. The convenience
 transform `c.noalias(m)` applies it to exported entries and
 `c.noalias(m, false)` removes only that field while preserving other `c`
-metadata. Tensor parameters and tensor results receive `restrict` inside their
-bounded array declarations, and an external payload receives a qualified
-pointer in the generated function definition. Public declarations remain
+metadata. Tensor parameters, tensor results, and an external payload receive
+qualified pointers in the generated public function definition. Public
+declarations remain
 unqualified, so the same header remains valid for C++ consumers. `c.api`
 reports the Boolean contract. The compiler does not infer disjointness from NN
 names or calling convention; violating an explicit entry contract at a call

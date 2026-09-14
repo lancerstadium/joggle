@@ -255,11 +255,11 @@ results, C representation class, tensor shapes, element and byte counts,
 pointer passing, and whether it receives the external payload. `c.api`,
 `c.header`, and `c.source` share the same internal ABI and naming functions.
 
-Definitions express every non-empty fixed-shape tensor parameter and result as
-a C11 array parameter with its static minimum element count. The declaration
-and portable C/C++ header retain the compatible pointer form; `c.api` reports
-that public form as well. This carries a fact already present in the tensor
-type into C without changing the ABI or inventing a target shape.
+Private definitions express every non-empty fixed-shape tensor parameter and
+result as a C11 array parameter with its static minimum element count. Public
+definitions, declarations, and the portable C/C++ header use one consistent
+pointer form; `c.api` reports that form as well. This avoids cross-declaration
+diagnostics while still carrying known bounds across internal call boundaries.
 
 An entry can state an explicit non-aliasing contract with
 `[c: {noalias: true}]`, or a workflow can annotate every exported entry with
