@@ -223,9 +223,14 @@ serialized attributes, and public `Ty` constructor inputs. Every accepted value
 must print, reparse, and reproduce the same structure. A separate module-loader
 gate distinguishes absent optional directories from filesystem failures and
 checks that cyclic source, fragment, and native paths diagnose and roll back
-without exceptions. Randomized directory trees, native ABI calls, ONNX
-protobufs, and TFLite FlatBuffers still need independent fuzz or property-test
-harnesses rather than being claimed by these gates.
+without exceptions. A fixed-seed edit gate composes 2,000 constant insertions,
+operation clones and moves, single-use replacements, erasures, renames, and
+metadata edits. It checks bidirectional Def-Use links, parent blocks, stale
+handles, revisions, verification, and canonical round trips after every
+accepted mutation, while rejected edits must preserve text and revision.
+Randomized directory trees, native ABI calls, ONNX protobufs, and TFLite
+FlatBuffers still need independent fuzz or property-test harnesses rather than
+being claimed by these gates.
 
 ## Paper readiness
 

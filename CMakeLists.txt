@@ -359,6 +359,8 @@ if(JOGGLE_BUILD_TESTS)
   target_link_libraries(joggle-network-test PRIVATE Joggle::joggle)
   add_executable(joggle-lang-robustness-test test/lang_robustness.cpp)
   target_link_libraries(joggle-lang-robustness-test PRIVATE Joggle::joggle)
+  add_executable(joggle-edit-robustness-test test/edit_robustness.cpp)
+  target_link_libraries(joggle-edit-robustness-test PRIVATE Joggle::joggle)
   add_executable(joggle-module-robustness-test test/module_robustness.cpp)
   target_link_libraries(joggle-module-robustness-test PRIVATE Joggle::joggle)
   add_executable(joggle-vm-test test/vm.cpp)
@@ -377,6 +379,11 @@ if(JOGGLE_BUILD_TESTS)
             ${CMAKE_CURRENT_BINARY_DIR}/modules
   )
   add_test(NAME lang-robustness COMMAND joggle-lang-robustness-test)
+  add_test(
+    NAME edit-robustness
+    COMMAND joggle-edit-robustness-test
+            ${CMAKE_CURRENT_SOURCE_DIR}/modules
+  )
   add_test(
     NAME module-robustness
     COMMAND joggle-module-robustness-test
