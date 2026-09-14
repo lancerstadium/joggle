@@ -1322,6 +1322,8 @@ int main(int argc, char** argv) {
       "    hex\"01000000000000000300000000000000"
       "2c010000000000002c01000000000000\"\n"
       "  )\n"
+      "  [onnx: {coordinate_transformation_mode: \"asymmetric\", "
+      "nearest_mode: \"floor\"}]\n"
       "  let out = onnx.Resize(x, roi, scales, sizes)\n"
       "  return out\n"
       "}\n";
@@ -1336,6 +1338,18 @@ int main(int argc, char** argv) {
       resize_call = op;
   CHECK(resize_call && resize_call.outs()[0].type() ==
                            joggle::Ty("tensor<f32, [1, 3, 300, 300]>"));
+  CHECK(joggle::run(env, "onnx.nn.convert", resize));
+  CHECK(resize.verify(env));
+  joggle::Op resized;
+  for (joggle::Op op : resize.ops())
+    if (op.callee() == "nn.resize2d")
+      resized = op;
+  CHECK(resized);
+  const joggle::Fn resize_body = env.resolve(resize, resized);
+  CHECK(resize_body);
+  if (!env.expand(resize, resized, resize_body))
+    return resize.print_diags(stderr);
+  CHECK(resize.verify(env));
 
   constexpr std::string_view shape_relations_source =
       "module shape.relations\n"

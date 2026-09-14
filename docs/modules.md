@@ -265,6 +265,14 @@ overload resolution.  The implicit form uses runtime-shaped storage;
 checks the runtime count against it.  Capacity is therefore a selected policy
 at the semantic boundary, not a hidden machine limit or a backend opcode.
 
+Runtime coordinate linearization is the tensor overload
+`offset(shape, coordinates)`.  It complements the structural-shape overload
+and lets an ordinary function body address partially dynamic tensors without
+introducing a layout operation kind.  The sizes-driven `nn.resize2d` body uses
+this mechanism for asymmetric nearest-neighbor and bilinear interpolation;
+the interpolation mode is a compile-time string selected and folded before a
+static target emits the exposed loops.
+
 ## Frontends
 
 A frontend is deliberately split into transport and meaning:

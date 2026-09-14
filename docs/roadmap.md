@@ -243,7 +243,8 @@ Coverage should be measured by end-to-end models, not operator counts:
 The SSD-MobileNet regression currently converts all 92 runtime-control Slice
 sites and four runtime-shape Expand sites through shared tensor bodies, leaving
 18 source calls; its runtime Range is also represented by a shared bounded or
-unbounded tensor body.  The remaining
+unbounded tensor body.  Sizes-driven asymmetric Resize is now lowered through
+runtime coordinate linearization and leaves 17 source calls.  The remaining
 frontier is concentrated in dynamic broadcast/index families and nested
 control flow, not a missing Slice emitter.  The next coverage step should add
 shared runtime-shape and selection mechanisms for those families, then use the

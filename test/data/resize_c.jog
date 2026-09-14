@@ -1,0 +1,14 @@
+module resize_c
+use nn
+
+fn nearest(
+  x: tensor<f32, [1, 1, 2, 2]>, sizes: tensor<i64, [4]>
+) -> tensor<f32, [1, 1, 4, 4]> {
+  return nn.resize2d(x, sizes, [0, 1, 2, 3], "nearest")
+}
+
+fn linear(
+  x: tensor<f32, [1, 1, 2, 2]>, sizes: tensor<i64, [4]>
+) -> tensor<f32, [1, 1, 3, 3]> {
+  return nn.resize2d(x, sizes, [0, 1, 2, 3], "linear")
+}

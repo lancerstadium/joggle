@@ -716,6 +716,18 @@ if(JOGGLE_BUILD_TESTS)
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/range_c.cmake
     )
     add_test(
+      NAME resize-c-execution
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DTOOL=$<TARGET_FILE:joggle-tool>
+        -DCC=${JOGGLE_TEST_C_COMPILER}
+        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/resize_c.jog
+        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/resize_c_main.c
+        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/resize-c-test
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/resize_c.cmake
+    )
+    add_test(
       NAME tile-execution
       COMMAND
         ${CMAKE_COMMAND}

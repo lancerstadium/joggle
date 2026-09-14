@@ -333,6 +333,16 @@ fn offset<I: Ty>(
   return out
 }
 
+fn offset<S: Ty, C: Ty, R: int>(
+  shape: tensor<S, [R]>, coords: tensor<C, [R]>
+) -> index {
+  var out = index(0)
+  for axis in 0..R {
+    out = out * index(shape[index(axis)]) + index(coords[index(axis)])
+  }
+  return out
+}
+
 fn coord(
   shape: list<int>, axes: list<int>, linear: int, axis: int
 ) -> int {

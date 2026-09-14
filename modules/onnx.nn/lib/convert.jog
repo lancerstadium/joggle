@@ -1452,17 +1452,36 @@ local fn convert_max_pool(m: Mod, op: Op) -> bool {
 local fn convert_resize(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
-  if len(inputs) != 3 || len(outputs) != 1 ||
+  if (len(inputs) != 3 && len(inputs) != 4) || len(outputs) != 1 ||
      !tensor.valid(ir.type(inputs[0])) ||
-     !tensor.valid(ir.type(outputs[0])) ||
-     ir.type(inputs[2]) != ty("tensor<f32, [4]>") {
+     !tensor.valid(ir.type(outputs[0])) {
     return false
   }
   let meta = attrs(op)
-  if base.get(meta, "mode", "nearest") != "nearest" ||
+  let mode = base.get(meta, "mode", "nearest")
+  if (mode != "nearest" && mode != "linear") ||
      base.get(meta, "coordinate_transformation_mode", "half_pixel") !=
        "asymmetric" ||
-     base.get(meta, "nearest_mode", "round_prefer_floor") != "floor" {
+     (mode == "nearest" &&
+      base.get(meta, "nearest_mode", "round_prefer_floor") != "floor") {
+    return false
+  }
+  if len(inputs) == 4 {
+    if ir.type(inputs[2]) != ty("tensor<f32, [0]>") ||
+       ir.type(inputs[3]) != ty("tensor<i64, [4]>") {
+      return false
+    }
+    return convert_call(
+      m, op, "nn.resize2d", [
+        inputs[0], inputs[3], ints(m, op, [0, 1, 2, 3]),
+        ir.constant(m, op, mode, ty("str"))
+      ]
+    )
+  }
+  if ir.type(inputs[2]) != ty("tensor<f32, [4]>") {
+    return false
+  }
+  if mode != "nearest" {
     return false
   }
   return convert_call(
