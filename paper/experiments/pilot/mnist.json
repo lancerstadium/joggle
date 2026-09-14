@@ -1,10 +1,10 @@
 {
-  "schema": 2,
+  "schema": 1,
   "study": "mnist",
   "trials": 20,
   "subjects": [
     {
-      "system": "joggle",
+      "name": "joggle-c",
       "command": [
         "build-app/examples/mnist/model-blob",
         "build-app/examples/mnist/input.bin",
@@ -27,7 +27,7 @@
       ]
     },
     {
-      "system": "onnxruntime",
+      "name": "onnxruntime",
       "command": [
         "python3",
         "paper/bench_onnxruntime.py",

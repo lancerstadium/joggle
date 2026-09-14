@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a frozen, process-isolated comparison across external system subjects."""
+"""Run a frozen, process-isolated comparison across independent systems."""
 
 from __future__ import annotations
 
@@ -51,8 +51,8 @@ def load_document(path: Path) -> dict[str, Any]:
     expected = {"schema", "study", "trials", "subjects"}
     if set(value) != expected:
         fail(f"manifest fields must be exactly {sorted(expected)}")
-    if value["schema"] != 1:
-        fail("manifest schema must be 1")
+    if value["schema"] != 2:
+        fail("manifest schema must be 2")
     if not isinstance(value["study"], str) or not NAME.fullmatch(value["study"]):
         fail("study must be a safe nonempty name")
     if not isinstance(value["trials"], int) or value["trials"] < 3:
@@ -77,38 +77,38 @@ def string_list(value: Any, field: str) -> list[str]:
 
 def subjects(document: dict[str, Any], repo: Path) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    names: set[str] = set()
+    systems: set[str] = set()
     for index, raw in enumerate(document["subjects"]):
         if not isinstance(raw, dict):
             fail(f"subject {index} must be an object")
-        required = {"name", "command", "artifacts", "version_command"}
+        required = {"system", "command", "artifacts", "version_command"}
         if set(raw) != required:
             fail(f"subject {index} fields must be exactly {sorted(required)}")
-        name = raw["name"]
-        if not isinstance(name, str) or not NAME.fullmatch(name):
-            fail(f"subject {index} has an unsafe name")
-        if name in names:
-            fail(f"duplicate subject {name}")
-        names.add(name)
-        command = string_list(raw["command"], f"{name}.command")
+        system = raw["system"]
+        if not isinstance(system, str) or not NAME.fullmatch(system):
+            fail(f"subject {index} has an unsafe system identity")
+        if system in systems:
+            fail(f"system must appear exactly once: {system}")
+        systems.add(system)
+        command = string_list(raw["command"], f"{system}.command")
         version_command = string_list(
-            raw["version_command"], f"{name}.version_command"
+            raw["version_command"], f"{system}.version_command"
         )
         if not isinstance(raw["artifacts"], dict) or not raw["artifacts"]:
-            fail(f"{name}.artifacts must be a nonempty object")
+            fail(f"{system}.artifacts must be a nonempty object")
         artifacts: dict[str, dict[str, object]] = {}
         for label, source in raw["artifacts"].items():
             if not isinstance(label, str) or not NAME.fullmatch(label):
-                fail(f"{name} has an unsafe artifact label")
+                fail(f"{system} has an unsafe artifact label")
             if not isinstance(source, str) or not source:
-                fail(f"{name}.{label} must name an artifact")
+                fail(f"{system}.{label} must name an artifact")
             path = (repo / source).resolve()
             try:
                 relative = path.relative_to(repo)
             except ValueError:
-                fail(f"{name}.{label} escapes the repository: {path}")
+                fail(f"{system}.{label} escapes the repository: {path}")
             if not path.is_file():
-                fail(f"{name}.{label} does not exist: {path}")
+                fail(f"{system}.{label} does not exist: {path}")
             artifacts[label] = {
                 "path": str(relative),
                 "bytes": path.stat().st_size,
@@ -116,7 +116,7 @@ def subjects(document: dict[str, Any], repo: Path) -> list[dict[str, Any]]:
             }
         out.append(
             {
-                "name": name,
+                "system": system,
                 "command": command,
                 "version_command": version_command,
                 "artifacts": artifacts,
@@ -191,25 +191,25 @@ def run_subject(
     )
     if result.returncode != 0:
         fail(
-            f"{subject['name']} failed ({result.returncode}): "
+            f"{subject['system']} failed ({result.returncode}): "
             f"{' '.join(subject['command'])}\n{result.stderr}"
         )
     rows = list(csv.DictReader(result.stdout.splitlines()))
     required = {"iteration", "seconds", "checksum"}
     if len(rows) != 1 or not required <= rows[0].keys():
-        fail(f"{subject['name']} did not emit one protocol row")
+        fail(f"{subject['system']} did not emit one protocol row")
     row = rows[0]
     try:
         seconds = float(row["seconds"])
     except ValueError:
-        fail(f"{subject['name']} emitted a nonnumeric duration")
+        fail(f"{subject['system']} emitted a nonnumeric duration")
     if (
         row["iteration"] != "0"
         or not math.isfinite(seconds)
         or seconds <= 0
         or not CHECKSUM.fullmatch(row["checksum"])
     ):
-        fail(f"{subject['name']} emitted an invalid protocol row")
+        fail(f"{subject['system']} emitted an invalid protocol row")
     validation = " | ".join(
         line.strip() for line in result.stderr.splitlines() if line.strip()
     )
@@ -279,7 +279,7 @@ def main() -> None:
     env = os.environ.copy()
     env.update(THREAD_ENV)
     versions = {
-        subject["name"]: version(
+        subject["system"]: version(
             subject["version_command"], repo, env, args.timeout_seconds
         )
         for subject in selected
@@ -307,7 +307,7 @@ def main() -> None:
                     "study": document["study"],
                     "trial": trial,
                     "position": position,
-                    "backend": subject["name"],
+                    "system": subject["system"],
                     "seconds": row["seconds"],
                     "checksum": row["checksum"],
                     "metrics": json.dumps(extra, sort_keys=True, separators=(",", ":")),
@@ -330,7 +330,7 @@ def main() -> None:
     record.write_text(
         json.dumps(
             {
-                "schema": 1,
+                "schema": 2,
                 "study": document["study"],
                 "started_utc": started.isoformat(),
                 "finished_utc": finished.isoformat(),
@@ -355,10 +355,10 @@ def main() -> None:
                 "thread_environment": THREAD_ENV,
                 "subjects": [
                     {
-                        "name": subject["name"],
+                        "system": subject["system"],
                         "command": subject["command"],
                         "version_command": subject["version_command"],
-                        "version": versions[subject["name"]],
+                        "version": versions[subject["system"]],
                         "artifacts": subject["artifacts"],
                     }
                     for subject in selected

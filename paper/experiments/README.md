@@ -1,9 +1,15 @@
 # Cross-system experiments
 
-Each JSON file freezes one process-level comparison. A subject is an external
-system command, not a variant label inside Joggle. Every command must perform
-its own untimed setup and warm-up, time exactly one inference, validate its
-output, and write one CSV row with:
+Each schema-2 JSON file freezes one process-level comparison. `system` is the
+identity of an independently implemented compiler or runtime, not a variant
+label. The runner requires every system identity to appear exactly once, so a
+Joggle/Joggle configuration comparison cannot enter this experiment path.
+Pass regressions and ablations use separate diagnostic scripts. This guard
+prevents accidental reuse of one declared identity; it does not prove that two
+differently named commands are independently implemented, which remains a
+provenance-review obligation. Every command must perform its own untimed setup
+and warm-up, time exactly one inference, validate its output, and write one CSV
+row with:
 
 ```text
 iteration,seconds,checksum
@@ -23,6 +29,10 @@ The manifest does not make a run controlled by itself. Publication records
 must use a clean checkout, an explicit host-specific load threshold, stable
 power and thermal conditions, the same subject manifest on a second machine,
 and raw task-accuracy checks where the model has a dataset-level metric.
+
+The immutable schema-1 manifests under `pilot/` reproduce the manifest hashes
+stored by the two historical pilot records. They are provenance snapshots, not
+inputs accepted by the current runner.
 
 Run a comparison after building the corresponding ONNX application gate. For
 example, the MobileNetV2 study is:

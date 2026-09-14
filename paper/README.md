@@ -70,8 +70,8 @@ until the corresponding study is complete.
   protocol.
 - [`data/`](data/): raw pilot records and provenance.
 - [`experiments/`](experiments/): frozen cross-system command manifests. The
-  runner rotates independent process trials and rejects a busy host when a
-  publication run supplies a load threshold.
+  runner requires one subject per independent system, rotates process trials,
+  and rejects a busy host when a publication run supplies a load threshold.
 
 ## Reproduction entry points
 

@@ -36,18 +36,18 @@ def run(runner: Path, repo: Path, root: Path) -> None:
     manifest.write_text(
         json.dumps(
             {
-                "schema": 1,
+                "schema": 2,
                 "study": "protocol-test",
                 "trials": 4,
                 "subjects": [
                     {
-                        "name": "left",
+                        "system": "left",
                         "command": command + ["left"],
                         "artifacts": {"fixture": str(artifact.relative_to(repo))},
                         "version_command": version,
                     },
                     {
-                        "name": "right",
+                        "system": "right",
                         "command": command + ["right"],
                         "artifacts": {"fixture": str(artifact.relative_to(repo))},
                         "version_command": version,
@@ -84,7 +84,7 @@ def run(runner: Path, repo: Path, root: Path) -> None:
         raise AssertionError(f"expected eight rows, received {len(rows)}")
     orders: dict[int, list[str]] = {}
     for row in rows:
-        orders.setdefault(int(row["trial"]), []).append(row["backend"])
+        orders.setdefault(int(row["trial"]), []).append(row["system"])
     expected = [
         ["left", "right"],
         ["right", "left"],
@@ -96,6 +96,11 @@ def run(runner: Path, repo: Path, root: Path) -> None:
     provenance = json.loads(record.read_text(encoding="utf-8"))
     if provenance["output"]["rows"] != 8 or provenance["timeout_seconds"] != 2:
         raise AssertionError("measurement provenance is incomplete")
+    if [item["system"] for item in provenance["subjects"]] != [
+        "left",
+        "right",
+    ]:
+        raise AssertionError("system identities are absent from provenance")
 
     document = json.loads(manifest.read_text(encoding="utf-8"))
     for mode, timeout, expected_error in (
@@ -128,6 +133,37 @@ def run(runner: Path, repo: Path, root: Path) -> None:
         )
         if rejected.returncode == 0 or expected_error not in rejected.stderr:
             raise AssertionError(f"{mode} subject was not rejected: {rejected.stderr}")
+
+    document["subjects"][1]["command"][-1] = "right"
+    document["subjects"][1]["system"] = "left"
+    duplicate_manifest = root / "duplicate-system-manifest.json"
+    duplicate_manifest.write_text(
+        json.dumps(document, indent=2) + "\n", encoding="utf-8"
+    )
+    rejected = subprocess.run(
+        [
+            sys.executable,
+            str(runner),
+            "--manifest",
+            str(duplicate_manifest),
+            "--repo",
+            str(repo),
+            "--output",
+            str(root / "duplicate-system-rows.csv"),
+            "--record",
+            str(root / "duplicate-system-record.json"),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if (
+        rejected.returncode == 0
+        or "system must appear exactly once" not in rejected.stderr
+    ):
+        raise AssertionError(
+            f"same-system comparison was not rejected: {rejected.stderr}"
+        )
 
 
 def main() -> None:

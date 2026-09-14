@@ -9,7 +9,7 @@
     "python": "3.14.0"
   },
   "manifest": {
-    "path": "paper/experiments/mobilenetv2.json",
+    "path": "paper/experiments/pilot/mobilenetv2.json",
     "sha256": "f13480d5b7be2bfa57d40f6247d08ef352390097c1b072fef72b17b57af56b8a"
   },
   "max_load1": null,

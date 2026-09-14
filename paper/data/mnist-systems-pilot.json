@@ -9,7 +9,7 @@
     "python": "3.14.0"
   },
   "manifest": {
-    "path": "paper/experiments/mnist.json",
+    "path": "paper/experiments/pilot/mnist.json",
     "sha256": "a355b045e3a8c2740f40ae435448ad7dffca645e89536a9f69f8be05f21db5a3"
   },
   "max_load1": 4.0,
