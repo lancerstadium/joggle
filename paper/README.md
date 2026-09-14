@@ -41,18 +41,24 @@ usability.
 | Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical CSE/analysis scaling pilots | Freeze a fault and diagnostic matrix |
 | Artifact quality | Ten numerical ONNX paths; clean-revision, 20-trial MobileNetV2 and MNIST pilots compare generated C with ONNX Runtime; internal rewrite diagnostics remain separate | Broaden the independent-system matrix, add ONNX-MLIR where executable, task accuracy, an isolated second machine, and a materially smaller generated-C gap |
 
-The current generated-C pilots remain roughly 7--101 times slower than
-one-thread ONNX Runtime, depending on the model. Under the new balanced
-cross-system protocol, clean-revision MobileNetV2 and MNIST runs respectively
-report 199.159 versus 5.962 ms (33.40x) and 0.910 versus 0.050208 ms (18.12x)
-over 20 trials. These are blocking results, not hidden caveats. MobileNetV2
-lacks a host load bound; both runs lack isolated second-machine replication.
-The manuscript must not claim superior speed, compatibility, or extensibility
-until the corresponding study is complete.
+The current generated-C pilots remain slower than one-thread ONNX Runtime. At
+revision `c90d1f4`, the balanced GitHub Linux smoke run reports MobileNetV2 at
+166.807 versus 10.266 ms (16.25x) and MNIST at 0.504 versus 0.048 ms (10.52x)
+over 20 fresh-process trials. A separate same-run MobileNetV2 diagnostic
+reports 139.775 ms for the ordinary artifact and 101.168 ms after the generic
+loop policy, with adjacent ONNX Runtime medians of 8.571 and 8.563 ms. Thus the
+policy produces a credible directional improvement within that runner but does
+not close the production-runtime gap. These are blocking results, not hidden
+caveats: the shared runners lack a host-load bound, controlled thermal state,
+and isolated second-machine replication. The manuscript must not claim
+superior speed, compatibility, or extensibility until the corresponding study
+is complete.
 
 ## Repository map
 
 - [`manuscript.md`](manuscript.md): evidence-bounded working paper text.
+- [`references.bib`](references.bib): source-verified bibliography for every
+  related-work citation currently used by the manuscript.
 - [`related-work.md`](related-work.md): claim-oriented comparisons grounded in
   primary papers and official documentation.
 - [`extension-study.md`](extension-study.md): frozen extension protocol,

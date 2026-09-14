@@ -367,13 +367,19 @@ internal records for regression and ablation, but the paper's performance
 table will compare independent systems on identical model, input, thread, and
 correctness contracts while recording each system's compiler and runtime
 versions.
-Two current runs of that protocol use clean revisions and 20 balanced,
-fresh-process trials per model. On MobileNetV2, median latency is 199.159 ms
-for generated C and 5.962 ms for ONNX Runtime 1.26.0, a 33.40x gap. On MNIST,
-the corresponding medians are 0.910 ms and 0.050208 ms, an 18.12x gap. Every
-subject passes its model's common stored-output contract. These remain
-one-host pilots rather than publication results: MobileNetV2 lacks an explicit
-load threshold, and neither run has controlled thermal state or second-machine
+The latest GitHub Linux smoke run at revision `c90d1f4` uses 20 balanced,
+fresh-process trials per subject. Its independent-system workflow reports
+MobileNetV2 medians of 166.807 ms for generated C and 10.266 ms for ONNX
+Runtime, a 16.25x gap; MNIST reports 0.504 and 0.048 ms, a 10.52x gap. A
+separate same-run policy diagnostic pins one CPU and reports 139.775 ms for the
+ordinary MobileNetV2 artifact, 101.168 ms after the operator-independent loop
+policy, and adjacent ONNX Runtime medians of 8.571 and 8.563 ms. The policy is
+therefore 0.72x the ordinary artifact in that job while remaining 11.82x slower
+than the adjacent production runtime. The differing ordinary-artifact medians
+between the two shared runners illustrate why only the within-job policy ratio
+is interpreted. Every subject passes the common stored-output contract. These
+remain CI diagnostics rather than publication results: neither workflow
+controls host load or thermal state, and neither has second-machine
 replication.
 
 The extension-surface study and controlled performance study are not complete.
