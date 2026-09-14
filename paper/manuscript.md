@@ -438,6 +438,17 @@ table will compare independent systems on identical model, input, thread, and
 correctness contracts while recording each system's compiler and runtime
 versions.
 
+A clean same-job Linux diagnostic also separates fusion legality from
+profitability. Starting from byte-identical MobileNetV2 canonical IR, greedy
+`tile.fuse` reduces represented loops from 156 to 110 and external-weight C
+from 192,209 to 188,244 bytes, but raises the generated-C median from 356.360
+to 384.927 ms over 20 fresh-process observations. Adjacent one-thread ONNX
+Runtime medians are 10.359 and 10.447 ms. Both generated artifacts pass the
+same 1,000-element oracle and use byte-identical weights. This shared-runner
+result does not establish a controlled latency effect, but it rejects loop
+count and source size as sufficient profitability criteria and keeps selection
+in a target-owned module policy rather than the legality rewrite.
+
 Table 2 reports two independently dispatched system runs. Each subject runs in
 a fresh process under a one-thread contract, and each cell is the median of 20
 trials. The generated model, input, weights, reference, and executable have

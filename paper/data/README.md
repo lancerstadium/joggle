@@ -547,6 +547,27 @@ example's two-feature cost model as a useful target policy. Repeat this
 experiment under the eventual frozen protocol before using latency in a paper
 claim.
 
+`mobilenetv2-fusion-linux-{variants,unfused,fused}-pilot` preserves the raw
+records from GitHub Actions run `34839182958` at clean revision `f8ade71`.
+Both Joggle configurations start from canonical IR SHA-256
+`a1a895c2521b1123c4192b4f5e771c050caf08b6a8b3a9f4cdec36fc6966ad55`,
+use the same cleanup, memory, placement, and strict `-O3` C pipeline, and pass
+the same 1,000-element oracle with stable checksums. The generated weight
+payload is byte-identical. Unrestricted `tile.fuse` reduces represented loops
+from 156 to 110 and C source from 192,209 to 188,244 bytes, while the static
+plan remains three slots and 2,860,032 `f32` elements.
+
+Each manifest contains one Joggle configuration and ONNX Runtime, balances 20
+fresh-process trials, pins CPU 0, and records all artifact hashes. On the AMD
+EPYC 7763 shared runner, unfused and fused Joggle medians are 356.360 and
+384.927 ms with median absolute deviations of 1.009 and 0.531 ms. Their
+adjacent ONNX Runtime medians are 10.359 and 10.447 ms. Thus greedy fusion is
+8.0% slower despite reducing loop and source counts; the stable runtime control
+does not suggest a matching host shift. This is a reproducible shared-runner
+mechanism diagnostic, not an isolated-host publication result. It rejects
+"fuse whenever legal" as a useful default and motivates a target-owned
+profitability policy.
+
 `mobilenetv2-backend-pilot.csv` records a later ten-run comparison on the same
 host and input. `joggle-c-strict` uses Apple Clang 17 with `-O3 -DNDEBUG`;
 `joggle-c-fast` additionally uses `-mcpu=native -ffast-math`; `onnxruntime`
