@@ -87,9 +87,12 @@ def main() -> None:
     )
     parser.add_argument("--repo", type=Path, default=Path("."))
     parser.add_argument("--trials", type=int, default=40)
+    parser.add_argument("--inner-repetitions", type=int, default=100)
     args = parser.parse_args()
     if args.trials < 4 or args.trials % 4:
         parser.error("--trials must be a positive multiple of four")
+    if args.inner_repetitions < 1:
+        parser.error("--inner-repetitions must be positive")
 
     repo = args.repo.resolve()
     fixture = args.fixture.resolve()
@@ -227,7 +230,7 @@ def main() -> None:
         relative(paths["weights"], repo),
         relative(paths["expected"], repo),
         "3",
-        "1",
+        str(args.inner_repetitions),
     ]
     checked([str(repo / joggle_command[0]), *joggle_command[1:]])
 
@@ -240,7 +243,7 @@ def main() -> None:
         "--warmup",
         "3",
         "--repetitions",
-        "1",
+        str(args.inner_repetitions),
         "--protocol",
     ]
     checked(

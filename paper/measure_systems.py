@@ -201,20 +201,34 @@ def run_subject(
         )
     rows = list(csv.DictReader(result.stdout.splitlines()))
     required = {"iteration", "seconds", "checksum"}
-    if len(rows) != 1 or not required <= rows[0].keys():
-        fail(f"{subject['system']} did not emit one protocol row")
-    row = rows[0]
-    try:
-        seconds = float(row["seconds"])
-    except ValueError:
-        fail(f"{subject['system']} emitted a nonnumeric duration")
-    if (
-        row["iteration"] != "0"
-        or not math.isfinite(seconds)
-        or seconds <= 0
-        or not CHECKSUM.fullmatch(row["checksum"])
-    ):
-        fail(f"{subject['system']} emitted an invalid protocol row")
+    if not rows or any(not required <= row.keys() for row in rows):
+        fail(f"{subject['system']} did not emit protocol rows")
+    seconds: list[float] = []
+    checksums: set[str] = set()
+    for index, row in enumerate(rows):
+        try:
+            elapsed = float(row["seconds"])
+        except ValueError:
+            fail(f"{subject['system']} emitted a nonnumeric duration")
+        if (row["iteration"] != str(index) or not math.isfinite(elapsed) or
+                elapsed < 0 or not CHECKSUM.fullmatch(row["checksum"])):
+            fail(f"{subject['system']} emitted an invalid protocol row")
+        seconds.append(elapsed)
+        checksums.add(row["checksum"])
+    total = math.fsum(seconds)
+    if total <= 0 or len(checksums) != 1:
+        fail(f"{subject['system']} emitted an invalid protocol batch")
+    extra_fields = {
+        key: value for key, value in rows[0].items()
+        if key not in required
+    }
+    row = {
+        "iteration": "0",
+        "seconds": f"{total / len(seconds):.12g}",
+        "checksum": next(iter(checksums)),
+        "inner_iterations": str(len(seconds)),
+        **extra_fields,
+    }
     validation = " | ".join(
         line.strip() for line in result.stderr.splitlines() if line.strip()
     )
