@@ -154,9 +154,11 @@ fn plan(m: Mod) -> dict {
           row["fn"] = ir.name(fn)
           row["current"] = axis_names(op, current)
           row["selected"] = axis_names(op, selected)
+          row["extents"] = tile.extents(m, op)
           row["scores"] = scores
           row["reads"] = tile.read_forms(m, op)
           row["writes"] = tile.write_forms(m, op)
+          row["scalar_cost"] = tile.scalar_cost(m, op)
           row["changed"] = changed
           rows += [row]
         }

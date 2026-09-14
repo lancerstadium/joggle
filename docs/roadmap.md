@@ -102,6 +102,16 @@ using `tile.scalar_cost` before any split or reorder. Target-dependent factor
 choice, packing, direct artifact-size modelling, and profitability remain
 policy and mechanism gaps.
 
+`spatial.plan` now exposes the static extents and legal scalar-duplication cost
+beside each selected order, so an external policy can rank the same candidates
+without reparsing printed IR. A same-process MobileNetV2 diagnostic that spent
+the existing budget on the largest reduction extents did not beat the simpler
+reorder policy and increased transform time, so that ranking was not retained
+as behavior. Compiler optimization remarks show that the reordered inner state
+loops already reach loop or SLP vectorization on the development toolchain.
+The next code-quality mechanism must therefore address access/layout reuse or
+state-axis coalescing rather than duplicating more scalar bodies.
+
 Primitive loop edits do not run a hidden whole-module cleanup. In particular,
 `tile.peel` performs only the checked local replacement; a composing policy
 may apply many edits and invoke `opt.dce` once at its boundary. This keeps the

@@ -36,9 +36,10 @@ joggle query spatial.plan canonical.jog \
 ```
 
 The report lists each candidate's function, current and selected axis names,
-per-axis locality scores, and the read/write affine forms that produced the
-decision. It is read-only and serializable; there is no schedule object to keep
-in sync with the function IR.
+static extents, per-axis locality scores, read/write affine forms, and the
+source-duplication cost of legal scalar promotion. It is read-only and
+serializable; a policy can rank candidates from this evidence without a
+schedule object to keep in sync with the function IR.
 
 Affine recognition uses the loop's static half-open ranges as proof facts. It
 can therefore reduce a grouped coordinate such as `m / 160` to a constant when

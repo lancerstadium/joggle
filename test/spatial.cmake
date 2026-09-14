@@ -64,8 +64,11 @@ string(FIND "${plan_text}"
        selected_at)
 string(FIND "${plan_text}" "\"reads\": [" reads_at)
 string(FIND "${plan_text}" "\"writes\": [" writes_at)
+string(FIND "${plan_text}" "\"extents\": [" extents_at)
+string(FIND "${plan_text}" "\"scalar_cost\":" scalar_cost_at)
 if(candidates_at EQUAL -1 OR current_at EQUAL -1 OR selected_at EQUAL -1 OR
-   reads_at EQUAL -1 OR writes_at EQUAL -1)
+   reads_at EQUAL -1 OR writes_at EQUAL -1 OR extents_at EQUAL -1 OR
+   scalar_cost_at EQUAL -1)
   message(FATAL_ERROR "spatial plan omitted its evidence:\n${plan_text}")
 endif()
 execute_process(
