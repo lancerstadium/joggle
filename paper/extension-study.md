@@ -91,11 +91,13 @@ protocol is recorded in
 implementation-task fixture is checked in under `fixtures/implementation` and
 is executed by Joggle's normal ONNX path. Fixtures for the other contracts must
 be frozen before their ONNX-MLIR implementations or measurements begin.
-The policy fixture is now frozen under `fixtures/policy`: it is the contract's
+The policy fixture is frozen under `fixtures/policy`: it is the contract's
 four length-four inputs expressed as an unchanged three-`Add` ONNX chain with
-the same expected result. The numeric-format task still lacks a system-neutral
-ONNX input because ONNX cannot directly encode the task's new scalar type; its
-input boundary must be specified before an ONNX-MLIR implementation begins.
+the same expected result. The numeric-format input is frozen under
+`fixtures/numeric-format` as one standard opset-13 int64 Add graph plus a
+digest-pinned format map assigning `sat<W>` to named nodes. This split does not
+pretend that ONNX natively defines the new type: it gives every system the same
+interchange graph, format policy, values, and saturating oracle.
 
 TVM `v0.26.0` at commit
 `c7b458e946bc4266915da582457476bdcd9705ae` is now pinned. Reproducible TVM

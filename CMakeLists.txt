@@ -521,6 +521,12 @@ if(JOGGLE_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/paper/render_tables.py --check
     )
     add_test(
+      NAME paper-fixtures
+      COMMAND
+        ${JOGGLE_TEST_PYTHON}
+        ${CMAKE_CURRENT_SOURCE_DIR}/paper/fixtures/check.py
+    )
+    add_test(
       NAME onnx-mlir-policy-record
       COMMAND
         ${JOGGLE_TEST_PYTHON}

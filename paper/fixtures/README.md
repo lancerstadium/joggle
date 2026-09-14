@@ -18,6 +18,16 @@ three opset-13 `Add` calls expose three elementwise loop bodies before a
 system-specific fusion policy runs. Both the permissive and rejecting policy
 cases consume this unchanged model and the same four-element numerical oracle.
 
+`numeric-format/` separates a standard interchange graph from its experimental
+type policy. `model.onnx` contains five ordinary opset-13 `int64` Add nodes:
+four scalar cases and one length-four tensor case. `format-map.json` assigns a
+single `sat<W>` width to each named node; `int64` is an interchange carrier,
+not a prescribed target storage type. Every system receives these same two
+inputs and must implement the changed arithmetic through its documented
+extension path. The stored outputs are the saturating-format oracle, not the
+ordinary ONNX Add result; the generator checks both that the oracle follows the
+frozen width rule and that normal ONNX evaluation differs from it.
+
 Regenerate or verify it from the repository root with Python 3.11 or 3.12 in an
 isolated environment:
 
@@ -28,6 +38,8 @@ python3.12 -m venv .venv-fixtures
 .venv-fixtures/bin/python paper/fixtures/generate.py --check
 .venv-fixtures/bin/python paper/fixtures/generate.py --fixture policy
 .venv-fixtures/bin/python paper/fixtures/generate.py --fixture policy --check
+.venv-fixtures/bin/python paper/fixtures/generate.py --fixture numeric-format
+.venv-fixtures/bin/python paper/fixtures/generate.py --fixture numeric-format --check
 ```
 
 The dependencies are generation-only. Building or running Joggle does not

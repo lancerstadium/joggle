@@ -1,0 +1,27 @@
+{
+  "contract": "paper/tasks/numeric-format.json",
+  "contract_sha256": "2e80bbb12b304ffd7280725b0f60b5f2ed6b5df4560b6fbfb1ca938e0a44e9c6",
+  "files": {
+    "format-map.json": "26f3841512d7ee2faec81c11e4edd25a801c50f33d2773bf1dea83768084c861",
+    "model.onnx": "a5909119e741aeac9321d6fa7773b0cf34f1693ce70bc5bce6a5f0785f1e6f41",
+    "test_data_set_0/input_0.pb": "ead5366d3cc013b0858627eeeab620adc5182c6fbfb033e7a72cdff034587673",
+    "test_data_set_0/input_1.pb": "33aff676d32a27272872a07c046838e3a16c3e7ad149f06bdfad324892629684",
+    "test_data_set_0/input_2.pb": "59659f08654154e1949215b9234df115b8412e5de34bf99e17974350924f3e22",
+    "test_data_set_0/input_3.pb": "214ed161af2cec2bddedff7f7000dbb06175d5876de8202a757d386cde92d8e0",
+    "test_data_set_0/input_4.pb": "176d0442db3e9366e1cefd46e98c7a5e19f3332e63cf97b2ee5ae1a5e45f7868",
+    "test_data_set_0/input_5.pb": "118ffeef136ffa4e9509b6fa43033d65319ac51dc7d1bd251a4d182a49e3b698",
+    "test_data_set_0/input_6.pb": "d4e2216f64384ddb01d994957333d00e2bbf0ca5e5453ee089133dc02301c648",
+    "test_data_set_0/input_7.pb": "8789565ec89381b476489eaeb4d5ca31b7d8fa8adbacbe991ef38011e6088fd0",
+    "test_data_set_0/input_8.pb": "aaa3382b2764a84981ae06af079a449e491f1d49c45fe1b0c53ac2bb21ef28bb",
+    "test_data_set_0/input_9.pb": "71c2c524cdd5e06ba1ebb6b3b96e1180d7f666b5138ef14ffc49cd516461e79f",
+    "test_data_set_0/output_0.pb": "b7391e97342ab00e5a1efba5e1ac264a7bf23ece744e28386d6372303c9f586b",
+    "test_data_set_0/output_1.pb": "541a96d8033e9eabbb4ca5ebd171a45f986601da955fa2d1bd6a2eda75f2ae2b",
+    "test_data_set_0/output_2.pb": "2dfa995de06602b2f8a2cfa8182ce34a7a7bbf9e07541b98d234f5fd799a545c",
+    "test_data_set_0/output_3.pb": "35a89dcb6bdd0beec970fd217fa529e983e0c08ea085eeb4f2828c8b890c2fba",
+    "test_data_set_0/output_4.pb": "3781fae440dfac1e378725bede1548eeacdb1a16aaff8ce91e9f4ae306005792"
+  },
+  "generator": "paper/fixtures/generate.py",
+  "numpy": "2.3.3",
+  "onnx": "1.19.0",
+  "schema": 1
+}
