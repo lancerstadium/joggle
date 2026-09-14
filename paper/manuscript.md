@@ -370,25 +370,38 @@ internal records for regression and ablation, but the paper's performance
 table will compare independent systems on identical model, input, thread, and
 correctness contracts while recording each system's compiler and runtime
 versions.
-The latest GitHub Linux smoke run at revision `418a34e` uses 20 balanced,
-fresh-process trials per subject. Its independent-system workflow reports
-MobileNetV2 medians of 167.315 ms for generated C and 10.346 ms for ONNX
-Runtime, a 16.17x gap; MNIST reports 0.530 and 0.050 ms, a 10.55x gap. A
-separate same-runner policy diagnostic pins one CPU and reports 139.679 ms for
-the ordinary MobileNetV2 artifact, 102.638 ms after operator-independent loop
-reordering and affine-index canonicalization, and adjacent ONNX Runtime medians
-of 8.387 and 8.382 ms. The policy is therefore 0.73x the ordinary artifact in
-that job while remaining 12.24x slower than the adjacent production runtime.
-The differing ordinary-artifact medians
-between the two shared runners illustrate why only the within-job policy ratio
-is interpreted. A separate dispatch emits byte-identical artifacts on an Intel
-Xeon Platinum 8370C runner and reproduces every stored-output check. Its
-MobileNetV2 Joggle/ONNX Runtime medians are 173.787/7.345 ms, a 23.66x gap;
-MNIST reports 0.570/0.054 ms, a 10.59x gap. Repeating the policy workflow gives
-canonical/plain ratios of 0.7348 and 0.7358 despite different absolute times.
-These remain shared-runner diagnostics rather than publication results: the
-workflows do not control host load, temperature, or frequency, and the policy
-runs report the same processor class.
+
+Table 1 reports two independently dispatched system runs. Each subject runs in
+a fresh process under a one-thread contract, and each cell is the median of 20
+trials. The generated model, input, weights, reference, and executable have
+identical hashes across CPU classes, and every stored-output check passes.
+
+**Table 1. Independent-system Linux diagnostics (median milliseconds).**
+
+| CPU class | Model | Joggle C | ONNX Runtime | Joggle / ORT |
+| --- | --- | ---: | ---: | ---: |
+| AMD EPYC 7763 | MobileNetV2 | 167.315 | 10.346 | 16.17x |
+| AMD EPYC 7763 | MNIST | 0.530 | 0.050 | 10.55x |
+| Intel Xeon 8370C | MobileNetV2 | 173.787 | 7.345 | 23.66x |
+| Intel Xeon 8370C | MNIST | 0.570 | 0.054 | 10.59x |
+
+The cross-CPU results reproduce correctness and the negative performance
+boundary, not one stable slowdown factor. Table 2 instead measures the generic
+MobileNetV2 policy within each workflow execution on one pinned CPU. Reordering
+54 affine-proved bodies and canonicalizing their index trees reduces generated
+source from 192,209 to 152,275 bytes. The canonical/plain latency ratio changes
+from 0.7348 to 0.7358 even though absolute latency changes substantially.
+
+**Table 2. MobileNetV2 module-policy diagnostics (median milliseconds).**
+
+| Run | Plain C | Canonical C | Canon / plain | Adjacent ORT | Canon / ORT |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| A | 139.679 | 102.638 | 0.7348 | 8.382 | 12.24x |
+| B | 178.796 | 131.557 | 0.7358 | 11.261 | 11.68x |
+
+These remain shared-runner diagnostics rather than publication results. The
+workflows do not control host load, temperature, or frequency, and the two
+policy runs report the same processor class.
 
 ### 5.4 Extension surface
 
