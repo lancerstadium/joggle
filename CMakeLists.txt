@@ -55,6 +55,7 @@ add_library(joggle
   src/lex.cpp
   src/print.cpp
   src/type.cpp
+  src/verify.cpp
 )
 add_library(Joggle::joggle ALIAS joggle)
 
