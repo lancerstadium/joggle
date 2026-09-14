@@ -37,10 +37,36 @@ jobs:
             --requirement paper/experiments/requirements.txt
 
       - name: Fetch pinned ONNX applications
-        run: >-
-          cmake -DOUT=.cache/onnx-zoo
-          -DMODELS='mnist-8;mobilenetv2-7' -DAPP=ON
-          -P test/zoo.cmake
+        id: fetch
+        run: |
+          set -o pipefail
+          for model in mnist-8 mobilenetv2-7; do
+            fetched=false
+            for attempt in 1 2 3; do
+              if cmake -DOUT=.cache/onnx-zoo -DMODELS="$model" -DAPP=ON \
+                  -P test/zoo.cmake 2>&1 | tee -a model-fetch.log; then
+                fetched=true
+                break
+              fi
+              sleep "$((attempt * 5))"
+            done
+            if [ "$fetched" != true ]; then
+              exit 1
+            fi
+          done
+
+      - name: Preserve model-fetch failure
+        if: ${{ failure() && steps.fetch.outcome == 'failure' }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          text = Path("model-fetch.log").read_text(errors="replace")[-12000:]
+          text = (text.replace("%", "%25")
+                      .replace("\r", "%0D")
+                      .replace("\n", "%0A"))
+          print(f"::error title=Pinned model fetch failed::{text}")
+          PY
 
       - name: Configure Release applications
         run: >-
