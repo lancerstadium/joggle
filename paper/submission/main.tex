@@ -113,99 +113,90 @@ The first two items are implemented design candidates. The third remains the
 submission-critical study; no contribution claim is final until its protocol
 and results are frozen.
 
-\section{Motivation: the vertical slice is the experiment}
-\subsection{A co-design change crosses compiler boundaries}
-Consider a researcher evaluating a fused, low-precision projection on a small
-edge accelerator. The idea is not only a new kernel. The imported model may
-express the computation as several source operators; the numeric format changes
-types and constant packing; the accelerator instruction admits only particular
-tile and layout choices; the storage planner must preserve alignment and
-lifetime constraints; and the artifact must expose a callable boundary for the
-host. An honest experiment must be able to inspect and change every one of
-these decisions, preserve a fallback, and show where an unsupported case stops.
+\section{Motivation: a co-design experiment is a vertical change}
+\subsection{The kernel is only one decision}
+Consider adding a fused normalization and low-precision projection to an edge
+processor. In the source model, normalization may be a reduction, square root,
+and elementwise scale followed by a matrix product. The experiment changes at
+least five decisions: which source relations denote the computation; how the
+quantized value and packed constant are represented; which loop, tile, and
+layout expose reuse; where temporary and packed data live; and how the final
+artifact calls the new instruction while retaining a fallback. Changing only
+the kernel answers a different question. If any other decision remains opaque,
+the experiment either silently changes meaning or stops before deployment.
 
-Production compilers separate these concerns intentionally. MLIR provides
-dialects, interfaces, conversions, and passes; TVM separates high-level model
-representation from tensor programs and schedules; ONNX-MLIR moves from ONNX
-operations through lower-level dialects; and IREE connects compiler IRs to a
-deployment runtime. These boundaries support large ecosystems. For the
-researcher, however, the unit of experimentation becomes a \emph{vertical slice}
-through several otherwise independent extension mechanisms. We call a point
-at which the same experimental decision must be re-expressed or recovered in a
-new mechanism an \textbf{extension discontinuity}. The claim is not that every
-conversion is harmful. The question is whether the accumulated discontinuities
-are necessary for a bounded co-design experiment.
+Production stacks separate these decisions for good reasons. MLIR supplies
+dialects, interfaces, conversions, and passes; TVM separates model-level
+programs, tensor computation, schedules, and runtime objects; ONNX-MLIR moves
+through source and lower-level dialects; IREE couples its compiler pipeline to a
+deployment runtime. The separation provides reuse and stable ownership. It also
+means that one bounded experiment can cross several independently extensible
+surfaces. We call the end-to-end change a \textbf{vertical experiment}, and a point
+where its intent must be manually re-encoded or reconstructed an \textbf{extension
+discontinuity}. Our concern is not the existence of levels, but the accumulated
+coupling a researcher must own across them.
 
-\subsection{Control and automation solve different halves}
-Kernel languages give authors precise control at a lower level. \cite{ragankelley2013halide}
-algorithm/schedule separation and the function-rewrite lineage of Lift and
-RISE make transformations explicit; TileLang exposes tile, memory, layout, and
-thread decisions. These systems are appropriate when the kernel is already the
-unit of work. They do not by themselves define how a new source relation,
-storage contract, and exported model interface travel with that kernel.
+\subsection{Expert control and synthesis still need a common substrate}
+One line of work makes low-level choices economical to author. Halide separates
+algorithm from schedule; Lift and RISE make typed parallel patterns and rewrite
+strategies explicit; Exo externalizes instructions, memories, and schedules;
+TileLang exposes tiled data movement, layout, and thread mapping. These systems
+demonstrate that useful control requires more than printing loops. They start,
+however, after the kernel computation and target-facing vocabulary have been
+chosen; they do not carry a new model relation, numeric format, fallback, and
+exported ABI through an entire inference artifact.
 
-Automatic systems attack the authoring burden from the other side. \cite{zheng2020ansor}
-search explores tensor programs, while \cite{wu2024mirage} searches across graph, block, and
-thread levels. \cite{kothari2026axon} goes further: it synthesizes target instructions from
-semantic specifications, explores tiling and fusion, and checks equivalence
-with SMT over unbounded tensors. This is an important direction, but synthesis
-still needs a place to obtain semantic structure, hardware capabilities,
-fallbacks, and artifact constraints. Search can choose decisions; it does not
-make the surrounding experimental control plane disappear. A useful workbench
-should permit an Axon-like synthesizer, a hand-written schedule, or a simple
-rule to be packaged as policy rather than making any one of them the compiler's
-mandatory architecture.
+A second line automates the choices. Ansor searches generated tensor programs;
+Mirage jointly explores algebraic, block, and thread-level alternatives; Axon
+derives instruction sketches from tensor semantics, combines them with tiling
+and fusion, and checks equivalence. Their results are strong evidence that a
+fixed library of hand-written rewrites leaves performance unused. Automation
+does not remove the surrounding boundary: it still consumes semantics and
+capabilities, produces a selected implementation, and needs a fallback and an
+artifact interface. A workbench should therefore let an expert rule, a bounded
+search, or an Axon-like synthesizer control the same represented decisions. It
+should not force one choice mechanism into the compiler core.
 
-\subsection{Edge deployment makes the unsupported path visible}
-Edge runtimes are strong controls precisely because their supported paths are
-fast and engineered. The difficulty appears when a study changes a data type,
-operator, kernel ABI, or target primitive outside that path. Runtime-specific
-registration can restore execution, but it couples the experiment to that
-runtime. Transparent ahead-of-time C takes the opposite trade-off: it is easy
-to inspect, compile, and connect to unfamiliar devices, but generic scalar code
-can be far slower than a production kernel library. Our own current evidence
-shows this gap rather than hiding it: a module-defined affine policy improves
-the generated MobileNetV2 artifact, yet it remains 12.24 times slower than
-one-thread ONNX Runtime on the same shared runner. Thus extensibility is only
-useful if the representation exposes enough structure for layout, packing,
-vectorization, external kernels, and target-owned profitability policies.
+\subsection{Edge inference turns abstraction loss into a performance cliff}
+An edge runtime's supported path is deliberately narrow and highly optimized.
+A new operator, value format, layout, ABI, or instruction can leave that path;
+runtime-specific registration restores performance only after the experiment
+is recast in that runtime's extension model. Portable ahead-of-time C has the
+opposite strength: it is inspectable and easy to connect to an unfamiliar tool
+chain, but exposing computation without locality, packing, vector, or external
+kernel decisions yields poor code.
 
-\subsection{Hypothesis and measurable predictions}
-Joggle tests whether the vertical slice can remain one progressively exposed
-typed function representation. Imported calls, reusable tensor bodies,
-explicit loops, storage facts, and artifact calls are different states of the
-same public objects. Distributable module functions decide which state to
-expose or change; failed mutations roll back; target capabilities make the
-remaining frontier explicit. This leads to four questions:
+Our current artifact makes this trade-off measurable. A source module can
+discover affine loop structure and change a MobileNetV2 body without an
+operator-name case, yet the resulting C remains 12.24 times slower than
+one-thread ONNX Runtime on the adjacent shared-runner observation. Conversely,
+a newly exposed contraction body permits one generic loop interchange to remove
+most of a scalar-loop loss in a development-host diagnostic, while still
+remaining far behind the production matrix path at larger shapes. The lesson is
+not that portable C or openness is sufficient. It is that an extensible system
+must preserve enough structure for target-owned locality, packing,
+vectorization, library selection, and profitability decisions—and must report
+when those decisions are absent.
 
-\begin{itemize}
-\item
-\textbf{RQ1, continuity:} Can conventional CNN, detection, ViT/attention, and
-compact language-model workloads progress from import to inspectable
-computation and executable artifacts without operator cases in the core or
-emitter?
+\subsection{Design requirements and falsifiable claim}
+The observations above imply four requirements. \textbf{Continuity:} imported calls,
+reusable tensor bodies, explicit loops, storage facts, and artifact calls must
+remain inspectable states of one program rather than disconnected snapshots.
+\textbf{Replaceability:} a manually written rule and an automatic chooser must be
+able to select the same decision without changing the host compiler.
+\textbf{Explicit frontier:} unsupported semantics or capabilities must stop at a
+named boundary rather than disappear into fallback code. \textbf{Artifact closure:}
+the selected decision must survive into a callable artifact whose correctness,
+workspace, compile cost, size, and latency can be measured.
 
-\item
-\textbf{RQ2, extension boundary:} On matched tasks, how many distinct definitions,
-registrations, conversions, native files, and build dependencies are needed
-in Joggle, ONNX-MLIR, TVM, and selected edge/kernel systems?
-
-\item
-\textbf{RQ3, composition:} Do independently installed modules compose with stable
-output, transactional failure, and useful unsupported-frontier diagnostics?
-
-\item
-\textbf{RQ4, artifact quality:} Under matched model, host, threading, and numerical
-contracts, what are the compile cost, code size, workspace, accuracy, and
-latency boundaries of the generated artifacts?
-
-\end{itemize}
-
-These questions make the hypothesis falsifiable. Joggle fails if its apparent
-uniformity merely moves operator or target cases into the host, if modules
-cannot rewrite real function bodies, if modern model families stop at opaque
-calls, or if the exposed structure cannot support competitive target-aware
-code generation.
+Joggle tests whether a progressively exposed typed function representation and
+distributable module functions can satisfy these requirements for bounded
+neural-inference co-design experiments. The claim is falsified if uniformity
+merely moves operator or target cases into the host, independently installed
+modules do not compose, modern workloads remain opaque, or the exposed bodies
+cannot support competitive target-aware code. Section 5 turns continuity,
+extension boundary, composition, and artifact quality into four separate
+evaluation questions; source brevity alone is never treated as evidence.
 
 \section{Design}
 \subsection{One progressive function representation}
