@@ -40,6 +40,12 @@ per-axis locality scores, and the read/write affine forms that produced the
 decision. It is read-only and serializable; there is no schedule object to keep
 in sync with the function IR.
 
+Affine recognition uses the loop's static half-open ranges as proof facts. It
+can therefore reduce a grouped coordinate such as `m / 160` to a constant when
+`m` ranges over `0..160`, then continue through the surrounding address
+expression. This matters for pointwise contractions but is not an NN rule: the
+same proof applies to layout groups or tiles written by an external module.
+
 The example policy does not recognize convolution or require seven axes. It
 uses `tile.state_axes`, `tile.reduction_axes`, and the whole-loop
 `tile.read_forms`/`tile.write_forms` queries. It scores unit-stride access

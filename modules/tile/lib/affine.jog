@@ -124,6 +124,80 @@ local fn affine_divide(value: list<int>, divisor: int) -> list<int> {
   return out
 }
 
+// Bound an affine form over the half-open ranges of a structured loop. The
+// empty result means that a range is dynamic, empty, or would overflow.
+[memo]
+local fn affine_bounds(
+  m: Mod, loop: Op, value: list<int>
+) -> list<int> {
+  let inputs = ir.args(loop)
+  let axes = len(inputs) - len(ir.outs(loop))
+  if len(value) != axes + 1 {
+    return []
+  }
+  var minimum = value[0]
+  var maximum = value[0]
+  for axis in 0..axes {
+    let range = ir.def(inputs[axis])
+    let bounds = ir.args(range)
+    if len(bounds) != 2 || !ir.is_const(bounds[0]) ||
+       !ir.is_const(bounds[1]) ||
+       base.kind(ir.constant(bounds[0])) != "int" ||
+       base.kind(ir.constant(bounds[1])) != "int" {
+      return []
+    }
+    let lower = base.int(ir.constant(bounds[0]))
+    let upper = base.int(ir.constant(bounds[1]))
+    if upper <= lower {
+      return []
+    }
+    var first = lower
+    var final = upper - 1
+    if value[axis + 1] < 0 {
+      first = upper - 1
+      final = lower
+    }
+    let low = affine_mul_int(value[axis + 1], first)
+    let high = affine_mul_int(value[axis + 1], final)
+    if len(low) == 0 || len(high) == 0 {
+      return []
+    }
+    let next_minimum = affine_add_int(minimum, low[0])
+    let next_maximum = affine_add_int(maximum, high[0])
+    if len(next_minimum) == 0 || len(next_maximum) == 0 {
+      return []
+    }
+    minimum = next_minimum[0]
+    maximum = next_maximum[0]
+  }
+  return [minimum, maximum]
+}
+
+// Integer division is not generally affine. It is affine when every
+// coefficient divides exactly, or constant when the loop ranges prove that
+// the quotient cannot change. The latter recognizes grouped/layout indices
+// such as m / 160 for m in 0..160 without naming an operator or a layout.
+[memo]
+local fn affine_quotient(
+  m: Mod, loop: Op, value: list<int>, divisor: int
+) -> list<int> {
+  let exact = affine_divide(value, divisor)
+  if len(exact) != 0 {
+    return exact
+  }
+  if divisor <= 0 {
+    return []
+  }
+  let bounds = affine_bounds(m, loop, value)
+  if len(bounds) != 2 || bounds[0] < 0 ||
+     bounds[0] / divisor != bounds[1] / divisor {
+    return []
+  }
+  var out = affine_zero(len(value) - 1)
+  out[0] = bounds[0] / divisor
+  return out
+}
+
 // Verified SSA definitions are acyclic, so the value is a complete recursion
 // key and shared address expressions can reuse one analysis result.
 [memo]
@@ -184,10 +258,16 @@ local fn affine_in(
   if base_op(m, op, "operator *") {
     let left_value = affine_exact(left)
     if len(left_value) == 1 {
+      if left_value[0] == 0 {
+        return affine_zero(axes)
+      }
       return affine_scale(right, left_value[0])
     }
     let right_value = affine_exact(right)
     if len(right_value) == 1 {
+      if right_value[0] == 0 {
+        return affine_zero(axes)
+      }
       return affine_scale(left, right_value[0])
     }
     return []
@@ -195,7 +275,7 @@ local fn affine_in(
   if base_op(m, op, "operator /") {
     let divisor = affine_exact(right)
     if len(divisor) == 1 {
-      return affine_divide(left, divisor[0])
+      return affine_quotient(m, loop, left, divisor[0])
     }
   }
   return []

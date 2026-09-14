@@ -173,6 +173,12 @@ invocations and memoized returns; this makes repeated module-level analysis
 visible without adding timings to the reproducible report.
 
 Structural transformations also expose policy-facing queries before mutation.
+The affine access query accepts ordinary integer expressions rather than an
+operator descriptor. Besides coefficient-wise exact affine arithmetic, it can
+use static half-open loop ranges to prove that an integer quotient is constant.
+This recognizes grouped and tiled addresses such as `m / 160` for
+`m in 0..160`, while rejecting a quotient that varies over the represented
+iteration box. The rule is independent of frontend and callee name.
 For scalar promotion, `tile.scalar_cost` returns zero for an illegal candidate
 and otherwise reports lane count times recursive source-body operation count.
 The example blocking policy can enforce a whole-invocation duplication limit
@@ -318,6 +324,18 @@ revision-aware loop-local access caches, reduces recursive affine calls from
 254,955 to 145,171 and one `spatial.block` diagnostic from 40.30 to 28.71
 seconds. Both variants perform 15,877 edits and emit byte-identical IR. This is
 also a one-run mechanism diagnostic; controlled repetitions remain required.
+
+A deterministic MobileNetV2 structural check exposed a separate coverage
+boundary in the affine proof. Coefficient-wise division alone recognized 17
+reorderable contraction loops, all on the depthwise path. Adding the
+range-proven constant-quotient rule recognizes 54 loops, including the
+pointwise 1x1 path, without an ONNX or Conv condition. Reordering all recognized
+loops preserves the official output with maximum absolute difference
+`2.09808349609375e-5` under strict generated C. This is a legality and coverage
+result, not a latency result. The existing scalar-blocking example takes more
+than four minutes when naively applied to this enlarged set on the development
+host, so batched policy application and controlled Linux measurements remain
+required before the mechanism supports an artifact-quality claim.
 
 Source emission exposed a third repeated-work boundary on the placed UltraFace
 IR. The original external-payload path rescanned the full operation sequence

@@ -69,6 +69,33 @@ fn check_axes(m: Mod) -> bool {
   assert(len(carried_axes) == 2 && carried_axes[0] == 0 &&
          carried_axes[1] == 1,
          "nested branch result has the wrong axis dependence")
+
+  let quotient = ir.find(m, "fixed_grid")
+  assert(ir.live(quotient), "axis check requires fixed_grid")
+  var quotient_loops: list<Op> = []
+  var quotient_coordinates: list<Val> = []
+  var varying_quotients: list<Val> = []
+  for op in ir.ops(quotient) {
+    if ir.kind(op) == "loop" {
+      quotient_loops += [op]
+    }
+    for value in ir.outs(op) {
+      if ir.name(value) == "quotient" {
+        quotient_coordinates += [value]
+      }
+      if ir.name(value) == "varying_quotient" {
+        varying_quotients += [value]
+      }
+    }
+  }
+  assert(len(quotient_loops) == 1 && len(quotient_coordinates) == 1,
+         "axis check requires the range-proven quotient")
+  assert(tile.affine(m, quotient_loops[0], quotient_coordinates[0]) ==
+           [0, 0, 1],
+         "range-proven quotient has the wrong affine form")
+  assert(len(varying_quotients) == 1 &&
+         len(tile.affine(m, quotient_loops[0], varying_quotients[0])) == 0,
+         "varying integer quotient was incorrectly accepted as affine")
   assert(ir.revision(m) == before,
          "axis dependence queries changed the module")
   return true

@@ -52,9 +52,12 @@ value dependence through nested blocks, and `tile.axes` projects that fact onto
 the axes of an existing loop. `tile.reads` and `tile.writes` expose grouped
 index values while following store and structured carried bindings. They are
 validated on a small conditional grid, a five-axis generic reduction, and the
-seven-axis spatial-convolution body. `tile.affine` now proves exact integer
-affine forms for those values and rejects nonlinear, truncating, unsupported, or
-coefficient-overflowing expressions. `tile.reorder` now combines those forms
+seven-axis spatial-convolution body. `tile.affine` proves exact integer affine
+forms and also uses static loop ranges to prove constant integer quotients. For
+example, `m / 160` becomes zero only when the represented range proves
+`0 <= m < 160`; other nonlinear, truncating, unsupported, or
+coefficient-overflowing expressions remain rejected. `tile.reorder` combines
+those forms
 with static bounds, carried-state accesses, an affine injectivity proof, and
 stable state/reduction subsequences. This covers a useful reduction-preserving
 interchange class without claiming general cross-iteration dependence analysis;
@@ -117,9 +120,10 @@ mechanism for later state tiling without a Conv, GEMM, rank, or target case.
 Conservative integer bounds now feed an explicit `bounds.fold` edit for exact
 Boolean predicates. Composing it with ordinary `opt.fold` removes statically
 proved control flow, including no-padding Conv guards, while retaining dynamic
-activation conditions. Correlated values, division, branch-sensitive range
-refinement, and symbolic shape constraints remain open rather than being
-approximated.
+activation conditions. The affine query separately recognizes division only
+when coefficient-wise exact or when the quotient is constant over a static
+loop box. General correlated division, branch-sensitive range refinement, and
+symbolic shape constraints remain open rather than being approximated.
 
 The goal is not an automatic scheduler. It is a small, inspectable substrate on
 which a researcher can implement and compare scheduling policies.
