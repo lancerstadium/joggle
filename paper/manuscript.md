@@ -1,4 +1,4 @@
-# Joggle: A Progressive Function IR for Malleable Inference Compilation
+# Joggle: One Function IR for Extensible Inference Compilation
 
 Working manuscript for the EuroSys 2027 fall cycle. The current file is
 an argument draft, not a submission-ready paper. Pilot values are labeled and
@@ -6,31 +6,28 @@ must be replaced by frozen experiment results.
 
 ## Abstract
 
-Custom inference research often crosses several compiler boundaries at once: a
-researcher imports a conventional model, exposes an operator's real function
-body, changes its loop or storage structure, and emits an executable for a new
-device or data representation. Production stacks support such work, but
-distinct graph, tensor, loop, and target abstractions make a small experiment
-depend on native compiler infrastructure. Joggle explores malleable inference
-compilation: one typed function IR progressively exposes imported calls as
-reusable bodies, structured loops, and storage decisions.
-Malleability has an operational meaning here: a separately distributed module
-can discover a represented decision, replace it through the public IR API, and
-carry the edit to executable output without adding a native IR kind or central
-dispatch case.
-Decoders, analyses, transformations, memory policies, and emitters are
-distributable typed module functions rather than privileged pipeline stages.
-Structural legality queries and transactional edits let user policy rewrite
-actual model bodies while preserving explicit failure. We evaluate the design
-through matched extension tasks, compiler cost, staged compatibility on
-conventional models, numerical correctness, workspace, code size, and latency.
-Current pilots execute ten ONNX models, but generated C remains slower than
-one-thread ONNX Runtime on every measured network. An operator-independent
-loop-order policy and a proof-derived no-alias pass show that external modules
-can rewrite real function bodies without emitter cases; controlled
-cross-system measurements remain incomplete. The completed study will test
-whether a progressive function IR provides a practical, inspectable substrate
-for cross-layer AI co-design, not whether it replaces a production runtime.
+Inference co-design experiments often alter source semantics, loop structure,
+storage policy, and executable artifacts together. Production compilers expose
+these decisions through distinct graph, tensor, loop, and target abstractions,
+so a bounded experiment can require new representation objects, conversions,
+pass registrations, and backend cases. Joggle tests whether one typed function
+IR can provide a smaller extension boundary without moving the same complexity
+into operator-specific compiler code. Imported operations, reusable tensor
+semantics, explicit loops, memory decisions, and artifact calls remain
+`Fn`/`Blk`/`Op`/`Val` objects. Decoders, analyses, transformations, planners,
+and emitters are ordinary typed module functions. Transactional editing and
+whole-program verification make a failed composition leave the input unchanged.
+We evaluate this design with frozen extension tasks, staged execution of
+conventional models, compiler cost, numerical correctness, workspace, code
+size, and latency. The current implementation executes ten ONNX models through
+strictly compiled C. On MobileNetV2, an operator-independent affine policy
+rewrites 54 loop bodies, reduces generated source by 20.8%, and reduces latency
+by 26.5% in a same-runner Linux diagnostic while preserving the stored output;
+the result remains 12.24 times slower than one-thread ONNX Runtime. These results
+show that separately distributed modules can change real inference bodies and
+carry the edits to executable artifacts. They also expose the boundary of the
+approach: one extensible representation does not substitute for production
+kernel libraries or automatic target tuning.
 
 ## 1. Introduction
 
@@ -367,15 +364,16 @@ internal records for regression and ablation, but the paper's performance
 table will compare independent systems on identical model, input, thread, and
 correctness contracts while recording each system's compiler and runtime
 versions.
-The latest GitHub Linux smoke run at revision `c90d1f4` uses 20 balanced,
+The latest GitHub Linux smoke run at revision `418a34e` uses 20 balanced,
 fresh-process trials per subject. Its independent-system workflow reports
-MobileNetV2 medians of 166.807 ms for generated C and 10.266 ms for ONNX
-Runtime, a 16.25x gap; MNIST reports 0.504 and 0.048 ms, a 10.52x gap. A
-separate same-run policy diagnostic pins one CPU and reports 139.775 ms for the
-ordinary MobileNetV2 artifact, 101.168 ms after the operator-independent loop
-policy, and adjacent ONNX Runtime medians of 8.571 and 8.563 ms. The policy is
-therefore 0.72x the ordinary artifact in that job while remaining 11.82x slower
-than the adjacent production runtime. The differing ordinary-artifact medians
+MobileNetV2 medians of 167.315 ms for generated C and 10.346 ms for ONNX
+Runtime, a 16.17x gap; MNIST reports 0.530 and 0.050 ms, a 10.55x gap. A
+separate same-runner policy diagnostic pins one CPU and reports 139.679 ms for
+the ordinary MobileNetV2 artifact, 102.638 ms after operator-independent loop
+reordering and affine-index canonicalization, and adjacent ONNX Runtime medians
+of 8.387 and 8.382 ms. The policy is therefore 0.73x the ordinary artifact in
+that job while remaining 12.24x slower than the adjacent production runtime.
+The differing ordinary-artifact medians
 between the two shared runners illustrate why only the within-job policy ratio
 is interpreted. Every subject passes the common stored-output contract. These
 remain CI diagnostics rather than publication results: neither workflow

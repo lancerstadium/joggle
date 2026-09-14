@@ -8,7 +8,7 @@ preserved here.
 
 ## Target and thesis
 
-Working title: **Joggle: A Progressive Function IR for Malleable Inference
+Working title: **Joggle: One Function IR for Extensible Inference
 Compilation**.
 
 The current target is the
@@ -42,13 +42,14 @@ usability.
 | Artifact quality | Ten numerical ONNX paths; clean-revision, 20-trial MobileNetV2 and MNIST pilots compare generated C with ONNX Runtime; internal rewrite diagnostics remain separate | Broaden the independent-system matrix, add ONNX-MLIR where executable, task accuracy, an isolated second machine, and a materially smaller generated-C gap |
 
 The current generated-C pilots remain slower than one-thread ONNX Runtime. At
-revision `c90d1f4`, the balanced GitHub Linux smoke run reports MobileNetV2 at
-166.807 versus 10.266 ms (16.25x) and MNIST at 0.504 versus 0.048 ms (10.52x)
-over 20 fresh-process trials. A separate same-run MobileNetV2 diagnostic
-reports 139.775 ms for the ordinary artifact and 101.168 ms after the generic
-loop policy, with adjacent ONNX Runtime medians of 8.571 and 8.563 ms. Thus the
-policy produces a credible directional improvement within that runner but does
-not close the production-runtime gap. These are blocking results, not hidden
+revision `418a34e`, the balanced GitHub Linux smoke run reports MobileNetV2 at
+167.315 versus 10.346 ms (16.17x) and MNIST at 0.530 versus 0.050 ms (10.55x)
+over 20 fresh-process trials. A separate same-runner MobileNetV2 diagnostic
+reports 139.679 ms for the ordinary artifact and 102.638 ms after generic loop
+reordering and affine-index canonicalization, with adjacent ONNX Runtime
+medians of 8.387 and 8.382 ms. Thus the module policy reduces latency by 26.5%
+and generated source by 20.8% within that runner, but remains 12.24x slower
+than the adjacent production runtime. These are blocking results, not hidden
 caveats: the shared runners lack a host-load bound, controlled thermal state,
 and isolated second-machine replication. The manuscript must not claim
 superior speed, compatibility, or extensibility until the corresponding study
