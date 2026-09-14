@@ -73,10 +73,12 @@ otherwise-idle Linux host and replication on a second machine.
 `mobilenetv2-block.json` is a second independent-system comparison whose
 Joggle subject is produced by the out-of-tree `spatial.block` source policy.
 The `linux-policy` workflow starts from the preserved `canonical.jog`, composes
-the public `tile` transforms, rebuilds the ordinary C artifact, validates it,
-and then invokes this manifest. The policy run answers whether that one
-user-visible scheduling choice narrows the external gap; it is not entered as
-a third system or compared to another Joggle row in the measurement runner.
+the public `tile` transforms, rebuilds the ordinary C artifact, and validates
+it. On one pinned CPU it then runs the ordinary and blocked manifests
+consecutively and reports both Joggle medians and both adjacent ONNX Runtime
+medians. This same-job diagnostic avoids comparing different GitHub runners
+while preserving the runner's rule that each manifest contains independent
+systems rather than two configurations of Joggle.
 
 Correctness thresholds belong in each subject command. The checked-in
 MobileNetV2 manifest uses the same `1e-4 + 1e-4 * abs(reference)` elementwise

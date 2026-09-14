@@ -108,7 +108,7 @@ jobs:
             "$root/model.bin" \
             build-app/examples/mobilenet/expected.bin 0 1
 
-      - name: Record independent-system timings
+      - name: Record same-run policy ablation
         id: measure
         run: |
           set -o pipefail
@@ -118,6 +118,13 @@ jobs:
           print(min(os.sched_getaffinity(0)))
           PY
           )"
+          python3 paper/measure_systems.py \
+            --manifest paper/experiments/mobilenetv2.json \
+            --repo . \
+            --output build-policy/results/mobilenetv2-plain.csv \
+            --record build-policy/results/mobilenetv2-plain.json \
+            --cpu "$cpu" --require-clean \
+            2>&1 | tee build-policy/results/mobilenetv2-plain.log
           python3 paper/measure_systems.py \
             --manifest paper/experiments/mobilenetv2-block.json \
             --repo . \
@@ -149,30 +156,41 @@ jobs:
           import statistics
           from pathlib import Path
 
-          path = Path("build-policy/results/mobilenetv2-block.csv")
-          rows = list(csv.DictReader(path.open()))
-          samples = {
-              system: [float(row["seconds"]) for row in rows
-                       if row["system"] == system]
-              for system in ("joggle", "onnxruntime")
-          }
-          joggle = statistics.median(samples["joggle"])
-          runtime = statistics.median(samples["onnxruntime"])
-          ratio = joggle / runtime
+          def medians(name):
+              path = Path(f"build-policy/results/mobilenetv2-{name}.csv")
+              rows = list(csv.DictReader(path.open()))
+              return {
+                  system: statistics.median(
+                      float(row["seconds"]) for row in rows
+                      if row["system"] == system
+                  )
+                  for system in ("joggle", "onnxruntime")
+              }
+
+          plain = medians("plain")
+          blocked = medians("block")
           summary = (
-              "## Generic block-policy performance\n\n"
-              "Shared GitHub runner; diagnostic rather than publication data.\n\n"
-              "| Joggle | ONNX Runtime | Joggle / ORT |\n"
-              "|---:|---:|---:|\n"
-              f"| {joggle * 1000:.3f} ms | {runtime * 1000:.3f} ms | "
-              f"{ratio:.2f}x |\n"
+              "## Same-run generic block-policy ablation\n\n"
+              "One pinned CPU on one GitHub runner; diagnostic rather than "
+              "publication data.\n\n"
+              "| Plain | Blocked | ORT beside plain | ORT beside blocked | "
+              "Blocked / Plain |\n"
+              "|---:|---:|---:|---:|---:|\n"
+              f"| {plain['joggle'] * 1000:.3f} ms | "
+              f"{blocked['joggle'] * 1000:.3f} ms | "
+              f"{plain['onnxruntime'] * 1000:.3f} ms | "
+              f"{blocked['onnxruntime'] * 1000:.3f} ms | "
+              f"{blocked['joggle'] / plain['joggle']:.2f}x |\n"
           )
           with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as stream:
               stream.write(summary)
           print(
-              "::notice title=Generic block-policy performance::"
-              f"Joggle {joggle * 1000:.3f} ms, "
-              f"ORT {runtime * 1000:.3f} ms, {ratio:.2f}x"
+              "::notice title=Same-run block-policy ablation::"
+              f"plain {plain['joggle'] * 1000:.3f} ms, "
+              f"blocked {blocked['joggle'] * 1000:.3f} ms, "
+              f"ORT/plain-run {plain['onnxruntime'] * 1000:.3f} ms, "
+              f"ORT/blocked-run {blocked['onnxruntime'] * 1000:.3f} ms, "
+              f"blocked/plain {blocked['joggle'] / plain['joggle']:.2f}x"
           )
           PY
 
