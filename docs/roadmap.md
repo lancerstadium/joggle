@@ -233,11 +233,12 @@ FlatBuffers still need independent fuzz or property-test harnesses rather than
 being claimed by these gates.
 
 The C++ implementation now keeps immutable attributes/types, structural
-handles, tokenization, parsing, canonical printing, and verification in
-separate translation units while preserving the single public IR. The
-remaining large `ir.cpp` and `eval.cpp` files still need dependency-led
-separation of editing/inference and runtime values/intrinsics; file size alone
-is not a reason to create another public abstraction.
+handles, value-family analysis, metadata editing, tokenization, parsing,
+canonical printing, and verification in separate translation units while
+preserving the single public IR. The remaining large `ir.cpp` and `eval.cpp`
+files still need dependency-led separation of construction/inference and
+runtime values/intrinsics; file size alone is not a reason to create another
+public abstraction.
 
 ## Paper readiness
 

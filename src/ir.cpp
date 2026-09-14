@@ -1,4 +1,5 @@
 #include "detail.h"
+#include "value.h"
 
 #include <algorithm>
 #include <array>
@@ -111,107 +112,6 @@ bool carried_arg(const detail::Store& store, std::uint32_t value) {
     if (parent.kind == Op::Kind::branch)
       return index < parent.carried_count;
     return false;
-  }
-  return false;
-}
-
-class ValFamilies {
-public:
-  explicit ValFamilies(const detail::Store& store)
-      : store_(store), parents_(store.vals.size()), ranks_(store.vals.size()) {
-    for (std::uint32_t id = 0; id < parents_.size(); ++id)
-      parents_[id] = id;
-    for (const auto& slot : store.ops) {
-      if (!slot.live || (slot.data.kind != Op::Kind::loop &&
-                         slot.data.kind != Op::Kind::branch))
-        continue;
-      const detail::OpData& op = slot.data;
-      const std::size_t offset =
-          op.kind == Op::Kind::loop ? op.iter_names.size() : 1;
-      if (op.args.size() < offset + op.carried_count ||
-          op.outs.size() < op.carried_count)
-        continue;
-      for (std::size_t index = 0; index < op.carried_count; ++index) {
-        const std::uint32_t seed = op.args[offset + index];
-        join(seed, op.outs[index]);
-        for (const std::uint32_t blk : op.blks) {
-          if (blk >= store.blks.size() || !store.blks[blk].live)
-            continue;
-          const detail::BlkData& body = store.blks[blk].data;
-          const std::size_t arg =
-              op.kind == Op::Kind::loop ? offset + index : index;
-          if (arg < body.args.size())
-            join(seed, body.args[arg]);
-          if (!body.ops.empty()) {
-            const detail::OpData& end = store.ops[body.ops.back()].data;
-            if (end.kind == Op::Kind::yield && index < end.args.size())
-              join(seed, end.args[index]);
-          }
-        }
-      }
-    }
-  }
-
-  std::uint32_t root(std::uint32_t id) {
-    while (parents_[id] != id) {
-      parents_[id] = parents_[parents_[id]];
-      id = parents_[id];
-    }
-    return id;
-  }
-
-  std::unordered_set<std::uint32_t> members(std::uint32_t seed) {
-    std::unordered_set<std::uint32_t> out;
-    const std::uint32_t group = root(seed);
-    for (std::uint32_t id = 0; id < store_.vals.size(); ++id)
-      if (store_.vals[id].live && root(id) == group)
-        out.insert(id);
-    return out;
-  }
-
-private:
-  void join(std::uint32_t left, std::uint32_t right) {
-    if (left >= store_.vals.size() || right >= store_.vals.size() ||
-        !store_.vals[left].live || !store_.vals[right].live)
-      return;
-    left = root(left);
-    right = root(right);
-    if (left == right)
-      return;
-    if (ranks_[left] < ranks_[right])
-      std::swap(left, right);
-    parents_[right] = left;
-    if (ranks_[left] == ranks_[right])
-      ++ranks_[left];
-  }
-
-  const detail::Store& store_;
-  std::vector<std::uint32_t> parents_;
-  std::vector<std::uint8_t> ranks_;
-};
-
-std::unordered_set<std::uint32_t> family(const detail::Store& store,
-                                         std::uint32_t seed) {
-  ValFamilies families(store);
-  return families.members(seed);
-}
-
-bool printable_value(const detail::Store& store,
-                     const std::unordered_set<std::uint32_t>& values) {
-  for (const std::uint32_t id : values) {
-    if (id >= store.vals.size() || !store.vals[id].live)
-      continue;
-    const detail::ValData& value = store.vals[id].data;
-    if (value.kind == detail::ValKind::generic ||
-        value.kind == detail::ValKind::param)
-      return true;
-    if (value.kind != detail::ValKind::result || value.name.empty() ||
-        value.def == detail::none || value.def >= store.ops.size() ||
-        !store.ops[value.def].live)
-      continue;
-    const Op::Form form = store.ops[value.def].data.form;
-    if (form == Op::Form::let || form == Op::Form::var)
-      return true;
   }
   return false;
 }
@@ -1831,7 +1731,7 @@ bool Mod::expand(const Env& env, Op call, Fn callee,
         store.vals[call_outs[index].id_].data;
     const Attr::Dict& boundary = boundary_data.meta;
     const std::unordered_set<std::uint32_t> related =
-        family(store, replacements[index]);
+        detail::family(store, replacements[index]);
     for (const auto& [key, value] : boundary) {
       for (const std::uint32_t id : related) {
         const auto found = store.vals[id].data.meta.find(key);
@@ -2582,7 +2482,7 @@ bool Mod::type(std::span<const Val> values, std::span<const Ty> types) {
     if (!type.valid())
       return reject("type requires valid structural types");
 
-  ValFamilies families(store);
+  detail::ValFamilies families(store);
   std::unordered_map<std::uint32_t, Ty> assignments;
   assignments.reserve(values.size());
   for (std::size_t index = 0; index < values.size(); ++index) {
@@ -2767,7 +2667,8 @@ bool Mod::rename(Val value, std::string name) {
     return false;
   }
 
-  const std::unordered_set<std::uint32_t> related = family(store, value.id_);
+  const std::unordered_set<std::uint32_t> related =
+      detail::family(store, value.id_);
 
   const auto conflicts = [&](std::span<const std::uint32_t> ids) {
     const bool owns = std::any_of(ids.begin(), ids.end(), [&](std::uint32_t id) {
@@ -2969,192 +2870,6 @@ bool Mod::retarget(const Env& env, Op call, Fn target,
   }
   if (!retarget(env, call, std::move(symbol), arguments))
     return rollback();
-  return true;
-}
-
-bool Mod::set(Fn fn, std::string key, Attr value) {
-  auto& store = impl_->store;
-  if (!fn.valid() || fn.store_ != &store ||
-      !detail::valid_qualified_name(key)) {
-    detail::add_diag(store.diags,
-                     "set requires a live function and valid metadata key");
-    return false;
-  }
-  Attr::Dict& meta = store.fns[fn.id_].data.meta;
-  const auto found = meta.find(key);
-  if (found == meta.end() || found->second != value) {
-    meta[std::move(key)] = std::move(value);
-    touch(store);
-  }
-  return true;
-}
-
-bool Mod::set(Val item, std::string key, Attr value) {
-  auto& store = impl_->store;
-  if (!item.valid() || item.store_ != &store ||
-      !detail::valid_qualified_name(key)) {
-    detail::add_diag(store.diags,
-                     "set requires a live value and valid metadata key");
-    return false;
-  }
-  const std::unordered_set<std::uint32_t> related = family(store, item.id_);
-  if (!printable_value(store, related)) {
-    detail::add_diag(store.diags,
-                     "cannot annotate a value without a source binding");
-    return false;
-  }
-  bool changed = false;
-  for (const std::uint32_t id : related) {
-    Attr::Dict& meta = store.vals[id].data.meta;
-    const auto found = meta.find(key);
-    if (found != meta.end() && found->second == value)
-      continue;
-    meta[key] = value;
-    changed = true;
-  }
-  if (changed)
-    touch(store);
-  return true;
-}
-
-bool Mod::set(std::span<const Val> items, std::string key,
-              std::span<const Attr> values) {
-  auto& store = impl_->store;
-  const auto reject = [&](std::string message) {
-    detail::add_diag(store.diags, std::move(message));
-    return false;
-  };
-  if (items.size() != values.size())
-    return reject("set requires one metadata value per IR value");
-  if (items.empty() || !detail::valid_qualified_name(key))
-    return reject("set requires values and a valid metadata key");
-  for (Val item : items)
-    if (!item.valid() || item.store_ != &store)
-      return reject("set requires live values in this module");
-
-  ValFamilies families(store);
-
-  std::vector<bool> printable(store.vals.size());
-  for (std::uint32_t id = 0; id < store.vals.size(); ++id) {
-    if (!store.vals[id].live)
-      continue;
-    const detail::ValData& value = store.vals[id].data;
-    bool source = value.kind == detail::ValKind::generic ||
-                  value.kind == detail::ValKind::param;
-    if (value.kind == detail::ValKind::result && !value.name.empty() &&
-        value.def != detail::none && value.def < store.ops.size() &&
-        store.ops[value.def].live) {
-      const Op::Form form = store.ops[value.def].data.form;
-      source = source || form == Op::Form::let ||
-               form == Op::Form::var;
-    }
-    if (source)
-      printable[families.root(id)] = true;
-  }
-
-  std::unordered_map<std::uint32_t, Attr> assignments;
-  assignments.reserve(items.size());
-  for (std::size_t index = 0; index < items.size(); ++index) {
-    const std::uint32_t group = families.root(items[index].id_);
-    if (!printable[group])
-      return reject("cannot annotate a value without a source binding");
-    const auto [found, inserted] = assignments.emplace(group, values[index]);
-    if (!inserted && found->second != values[index])
-      return reject("set assigns conflicting metadata to one value family");
-  }
-
-  bool changed = false;
-  for (std::uint32_t id = 0; id < store.vals.size(); ++id) {
-    if (!store.vals[id].live)
-      continue;
-    const auto assigned = assignments.find(families.root(id));
-    if (assigned == assignments.end())
-      continue;
-    Attr::Dict& meta = store.vals[id].data.meta;
-    const auto found = meta.find(key);
-    if (found == meta.end() || found->second != assigned->second) {
-      meta[key] = assigned->second;
-      changed = true;
-    }
-  }
-  if (changed)
-    touch(store);
-  return true;
-}
-
-bool Mod::set(Op op, std::string key, Attr value) {
-  auto& store = impl_->store;
-  if (!op.valid() || op.store_ != &store ||
-      !detail::valid_qualified_name(key)) {
-    detail::add_diag(store.diags,
-                     "set requires a live operation and valid metadata key");
-    return false;
-  }
-  const detail::OpData& data = store.ops[op.id_].data;
-  if ((data.kind == Op::Kind::call || data.kind == Op::Kind::constant) &&
-      data.form == Op::Form::hidden) {
-    detail::add_diag(store.diags,
-                     "cannot annotate an operation nested in an expression",
-                     data.loc);
-    return false;
-  }
-  Attr::Dict& meta = store.ops[op.id_].data.meta;
-  const auto found = meta.find(key);
-  if (found == meta.end() || found->second != value) {
-    meta[std::move(key)] = std::move(value);
-    touch(store);
-  }
-  return true;
-}
-
-bool Mod::unset(Fn fn, std::string_view key) {
-  auto& store = impl_->store;
-  if (!fn.valid() || fn.store_ != &store ||
-      !detail::valid_qualified_name(key)) {
-    detail::add_diag(store.diags,
-                     "unset requires a live function and valid metadata key");
-    return false;
-  }
-  if (!store.fns[fn.id_].data.meta.erase(std::string(key)))
-    return false;
-  touch(store);
-  return true;
-}
-
-bool Mod::unset(Val item, std::string_view key) {
-  auto& store = impl_->store;
-  if (!item.valid() || item.store_ != &store ||
-      !detail::valid_qualified_name(key)) {
-    detail::add_diag(store.diags,
-                     "unset requires a live value and valid metadata key");
-    return false;
-  }
-  const std::unordered_set<std::uint32_t> related = family(store, item.id_);
-  if (!printable_value(store, related)) {
-    detail::add_diag(store.diags,
-                     "cannot annotate a value without a source binding");
-    return false;
-  }
-  bool changed = false;
-  for (const std::uint32_t id : related)
-    changed = store.vals[id].data.meta.erase(std::string(key)) || changed;
-  if (!changed)
-    return false;
-  touch(store);
-  return true;
-}
-
-bool Mod::unset(Op op, std::string_view key) {
-  auto& store = impl_->store;
-  if (!op.valid() || op.store_ != &store ||
-      !detail::valid_qualified_name(key)) {
-    detail::add_diag(store.diags,
-                     "unset requires a live operation and valid metadata key");
-    return false;
-  }
-  if (!store.ops[op.id_].data.meta.erase(std::string(key)))
-    return false;
-  touch(store);
   return true;
 }
 

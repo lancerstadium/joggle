@@ -53,8 +53,10 @@ add_library(joggle
   src/lang.cpp
   src/language.cpp
   src/lex.cpp
+  src/meta.cpp
   src/print.cpp
   src/type.cpp
+  src/value.cpp
   src/verify.cpp
 )
 add_library(Joggle::joggle ALIAS joggle)
