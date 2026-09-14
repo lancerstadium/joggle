@@ -1,0 +1,6 @@
+module nonzero_c
+use nn
+
+fn main(x: tensor<i32, [2, 3]>) -> tensor<i64, [2, _]> {
+  return nn.nonzero(x)
+}

@@ -928,6 +928,52 @@ fn layer_norm<
   return shifted
 }
 
+local fn nonzero_value<E: Ty>(value: E) -> bool {
+  return value != E(0)
+}
+
+local fn nonzero_value(value: bool) -> bool {
+  return value
+}
+
+// Compact selected coordinates into a bounded dynamic result. The first
+// extent is the input rank; the second is the number of selected elements.
+fn nonzero<E: Ty, S: list<int>, R: int>(
+  x: tensor<E, S>
+) -> tensor<i64, [R, _]> {
+  assert(R == len(S), "nn.nonzero result rank must match its input")
+  let total = tensor.numel<S>()
+  var count = index(0)
+  for linear in 0..total {
+    if nonzero_value(x[linear]) {
+      count += index(1)
+    }
+  }
+
+  var capacity_shape = tensor<index, [2]>(index(0))
+  capacity_shape[0] = index(R)
+  capacity_shape[1] = index(total)
+  var out: tensor<i64, [R, _]> = tensor.make(i64(0), capacity_shape)
+  var item = index(0)
+  for linear in 0..total {
+    if nonzero_value(x[linear]) {
+      for axis in 0..R {
+        var stride = 1
+        for dim in axis + 1..R {
+          stride *= S[dim]
+        }
+        out[axis * count + item] = i64((linear / stride) % S[axis])
+      }
+      item += index(1)
+    }
+  }
+
+  var result_shape = tensor<index, [2]>(index(0))
+  result_shape[0] = index(R)
+  result_shape[1] = count
+  return tensor.view(out, result_shape)
+}
+
 local fn iou<E: Ty>(
   a0: E, a1: E, a2: E, a3: E,
   b0: E, b1: E, b2: E, b3: E,

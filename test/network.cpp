@@ -1481,6 +1481,7 @@ int main(int argc, char** argv) {
   bool tiled = false;
   bool dynamic_tile = false;
   bool nms_converted = false;
+  bool nonzero_converted = false;
   for (joggle::Op op : shape_relations.ops()) {
     if (op.blk().fn().name() == "expand" &&
         op.callee() == "tensor.broadcast")
@@ -1492,11 +1493,14 @@ int main(int argc, char** argv) {
       dynamic_tile = true;
     if (op.blk().fn().name() == "nms" && op.callee() == "nn.nms")
       nms_converted = true;
+    if (op.blk().fn().name() == "nonzero" && op.callee() == "nn.nonzero")
+      nonzero_converted = true;
   }
   CHECK(expanded);
   CHECK(tiled);
   CHECK(dynamic_tile);
   CHECK(nms_converted);
+  CHECK(nonzero_converted);
 
   constexpr std::string_view static_shape_source =
       "module static.shape\n"

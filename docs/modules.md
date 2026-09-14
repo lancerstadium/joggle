@@ -252,6 +252,12 @@ A frontend is deliberately split into transport and meaning:
 - `onnx.nn.convert` and `tflite.nn.convert` explicitly map those calls to
   shared functions.
 
+Dynamic result extents do not require an opaque runtime operator. For example,
+`nn.nonzero` allocates from the statically provable input-element capacity,
+computes the selected extent in its ordinary function body, and returns a
+logical `tensor.view`. The same body is inspectable and transformable before a
+backend sees it.
+
 The split preserves source attributes for inspection and allows a user to run
 format-specific checks before conversion. It also keeps multiple frontends
 from duplicating canonical tensor and neural-network bodies.

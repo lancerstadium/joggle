@@ -293,6 +293,24 @@ local fn convert_slice(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.slice")
 }
 
+[phase: "compute", on: "onnx.NonZero"]
+local fn convert_nonzero(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let source = ir.type(inputs[0])
+  let result = ir.type(outputs[0])
+  if !tensor.valid(source) || !tensor.valid(result) ||
+     tensor.elem(result) != ty("i64") ||
+     len(tensor.dims(result)) != 2 ||
+     tensor.dims(result)[0] != ty(len(tensor.dims(source))) {
+    return false
+  }
+  return convert_call(m, op, "nn.nonzero")
+}
+
 [phase: "shape", on: "onnx.Concat"]
 local fn convert_concat(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)

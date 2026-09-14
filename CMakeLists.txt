@@ -680,6 +680,18 @@ if(JOGGLE_BUILD_TESTS)
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/nms_c.cmake
     )
     add_test(
+      NAME nonzero-c-execution
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DTOOL=$<TARGET_FILE:joggle-tool>
+        -DCC=${JOGGLE_TEST_C_COMPILER}
+        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/nonzero_c.jog
+        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/nonzero_c_main.c
+        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/nonzero-c-test
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/nonzero_c.cmake
+    )
+    add_test(
       NAME tile-execution
       COMMAND
         ${CMAKE_COMMAND}
