@@ -85,6 +85,12 @@ joggle module upgrade path/to/source installed-modules -M modules
 joggle module uninstall my_module installed-modules
 ```
 
+Install and upgrade never treat the candidate's parent directory as an implicit
+module root. Every dependency must already be installed in the destination or
+be reachable through an explicit `-M` root. This makes validation reproducible
+after the source checkout is moved or deleted; physical source adjacency is not
+part of a module's dependency contract.
+
 Installation validates the candidate and its dependency closure before making
 it visible. Upgrade additionally reloads the transitive reverse-dependency
 closure against the staged candidate and checks that every previously resolved

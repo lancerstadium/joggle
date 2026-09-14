@@ -261,13 +261,11 @@ bool copy_module(const fs::path& source, const fs::path& staging,
 }
 
 bool validate(const fs::path& staging, const fs::path& root,
-              const fs::path& source,
               const std::vector<fs::path>& dependencies,
               std::string_view name) {
   Env env;
   env.path(staging.string());
   env.path(root.string());
-  env.path(source.parent_path().string());
   add_paths(env, dependencies);
   const bool valid = env.load(name);
   if (!valid)
@@ -342,7 +340,6 @@ bool preserves_resolutions(const Env& installed, const Env& replacement,
 }
 
 bool validate_upgrade(const fs::path& staging, const fs::path& root,
-                      const fs::path& source,
                       const std::vector<fs::path>& dependencies,
                       std::string_view name) {
   std::vector<std::string> affected;
@@ -351,13 +348,11 @@ bool validate_upgrade(const fs::path& staging, const fs::path& root,
 
   Env installed;
   installed.path(root.string());
-  installed.path(source.parent_path().string());
   add_paths(installed, dependencies);
 
   Env replacement;
   replacement.path(staging.string());
   replacement.path(root.string());
-  replacement.path(source.parent_path().string());
   add_paths(replacement, dependencies);
   if (!replacement.load(name)) {
     replacement.print_diags(stderr);
@@ -479,7 +474,7 @@ int install(const fs::path& source, const fs::path& root,
   if (!copy_module(source, staging, name))
     return 1;
 
-  if (!validate(staging, root, source, dependencies, name)) {
+  if (!validate(staging, root, dependencies, name)) {
     fs::remove_all(staging);
     return 1;
   }
@@ -535,7 +530,7 @@ int upgrade(const fs::path& source, const fs::path& root,
   const fs::path staged = staging / name;
   if (!copy_module(source, staging, name))
     return 1;
-  if (!validate_upgrade(staging, root, source, dependencies, name)) {
+  if (!validate_upgrade(staging, root, dependencies, name)) {
     std::error_code ignored;
     fs::remove_all(staging, ignored);
     return 1;

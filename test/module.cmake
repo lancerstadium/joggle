@@ -27,6 +27,32 @@ file(MAKE_DIRECTORY "${TEST_ROOT}")
 
 set(fragment_root "${TEST_ROOT}.fragment-source")
 file(REMOVE_RECURSE "${fragment_root}")
+
+# Installation must be closed over declared module roots. A sibling beside the
+# source is not an implicit dependency root: accepting it would produce an
+# installation that stops loading when the source checkout moves away.
+set(closure_root "${TEST_ROOT}.closure-source")
+file(REMOVE_RECURSE "${closure_root}")
+file(MAKE_DIRECTORY "${closure_root}/closure_dep"
+                    "${closure_root}/closure_user")
+file(WRITE "${closure_root}/closure_dep/module.jog"
+     "module closure_dep\nfn value() -> i32 { return 7 }\n")
+file(WRITE "${closure_root}/closure_user/module.jog"
+     "module closure_user\nuse closure_dep\n"
+     "fn value() -> i32 { return closure_dep.value() }\n")
+invoke(fail "${TOOL}" module install
+       "${closure_root}/closure_user" "${TEST_ROOT}")
+if(EXISTS "${TEST_ROOT}/closure_user")
+  message(FATAL_ERROR "module with an implicit sibling dependency was installed")
+endif()
+invoke(ok "${TOOL}" module install
+       "${closure_root}/closure_dep" "${TEST_ROOT}")
+invoke(ok "${TOOL}" module install
+       "${closure_root}/closure_user" "${TEST_ROOT}")
+invoke(ok "${TOOL}" module check closure_user -M "${TEST_ROOT}")
+invoke(ok "${TOOL}" module uninstall closure_user "${TEST_ROOT}")
+invoke(ok "${TOOL}" module uninstall closure_dep "${TEST_ROOT}")
+file(REMOVE_RECURSE "${closure_root}")
 file(MAKE_DIRECTORY "${fragment_root}/fragment_error/lib")
 file(WRITE "${fragment_root}/fragment_error/module.jog"
      "module fragment_error\nfn declared(x: i32) -> i32;\n")
@@ -193,14 +219,19 @@ set(provider_source "${TEST_ROOT}.provider")
 set(facade_source "${TEST_ROOT}.facade")
 set(facade_upgrade_source "${TEST_ROOT}.facade-upgrade")
 set(client_source "${TEST_ROOT}.client")
+set(upgrade_sibling_root "${TEST_ROOT}.upgrade-siblings")
+set(hidden_upgrade_source "${upgrade_sibling_root}/sample")
+set(hidden_dependency_source "${upgrade_sibling_root}/hidden_dependency")
 file(REMOVE_RECURSE "${upgrade_source}" "${incompatible_source}"
                     "${invalid_source}" "${dependent_source}"
                     "${provider_source}" "${facade_source}"
-                    "${facade_upgrade_source}" "${client_source}")
+                    "${facade_upgrade_source}" "${client_source}"
+                    "${upgrade_sibling_root}")
 file(MAKE_DIRECTORY "${upgrade_source}" "${incompatible_source}"
                     "${invalid_source}" "${dependent_source}"
                     "${provider_source}" "${facade_source}"
-                    "${facade_upgrade_source}" "${client_source}")
+                    "${facade_upgrade_source}" "${client_source}"
+                    "${hidden_upgrade_source}" "${hidden_dependency_source}")
 file(COPY "${BUILD_ROOT}/sample/" DESTINATION "${upgrade_source}")
 file(READ "${upgrade_source}/module.jog" upgrade_module)
 string(REPLACE "fn keep<T: Ty>(x: T) -> T;"
@@ -239,6 +270,24 @@ invoke(fail "${TOOL}" module upgrade "${invalid_source}" "${TEST_ROOT}"
 file(READ "${TEST_ROOT}/sample/module.jog" retained_source)
 if(NOT retained_source STREQUAL upgraded_source)
   message(FATAL_ERROR "invalid staged upgrade changed the installed module")
+endif()
+
+# Upgrade validation obeys the same closure rule. Put the missing dependency
+# beside the candidate to prove that its parent directory is not searched
+# implicitly.
+file(WRITE "${hidden_dependency_source}/module.jog"
+     "module hidden_dependency\nfn value() -> i32 { return 1 }\n")
+file(COPY "${upgrade_source}/" DESTINATION "${hidden_upgrade_source}")
+file(READ "${hidden_upgrade_source}/module.jog" hidden_upgrade)
+string(REPLACE "module sample\n"
+               "module sample\nuse hidden_dependency\n"
+               hidden_upgrade "${hidden_upgrade}")
+file(WRITE "${hidden_upgrade_source}/module.jog" "${hidden_upgrade}")
+invoke(fail "${TOOL}" module upgrade "${hidden_upgrade_source}" "${TEST_ROOT}"
+       -M "${BUILD_ROOT}")
+file(READ "${TEST_ROOT}/sample/module.jog" retained_source)
+if(NOT retained_source STREQUAL upgraded_source)
+  message(FATAL_ERROR "hidden-dependency upgrade changed the installed module")
 endif()
 
 invoke(fail "${TOOL}" module install "${BUILD_ROOT}/bad" "${TEST_ROOT}"
@@ -302,7 +351,8 @@ invoke(fail "${TOOL}" module uninstall sample "${TEST_ROOT}")
 file(REMOVE_RECURSE "${upgrade_source}" "${incompatible_source}"
                     "${invalid_source}" "${dependent_source}"
                     "${provider_source}" "${facade_source}"
-                    "${facade_upgrade_source}" "${client_source}")
+                    "${facade_upgrade_source}" "${client_source}"
+                    "${upgrade_sibling_root}")
 
 file(GLOB residue "${TEST_ROOT}/*" "${TEST_ROOT}/.*")
 foreach(path IN LISTS residue)

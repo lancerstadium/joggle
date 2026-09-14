@@ -3,7 +3,7 @@
 Joggle now has a coherent core, language, module system, two model frontends,
 two artifact paths, and inspectable neural-network semantics. The next phase is
 not another redesign. It is to close the gaps that determine whether the
-workbench is useful in a real co-design study and whether its claims survive
+system is useful in a real co-design study and whether its claims survive
 evaluation.
 
 ## Current baseline
@@ -278,6 +278,12 @@ change. The old installation remains byte-identical on failure. Compatibility
 of persistent metadata and native state across revisions remains outside this
 pre-1.0 contract.
 
+Installation and upgrade validation are also closed over explicit roots. The
+candidate source directory contributes only the staged module itself; sibling
+directories are not searched unless the caller supplies their root with `-M`.
+Regression coverage rejects both a fresh install and an upgrade that would work
+only while an undeclared source checkout remains beside the candidate.
+
 The C++ implementation now keeps immutable attributes/types, structural
 handles, value-family analysis, metadata editing, tokenization, parsing,
 canonical printing, and verification in separate translation units while
@@ -304,7 +310,7 @@ The paper is organized around four questions:
    artifacts?
 4. In the inference stress domain, can user-defined scheduling and storage
    policies improve complete artifacts without core changes, and what overhead
-   does the workbench add?
+   does the system add?
 
 A submission is ready only when:
 
