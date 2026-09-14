@@ -23,9 +23,10 @@ the table dense but uninterpretable.
 
 ### A. Two-dimensional and last-axis computations
 
-Rows: Add, Multiply, ReLU, SiLU, Softmax, ReduceMean, RMSNorm, and LayerNorm.
+Rows: Add, Multiply, ReLU, SiLU, GELU, Softmax, ReduceMean, RMSNorm, and
+LayerNorm.
 These are executable semantic fixtures, not labels reserved for future data:
-the generator constructs 200 cases, evaluates every ONNX model with the ONNX
+the generator constructs 225 cases, evaluates every ONNX model with the ONNX
 reference evaluator, and stores one deterministic input and output oracle per
 case. ReduceSum and Cumsum are deferred until both shared semantic bodies and
 the matched baseline path execute; unsupported names do not occupy empty rows.
@@ -121,7 +122,7 @@ records exist, this document is the evidence contract rather than a mock result.
 
 The contraction matrix is now executable rather than only specified. The
 generator materializes eight rows over 27 shapes (216 contraction cases), plus
-the 200 two-dimensional cases, into the ignored build tree with:
+the 225 two-dimensional cases, into the ignored build tree with:
 
 ```sh
 .venv-fixtures/bin/python paper/operator_suite.py
@@ -163,7 +164,7 @@ python3 paper/render_operator_table.py \
   --summary build/operator-study/sweep/operator-summary.csv
 ```
 
-Use `--matrix row` for the eight-row, 25-column pointwise/normalization table.
+Use `--matrix row` for the nine-row, 25-column pointwise/normalization table.
 The renderer requires every row to contain the identical coordinate grid and
 all cells to share one clean revision, host, and outer-trial count. It refuses
 to manufacture a rectangular table from partial or mixed-host evidence.

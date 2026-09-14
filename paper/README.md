@@ -8,8 +8,7 @@ preserved here.
 
 ## Target and thesis
 
-Working title: **Joggle: Progressive Exposure for Inference Compiler
-Experiments**.
+Working title: **Joggle: Malleable Compilation for Evolving Models and Machines**.
 
 The current target is the
 [EuroSys 2027 fall cycle](https://2027.eurosys.org/cfp.html). Titles and
@@ -20,17 +19,16 @@ format, and is double blind. Repository links must therefore point to an
 anonymous snapshot rather than this development repository. EuroSys also
 requires disclosure of AI-tool use under ACM policy.
 
-The paper studies one compiler claim: a progressive function IR can make
-inference compilation malleable across source semantics, loop structure,
-storage policy, and executable artifacts. Ordinary module functions expose and
-rewrite those layers without adding a central lowering registry or rebuilding
-the compiler. Here, *malleable* has a narrow testable meaning: a separately
-distributed module can discover a represented decision, replace it through the
-public IR API, and carry the edit to executable output without adding a native
-IR kind or a central dispatch case. Extension surface, compile cost, code size,
-correctness, workspace, and latency all belong to that claim. Joggle does not
-claim to replace production runtimes or equate fewer source lines with better
-usability.
+The paper studies **temporal extensibility**: whether a model--machine extension
+can remain working while its semantic, representation, structural, target,
+selection, validation, and artifact contracts evolve together. Joggle's proposed
+mechanism is progressive exposure over typed functions. Its claim is not that
+one IR is superior, that all compiler concepts are identical, or that fewer
+source lines prove usability. The required evidence is a controlled revision
+study, chooser substitution through one checked interface, generic target
+policies that improve complete artifacts, and explicit representation/failure
+boundaries. Extension surface, compile cost, code size, correctness, workspace,
+latency, and diagnostic quality all belong to that claim.
 
 ## Current evidence status
 
@@ -76,24 +74,18 @@ is complete.
 ## Repository map
 
 - [`manuscript.md`](manuscript.md): evidence-bounded working paper text.
-- [`render_tables.py`](render_tables.py): regenerates the manuscript's
-  performance, policy, and extension tables from preserved CSV/JSON records;
-  `--check` is part of the normal test suite and rejects stale transcription.
 - [`references.bib`](references.bib): source-verified bibliography for every
   related-work citation currently used by the manuscript.
-- [`literature-map.md`](literature-map.md): the claim-oriented 64-work
-  literature ledger, verification state, comparison role, pain-point
-  synthesis, and priority order used to grow the bibliography beyond 50
-  actually cited works.
-- [`figure-plan.md`](figure-plan.md): the evidence contract replacing pass
-  tables with measured dense matrices and shared-legend model panels.
+- [`literature-map.md`](literature-map.md): the claim-oriented evidence map,
+  strongest competing explanations, falsifiable experiments, and reading queue
+  used to grow the bibliography beyond 50 actually cited works.
 - [`operator-study.md`](operator-study.md): exact shape grids, speedup
   convention, baseline fairness, LaTeX layout, and optimization gate for the
   dense operator table.
 - [`operator_suite.py`](operator_suite.py) and
   [`prepare_operator_case.py`](prepare_operator_case.py): deterministic
-  generation of 416 operator/subgraph cases (216 contraction and Transformer
-  cases plus 200 pointwise/normalization cases), followed by generated-C,
+  generation of 441 operator/subgraph cases (216 contraction and Transformer
+  cases plus 225 pointwise/normalization cases), followed by generated-C,
   independent-weight, correctness, and balanced cross-system manifests for
   every table cell.
 - [`extension-study.md`](extension-study.md): frozen extension protocol,

@@ -25,6 +25,7 @@ ROW_OPERATIONS = (
     "multiply",
     "relu",
     "silu",
+    "gelu",
     "softmax",
     "reduce_mean",
     "rmsnorm",
@@ -201,6 +202,22 @@ def row_case(operation: str, rows: int, width: int) -> tuple[dict[str, bytes], d
             helper.make_node("Sigmoid", ["data"], ["gate"]),
             helper.make_node("Mul", ["data", "gate"], ["result"]),
         ]
+    elif operation == "gelu":
+        sqrt_two = np.asarray(np.sqrt(2.0), dtype=np.float32)
+        one = np.asarray(1.0, dtype=np.float32)
+        half = np.asarray(0.5, dtype=np.float32)
+        initializers += [
+            numpy_helper.from_array(sqrt_two, "sqrt_two"),
+            numpy_helper.from_array(one, "one"),
+            numpy_helper.from_array(half, "half"),
+        ]
+        nodes = [
+            helper.make_node("Div", ["data", "sqrt_two"], ["scaled"]),
+            helper.make_node("Erf", ["scaled"], ["error"]),
+            helper.make_node("Add", ["error", "one"], ["shifted"]),
+            helper.make_node("Mul", ["data", "half"], ["halved"]),
+            helper.make_node("Mul", ["halved", "shifted"], ["result"]),
+        ]
     elif operation == "softmax":
         nodes = [helper.make_node("Softmax", ["data"], ["result"], axis=-1)]
     elif operation == "reduce_mean":
@@ -293,7 +310,7 @@ def all_cases() -> list[tuple[str, tuple[int, ...]]]:
 def case_name(spec: tuple[str, tuple[int, ...]]) -> str:
     operation, shape = spec
     if operation in CONTRACTION_OPERATIONS:
-        return f"matmul-m{shape[0]}-k{shape[1]}-n{shape[2]}"
+        return f"{operation}-m{shape[0]}-k{shape[1]}-n{shape[2]}"
     return f"{operation}-m{shape[0]}-n{shape[1]}"
 
 

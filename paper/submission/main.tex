@@ -7,773 +7,513 @@
 \renewcommand\footnotetextcopyrightpermission[1]{}
 \acmConference[EuroSys '27]{Twenty-Second European Conference on Computer Systems}{April 19--23, 2027}{Rabat, Morocco}
 \acmYear{2027}
-\title[Joggle: Progressive Exposure]{Joggle: Progressive Exposure for Inference Compiler Experiments}
+\title[Joggle: Malleable Compilation]{Joggle: Malleable Compilation for Evolving Models and Machines}
 \author{Anonymous Author(s)}
 \affiliation{\institution{Anonymous}}
 \ccsdesc[500]{Software and its engineering~Compilers}
 \ccsdesc[300]{Computer systems organization~Embedded systems}
 \begin{document}
 \begin{abstract}
-An inference co-design idea rarely fits inside one kernel. A numeric format,
-layout, fused computation, or target primitive must be connected to a source
-model, exposed as editable computation, carried through storage and scheduling
-decisions, and closed into a callable artifact. Production compilers provide
-each capability, but usually across representation and registration boundaries;
-kernel languages provide excellent local control, but begin after several of
-those decisions have already been fixed. Joggle is a compact compiler workbench
-for experiments that deliberately cross these boundaries. Imported calls,
-reusable tensor definitions, explicit loops, storage facts, and artifact calls
-remain states of one typed function representation. Frontends, analyses,
-transformations, capability checks, and emitters are installable typed
-functions rather than privileged host subsystems. A target exposes only the
-function bodies it cannot already accept, and failed edits roll back instead of
-leaving a partially transformed program. We evaluate whether this uniformity survives real models and artifacts rather
-than only small language examples. The current corpus executes ten ONNX models
-through strictly compiled C; a 1,310-node XCiT model infers all 1,333 initially
-unknown results and stops at seven shape-driven positional-embedding calls.
-Matched studies measure extension surface, compiler work, numerical error,
-workspace, artifact size, and latency. A structural MobileNetV2 policy changes
-54 loop bodies and reduces latency by 26.5\% in a same-runner diagnostic, yet the
-result remains 12.24 times slower than one-thread ONNX Runtime. This negative
-result is part of the contribution: Joggle makes a research decision and its
-missing target mechanisms visible in the same executable path. It is not a
-replacement for a production compiler; it is a small control plane for
-building, composing, and measuring cross-layer inference experiments.
+Model--hardware co-design changes more than a kernel. A new representation or
+instruction can simultaneously revise source semantics, tensor structure,
+storage, selection policy, validation, and the deployed artifact. Existing
+compilers make each of these concerns extensible, but usually after a particular
+boundary---dialect, tensor program, kernel, or ISA---has stabilized. During
+co-design, that boundary is itself an experimental variable. Joggle is a lightweight compiler substrate for this period of change. Its
+\textbf{progressive exposure} mechanism preserves one typed program while modules
+selectively reveal tensor, loop, storage, target, and artifact detail. Portable
+and specialized implementations coexist; handwritten rules, search, synthesis,
+and generated policies use the same checked choice interface. The evaluation
+tests whether this design preserves a working model-to-artifact path across
+unforeseen hardware revisions, and whether generic target policies convert that
+continuity into competitive latency and memory use. Current whole-model results
+establish artifact correctness but also expose a substantial generated-code
+performance gap; closing and explaining that gap is a submission requirement.
 \end{abstract}
 \keywords{inference compilation, compiler extensibility, co-design, intermediate representation, edge inference}
 \maketitle
 \section{Introduction}
-A short kernel is often a long compiler experiment. Consider replacing an
-RMS-normalized projection with a packed low-precision implementation on an edge
-processor. The arithmetic may occupy a few lines, but the experiment must also
-identify the source relation, represent the new values and constants, expose a
-legal loop and layout, place or pack storage, select a fallback, and preserve an
-external ABI. If these decisions live in different compiler subsystems, the
-researcher repeatedly translates one hypothesis into several local extension
-mechanisms. The scientific variable is no longer a single piece of code; it is
-the consistency of a change across the stack.
+An accelerator idea is not complete when its kernel runs. Consider a fused
+low-precision projection for an edge processor. To evaluate it in a real model,
+a researcher must identify the source computation, introduce the packed value
+and constant formats, expose the right tensor body, choose loop and layout
+structure, place temporary storage, map the computation to the new instruction,
+retain a fallback, and produce an artifact that an application can call. These
+choices are not independent. Changing the format changes legal loads; changing
+the layout changes packing and tiling; changing the instruction changes the
+artifact interface. The research object is a decision that spans the compiler,
+not a standalone kernel.
 
-MLIR makes such multi-level systems reusable through extensible dialects and
-passes \cite{lattner2021mlir}.
-TVM combines graph optimization, tensor programs, schedules, and target-aware
-search \cite{chen2018tvm}.
-ONNX-MLIR represents ONNX and loop-level computation in distinct dialects
-\cite{jin2020onnxmlir}, while IREE extends an MLIR
-stack through deployment artifacts and runtimes that scale to embedded systems
-\cite{liu2022tinyiree}. These systems target
-capabilities and deployment breadth beyond the scope of a small research
-workbench.
+Production compiler stacks divide this path into specialized representations
+and subsystems. This is a successful design: graph or functional IRs preserve
+model semantics, tensor IRs expose schedulable computation, low-level IRs encode
+memory and target details, and runtimes provide portable deployment.
+\cite{chen2018tvm} own
+evolution from TE and Relay to TensorIR and Relax illustrates why these
+abstractions exist. TensorIR made scheduled tensor blocks directly observable;
+\cite{lai2025relax} lets high-level functions, TensorIR functions, and external calls coexist
+and supports partial lowering. \cite{lattner2021mlir},
+\cite{jin2020onnxmlir}, and \cite{ireeDocs} provide another mature
+answer through dialects, interfaces, conversions, and deployment components.
+The problem is not that these systems have layers. It is that a hardware idea
+whose interface is still evolving can become several coupled extensions owned
+by different layers.
 
-These systems solve deployment at a scale that Joggle does not attempt. The
-question here is narrower: what is the smallest compiler substrate on which a
-researcher can change several decisions together, inspect the resulting
-program, and measure the final artifact? Smallness is not sufficient. A
-single-representation compiler can merely hide the old boundaries in name
-switches, weaken invariants, or emit uniformly poor code. The representation
-must therefore keep typed structure, independent composition, explicit failure,
-and artifact closure while remaining small enough to modify as part of an
-experiment.
+Kernel systems attack another part of the problem. \cite{ragankelley2013halide} separates algorithms
+from schedules. \cite{steuwer2017lift} and \cite{steuwer2022rise} expose typed transformations.
+\cite{ikarashi2022exo} externalizes
+instructions and memories, while \cite{wang2025tilelang} and Triton expose tiled computation
+and hardware mapping. Ansor, \cite{wu2024mirage}, and \cite{kothari2026axon} automate increasingly large
+portions of the search. These systems make local implementations far more
+controllable or efficient than generic compiler code. They do not eliminate
+the surrounding path: a kernel or synthesized instruction still needs model
+semantics, a legal integration point, validation, fallback behavior, and a
+deployable interface.
 
-Joggle tests a simple organizing rule: \textbf{keep the program stable; expose the
-implementation progressively}. Its program state contains only functions,
-blocks, operations, values, structural types, and open attributes. An operation
-can begin as an ONNX call, be retargeted to an inspectable tensor function, and
-be expanded into loops and scalar operations when a consumer needs that detail.
-The objects do not migrate into a second graph, loop, or target IR. Reading a
-model, inferring types, choosing an implementation, editing loops, planning
-storage, and emitting C are explicit function invocations over the same state.
+This boundary matters more as both models and machines evolve. Low-bit formats,
+structured sparsity, parameterized instructions, and heterogeneous memories
+change together. Agentic optimizers add another producer of compiler decisions.
+An agent can propose a schedule or kernel, but reproducible compilation still
+requires a typed input, bounded edit authority, target feedback, a correctness
+oracle, rollback, and artifact provenance. Hard-coding either a new hardware
+vocabulary or an AI chooser into the compiler core makes the next experiment
+depend on the previous abstraction.
 
-This design is influenced by the function and rewrite orientation of Lift
-\cite{steuwer2017lift} and RISE \& Shine
-\cite{steuwer2022rise}, but it does not impose
-a closed data-parallel pattern vocabulary. It also differs from tile-level
-languages such as TileLang, which expose GPU memory, layout, thread binding,
-and scheduling concepts to kernel authors
-\cite{wang2025tilelang}. Joggle leaves such
-concepts to user modules and asks whether the core function representation is
-sufficient to host them. The evaluation must determine where that choice
-succeeds and where a dedicated representation is necessary.
+Joggle starts from a different observation: \textbf{the decisions in a vertical
+inference change share a lifecycle before their interfaces stabilize}. Joggle
+therefore keeps program identity stable while exposing its implementation
+progressively. An imported operation can be related to a reusable tensor
+function, expanded into loops when a transformation needs access structure,
+and replaced by a target call when a capability becomes available. The program
+does not have to migrate wholesale from a graph IR to a loop IR before one
+subgraph can be changed.
 
-The paper makes three contributions:
+The unit of extension is a distributed module of typed functions. A module may
+define portable semantics, a custom type, an analysis, a structural rewrite, a
+target-specific selector, a memory policy, or an emitter. These functions use
+one invocation and composition model, so a general analysis and a specialized
+hardware policy can operate on the same program without a central registry for
+each category. A handwritten rule, bounded search, synthesizer, or agent may
+select the same implementation alternatives. Mutating invocations are
+transactional, and unsupported detail remains visible at a named capability
+frontier.
+
+This design separates \textbf{mechanism generality} from \textbf{implementation maturity}.
+Joggle can express both portable and device-specific policies without requiring
+the core to predict their vocabulary. That does not make every supplied policy
+fast, nor does it reproduce the years of optimization in a production runtime.
+Our evaluation consequently asks two different questions: whether extensions
+remain continuous from model to artifact, and whether target modules can turn
+that continuity into competitive code. A result that reaches an artifact but
+loses performance answers the first question and bounds the second.
+
+This paper makes three contributions:
 
 \begin{enumerate}
 \item
-\textbf{Progressive function representation.} Source relations, reusable tensor
-semantics, structured loops, and artifact-facing calls are observable states
-of one program. Capability queries decide how much implementation to expose;
-no mandatory graph-to-loop conversion owns that transition.
+\textbf{Progressive exposure}, a typed function representation in which imported
+relations, reusable tensor bodies, explicit loops, storage decisions, and
+target calls remain observable states of one program.
 
 \item
-\textbf{A uniform extension boundary.} Source modules define semantic functions,
-analyses, edits, selectors, codecs, and emitters with one typed invocation
-model. Transactional edits, overload resolution, and explicit frontiers keep
-independently distributed extensions checkable.
+\textbf{A uniform, distributable extension model} that hosts general compiler
+mechanisms and specialized hardware policies as typed module functions, with
+capability-directed exposure, checked selection, and transactional edits.
 
 \item
-\textbf{An artifact-centered evaluation.} Frozen extension tasks and conventional
-models measure continuity, composition failure, compiler cost, numerical
-correctness, workspace, code size, and latency. Slowdowns and incomplete
-frontiers remain first-class results rather than being hidden by a support
-percentage.
+\textbf{A cross-layer evaluation methodology} that combines matched extension
+tasks with real model execution, code quality, compiler cost, peak memory,
+artifact footprint, and explicit unsupported frontiers.
 
 \end{enumerate}
 
-The first two contributions are implemented. The third is still being frozen
-for submission; all values identified as pilots remain diagnostic.
+\section{Motivation: the extension boundary is an experimental variable}
+\subsection{One change, several coupled meanings}
+Consider an edge accelerator whose next revision adds a packed low-precision
+projection. At first, the instruction consumes groups of 32 values from an
+aligned scratchpad. After model experiments, the designers add a group-size
+parameter and change the packed-weight layout to avoid bank conflicts. This is
+not merely an instruction-selection edit.
 
-\section{Motivation: a co-design experiment is a vertical change}
-\subsection{The kernel is only one decision}
-Consider adding a fused normalization and low-precision projection to an edge
-processor. In the source model, normalization may be a reduction, square root,
-and elementwise scale followed by a matrix product. The experiment changes at
-least five decisions: which source relations denote the computation; how the
-quantized value and packed constant are represented; which loop, tile, and
-layout expose reuse; where temporary and packed data live; and how the final
-artifact calls the new instruction while retaining a fallback. Changing only
-the kernel answers a different question. If any other decision remains opaque,
-the experiment either silently changes meaning or stops before deployment.
+The model importer must still recognize the intended projection when it appears
+as a fused operation or an equivalent subgraph. A portable semantic body is
+needed for unsupported shapes, differential testing, and hosts without the
+accelerator. The type and constant pipeline must represent scales, grouping,
+packing, and padding. Loop and layout policy must satisfy the new access
+contract. The selector must decide when conversion and transfer are profitable.
+Finally, the artifact must carry packed constants, workspace requirements, the
+external call, and a stable application ABI. Changing the group parameter can
+invalidate every one of these decisions.
 
-Production stacks separate these decisions for good reasons. MLIR supplies
-dialects, interfaces, conversions, and passes; TVM separates model-level
-programs, tensor computation, schedules, and runtime objects; ONNX-MLIR moves
-through source and lower-level dialects; IREE couples its compiler pipeline to a
-deployment runtime. The separation provides reuse and stable ownership. It also
-means that one bounded experiment can cross several independently extensible
-surfaces. We call the end-to-end change a \textbf{vertical experiment}, and a point
-where its intent must be manually re-encoded or reconstructed an \textbf{extension
-discontinuity}. Our concern is not the existence of levels, but the accumulated
-coupling a researcher must own across them.
+Calling this a custom operator is misleading: it names the relation while
+hiding the implementation lifecycle. Calling it a kernel is also incomplete:
+the kernel begins after recognition, representation, fallback, and much of
+deployment have already been decided. The co-design object is the connected
+model-to-machine experiment.
 
-\subsection{Expert control and synthesis still need a common substrate}
-One line of work makes low-level choices economical to author. Halide separates
-algorithm from schedule; Lift and RISE make typed parallel patterns and rewrite
-strategies explicit; Exo externalizes instructions, memories, and schedules;
-TileLang exposes tiled data movement, layout, and thread mapping. These systems
-demonstrate that useful control requires more than printing loops. They start,
-however, after the kernel computation and target-facing vocabulary have been
-chosen; they do not carry a new model relation, numeric format, fallback, and
-exported ABI through an entire inference artifact.
+\subsection{Strong systems make different boundaries programmable}
+Existing systems cover the required capabilities, but organize them around
+different stable boundaries. \cite{lattner2021mlir} makes dialects, interfaces, conversions, and
+passes reusable across levels; \cite{jin2020onnxmlir} uses those mechanisms to connect model
+semantics to native code and accelerator plugins. \cite{lai2025relax} lets graph functions,
+TensorIR functions, and external library calls coexist, preserves symbolic
+shape information, and supports partial lowering. These systems refute the
+claim that multi-level compilation necessarily loses composition.
 
-A second line automates the choices. Ansor searches generated tensor programs;
-Mirage jointly explores algebraic, block, and thread-level alternatives; Axon
-derives instruction sketches from tensor semantics, combines them with tiling
-and fusion, and checks equivalence. Their results are strong evidence that a
-fixed library of hand-written rewrites leaves performance unused. Automation
-does not remove the surrounding boundary: it still consumes semantics and
-capabilities, produces a selected implementation, and needs a fallback and an
-artifact interface. A workbench should therefore let an expert rule, a bounded
-search, or an Axon-like synthesizer control the same represented decisions. It
-should not force one choice mechanism into the compiler core.
+Kernel-oriented systems choose a later boundary. Halide separates algorithm
+from schedule. TensorIR makes blocks and schedule effects directly observable.
+\cite{wang2025tilelang} exposes tiled dataflow with scheduling annotations, while \cite{ikarashi2022exo} moves
+instructions, memories, configuration state, and trusted scheduling policy into
+user libraries. These systems refute the claim that target control requires
+modifying a monolithic compiler.
 
-\subsection{Edge inference turns abstraction loss into a performance cliff}
-An edge runtime's supported path is deliberately narrow and highly optimized.
-A new operator, value format, layout, ABI, or instruction can leave that path;
-runtime-specific registration restores performance only after the experiment
-is recast in that runtime's extension model. Portable ahead-of-time C has the
-opposite strength: it is inspectable and easy to connect to an unfamiliar tool
-chain, but exposing computation without locality, packing, vector, or external
-kernel decisions yields poor code.
+Automation moves the boundary again. \cite{jain2026act} derives sound, complete tensor-
+accelerator backends from parameterized ISA semantics, including instruction
+selection and scratchpad allocation; \cite{gao2026atlaas} recovers such tensor semantics from
+RTL. \cite{wu2024mirage} and \cite{kothari2026axon} search across algebra, fusion, layout, tiling, and target
+instructions. \cite{wang2024ladder} jointly treats evolving low-precision types, storage,
+access, conversion, and hardware-aware schedules. These systems refute the
+claim that a handwritten module is inherently the most agile solution.
 
-Our current artifact makes this trade-off measurable. A source module can
-discover affine loop structure and change a MobileNetV2 body without an
-operator-name case, yet the resulting C remains 12.24 times slower than
-one-thread ONNX Runtime on the adjacent shared-runner observation. Conversely,
-a newly exposed contraction body permits one generic loop interchange to remove
-most of a scalar-loop loss in a development-host diagnostic, while still
-remaining far behind the production matrix path at larger shapes. The lesson is
-not that portable C or openness is sufficient. It is that an extensible system
-must preserve enough structure for target-owned locality, packing,
-vectorization, library selection, and profitability decisions—and must report
-when those decisions are absent.
+The distinction is therefore not “Joggle is unified while prior systems are
+fragmented.” Each prior system deliberately stabilizes a useful interface. The
+open case is the period in which a research team does not yet know which
+interface should stabilize.
 
-\subsection{Design requirements and falsifiable claim}
-The observations above imply four requirements. \textbf{Continuity:} imported calls,
-reusable tensor bodies, explicit loops, storage facts, and artifact calls must
-remain inspectable states of one program rather than disconnected snapshots.
-\textbf{Replaceability:} a manually written rule and an automatic chooser must be
-able to select the same decision without changing the host compiler.
-\textbf{Explicit frontier:} unsupported semantics or capabilities must stop at a
-named boundary rather than disappear into fallback code. \textbf{Artifact closure:}
-the selected decision must survive into a callable artifact whose correctness,
-workspace, compile cost, size, and latency can be measured.
+\subsection{Temporal coupling is the cost to remove}
+We call the resulting cost \textbf{temporal coupling}: a revision to one experimental
+decision forces synchronized changes across separately represented contracts.
+The symptom is not the number of source files or IRs. It is that a previously
+working semantic fallback, target mapping, validator, or artifact becomes
+invalid even though the research team intended one conceptual revision.
 
-Joggle tests whether a progressively exposed typed function representation and
-distributable module functions can satisfy these requirements for bounded
-neural-inference co-design experiments. The claim is falsified if uniformity
-merely moves operator or target cases into the host, independently installed
-modules do not compose, modern workloads remain opaque, or the exposed bodies
-cannot support competitive target-aware code. Section 5 turns continuity,
-extension boundary, composition, and artifact quality into four separate
-evaluation questions; source brevity alone is never treated as evidence.
+This cost matters beyond novel accelerators. Low-bit formats evolve with pack
+layouts and conversion kernels; structured sparsity evolves with metadata and
+load instructions; attention variants evolve with KV-cache formats and dynamic
+scheduling. In each case, portable and specialized paths must coexist while the
+system is still being measured. Edge deployment makes failures especially
+visible because code size, workspace, determinism, and fallback cannot be
+hidden behind a large runtime.
 
-\section{Design}
-\subsection{One progressive function representation}
-Malleability is not used as a synonym for configurability. For one installed
-module and one input program, we require three observable properties. First,
-the module discovers candidates through typed structure rather than frontend or
-operator-name cases. Second, it can replace the selected decision through the
-same public \nolinkurl{Fn}/\nolinkurl{Blk}/\nolinkurl{Op}/\nolinkurl{Val} API used by other modules. Third, the edited
-program either reaches an executable artifact with the change intact or fails
-at an explicit capability boundary. The extension study measures native
-registrations and core changes, the composition study exercises transactional
-failure, and the model study checks the artifact boundary. These are the paper's
-tests of malleability; source brevity alone is not one.
+AI-generated optimizers strengthen rather than remove this requirement. An
+agent can propose a kernel or schedule, but reproducible compilation still
+needs typed inputs, bounded edit authority, target feedback, legality checks,
+an oracle, rollback, and artifact provenance. “AI-friendly” is consequently a
+stress test for the compiler control plane, not Joggle's primary claim.
 
-The representation has seven public concepts: \nolinkurl{Mod}, \nolinkurl{Fn}, \nolinkurl{Blk}, \nolinkurl{Op}, \nolinkurl{Val},
-\nolinkurl{Ty}, and \nolinkurl{Attr}. Calls and structured control flow are operations; tensor
-shapes and numeric formats are structural types; source-schema fields and
-target facts are open attributes. This is not a claim that every compiler
-should use one IR. It is a testable constraint intended to keep a co-design
-experiment readable while it moves from model-scale dataflow toward explicit
-computation.
+\subsection{Hypothesis and measurable predictions}
+Joggle tests whether \textbf{progressive exposure} can preserve evolution continuity.
+A relation begins as a typed call. A module exposes tensor, loop, storage, target,
+or artifact detail only when a consumer needs it, while portable and specialized
+alternatives remain attached to the same program state. Typed module functions
+also provide one checked invocation boundary for handwritten policy, bounded
+search, synthesis, and generated proposals.
 
-\subsection{Semantics are executable functions}
-A frontend decoder preserves source operators and metadata. A separate bridge
-can retarget a source call to a shared function once its schema conditions are
-met. The shared function has a typed body, so a later pass can inspect the call,
-replace it with another compatible implementation, or expand its body into the
-caller. The artifact target handles only scalar, memory, call, and control-flow
-forms. For example, variadic ONNX Min and Max are first converted into binary
-chains of ordinary broadcast-capable \nolinkurl{nn.minimum} and \nolinkurl{nn.maximum} functions;
-the C emitter has no Min, Max, or ONNX case.
+This mechanism predicts more than concise syntax. Under an unforeseen hardware
+revision, a Joggle extension should preserve its fallback and application ABI,
+avoid unrelated host-core edits, localize invalid contracts, and revalidate the
+complete artifact. Replacing a handwritten chooser with search or an agent
+should not create a second execution path. A generic target policy should
+improve multiple operators and full models without matching frontend operator
+names.
 
-\subsection{Extensions are module functions}
-A module is a source package with typed functions, dependencies, visibility,
-and optional native bindings. Metadata selects functions for conventions such
-as inference or conversion, but it does not create a second pass language.
-Read-only queries, mutating transforms, decoders, and artifact functions share
-the invocation model. The study will test whether this uniformity reduces the
-surface and coupling of matched extensions or merely shifts complexity into
-module code.
-For structural transforms, an edit of one operation returns its replacement
-\nolinkurl{Op}, while a whole-module traversal returns only whether it changed the
-module. This lets a source policy compose checked edits directly without a
-second result abstraction, metadata marker, or module rescan.
-Helpers may separately promise snapshot-relative referential transparency with
-a \nolinkurl{memo} attribute. Scalar values, types, IR capabilities, and recursive lists
-participate in cache keys. Capability identity includes handle generation and
-the owning store revision; result capabilities retain the same revision
-dependencies, and an invocation that changes an input store is not cached.
-The cache remains local to one top-level invocation, avoiding process-global
-analysis state while permitting repeated structural queries within an
-unchanged snapshot. Deterministic reports count both source-function
-invocations and memoized returns; this makes repeated module-level analysis
-visible without adding timings to the reproducible report.
+The hypothesis fails if Joggle only moves switches into module files, if uniform
+functions obscure errors that specialized IRs catch earlier, if modules cannot
+compose independently, or if transparent artifacts remain impractically slower
+than production runtimes. Section 5 evaluates these outcomes separately; a high
+import count cannot compensate for failed evolution or poor generated code.
 
-Structural transformations also expose policy-facing queries before mutation.
-The affine access query accepts ordinary integer expressions rather than an
-operator descriptor. Besides coefficient-wise exact affine arithmetic, it can
-use static half-open loop ranges to prove that an integer quotient is constant.
-This recognizes grouped and tiled addresses such as \nolinkurl{m / 160} for
-\nolinkurl{m in 0..160}, while rejecting a quotient that varies over the represented
-iteration box. The rule is independent of frontend and callee name.
-For scalar promotion, \nolinkurl{tile.scalar_cost} returns zero for an illegal candidate
-and otherwise reports lane count times recursive source-body operation count.
-The example blocking policy can enforce a whole-invocation duplication limit
-before applying split, reorder, or scalarize. This metric is deliberately a
-target-neutral proxy rather than a claim to predict emitted bytes or latency;
-the evaluation must determine whether it is informative enough for useful
-selection.
+\section{Progressive exposure}
+\subsection{One program, increasing implementation detail}
+Joggle programs contain seven public concepts: modules, functions, blocks,
+operations, values, structural types, and open attributes. There is no separate
+graph object, schedule tree, pass class, or target node in the host. Calls and
+structured control flow are operations. Tensor shape and numeric format are
+types. Source schema fields, target facts, and analysis results are attributes
+only when they are properties of represented objects rather than hidden global
+state.
 
-Storage and artifact policy remain separate module functions. \nolinkurl{mem.separate}
-proves a deliberately narrow call-site relation from planned slots and
-immutable payloads. The C module can consume that fact across every call to a
-private function before strengthening its definition; one unclassified or
-repeated pointer rejects the contract, and exported entries are never inferred.
-The proof neither introduces a memory IR nor gives C semantics to the planner.
+Progressive exposure changes a function body, not the identity of the program.
+The running projection begins as a source call. A source module relates it to a
+reusable tensor function after checking the source schema. The function may
+remain abstract while graph-scale transformations operate on calls. A consumer
+that rejects the abstract call requests more detail, causing the semantic body
+to be instantiated as explicit loops and scalar operations. A target policy may
+rewrite those loops or replace the call with a compatible external
+implementation. At each state, ordinary IR inspection can observe what is
+present and what remains opaque.
 
-\subsection{Capability-driven exposure and failure}
-Targets publish an ordinary predicate over operations. Exposure repeatedly
-expands or selects implementations until the target accepts the program or a
-fixed point leaves an explicit frontier. Mutating invocations are transactional:
-failure must not expose a half-rewritten program. Partial ONNX models are
-therefore reported by stage and remaining source calls rather than counted as
-supported end to end.
+The invariant is not that all abstraction levels are equally convenient.
+Rather, every exposed state remains a typed function program accepted by the
+same verifier and edit API. Specialized modules may establish stronger local
+contracts, but crossing that contract does not require moving the whole model
+into another host representation.
 
-Alternative implementations are ordinary overloaded functions. A read-only
-module policy can inspect one compatible candidate or the complete compatible
-set and can receive an ordinary configuration dictionary. The compiler checks
-that a selector returns at most one member of that set. Thus a resource budget
-can alter choices at individual call sites without adding a target class or an
-operator-specific compiler branch; whether this interface is sufficient for a
-useful co-design study remains an evaluation question.
+\subsection{Capability-directed exposure}
+A target is represented by an ordinary predicate over operations. Preparation
+walks reachable functions and asks whether the target accepts each operation.
+Accepted operations remain intact. A rejected call may select a compatible
+implementation or expose its current body. The process reaches either a fixed
+point accepted by the target or an explicit frontier containing the remaining
+operations and their types.
 
-\subsection{Artifact interfaces are derived, not duplicated}
-The C target derives public symbols from qualified source functions, preserves
-valid parameter and value names, and reserves compiler-generated stems for
-anonymous temporaries and storage slots. Its source, header, and structured API
-descriptor use the same naming and signature functions. The descriptor records
-the C representation class, shape, byte count, pointer passing, and optional
-weight payload for every exported entry. The application test generates its
-allocation, call, comparison, and timing harness from that descriptor, including
-multiple tensor inputs and outputs; it does not maintain a second model ABI in
-handwritten C.
+This rule supports mixed implementation strategies. A mature matrix operation
+may remain an external library call, a custom packed projection may select a
+device module, and an uncommon elementwise computation may expose into portable
+loops in the same artifact. The target does not require the model to undergo
+one global lowering event before these choices can differ.
 
-\section{Implementation}
-Joggle's host implementation is a C++20 library with a public embedding API
-and a small command-line driver. The host owns parsing, immutable type and
-attribute values, IR storage, verification, overload resolution, module
-loading, and transactional invocation. It does not contain a neural-network
-operator enumeration or target-specific lowering table. Handles carry store
-identity, numeric identity, and generation; edits reject foreign, stale, or
-non-dominating values before changing the module. Successful changes advance a
-store revision, which also bounds snapshot-relative analysis memoization.
+\subsection{Modules are the extension boundary}
+A module is a versioned source package with typed functions, dependencies,
+visibility, and an optional native codec or binding. Metadata may mark a
+function for discovery, but it does not introduce a second object model. A
+frontend decoder, type inference rule, analysis, transformation, selector,
+memory planner, and emitter are invoked through the same typed call mechanism.
 
-Most compiler behavior is written in the same \nolinkurl{.jog} language presented to an
-extension author. Bundled modules supply scalar and tensor semantics, ONNX and
-TFLite bridges, conservative bounds, structural loop transforms, storage
-planning, a deterministic virtual machine, and C artifact generation. A module
-is a directory containing one entry source, optional source fragments,
-and at most one optional native library. Dependency closure and visibility are
-derived from \nolinkurl{use} declarations; a generated header, dialect table, or pass
-registry is not part of the module contract.
+This uniformity is what allows general and specialized code to compose. A
+target-independent access analysis can discover affine structure in an exposed
+body. A device module can consume that result to choose a tile or instruction.
+A different module can replace the chooser with search or synthesis without
+changing the analysis, IR, or artifact contract. New source formats similarly
+stop at their bridge module; shared tensor functions and targets do not acquire
+frontend operation names.
 
-External formats are deliberately split at the transport boundary. Optional
-native codecs decode protobuf or FlatBuffer bytes while preserving source
-symbols and attributes. Source bridge modules perform type refinement and
-semantic conversion explicitly. Consequently, adding another frontend does
-not require adding its operation names to \nolinkurl{nn}, \nolinkurl{tile}, or the C emitter. The
-same rule applies at the other end: the C and VM modules publish ordinary
-capability predicates, preparation functions, and artifact functions.
+\subsection{Checked choice and transactional change}
+Alternative implementations are overloaded functions with structural types.
+A selector receives the compatible set and may return at most one member. The
+selection mechanism does not prescribe whether the choice is a static rule,
+cost model, empirical search, solver, or agent. It does prescribe its authority:
+the candidate must be type-compatible, and the resulting program must pass the
+same verification and target capability checks.
 
-The test suite exercises the command-line and embedding paths, module
-installation, native-module loading, malformed input, transaction rollback,
-stale handles, structural edits, generated C execution, VM execution, and
-optional ONNX/TFLite paths. Linux and macOS clean builds and a Linux
-AddressSanitizer/UndefinedBehaviorSanitizer configuration run in continuous
-integration. Large model artifacts remain checksum-pinned external inputs and
-are excluded from the default CI path; the evaluation scripts must therefore
-record explicitly which optional gates were available.
+Mutating module calls execute transactionally. Foreign or stale handles,
+non-dominating values, invalid types, and failed verification abort the
+invocation and restore the prior program. This property matters for generated
+policies and multi-step structural transforms: a failed candidate does not
+leave a partially rewritten module for the next candidate or emitter.
+
+\subsection{Artifact closure}
+An experiment is complete only when the chosen decisions reach an artifact.
+Artifact modules therefore consume the same represented program and derive
+external interfaces from exported functions. The C path derives source,
+declarations, symbols, buffer shapes, byte counts, and immutable payloads from
+one signature model. The application harness consumes the generated descriptor
+rather than maintaining a second handwritten ABI. A deterministic virtual
+machine provides an independent execution path for semantic and transformation
+tests.
+
+Artifact closure exposes rather than hides missing target work. Portable scalar
+C is a legal fallback, but its latency reveals absent tiling, packing,
+vectorization, library selection, or profitability policy. Those mechanisms can
+be added as target modules and evaluated on the same model path.
+
+\section{System}
+Joggle's host is a C++20 library with a textual module language and embedding
+API. The host owns parsing, immutable structural types and attributes, IR
+storage, verification, overload resolution, module loading, transactional
+invocation, and deterministic printing. It contains no neural-operator
+enumeration, schedule vocabulary, or target lowering table.
+
+Bundled modules provide scalar and tensor semantics, ONNX and TFLite bridges,
+structural loop and access analyses, memory planning, C emission, and virtual
+machine execution. Optional native codecs decode protobuf and FlatBuffer bytes
+into source calls without adding their names to the tensor or target modules.
+The same separation applies to artifacts: target modules publish capability,
+preparation, and emission functions instead of host subclasses.
+
+Handles carry store identity and generation. Successful edits advance a store
+revision; invalid or stale references are rejected. Read-only module functions
+may opt into revision-scoped memoization, allowing repeated structural queries
+without process-global analysis state. The implementation runs cleanly under
+Linux and macOS CI, including address and undefined-behavior sanitizers; large
+model artifacts are checksum-pinned outside the default repository.
 
 \section{Evaluation}
-\subsection{Experimental method}
-We use three protocols, each aligned with a research question and each kept
-separate from its results. First, the model study measures progressive
-representation (RQ1) with checksum-pinned ONNX Model Zoo subjects. For every
-available model, the harness records four ordered gates: protobuf decoding and
-canonical round trip, result-type inference, source-call conversion, and
-semantic round trip. A model passes only the gates it actually reaches; a model
-missing from the configured cache is omitted rather than counted. A separate
-execution gate compiles generated C with strict C11 warnings and compares one
-fixed input against the stored Zoo output. This is a test of the compiled
-numerical path, not dataset accuracy or general operator coverage.
+The evaluation is organized around four questions. Every numerical result must
+come from a clean revision, preserved model and input hashes, an explicit host
+and thread contract, correctness validation, balanced trial order, and raw
+samples. Unsupported, not run, and measured zero are distinct states.
 
-Second, the extension study measures the structural surface of co-design
-changes (RQ2 and RQ3). Before implementing a comparison, we freeze its input,
-observable requirements, oracle, counted files, and forbidden shortcuts. The
-four tasks replace a matrix implementation, define a structural scheduling
-policy, connect external matrix and convolution kernels, and add a parametric
-saturating integer format. Joggle and each comparison system must follow their
-documented extension path. We retain authored nonblank, non-comment lines,
-files crossed, generated definitions, native registrations, build changes,
-dependencies, artifacts, and diagnostics. A failed mandatory requirement is
-reported as unsupported; we neither weaken the task nor substitute a smaller
-standalone example. These measurements expose extension boundaries, but do not
-measure developer time, comprehension, or usability.
+\subsection{RQ1: Does progressive exposure survive real models?}
+The model study uses official or publisher-hosted ONNX and TFLite artifacts from
+four workload families: mobile classification, detection, convolutional
+backbones, and transformer vision. It records decoding, type inference,
+semantic relation, exposure, target preparation, strict compilation, and oracle
+execution as separate gates. This avoids calling a parsed model supported or an
+inferred model executable.
 
-Third, the artifact study measures RQ4 with schema-2 manifests that name one
-Joggle artifact and one independently implemented ONNX Runtime subject. Each
-command performs three untimed warm-ups, times one inference, validates its
-output, and exits; the runner launches a fresh process for each subject in each
-of 20 trials. Rotated and reversed ordering balances position over complete
-cycles. Both subjects receive one-thread environment settings and, on Linux,
-are pinned to the same available CPU. The runner rejects malformed protocol
-rows, validation failure, a dirty checkout, or unavailable affinity, and
-records compiler/runtime versions, commands, host state, artifact hashes, and
-raw samples. We report medians because the present shared-runner records are
-diagnostic; publication measurements additionally require an identified idle
-host, an explicit load threshold, stable power and thermal conditions,
-dispersion, and independent-machine replication.
+The current artifact executes ten ONNX models through strict C and validates one
+TFLite MobileNetV2 path against LiteRT. XCiT-Tiny contains 1,310 nodes and 1,333
+initially unknown results; Joggle infers all of them and currently stops with
+four \nolinkurl{Expand} and three \nolinkurl{Tile} calls in positional-embedding shape computation.
+This is a transformer representation result, not a transformer execution claim.
+The final study will report executable models and structural frontiers in
+separate groups.
 
-The generic MobileNetV2 policy is a within-workflow ablation, not an
-independent-system comparison. One workflow creates plain and transformed C
-from the same canonical program, verifies both against the same stored output,
-then runs each artifact in a separate balanced manifest beside ONNX Runtime on
-one pinned CPU. This design attributes the within-run artifact difference to
-the checked-in transformation under the recorded build and input contract; it
-does not make Joggle competitive with ONNX Runtime or control the shared host.
+\subsection{RQ2: How cheaply can a vertical extension be created and revised?}
+The study first measures bootstrap closure from a pinned clean environment:
+dependencies, downloaded and built bytes, wall time, peak disk, commands, and
+the first inspectable model. These quantities explain researcher friction but
+are not the main result; mature ecosystems legitimately spend more to provide
+more capabilities.
 
-\subsection{Compatibility and correctness}
-The repository currently records pilots, not publication measurements. Ten
-ONNX models execute against stored reference outputs. TinyYOLOv3 retains a
-type frontier and SSD-MobileNetV1 retains 386 source calls after conversion.
-Across executed models, the stored maximum absolute differences range from
-approximately \nolinkurl{1.34e-7} to \nolinkurl{2.10e-5}. These checks establish numerical paths,
-not task-level accuracy.
+The central experiment then implements one complete extension containing source
+recognition, portable semantics, a parameterized packed representation,
+structural policy, external target primitive, selector, validation, and
+artifact behavior. Joggle, TVM/Relax, and ONNX-MLIR/MLIR use their documented
+native paths. After every implementation passes the same oracle, two revisions
+that were withheld from the implementer change the primitive parameterization
+and the scratchpad/packing contract.
 
-The structural compatibility record is generated directly from pinned Zoo
-tests rather than transcribed from test output. Ten models complete semantic
-conversion and canonical round trip. TinyYOLOv3 retains 219 unknown results
-after inference; SSD-MobileNetV1 infers all result types but retains 386 source
-calls after conversion. The source-call reduction comes from shared
-broadcast-capable comparison functions, a maximum/minimum Clip composition,
-and a generic tensor-tiling function reached through source-semantic mappings.
-XCiT-Tiny exercises a different path: all 1,333 initially unknown results are
-inferred across its 1,310 nodes, including trigonometric positional encoding,
-broadcasted selection, reductions, and LayerNormalization. Conversion leaves
-seven dynamic positional-embedding calls (four \nolinkurl{Expand}, three \nolinkurl{Tile}). None
-of these additions introduces an ONNX case in the target emitter. Models absent
-from the configured cache are omitted, not counted as passes. Structural
-completion is kept separate from the ten-model numerical execution claim above.
+The primary evidence is a full-width evolution table and aligned change-path
+diagram. For each initial implementation and revision it records host and
+extension files changed, independent contracts coordinated, central
+registrations, build obligations, invalidated artifacts, preserved fallback,
+diagnostic location, compile time, and final correctness. Lines of code remain
+secondary and are never collapsed into an “ease” score. The static four-task
+study is retained as supporting coverage, not promoted as the core novelty.
 
-DenseNet exposes both progress and a compiler-scaling boundary. After
-conversion and selection of the then-current out-of-tree spatial
-implementation used by smaller models, its 65,429,147-byte IR did not complete
-\nolinkurl{c.prepare} within a 600-second pilot cutoff at revision \nolinkurl{741b972}. Replacing
-repeated block scans
-with block-local indexing and batching exposure edits reduced the same
-single-run pilot to 271.92 seconds at revision \nolinkurl{d09571a}. The resulting strict
-C agrees with the official stored output within \nolinkurl{7.6293945e-6}, making
-DenseNet the tenth executed ONNX model. Its unisolated median remains 574.763
-ms versus 19.673 ms for one-thread ONNX Runtime, an approximately 29.2x gap.
-Neither the single compiler timing nor the latency rows are publication-grade;
-preparation scaling and generated-code quality remain open problems.
+\subsection{RQ3: Can target modules improve complete artifacts?}
+The kernel study contains 441 deterministic ONNX cases. A 25-column matrix
+covers Add, Multiply, ReLU, SiLU, GELU, Softmax, ReduceMean, RMSNorm, and
+LayerNorm. A 27-column matrix covers MatMul, MatMul+Add, MatMul+ReLU,
+Softmax+MatMul, RMSNorm+MatMul, SiLU+MatMul, SwiGLU, and QKV projection.
+Convolution uses a separate shape grammar for standard, pointwise, depthwise,
+fused activation, and pooling cases. Every table cell is the same ratio:
+baseline median latency divided by Joggle median latency. Row groups compare
+one-thread ONNX Runtime, TVM, and ONNX-MLIR on identical inputs; LiteRT appears
+only for an identical TFLite artifact.
 
-The compiled application gate now checks that generated model source, public
-header, structured API, and generated harness agree under strict C11 warnings.
-The harness mechanism has compiled for both the official MNIST application and
-a two-input/two-output interface. This establishes interface consistency, not
-broader model execution or performance.
+Kernel matrices locate profitable shape regions; they do not replace model
+results. The whole-model study keeps one model order across four aligned panels:
+inference latency, peak RSS or planned workspace, compile/load time, and
+artifact footprint. A compact adjacent table reports absolute values,
+numerical error, and task metric. Mobile CNN, detection, ViT-class, and compact
+language or attention models appear only when their complete paths execute.
 
-\subsection{Compiler cost}
-Compiler-side scaling has a concrete mechanism pilot but not yet a formal
-result. Snapshot-relative memoization binds IR handles to their generation and
-owning-store revision, rejects insertion when a call edits an input store, and
-revalidates result-store dependencies at each hit. On the exact-split
-MobileNetV2 \nolinkurl{spatial.block} path, a mechanically stripped control and the
-checked-in candidate emitted byte-identical IR in four alternating processes.
-Deterministic source calls fell from 2,939,981 to 1,272,463; two-run wall-time
-medians were 42.099 and 28.341 seconds. The host was not isolated and the sample
-is too small for a performance claim. The result currently establishes a safe
-ablation path and identifies repeated structural analysis as measurable work.
-The later UltraFace block experiment exposed a separate quadratic CSE lookup:
-each candidate scanned the complete preceding module prefix before testing
-block ownership. Indexing the unchanged equivalence fields per \nolinkurl{Blk} reduces a
-single \nolinkurl{opt.basic} diagnostic from 244.26 to 11.28 seconds while producing
-byte-identical IR and the same 597 edits. This is a mechanism check from one
-unisolated run, not a compiler-throughput result; it also demonstrates why
-end-to-end model bodies, rather than only small extension fixtures, belong in
-the evaluation.
-The same path exposed a path-sensitive affine-analysis key: including the
-complete DFS history prevented shared SSA address expressions from reusing a
-result. Keying by the verified acyclic SSA value instead, together with
-revision-aware loop-local access caches, reduces recursive affine calls from
-254,955 to 145,171 and one \nolinkurl{spatial.block} diagnostic from 40.30 to 28.71
-seconds. Both variants perform 15,877 edits and emit byte-identical IR. This is
-also a one-run mechanism diagnostic; controlled repetitions remain required.
+The current general loop policy rewrites 54 affine-proved MobileNetV2 bodies and
+reduces generated-C latency by 26.5\% in a same-runner diagnostic. The result
+remains 12.2x slower than one-thread ONNX Runtime. This identifies the next
+required mechanisms: multi-level tiling, immutable-weight packing, vector and
+alignment contracts, library or target-instruction selection, and a
+traffic-aware fusion policy. Publication results require these mechanisms to be
+selected through the public module interface and evaluated on more than one
+operator or model.
 
-A deterministic MobileNetV2 structural check exposed a separate coverage
-boundary in the affine proof. Coefficient-wise division alone recognized 17
-reorderable contraction loops, all on the depthwise path. Adding the
-range-proven constant-quotient rule recognizes 54 loops, including the
-pointwise 1x1 path, without an ONNX or Conv condition. Reordering all recognized
-loops preserves the official output with maximum absolute difference
-\nolinkurl{2.09808349609375e-5} under strict generated C. This is a legality and coverage
-result, not a latency result. The existing scalar-blocking example takes more
-than four minutes when its primitive peel edits each trigger a hidden
-whole-module cleanup. Moving cleanup to the composing policy boundary makes a
-bounded 4,000-unit structural run complete in 40.52 seconds, including cleanup,
-planning, placement, and C emission, on the development host. Its generated C
-remains a negative latency diagnostic, so the reproducible Linux policy run now
-evaluates the lightweight reorder rather than presenting scalar blocking as an
-optimized artifact.
+\subsection{RQ4: What does the flexibility cost?}
+We separate host compilation, module interpretation, analysis, exposure,
+transformation, storage planning, source emission, native compilation, and
+runtime loading. Model size and number of exposed operations are independent
+axes. Ablations measure revision-scoped memoization, indexed structural
+queries, and transactional rollback without presenting one Joggle variant as a
+system baseline.
 
-Source emission exposed a third repeated-work boundary on the placed UltraFace
-IR. The original external-payload path rescanned the full operation sequence
-for each of 240 constants, while ABI, type, and naming queries were repeatedly
-interpreted despite an unchanged snapshot. Building one value-keyed payload
-layout and applying the existing revision-aware memo contract to pure queries
-reduces a report-enabled run from 191.51 to 38.65 seconds. The number of
-interpreted source-function bodies falls from 2,099,082 to 237,342 after memo
-hits, and both variants emit byte-identical 329,117-byte C. This is a
-single-host mechanism diagnostic, not a controlled compiler-throughput claim.
-
-\subsection{Artifact quality}
-Generated C is presently the main negative result. Depending on the model, the
-recorded unisolated pilots are about 7--101 times slower than one-thread ONNX
-Runtime. Internal A/B runs of structural rewrites are therefore excluded from
-the primary performance evidence: comparing two Joggle variants can validate
-that a pass changes real function bodies and preserves results, but cannot show
-that Joggle is competitive. Those diagnostics establish three narrower facts.
-First, one operator-independent loop policy rewrites canonical bodies across
-MobileNetV2, SqueezeNet, and UltraFace. Second, a structural budget bounds code
-replication before mutation. Third, call-site analysis can prove private
-non-aliasing without adding an operator case when such calls remain after
-specialization. The standard MobileNetV2 path contains only its exported entry,
-so that analysis correctly makes no change there. The repository retains raw
-internal records for regression and ablation, but the paper's performance
-table will compare independent systems on identical model, input, thread, and
-correctness contracts while recording each system's compiler and runtime
-versions.
-
-This gap is not mysterious and should not be normalized as the cost of
-malleability. The present backend emits portable scalar loops. It has no mature
-weight packing, cache blocking, SIMD code selection, target-tuned kernel
-library, or empirical schedule search. In contrast, the production runtime is
-itself an optimized execution system, not a neutral C interpreter. We have not
-yet completed matched throughput measurements against TVM or ONNX-MLIR, so the
-paper makes no claim about their ordering. The conservative expectation is that
-a tuned TVM path, and any ONNX-MLIR path that obtains stronger loop/vector or
-library code, will also beat the current artifact. The planned operator study
-will locate the loss across 25 two-dimensional, 27 contraction, and separate
-convolution shapes before choosing general tiling, packing, vectorization, and
-target-feedback mechanisms.
-
-A clean same-job Linux diagnostic also separates fusion legality from
-profitability. Starting from byte-identical MobileNetV2 canonical IR, greedy
-\nolinkurl{tile.fuse} reduces represented loops from 156 to 110 and external-weight C
-from 192,209 to 188,244 bytes, but raises the generated-C median from 356.360
-to 384.927 ms over 20 fresh-process observations. Adjacent one-thread ONNX
-Runtime medians are 10.359 and 10.447 ms. Both generated artifacts pass the
-same 1,000-element oracle and use byte-identical weights. This shared-runner
-result does not establish a controlled latency effect, but it rejects loop
-count and source size as sufficient profitability criteria and keeps selection
-in a target-owned module policy rather than the legality rewrite.
-
-A separate second-frontend study starts from the official floating-point
-TFLite MobileNetV2 FlatBuffer rather than converting the ONNX subject. Joggle
-decodes 107 constants and 66 source calls, relates and exposes every selected
-call, emits 126,178 bytes of C plus a 13,956,388-byte weight payload, and plans
-three workspace slots containing 2,860,032 \nolinkurl{f32} elements. The strict C11
-artifact agrees with the 1,001-element LiteRT 2.2.0 oracle within
-\nolinkurl{1.0132789611816406e-6}. On one pinned Intel Xeon Platinum 8370C shared runner,
-20 balanced fresh-process trials have medians of 225.667 ms for generated C and
-6.424 ms for one-thread LiteRT with its default XNNPACK CPU delegate, a 35.13x
-gap. This is evidence that the TFLite path reaches a correct executable and a
-second negative runtime comparison. It is not pooled with ONNX Runtime because
-the serialized model and production stack differ, and it is not controlled-host
-performance.
-
-Table 1 reports two independently dispatched system runs. Each subject runs in
-a fresh process under a one-thread contract, and each cell is the median of 20
-trials. The generated model, input, weights, reference, and executable have
-identical hashes across CPU classes, and every stored-output check passes.
-
-\begin{table*}[t]
-\centering
-\scriptsize
-\caption{Independent-system Linux diagnostics (median milliseconds)}
-\label{tab:independent-system-linux-diagnostics-median-milliseconds}
-\begin{tabularx}{\textwidth}{@{}lXXXX@{}}
-\toprule
-CPU class & Model & Joggle C & ONNX Runtime & Joggle / ORT \\
-\midrule
-AMD EPYC 7763 & MobileNetV2 & 167.315 & 10.346 & 16.17x \\
-AMD EPYC 7763 & MNIST & 0.530 & 0.050 & 10.55x \\
-Intel Xeon 8370C & MobileNetV2 & 173.787 & 7.345 & 23.66x \\
-Intel Xeon 8370C & MNIST & 0.570 & 0.054 & 10.59x \\
-\bottomrule
-\end{tabularx}
-\end{table*}
-
-The cross-CPU results reproduce correctness and the negative performance
-boundary, not one stable slowdown factor. Table 2 instead measures the generic
-MobileNetV2 policy within each workflow execution on one pinned CPU. Reordering
-54 affine-proved bodies and canonicalizing their index trees reduces generated
-source from 192,209 to 152,275 bytes. The canonical/plain latency ratio changes
-from 0.7348 to 0.7358 even though absolute latency changes substantially.
-
-\begin{table*}[t]
-\centering
-\scriptsize
-\caption{MobileNetV2 module-policy diagnostics (median milliseconds)}
-\label{tab:mobilenetv2-module-policy-diagnostics-median-milliseconds}
-\begin{tabularx}{\textwidth}{@{}lXXXXX@{}}
-\toprule
-Run & Plain C & Canonical C & Canon / plain & Adjacent ORT & Canon / ORT \\
-\midrule
-A & 139.679 & 102.638 & 0.7348 & 8.382 & 12.24x \\
-B & 178.796 & 131.557 & 0.7358 & 11.261 & 11.68x \\
-\bottomrule
-\end{tabularx}
-\end{table*}
-
-These remain shared-runner diagnostics rather than publication results. The
-workflows do not control host load, temperature, or frequency, and the two
-policy runs report the same processor class.
-
-\subsection{Extension surface}
-The extension study freezes four vertical tasks: add a reusable computation,
-add a structural scheduling policy, route a family of calls to an external
-kernel, and introduce a parameterized numeric format. Each task has the same
-input program, observable result, and forbidden shortcuts. We record authored
-files and lines, native registrations, build changes, dependencies, generated
-artifacts, and the first unmet mandatory requirement separately. These
-dimensions will appear as aligned panels rather than a pass/fail or aggregate
-``ease'' score.
-
-All four Joggle tasks reach their required artifacts. The matching TVM controls
-reach the computation, policy, and external-kernel artifacts but stop at the
-custom-type registration required by the numeric-format task. ONNX-MLIR reaches
-the computation and accelerator-scoped policy artifacts; its documented generic
-call path does not capture the first required MatMul case, and its
-numeric-format extension has no second executable target required by the task.
-These are preserved unsupported boundaries, not failures silently replaced by
-weaker tasks. Every successful executable reproduces its shared oracle.
-
-The current measurements describe implementation surface, not developer time
-or usability. They also reveal why a single line count is misleading: source,
-registration, build, and artifact obligations have different meanings, and an
-unsupported endpoint cannot be plotted as zero work. The final infrastructure
-figure therefore uses one panel per dimension, one shared system legend, and a
-distinct unsupported marker. A general claim of lower extension coupling
-remains blocked until a clean independent reproduction confirms every retained
-row.
+The paper reports peak compiler memory, artifact growth, failed-candidate cost,
+and frontier diagnostics alongside time. Generative tests cover parsing,
+module loading, serialized frontends, native ABI boundaries, and legal IR edit
+sequences. This question determines whether a uniform extension mechanism is a
+usable substrate or merely moves complexity into interpreted module code.
 
 \section{Related work}
-\textbf{Inference compiler and deployment stacks.} TVM connects graph optimization,
-tensor programs, schedules, cost models, and target code generation
-\cite{chen2018tvm}.
-MLIR instead makes a family of domain-specific representations, interfaces,
-conversions, and pass machinery reusable
-\cite{lattner2021mlir};
-ONNX-MLIR applies that organization to ONNX semantics and loop-oriented
-lowering \cite{jin2020onnxmlir}, while TinyIREE
-extends an MLIR-based path to embedded deployment artifacts and runtimes
-\cite{liu2022tinyiree}. Glow instead lowers
-a graph through a high-level operator IR to an address-only instruction IR,
-using the split to reduce backend scope and expose static memory optimization
-\cite{rotem2018glow}. These boundaries
-are not accidental overhead: they support independent evolution, optimization
-contracts, and broad target coverage. They become a research cost when one
-experiment must restate the same semantic or hardware decision at several
-boundaries. Joggle's question is therefore narrower than replacing a production
-stack: can a bounded vertical experiment retain typed structure while using one
-public edit surface from imported relation to artifact? ONNX-MLIR is the closest
-system comparator and TVM the tensor-compiler control; neither source size nor
-one successful extension establishes that Joggle is generally easier to extend.
+\subsection{Multi-level composition and deployment}
+TVM's IR evolution does not show that successive abstractions should be
+collapsed. TE made tensor computation schedulable; TensorIR made blocks and
+schedule effects observable; Relay supplied functional program semantics; and
+Relax lets graph functions, TensorIR functions, and external calls coexist with
+symbolic shapes and partial lowering. MLIR addresses the broader infrastructure
+problem through reusable dialects, interfaces, conversions, and passes.
+ONNX-MLIR applies this design to ONNX-to-native compilation and exposes
+accelerators through build integration, dialect/pass registration, conversion
+hooks, and runtime components. IREE couples an MLIR compiler to a low-overhead
+AOT runtime spanning server and edge targets.
 
-\textbf{Author-controlled tensor programs.} Halide separates an algorithm from a
-schedule \cite{ragankelley2013halide};
-Lift and RISE make typed data-parallel structure and rewrite strategies explicit
-\cite{steuwer2017lift};
-\cite{steuwer2022rise}. Exo goes further by
-externalizing target instructions, memories, and scheduling policy into user
-libraries while checking transformed programs
-\cite{ikarashi2022exo}. Hidet embeds
-composable task mappings in tensor programs to express assignment and ordering
-beyond loop-only schedules
-\cite{ding2023hidet}, and TileLang
-exposes tiled dataflow, layout, memory, and thread decisions on TVM IR
-\cite{wang2025tilelang}. These systems show that
-control must be both expressive and economical; merely exposing loops is
-insufficient. Tiramisu exposes a richer affine schedule surface
-\cite{baghdadi2019tiramisu}, while TensorIR
-represents schedulable blocks and explicit tensorization mappings
-\cite{feng2023tensorir}. Joggle differs in
-scope: it does not prescribe a tile, worker, or instruction model in the core,
-and asks user modules to add those policies to ordinary functions. The cost is
-visible in the current C results: without a mature contraction, packing, and
-vector policy, openness does not yield competitive code.
+Joggle does not contest the value of specialized invariants or staged lowering.
+It studies a narrower lifecycle: an extension whose source meaning,
+representation, target policy, and artifact contract are still changing
+together. The comparison is therefore a controlled revision experiment, not an
+IR-count or source-line contest. If MLIR/Relax preserve the same working paths
+with comparable coordination cost, Joggle's central claim is unsupported.
 
-\textbf{Automatic transformation and search.} Ansor learns a cost model while
-exploring generated tensor programs
-\cite{zheng2020ansor};
-ROLLER reduces tuning cost by constructing programs from hardware-aligned tiles
-\cite{zhu2022roller}.
-Bolt identifies a complementary failure mode: a legal searched schedule can
-remain far below a vendor path when the hardware-native primitive is opaque,
-and therefore searches configurable native templates rather than replacing
-them \cite{xing2022bolt}.
-Welder makes memory traffic across operators explicit through a tile graph
-\cite{shi2023welder},
-whereas Ladder jointly exposes custom numeric types, data transformations, and
-hardware-aware schedules
-\cite{wang2024ladder}.
-Graph and tensor superoptimizers enlarge a different dimension: TASO generates
-verified graph substitutions
-\cite{jia2019taso}, Tensat uses equality
-saturation to avoid committing to a rewrite order
-\cite{yang2021tensat}, Glenside makes layout-aware
-access patterns rewritable
-\cite{smith2021glenside}, and Mirage and
-Axon search across several levels
-\cite{wu2024mirage};
-\cite{kothari2026axon}. Axon additionally
-synthesizes target instructions from semantic specifications and reports target
-execution as most of its search cost. These works do not make an experimental
-control plane unnecessary: every search still requires semantics, legal
-candidates, target feedback, fallbacks, and an artifact boundary. Joggle's
-intended role is to host such a chooser as an optional module, not to claim a
-new search algorithm. The submission must therefore measure candidate
-generation, rejection, execution, and caching rather than only the winner.
+\subsection{Controllable tensor and kernel construction}
+Lift, RISE, and Elevate make transformation strategy explicit in functional
+languages. Halide and Tiramisu separate algorithms from schedules. TensorIR,
+Triton, Hidet, and TileLang expose different combinations of blocks, tiles,
+threads, data movement, and mapping. Exo goes further by externalizing target
+instructions, specialized memories, configuration state, and trusted schedule
+rewrites into user code. TACO, SparseTIR, DaCe, and HeteroCL make sparse formats,
+data movement, custom types, or heterogeneous implementation choices explicit.
 
-\textbf{Whole-model and edge co-design.} Rammer co-schedules inter- and
-intra-operator work using hardware-neutral task abstractions
-\cite{ma2020rammer},
-demonstrating that operator-local scheduling can leave important parallelism
-hidden. At the extreme edge, TensorFlow Lite Micro uses a compact interpreter
-and explicitly selected kernels
-\cite{david2021tflm};
-DORY couples topology-aware tiling, explicit transfers, and generated C for
-scratchpad-based MCUs
-\cite{burrello2021dory}; MCUNet
-co-designs the network search space with whole-network memory scheduling
-\cite{lin2020mcunet}.
-ncnn provides a lightweight optimized runtime and a custom-layer path, making
-it a useful deployment control rather than an IR lineage. These systems clarify
-Joggle's evaluation boundary. Transparent AOT C can simplify inspection and
-unusual target integration, but must be compared against mature runtime paths
-on the same serialized computation, input, threading policy, and host.
-Workload coverage alone is not evidence of useful edge compilation; latency,
-peak workspace, artifact footprint, correctness, and unsupported cases must be
-reported together.
+These systems provide richer scheduling and kernel construction than Joggle.
+Joggle instead asks whether the kernel boundary can remain connected to model
+recognition, portable fallback, policy substitution, validation, and artifact
+closure while those pieces evolve. Kernel quality must still be evaluated
+against these systems or their generated libraries on matched tasks.
 
-\textbf{Compiler correctness and evidence.} A compact representation does not make
-transformations trustworthy by construction. NNSmith generates valid neural
-graphs and uses differential execution to expose semantic failures
-\cite{liu2023nnsmith}, whereas HirGen
-targets high-level IR structure and optimization coverage
-\cite{ma2023hirgen}. An empirical study of
-2,717 reports across five compilers found recurring semantic, compatibility,
-memory, environment, and documentation faults
-\cite{zheng2021compilerbugs}, and
-metamorphic testing provides useful relations when an exact oracle is absent
-\cite{xiao2022metamorphic}. These results make
-Joggle's verification, transaction rollback, parser mutation tests, and
-frontend-versus-artifact numerical checks part of the system claim rather than
-engineering appendix material. The remaining gap is explicit: module loading,
-serialized frontends, native ABI boundaries, and arbitrary IR edit sequences
-still need dedicated generative tests before submission.
+\subsection{Automatic optimization and backend construction}
+Ansor searches tensor programs; Roller constrains shapes to hardware-friendly
+tiles; Welder jointly schedules operators through a tile graph; Ladder couples
+custom datatypes with storage, access, conversion, and scheduling. TASO, Tensat,
+Glenside, Mirage, and Axon enlarge the transformation space through generated
+substitutions, equality saturation, access-pattern rewriting, or multi-level
+superoptimization. ACT generates instruction selection and scratchpad allocation
+from tensor-ISA semantics, while ATLAAS lifts RTL behavior toward those
+specifications.
 
-\section{Limitations and threats to validity}
-The present implementation favors visibility and extension over automatic
-optimization. Dependence proofs cover conservative affine cases, scheduling
-policies are manually selected, dynamic shapes remain partial, and generated C
-lacks the packed kernels, vectorization strategy, and broad target tuning of a
-production runtime. The single progressive IR may reduce conversion code for
-some experiments while making abstraction boundaries less explicit for others.
-The evaluation must report both outcomes.
+Joggle contributes none of these search or synthesis algorithms. Its claimed
+role is a checked control plane through which a handwritten rule, bounded
+search, synthesizer, or generated policy can propose alternatives without
+changing the surrounding execution and artifact path. The chooser-substitution
+experiment tests this distinction directly.
 
-The current authors built both the system and its examples, creating familiarity
-and experimenter bias. Source volume is objective but not a measure of
-comprehension, difficulty, or productivity. The RQ2 protocol therefore freezes
-inputs, observable behavior, and forbidden shortcuts; preserves exact patches,
-registrations, dependencies, build records, and diagnostics; and reports each
-dimension separately. It does not combine them into an ease-of-use score.
+\subsection{Hardware--representation co-design and edge inference}
+VTA, PULP-NN, DORY, MCUNet, vMCU, Ladder, and recent sparse-MCU systems show
+that datatype, encoding, memory organization, kernels, ISA support, compiler
+integration, and model choice can be one systems result. TensorFlow Lite Micro,
+LiteRT, ncnn, MNN, ExecuTorch, and IREE establish stronger baselines for runtime
+breadth, tuned kernels, memory planning, and deployable artifacts. FlashInfer
+shows the same vertical pressure in modern attention: cache representation,
+kernel templates, JIT specialization, and runtime scheduling interact.
 
-Model coverage currently overrepresents static vision networks. Numerical
-agreement with one stored input does not establish task accuracy, robustness,
-or general operator support. Performance pilots now include shared Linux
-runners from two CPU classes, but they cannot support cross-system speed claims
-without load, frequency, and thermal control. Final results require pinned
-artifacts and revisions, isolated repeated trials with dispersion, task-level
-metrics, at least one non-vision workload, and an independently managed artifact
-reproduction. Unsupported models and transformations that lose performance
-remain part of the reported frontier.
+Joggle uses edge inference as a demanding evaluation domain, not as a claim of
+edge-only applicability. Mechanism generality is evaluated by whether portable
+and specialized policies share the same extension path; implementation maturity
+is separately evaluated by model coverage, correctness, latency, memory,
+compile time, and artifact size.
+
+\subsection{Generated policies and compiler reliability}
+LLM-aided compilation, TritorX, and other agentic optimizers generate mappings
+or kernels but depend on compilers, linters, profilers, and correctness oracles
+to admit results. NNSmith, HirGen, compiler bug studies, and metamorphic testing
+show that broad operator support and complex transformation stacks create a
+large semantic failure surface. Joggle's transactional edits and explicit
+frontiers are relevant only if they reject invalid proposals early, preserve
+working paths, and produce reproducible diagnostics; these properties are
+measured rather than inferred from API design.
+
+\section{Discussion and limitations}
+Progressive exposure is not a universal replacement for multi-level IR. A
+specialized representation is preferable when its invariants enable analyses
+or transformations that cannot be expressed economically over Joggle's public
+structure. Dynamic shapes, stateful model execution, device concurrency, and
+distributed placement are not yet mature. The current C target is transparent
+but lacks the tuned kernels and vector machinery of production systems.
+
+Joggle instead targets the phase in which a model or hardware mechanism is
+still changing. Its success criterion is that researchers can package general
+compiler logic and specialized machine decisions together, revise them without
+central cases, and measure the resulting artifact. Broader deployment support
+and competitive performance remain empirical obligations, not consequences of
+the architecture.
 
 \section{Conclusion}
-Joggle explores a deliberately narrow compiler design point for neural-network
-co-design research: one typed function representation and one distributable
-module-function mechanism from imported calls to explicit computation and
-artifacts. The implementation now demonstrates that frontends, semantic
-bodies, structural analyses, loop and storage edits, implementation selection,
-and two artifact paths can share this boundary. It also exposes the boundary's
-costs: model support is incomplete, automatic profitability is absent, and
-generated C remains far behind a production runtime. Whether the design
-meaningfully lowers extension coupling is therefore an empirical question, not
-an implemented feature. The controlled extension and artifact studies must
-answer it before this conclusion can make a stronger claim.
+Inference hardware research crosses model semantics, tensor computation,
+storage, scheduling, target instructions, and artifacts. Joggle keeps these
+decisions connected through progressive exposure and a uniform typed module
+boundary. This design admits portable and specialized policies, as well as
+handwritten and generated optimizers, over the same verified program state. The
+remaining challenge is equally explicit: target modules must convert that
+freedom into competitive complete artifacts. The final evaluation measures
+both sides of that claim.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{../references}

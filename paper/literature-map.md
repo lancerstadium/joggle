@@ -1,209 +1,363 @@
-# Literature map and comparison policy
+# Research map: where Joggle can and cannot contribute
 
-This file is the evidence ledger for the paper's Motivation and Related Work.
-It is deliberately broader than `references.bib`: an entry moves into the
-bibliography only after its title, authors, venue/year, and persistent identifier
-have been checked against a primary publisher, proceedings, DOI, or arXiv
-record. The submission gate is **55--65 verified candidates and at least 50
-works actually used to support distinct claims in the paper**. Citation count is
-not a substitute for relevance.
+This document is the evidence ledger for the EuroSys paper. It is not a list of
+systems that resemble Joggle. Its purpose is to expose the strongest competing
+explanations, identify a falsifiable systems problem, and derive the experiments
+that would be required to support a paper.
 
-## The argument the literature must test
+Only primary papers, proceedings pages, and project documentation are treated as
+evidence. A work enters the manuscript bibliography only after its metadata and
+the claim attached to it have both been checked. The target remains at least 50
+*used* references, but citation count is not an evaluation metric.
 
-The literature does not reveal a missing general-purpose inference compiler.
-It reveals a recurring three-way tension:
+## 1. The problem is not “too many IRs”
 
-1. **Production breadth introduces extension discontinuities.** Graph
-   semantics, tensor computation, loop schedules, storage, target interfaces,
-   and runtimes are separated for sound engineering reasons. A co-design idea
-   that crosses them can consequently require several extension mechanisms and
-   loss-prone conversions.
-2. **Performance automation and author control sit on different paths.** Search
-   systems and superoptimizers can discover strong kernels, while scheduling
-   languages make expert decisions explicit. Neither by itself supplies a
-   small, inspectable end-to-end workbench in which a researcher can introduce
-   a source relation, expose its computation, rewrite loops and storage, and
-   carry the result into an ordinary artifact.
-3. **Edge deployment magnifies the unsupported-path cost.** Mature runtimes are
-   fast on supported operators, but a new data format, operator, accelerator
-   primitive, or ABI can fall off the library path. Transparent AOT code is
-   easier to inspect and retarget, but without target-aware transformations its
-   quality can be far below production runtimes.
+Several tempting versions of the Joggle story are already solved or are too weak
+for EuroSys:
 
-Joggle's defensible hypothesis is therefore narrow: a progressive typed
-function representation plus distributable module functions can reduce the
-*cross-layer experimental boundary*. It does not claim that one IR is always
-better, that source brevity proves usability, or that generic generated C
-replaces tuned runtimes. The evaluation must measure where the hypothesis holds
-and expose the performance and compatibility boundary where it does not.
+- **Reusable multi-level compiler infrastructure.** MLIR explicitly targets
+  reusable, extensible infrastructure across abstraction levels, domains,
+  targets, and execution environments. A smaller IR is not, by itself, a new
+  systems idea. [MLIR, CGO 2021](https://research.google/pubs/mlir-scaling-compiler-infrastructure-for-domain-specific-computation/)
+- **Cross-level composition.** Relax represents graph computation, loop-level
+  tensor programs, and external calls together, with first-class symbolic shape
+  tracking. “Joggle can mix abstraction levels” is therefore not a sufficient
+  contribution. [Relax, ASPLOS 2025](https://arxiv.org/abs/2311.02103)
+- **User-extensible targets.** Exo externalizes target instructions, memories,
+  accelerator state, and scheduling policies into user code while checking
+  transformation safety. “Users can register hardware behavior” is already an
+  established design point. [Exo, PLDI 2022](https://people.csail.mit.edu/yuka/pdf/exo_pldi2022_full.pdf)
+- **Generated accelerator backends.** ACT generates instruction selection and
+  memory allocation from parameterized tensor-ISA descriptions; ATLAAS lifts
+  RTL-derived semantics into such descriptions. Handwritten modules are not
+  automatically more agile than generated backends.
+  [ACT](https://act-compiler.github.io/assets/pdf/act-arxiv.pdf),
+  [ATLAAS](https://arxiv.org/abs/2604.13523)
+- **Concise high-performance kernels.** TileLang, Triton, Halide, and Exo already
+  provide substantially more mature kernel-authoring surfaces than Joggle.
+  [TileLang](https://arxiv.org/abs/2504.17577)
+- **Automatic cross-level optimization.** Mirage and Axon jointly explore
+  algebra, fusion, layout, scheduling, and instruction selection. A generic
+  rewrite API is not comparable to their optimizers.
+  [Mirage](https://arxiv.org/abs/2405.05751),
+  [Axon](https://arxiv.org/abs/2606.26344)
 
-## Comparison roles
+The TVM lineage reinforces this conclusion. Halide/TE separated algorithm from
+schedule; TensorIR made schedulable blocks explicit and inspectable; Relay added
+program semantics; Relax restored cross-level composition and dynamic shapes.
+Multiple abstractions were introduced because different information is useful at
+different times, not because compiler designers failed to seek uniformity.
 
-| Role | Systems | Required evidence |
+## 2. A sharper systems problem: extension boundaries move
+
+The literature instead exposes a temporal problem. Most systems make an
+extension productive after one boundary has become stable:
+
+| System family | Boundary made programmable | What is deliberately outside that boundary |
 | --- | --- | --- |
-| Primary system baseline | ONNX-MLIR | Matched cross-layer extension tasks through the documented native path |
-| Tensor-compiler control | TVM | Matched semantic and scheduling tasks; compile/search cost separated from run time |
-| Production runtime controls | ONNX Runtime and LiteRT | Same serialized model, input, thread count, numerical contract, and host within each frontend study |
-| Lightweight edge control | ncnn | One matched model and one custom-layer/kernel task; never pooled with a different model format |
-| Deployment-stack comparison | IREE/TinyIREE | Artifact/runtime/target integration and extension mechanism; performance only with an exactly matched CPU path |
-| Kernel-authoring comparison | TileLang, Triton, Exo, Halide | Control surface and mechanism, not whole-model compatibility |
-| Automatic optimization comparison | Ansor, Roller, Welder, Ladder, Mirage, Axon | Search space, correctness contract, tuning cost, and where user intent enters; selected kernel experiments only |
-| Language/IR lineage | MLIR, Lift, RISE, Elevate, Relay/Relax, TensorIR | Design comparison and explicit non-goals, not a speed leaderboard |
+| MLIR / ONNX-MLIR | Dialects, conversions, passes, runtime hooks | The extension author coordinates the involved dialect and driver contracts |
+| Relax / TensorIR | Graph–tensor–library composition and schedules | Target-specific semantics and artifact conventions remain separate extension concerns |
+| Halide / TileLang / Triton | Kernel algorithm, dataflow, and scheduling | Whole-model import, fallback, deployment ABI, and arbitrary target evolution |
+| Exo | Trusted user schedules, instructions, memories, and configuration | Whole-model semantic import and automatic backend construction |
+| ACT / ATLAAS | Tensor-ISA or recovered RTL semantics | Model-level experimentation and user-controlled mixed implementation policies |
+| Ladder / sparse edge stacks | A chosen datatype, encoding, mapping, and kernel path | A general mechanism for revising a different vertical experiment |
+| Mirage / Axon | A fixed search/synthesis problem and target model | The surrounding deployment stack and evolving research interface |
 
-## Candidate pool
+These boundaries are sound engineering choices. The unresolved case is early
+model–hardware co-design, where the boundary itself is an experimental variable.
+A low-precision or sparse idea may revise, together:
 
-`V` means metadata and central claim have been checked against a primary
-record. `Q` means relevant but still queued for metadata/full-text verification;
-it cannot yet be cited. `E`, `M`, and `C` mean experimental baseline,
-mechanism-level comparison, and contextual citation respectively.
+1. the source relation or fallback semantics;
+2. the numeric or storage representation;
+3. tensor structure and loop/data-layout policy;
+4. a parameterized instruction or external kernel;
+5. the policy that selects among implementations; and
+6. the artifact ABI, constants, and validation contract.
 
-### A. End-to-end compiler and deployment stacks
+Exo observes that accelerator hardware/software interfaces are diverse and that
+the rates of change across the stack are inverted relative to conventional
+software. ACT shows that scratchpads and parameterized tensor instructions need
+joint formal treatment. Ladder shows that an evolving datatype requires storage,
+access, conversion, schedule, and hardware policy to move together.
+[Ladder, OSDI 2024](https://www.usenix.org/conference/osdi24/presentation/wang-lei)
+These results do not prove Joggle is needed; they establish that vertical change
+is real and that several different fixed boundaries are useful.
 
-| State | Work | Role | Pain point or boundary for Joggle |
-| --- | --- | --- | --- |
-| V | TVM: An Automated End-to-End Optimizing Compiler for Deep Learning | E | Powerful graph/tensor/schedule split and search; matched control for extension path and compile cost |
-| V | MLIR: Scaling Compiler Infrastructure for Domain Specific Computation | M | Reusable multi-level dialect infrastructure; tests whether a smaller bounded substrate reduces plumbing |
-| V | Compiling ONNX Neural Network Models Using MLIR / ONNX-MLIR | E | Closest end-to-end frontend/compiler baseline |
-| V | TinyIREE: An ML Execution Environment for Embedded Systems from Compilation to Deployment | M | Embedded deployment breadth and runtime contract |
-| V | Glow: Graph Lowering Compiler Techniques for Neural Networks | C | Strong graph lowering and instruction IR; contrasts staged representations |
-| Q | nGraph: a New Compiler for Deep Learning Frameworks | C | Framework-neutral graph compilation and backend interfaces |
-| V | Tensor Comprehensions: Framework-Agnostic High-Performance Machine Learning Abstractions | M | Concise semantics plus polyhedral/code-generation path |
-| Q | Relay: A New IR for Machine Learning Frameworks | M | Functional graph IR, type/shape reasoning, and compiler composition |
-| V | Relax: Composable Abstractions for End-to-End Dynamic Machine Learning | M | Dynamic shape and cross-level composition in modern TVM |
-| V | MNN: A Universal and Efficient Inference Engine | E | Lightweight mobile runtime and model-conversion ecosystem |
-| Q | MonoNN: Enabling a New Monolithic Optimization Space for Neural Networks | M | Evidence for gains from crossing operator/kernel boundaries, with a GPU-specific design |
+We call the candidate gap **temporal extensibility**:
 
-### B. Functional, tensor, loop, and scheduling languages
+> Can a researcher revise a vertical model–machine experiment while keeping its
+> semantic fallback, structural implementation, target assumptions, selection
+> policy, validation, and emitted artifact connected in one distributable unit?
 
-| State | Work | Role | Pain point or boundary for Joggle |
-| --- | --- | --- | --- |
-| V | Lift: A Functional Data-Parallel IR for High-Performance GPU Code Generation | M | Typed rewrite exploration; closed pattern vocabulary versus open functions |
-| V | RISE & Shine: Language-Oriented Compiler Design | M | Explicit high/low languages and strategy control |
-| Q | Elevate: A Language to Write Composable Program Optimization Strategies | M | User-authored strategy language and predictable rewrites |
-| V | Halide: A Language and Compiler for Optimizing Parallelism, Locality, and Recomputation | M | Algorithm/schedule separation and expert control |
-| V | Tiramisu: A Polyhedral Compiler for Expressing Fast and Portable Code | M | Explicit schedule commands over affine computations |
-| Q | PolyMage: Automatic Optimization for Image Processing Pipelines | C | Pipeline fusion, tiling, and storage optimization |
-| Q | TACO: A Language and Compiler for Optimizing Sparse Tensor Algebra | M | Format-aware tensor algebra and code generation |
-| Q | DaCe: Data-Centric Parallel Programming and Symbolic Performance Modeling | M | Explicit data movement and stateful dataflow |
-| Q | HeteroCL: A Multi-Paradigm Programming Infrastructure for Software-Defined Reconfigurable Computing | M | Custom types, schedules, and heterogeneous hardware co-design |
-| V | TensorIR: An Abstraction for Automatic Tensorized Program Optimization | M | Schedulable tensor programs and tensorization boundaries |
-| V | Triton: An Intermediate Language and Compiler for Tiled Neural Network Computations | M | Programmable tiled GPU kernels |
-| V | Exocompilation for Productive Programming of Hardware Accelerators | M | User-controlled scheduling with externally supplied instructions and memories |
-| V | TileLang: A Composable Tiled Programming Model for AI Systems | M | Tile-level control; intentionally not an end-to-end frontend baseline |
-| V | Hidet: Task-Mapping Programming Paradigm for Deep Learning Tensor Programs | M | Hardware mapping abstraction and inference latency focus |
+The quantity of interest is not source brevity. It is **evolution continuity**:
+how much unrelated host machinery must change, how many contracts must be kept
+in sync, and what previously working paths survive when the experiment changes.
 
-### C. Search, synthesis, and superoptimization
+Temporal extensibility is only one dimension of the proposed substrate. The
+actual researcher-facing problem has five closures:
 
-| State | Work | Role | Pain point or boundary for Joggle |
-| --- | --- | --- | --- |
-| V | Ansor: Generating High-Performance Tensor Programs for Deep Learning | E | Broad automatic search but substantial tuning budget |
-| Q | FlexTensor: An Automatic Schedule Exploration and Optimization Framework for Tensor Computation on Heterogeneous System | M | Template/search-space construction burden |
-| V | Roller: Fast and Efficient Tensor Compilation for Deep Learning | M | Constructive performance modeling lowers tuning cost |
-| V | Welder: Scheduling Deep Learning Memory Access via Tile-graph | M | Cross-operator memory traffic and tile fusion |
-| V | Ladder: Enabling Efficient Low-Precision Deep Learning Computing through Hardware-aware Tensor Transformation | M | Data-format/layout transformations as first-class performance decisions |
-| V | Mirage: A Multi-Level Superoptimizer for Tensor Programs | M | Uniform multi-level search plus probabilistic equivalence |
-| V | Axon: A Synthesizing Superoptimizer for Tensor Programs | M | Semantic specification, ISA synthesis, SMT equivalence, tiling and fusion |
-| V | Pure Tensor Program Rewriting via Access Patterns (Glenside) | M | Equality saturation and layout discovery without operator-name rules |
-| V | Equality Saturation for Tensor Graph Superoptimization (Tensat) | M | Graph rewrite saturation and extraction cost |
-| V | TASO: Optimizing Deep Learning Computation with Automatic Generation of Graph Substitutions | M | Generated graph substitutions and formal equivalence conditions |
-| V | egg: Fast and Extensible Equality Saturation | C | General rewrite infrastructure used by tensor optimizers |
-| V | BOLT: Bridging the Gap between Auto-tuners and Hardware-native Performance | M | Fast generated kernels versus vendor libraries |
-| V | AStitch: Enabling a New Multi-dimensional Optimization Space for Memory-Intensive ML Training and Inference on Modern SIMT Architectures | M | Whole-subgraph fusion and memory scheduling |
+1. **Bootstrap closure:** the tool, dependencies, configuration, and time needed
+   to reach the first inspectable program. Current TVM source installation
+   requires a C++20 toolchain, CMake, LLVM, Python/FFI packaging, and selected
+   optional SDKs; ONNX-MLIR requires a pinned LLVM/MLIR build and project-specific
+   dependencies. These are justified costs of their ecosystems, but they matter
+   for a research workbench and must be measured rather than described as
+   “heavy.”
+2. **Extension closure:** all source, declarations, registrations, build changes,
+   and runtime pieces required for one independently distributable extension.
+   TVM BYOC, for example, cleanly separates pattern registration, partitioning,
+   code generation, and execution, while compiled codegen/runtime support still
+   enters the TVM build. ONNX-MLIR similarly provides a documented accelerator
+   plugin path with build, class, pass/dialect, conversion, and runtime hooks.
+3. **Interaction closure:** whether a user can inspect, invoke, compose, replace,
+   and debug semantic and target decisions through one public model, rather than
+   learning one API per phase. Uniformity is valuable only if failures remain
+   typed and local; otherwise it merely hides distinctions.
+4. **Deployment closure:** whether the same extension carries constants,
+   workspace, ABI, fallback, validation, and provenance into an ordinary
+   executable artifact. A transformed IR fragment or generated kernel alone is
+   not a completed experiment.
+5. **Performance closure:** whether the artifact is competitive after all of the
+   above. Low ceremony cannot excuse a 10--100x whole-model gap. Generic target
+   policies and external primitives must be able to improve real functions
+   without turning the host into a catalog of operator cases.
 
-### D. Whole-graph, dynamic-shape, and JIT execution
+Joggle's intended value is the conjunction: a low-ceremony, distributable
+compiler substrate whose program remains progressively inspectable while both
+portable and machine-specific mechanisms are composed. Evolution continuity
+explains why the pieces should share a lifecycle; the five closures define what
+“lightweight and usable” must mean empirically.
 
-| State | Work | Role | Pain point or boundary for Joggle |
-| --- | --- | --- | --- |
-| V | Rammer: Enabling Holistic Deep Learning Compiler Optimizations with rTasks | M | Cross-operator scheduling requires hardware-neutral execution abstractions |
-| V | Nimble: Efficiently Compiling Dynamic Neural Networks for Model Inference | M | Ahead-of-time planning under input-dependent execution |
-| V | DISC: A Dynamic Shape Compiler for Machine Learning Workloads | M | Dynamic shape specialization and production deployment |
-| Q | DietCode: Automatic Optimization for Dynamic Tensor Programs | M | Schedule reuse across dynamic shapes |
-| V | Cortex: A Compiler for Recursive Deep Learning Models | C | Model structure and runtime dynamism beyond static DAGs |
-| Q | Brainstorm: Fast End-to-End Deep Learning Compiler for Dynamic Neural Networks | C | Runtime-statistics-guided dynamic optimization |
-| V | DNNFusion: Accelerating Deep Neural Networks Execution with Advanced Operator Fusion | M | Graph fusion profitability and generated kernels |
+## 3. Candidate Joggle mechanism
 
-### E. Edge, microcontroller, and heterogeneous deployment
+Joggle's candidate answer is **progressive exposure over typed functions**.
+A source relation begins as a call with a typed contract. Modules may expose
+more of its implementation only when a transformation or target needs that
+detail: tensor structure, scalar/loop structure, storage policy, target
+primitive, or artifact action. Portable and specialized implementations remain
+alternatives in the same program rather than belonging to separate host paths.
 
-| State | Work | Role | Pain point or boundary for Joggle |
-| --- | --- | --- | --- |
-| V | TensorFlow Lite Micro: Embedded Machine Learning for TinyML Systems | E | Small runtime, explicit operator resolver, target kernels |
-| V | MCUNet: Tiny Deep Learning on IoT Devices | E | Network/runtime co-design under SRAM and flash constraints |
-| Q | MCUNetV2: Memory-Efficient Patch-based Inference for Tiny Deep Learning | E | Spatially scheduled inference and peak-memory reduction |
-| V | DORY: Automatic End-to-End Deployment of Real-World DNNs on Low-Cost IoT MCUs | M | Deployment, tiling, and heterogeneous memory |
-| V | PULP-NN: Accelerating Quantized Neural Networks on Parallel Ultra-Low-Power RISC-V Processors | M | Low-bit kernels and ISA-aware deployment |
-| Q | CMSIS-NN: Efficient Neural Network Kernels for Arm Cortex-M CPUs | E | Hand-optimized library cliff for generated code |
-| Q | MATCH: A Compiler for Deployment of CNNs on Heterogeneous Platforms | M | Pattern-to-accelerator mapping and fallback execution |
-| V | VTA: An Open Hardware-Software Stack for Deep Learning | M | Extensible accelerator ISA and compiler co-design |
-| V | Timeloop: A Systematic Approach to DNN Accelerator Evaluation | C | Explicit mapping-space and hardware cost modeling |
-| V | MAESTRO: A Data-Centric Approach to Understand Reuse, Performance, and Hardware Cost of DNN Mappings | C | Dataflow cost models suitable for optional policy modules |
-| V | Interstellar: Using Halide's Scheduling Language to Analyze DNN Accelerators | C | One schedule notation spanning algorithms and accelerators |
+The mechanism has four parts:
 
-### F. Correctness, testing, and compiler reliability
+1. **One evolving program state.** Higher-level calls and exposed function
+   bodies may coexist. This is not a claim that all abstraction levels are the
+   same, nor that one universal syntax eliminates useful structure.
+2. **Typed module functions.** A distributable module may define semantic
+   relations, representations, structural transforms, target capabilities,
+   choices, validation, and artifact actions without adding a new host-side
+   subsystem for each category.
+3. **Checked choice.** Handwritten policy, bounded search, synthesis, or an agent
+   can propose candidates through the same interface; target queries, legality
+   checks, oracle execution, and rollback remain compiler-owned.
+4. **Artifact closure.** Constants, workspace, calls, ABI, and provenance are
+   part of the successful result. Producing a pretty IR fragment is not
+   deployment.
 
-| State | Work | Role | Pain point or boundary for Joggle |
-| --- | --- | --- | --- |
-| V | NNSmith: Generating Diverse and Valid Test Cases for Deep Learning Compilers | M | Valid graph generation exposes optimizer semantic bugs |
-| V | Fuzzing Deep Learning Compilers with HirGen | M | Hierarchical IR fuzzing and coverage |
-| V | An Empirical Study on Common Bugs in Deep Learning Compilers | C | Failure taxonomy and the cost of complex lowering stacks |
-| V | Metamorphic Testing of Deep Learning Compilers | C | Oracle-free differential properties |
+The novelty, if demonstrated, is therefore not “all compiler concepts are
+functions.” It is that a small common mechanism preserves continuity while a
+vertical extension changes and while different decision makers are substituted.
 
-### G. Workloads that must bound the evaluation
+## 4. Generality and specialization are not opposites
 
-| State | Work | Role | Why it matters |
-| --- | --- | --- | --- |
-| V | Attention Is All You Need | C | Establishes attention's contraction, normalization, and shape patterns |
-| V | BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding | C | Encoder workload with embeddings, normalization, attention, and dynamic sequence axes |
-| V | An Image Is Worth 16x16 Words: Transformers for Image Recognition at Scale | C | ViT adds attention to a conventional static vision task |
-| Q | Language Models are Unsupervised Multitask Learners (GPT-2) | C | Autoregressive language-model workload and state/cache boundary |
+Joggle should not be positioned as only a special-purpose edge compiler. The
+mechanism is intended to host both:
 
-The pool currently contains 64 candidate works: 49 primary-record checks and
-15 queued checks. The counts are intentionally visible so a partially verified
-search cannot be mistaken for a finished bibliography.
+- portable relations and transformations that work across targets;
+- specialized datatypes, layouts, memories, instructions, and artifacts;
+- manually authored decisions for inspectability;
+- bounded search or synthesis for automation; and
+- agent-generated proposals behind the same checked boundary.
 
-## Pain-point synthesis for Section 2
+This is **mechanism generality**, not evidence that the current implementation
+matches the workload breadth of TVM, IREE, ONNX Runtime, or ExecuTorch. IREE is
+an MLIR-based AOT compiler/runtime spanning datacenter through edge and reports
+embedded runtime configurations as small as 30 KB. ExecuTorch preserves PyTorch
+semantics while supporting pluggable on-device backends. Those are deployment
+breadth baselines, not systems we can dismiss as heavyweight.
+[IREE](https://iree.dev/),
+[ExecuTorch, MLSys 2026](https://proceedings.mlsys.org/paper_files/paper/2026/hash/236f915dd02af4f11927f67330b21d4b-Abstract-Conference.html)
 
-Section 2 should not be an RQ list. It should establish four observations with
-one concrete running extension (for example a packed low-precision contraction
-plus an external edge kernel):
+Edge inference is the stress case because unsupported paths are expensive and
+resource behavior is visible. It is not the definition of the abstraction.
+Recent sparse-MCU work illustrates the complete evidence chain expected from a
+vertical result: encoding, kernels, ISA support, compiler integration, complete
+CNN/ViT models, accuracy, and measured speedup.
+[MLSys 2025 sparse MCU stack](https://proceedings.mlsys.org/paper_files/paper/2025/hash/8cb5b08f912600de3de07c6503599ba8-Abstract-Conference.html)
 
-1. **The semantic-to-artifact path is the experiment.** Show where the same
-   change appears as source relation, reusable tensor body, loop/layout choice,
-   storage contract, and exported ABI in representative systems.
-2. **Existing abstractions optimize locally but compose through boundaries.**
-   Compare graph/dialect conversion, schedule language, BYOC/external kernels,
-   and runtime registration. The problem is not that any boundary is bad; it is
-   the accumulated experimental coupling across them.
-3. **Automation does not remove the need for an inspectable control plane.**
-   Axon/Mirage/Ansor motivate optional synthesis and search, while Lift/RISE,
-   TileLang, Exo, and Halide motivate explicit author control. Joggle should be
-   the substrate on which either policy can be packaged, not another mandatory
-   search engine.
-4. **Transparent artifacts expose a real performance cliff.** Existing results
-   already show correct generated C can remain an order of magnitude behind a
-   production runtime. This negative evidence motivates target-aware access,
-   layout, packing, vectorization, and profitability modules rather than a
-   claim of immediate performance superiority.
+Likewise, LLM popularity does not justify adding a large model as decoration.
+Attention is valuable only if it exercises a distinct boundary: dynamic shapes,
+KV-cache representation, fused normalization/contraction, or JIT specialization.
+FlashInfer is a relevant counterexample because it combines composable cache
+formats, attention templates, JIT compilation, and runtime scheduling into a
+purpose-built engine with end-to-end results.
+[FlashInfer, MLSys 2025](https://proceedings.mlsys.org/paper_files/paper/2025/hash/dbf02b21d77409a2db30e56866a8ab3a-Abstract-Conference.html)
 
-The section ends with the hypothesis and measurable predictions, after which
-the research questions become evaluation subheadings rather than the section's
-content.
+## 5. Strongest competing explanations
 
-## Priority order
+A credible paper must try to disprove itself against these explanations:
 
-1. **P0 — Motivation and bibliography:** verify the 17 locked records, resolve
-   at least 38 queued records, and rewrite Section 2 around the four observations.
-2. **P0 — Workload spectrum:** keep the official CNN/detection suite, complete
-   TFLite MobileNetV2 execution, add one pinned ViT and one compact language
-   model/attention workload, and record exact unsupported frontiers.
-3. **P0 — Artifact evidence:** compare Joggle with the native runtime for each
-   serialized model; add ONNX-MLIR and TVM only on matched tasks; add ncnn on one
-   edge model/custom-layer task if the conversion is reproducible.
-4. **P1 — Mechanism evidence:** build an operator/shape matrix for contraction,
-   elementwise, reduction, normalization, pooling, and attention subgraphs.
-   Replace pass-status tables with measured transformation reach, compile cost,
-   code size, workspace, correctness, and latency.
-5. **P1 — Figures:** reproduce the provided visual grammar: compact grouped
-   headings, restrained cell shading for dense matrices, shared legends, and
-   aligned small multiples. Missing and unsupported cells remain explicit.
-6. **P2 — Internal refactoring and broad frontend/backend additions:** perform
-   only when a P0/P1 experiment reveals a correctness or maintainability blocker.
+### C1. Joggle is a smaller reinvention of MLIR plus Relax
+
+MLIR already supports extensible multi-level IR, and Relax already supports
+cross-level calls and partial lowering. A surface-language comparison cannot
+refute this. Joggle must show a matched evolving extension whose implementation
+and revision touch fewer *independent contracts* while preserving fallback and
+artifact correctness.
+
+### C2. Exo or ACT is the correct abstraction once the hardware matters
+
+Exo gives stronger kernel scheduling control; ACT gives stronger automatic
+backend construction and formal coverage. Joggle must not compete on their
+chosen tasks. Its possible advantage is coordinating a still-moving experiment
+that includes model semantics and deployment policy as well as target behavior.
+
+### C3. A few project files only measure software style
+
+Changed lines/files are meaningless without a controlled change task. The study
+must freeze initial behavior, issue an unforeseen revision after both baselines
+work, and measure invalidated contracts, host changes, fallback preservation,
+revalidation effort, and final behavior.
+
+### C4. Flexibility merely moves complexity into conventions
+
+Uniform functions can erase useful distinctions and make legality implicit. We
+must report type/verification failures, ambiguous resolution, rollback behavior,
+and the amount of module-local boilerplate. If failures become later or less
+diagnosable, the abstraction loses.
+
+### C5. Transparent generated C is too slow to matter
+
+Current Joggle C is substantially behind a production runtime on several full
+models. This is a scientific blocker, not a footnote. The paper needs a generic
+target policy—access analysis, tiling, packing/layout, vectorization and external
+primitive selection—that improves multiple functions and models without
+operator-name cases. Otherwise the result is a language prototype, not an
+inference system.
+
+## 6. Falsifiable claims and required experiments
+
+### E1 — Evolution continuity
+
+Implement one vertical extension containing a source relation, portable fallback,
+custom representation, structural policy, target primitive, selector, validation,
+and artifact rule. Once working in Joggle and two native baselines, reveal two
+pre-registered revisions, for example:
+
+- add grouping or a variable tile parameter to the primitive;
+- change the scratchpad/alignment and packed-constant contract.
+
+Compare with TVM/Relax+TensorIR and ONNX-MLIR/MLIR using each system's documented
+native path. Report changed host files, extension files, central registrations,
+contracts requiring coordinated edits, invalidated artifacts, fallback
+preservation, build/compile time, and oracle correctness. ONNX-MLIR's documented
+accelerator path explicitly involves build configuration, an accelerator class,
+dialect/pass registration, conversion hooks, and runtime code, which makes it a
+useful—but not automatically inferior—matched baseline.
+[ONNX-MLIR accelerator guide](https://onnx.ai/onnx-mlir/AddCustomAccelerators.html)
+
+**Failure condition:** Joggle only reduces textual boilerplate, or the revision
+requires hidden core changes/conventions that are absent from the accounting.
+
+### E2 — Decision-maker substitution
+
+Hold program, candidates, legality checks, and target description fixed. Replace
+a handwritten chooser with bounded enumeration and then a generated/agent policy
+through the same public interface. Report host changes, rejected proposals,
+rollback, target queries, search cost, correctness, and selected artifact.
+
+Mirage and Axon are performance/automation references, not expected speed
+baselines for a lightweight CPU substrate. They establish that semantic search
+and cross-level optimization are substantive algorithms; Joggle's narrower claim
+is that such decision makers can share a checked integration boundary.
+
+**Failure condition:** each chooser needs a new execution path, or generated
+choices can bypass validation and artifact checks.
+
+### E3 — Target-policy usefulness
+
+Build one generic policy over exposed function bodies: affine/access analysis,
+loop transformation, immutable-weight packing, alignment/vector contracts, and
+external primitive selection. It must benefit several contraction/convolution
+shapes and at least two complete models without matching frontend operator names.
+
+Report dense operator matrices as speedup over each matched baseline, plus
+whole-model latency, peak memory/workspace, compile time, artifact size, accuracy,
+and unsupported cells. Compare ONNX models with ORT, TVM, and ONNX-MLIR; compare a
+TFLite model with LiteRT. ncnn/IREE are included only where the exact model,
+datatype, thread count, and execution path can be matched.
+
+**Failure condition:** gains exist only for a hand-selected tiny operator, or
+full models remain far behind production runtimes without a diagnosed boundary.
+
+### E4 — Representation and failure boundary
+
+Use pinned, ordinary models spanning CNN classification, detection, ViT, and a
+compact attention/language workload. Separate decode, import, relation,
+exposure, preparation, compilation, execution, and numeric validation. Add
+property/fuzz tests for module loading, ONNX protobuf, TFLite FlatBuffers, native
+ABI, IR editing, and transaction rollback.
+
+**Failure condition:** “supported” means only parsed, or unsupported behavior is
+collapsed into one opaque failure count.
+
+## 7. Related-work organization for the paper
+
+The final Related Work should argue by mechanism, not by project chronology:
+
+1. **Multi-level compiler composition:** MLIR, ONNX-MLIR, Relay/Relax,
+   TensorIR, IREE, Glow.
+2. **Controllable tensor and kernel construction:** Lift/RISE/Elevate, Halide,
+   Exo, Triton, TileLang, TACO, HeteroCL.
+3. **Automatic transformation and synthesis:** Ansor, Roller, Welder, Mirage,
+   Axon, ACT, ATLAAS, LLM-aided compilation.
+4. **Representation/hardware co-design:** Ladder, SparseTIR, PULP-NN, DORY,
+   MCUNet, VTA, sparse-MCU stacks.
+5. **Deployment closure and reliability:** ONNX Runtime, LiteRT/TFLM, ncnn,
+   IREE, ExecuTorch, NNSmith, HirGen, metamorphic testing.
+
+Each paragraph must end with a precise distinction, not a generic “unlike prior
+work.” The distinctions above are hypotheses until E1–E4 produce evidence.
+
+## 8. Reading queue to reach bibliography depth
+
+The next full-text verification pass must cover at least these clusters:
+
+- TVM, Relay, TensorIR, Relax, BYOC, MetaSchedule/Ansor;
+- MLIR Transform dialect, ONNX-MLIR, IREE, Glow, XLA/OpenXLA;
+- Lift, RISE, Elevate, Halide, Tiramisu, TACO, DaCe, HeteroCL, Exo;
+- Triton, TileLang, Ladder/BitBLAS, Welder, Roller, Mirage, Axon;
+- ACT, TAIDL, ATLAAS, 3LA, VTA, Gemmini, Timeloop, MAESTRO;
+- TFLM, CMSIS-NN, DORY, PULP-NN, MCUNet/MCUNetV2, vMCU, MATCH;
+- ONNX Runtime, LiteRT, ncnn, ExecuTorch, MNN;
+- NNSmith, HirGen, compiler bug studies, metamorphic testing;
+- ViT, BERT/GPT-style attention, FlashInfer, and one edge-LLM system only where
+  they exercise a named compiler boundary.
+
+For each work, record: problem, boundary made programmable, information kept
+across stages, who makes decisions, target/runtime assumptions, artifact
+contract, evaluation scope, and the strongest counterexample it creates for
+Joggle.
+
+## 9. Consequence for title and narrative
+
+The working title should describe the mechanism and the unresolved problem, not
+promise an inference-performance victory that has not been measured:
+
+> **Joggle: Malleable Compilation for Evolving Models and Machines**
+
+“Progressive exposure” is the mechanism name inside the paper. “Evolving models
+and machines” states the temporal systems problem. The title remains provisional
+until E1 and E3 succeed.
+
+The Motivation should follow this chain:
+
+1. a concrete vertical change whose semantics, representation, target behavior,
+   choice, and artifact evolve together;
+2. why three strong existing approaches each solve a different stable boundary;
+3. why the cost is temporal coupling rather than merely the number of IRs;
+4. the progressive-exposure hypothesis and its failure cases; and
+5. the evidence required to accept the hypothesis.
+
+This work used AI-assisted search and synthesis. Every citation and quantitative
+claim must be checked against the linked primary source and the final artifact;
+queued readings and agent-derived interpretations are not evidence.

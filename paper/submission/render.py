@@ -43,6 +43,16 @@ CITATIONS = {
     "https://doi.org/10.1145/3597926.3598053": "ma2023hirgen",
     "https://doi.org/10.1109/ISSRE52982.2021.00030": "zheng2021compilerbugs",
     "https://doi.org/10.1145/3489048.3522655": "xiao2022metamorphic",
+    "https://arxiv.org/abs/2311.02103": "lai2025relax",
+    "https://doi.org/10.1145/3839457": "jain2026act",
+    "https://arxiv.org/abs/2604.13523": "gao2026atlaas",
+    "https://proceedings.mlsys.org/paper_files/paper/2025/hash/dbf02b21d77409a2db30e56866a8ab3a-Abstract-Conference.html": "ye2025flashinfer",
+    "https://proceedings.mlsys.org/paper_files/paper/2025/hash/8cb5b08f912600de3de07c6503599ba8-Abstract-Conference.html": "daghero2025sparse",
+    "https://tvm.apache.org/docs/how_to/tutorials/bring_your_own_codegen.html": "tvmByocDocs",
+    "https://tvm.apache.org/docs/install/from_source.html": "tvmBuildDocs",
+    "https://onnx.ai/onnx-mlir/AddCustomAccelerators.html": "onnxmlirAccelDocs",
+    "https://onnx.ai/onnx-mlir/BuildOnLinuxOSX.html": "onnxmlirBuildDocs",
+    "https://iree.dev/": "ireeDocs",
 }
 
 
@@ -253,7 +263,7 @@ def render(source: str) -> tuple[str, int]:
 \renewcommand\footnotetextcopyrightpermission[1]{{}}
 \acmConference[EuroSys '27]{{Twenty-Second European Conference on Computer Systems}}{{April 19--23, 2027}}{{Rabat, Morocco}}
 \acmYear{{2027}}
-\title[Joggle: Progressive Exposure]{{{escape(title)}}}
+\title[Joggle: Malleable Compilation]{{{escape(title)}}}
 \author{{Anonymous Author(s)}}
 \affiliation{{\institution{{Anonymous}}}}
 \ccsdesc[500]{{Software and its engineering~Compilers}}

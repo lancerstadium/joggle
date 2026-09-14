@@ -8,12 +8,14 @@ separate from scientific progress.
 
 - [x] Anonymous two-column review layout.
 - [x] Mechanical Markdown-to-LaTeX rendering with unsupported-input failure.
-- [x] Ten-page build within the 12-page technical-content limit.
-- [x] Both current diagnostic tables fit without clipping.
-- [x] Bibliography resolves 31 cited works without undefined citations.
-- [x] Literature ledger classifies 64 candidates and verifies 49 against
-      primary records.
-- [x] Deterministic operator corpus covers 416 cases: eight pointwise/
+- [x] Fresh seven-page argument draft builds within the 12-page technical-content
+      limit; evidence tables and figures have not yet been inserted.
+- [ ] Rebuild the citation surface from the verified literature ledger; the
+      clean-slate manuscript deliberately removed the old citation catalogue.
+- [x] Literature map states the strongest competing explanations from MLIR,
+      Relax, Exo, ACT/ATLAAS, Ladder, Mirage, and Axon and derives falsifiable
+      experiments from them.
+- [x] Deterministic operator corpus covers 441 cases: nine pointwise/
       normalization rows and eight contraction/Transformer rows.
 - [x] XCiT-Tiny infers all 1,333 initially unknown results; its seven-call
       conversion frontier is preserved rather than reported as end-to-end
@@ -22,12 +24,16 @@ separate from scientific progress.
 ## Submission blockers
 
 - [ ] Replace shared-runner timings with controlled, repeatable Linux results.
+- [ ] Complete the pre-registered evolution-continuity experiment against the
+      documented native paths in TVM/Relax and ONNX-MLIR/MLIR.
+- [ ] Demonstrate chooser substitution and one generic target policy across
+      several functions and at least two complete models.
 - [ ] Report external compiler baselines on matching models and hardware.
 - [ ] Add an architecture figure that makes the progressive function IR and
       extension boundary concrete.
 - [ ] Freeze the title, abstract, research questions, and three contributions
       after the evidence tables stop changing.
-- [ ] Expand the 31 cited works toward at least 50 relevant citations and run
+- [ ] Use at least 50 relevant verified works and run
       an independent claim-to-source audit; every comparison claim needs a
       primary source and a verified bibliography entry.
 - [ ] Add artifact, AI-use, conflicts, ethics, and reproducibility disclosures
