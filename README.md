@@ -100,7 +100,8 @@ Conversion, optimization, storage planning, and emission remain explicit:
 ./build/joggle run onnx.nn.convert opt.basic source.jog \
   -M build/modules > semantic.jog
 
-./build/joggle run c.prepare mem.plan semantic.jog \
+./build/joggle run c.prepare bounds.fold opt.fold opt.basic mem.plan \
+  semantic.jog \
   -M build/modules > prepared.jog
 
 ./build/joggle emit c.source prepared.jog \
@@ -114,7 +115,8 @@ are not needed:
 ```sh
 ./build/joggle read onnx.read model.onnx -M build/modules |
   ./build/joggle run onnx.nn.convert opt.basic - -M build/modules |
-  ./build/joggle run c.prepare mem.plan - -M build/modules |
+  ./build/joggle run c.prepare bounds.fold opt.fold opt.basic mem.plan \
+    - -M build/modules |
   ./build/joggle emit c.source - -M build/modules > model.c
 ```
 

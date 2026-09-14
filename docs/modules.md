@@ -110,7 +110,8 @@ joggle read onnx.read model.onnx -M modules > model.jog
 joggle run onnx.nn.convert opt.basic model.jog \
   -M modules > semantic.jog
 
-joggle run c.prepare mem.plan semantic.jog \
+joggle run c.prepare bounds.fold opt.fold opt.basic mem.plan \
+  semantic.jog \
   -M modules > prepared.jog
 
 joggle emit c.source prepared.jog -M modules > model.c

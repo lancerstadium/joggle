@@ -112,6 +112,7 @@ int main(int argc, char** argv) {
   CHECK(read_result.size() == 1 && read_result.front().string());
 
   CHECK(env.load("onnx.nn"));
+  CHECK(env.load("bounds"));
   CHECK(env.load("opt"));
   CHECK(env.load("c"));
   CHECK(env.load("mem"));
@@ -158,6 +159,9 @@ int main(int argc, char** argv) {
     env.print_diags(stderr);
     return 1;
   }
+  CHECK(joggle::run(env, "bounds.fold", model));
+  CHECK(joggle::run(env, "opt.fold", model));
+  CHECK(joggle::run(env, "opt.basic", model));
   CHECK(joggle::run(env, "mem.plan", model));
   const std::vector<joggle::Attr> placement{joggle::Attr("static")};
   CHECK(joggle::run(env, "c.place", model, placement));
