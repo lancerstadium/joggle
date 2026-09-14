@@ -149,17 +149,21 @@ jobs:
 
       - name: Summarize medians
         run: |
-          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
           import csv
+          import os
           import statistics
           from pathlib import Path
 
-          print("## Directional Linux performance")
-          print()
-          print("Shared GitHub runner; medians are diagnostic, not publication claims.")
-          print()
-          print("| Model | Joggle | ONNX Runtime | Joggle / ORT |")
-          print("|---|---:|---:|---:|")
+          summary = [
+              "## Directional Linux performance",
+              "",
+              "Shared GitHub runner; medians are diagnostic, not publication claims.",
+              "",
+              "| Model | Joggle | ONNX Runtime | Joggle / ORT |",
+              "|---|---:|---:|---:|",
+          ]
+          notice = []
           for model in ("mnist", "mobilenetv2"):
               rows = list(csv.DictReader(
                   Path(f"build-app/performance/{model}.csv").open()
@@ -171,10 +175,18 @@ jobs:
               }
               joggle = statistics.median(samples["joggle"])
               runtime = statistics.median(samples["onnxruntime"])
-              print(
+              summary.append(
                   f"| {model} | {joggle * 1000:.3f} ms | "
                   f"{runtime * 1000:.3f} ms | {joggle / runtime:.2f}x |"
               )
+              notice.append(
+                  f"{model}: Joggle {joggle * 1000:.3f} ms, "
+                  f"ORT {runtime * 1000:.3f} ms, {joggle / runtime:.2f}x"
+              )
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as stream:
+              stream.write("\n".join(summary) + "\n")
+          print("::notice title=Directional Linux performance::" +
+                " | ".join(notice))
           PY
 
       - name: Upload raw records
