@@ -19,6 +19,10 @@ CITATIONS = {
     "https://doi.org/10.1109/CGO.2017.7863730": "steuwer2017lift",
     "https://arxiv.org/abs/2201.03611": "steuwer2022rise",
     "https://arxiv.org/abs/2504.17577": "wang2025tilelang",
+    "https://doi.org/10.1145/2491956.2462176": "ragankelley2013halide",
+    "https://www.usenix.org/conference/osdi20/presentation/zheng": "zheng2020ansor",
+    "https://arxiv.org/abs/2405.05751": "wu2024mirage",
+    "https://arxiv.org/abs/2606.26344": "kothari2026axon",
     "https://proceedings.mlsys.org/paper_files/paper/2021/file/6c44dc73014d66ba49b28d483a8f8b0d-Paper.pdf": "david2021tflm",
 }
 

@@ -1,0 +1,62 @@
+{
+  "artifacts": {
+    "api": {
+      "bytes": 575,
+      "sha256": "4e03acadb733250b1d9fa27325a55b170d9770dab342843f15a6f59e45a1a24b"
+    },
+    "header": {
+      "bytes": 197,
+      "sha256": "f5d08afe4373c8b5d4b06b5b314543721e03c5c51b308fc93619c5fe1f6a7436"
+    },
+    "source": {
+      "bytes": 126178,
+      "sha256": "f7de9b455310dcf98fbf53beacfe5328b8f4fa97b29b8d434d8dd57cb2683184"
+    },
+    "weights": {
+      "bytes": 13956388,
+      "sha256": "a886fc21331aa9a7f7f0c976d8c54ff8b132e7a6deae2eacd4d8aabb7dcf291c"
+    }
+  },
+  "model": {
+    "bytes": 13989822,
+    "sha256": "ff5cb7f9e62c92ebdad971f8a98aa6b3106d82a64587a7787c6a385c9e791339"
+  },
+  "revision": "03f8e25f9acf1b033a47093f3af441f1d854ed82",
+  "schema": 1,
+  "stages_seconds": {
+    "api": 1.1171540390000132,
+    "clean": 7.077455350999998,
+    "convert": 0.42162311299999544,
+    "dce": 0.38908422000000087,
+    "header": 1.053861521999977,
+    "noalias": 0.7544470849999811,
+    "place": 0.7351585100000193,
+    "plan": 1.0098752209999873,
+    "prepare": 31.819401688,
+    "read": 0.46026438699999517,
+    "scalarize": 11.541628462000006,
+    "source": 2.409030588999997,
+    "weights": 1.193189301000018
+  },
+  "stats": {
+    "blks": 541,
+    "branches": 146,
+    "callees": 39,
+    "calls": 4881,
+    "consts": 2623,
+    "fns": 1,
+    "loops": 248,
+    "mem_elems": 2860032,
+    "mem_slots": 3,
+    "ops": 8439,
+    "returns": 1,
+    "revision": 1,
+    "static_tensor_elems": 85543306,
+    "static_tensor_vals": 844,
+    "tensor_vals": 844,
+    "unresolved": 864,
+    "uses": 2,
+    "vals": 9008,
+    "yields": 540
+  }
+}

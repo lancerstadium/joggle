@@ -1,0 +1,23 @@
+{
+  "input": {
+    "bytes": 602112,
+    "sha256": "69b7f142a1a9b328ec624ccde918e3c700fae1a8b799d3305f6a3b6578def564",
+    "shape": [
+      1,
+      224,
+      224,
+      3
+    ]
+  },
+  "litert": "2.2.0",
+  "model_sha256": "ff5cb7f9e62c92ebdad971f8a98aa6b3106d82a64587a7787c6a385c9e791339",
+  "reference": {
+    "bytes": 4004,
+    "sha256": "9acd86c9bdf51b370722e6a1f2e4470694a2186ce311271a0d25c4413f70d77f",
+    "shape": [
+      1,
+      1001
+    ]
+  },
+  "schema": 1
+}

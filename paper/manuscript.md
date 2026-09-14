@@ -96,20 +96,94 @@ The first two items are implemented design candidates. The third remains the
 submission-critical study; no contribution claim is final until its protocol
 and results are frozen.
 
-## 2. Research questions
+## 2. Motivation: the vertical slice is the experiment
 
-- **RQ1, progressive representation:** Can imported model calls, reusable
-  semantics, explicit loops, storage decisions, and target preparation remain
-  understandable and verifiable in one function representation?
-- **RQ2, extension surface:** Across an end-to-end ONNX-MLIR baseline and
-  task-specific mechanism controls, which files, native registrations,
-  generated definitions, core changes, and build dependencies are required?
-- **RQ3, composition:** Do independently defined modules compose with stable
+### 2.1 A co-design change crosses compiler boundaries
+
+Consider a researcher evaluating a fused, low-precision projection on a small
+edge accelerator. The idea is not only a new kernel. The imported model may
+express the computation as several source operators; the numeric format changes
+types and constant packing; the accelerator instruction admits only particular
+tile and layout choices; the storage planner must preserve alignment and
+lifetime constraints; and the artifact must expose a callable boundary for the
+host. An honest experiment must be able to inspect and change every one of
+these decisions, preserve a fallback, and show where an unsupported case stops.
+
+Production compilers separate these concerns intentionally. MLIR provides
+dialects, interfaces, conversions, and passes; TVM separates high-level model
+representation from tensor programs and schedules; ONNX-MLIR moves from ONNX
+operations through lower-level dialects; and IREE connects compiler IRs to a
+deployment runtime. These boundaries support large ecosystems. For the
+researcher, however, the unit of experimentation becomes a *vertical slice*
+through several otherwise independent extension mechanisms. We call a point
+at which the same experimental decision must be re-expressed or recovered in a
+new mechanism an **extension discontinuity**. The claim is not that every
+conversion is harmful. The question is whether the accumulated discontinuities
+are necessary for a bounded co-design experiment.
+
+### 2.2 Control and automation solve different halves
+
+Kernel languages give authors precise control at a lower level. [Halide-style](https://doi.org/10.1145/2491956.2462176)
+algorithm/schedule separation and the function-rewrite lineage of Lift and
+RISE make transformations explicit; TileLang exposes tile, memory, layout, and
+thread decisions. These systems are appropriate when the kernel is already the
+unit of work. They do not by themselves define how a new source relation,
+storage contract, and exported model interface travel with that kernel.
+
+Automatic systems attack the authoring burden from the other side. [Ansor-like](https://www.usenix.org/conference/osdi20/presentation/zheng)
+search explores tensor programs, while [Mirage](https://arxiv.org/abs/2405.05751) searches across graph, block, and
+thread levels. [Axon](https://arxiv.org/abs/2606.26344) goes further: it synthesizes target instructions from
+semantic specifications, explores tiling and fusion, and checks equivalence
+with SMT over unbounded tensors. This is an important direction, but synthesis
+still needs a place to obtain semantic structure, hardware capabilities,
+fallbacks, and artifact constraints. Search can choose decisions; it does not
+make the surrounding experimental control plane disappear. A useful workbench
+should permit an Axon-like synthesizer, a hand-written schedule, or a simple
+rule to be packaged as policy rather than making any one of them the compiler's
+mandatory architecture.
+
+### 2.3 Edge deployment makes the unsupported path visible
+
+Edge runtimes are strong controls precisely because their supported paths are
+fast and engineered. The difficulty appears when a study changes a data type,
+operator, kernel ABI, or target primitive outside that path. Runtime-specific
+registration can restore execution, but it couples the experiment to that
+runtime. Transparent ahead-of-time C takes the opposite trade-off: it is easy
+to inspect, compile, and connect to unfamiliar devices, but generic scalar code
+can be far slower than a production kernel library. Our own current evidence
+shows this gap rather than hiding it: a module-defined affine policy improves
+the generated MobileNetV2 artifact, yet it remains 12.24 times slower than
+one-thread ONNX Runtime on the same shared runner. Thus extensibility is only
+useful if the representation exposes enough structure for layout, packing,
+vectorization, external kernels, and target-owned profitability policies.
+
+### 2.4 Hypothesis and measurable predictions
+
+Joggle tests whether the vertical slice can remain one progressively exposed
+typed function representation. Imported calls, reusable tensor bodies,
+explicit loops, storage facts, and artifact calls are different states of the
+same public objects. Distributable module functions decide which state to
+expose or change; failed mutations roll back; target capabilities make the
+remaining frontier explicit. This leads to four questions:
+
+- **RQ1, continuity:** Can conventional CNN, detection, ViT/attention, and
+  compact language-model workloads progress from import to inspectable
+  computation and executable artifacts without operator cases in the core or
+  emitter?
+- **RQ2, extension boundary:** On matched tasks, how many distinct definitions,
+  registrations, conversions, native files, and build dependencies are needed
+  in Joggle, ONNX-MLIR, TVM, and selected edge/kernel systems?
+- **RQ3, composition:** Do independently installed modules compose with stable
   output, transactional failure, and useful unsupported-frontier diagnostics?
-- **RQ4, artifact quality:** Under matched model, threading, and correctness
-  contracts, how do generated artifacts compare with independent production
-  systems? Separately, can user modules change real function bodies without a
-  core or emitter modification?
+- **RQ4, artifact quality:** Under matched model, host, threading, and numerical
+  contracts, what are the compile cost, code size, workspace, accuracy, and
+  latency boundaries of the generated artifacts?
+
+These questions make the hypothesis falsifiable. Joggle fails if its apparent
+uniformity merely moves operator or target cases into the host, if modules
+cannot rewrite real function bodies, if modern model families stop at opaque
+calls, or if the exposed structure cannot support competitive target-aware
+code generation.
 
 ## 3. Design
 
@@ -448,6 +522,20 @@ same 1,000-element oracle and use byte-identical weights. This shared-runner
 result does not establish a controlled latency effect, but it rejects loop
 count and source size as sufficient profitability criteria and keeps selection
 in a target-owned module policy rather than the legality rewrite.
+
+A separate second-frontend study starts from the official floating-point
+TFLite MobileNetV2 FlatBuffer rather than converting the ONNX subject. Joggle
+decodes 107 constants and 66 source calls, relates and exposes every selected
+call, emits 126,178 bytes of C plus a 13,956,388-byte weight payload, and plans
+three workspace slots containing 2,860,032 `f32` elements. The strict C11
+artifact agrees with the 1,001-element LiteRT 2.2.0 oracle within
+`1.0132789611816406e-6`. On one pinned Intel Xeon Platinum 8370C shared runner,
+20 balanced fresh-process trials have medians of 225.667 ms for generated C and
+6.424 ms for one-thread LiteRT with its default XNNPACK CPU delegate, a 35.13x
+gap. This is evidence that the TFLite path reaches a correct executable and a
+second negative runtime comparison. It is not pooled with ONNX Runtime because
+the serialized model and production stack differ, and it is not controlled-host
+performance.
 
 Table 2 reports two independently dispatched system runs. Each subject runs in
 a fresh process under a one-thread contract, and each cell is the median of 20

@@ -6,6 +6,21 @@ experiment instead of presenting them as controlled performance claims.
 Rows comparing two Joggle variants are pass regressions or ablations only;
 they are excluded from the paper's primary system-performance evidence.
 
+`tflite-linux/` preserves the successful `linux-tflite` workflow at clean
+revision `03f8e25`. The official floating-point TFLite MobileNetV2 FlatBuffer
+is decoded, related to shared semantics, expanded, planned, emitted as strict
+C11 plus an external weight file, and executed against a deterministic LiteRT
+2.2.0 oracle. The 1,001-element output has maximum absolute error
+`1.0132789611816406e-6`. On one pinned Intel Xeon Platinum 8370C runner CPU,
+20 balanced fresh-process trials have medians of 225.667 ms for generated C
+and 6.424 ms for one-thread LiteRT with its default XNNPACK CPU delegate, a
+35.13x gap. The generated source is 126,178 bytes, the external payload is
+13,956,388 bytes, and the static workspace has three slots holding 2,860,032
+`f32` elements. The raw CSV, provenance, compile-stage record, and fixture
+hashes are retained together. This shared-runner result proves a second
+frontend-to-artifact path and records a negative production-runtime comparison;
+it is not controlled-host performance.
+
 `mobilenetv2-systems-pilot.csv` and its JSON provenance record are the latest
 outputs of the independent-system runner. At clean revision `418a34e`, 20
 balanced fresh-process trials compare generated C with ONNX Runtime 1.26.0 on

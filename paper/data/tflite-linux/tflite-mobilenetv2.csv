@@ -1,0 +1,41 @@
+study,trial,position,system,seconds,checksum,metrics,validation,load1_before,load1_after
+tflite-mobilenetv2,0,0,joggle,0.226592970,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.107910,1.107910
+tflite-mobilenetv2,0,1,litert,0.007341255,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.107910,1.107910
+tflite-mobilenetv2,1,0,litert,0.007041916,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.107910,1.107910
+tflite-mobilenetv2,1,1,joggle,0.227591905,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.107910,1.107910
+tflite-mobilenetv2,2,0,litert,0.007480660,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.107910,1.107910
+tflite-mobilenetv2,2,1,joggle,0.228539131,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.107910,1.107910
+tflite-mobilenetv2,3,0,joggle,0.226116416,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.107910,1.107910
+tflite-mobilenetv2,3,1,litert,0.007383729,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.107910,1.107910
+tflite-mobilenetv2,4,0,joggle,0.224941193,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.107910,1.099121
+tflite-mobilenetv2,4,1,litert,0.005886523,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.099121,1.099121
+tflite-mobilenetv2,5,0,litert,0.005913911,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.099121,1.099121
+tflite-mobilenetv2,5,1,joggle,0.225796579,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.099121,1.099121
+tflite-mobilenetv2,6,0,litert,0.006326807,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.099121,1.099121
+tflite-mobilenetv2,6,1,joggle,0.225196215,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.099121,1.099121
+tflite-mobilenetv2,7,0,joggle,0.224966862,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.099121,1.099121
+tflite-mobilenetv2,7,1,litert,0.005763194,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.099121,1.099121
+tflite-mobilenetv2,8,0,joggle,0.225417641,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.099121,1.099121
+tflite-mobilenetv2,8,1,litert,0.005728634,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.099121,1.099121
+tflite-mobilenetv2,9,0,litert,0.005870901,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.099121,1.099121
+tflite-mobilenetv2,9,1,joggle,0.224698818,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.099121,1.090820
+tflite-mobilenetv2,10,0,litert,0.005872513,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.090820,1.090820
+tflite-mobilenetv2,10,1,joggle,0.224896382,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.090820,1.090820
+tflite-mobilenetv2,11,0,joggle,0.224749258,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.090820,1.090820
+tflite-mobilenetv2,11,1,litert,0.005918798,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.090820,1.090820
+tflite-mobilenetv2,12,0,joggle,0.225013704,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.090820,1.090820
+tflite-mobilenetv2,12,1,litert,0.005724141,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.090820,1.090820
+tflite-mobilenetv2,13,0,litert,0.005886304,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.090820,1.090820
+tflite-mobilenetv2,13,1,joggle,0.224922879,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.090820,1.083496
+tflite-mobilenetv2,14,0,litert,0.007104748,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.083496,1.083496
+tflite-mobilenetv2,14,1,joggle,0.227658131,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.083496,1.083496
+tflite-mobilenetv2,15,0,joggle,0.226621343,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.083496,1.083496
+tflite-mobilenetv2,15,1,litert,0.006938171,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.083496,1.083496
+tflite-mobilenetv2,16,0,joggle,0.226325611,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.083496,1.083496
+tflite-mobilenetv2,16,1,litert,0.007435270,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.083496,1.083496
+tflite-mobilenetv2,17,0,litert,0.007564710,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.083496,1.083496
+tflite-mobilenetv2,17,1,joggle,0.225706970,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.083496,1.083496
+tflite-mobilenetv2,18,0,litert,0.007358045,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.083496,1.083496
+tflite-mobilenetv2,18,1,joggle,0.225626120,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.083496,1.076660
+tflite-mobilenetv2,19,0,joggle,0.226465117,3e96ec78b373c8e9,{},"output,0,elements,1001,max_abs_error,1.0132789611816406e-06",1.076660,1.076660
+tflite-mobilenetv2,19,1,litert,0.006521989,bb490d49aed4302f,{},INFO: Created TensorFlow Lite XNNPACK delegate for CPU. | max_abs_error=0,1.076660,1.076660

@@ -50,6 +50,13 @@ Runtime medians are 10.359 and 10.447 ms. This negative result motivates a
 target-owned profitability policy; it is not evidence that fusion improves
 latency.
 
+The `linux-tflite` application gate at revision `03f8e25` completes the second
+frontend through strict generated C. Its output agrees with the LiteRT 2.2.0
+oracle within `1.0132789611816406e-6`. On one pinned shared-runner CPU, the
+generated-C and one-thread LiteRT medians are 225.667 and 6.424 ms, a 35.13x
+gap. This is a reproducible correctness and artifact result plus a negative
+runtime diagnostic, not isolated-host performance.
+
 The current generated-C pilots remain slower than one-thread ONNX Runtime. At
 revision `418a34e`, the balanced GitHub Linux smoke run reports MobileNetV2 at
 167.315 versus 10.346 ms (16.17x) and MNIST at 0.530 versus 0.050 ms (10.55x)
@@ -74,6 +81,11 @@ is complete.
   `--check` is part of the normal test suite and rejects stale transcription.
 - [`references.bib`](references.bib): source-verified bibliography for every
   related-work citation currently used by the manuscript.
+- [`literature-map.md`](literature-map.md): the 64-work candidate pool,
+  verification state, comparison role, pain-point synthesis, and priority
+  order used to grow the bibliography beyond 50 actually cited works.
+- [`figure-plan.md`](figure-plan.md): the evidence contract replacing pass
+  tables with measured dense matrices and shared-legend model panels.
 - [`related-work.md`](related-work.md): claim-oriented comparisons grounded in
   primary papers and official documentation.
 - [`extension-study.md`](extension-study.md): frozen extension protocol,
