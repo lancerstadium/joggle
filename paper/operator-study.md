@@ -23,8 +23,12 @@ the table dense but uninterpretable.
 
 ### A. Two-dimensional and last-axis computations
 
-Rows: Add, Multiply, ReLU, SiLU, RMSNorm, LayerNorm, Softmax, ReduceSum, and
-Cumsum when supported by all compared paths.
+Rows: Add, Multiply, ReLU, SiLU, Softmax, ReduceMean, RMSNorm, and LayerNorm.
+These are executable semantic fixtures, not labels reserved for future data:
+the generator constructs 200 cases, evaluates every ONNX model with the ONNX
+reference evaluator, and stores one deterministic input and output oracle per
+case. ReduceSum and Cumsum are deferred until both shared semantic bodies and
+the matched baseline path execute; unsupported names do not occupy empty rows.
 
 Columns are the complete Cartesian product `M × N`, with
 `M ∈ {1, 4, 16, 64, 256}` and `N ∈ {64, 128, 256, 512, 1024}`: 25 measured
@@ -146,9 +150,15 @@ native-LaTeX table and its auditable cell summary with:
 python3 paper/render_operator_table.py \
   --fixtures build/operator-study/fixtures/manifest.json \
   --runs-root build/operator-study/sweep \
+  --matrix contraction \
   --output build/operator-study/sweep/operator-table.tex \
   --summary build/operator-study/sweep/operator-summary.csv
 ```
+
+Use `--matrix row` for the eight-row, 25-column pointwise/normalization table.
+The renderer requires every row to contain the identical coordinate grid and
+all cells to share one clean revision, host, and outer-trial count. It refuses
+to manufacture a rectangular table from partial or mixed-host evidence.
 
 The renderer refuses mixed hosts, mixed revisions, dirty measurements, missing
 systems, nonpositive timings, or malformed shapes. The emitted fragment uses

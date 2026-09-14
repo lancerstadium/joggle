@@ -18,6 +18,18 @@ from onnx.reference import ReferenceEvaluator
 M_EXTENTS = (1, 16, 128)
 K_EXTENTS = (128, 256, 512)
 N_EXTENTS = (128, 256, 512)
+ROW_EXTENTS = (1, 4, 16, 64, 256)
+WIDTH_EXTENTS = (64, 128, 256, 512, 1024)
+ROW_OPERATIONS = (
+    "add",
+    "multiply",
+    "relu",
+    "silu",
+    "softmax",
+    "reduce_mean",
+    "rmsnorm",
+    "layernorm",
+)
 
 
 def digest(data: bytes) -> str:
@@ -81,26 +93,139 @@ def matmul_case(m: int, k: int, n: int) -> tuple[dict[str, bytes], dict[str, Any
     return files, record
 
 
-def requested_cases(names: set[str]) -> list[tuple[int, int, int]]:
-    cases = [
-        (m, k, n)
+def row_case(operation: str, rows: int, width: int) -> tuple[dict[str, bytes], dict[str, Any]]:
+    case = f"{operation}-m{rows}-n{width}"
+    data = values((rows, width), 5, 29)
+    initializers = []
+    if operation in {"add", "multiply"}:
+        parameter = values((width,), 7, 31)
+        if operation == "multiply":
+            parameter = parameter + np.float32(1.0)
+        initializers.append(numpy_helper.from_array(parameter, "parameter"))
+        nodes = [
+            helper.make_node(
+                "Add" if operation == "add" else "Mul",
+                ["data", "parameter"], ["result"],
+            )
+        ]
+    elif operation == "relu":
+        nodes = [helper.make_node("Relu", ["data"], ["result"])]
+    elif operation == "silu":
+        nodes = [
+            helper.make_node("Sigmoid", ["data"], ["gate"]),
+            helper.make_node("Mul", ["data", "gate"], ["result"]),
+        ]
+    elif operation == "softmax":
+        nodes = [helper.make_node("Softmax", ["data"], ["result"], axis=-1)]
+    elif operation == "reduce_mean":
+        nodes = [
+            helper.make_node(
+                "ReduceMean", ["data"], ["result"], axes=[-1], keepdims=1
+            )
+        ]
+    elif operation in {"rmsnorm", "layernorm"}:
+        epsilon = np.asarray(1.0e-5, dtype=np.float32)
+        initializers.append(numpy_helper.from_array(epsilon, "epsilon"))
+        nodes = []
+        normalized = "data"
+        if operation == "layernorm":
+            nodes += [
+                helper.make_node(
+                    "ReduceMean", ["data"], ["mean"], axes=[-1], keepdims=1
+                ),
+                helper.make_node("Sub", ["data", "mean"], ["centered"]),
+            ]
+            normalized = "centered"
+        nodes += [
+            helper.make_node("Mul", [normalized, normalized], ["square"]),
+            helper.make_node(
+                "ReduceMean", ["square"], ["variance"],
+                axes=[-1], keepdims=1,
+            ),
+            helper.make_node("Add", ["variance", "epsilon"], ["stabilized"]),
+            helper.make_node("Sqrt", ["stabilized"], ["scale"]),
+            helper.make_node("Div", [normalized, "scale"], ["result"]),
+        ]
+    else:
+        raise ValueError(f"unknown row operation: {operation}")
+
+    output_shape = [rows, 1] if operation == "reduce_mean" else [rows, width]
+    graph = helper.make_graph(
+        nodes,
+        case,
+        [helper.make_tensor_value_info("data", TensorProto.FLOAT, [rows, width])],
+        [helper.make_tensor_value_info("result", TensorProto.FLOAT, output_shape)],
+        initializers,
+    )
+    model = helper.make_model(
+        graph,
+        producer_name="joggle-operator-study",
+        opset_imports=[helper.make_opsetid("", 13)],
+        ir_version=8,
+    )
+    onnx.checker.check_model(model)
+    result = np.asarray(
+        ReferenceEvaluator(model).run(None, {"data": data})[0],
+        dtype=np.float32,
+    )
+    if tuple(result.shape) != tuple(output_shape) or not np.isfinite(result).all():
+        raise RuntimeError(f"invalid reference result for {case}")
+    files = {
+        "model.onnx": encode(model),
+        "test_data_set_0/input_0.pb": encode(
+            numpy_helper.from_array(data, "data")
+        ),
+        "test_data_set_0/output_0.pb": encode(
+            numpy_helper.from_array(result, "result")
+        ),
+    }
+    record = {
+        "case": case,
+        "operation": operation,
+        "shape": {"M": rows, "N": width},
+        "input_elements": rows * width,
+        "output_elements": int(result.size),
+    }
+    return files, record
+
+
+def all_cases() -> list[tuple[str, tuple[int, ...]]]:
+    return [
+        ("matmul", (m, k, n))
         for m in M_EXTENTS
         for k in K_EXTENTS
         for n in N_EXTENTS
+    ] + [
+        (operation, (rows, width))
+        for operation in ROW_OPERATIONS
+        for rows in ROW_EXTENTS
+        for width in WIDTH_EXTENTS
     ]
-    known = {f"matmul-m{m}-k{k}-n{n}" for m, k, n in cases}
+
+
+def case_name(spec: tuple[str, tuple[int, ...]]) -> str:
+    operation, shape = spec
+    if operation == "matmul":
+        return f"matmul-m{shape[0]}-k{shape[1]}-n{shape[2]}"
+    return f"{operation}-m{shape[0]}-n{shape[1]}"
+
+
+def requested_cases(names: set[str]) -> list[tuple[str, tuple[int, ...]]]:
+    cases = all_cases()
+    known = {case_name(case) for case in cases}
     unknown = names - known
     if unknown:
         raise SystemExit(f"unknown case(s): {', '.join(sorted(unknown))}")
-    return [shape for shape in cases if not names or (
-        f"matmul-m{shape[0]}-k{shape[1]}-n{shape[2]}" in names
-    )]
+    return [case for case in cases if not names or case_name(case) in names]
 
 
 def materialize(root: Path, selected: set[str], check: bool) -> None:
     records = []
-    for m, k, n in requested_cases(selected):
-        files, record = matmul_case(m, k, n)
+    for operation, shape in requested_cases(selected):
+        if operation == "matmul":
+            files, record = matmul_case(*shape)
+        else:
+            files, record = row_case(operation, *shape)
         record["files"] = {
             name: digest(data) for name, data in sorted(files.items())
         }

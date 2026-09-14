@@ -235,10 +235,11 @@ def main() -> None:
     joggle_command = [
         relative(paths["program"], repo),
         relative(paths["input"], repo),
-        relative(paths["weights"], repo),
-        relative(paths["expected"], repo),
-        "3",
-        str(args.inner_repetitions),
+    ]
+    if paths["weights"].stat().st_size:
+        joggle_command.append(relative(paths["weights"], repo))
+    joggle_command += [
+        relative(paths["expected"], repo), "3", str(args.inner_repetitions)
     ]
     checked([str(repo / joggle_command[0]), *joggle_command[1:]])
 
@@ -270,7 +271,8 @@ def main() -> None:
                 "artifacts": {
                     name: relative(path, repo)
                     for name, path in paths.items()
-                    if name in {"source", "program", "input", "weights", "expected"}
+                    if (name in {"source", "program", "input", "expected"} or
+                        (name == "weights" and path.stat().st_size))
                 },
                 "version_command": [relative(tool, repo), "--version"],
             },

@@ -7,22 +7,27 @@ small multiples with one shared legend for model-level measurements. The visual
 language is a style reference only; all values, labels, groupings, and captions
 must be generated from Joggle's preserved records.
 
-## Figure 1 — Why a vertical experiment fragments
+## Figure 1 — One vertical experiment, several ownership boundaries
 
 **Claim.** A bounded co-design change spans source semantics, computation,
 schedule/layout, storage, and artifact interfaces, but existing systems expose
 these decisions through several extension surfaces.
 
-This is the Motivation and infrastructure-comparison figure. Its top strip
-follows one running change (a low-precision fused projection mapped to an
-external edge instruction) through the five decisions. Below it, aligned
-grouped-bar panels report authored source files, authored source lines, native
-registrations, build files, new dependencies, and generated artifacts for the
-four frozen tasks. Joggle, ONNX-MLIR, and TVM retain one shared legend and task
-order. A system that stops at a mandatory boundary receives a hatched
-``unsupported'' marker at that task, not a zero-height bar. No panel combines
-these dimensions into an ease score, and the old “pass, N lines” table is not
-part of the manuscript.
+This Motivation figure is primarily a wide left-to-right ownership map, not a
+bar chart. It follows one running change---a low-precision fused projection
+mapped to an external edge instruction---through source relation, numeric
+representation, tensor body, schedule/layout, storage, and artifact ABI. One
+row per system marks where that intent must cross a different representation,
+registration mechanism, or runtime boundary. Only facts demonstrated by the
+matched task artifacts are drawn. The visual establishes *why* the experiment
+is vertical before any source counts appear.
+
+The current three-panel source-count plot moves out of Motivation. If retained,
+it becomes a secondary extension-cost figure with a denser 2-by-2 layout:
+authored files and lines on the first row, native/build obligations and emitted
+artifacts on the second. Joggle, ONNX-MLIR, and TVM retain one legend and task
+order. A stopped task receives an explicit unsupported marker, not a zero. No
+panel combines dimensions into an ease score.
 
 ## Appendix coverage record — Workload compilation frontier
 
@@ -40,22 +45,21 @@ compact transformer language model, alongside the existing official ONNX Zoo
 CNN/detection suite and TFLite MobileNetV2. GPT-2 may be retained as a heavy
 frontier probe, but it does not replace a compact edge-relevant language model.
 
-## Main LaTeX table — Operator and shape speedups
+## Tables 2--4 — Operator and shape speedups
 
 **Claim.** Target-aware policies change performance only in identifiable
 operator/shape regions; no single optimization should be advertised from one
 MobileNet aggregate.
 
-This is a native two-column LaTeX table following the supplied dense-table
-example. Every shaded cell has exactly one meaning: baseline median latency
-divided by Joggle median latency, so values above 1.0 are Joggle speedups and
-values below 1.0 are slowdowns. Rows are inference computations such as Add,
-ReLU, SiLU, LayerNorm, Softmax, MatMul, convolution, and depthwise convolution.
-The horizontal axis is deliberately broad rather than a handful of examples.
-The exact grids are frozen in `operator-study.md`: 25 `M×N` cases, 27
-`M×K×N` cases, 24 spatial/depthwise cases, and 20 pointwise-convolution cases.
-Shape families use separate tables when their arity differs; they are not
-forced into one misleading common axis.
+Every shaded cell has exactly one meaning: baseline median latency divided by
+Joggle median latency, so values above 1.0 are Joggle speedups and values below
+1.0 are slowdowns. Table 2 has eight executable rows (Add, Multiply, ReLU,
+SiLU, Softmax, ReduceMean, RMSNorm, LayerNorm) across 25 `M×N` columns. Table 3
+contains contractions and fused transformer subgraphs across 27 `M×K×N`
+columns. Table 4 contains standard, depthwise, and pointwise convolution under
+an explicit spatial/channel header. Each is a full-width native LaTeX table
+with rotated headers and a geometric-mean column, matching the supplied dense
+table grammar. Different arities are never forced onto one ambiguous axis.
 
 Row sections identify the baseline (one-thread ONNX Runtime, TVM-generated C,
 and LiteRT only for a matched TFLite path). All systems consume the same input
@@ -66,39 +70,48 @@ or an unrelated count. A geometric mean is printed only for a semantically
 coherent row section. Until those matched measurements exist, the manuscript
 does not render or populate this table.
 
-## Figure 2 — Artifact quality across model families
+## Figure 2 — End-to-end model outcomes
 
 **Claim.** Malleability has measurable compile-time, artifact-size, workspace,
 correctness, and latency consequences across workloads.
 
-Use a two-row aligned small-multiple layout with one shared legend, following
-the supplied multi-panel example. Columns preserve the same model order and
-panels have complementary roles rather than repeating one metric:
+Use a full-width two-row aligned small-multiple layout with one shared legend,
+following the supplied grouped-panel example. Columns preserve the same model
+order and panels have complementary roles rather than repeating one metric:
 
-- compilation and transformation time;
-- generated source/binary/weight size;
-- planned peak workspace;
-- inference latency with dispersion;
-- numerical error or task metric;
-- optional policy delta paired with its unchanged runtime control.
+- top row: compile time, inference latency with dispersion, and peak workspace;
+- bottom row: executable size, immutable-weight size, and task metric or
+  numerical error.
+
+The subjects are grouped by workload family: compact classifier, mobile CNN,
+detection, ViT-class encoder, and compact transformer/attention. Systems are
+Joggle portable C, Joggle target policy, one-thread ONNX Runtime, TVM, and
+ONNX-MLIR wherever the same ONNX artifact and CPU contract are reproducible.
+LiteRT appears only in a separate TFLite panel and is never pooled with a
+converted ONNX model. This figure answers whole-model questions; operator-table
+cells do not substitute for it.
 
 The same model order and system colors are preserved across panels. Latency is
 never pooled across different serialized models or different machines. Shared
 GitHub runners remain diagnostic and are visually separated from controlled
 host data.
 
-## Figure 3 — Where automation attaches
+## Table 5 — Design mechanism and boundary comparison
 
 **Claim.** Joggle is an experimental control plane on which manual rules,
 schedule languages, learned search, or synthesis can choose the same exposed
 decisions without becoming mandatory core architecture.
 
-This design figure positions Lift/RISE and TileLang/Exo on the explicit-control
-side, Ansor/TVM search in the schedule-search space, and Mirage/Axon in
-multi-level superoptimization/synthesis. Arrows terminate at ordinary module
-functions over represented semantics, loops, storage, and artifacts. The figure
-must not imply these external systems are implemented inside Joggle; it defines
-an integration opportunity and the boundary evaluated by the paper.
+Use a wide qualitative table rather than a decorative architecture figure.
+Rows are Joggle, TVM/Relax+TensorIR, ONNX-MLIR, IREE, Exo, TileLang, and
+Mirage/Axon. Columns are source-model relation, inspectable tensor body,
+user-authored structural edit, automatic chooser attachment, custom numeric
+type, storage edit, external target primitive, artifact interface, and explicit
+unsupported frontier. Each cell contains a short mechanism name backed by a
+primary source or a reproduced task; it is not a checkmark. This makes both
+Joggle's advantage and its cost visible: a continuous edit surface and small
+module boundary versus weaker production breadth, target automation, and tuned
+kernels.
 
 ## Data and rendering rules
 
