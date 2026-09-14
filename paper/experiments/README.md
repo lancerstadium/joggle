@@ -96,3 +96,19 @@ MobileNetV2 manifest uses the same `1e-4 + 1e-4 * abs(reference)` elementwise
 bound for generated C and ONNX Runtime. Checksums expose nondeterminism but are
 not required to match across systems whose legal floating-point evaluation
 orders differ.
+
+`tflite-mobilenetv2.json` is a separate frontend-and-runtime diagnostic. It
+starts from the official floating-point TFLite MobileNetV2 file, generates one
+deterministic input, and uses one-thread LiteRT to create the numerical oracle.
+The Joggle subject reads that same FlatBuffer, converts its represented calls
+through `tflite.nn`, emits C plus an external weight file, and executes the C
+artifact against the same input and oracle. The LiteRT subject executes the
+original FlatBuffer with its default CPU delegate. This answers whether the
+second frontend reaches a correct executable and measures the remaining gap to
+its native production runtime; it is deliberately not merged with the ONNX
+Runtime results because the serialized models and runtime stacks differ.
+
+The `linux-tflite` workflow is the reproducible shared-runner smoke study. Its
+raw artifact records model, fixture, generated-artifact, revision, and host
+hashes. As with the ONNX workflows, its timing is diagnostic until repeated on
+an identified idle Linux machine with thermal and load control.

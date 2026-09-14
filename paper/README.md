@@ -39,7 +39,7 @@ usability.
 | Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths; a generated table covers twelve pinned Zoo stage records, of which ten complete semantic conversion | Reproduce the frozen frontier and executable subset in the anonymous artifact |
 | Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM controls pass three contracts and preserve an unsupported custom-type boundary; ONNX-MLIR passes the implementation and policy tasks, has a preserved unsupported external-call boundary, and carries the numeric-format fixture through a parameterized type to exact native execution before stopping at the required second executable target | Repeat the ONNX-MLIR build without interruption from a clean checkout |
 | Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical CSE/analysis scaling pilots | Freeze a fault and diagnostic matrix; do not expand parser/printer internals unless a case exposes a correctness defect |
-| Artifact quality | Ten numerical ONNX paths; clean-revision, 20-trial MobileNetV2 and MNIST records compare generated C with ONNX Runtime on two shared-runner CPU classes; internal rewrite diagnostics remain separate | Add an identified isolated Linux host with dispersion and task accuracy, or narrow the paper claim explicitly to artifact correctness and transformation reach |
+| Artifact quality | Ten numerical ONNX paths; clean-revision, 20-trial MobileNetV2 and MNIST records compare generated C with ONNX Runtime on two shared-runner CPU classes; internal rewrite diagnostics remain separate; a TFLite-to-C application study and matched LiteRT diagnostic are reproducible in `linux-tflite` | Validate the TFLite study on Linux, then add an identified isolated host with dispersion and task accuracy, or narrow the paper claim explicitly to artifact correctness and transformation reach |
 
 The same-job fusion diagnostic at revision `f8ade71` builds unfused and fused
 MobileNetV2 artifacts from one canonical IR and validates both against the
@@ -93,6 +93,10 @@ is complete.
 - [`experiments/`](experiments/): frozen cross-system command manifests. The
   runner requires one subject per independent system, rotates process trials,
   and rejects a busy host when a publication run supplies a load threshold.
+- [`prepare_tflite.py`](prepare_tflite.py),
+  [`make_tflite_fixture.py`](make_tflite_fixture.py), and
+  [`bench_litert.py`](bench_litert.py): the second-frontend application gate,
+  deterministic LiteRT oracle, and matched one-thread runtime command.
 
 ## Reproduction entry points
 
