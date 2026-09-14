@@ -287,6 +287,37 @@ fn check_reorder(m: Mod) -> bool {
   return true
 }
 
+fn check_multidimensional_reorder(m: Mod) -> bool {
+  let function = ir.find(m, "contraction")
+  assert(ir.live(function),
+         "multidimensional reorder check requires contraction")
+  var loops: list<Op> = []
+  for op in ir.ops(function) {
+    if ir.kind(op) == "loop" {
+      loops += [op]
+    }
+  }
+  assert(len(loops) == 1,
+         "multidimensional reorder check requires one loop")
+  let loop = loops[0]
+  let before = ir.revision(m)
+  assert(tile.state_axes(m, loop) == [0, 1] &&
+         tile.reduction_axes(m, loop) == [2],
+         "multidimensional state address produced the wrong axis roles")
+  assert(tile.can_reorder(m, loop, [0, 2, 1]),
+         "multidimensional state address rejected a legal reorder")
+  assert(ir.revision(m) == before,
+         "multidimensional reorder queries changed the module")
+  let reordered = tile.reorder(m, loop, [0, 2, 1])
+  let arguments = ir.args(ir.blks(reordered)[0])
+  assert(len(arguments) == 4 &&
+         ir.name(arguments[0]) == "row" &&
+         ir.name(arguments[1]) == "depth" &&
+         ir.name(arguments[2]) == "column",
+         "multidimensional reorder produced the wrong axis order")
+  return true
+}
+
 fn check_scalarize(m: Mod) -> bool {
   let before = ir.revision(m)
   let main = ir.find(m, "main")

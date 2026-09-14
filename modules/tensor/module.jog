@@ -882,12 +882,8 @@ fn matmul<E: Ty, M: int, N: int, K: int>(
   a: tensor<E, [M, K]>, b: tensor<E, [K, N]>
 ) -> tensor<E, [M, N]> {
   var out = tensor<E, [M, N]>(E(0))
-  for i in 0..M, j in 0..N {
-    var sum = E(0)
-    for k in 0..K {
-      sum += a[i, k] * b[k, j]
-    }
-    out[i, j] = sum
+  for i in 0..M, j in 0..N, k in 0..K {
+    out[i, j] = out[i, j] + a[i, k] * b[k, j]
   }
   return out
 }
@@ -1027,14 +1023,11 @@ fn matmul<E: Ty, L: list<int>, R: list<int>, Y: list<int>>(
   let n = R[len(R) - 1]
   let batches = numel<Y>() / (m * n)
   var out = tensor<E, Y>(E(0))
-  for batch in 0..batches, i in 0..m, j in 0..n {
-    var sum = E(0)
-    for k in 0..k_size {
-      let ai = matmul_offset(L, Y, batch, i, k)
-      let bi = matmul_offset(R, Y, batch, k, j)
-      sum += a[ai] * b[bi]
-    }
-    out[batch * m * n + i * n + j] = sum
+  for batch in 0..batches, i in 0..m, j in 0..n, k in 0..k_size {
+    let ai = matmul_offset(L, Y, batch, i, k)
+    let bi = matmul_offset(R, Y, batch, k, j)
+    let oi = batch * m * n + i * n + j
+    out[oi] = out[oi] + a[ai] * b[bi]
   }
   return out
 }
@@ -1058,26 +1051,27 @@ fn matmul<E: Ty, L: list<int>, R: list<int>, Y: list<int>>(
   }
   let batches = numel<Y>() / (m * n)
   var out = tensor<E, Y>(E(0))
-  for batch in 0..batches, row in 0..m, column in 0..n {
-    var sum = E(0)
-    for k in 0..depth {
-      var ar = row
-      var ac = k
-      var br = k
-      var bc = column
-      if transpose_a {
-        ar = k
-        ac = row
-      }
-      if transpose_b {
-        br = column
-        bc = k
-      }
-      let ai = matmul_offset(L, Y, batch, ar, ac)
-      let bi = matmul_offset(R, Y, batch, br, bc)
-      sum += a[ai] * b[bi]
+  for batch in 0..batches, row in 0..m, column in 0..n, k in 0..depth {
+    var ar = row
+    var ac = k
+    var br = k
+    var bc = column
+    if transpose_a {
+      ar = k
+      ac = row
     }
-    out[batch * m * n + row * n + column] = sum * E(alpha)
+    if transpose_b {
+      br = column
+      bc = k
+    }
+    let ai = matmul_offset(L, Y, batch, ar, ac)
+    let bi = matmul_offset(R, Y, batch, br, bc)
+    let oi = batch * m * n + row * n + column
+    out[oi] = out[oi] + a[ai] * b[bi]
+  }
+  for batch in 0..batches, row in 0..m, column in 0..n {
+    let oi = batch * m * n + row * n + column
+    out[oi] = out[oi] * E(alpha)
   }
   return out
 }

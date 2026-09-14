@@ -181,12 +181,15 @@ local fn reorder_access_issue(
   let state_value = body_args[axes]
   let read_accesses = reads(m, source, state_value)
   let write_accesses = writes(m, source, state_value)
-  if len(read_accesses) != 1 || len(write_accesses) != 1 ||
-     len(read_accesses[0]) != 1 || len(write_accesses[0]) != 1 {
+  if len(read_accesses) != 1 || len(write_accesses) != 1 {
     return "requires one indexed read and write of the carried value"
   }
-  let read_form = affine(m, source, read_accesses[0][0])
-  let write_form = affine(m, source, write_accesses[0][0])
+  let read_form = address_form(
+    m, source, state_value, read_accesses[0]
+  )
+  let write_form = address_form(
+    m, source, state_value, write_accesses[0]
+  )
   if len(read_form) != axes + 1 || read_form != write_form {
     return "requires equal affine read and write addresses"
   }
@@ -271,7 +274,7 @@ local fn role_axes(m: Mod, source: Op, state: bool) -> list<int> {
   }
   let body_args = ir.args(ir.blks(source)[0])
   let accesses = writes(m, source, body_args[axes])
-  let form = affine(m, source, accesses[0][0])
+  let form = address_form(m, source, body_args[axes], accesses[0])
   var out: list<int> = []
   for axis in 0..axes {
     if (form[axis + 1] != 0) == state {

@@ -30,3 +30,14 @@ fn pair(
   }
   return out
 }
+
+fn contraction(
+  a: tensor<f32, [2, 4]>, b: tensor<f32, [4, 3]>
+) -> tensor<f32, [2, 3]> {
+  var out = tensor<f32, [2, 3]>(f32(0))
+  for row in 0..2, column in 0..3, depth in 0..4 {
+    out[row, column] =
+      out[row, column] + a[row, depth] * b[depth, column]
+  }
+  return out
+}

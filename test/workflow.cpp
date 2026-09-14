@@ -1045,7 +1045,7 @@ int main(int argc, char** argv) {
     CHECK(op.callee() != "tensor.matmul");
     matmul_loops += op.kind() == joggle::Op::Kind::loop ? 1 : 0;
   }
-  CHECK(matmul_loops == 2);
+  CHECK(matmul_loops == 1);
   joggle::Mod generic_matmul_roundtrip;
   CHECK(joggle::parse(env, joggle::print(generic_matmul),
                       generic_matmul_roundtrip,

@@ -77,6 +77,14 @@ def main() -> None:
     parser.add_argument("--modules", type=Path, required=True)
     parser.add_argument("--cc", type=Path, required=True)
     parser.add_argument("--ort-python", type=Path, required=True)
+    parser.add_argument(
+        "--pass", dest="passes", action="append", default=[],
+        help="module pass to apply to the canonical function body; repeatable",
+    )
+    parser.add_argument(
+        "--module-root", type=Path, action="append", default=[],
+        help="additional module search root used by requested passes; repeatable",
+    )
     parser.add_argument("--repo", type=Path, default=Path("."))
     parser.add_argument("--trials", type=int, default=40)
     args = parser.parse_args()
@@ -91,6 +99,7 @@ def main() -> None:
     modules = args.modules.resolve()
     cc = args.cc.resolve()
     ort_python = args.ort_python.resolve()
+    module_roots = [path.resolve() for path in args.module_root]
     required = (
         fixture / "model.onnx",
         fixture / "test_data_set_0/input_0.pb",
@@ -101,7 +110,8 @@ def main() -> None:
         ort_python,
         modules / "onnx" / "module.jog",
     )
-    if any(not path.exists() for path in required):
+    if (any(not path.exists() for path in required) or
+            any(not path.is_dir() for path in module_roots)):
         parser.error("fixture, tools, compiler, Python, and modules must exist")
     relative(output, repo)
     output.mkdir(parents=True, exist_ok=True)
@@ -119,6 +129,8 @@ def main() -> None:
         "harness": output / "harness.c",
         "program": output / "model",
     }
+    search = [modules, *module_roots]
+    search_args = [item for path in search for item in ("-M", str(path))]
     app_command = [
         str(app),
         str(required[0]),
@@ -136,12 +148,43 @@ def main() -> None:
     ]
     checked(app_command)
 
+    transform_commands: list[list[str]] = []
+    if args.passes:
+        stages = {
+            "scheduled": output / "scheduled.jog",
+            "clean": output / "clean.jog",
+            "planned": output / "planned.jog",
+            "noalias": output / "noalias.jog",
+        }
+
+        def transform(functions: list[str], source: Path, target: Path,
+                      arguments: list[str] | None = None) -> None:
+            command = [str(tool), "run", *functions, str(source)]
+            for argument in arguments or []:
+                command += ["--arg", argument]
+            command += search_args
+            write(target, checked(command))
+            transform_commands.append(command)
+
+        transform(args.passes, paths["canonical_ir"], stages["scheduled"])
+        transform(
+            ["bounds.fold", "opt.fold", "opt.basic", "tile.scalarize",
+             "opt.basic"],
+            stages["scheduled"], stages["clean"],
+        )
+        transform(["mem.plan"], stages["clean"], stages["planned"])
+        transform(["c.noalias"], stages["planned"], stages["noalias"])
+        transform(
+            ["c.place"], stages["noalias"], paths["program_ir"],
+            ['"static"'],
+        )
+
     external = ['"weights"']
     write(
         paths["weights"],
         checked(
             [str(tool), "emit", "c.data", str(paths["program_ir"]),
-             "-M", str(modules)],
+             *search_args],
             binary=True,
         ),
     )
@@ -153,7 +196,7 @@ def main() -> None:
             path,
             checked(
                 [str(tool), action, kind, str(paths["program_ir"]),
-                 "--arg", *external, "-M", str(modules)]
+                 "--arg", *external, *search_args]
             ),
         )
 
@@ -247,6 +290,7 @@ def main() -> None:
         },
         "commands": {
             "application": app_command,
+            "passes": transform_commands,
             "harness": harness_command,
             "compile": compile_command,
         },

@@ -127,39 +127,53 @@ python3 paper/prepare_operator_case.py \
   --output build/operator-study/prepared/matmul-m1-k128-n128 \
   --app build/joggle-onnx-app --tool build/joggle \
   --modules build/modules --cc /usr/bin/cc \
-  --ort-python /path/to/python-with-onnxruntime
+  --ort-python /path/to/python-with-onnxruntime \
+  --module-root examples --pass spatial.apply
 ```
 
 `paper/measure_systems.py` then consumes the emitted `systems.json`; it balances
 execution order, checks matching output hashes, and records artifacts, versions,
 host state, and latency without changing the speedup definition above.
 
-The first three local smoke shapes expose the optimization target, but are not
-publication measurements: the generated C is near ONNX Runtime for `M=1` and
-falls far behind as `M` grows. Inspection shows why. The independent weight
-artifact removes a per-inference initializer copy, but the remaining function is
-an untiled `i,j,k` loop nest with a strided weight load. Existing `tile.reorder`
-does not apply because the outer output loop and inner scalar reduction are two
-nested loop operations, not one schedulable loop. The next performance mechanism
-must therefore recognize and rewrite a general nested reduction into an explicit
-output-initialization plus accumulation nest; only then can interchange, blocking,
-packing, and vectorization operate on the real function body.
+`--pass` is repeatable and names an ordinary module function. The runner applies
+the requested policy to the canonical body, then runs the same cleanup, memory,
+alias, placement, and emission sequence used by the baseline path. This keeps
+policy choice outside the ONNX frontend and C emitter.
+
+The first local smoke shapes exposed the optimization target, but are not
+publication measurements. The independent weight artifact first removed a
+per-inference initializer copy. The shared tensor implementation now represents
+contraction as one explicit state-and-reduction loop, allowing the existing
+operator-independent access policy to see the real body. Dense multidimensional
+addresses are linearized by the same affine-form utility used for all tensor
+accesses; no operator name participates. On the development host, the policy
+selects `i,k,j` from `i,j,k` for the 128-cubed case, preserves the exact output,
+and reduces a paired diagnostic from roughly 1.1 ms to 0.083 ms. The remaining
+gap to the adjacent one-thread ONNX Runtime observation is roughly one order of
+magnitude. These figures justify the mechanism and the next optimization step;
+they must not enter the paper's result table until repeated on the controlled
+Linux host from a clean revision.
 
 ## Optimization gate before publication measurement
 
-The current scalar C path is not a credible performance candidate. Publication
-measurement begins only after generic mechanisms, not operator-name cases,
-cover the following sequence:
+The current portable C path is not yet a competitive performance candidate.
+Publication measurement begins only after generic mechanisms, not operator-name
+cases, cover the following sequence. Items marked complete describe mechanism
+coverage, not a performance claim:
 
-1. canonical affine loop/access form and contiguous-axis analysis;
-2. legal interchange and multi-level tiling over explicit loop bodies;
+1. **complete:** canonical affine loop/access form and contiguous-axis analysis;
+2. **partial:** legal interchange over explicit loop bodies; multi-level tiling
+   still needs a profitable policy and matched measurements;
 3. constant-weight packing with artifact provenance;
-4. alignment, no-alias, and vector-width facts exposed by a target module;
-5. vector code generation or a demonstrably reliable compiler-vectorization
-   contract;
+4. **partial:** no-alias facts are emitted; alignment and vector-width facts
+   remain target-owned work;
+5. **partial:** the contiguous inner loop is compiler-vectorized on the
+   development toolchain, but the contract and Linux evidence are not frozen;
 6. fusion profitability based on residency/traffic, not loop-count reduction;
 7. bounded candidate generation, target measurement, selection, and cache.
 
-This gate explains the present ONNX Runtime gap rather than hiding it: Joggle
-currently has only fragments of items 1, 2, and 4, and no mature implementation
-of items 3, 5, 6, or 7.
+This gate explains the present ONNX Runtime gap rather than hiding it. The first
+general transformation has removed the largest scalar-loop loss in one shape;
+packing, cache blocking, vector contracts, fusion profitability, and bounded
+selection remain the mechanisms that determine whether the full matrix becomes
+competitive.

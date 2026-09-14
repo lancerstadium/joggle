@@ -48,6 +48,19 @@ if(NOT forms_result EQUAL 0)
 endif()
 
 execute_process(
+  COMMAND "${TOOL}" run tile_pass.check_multidimensional_reorder
+          "${FORM_MODEL}" -M "${MODULES}"
+  RESULT_VARIABLE multidimensional_result
+  OUTPUT_VARIABLE multidimensional_output
+  ERROR_VARIABLE multidimensional_error
+)
+if(NOT multidimensional_result EQUAL 0)
+  message(FATAL_ERROR
+          "multidimensional reorder failed:\n"
+          "${multidimensional_output}${multidimensional_error}")
+endif()
+
+execute_process(
   COMMAND "${TOOL}" run tile_pass.check_splittable "${MODEL}"
           --arg 2 --arg 3 -M "${MODULES}"
   RESULT_VARIABLE candidate_result
