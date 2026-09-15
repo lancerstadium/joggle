@@ -51,7 +51,7 @@ if(NOT result EQUAL 0)
 endif()
 execute_process(
   COMMAND "${CC}" -std=c11 -O2 -Wall -Wextra -Werror -pedantic-errors
-          "${source}" "${HARNESS}" -o "${program}"
+          "${source}" "${HARNESS}" -lm -o "${program}"
   RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error
 )
 if(NOT result EQUAL 0)
