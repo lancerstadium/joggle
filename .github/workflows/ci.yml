@@ -99,20 +99,33 @@ jobs:
           PY
       - name: Test
         id: optional-test
-        run: ctest --test-dir build --output-on-failure
+        run: >-
+          ctest --test-dir build --output-on-failure
+          --output-junit ctest.xml
       - name: Preserve optional test failure
         if: ${{ failure() && steps.optional-test.outcome == 'failure' }}
         run: |
+          while IFS= read -r failed_test; do
+            test_name="${failed_test#*:}"
+            echo "::error title=CTest failed::$test_name"
+          done < build/Testing/Temporary/LastTestsFailed.log
           python3 - <<'PY'
-          from pathlib import Path
+          import xml.etree.ElementTree as ET
 
-          text = Path("build/Testing/Temporary/LastTest.log").read_text(
-              errors="replace"
-          )[-12000:]
-          text = (text.replace("%", "%25")
-                      .replace("\r", "%0D")
-                      .replace("\n", "%0A"))
-          print(f"::error title=Optional module tests failed::{text}")
+          def escape(value):
+              return (value.replace("%", "%25")
+                           .replace("\r", "%0D")
+                           .replace("\n", "%0A"))
+
+          for case in ET.parse("build/ctest.xml").iterfind(".//testcase"):
+              failure = case.find("failure")
+              if failure is not None:
+                  name = escape(case.get("name", "unnamed test"))
+                  output = case.find("system-out")
+                  detail = ((failure.text or "") +
+                            (output.text or "" if output is not None else ""))
+                  detail = escape((detail or "no failure output")[-12000:])
+                  print(f"::error title=CTest {name}::{detail}")
           PY
 
   sanitize:
