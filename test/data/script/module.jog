@@ -115,7 +115,45 @@ fn operation_count(m: Mod, subject: list<Op>) -> int {
 fn generic_invoke_probe(m: Mod) -> bool {
   let empty: list<Op> = []
   return ir.invoke<int>(m, 3, ir.find("script.integer_cost")) == 4 &&
-         ir.invoke<int>(m, empty, ir.find("script.operation_count")) == 0
+         ir.invoke<int>(m, empty, ir.find("script.operation_count")) == 0 &&
+         ir.invoke<bool>(m, ir.find("script.local_probe")) &&
+         ir.invoke<bytes>(m, ir.find("script.emit_bytes")) == hex"00410aff"
+}
+
+fn invoke_summary(m: Mod) -> dict {
+  return ir.invoke<dict>(m, ir.find("stat.summary"))
+}
+
+fn invoke_name(m: Mod) -> str {
+  return ir.invoke<str>(m, ir.find("script.emit_name"))
+}
+
+fn derive_emitter(m: Mod) -> bool {
+  let original = ir.find("script.emit_bytes")
+  let copy = ir.clone(m, original, "derived")
+  assert(ir.live(copy), "could not derive emitter")
+  assert(ir.invoke<bytes>(m, copy) == hex"00410aff", "copy changed output")
+  var changed = false
+  for op in ir.ops(copy) {
+    if ir.kind(op) == "return" {
+      let value = ir.constant(m, op, hex"fe", ty("bytes"))
+      changed = ir.replace(m, ir.args(op)[0], value, op)
+    }
+  }
+  assert(changed, "derived body was not edited")
+  assert(ir.invoke<bytes>(m, copy) == hex"fe", "derived invocation used old body")
+  assert(ir.invoke<bytes>(m, original) == hex"00410aff", "source body changed")
+  return true
+}
+
+fn reject_invoke_arity(m: Mod) -> bool {
+  let copy = ir.clone(m, ir.find("script.integer_cost"), "rejected")
+  return ir.invoke<int>(m, copy) == 0
+}
+
+fn reject_invoke_result(m: Mod) -> bool {
+  let copy = ir.clone(m, ir.find("script.emit_bytes"), "rejected")
+  return ir.invoke<int>(m, copy) == 0
 }
 
 [on: "opaque"]

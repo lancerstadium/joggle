@@ -11,6 +11,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -465,6 +466,9 @@ private:
   std::unique_ptr<Impl> impl_;
 
   bool expand(const Env& env, Op call, Fn callee, std::string_view semantic);
+  Fn clone_one(const Env& env, Fn source, std::string name,
+               std::span<const Ty> generics,
+               std::span<const std::pair<Fn, std::string>> helpers);
   void infer(const Env& env, std::uint32_t op);
 
   friend class Parser;
@@ -495,6 +499,8 @@ bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
          std::chrono::nanoseconds& elapsed);
 bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
          std::span<const Attr> args, std::chrono::nanoseconds& elapsed);
+bool run(Env& env, Fn function, Mod& mod, Attr& report,
+         std::span<const Attr> args = {});
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod);
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
          std::span<const Attr> args);
@@ -506,6 +512,8 @@ bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
          Attr& report, std::vector<std::chrono::nanoseconds>& elapsed);
 bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
            std::span<const Attr> args = {}, bool* cached = nullptr);
+bool query(Env& env, Fn function, const Mod& mod, Attr& result,
+           std::span<const Attr> args = {});
 
 }  // namespace joggle
 

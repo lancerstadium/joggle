@@ -53,6 +53,7 @@ fn match(op: Op, fn: Fn) -> list<Ty>;
 fn where(fns: list<Fn>, key: str, value: Attr) -> list<Fn>;
 fn where(ops: list<Op>, key: str, value: Attr) -> list<Op>;
 fn where(vals: list<Val>, key: str, value: Attr) -> list<Val>;
+fn invoke<R: Ty>(m: Mod, fn: Fn) -> R;
 fn invoke<R: Ty, S: Ty>(m: Mod, subject: S, fn: Fn) -> R;
 fn invoke<R: Ty, S: Ty, A: Ty>(m: Mod, subject: S, fn: Fn, arg: A) -> R;
 fn invoke<R: Ty, S: Ty, A: Ty, B: Ty>(

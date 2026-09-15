@@ -1098,6 +1098,81 @@ void Mod::infer(const Env& env, std::uint32_t id) {
 Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
               std::span<const Ty> generic_args) {
   auto& store = impl_->store;
+  if (!source_fn || source_fn.store_ == &store ||
+      !detail::valid_binding(name))
+    return clone_one(env, source_fn, std::move(name), generic_args, {});
+
+  // Derivation must capture lexical private helpers. Merely qualifying a
+  // copied call back to its source module would cross that module's visibility
+  // boundary, while copying only the public wrapper leaves its algorithm
+  // unavailable for inspection and editing.
+  std::unordered_map<std::uint32_t, std::uint8_t> state;
+  std::vector<Fn> private_order;
+  std::string cycle;
+  const auto visit = [&](const auto& self, Fn current) -> bool {
+    std::uint8_t& mark = state[current.id_];
+    if (mark == 2)
+      return true;
+    if (mark == 1) {
+      cycle = std::string(current.module()) + "." +
+              std::string(current.name());
+      return false;
+    }
+    mark = 1;
+    for (Op op : current.ops()) {
+      if (op.kind() != Op::Kind::call)
+        continue;
+      const Ty applied(std::string(op.callee()));
+      if (!applied.valid())
+        continue;
+      const Fn callee =
+          env.match(op, env.resolve_fns(current, applied.name()));
+      if (!callee || !callee.local() ||
+          callee.store_ != source_fn.store_ || callee == current)
+        continue;
+      if (!self(self, callee))
+        return false;
+    }
+    mark = 2;
+    if (current != source_fn)
+      private_order.push_back(current);
+    return true;
+  };
+  if (!visit(visit, source_fn)) {
+    detail::add_diag(store.diags,
+                     "function clone cannot capture cyclic private helper '" +
+                         cycle + "'", source_fn.loc());
+    return Fn{};
+  }
+
+  std::vector<std::pair<Fn, std::string>> helpers;
+  helpers.reserve(private_order.size());
+  for (Fn helper : private_order)
+    helpers.emplace_back(helper, name + "_" + std::string(helper.name()));
+
+  detail::Store backup = store;
+  const auto rollback = [&](std::string message, Loc loc = {}) {
+    store = backup;
+    detail::add_diag(store.diags, std::move(message), std::move(loc));
+    return Fn{};
+  };
+  for (const auto& [helper, helper_name] : helpers)
+    if (!clone_one(env, helper, helper_name, {}, helpers))
+      return rollback("function clone could not capture private helper '" +
+                          std::string(helper.module()) + "." +
+                          std::string(helper.name()) + "'",
+                      helper.loc());
+  Fn result = clone_one(env, source_fn, std::move(name), generic_args, helpers);
+  if (!result)
+    return rollback("function clone could not copy its public body",
+                    source_fn.loc());
+  return result;
+}
+
+Fn Mod::clone_one(const Env& env, Fn source_fn, std::string name,
+                  std::span<const Ty> generic_args,
+                  std::span<const std::pair<Fn, std::string>> helpers) {
+  auto& store = impl_->store;
   const auto reject = [&](std::string message, Loc loc = {}) {
     detail::add_diag(store.diags, std::move(message), std::move(loc));
     return Fn{};
@@ -1346,15 +1421,22 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
           if (resolved.store_ == source && resolved.id_ == source_fn.id_) {
             callee = store.name + "." + store.fns[next_fn_id].data.name;
           } else {
-            bool ambiguous = false;
-            const std::vector<Fn> visible =
-                env.resolve_fns(*this, applied.name());
-            const Fn destination = env.match(old_op, visible, &ambiguous);
-            if (!ambiguous && destination == resolved)
-              callee = std::string(applied.name());
-            else
-              callee = std::string(resolved.module()) + "." +
-                       std::string(resolved.name());
+            for (const auto& [helper, helper_name] : helpers)
+              if (helper == resolved) {
+                callee = store.name + "." + helper_name;
+                break;
+              }
+            if (callee.empty()) {
+              bool ambiguous = false;
+              const std::vector<Fn> visible =
+                  env.resolve_fns(*this, applied.name());
+              const Fn destination = env.match(old_op, visible, &ambiguous);
+              if (!ambiguous && destination == resolved)
+                callee = std::string(applied.name());
+              else
+                callee = std::string(resolved.module()) + "." +
+                         std::string(resolved.name());
+            }
           }
           if (!(specialized && resolved.store_ == source &&
                 resolved.id_ == source_fn.id_) &&

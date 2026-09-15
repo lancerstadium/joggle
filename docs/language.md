@@ -813,7 +813,15 @@ language. `ir.where(items, key, value)` filters an explicit `list<Fn>`,
 `list<Op>`, or `list<Val>` by exact metadata; a list-valued attribute matches
 when it contains the requested value. The result retains the input handle
 type, so a transform can pass selected operations or values directly to the
-safe editing API. `ir.invoke<R>(m, op, fn)` executes a selected ordinary
+safe editing API. `ir.invoke<R>(m, fn)` executes an ordinary
+`fn(Mod) -> R`, including a whole-module analysis or generator, without a
+dummy subject. For example:
+
+```jog
+let report = ir.invoke<dict>(m, ir.find("stat.summary"))
+```
+
+`ir.invoke<R>(m, op, fn)` executes a selected ordinary
 `fn(Mod, Op) -> R` in the current transaction. Its overloads pass one or two
 typed compile-time values to a matching callback; a dictionary can carry
 named policy, while a `Fn` can identify one candidate implementation without
@@ -833,6 +841,20 @@ error. A relation driver uses `ir.invoke<bool>`; a cost traversal can use
 `ir.invoke<int>` without adding another callback API. Attribute names, result
 types, and selection policy remain module-owned: core does not reserve `on`,
 operator names, relation kinds, or measurement units.
+
+Invocation also accepts an inactive function copied with `ir.clone`: edit its
+body through the existing IR API, then invoke the copy. The original definition
+is not changed. This is the same execution path, not a special kind of pass or
+a claim that arbitrary compiler functions can be optimized automatically.
+Invocation inherits the enclosing execution boundary: it does not grant a
+read-only query mutation rights, and failure rolls back the enclosing entry.
+The result is one compile-time value of the explicit type, not arbitrary
+runtime tensor execution.
+Execution structure and dispatch caches distinguish source revisions, so
+re-invoking a copied function after editing its inactive body observes the new
+body. Cached snapshots live only for the enclosing evaluation. This does not
+specify safe self-modification of an executing function or fine-grained
+incremental recompilation.
 
 `ir.uses(m)` returns the module's declared dependencies and
 `ir.use(m, name)` adds one idempotently. Dependency edits advance the same
@@ -920,6 +942,28 @@ The named entry is selected by the same overload resolver as an ordinary DSL
 call, using `Mod` as its argument type. A module may therefore expose both
 `convert(m)` for the default workflow and `convert(m, rules)` for explicit
 composition without making the CLI name ambiguous.
+The embedding API also accepts a `Fn` handle in
+`run(env, function, target, report, args)` and
+`query(env, function, target, result, args)`. The function can belong to a
+separate, verified `Mod` holding compiler definitions; only `target` is edited
+or inspected. This is useful when deriving a compiler function without copying
+it into a model that will later be emitted. It is not a new IR kind: both
+modules have the same representation and editing rules. A handle query runs
+read-only on a snapshot and does not reuse the name-based query cache; a handle
+run uses the same target verification and rollback as a named run. The caller
+verifies the compiler-definition module after editing it. A copied function
+does not acquire an automatic proof of equivalence to its source.
+When a cloned source function calls private helpers, `Mod::clone` copies its
+resolved transitive private call closure as private functions in the compiler
+module and rebinds those calls to the copies. Public calls keep explicit
+module dependencies. The whole derivation rolls back if any helper cannot be
+copied; cyclic private-helper closures are currently rejected. This avoids
+requiring the source module to make its implementation helpers public, but
+copied code growth and execution cost are the caller's responsibility. The
+closure covers resolved direct calls, not dynamically selected function
+handles or opaque native implementation bodies. The
+native handle overload takes `Attr`-representable trailing arguments; typed
+`Fn` or `Op` trailing values currently require a source-module call instead.
 The same report is available from the CLI without mixing it into printed IR:
 
 ```sh

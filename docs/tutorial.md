@@ -305,6 +305,32 @@ if (!env.load("opt") || !joggle::run(env, "opt.fold_add_zero", mod))
 `Blk`s and operations through `ir`, replaces the result of `x + 0`, and erases
 the dead call. No C++ registration is required for that transform.
 
+To edit the compiler function itself, keep its definitions in a separate `Mod`
+from the model. The two values use the same API; the distinction is their role
+in this workflow, not a new compiler class:
+
+```cpp
+joggle::Mod compiler; // parsed from a module using opt
+joggle::Mod model;    // parsed from the model source
+auto fold = compiler.clone(env, env.find_fn("opt.fold_add_zero"), "my_fold");
+if (!fold || !compiler.verify(env)) return false;
+// Edit fold's body through compiler's ordinary Val/Op/Blk editing API.
+// Verify compiler again after those edits.
+joggle::Attr report;
+if (!joggle::run(env, fold, model, report)) return false;
+```
+
+Only the model is passed to the C preparation function. Copying `fold` into
+the model instead would make an emitter inspect compiler-only code as though
+it were a model function. The handle call keeps that code outside the artifact
+while allowing ordinary structural edits and a transactional execution.
+For a procedure such as `c.prepare`, `clone` also captures its private helper
+functions inside `compiler` and rebinds the derived copy to them. Those helper
+bodies can be edited with the same `Op` API before running the derived `Fn` on
+the model; the installed `c.prepare` remains unchanged. The copied private
+closure may be larger than the public wrapper, so inspect and verify the
+compiler module rather than treating derivation as free specialization.
+
 The same editor can copy a structured operation while explicitly rewiring
 values captured from its surrounding function:
 

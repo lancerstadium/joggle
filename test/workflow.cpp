@@ -1003,6 +1003,224 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "script.text_probe", network_cpp));
   CHECK(joggle::run(env, "script.partial_generic_probe", network_cpp));
   CHECK(joggle::run(env, "script.generic_invoke_probe", network_cpp));
+  {
+    joggle::Mod compiler;
+    CHECK(joggle::parse(env,
+                        "module compiler.demo\n"
+                        "use script\n"
+                        "use opt\n"
+                        "fn inert(m: Mod) -> bool { return true }\n",
+                        compiler, "compiler-demo.jog"));
+    const joggle::Fn source = env.find_fn("script.emit_bytes");
+    CHECK(source);
+    const joggle::Fn generated =
+        compiler.clone(env, source, "derived_emitter");
+    CHECK(generated && compiler.verify(env));
+    joggle::Mod program;
+    CHECK(joggle::parse(env,
+                        "module compiler.input\n"
+                        "fn main(x: i32) -> i32 { let y = x + 0 return y }\n",
+                        program, "compiler-input.jog"));
+    CHECK(program.verify(env));
+    const std::string original_program = joggle::print(program);
+    joggle::Attr output;
+    CHECK(joggle::query(env, generated, program, output));
+    CHECK(output == joggle::Attr(joggle::Attr::Bytes{0, 65, 10, 255}));
+    for (joggle::Op op : generated.ops()) {
+      if (op.kind() != joggle::Op::Kind::ret)
+        continue;
+      const joggle::Val next =
+          compiler.constant(op, joggle::Attr(joggle::Attr::Bytes{254}),
+                            joggle::Ty("bytes"));
+      CHECK(next && compiler.replace(op.args().front(), next, op));
+    }
+    CHECK(compiler.verify(env));
+    CHECK(joggle::query(env, generated, program, output));
+    CHECK(output == joggle::Attr(joggle::Attr::Bytes{254}));
+    CHECK(joggle::query(env, "script.emit_bytes", program, output));
+    CHECK(output == joggle::Attr(joggle::Attr::Bytes{0, 65, 10, 255}));
+    CHECK(joggle::print(program) == original_program);
+
+    const joggle::Fn optimization =
+        compiler.clone(env, env.find_fn("opt.fold_add_zero"),
+                       "fold_add_zero");
+    CHECK(optimization && compiler.verify(env));
+    const std::string compiler_source = joggle::print(compiler);
+    joggle::Attr report;
+    CHECK(!joggle::query(env, optimization, program, output));
+    CHECK(joggle::print(program) == original_program);
+    CHECK(joggle::run(env, optimization, program, report));
+    CHECK(report.dict() && report.dict()->at("reported").boolean() == true);
+    CHECK(program.verify(env));
+    CHECK(joggle::print(program) != original_program);
+    CHECK(joggle::print(compiler) == compiler_source);
+    CHECK(!program.find_fn("derived_emitter"));
+    CHECK(!program.find_fn("fold_add_zero"));
+    CHECK(env.load("c"));
+    CHECK(joggle::run(env, "c.prepare", program));
+    CHECK(program.verify(env));
+  }
+  {
+    // A copied public procedure must capture its private lexical helper
+    // closure without making the source module's private API public.
+    joggle::Mod code;
+    CHECK(joggle::parse(env,
+                        "module compiler.boundary\n"
+                        "use opt\n"
+                        "fn inert(m: Mod) -> bool { return true }\n",
+                        code, "compiler-boundary.jog"));
+    joggle::Fn source;
+    for (joggle::Fn candidate : env.find_fns("opt.expose")) {
+      if (candidate.params().size() == 3 &&
+          candidate.params()[1].type() == joggle::Ty("Fn"))
+        source = candidate;
+    }
+    CHECK(source);
+    CHECK(code.clone(env, source, "derived_expose"));
+    CHECK(code.find_fn("derived_expose_expose_with"));
+    CHECK(code.find_fn("derived_expose_expand_with"));
+    CHECK(code.verify(env));
+
+    joggle::Mod c_code;
+    CHECK(joggle::parse(env,
+                        "module compiler.c\n"
+                        "use c\n"
+                        "fn inert(m: Mod) -> bool { return true }\n",
+                        c_code, "compiler-c.jog"));
+    joggle::Fn c_source;
+    for (joggle::Fn candidate : env.find_fns("c.prepare"))
+      if (candidate.params().size() == 1 &&
+          candidate.params().front().type() == joggle::Ty("Mod"))
+        c_source = candidate;
+    CHECK(c_source);
+    const joggle::Fn c_derived =
+        c_code.clone(env, c_source, "derived_prepare");
+    CHECK(c_derived && c_code.verify(env));
+    CHECK(c_code.find_fn("derived_prepare_prepare_with"));
+
+    joggle::Mod original, target;
+    const std::string_view source_model =
+        "module compiler.c_input\n"
+        "fn main(x: i32) -> i32 { let y = x + 0 return y }\n";
+    CHECK(joggle::parse(env, source_model, original, "compiler-c-input.jog"));
+    CHECK(joggle::parse(env, source_model, target, "compiler-c-target.jog"));
+    joggle::Attr report;
+    CHECK(joggle::run(env, "c.prepare", original));
+    CHECK(joggle::run(env, c_derived, target, report));
+    CHECK(joggle::print(target) == joggle::print(original));
+    CHECK(!target.find_fn("derived_prepare"));
+    CHECK(target.verify(env));
+
+    const std::string original_code = joggle::print(c_code);
+    std::size_t expose_calls = 0;
+    bool specialized = false;
+    for (joggle::Op op :
+         c_code.find_fn("derived_prepare_prepare_with").ops()) {
+      if (op.kind() != joggle::Op::Kind::call ||
+          op.callee() != "opt.expose")
+        continue;
+      if (++expose_calls == 2)
+        specialized = c_code.replace(op, joggle::Attr(false));
+    }
+    CHECK(expose_calls == 2 && specialized && c_code.verify(env));
+    CHECK(joggle::print(c_code) != original_code);
+    joggle::Mod optimized_target;
+    CHECK(joggle::parse(env, source_model, optimized_target,
+                        "compiler-c-optimized-target.jog"));
+    CHECK(joggle::run(env, c_derived, optimized_target, report));
+    CHECK(joggle::print(optimized_target) == joggle::print(original));
+    joggle::Attr original_source, derived_source;
+    CHECK(joggle::query(env, "c.source", original, original_source));
+    CHECK(joggle::query(env, "c.source", optimized_target,
+                        derived_source));
+    CHECK(derived_source == original_source);
+    joggle::Mod original_after;
+    CHECK(joggle::parse(env, source_model, original_after,
+                        "compiler-c-source-after.jog"));
+    CHECK(joggle::run(env, "c.prepare", original_after));
+    CHECK(joggle::print(original_after) == joggle::print(original));
+  }
+  {
+    // A private opaque dependency cannot be copied as an editable body;
+    // failing that closure must leave the destination exactly unchanged.
+    joggle::Mod source, destination;
+    CHECK(joggle::parse(env,
+                        "module compiler.private\n"
+                        "local fn helper(m: Mod) -> bool;\n"
+                        "fn entry(m: Mod) -> bool { return helper(m) }\n",
+                        source, "compiler-private.jog"));
+    CHECK(source.verify(env));
+    CHECK(joggle::parse(env,
+                        "module compiler.private_target\n"
+                        "fn inert(m: Mod) -> bool { return true }\n",
+                        destination, "compiler-private-target.jog"));
+    const std::string before = joggle::print(destination);
+    CHECK(!destination.clone(env, source.find_fn("entry"),
+                             "derived_entry"));
+    CHECK(joggle::print(destination) == before);
+    CHECK(destination.verify(env));
+    joggle::Mod cyclic;
+    CHECK(joggle::parse(env,
+                        "module compiler.cyclic\n"
+                        "local fn a(m: Mod) -> bool { return b(m) }\n"
+                        "local fn b(m: Mod) -> bool { return a(m) }\n"
+                        "fn entry(m: Mod) -> bool { return a(m) }\n",
+                        cyclic, "compiler-cyclic.jog"));
+    CHECK(cyclic.verify(env));
+    CHECK(!destination.clone(env, cyclic.find_fn("entry"),
+                             "cyclic_entry"));
+    CHECK(joggle::print(destination) == before);
+  }
+  {
+    joggle::Mod derived;
+    CHECK(joggle::parse(env,
+                        "module derived\n"
+                        "fn matmul() -> i32 { return 1 }\n",
+                        derived, "derived.jog"));
+    CHECK(derived.verify(env));
+    const std::string initial = joggle::print(derived);
+    const auto revision = derived.revision();
+    joggle::Attr direct, invoked;
+    CHECK(joggle::query(env, "script.generic_invoke_probe", derived, invoked));
+    CHECK(invoked.boolean() == true);
+    CHECK(joggle::query(env, "stat.summary", derived, direct));
+    CHECK(joggle::query(env, "script.invoke_summary", derived, invoked));
+    CHECK(direct == invoked);
+    CHECK(joggle::query(env, "script.invoke_name", derived, invoked));
+    CHECK(invoked == joggle::Attr("matmul"));
+    CHECK(joggle::print(derived) == initial && derived.revision() == revision);
+
+    // Nested invocation cannot turn a read-only query into a mutating entry.
+    CHECK(!joggle::query(env, "script.derive_emitter", derived, invoked));
+    CHECK(joggle::print(derived) == initial && derived.revision() == revision);
+    derived.clear_diags();
+    joggle::Attr derivation;
+    CHECK(joggle::run(env, "script.derive_emitter", derived, derivation));
+    CHECK(derivation.dict() &&
+          derivation.dict()->at("reported").boolean() == true);
+    CHECK(derived.find_fn("derived"));
+    CHECK(derived.verify(env));
+    joggle::Mod roundtrip;
+    CHECK(joggle::parse(env, joggle::print(derived), roundtrip,
+                        "derived-roundtrip.jog"));
+    CHECK(roundtrip.verify(env));
+    CHECK(joggle::structurally_equal(derived, roundtrip));
+
+    // Signature failures must undo the clone and its dependency edits too.
+    for (const auto* entry :
+         {"script.reject_invoke_arity", "script.reject_invoke_result"}) {
+      joggle::Mod rejected;
+      CHECK(joggle::parse(env, initial, rejected, "rejected.jog"));
+      const auto before = rejected.revision();
+      CHECK(!joggle::run(env, entry, rejected));
+      CHECK(joggle::print(rejected) == initial);
+      CHECK(rejected.revision() == before);
+      CHECK(!rejected.find_fn("rejected"));
+      CHECK(!env.diags().empty());
+      CHECK(env.diags().back().message.find("ir.invoke callback") !=
+            std::string::npos);
+    }
+  }
   CHECK(joggle::run(env, "script.byte_probe", network_cpp));
   CHECK(joggle::run(env, "script.def_probe", network_cpp));
   CHECK(joggle::run(env, "script.expand_network", network));

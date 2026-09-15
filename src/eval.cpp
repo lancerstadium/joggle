@@ -422,7 +422,10 @@ public:
   static bool sequence(Env& env,
                        std::span<const std::string_view> functions, Mod& mod,
                        Attr* report, std::span<const Attr> args,
-                       std::vector<std::chrono::nanoseconds>* elapsed);
+                       std::vector<std::chrono::nanoseconds>* elapsed,
+                       Fn direct = {});
+  static bool read(Env& env, Fn fn, const Mod& mod, Attr& result,
+                   std::span<const Attr> args);
 
   Eval(Env& env, Error error, Attr::List* trace = nullptr)
       : env_(env), error_(std::move(error)), trace_(trace) {}
@@ -468,8 +471,12 @@ private:
   };
 
   struct Site {
+    Site(const detail::Store* store, std::uint32_t id)
+        : store(store), id(id), revision(store ? store->revision : 0) {}
+
     const detail::Store* store = nullptr;
     std::uint32_t id = 0;
+    std::uint64_t revision = 0;
 
     friend bool operator==(const Site&, const Site&) = default;
   };
@@ -477,7 +484,10 @@ private:
   struct SiteHash {
     std::size_t operator()(const Site& site) const noexcept {
       const auto address = reinterpret_cast<std::uintptr_t>(site.store);
-      return static_cast<std::size_t>(address ^ (address >> 17) ^ site.id);
+      std::size_t seed =
+          static_cast<std::size_t>(address ^ (address >> 17) ^ site.id);
+      hash_combine(seed, site.revision);
+      return seed;
     }
   };
 
@@ -2450,10 +2460,10 @@ private:
         }
         return Items{Item(std::move(out))};
       }
-    } else if (name == "invoke" &&
-               (args.size() == 3 || args.size() == 4 || args.size() == 5)) {
+    } else if (name == "invoke" && args.size() >= 2 && args.size() <= 5) {
       const auto* mod = as<Mod*>(args[0]);
-      const auto* fn = as<Fn>(args[2]);
+      const std::size_t fn_index = args.size() == 2 ? 1 : 2;
+      const auto* fn = as<Fn>(args[fn_index]);
       if (mod && *mod && fn && *fn) {
         if (generics.size() != 1) {
           fail("ir.invoke requires one explicit result type", loc);
@@ -2467,31 +2477,25 @@ private:
             params.size() != callback_arity ||
             params[0].type() != Ty("Mod") ||
             returns.size() != 1 || returns.front() != expected) {
-          fail("ir.invoke callback must match fn(Mod, subject, ...) -> " +
+          fail("ir.invoke callback must match the supplied arguments and return " +
                    std::string(expected.text()),
                loc);
           return std::nullopt;
         }
-        const Ty& subject_type = params[1].type();
-        if (!accepts_runtime(subject_type, args[1]) ||
-            !valid_runtime_handles(args[1])) {
-          fail("ir.invoke subject is not a valid " +
-                   std::string(subject_type.text()),
-               loc);
-          return std::nullopt;
-        }
-        for (std::size_t i = 3; i < args.size(); ++i) {
-          if (!accepts_runtime(params[i - 1].type(), args[i]) ||
+        Items callback_args{Item(*mod)};
+        for (std::size_t i = 1; i < args.size(); ++i) {
+          if (i == fn_index)
+            continue;
+          const std::size_t param_index = callback_args.size();
+          if (!accepts_runtime(params[param_index].type(), args[i]) ||
               !valid_runtime_handles(args[i])) {
             fail("ir.invoke argument does not match callback parameter " +
-                     std::to_string(i - 1),
+                     std::to_string(param_index),
                  loc);
             return std::nullopt;
           }
-        }
-        Items callback_args{Item(*mod), args[1]};
-        for (std::size_t i = 3; i < args.size(); ++i)
           callback_args.push_back(args[i]);
+        }
         auto result = invoke(*fn, std::move(callback_args));
         if (!result)
           return std::nullopt;
@@ -2996,6 +3000,9 @@ private:
   Env& env_;
   Error error_;
   Attr::List* trace_ = nullptr;
+  // Executable bodies can be edited between invocations. Keep snapshots keyed
+  // by their source revision; clearing caches could invalidate active frames'
+  // references. All snapshots are released with this evaluation.
   std::unordered_map<Site, std::vector<Dispatch>, SiteHash> dispatch_;
   std::unordered_map<Site, std::vector<Val>, SiteHash> block_args_;
   std::unordered_map<Site, std::vector<Op>, SiteHash> block_ops_;
@@ -3011,6 +3018,83 @@ private:
 }  // namespace joggle::detail
 
 namespace joggle {
+
+bool detail::Eval::read(Env& env, Fn fn, const Mod& mod, Attr& result,
+                        std::span<const Attr> args) {
+  result = Attr{};
+  if (!fn) {
+    env.error("query function handle is invalid");
+    return false;
+  }
+  const std::string function =
+      std::string(fn.module()) + "." + std::string(fn.name());
+  if (fn.external()) {
+    env.error("query entry must have a textual body: " +
+                  std::string(function),
+              fn.loc());
+    return false;
+  }
+  if (!fn.generics().empty() || fn.returns().size() != 1 ||
+      fn.params().size() != args.size() + 1 ||
+      fn.params().front().type() != Ty("Mod")) {
+    env.error("query entry must be a non-generic fn(Mod, ...) with one result: " +
+                  function,
+              fn.loc());
+    return false;
+  }
+  std::vector<Ty> argument_types{Ty("Mod")};
+  for (const Attr& value : args)
+    argument_types.push_back(detail::runtime_type(detail::materialize(value)));
+  if (!detail::resolve_overload(std::span<const Fn>(&fn, 1), argument_types,
+                                {}, nullptr, nullptr)) {
+    env.error("query arguments do not match function: " + function, fn.loc());
+    return false;
+  }
+
+  Mod scratch;
+  scratch.impl_->store = mod.impl_->store;
+  scratch.impl_->store.queries.clear();
+  if (!scratch.verify(env)) {
+    for (const Diag& diag : scratch.diags())
+      env.error(diag.message, diag.loc);
+    env.error("cannot query an invalid module");
+    return false;
+  }
+  const std::uint64_t before = scratch.revision();
+  const std::string structure = print(scratch);
+  detail::Eval eval(env, [&](std::string message, Loc loc) {
+    env.error(std::move(message), std::move(loc));
+  });
+  const auto values = eval.query(fn, scratch, args);
+  if (!values)
+    return false;
+  if (scratch.revision() != before || print(scratch) != structure) {
+    env.error("query function mutated its module snapshot: " +
+                  std::string(function),
+              fn.loc());
+    return false;
+  }
+  if (values->size() != 1) {
+    env.error("query function returned an invalid result: " +
+              std::string(function));
+    return false;
+  }
+  auto converted = detail::attribute(values->front());
+  if (!converted) {
+    env.error("query result is not representable as Attr: " +
+                  std::string(function),
+              fn.loc());
+    return false;
+  }
+  result = std::move(*converted);
+  return true;
+}
+
+bool query(Env& env, Fn function, const Mod& mod, Attr& result,
+           std::span<const Attr> args) {
+  env.clear_diags();
+  return detail::Eval::read(env, function, mod, result, args);
+}
 
 bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
            std::span<const Attr> args, bool* cached) {
@@ -3057,55 +3141,13 @@ bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
               std::string(function));
     return false;
   }
-  if (fn.external()) {
-    env.error("query entry must have a textual body: " +
-                  std::string(function),
-              fn.loc());
-    return false;
-  }
   if (result_types.size() != 1) {
     env.error("query entry must return exactly one value: " +
-                  std::string(function),
-              fn.loc());
+              std::string(function), fn.loc());
     return false;
   }
-
-  Mod scratch;
-  scratch.impl_->store = mod.impl_->store;
-  scratch.impl_->store.queries.clear();
-  if (!scratch.verify(env)) {
-    for (const Diag& diag : scratch.diags())
-      env.error(diag.message, diag.loc);
-    env.error("cannot query an invalid module");
+  if (!detail::Eval::read(env, fn, mod, result, args))
     return false;
-  }
-  const std::uint64_t before = scratch.revision();
-  const std::string structure = print(scratch);
-  detail::Eval eval(env, [&](std::string message, Loc loc) {
-    env.error(std::move(message), std::move(loc));
-  });
-  const auto values = eval.query(fn, scratch, args);
-  if (!values)
-    return false;
-  if (scratch.revision() != before || print(scratch) != structure) {
-    env.error("query function mutated its module snapshot: " +
-                  std::string(function),
-              fn.loc());
-    return false;
-  }
-  if (values->size() != 1) {
-    env.error("query function returned an invalid result: " +
-              std::string(function));
-    return false;
-  }
-  auto converted = detail::attribute(values->front());
-  if (!converted) {
-    env.error("query result is not representable as Attr: " +
-                  std::string(function),
-              fn.loc());
-    return false;
-  }
-  result = std::move(*converted);
   entries.push_back({env.cache_id(), env.cache_epoch(), mod.revision(),
                      std::string(function),
                      std::vector<Attr>(args.begin(), args.end()), result});
@@ -3115,7 +3157,7 @@ bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
 bool detail::Eval::sequence(
     Env& env, std::span<const std::string_view> functions, Mod& mod,
     Attr* report, std::span<const Attr> args,
-    std::vector<std::chrono::nanoseconds>* elapsed) {
+    std::vector<std::chrono::nanoseconds>* elapsed, Fn direct) {
   env.clear_diags();
   if (report)
     *report = Attr{};
@@ -3147,7 +3189,15 @@ bool detail::Eval::sequence(
     for (const Attr& value : args)
       argument_types.push_back(detail::runtime_type(detail::materialize(value)));
     bool ambiguous = false;
-    const Fn fn = detail::resolve_overload(
+    if (direct && !detail::resolve_overload(
+                      std::span<const Fn>(&direct, 1), argument_types,
+                      {}, nullptr, nullptr)) {
+      env.error("compile-time arguments do not match function: " +
+                    std::string(function),
+                direct.loc());
+      return false;
+    }
+    const Fn fn = direct ? direct : detail::resolve_overload(
         candidates, argument_types, explicit_args, nullptr, &ambiguous);
     if (!fn) {
       if (ambiguous) {
@@ -3269,6 +3319,22 @@ bool detail::Eval::sequence(
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
          Attr& report) {
   return detail::Eval::sequence(env, functions, mod, &report, {}, nullptr);
+}
+
+bool run(Env& env, Fn function, Mod& mod, Attr& report,
+         std::span<const Attr> args) {
+  const std::string symbol =
+      function ? std::string(function.module()) + "." +
+                     std::string(function.name())
+               : "<invalid function>";
+  const std::string_view entry = symbol;
+  const std::span<const std::string_view> functions(&entry, 1);
+  Attr sequence;
+  if (!detail::Eval::sequence(env, functions, mod, &sequence, args, nullptr,
+                              function))
+    return false;
+  report = sequence.dict()->at("steps").list()->front();
+  return true;
 }
 
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
