@@ -51,9 +51,9 @@ input. Neither implies that arbitrary procedures can safely optimize themselves.
 | Item | Inspected implementation or preserved evidence | Still required |
 | --- | --- | --- |
 | Progressive representation | Common IR, function cloning, structural edits, semantic exposure, C/VM paths | A serialized mixed-state trace from a real model and a precise account of identity/invariant preservation |
-| Function execution | Typed invocation with/without a subject; separate code/model `Mod` values; copied generator edited; private lexical helper closure captured; real `c.prepare` algorithm edited and source-isolated on a typed-model regression | A larger-model useful derivation/composition result, general rewrite conditions, and cost beyond regression fixtures |
+| Function execution | Typed invocation with/without a subject; separate code/model `Mod` values; copied generator edited; private lexical helper closure captured; real `c.prepare` algorithm edited and source-isolated on a typed-model regression and [four complete-model IR inputs](experiments/derive-prepare.md) across three network architectures | General rewrite conditions, matched mechanism control, and isolated cost beyond this pilot |
 | Reuse across roles | Source modules implement analyses, policies, transformations and generation | Demonstrate independent composition, not merely several unrelated examples |
-| Derivation performance | No measured optimization of a compiler procedure established | A real procedure, legal transformation, unchanged output and original source, compilation/runtime cost, and a matched alternative |
+| Derivation performance | Existing `c.prepare` copied, edited, and output-checked on ONNX/TFLite MobileNetV2, UltraFace, and SqueezeNet; unisolated macOS diagnostic wall times show no established speedup | Rewrite precondition, repeatable cost, and a matched alternative; do not claim acceleration from this pilot |
 | Complete artifacts | Versioned ONNX/TFLite numerical paths and negative runtime/scaling records in the study files | Matched end-to-end measurements with environment and failure boundaries |
 | Usability and agents | Text modules and shared APIs exist | No measured user productivity or agent success advantage; neither is a current result |
 

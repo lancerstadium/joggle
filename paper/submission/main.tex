@@ -895,15 +895,20 @@ and the model passes C preparation. Arity, result-type, and read-only failures
 retain the prior target revision. This tests execution and artifact isolation;
 it does not by itself test an algorithmic change.
 
-A second regression copies the actual \texttt{c.prepare} function together
-with its transitive private helper closure. The copied private
-\texttt{prepare\_with} body is edited so its second \texttt{opt.expose} call
-returns \texttt{false}; the code module is verified. On one simple typed
-model, both the original and the derived procedure produce byte-identical
-prepared IR and generated C source, and the original remains callable after
-the edit. This is the first checked edit to a real compiler procedure, but a
-single model cannot establish the rewrite's general legality or runtime
-benefit. The larger-model and cost comparison remains open.
+A second regression copies the actual \texttt{c.prepare} function with its
+transitive private helper closure. The copied \texttt{prepare\_with} body is
+edited so its second \texttt{opt.expose} call returns \texttt{false}. The code
+module verifies, and the original function remains callable. The pilot extends
+that check to complete ONNX and TFLite MobileNetV2 semantic programs and prior
+canonical UltraFace and SqueezeNet programs. For each, the original and derived
+procedures produce byte-identical prepared IR and generated C source; both
+outputs verify. The MobileNet programs move through 7,593 and 9,866 structural
+revisions, respectively, so this is not an empty invocation. The copied
+compiler definition contains 20 functions and 1,115 operations. This
+demonstrates isolated execution of an edited compiler procedure on four real
+model artifacts across three architectures, not a generally valid rewrite or
+a speedup. The unisolated macOS wall times are diagnostic only. A matched
+mechanism control remains necessary.
 
 \section{Related work}
 \subsection{Extensible compiler construction}
