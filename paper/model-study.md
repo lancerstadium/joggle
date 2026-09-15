@@ -41,17 +41,21 @@ python3 paper/collect_models.py \
 ```
 
 The collector first asks CTest for the exact configured
-`onnx-zoo-record` set, runs that set, validates one schema-1 record per model,
-and rejects inconsistent stage/frontier combinations. The current local pilot
-contains thirteen models: ten complete semantic conversion, TinyYOLOv3 stops
-at type inference with 219 unknown results, and SSD-MobileNetV1 stops at
-semantic conversion with 386 ONNX calls. XCiT-Tiny exercises a ViT-class path:
-all 1,333 initially unknown results are inferred, and conversion stops at seven
-shape-driven positional-embedding calls (four `Expand`, three `Tile`). Its
-trigonometric encoding, reductions, broadcasted selection, clipping, and
-LayerNormalization otherwise map to ordinary shared functions. GoogLeNet adds
-LRN and an inference-only Dropout with an unused mask result; both map to
-ordinary shared functions before the canonical round trip.
+`onnx-zoo-record` set, runs that set, validates one schema-1 runtime record per
+model, and rejects inconsistent stage/frontier combinations. Its schema-2 CSV
+rows bind every result to the Joggle Git revision and model SHA-256, so rows
+from different compiler revisions cannot be silently merged. Collection also
+rejects modified tracked compiler, module, tool, or test sources; paper edits
+do not invalidate an otherwise identical compiler build.
+
+The ledger contains fourteen models and may preserve rows measured at different
+revisions; the revision column makes that distinction explicit. A partial-cache
+rerun at revision `5e15c29` completes semantic conversion with zero source calls
+for MobileNetV2, TinyYOLOv3, EfficientNet-Lite4 INT8, and XCiT-Tiny. The older
+SSD-MobileNetV1 row remains a 386-call negative result until that pinned model
+is rerun. These are structural compatibility observations only; a model still
+requires the separate artifact-execution gate before it can be reported as
+generated-code support.
 
 These records are structural regression and compatibility evidence. They do
 not establish task accuracy, supported-operator percentage, generated-C
