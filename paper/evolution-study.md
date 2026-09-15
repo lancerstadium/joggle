@@ -94,6 +94,21 @@ two independently validated interfaces counts in both, with the reason shown.
 The paper presents the vector and names, so a reviewer can reject the
 classification without trusting an aggregate score.
 
+The domain of an edit follows the interface it implements, not whether its
+file lives in framework core. A compiler-core conversion change to an
+external-call ABI belongs to domain 6; its core-source modification and host
+rebuild are recorded separately. Domain 7 is reserved for registration and
+build wiring. Describing ordinary row-major input buffers and their stride
+arguments is target ABI work, not a new representation in domain 3. An authored
+selection mutator counts in domain 4 even when S0 selects both shapes.
+
+These adjudications were applied in a **pre-freeze S0 audit on 2026-09-15**
+after functional macOS preflight, because the initial-surface metadata
+inconsistently assigned TVM's `ReplaceConv` and ONNX-MLIR's `KrnlCall.cpp`.
+The changes are disclosed in the S0 records. They alter no source graph,
+artifact, oracle result, or S0 revisited-boundary vector (which is empty for
+every system); all S1/S2 classification must use this rule prospectively.
+
 ## Required observations per stage
 
 Each system record contains:

@@ -36,12 +36,18 @@
     "policy": false,
     "target": true,
     "artifact": true,
-    "host": true
+    "host": false
   },
+  "initial_boundary_surface_note": "The KrnlCall.cpp core-source edit lowers integer ArrayAttr to the external-call LLVM ABI, so it belongs to artifact/ABI rather than host registration or build wiring. It still requires a pinned-host compiler rebuild, recorded separately. Classification corrected during the pre-freeze S0 audit; functional artifacts and oracle results are unchanged.",
   "boundary_evidence": {
-    "target": "The existing --ops-for-call=Conv route selects one krnl.call for each frozen graph.",
-    "artifact": "conv.c bridges the emitted OMTensor/attribute ABI to the supplied evolution_conv kernel and is linked through the normal -L/-l artifact route.",
-    "host": "KrnlCall.cpp required an ArrayAttr lowering case before pads and strides could reach LLVM IR. The exact patch is preserved beside this result."
+    "target": "The existing --ops-for-call=Conv route selects one krnl.call for each frozen graph; conv.c supplies its external Conv target callback.",
+    "artifact": "The KrnlCall.cpp core patch lowers integer-list attributes into the external-call LLVM ABI, while conv.c bridges the resulting OMTensor/attribute ABI to the supplied evolution_conv kernel. These have distinct host and extension build scopes."
+  },
+  "host_core_change": {
+    "source": "src/Conversion/KrnlToLLVM/KrnlCall.cpp",
+    "reason": "integer ArrayAttr lowering for krnl.call external ABI",
+    "rebuild_scope": "pinned ONNX-MLIR host compiler",
+    "boundary_domain": "artifact"
   },
   "first_unsatisfied_requirement_before_host_patch": {
     "stage": "LLVM conversion",

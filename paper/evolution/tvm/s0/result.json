@@ -23,13 +23,28 @@
   "initial_boundary_surface": {
     "source": false,
     "semantics": false,
-    "representation": true,
-    "policy": false,
+    "representation": false,
+    "policy": true,
     "target": true,
     "artifact": true,
     "host": false
   },
-  "initial_boundary_surface_note": "TensorIR declares the external target call and Relax call_tir selects it; export_library links the supplied C object. S0 has no preceding stage, so these are not revisited boundaries.",
+  "initial_boundary_surface_note": "S0 uses ordinary row-major OIHW; TensorIR match_buffer describes the target call ABI, not a new payload format. ReplaceConv is an authored Relax selection policy, make_external_conv declares the external target call, and export_library links the supplied object. S0 has no preceding stage, so these are not revisited boundaries. Classification corrected during the pre-freeze S0 audit; functional artifacts and oracle results are unchanged.",
+  "boundary_vector": {
+    "source": false,
+    "semantics": false,
+    "representation": false,
+    "policy": false,
+    "target": false,
+    "artifact": false,
+    "host": false
+  },
+  "boundary_vector_note": "S0 establishes the initial surface; no domain is revisited until S1 changes the frozen stage.",
+  "boundary_evidence": {
+    "policy": "build.py ReplaceConv visits the imported Relax conv2d call and rewrites it to call_tir; this is a selection policy even though S0 selects both shapes.",
+    "target": "build.py make_external_conv defines the TensorIR function and declares the evolution_conv external call.",
+    "artifact": "build.py export_library links the supplied kernel object as an addon to the native TVM artifact."
+  },
   "cases": {
     "eligible": {
       "selected_ir_sha256": "8d1d48fea17ed29a281a776e6deb11e4ad577538873ef7d02c8a88c6ed0a5c20",

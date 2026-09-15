@@ -284,6 +284,17 @@ project \cite{kats2010spoofax}. These boundaries provide reusable invariants,
 partial lowering, and mature ecosystems; their existence is not itself the
 problem.
 
+Our S0 preflight makes the extension contracts concrete. Joggle's out-of-tree
+\texttt{projection} module defines the Conv candidate, its selection, and its
+external declaration; the existing C path closes the artifact. TVM's authored
+Relax mutator selects a TensorIR external body, and its artifact builder links
+the supplied object through \texttt{export\_library}. Pinned ONNX-MLIR uses its
+documented Conv call route, an OMTensor adapter, and a core conversion fix for
+integer-list attributes. All three produce oracle-checked artifacts. A file
+inside framework core is not automatically a registration boundary, just as a
+single Python script is not one semantic contract. Only the later S1/S2
+revisions can measure whether these interfaces require repeated coordination.
+
 The open question is what happens when the S0 specialization changes twice.
 In MLIR, a transform program and dialect-defined payload can share the same
 generic operation storage but retain distinct executable contracts. In TVM,

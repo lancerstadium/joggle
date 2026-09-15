@@ -20,10 +20,10 @@ Current status:
   zero maximum absolute error; its source and
   [`result.json`](joggle/s0/result.json) are preserved, but the stage is not
   cross-system-frozen and contains no publication timing;
-- ONNX-MLIR S0: a pinned host patch for `krnl.call` integer-array attributes
+- ONNX-MLIR S0: a pinned compiler-core patch for `krnl.call` integer-array attributes
   and an OMTensor ABI bridge now produce bitwise-oracle-checked `.so` artifacts
   for both shapes; [`result.json`](onnx-mlir/s0/result.json) records the initial
-  host/artifact boundary and pre-patch LLVM-conversion failure;
+  ABI boundary, the separate host rebuild scope, and pre-patch LLVM-conversion failure;
 - TVM S0: pinned LLVM-enabled Relax/TensorIR implementation exports `.so`
   artifacts for both shapes; a fresh process reloads both and passes the
   frozen oracle bitwise; [`result.json`](tvm/s0/result.json) preserves the

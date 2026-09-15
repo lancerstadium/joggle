@@ -9,7 +9,8 @@ The unmodified compiler stops during Krnl-to-LLVM conversion because its
 `KrnlCall.cpp` handler does not accept the integer `ArrayAttr` values copied
 from ONNX Conv's `pads` and `strides`. It exits 134 with
 `This type of Attribute used by krnl.call is not yet implemented`. This is
-an observed host-boundary edit, not evidence that ONNX-MLIR lacks an external
+an observed framework-core external-ABI edit requiring a host rebuild, not
+domain-7 registration/build wiring or evidence that ONNX-MLIR lacks an external
 Conv route. Apply the exact
 [`krnl-call-array-attr.patch`](krnl-call-array-attr.patch) to a clean checkout
 of that revision before building the `onnx-mlir` target. The patch passes
