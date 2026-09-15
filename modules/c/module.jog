@@ -879,6 +879,9 @@ local fn tensor_new(
          "c: tensor construction requires one fill value")
   let output = outputs[0]
   let type = ir.type(output)
+  if !runtime_storage(m, output) {
+    return ""
+  }
   let n = count(type)
   let indent = pad(depth)
   var out = ""
@@ -910,6 +913,9 @@ local fn tensor_make(
   assert(len(outputs) == 1 && len(inputs) == 2,
          "c: tensor.make requires a fill and shape")
   let output = outputs[0]
+  if !runtime_storage(m, output) {
+    return ""
+  }
   let n = storage_count(m, output)
   let indent = pad(depth)
   var out = ""
@@ -1151,6 +1157,9 @@ local fn call(
   if name == "operator []=" {
     assert(len(outputs) == 1 && len(inputs) >= 3,
            "c: invalid tensor store")
+    if !runtime_storage(m, inputs[0]) {
+      return ""
+    }
     var access: list<Val> = [inputs[0]]
     for i in 1..len(inputs) - 1 {
       access += [inputs[i]]
@@ -1868,12 +1877,88 @@ local fn linkage(m: Mod, fn: Fn) -> str {
   return ""
 }
 
-local fn uses_slot(fn: Fn, slot: int) -> bool {
-  for value in ir.vals(fn) {
-    if mem.planned(value) && mem.slot(value) == slot {
+local fn runtime_arg(m: Mod, op: Op, at: int) -> bool {
+  let inputs = ir.args(op)
+  assert(at >= 0 && at < len(inputs), "c: argument index is out of range")
+  // Region operands only carry a storage identity into nested blocks. The
+  // nested operations, not the loop/branch/yield edge, determine whether the
+  // emitted program reads that storage.
+  if ir.kind(op) == "yield" {
+    return false
+  }
+  if (ir.kind(op) == "loop" || ir.kind(op) == "branch") &&
+     mem.planned(inputs[at]) {
+    return false
+  }
+  if ir.kind(op) != "call" {
+    return true
+  }
+  let target = ir.target(m, op)
+  let name = call_name(m, op)
+  // A store defines the next version of its destination; it does not read the
+  // previous contents. Indices and the stored value remain ordinary reads.
+  if name == "operator []=" && at == 0 {
+    return false
+  }
+  // Static capacities and extents are already present in the prepared IR.
+  // Their shape operands have no representation in emitted C.
+  if target == "tensor.make" && at == 1 {
+    let outputs = ir.outs(op)
+    return len(outputs) != 1 ||
+           (!tensor.static(ir.type(outputs[0])) &&
+            len(ir.users(outputs[0])) != 0)
+  }
+  if target == "tensor.view" {
+    if at == 1 {
+      let outputs = ir.outs(op)
+      return len(outputs) != 1 ||
+             (!tensor.static(ir.type(outputs[0])) &&
+              len(ir.users(outputs[0])) != 0)
+    }
+    if at == 0 {
+      let outputs = ir.outs(op)
+      return len(outputs) != 1 || len(ir.users(outputs[0])) != 0
+    }
+  }
+  if target == "tensor.dim" && at == 0 && tensor.static(ir.type(inputs[0])) {
+    return false
+  }
+  return true
+}
+
+local fn contains(fn: Fn, value: Val) -> bool {
+  for candidate in ir.vals(fn) {
+    if candidate == value {
       return true
     }
   }
+  return false
+}
+
+local fn uses_slot(m: Mod, fn: Fn, slot: int) -> bool {
+  for op in ir.ops(fn) {
+    let inputs = ir.args(op)
+    for at in 0..len(inputs) {
+      let value = inputs[at]
+      if mem.planned(value) && mem.slot(value) == slot &&
+         runtime_arg(m, op, at) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+local fn runtime_storage(m: Mod, value: Val) -> bool {
+  if !mem.planned(value) {
+    return true
+  }
+  for fn in ir.fns(m) {
+    if contains(fn, value) {
+      return uses_slot(m, fn, mem.slot(value))
+    }
+  }
+  assert(false, "c: planned value has no owning function")
   return false
 }
 
@@ -1890,7 +1975,7 @@ local fn definition(
     storage = "static "
   }
   for slot in 0..mem.slots(fn) {
-    if uses_slot(fn, slot) {
+    if uses_slot(m, fn, slot) {
       let type = mem.type(fn, slot)
       memory += pad(1) + storage + scalar(type, config) + " slot_" +
                 c_name(base.name(type)) + "_" + text(slot) + "[" +

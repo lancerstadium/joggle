@@ -416,32 +416,26 @@ fn topk<E: Ty, S: list<int>, Y: list<int>>(
   x: tensor<E, S>, count_value: tensor<i64, [1]>, axis: int, largest: bool
 ) -> (tensor<E, Y>, tensor<i64, Y>) {
   assert(axis >= 0 && axis < len(S), "tensor.topk axis is out of range")
-  let extent = dim(x, index(axis))
+  let extent = index(S[axis])
   let count = index(count_value[0])
   assert(count > index(0) && count <= extent,
          "tensor.topk count is out of range")
+  assert(len(Y) == len(S) && index(Y[axis]) == count,
+         "tensor.topk result shape does not match count")
 
   var outer = index(1)
   for dim_index in 0..axis {
-    outer *= dim(x, index(dim_index))
+    outer *= index(S[dim_index])
   }
   var inner = index(1)
   for dim_index in axis + 1..len(S) {
-    inner *= dim(x, index(dim_index))
+    inner *= index(S[dim_index])
   }
 
-  var output_shape = tensor<index, [len<S>]>(index(0))
-  for dim_index in 0..len(S) {
-    output_shape[dim_index] = dim(x, index(dim_index))
-  }
-  output_shape[axis] = count
-  var values: tensor<E, Y> = make(E(0), output_shape)
-  var indices: tensor<i64, Y> = make(i64(0), output_shape)
+  var values = tensor<E, Y>(E(0))
+  var indices = tensor<i64, Y>(i64(0))
 
-  var blocked_shape = tensor<index, [1]>(index(0))
-  blocked_shape[0] = extent
   for group in index(0)..outer, offset in index(0)..inner {
-    var blocked: tensor<bool, [_]> = make(false, blocked_shape)
     for selected in index(0)..count {
       var found = false
       var best = index(0)
@@ -449,6 +443,13 @@ fn topk<E: Ty, S: list<int>, Y: list<int>>(
       for candidate in index(0)..extent {
         let source = (group * extent + candidate) * inner + offset
         let candidate_value = x[source]
+        var used = false
+        for prior in index(0)..selected {
+          let prior_target = (group * count + prior) * inner + offset
+          if index(indices[prior_target]) == candidate {
+            used = true
+          }
+        }
         var better = false
         if found {
           if largest {
@@ -457,7 +458,7 @@ fn topk<E: Ty, S: list<int>, Y: list<int>>(
             better = candidate_value < best_value
           }
         }
-        if !blocked[candidate] && (!found || better) {
+        if !used && (!found || better) {
           found = true
           best = candidate
           best_value = candidate_value
@@ -467,10 +468,9 @@ fn topk<E: Ty, S: list<int>, Y: list<int>>(
       let target = (group * count + selected) * inner + offset
       values[target] = best_value
       indices[target] = i64(best)
-      blocked[best] = true
     }
   }
-  return view(values, output_shape), view(indices, output_shape)
+  return values, indices
 }
 
 fn slice_offset(

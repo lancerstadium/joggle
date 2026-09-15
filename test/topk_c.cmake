@@ -40,6 +40,11 @@ execute_process(
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "TopK emission failed (${result}):\n${error}")
 endif()
+file(READ "${source}" generated)
+if(generated MATCHES "slot_index_[0-9]+\\[")
+  message(FATAL_ERROR
+          "TopK C retained a shape-only runtime storage slot")
+endif()
 execute_process(
   COMMAND "${CC}" -std=c11 -O2 -Wall -Wextra -Werror -pedantic-errors
           "${source}" "${HARNESS}" -o "${program}"
