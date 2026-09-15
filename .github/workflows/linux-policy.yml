@@ -7,7 +7,7 @@ name: linux-policy
     paths:
       - .github/workflows/linux-policy.yml
       - examples/onnx/app.cpp
-      - examples/spatial/**
+      - examples/locality/**
       - modules/**
       - paper/measure_reorder.py
       - paper/measure_systems.py
