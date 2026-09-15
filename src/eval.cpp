@@ -2672,6 +2672,16 @@ private:
                 (*mod)->clone(*op, *before, *old_values, *new_values);
             return Items{Item(result)};
           }
+          auto ops = handles<Op>(args[1]);
+          if (ops && before && old_values && new_values) {
+            const std::vector<Op> copies =
+                (*mod)->clone(*ops, *before, *old_values, *new_values);
+            Items result;
+            result.reserve(copies.size());
+            for (Op copy : copies)
+              result.emplace_back(copy);
+            return Items{Item(std::move(result))};
+          }
         }
         if (args.size() == 3) {
           if (const auto* op = as<Op>(args[1])) {

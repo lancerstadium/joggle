@@ -2018,6 +2018,33 @@ int main(int argc, char** argv) {
   CHECK(cloned_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(cloned_loop, cloned_roundtrip));
 
+  joggle::Mod cloned_sequence;
+  constexpr std::string_view sequence_source =
+      "module sequence\n"
+      "fn twice(x: int) -> int {\n"
+      "  let next = x + 1\n"
+      "  let result = next * 2\n"
+      "  return result\n"
+      "}\n";
+  CHECK(joggle::parse(env, sequence_source, cloned_sequence, "sequence.jog"));
+  CHECK(cloned_sequence.verify(env));
+  const std::vector<joggle::Op> sequence_ops =
+      cloned_sequence.find_fn("twice").ops();
+  CHECK(sequence_ops.size() == 5);
+  const std::array sequence_body{sequence_ops[1], sequence_ops[3]};
+  const std::uint64_t before_sequence_clone = cloned_sequence.revision();
+  const std::vector<joggle::Op> sequence_copy =
+      cloned_sequence.clone(sequence_body, sequence_ops.back());
+  CHECK(sequence_copy.size() == 2);
+  CHECK(cloned_sequence.revision() == before_sequence_clone + 1);
+  CHECK(sequence_copy[1].args().front() == sequence_copy[0].outs().front());
+  CHECK(cloned_sequence.verify(env));
+  const std::array duplicate_sequence{sequence_ops[1], sequence_ops[1]};
+  const std::uint64_t before_duplicate_clone = cloned_sequence.revision();
+  CHECK(cloned_sequence.clone(duplicate_sequence, sequence_ops.back()).empty());
+  CHECK(cloned_sequence.revision() == before_duplicate_clone);
+  cloned_sequence.clear_diags();
+
   joggle::Mod remapped_loop;
   constexpr std::string_view remapped_loop_source =
       "module remapped\n"

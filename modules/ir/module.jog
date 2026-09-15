@@ -87,6 +87,9 @@ fn clone(m: Mod, op: Op, before: Op) -> Op;
 fn clone(
   m: Mod, op: Op, before: Op, old: list<Val>, next: list<Val>
 ) -> Op;
+fn clone(
+  m: Mod, ops: list<Op>, before: Op, old: list<Val>, next: list<Val>
+) -> list<Op>;
 fn clone(m: Mod, fn: Fn, name: str) -> Fn;
 fn clone(m: Mod, fn: Fn, name: str, generics: list<Ty>) -> Fn;
 fn bind(m: Mod, op: Op, fn: Fn, name: str, params: list<int>) -> Fn;

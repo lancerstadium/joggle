@@ -588,7 +588,13 @@ let copy = ir.clone(m, loop, before, [old_base], [new_base])
 
 The two lists are a parallel typed lookup table. Entries unused by a particular
 subtree are allowed, so one accumulated mapping can be reused while cloning a
-sequence of operations. Every replacement that is actually selected must have
+sequence of operations. Passing `list<Op>` instead of one `Op` clones that
+ordered sequence as one edit: values produced by an earlier source operation
+are rewired to the corresponding earlier copy, names are freshened across the
+whole sequence, and use lists are rebuilt once. This is the preferred form for
+unrolling or rebuilding a `Blk`; it preserves the same checks without making
+every source operation a separate global mutation. Every replacement that is
+actually selected must have
 exactly the same type and dominate the insertion point; values defined inside
 the source cannot be replaced through this interface. All checks precede
 mutation. A checked operation-clone rejection returns an invalid `Op` to

@@ -695,6 +695,7 @@ local fn noalias_enabled(fn: Fn) -> bool {
   return enabled == true || proven == true
 }
 
+[memo]
 local fn accepts_with(m: Mod, op: Op, config: dict) -> bool {
   let name = call_name(m, op)
   let inputs = ir.args(op)

@@ -415,6 +415,9 @@ public:
   Op clone(Op op, Op before);
   Op clone(Op op, Op before, std::span<const Val> old_values,
            std::span<const Val> new_values);
+  std::vector<Op> clone(std::span<const Op> ops, Op before,
+                        std::span<const Val> old_values = {},
+                        std::span<const Val> new_values = {});
   Fn clone(const Env& env, Fn fn, std::string name,
            std::span<const Ty> generics = {});
   Fn bind(const Env& env, Op call, Fn fn, std::string name,

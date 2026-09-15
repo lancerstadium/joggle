@@ -1,6 +1,7 @@
 module opt
 use ir
 
+[memo]
 local fn matches(m: Mod, op: Op, name: str) -> bool {
   if ir.callee(op) == name {
     return true
@@ -208,6 +209,10 @@ local fn specialize_loop(m: Mod, loop: Op) -> bool {
     current += [inputs[i]]
   }
   let yield = body_ops[len(body_ops) - 1]
+  var source_ops: list<Op> = []
+  for i in 0..len(body_ops) - 1 {
+    source_ops += [body_ops[i]]
+  }
   for point in 0..count {
     var remainder = point
     var coords: list<int> = []
@@ -230,11 +235,12 @@ local fn specialize_loop(m: Mod, loop: Op) -> bool {
       old += [body_args[axes + i]]
       next += [current[i]]
     }
-    for i in 0..len(body_ops) - 1 {
-      let copy = ir.clone(m, body_ops[i], loop, old, next)
-      assert(ir.live(copy), "opt.specialize could not clone a loop body")
-      old += ir.outs(body_ops[i])
-      next += ir.outs(copy)
+    let copies = ir.clone(m, source_ops, loop, old, next)
+    assert(len(copies) == len(source_ops),
+           "opt.specialize could not clone a loop body")
+    for i in 0..len(source_ops) {
+      old += ir.outs(source_ops[i])
+      next += ir.outs(copies[i])
     }
     current = []
     for value in ir.args(yield) {

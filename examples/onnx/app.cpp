@@ -26,6 +26,18 @@ namespace {
 
 using Bytes = joggle::Attr::Bytes;
 
+template <class Action>
+bool timed(std::string_view stage, Action&& action) {
+  const auto started = std::chrono::steady_clock::now();
+  const bool result = action();
+  const std::chrono::duration<double> elapsed =
+      std::chrono::steady_clock::now() - started;
+  std::fprintf(stderr, "joggle-onnx stage=%.*s status=%s seconds=%.6f\n",
+               static_cast<int>(stage.size()), stage.data(),
+               result ? "pass" : "fail", elapsed.count());
+  return result;
+}
+
 Bytes read(std::string_view path) {
   std::ifstream input(std::string(path), std::ios::binary);
   if (!input)
@@ -108,7 +120,9 @@ int main(int argc, char** argv) {
   CHECK(env.load("onnx"));
   const std::vector<joggle::Attr> read_args{joggle::Attr(encoded)};
   std::vector<joggle::Attr> read_result;
-  CHECK(env.call("onnx.read", read_args, read_result));
+  CHECK(timed("read", [&] {
+    return env.call("onnx.read", read_args, read_result);
+  }));
   CHECK(read_result.size() == 1 && read_result.front().string());
 
   CHECK(env.load("onnx.nn"));
@@ -118,12 +132,18 @@ int main(int argc, char** argv) {
   CHECK(env.load("mem"));
   CHECK(env.load("tile"));
   joggle::Mod model;
-  CHECK(joggle::parse(env, *read_result.front().string(), model, argv[1]));
+  CHECK(timed("parse", [&] {
+    return joggle::parse(env, *read_result.front().string(), model, argv[1]);
+  }));
   CHECK(model.verify(env));
-  CHECK(joggle::run(env, "onnx.nn.convert", model));
+  CHECK(timed("convert", [&] {
+    return joggle::run(env, "onnx.nn.convert", model);
+  }));
   const std::vector<joggle::Attr> dce_args{
       joggle::Attr(joggle::Attr::List{})};
-  CHECK(joggle::run(env, "opt.dce", model, dce_args));
+  CHECK(timed("dce", [&] {
+    return joggle::run(env, "opt.dce", model, dce_args);
+  }));
   CHECK(model.verify(env));
 
   if (check_vm) {
@@ -156,31 +176,53 @@ int main(int argc, char** argv) {
                 elapsed.count());
   }
 
-  if (!joggle::run(env, "c.prepare", model)) {
+  if (!timed("prepare", [&] {
+        return joggle::run(env, "c.prepare", model);
+      })) {
     env.print_diags(stderr);
     return 1;
   }
-  CHECK(joggle::run(env, "bounds.fold", model));
-  CHECK(joggle::run(env, "opt.fold", model));
-  CHECK(joggle::run(env, "opt.basic", model));
+  CHECK(timed("bounds", [&] {
+    return joggle::run(env, "bounds.fold", model);
+  }));
+  CHECK(timed("fold", [&] {
+    return joggle::run(env, "opt.fold", model);
+  }));
+  CHECK(timed("clean", [&] {
+    return joggle::run(env, "opt.basic", model);
+  }));
   CHECK(model.verify(env));
   CHECK(write(argv[12], joggle::print(model)));
-  CHECK(joggle::run(env, "tile.scalarize", model));
-  CHECK(joggle::run(env, "opt.basic", model));
-  CHECK(joggle::run(env, "mem.plan", model));
+  CHECK(timed("scalarize", [&] {
+    return joggle::run(env, "tile.scalarize", model);
+  }));
+  CHECK(timed("post-clean", [&] {
+    return joggle::run(env, "opt.basic", model);
+  }));
+  CHECK(timed("memory", [&] {
+    return joggle::run(env, "mem.plan", model);
+  }));
   // The generated application ABI owns distinct input, output, and immutable
   // weight buffers. Make that boundary contract explicit before C emission.
-  CHECK(joggle::run(env, "c.noalias", model));
+  CHECK(timed("noalias", [&] {
+    return joggle::run(env, "c.noalias", model);
+  }));
   const std::vector<joggle::Attr> placement{joggle::Attr("static")};
-  CHECK(joggle::run(env, "c.place", model, placement));
+  CHECK(timed("place", [&] {
+    return joggle::run(env, "c.place", model, placement);
+  }));
   CHECK(model.verify(env));
   CHECK(write(argv[8], joggle::print(model)));
   joggle::Attr source;
-  CHECK(joggle::query(env, "c.source", model, source));
+  CHECK(timed("source", [&] {
+    return joggle::query(env, "c.source", model, source);
+  }));
   CHECK(source.string() && source.string()->find("onnx.") == std::string::npos);
   CHECK(write(argv[4], *source.string()));
   joggle::Attr header;
-  CHECK(joggle::query(env, "c.header", model, header));
+  CHECK(timed("header", [&] {
+    return joggle::query(env, "c.header", model, header);
+  }));
   CHECK(header.string() && write(argv[10], *header.string()));
   CHECK(write(argv[5], input));
   CHECK(write(argv[6], expected));

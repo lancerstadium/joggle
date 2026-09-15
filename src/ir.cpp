@@ -860,18 +860,37 @@ Op Mod::clone(Op source, Op before) {
 
 Op Mod::clone(Op source, Op before, std::span<const Val> old_values,
               std::span<const Val> new_values) {
+  const std::array sources{source};
+  const std::vector<Op> copies = clone(sources, before, old_values, new_values);
+  return copies.size() == 1 ? copies.front() : Op{};
+}
+
+std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
+                           std::span<const Val> old_values,
+                           std::span<const Val> new_values) {
   auto& store = impl_->store;
   const auto reject = [&](std::string message, Loc loc = {}) {
     detail::add_diag(store.diags, std::move(message), std::move(loc));
-    return Op{};
+    return std::vector<Op>{};
   };
-  if (!source.valid() || !before.valid() || source.store_ != &store ||
-      before.store_ != &store)
+  if (sources.empty())
+    return {};
+  if (!before.valid() || before.store_ != &store)
     return reject("clone requires live operations in this module");
-  if (source.kind() == Op::Kind::ret || source.kind() == Op::Kind::yield)
-    return reject("clone does not duplicate Blk terminators", source.loc());
+  std::unordered_set<std::uint32_t> roots;
+  roots.reserve(sources.size());
+  for (Op source : sources) {
+    if (!source.valid() || source.store_ != &store)
+      return reject("clone requires live operations in this module");
+    if (source.kind() == Op::Kind::ret || source.kind() == Op::Kind::yield)
+      return reject("clone does not duplicate Blk terminators", source.loc());
+    if (!roots.insert(source.id_).second)
+      return reject("clone sequence contains a duplicate operation",
+                    source.loc());
+  }
   if (old_values.size() != new_values.size())
-    return reject("clone requires one new value per old value", source.loc());
+    return reject("clone requires one new value per old value",
+                  sources.front().loc());
 
   std::unordered_set<std::uint32_t> subtree_ops;
   std::unordered_set<std::uint32_t> subtree_values;
@@ -886,8 +905,9 @@ Op Mod::clone(Op source, Op before, std::span<const Val> old_values,
         self(self, child);
     }
   };
-  collect(collect, source);
-  if (before != source && subtree_ops.contains(before.id_))
+  for (Op source : sources)
+    collect(collect, source);
+  if (!roots.contains(before.id_) && subtree_ops.contains(before.id_))
     return reject("clone insertion point cannot be inside the source",
                   before.loc());
 
@@ -900,16 +920,16 @@ Op Mod::clone(Op source, Op before, std::span<const Val> old_values,
     if (!old_value.valid() || !new_value.valid() ||
         old_value.store_ != &store || new_value.store_ != &store)
       return reject("clone substitutions require live values in this module",
-                    source.loc());
+                    sources.front().loc());
     if (subtree_values.contains(old_value.id_))
       return reject("clone cannot substitute a value defined by the source",
-                    source.loc());
+                    sources.front().loc());
     if (old_value.type() != new_value.type()) {
       const std::string old_type(old_value.type().text());
       const std::string new_type(new_value.type().text());
       return reject("clone substitution type mismatch: " + old_type +
                         " versus " + new_type,
-                    source.loc());
+                    sources.front().loc());
     }
     if (old_value == new_value)
       continue;
@@ -917,7 +937,7 @@ Op Mod::clone(Op source, Op before, std::span<const Val> old_values,
         substitutions.emplace(old_value.id_, new_value.id_);
     if (!inserted && found->second != new_value.id_)
       return reject("clone has conflicting substitutions for one value",
-                    source.loc());
+                    sources.front().loc());
     if (!old_value.name().empty() && !new_value.name().empty()) {
       const auto [name, name_inserted] = substituted_names.emplace(
           std::string(old_value.name()), std::string(new_value.name()));
@@ -983,7 +1003,7 @@ Op Mod::clone(Op source, Op before, std::span<const Val> old_values,
 
     for (const std::uint32_t old_value : old.outs) {
       detail::ValData value = store.vals[old_value].data;
-      if (old_id == source.id_ &&
+      if (roots.contains(old_id) &&
           (old.form == Op::Form::let || old.form == Op::Form::var))
         value.name = copy_name(value.name);
       else if (old.form == Op::Form::assign ||
@@ -1039,16 +1059,23 @@ Op Mod::clone(Op source, Op before, std::span<const Val> old_values,
     return next_id;
   };
 
-  const std::uint32_t cloned_id = copy_op(copy_op, source.id_, destination);
+  std::vector<std::uint32_t> cloned_ids;
+  cloned_ids.reserve(sources.size());
+  for (Op source : sources)
+    cloned_ids.push_back(copy_op(copy_op, source.id_, destination));
   auto& order = store.blks[destination].data.ops;
-  order.pop_back();
+  order.resize(order.size() - cloned_ids.size());
   const auto position = std::find(order.begin(), order.end(), before.id_);
   if (position == order.end())
     return reject("clone insertion point is not in its Blk", before.loc());
-  order.insert(position, cloned_id);
+  order.insert(position, cloned_ids.begin(), cloned_ids.end());
   detail::rebuild_uses(store);
   touch(store);
-  return Op(&store, cloned_id, store.ops[cloned_id].generation);
+  std::vector<Op> copies;
+  copies.reserve(cloned_ids.size());
+  for (const std::uint32_t id : cloned_ids)
+    copies.push_back(Op(&store, id, store.ops[id].generation));
+  return copies;
 }
 
 void Mod::infer(const Env& env, std::uint32_t id) {
