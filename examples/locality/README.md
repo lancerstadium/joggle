@@ -1,8 +1,9 @@
-# Spatial loop scheduling
+# Locality scheduling
 
-`spatial` is a pass, not a convolution implementation. The shared `nn` module
-owns the only semantic `conv2d` body. Target preparation exposes that body as
-ordinary `Fn`/`Blk`/`Op` IR; `spatial.apply` then changes its seven-axis loop
+`locality` is a source policy, not an IR level or a convolution implementation.
+The shared `nn` module owns the only semantic `conv2d` body. Target preparation
+exposes that body as
+ordinary `Fn`/`Blk`/`Op` IR; `locality.apply` then changes its seven-axis loop
 from output-stationary order
 
 ```text
@@ -21,7 +22,7 @@ overload, implementation tag, frontend rule, or emitter case.
 ```sh
 joggle run c.prepare mem.plan semantic.jog \
   -M build/modules > canonical.jog
-joggle run spatial.apply canonical.jog \
+joggle run locality.apply canonical.jog \
   -M examples -M build/modules > scheduled.jog
 joggle emit c.source scheduled.jog \
   -M build/modules > model.c
@@ -31,7 +32,7 @@ Before changing the program, the same policy is inspectable as ordinary
 compile-time data:
 
 ```sh
-joggle query spatial.plan canonical.jog \
+joggle query locality.plan canonical.jog \
   -M examples -M build/modules > plan.attr
 ```
 
@@ -47,27 +48,12 @@ can therefore reduce a grouped coordinate such as `m / 160` to a constant when
 expression. This matters for pointwise contractions but is not an NN rule: the
 same proof applies to layout groups or tiles written by an external module.
 
-The example policy does not recognize convolution or require seven axes. It
+The policy does not recognize convolution or require seven axes. It
 uses `tile.state_axes`, `tile.reduction_axes`, and the whole-loop
 `tile.read_forms`/`tile.write_forms` queries. It scores unit-stride access
 higher than reuse and moves the best suffix of state axes inside the unchanged
 reduction band. The score is deliberately visible source policy, not a hidden
 target heuristic. Correctness belongs to `tile.reorder`.
-
-`spatial.cache(m, columns, depth)` is a deliberately parameterized policy for
-rank-three contractions. It recognizes state and reduction axes rather than a
-function or operator name, strip-mines the innermost result and reduction axes,
-and leaves the result axis innermost for vectorization:
-
-```sh
-joggle run spatial.cache contraction.jog --arg 128 --arg 32 \
-  -M examples -M build/modules > tiled.jog
-```
-
-The factors are visible experimental inputs, not compiler defaults. Nearby
-legal choices can improve or degrade the same program, so a target policy or a
-bounded search should select them. Both use the same `tile.split` and
-`tile.reorder` legality and edit mechanisms.
 
 Before editing, the transform requires static integer ranges, one
 carried state, equal affine read/write addresses, an injective address map for
@@ -77,7 +63,7 @@ permuting the reduction itself is rejected. The same mechanism is available to
 pooling, tensor programs, or a user policy without naming an NN operator.
 
 This separation is intentional: `nn` defines computation, `tile` proves and
-performs a structural rewrite, and `spatial` contains only a replaceable
+performs a structural rewrite, and `locality` contains only a replaceable
 profitability policy. An external or packed kernel may still use implementation
 selection when it truly changes the available computation, but loop scheduling
 does not need a second function body.
@@ -116,11 +102,11 @@ inner state axis below the reduction band, and call
 `tile.scalarize(m, loop, factor)`. The pass carries at most `factor` scalar
 accumulators and proves every hoisted state address against the static tensor
 capacity. The regression suite executes both a two-lane Conv pipeline and a
-locality-selected two-lane spatial pipeline; a padded three-lane split is
+locality-selected two-lane pipeline; a padded three-lane split is
 rejected by affine legality instead of being turned into an out-of-bounds load
 or store. None of these paths defines a second `nn.conv2d` function.
 
-`spatial.block(m, factors)` is the complete generic policy used by that test.
+`locality.block(m, factors)` is the complete generic policy used by that test.
 For each loop it prefers the first factor that exactly divides the innermost
 proved state extent. If none does, it uses the first smaller factor and
 `tile.peel` separates an aligned prefix from an ordinary scalar tail. `[4, 7]`,
@@ -133,9 +119,9 @@ explicit edit returns its replacement `Op`, so the three edits compose
 directly without an anchor, result wrapper, or module rescan:
 
 ```sh
-joggle run spatial.block canonical.jog --arg 2 \
+joggle run locality.block canonical.jog --arg 2 \
   -M examples -M build/modules > blocked.jog
-joggle run spatial.block canonical.jog --arg '[4, 7]' \
+joggle run locality.block canonical.jog --arg '[4, 7]' \
   -M examples -M build/modules > blocked-mixed.jog
 joggle run bounds.fold opt.fold opt.basic blocked.jog \
   -M build/modules > blocked-clean.jog
@@ -148,7 +134,7 @@ limit, it leaves the loop untouched; it does not partially split or reorder
 the rejected candidate.
 
 ```sh
-joggle run spatial.block canonical.jog --arg '[4, 7]' --arg 4000 \
+joggle run locality.block canonical.jog --arg '[4, 7]' --arg 4000 \
   -M examples -M build/modules > bounded-block.jog
 ```
 

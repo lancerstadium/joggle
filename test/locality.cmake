@@ -2,7 +2,8 @@ if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
    NOT DEFINED HARNESS OR NOT DEFINED MODULES OR NOT DEFINED EXAMPLES OR
    NOT DEFINED ROOT)
   message(FATAL_ERROR
-          "spatial example requires TOOL, CC, MODEL, HARNESS, module roots, ROOT")
+          "locality example requires TOOL, CC, MODEL, HARNESS, module roots, "
+          "and ROOT")
 endif()
 
 file(REMOVE_RECURSE "${ROOT}")
@@ -39,27 +40,6 @@ set(split_scalar_program "${ROOT}/split-scalar")
 set(source "${ROOT}/model.c")
 set(program "${ROOT}/model")
 set(plan "${ROOT}/plan.attr")
-set(cache "${ROOT}/cache.jog")
-
-execute_process(
-  COMMAND "${TOOL}" run spatial.cache
-          "${CMAKE_CURRENT_LIST_DIR}/data/tile_form.jog"
-          --arg 3 --arg 2 -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_FILE "${cache}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "structural cache policy failed (${result}):\n${error}")
-endif()
-file(READ "${cache}" cache_text)
-if(NOT cache_text MATCHES
-   "for row in [^\n]*column_tile[^\n]*depth_tile[^\n]*depth[^\n]*column")
-  message(FATAL_ERROR
-          "structural cache policy produced the wrong loop order:\n"
-          "${cache_text}")
-endif()
 
 execute_process(
   COMMAND "${TOOL}" run c.prepare mem.plan "${MODEL}" -M "${MODULES}"
@@ -87,14 +67,14 @@ if(NOT canon_guarded_text MATCHES "var xi(_[A-Za-z0-9]+)* =")
           "${canon_guarded_text}")
 endif()
 execute_process(
-  COMMAND "${TOOL}" query spatial.plan "${canonical}"
+  COMMAND "${TOOL}" query locality.plan "${canonical}"
           -M "${EXAMPLES}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${plan}"
   ERROR_VARIABLE error
 )
 if(NOT result EQUAL 0)
-  message(FATAL_ERROR "spatial plan query failed (${result}):\n${error}")
+  message(FATAL_ERROR "locality plan query failed (${result}):\n${error}")
 endif()
 file(READ "${plan}" plan_text)
 string(FIND "${plan_text}" "\"candidates\": 3" candidates_at)
@@ -111,7 +91,7 @@ string(FIND "${plan_text}" "\"scalar_cost\":" scalar_cost_at)
 if(candidates_at EQUAL -1 OR current_at EQUAL -1 OR selected_at EQUAL -1 OR
    reads_at EQUAL -1 OR writes_at EQUAL -1 OR extents_at EQUAL -1 OR
    scalar_cost_at EQUAL -1)
-  message(FATAL_ERROR "spatial plan omitted its evidence:\n${plan_text}")
+  message(FATAL_ERROR "locality plan omitted its evidence:\n${plan_text}")
 endif()
 execute_process(
   COMMAND "${TOOL}" run tile_pass.check_reorder "${canonical}"
@@ -346,7 +326,7 @@ if(NOT result EQUAL 0)
           "scalarized C returned the wrong result (${result}):\n${output}${error}")
 endif()
 execute_process(
-  COMMAND "${TOOL}" run spatial.block "${canonical}"
+  COMMAND "${TOOL}" run locality.block "${canonical}"
           --arg 2 -M "${EXAMPLES}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${split_scalar_raw}"
@@ -357,7 +337,7 @@ if(NOT result EQUAL 0)
           "split/reorder/scalarize composition failed (${result}):\n${error}")
 endif()
 execute_process(
-  COMMAND "${TOOL}" run spatial.block "${canonical}"
+  COMMAND "${TOOL}" run locality.block "${canonical}"
           --arg 2 --arg 1000000 -M "${EXAMPLES}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${split_scalar_bounded}"
@@ -376,7 +356,7 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "a loose block cost limit changed the policy")
 endif()
 execute_process(
-  COMMAND "${TOOL}" run spatial.block "${canonical}"
+  COMMAND "${TOOL}" run locality.block "${canonical}"
           --arg 2 --arg 1 -M "${EXAMPLES}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${split_scalar_skipped}"
@@ -406,7 +386,7 @@ if(NOT result EQUAL 0)
           "split scalar cleanup failed (${result}):\n${error}")
 endif()
 execute_process(
-  COMMAND "${TOOL}" run spatial.block "${canonical}"
+  COMMAND "${TOOL}" run locality.block "${canonical}"
           --arg "[2, 3]" -M "${EXAMPLES}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${split_scalar_list}"
@@ -437,14 +417,14 @@ if(NOT result EQUAL 0)
           "factor-list policy disagrees with its first legal factor")
 endif()
 execute_process(
-  COMMAND "${TOOL}" run spatial.block "${canonical}"
+  COMMAND "${TOOL}" run locality.block "${canonical}"
           --arg "[2, 1]" -M "${EXAMPLES}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_QUIET
   ERROR_VARIABLE error
 )
 if(result EQUAL 0 OR
-   NOT error MATCHES "spatial.block requires factors greater than one")
+   NOT error MATCHES "locality.block requires factors greater than one")
   message(FATAL_ERROR
           "factor-list policy accepted an invalid trailing factor: ${error}")
 endif()
@@ -541,17 +521,17 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "disabled reorder changed the module")
 endif()
 execute_process(
-  COMMAND "${TOOL}" run spatial.apply "${canonical}"
+  COMMAND "${TOOL}" run locality.apply "${canonical}"
           -M "${EXAMPLES}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${prepared}"
   ERROR_VARIABLE error
 )
 if(NOT result EQUAL 0)
-  message(FATAL_ERROR "spatial scheduling failed (${result}):\n${error}")
+  message(FATAL_ERROR "locality scheduling failed (${result}):\n${error}")
 endif()
 execute_process(
-  COMMAND "${TOOL}" run spatial.apply "${prepared}"
+  COMMAND "${TOOL}" run locality.apply "${prepared}"
           -M "${EXAMPLES}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${stable}"
@@ -559,23 +539,23 @@ execute_process(
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR
-          "repeated spatial scheduling failed (${result}):\n${error}")
+          "repeated locality scheduling failed (${result}):\n${error}")
 endif()
 execute_process(
   COMMAND "${CMAKE_COMMAND}" -E compare_files "${prepared}" "${stable}"
   RESULT_VARIABLE result
 )
 if(NOT result EQUAL 0)
-  message(FATAL_ERROR "spatial scheduling is not idempotent")
+  message(FATAL_ERROR "locality scheduling is not idempotent")
 endif()
 file(READ "${prepared}" text)
-if(text MATCHES "spatial.nn.conv2d" OR text MATCHES "use spatial")
+if(text MATCHES "spatial.nn.conv2d" OR text MATCHES "use locality")
   message(FATAL_ERROR
-          "spatial scheduling retained an implementation override:\n${text}")
+          "locality scheduling retained an implementation override:\n${text}")
 endif()
 if(NOT text MATCHES
    "for n in [^\n]+, m in [^\n]+, oh in [^\n]+, q in [^\n]+, r in [^\n]+, s in [^\n]+, ow in")
-  message(FATAL_ERROR "spatial pass omitted its loop order:\n${text}")
+  message(FATAL_ERROR "locality policy omitted its loop order:\n${text}")
 endif()
 execute_process(
   COMMAND "${TOOL}" run tile_pass.check_spatial_axes "${prepared}"

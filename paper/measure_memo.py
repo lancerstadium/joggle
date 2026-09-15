@@ -115,7 +115,7 @@ def run_one(
     command = [
         str(args.tool),
         "run",
-        "spatial.block",
+        "locality.block",
         str(args.input),
         "--arg",
         "2",

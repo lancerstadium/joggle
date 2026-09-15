@@ -230,7 +230,7 @@ The complete out-of-tree
 an inspectable loop body. The [`edge` example](examples/edge) selects a generic
 external kernel while the unchanged model continues to call its semantic
 functions; that ABI escape hatch is distinct from optimizing an inspectable
-body. [`spatial`](examples/spatial) reorders a proved affine reduction, and the
+body. [`locality`](examples/locality) reorders a proved affine reduction, and the
 generic `tile.canon` pass compacts proved affine index trees without another
 Conv overload. The separate `tile.scalarize` mechanism lets an explicit policy
 promote carried output elements when replication is profitable, while

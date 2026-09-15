@@ -586,7 +586,7 @@ if(JOGGLE_BUILD_TESTS)
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/edge.cmake
     )
     add_test(
-      NAME spatial-example
+      NAME locality-example
       COMMAND
         ${CMAKE_COMMAND}
         -DTOOL=$<TARGET_FILE:joggle-tool>
@@ -595,8 +595,8 @@ if(JOGGLE_BUILD_TESTS)
         -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/spatial_main.c
         -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
         -DEXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/examples
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/spatial-example
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/spatial.cmake
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/locality-example
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/locality.cmake
     )
     add_test(
       NAME compact-example
@@ -643,18 +643,20 @@ if(JOGGLE_BUILD_TESTS)
         -DROOT=${CMAKE_CURRENT_BINARY_DIR}/quant-c-test
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/quant_c.cmake
     )
-    add_test(
-      NAME qlinear-c-execution
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTOOL=$<TARGET_FILE:joggle-tool>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/qlinear_c.jog
-        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/qlinear_c_main.c
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/qlinear-c-test
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/qlinear_c.cmake
-    )
+    if(JOGGLE_BUILD_ONNX)
+      add_test(
+        NAME qlinear-c-execution
+        COMMAND
+          ${CMAKE_COMMAND}
+          -DTOOL=$<TARGET_FILE:joggle-tool>
+          -DCC=${JOGGLE_TEST_C_COMPILER}
+          -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/qlinear_c.jog
+          -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/qlinear_c_main.c
+          -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+          -DROOT=${CMAKE_CURRENT_BINARY_DIR}/qlinear-c-test
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/test/qlinear_c.cmake
+      )
+    endif()
     add_test(
       NAME mem-execution
       COMMAND

@@ -124,7 +124,7 @@ def main() -> None:
                 transform_seconds = 0.0
             else:
                 transform_seconds = run(invocation(
-                    tool, "run", ["spatial.apply"], canonical,
+                    tool, "run", ["locality.apply"], canonical,
                     [example_path, module_path]
                 ), transformed)
 

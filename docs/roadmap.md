@@ -100,7 +100,7 @@ correctness observations on an uncontrolled host, not latency evidence. The
 next evaluation step is an independently dispatched Linux comparison against
 the unchanged baseline and ONNX Runtime.
 
-The source-only `spatial.block` example now accepts an ordered factor list and
+The source-only `locality.block` example now accepts an ordered factor list and
 prefers an exact factor per proved state extent in one module traversal. When
 none divides the extent, `tile.peel` separates an aligned prefix from a scalar
 tail before the same split, reorder, and promotion sequence. The legality proof
@@ -114,7 +114,7 @@ using `tile.scalar_cost` before any split or reorder. Target-dependent factor
 choice, packing, direct artifact-size modelling, and profitability remain
 policy and mechanism gaps.
 
-`spatial.plan` now exposes the static extents and legal scalar-duplication cost
+`locality.plan` now exposes the static extents and legal scalar-duplication cost
 beside each selected order, so an external policy can rank the same candidates
 without reparsing printed IR. A same-process MobileNetV2 diagnostic that spent
 the existing budget on the largest reduction extents did not beat the simpler

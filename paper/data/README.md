@@ -207,7 +207,8 @@ mechanism.
 `spatial-pass-pilot.csv` is the first fresh measurement of the pass-based path.
 At revision `e909ec0`, the same MobileNetV2 semantic IR is instantiated into 64
 ordinary Conv functions and prepared to canonical seven-axis loops. The
-out-of-tree `spatial.apply` policy then calls the generic `tile.reorder` pass;
+out-of-tree `spatial.apply` policy (renamed `locality.apply` after this recorded
+revision) then calls the generic `tile.reorder` pass;
 there is no alternate Conv body or call retargeting. Both variants subsequently
 run the same `mem.plan`, static C placement, external-weight emission, and
 strict C11 `-O3 -DNDEBUG` compilation. The 14,156,544-byte payload is identical
@@ -227,7 +228,7 @@ semantic IR, input, and reference hashes are respectively
 and `8411a51bfb945b17a4cd7ebb75a512849a902878c02e8212741ab11d6149bac8`.
 This remains a direction-setting pilot: processes were alternated but the
 machine was not isolated, pinned, or frequency controlled, and only one model
-was rerun. [`paper/spatial-pilot.cmake`](../spatial-pilot.cmake) reproduces the
+was rerun. [`paper/locality-pilot.cmake`](../locality-pilot.cmake) reproduces the
 complete instantiation, preparation, pass, planning, placement, emission,
 strict compilation, interface/payload equality checks, numerical check, and
 four-process measurement from caller-supplied managed artifacts.
@@ -298,7 +299,7 @@ replication before it can support a performance claim.
 
 `mobilenetv2-block-pilot.csv` is a subsequent same-process diagnostic at
 revision `7cc089a`. Starting from one `c.prepare` result, the candidate invokes
-the ordinary source policy `spatial.block(m, [4, 7])` once. That policy names
+the then-current source policy `spatial.block(m, [4, 7])` once. That policy names
 no operator: for each structurally proved affine reduction it selects the
 first factor dividing the innermost state extent, then composes `tile.split`,
 `tile.reorder`, and `tile.scalarize`. It changes 31 loop bodies and creates 160
@@ -341,7 +342,7 @@ and reference
 revision `e096fcc`. The model is the official ONNX Model Zoo SqueezeNet 1.1
 fixture already named in `model-coverage-pilot.csv`. Both variants start from
 the same freshly instantiated and `c.prepare`-canonicalized model. The
-candidate invokes the unchanged source policy `spatial.block(m, [4, 7])`.
+candidate invokes the then-current source policy `spatial.block(m, [4, 7])`.
 Unlike MobileNetV2, its innermost state widths are odd (111, 55, 27, and 13),
 so the policy exercises the generic `tile.peel` mechanism: 18 loop bodies
 become aligned prefixes plus scalar tails, and the prefixes contain 72 local

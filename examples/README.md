@@ -19,7 +19,7 @@ complexity. Each directory is a complete, runnable module or application.
   A generic adapter forwards inferred dimensions to one bodyless `fn`; the C
   emitter derives and checks the concrete call ABI without knowing the kernel
   name.
-- [`spatial`](spatial) is a loop-scheduling pass over exposed computation. It
+- [`locality`](locality) is a source scheduling policy over exposed computation. It
   reorders a proven affine tensor reduction without defining or selecting a
   second convolution body.
 - [`compact`](compact) selects a lower-workspace body for biased convolution.

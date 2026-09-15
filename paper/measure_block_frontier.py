@@ -127,7 +127,7 @@ def main() -> None:
             source = directory / "model.c"
 
             block_command = command(
-                tool, "run", "spatial.block", canonical, module_path,
+                tool, "run", "locality.block", canonical, module_path,
                 factor_arg, str(budget)
             )
             block_command += ["-M", str(example_path)]

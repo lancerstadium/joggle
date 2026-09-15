@@ -449,7 +449,7 @@ the selected loop. Its legality check proves that the carried tensor uses an
 injective affine address and that both the per-address reduction order and the
 state-axis order remain stable. A pass can therefore move reduction axes across
 independent output axes without defining a replacement operator body. See the
-[`spatial` example](../examples/spatial) for a complete source-only policy.
+[`locality` example](../examples/locality) for a complete source-only policy.
 The policy overload accepts a normal function returning `list<int>`:
 
 ```jog

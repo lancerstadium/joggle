@@ -71,7 +71,7 @@ publication machine. Final latency claims still require an identified,
 otherwise-idle Linux host and replication on a second machine.
 
 `mobilenetv2-policy.json` is a second independent-system comparison whose
-Joggle subject is produced by the out-of-tree `spatial.apply` source policy.
+Joggle subject is produced by the out-of-tree `locality.apply` source policy.
 The `linux-policy` workflow starts from the preserved `canonical.jog`, composes
 the public `tile.reorder` transform, rebuilds the ordinary C artifact, and
 validates it. On one pinned CPU it then runs the ordinary and policy manifests

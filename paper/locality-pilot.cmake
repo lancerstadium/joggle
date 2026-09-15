@@ -2,7 +2,7 @@ if(NOT DEFINED TOOL OR NOT DEFINED MODEL OR NOT DEFINED MODULES OR
    NOT DEFINED EXAMPLES OR NOT DEFINED HARNESS OR NOT DEFINED INPUT OR
    NOT DEFINED REFERENCE OR NOT DEFINED CC OR NOT DEFINED OUT)
   message(FATAL_ERROR
-          "spatial pilot requires TOOL, MODEL, MODULES, EXAMPLES, HARNESS, "
+          "locality pilot requires TOOL, MODEL, MODULES, EXAMPLES, HARNESS, "
           "INPUT, REFERENCE, CC, and OUT")
 endif()
 
@@ -52,21 +52,21 @@ if(NOT result EQUAL 0)
 endif()
 
 execute_process(
-  COMMAND "${TOOL}" run spatial.apply "${canonical}"
+  COMMAND "${TOOL}" run locality.apply "${canonical}"
           -M "${EXAMPLES}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${reordered}"
   ERROR_VARIABLE error
 )
 if(NOT result EQUAL 0)
-  message(FATAL_ERROR "spatial pass failed (${result}):\n${error}")
+  message(FATAL_ERROR "locality policy failed (${result}):\n${error}")
 endif()
 execute_process(
   COMMAND "${CMAKE_COMMAND}" -E compare_files "${canonical}" "${reordered}"
   RESULT_VARIABLE unchanged
 )
 if(unchanged EQUAL 0)
-  message(FATAL_ERROR "spatial pass did not change the prepared model")
+  message(FATAL_ERROR "locality policy did not change the prepared model")
 endif()
 
 foreach(variant IN ITEMS baseline candidate)
@@ -146,7 +146,7 @@ execute_process(
   RESULT_VARIABLE different_header
 )
 if(NOT different_header EQUAL 0)
-  message(FATAL_ERROR "spatial pass changed the public C interface")
+  message(FATAL_ERROR "locality policy changed the public C interface")
 endif()
 
 execute_process(
@@ -172,7 +172,7 @@ execute_process(
   RESULT_VARIABLE different_data
 )
 if(NOT different_data EQUAL 0)
-  message(FATAL_ERROR "spatial pass changed the external weight payload")
+  message(FATAL_ERROR "locality policy changed the external weight payload")
 endif()
 
 foreach(variant IN ITEMS baseline candidate)
