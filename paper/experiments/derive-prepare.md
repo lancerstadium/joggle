@@ -55,6 +55,44 @@ compiler or runtime memory. All four model procedures have nonzero structural
 revision growth. A revision increment is not necessarily one independent
 optimization action. The observed equality on three network architectures
 may mean the second exposure step was redundant for these inputs; it does not
-prove a general rewrite law or useful speedup. Next: trace whether that second
-call actually performs edits under a broader input domain and compare a legal
-derived procedure with the nearest mechanism control in a matched environment.
+prove a general rewrite law or useful speedup. Next: seek an input on which
+post-inference exposure actually performs edits and compare a useful legal
+derivation with the nearest mechanism control in a matched environment.
+
+## Phase boundary probe
+
+The source-only [exposure module](exposure/module.jog) executes the first
+`opt.expose`, `ir.type`, and second `opt.expose` from the existing
+private `prepare_with` body in `c`. It returns the second call's `bool` result.
+The module
+has SHA-256
+`8b94d812472a37e83b75bd13defb95e199264e9c490be378e04782255673b58a`.
+To preserve a report for any input above:
+
+```sh
+./build/joggle module check exposure -M paper/experiments -M modules -M build/modules
+./build/joggle run exposure.phases build-study/c-current/semantic.jog \
+  --report build-study/derivation/onnx-phases.jog \
+  -M paper/experiments -M modules -M build/modules > /dev/null
+jq '{before,after,expose_calls:.calls["opt.expose"],
+     expose_steps:[.steps[]?|select(.fn=="opt.expose")|
+                   {before,after,edits}]}' \
+  build-study/derivation/onnx-phases.jog
+```
+
+The same command with the other three input and report paths was executed
+on the macOS host above. Each report records two `opt.expose` calls but only
+one changed `opt.expose` step. The first changed step moves the model revision
+from 1 to 2,011 (ONNX MobileNetV2), 1 to 3,233 (TFLite MobileNetV2), or 1 to 7
+(UltraFace and SqueezeNet). The final report revision is respectively 2,011,
+3,234, 7, and 7. The TFLite revision increase between its first exposure and
+the final report is attributable to `ir.type`; its second exposure still
+reports no structural edit. Unchanged calls are omitted from the `steps`
+array, so the separate `calls` count is necessary to establish that the second
+exposure actually ran.
+
+This probes one concrete edit, not the general safety of omitting a
+post-inference exposure. `ir.type` can change inferred value types and
+normalization; a capability predicate may then make a new call eligible for
+exposure. Until a rewrite condition or counterexample search closes that
+boundary, the original `c.prepare` retains both phases.

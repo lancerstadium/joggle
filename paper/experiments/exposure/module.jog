@@ -1,0 +1,12 @@
+module exposure
+use c
+use ir
+use opt
+
+fn phases(m: Mod) -> bool {
+  let limit = len(ir.ops(m)) + 1
+  let accept = ir.find("c.accepts", [ty("Mod"), ty("Op"), ty("dict")])
+  opt.expose(m, accept, {}, limit)
+  ir.type(m)
+  return opt.expose(m, accept, {}, limit)
+}

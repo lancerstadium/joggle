@@ -903,12 +903,15 @@ that check to complete ONNX and TFLite MobileNetV2 semantic programs and prior
 canonical UltraFace and SqueezeNet programs. For each, the original and derived
 procedures produce byte-identical prepared IR and generated C source; both
 outputs verify. The MobileNet programs move through 7,593 and 9,866 structural
-revisions, respectively, so this is not an empty invocation. The copied
-compiler definition contains 20 functions and 1,115 operations. This
-demonstrates isolated execution of an edited compiler procedure on four real
-model artifacts across three architectures, not a generally valid rewrite or
-a speedup. The unisolated macOS wall times are diagnostic only. A matched
-mechanism control remains necessary.
+revisions, respectively. A phase trace confirms that the first
+\texttt{opt.expose} performs edits, whereas the second performs no structural
+edit on any of these four inputs. The TFLite type-inference stage still changes
+the model revision between the calls. The copied compiler definition contains
+20 functions and 1,115 operations. Thus the experiment establishes isolated
+execution of an edited compiler procedure on real models, but the particular
+edit removes work that was already inactive in the observed inputs. It does
+not establish a generally legal rewrite or a speedup; the unisolated macOS
+times are diagnostic only. A matched mechanism control remains necessary.
 
 \section{Related work}
 \subsection{Extensible compiler construction}
