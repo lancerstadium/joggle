@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "status": "functional-preflight-not-frozen",
+  "system": {
+    "name": "ONNX-MLIR",
+    "revision": "4a13c34aa695b228599d637cdb772c19b4b18dba",
+    "configuration": "build-sat, Release, native macOS arm64",
+    "note": "The host patch is uncommitted in the pinned external checkout. The preserved patch digest identifies the tested modification."
+  },
+  "contract": {
+    "stage": "s0-external",
+    "external": "Conv",
+    "portable": ["Add", "Relu"],
+    "model_sha256": {
+      "eligible": "35eadad31f1caef8e0b9eafef93de019272e88b6028edefa7edcc9915b5e98e7",
+      "fallback": "1ee99baae12b523580f03a7d3812832e003e075704a21c44309aa989591b40d2"
+    },
+    "host_patch_sha256": "5d7d4d7297a48f78440386c530179094ba2befc71174cb91f6980a8850e626d5",
+    "abi_bridge_sha256": "73b51cd4d057a2a84a468a32050fbee33c87de12737885be5157e1de8e307a50",
+    "supplied_kernel_sha256": "077f4b3b5be70a2b77e92da0c6f0f567fd250da786bdbb4d70fb131dca109a9c"
+  },
+  "boundary_vector": {
+    "source": false,
+    "semantics": false,
+    "representation": false,
+    "policy": false,
+    "target": false,
+    "artifact": false,
+    "host": false
+  },
+  "boundary_vector_note": "S0 establishes the initial surface; no domain is revisited until S1 changes the frozen stage.",
+  "initial_boundary_surface": {
+    "source": false,
+    "semantics": false,
+    "representation": false,
+    "policy": false,
+    "target": true,
+    "artifact": true,
+    "host": true
+  },
+  "boundary_evidence": {
+    "target": "The existing --ops-for-call=Conv route selects one krnl.call for each frozen graph.",
+    "artifact": "conv.c bridges the emitted OMTensor/attribute ABI to the supplied evolution_conv kernel and is linked through the normal -L/-l artifact route.",
+    "host": "KrnlCall.cpp required an ArrayAttr lowering case before pads and strides could reach LLVM IR. The exact patch is preserved beside this result."
+  },
+  "first_unsatisfied_requirement_before_host_patch": {
+    "stage": "LLVM conversion",
+    "exit_code": 134,
+    "diagnostic": "This type of Attribute used by krnl.call is not yet implemented",
+    "source_location": "src/Conversion/KrnlToLLVM/KrnlCall.cpp:225",
+    "classification": "incomplete, not unsupported"
+  },
+  "external_abi": "Conv(OMTensor*out, OMTensor*x, OMTensor*weight, char*auto_pad, i64 group, char*node_name, i64 pad_top, i64 pad_left, i64 pad_bottom, i64 pad_right, i64 stride_height, i64 stride_width)",
+  "cases": {
+    "eligible": {
+      "krnl_ir_sha256": "58ab67aff78266a23b8aae0ddfe2aea80ecf521dc52864e244cf21c3f429b94c",
+      "artifact_sha256": "e173e72c1e48c05546a24a4a989d3f0c2ccbe0de9c9937420ab5c2450a37a3ec",
+      "artifact_bytes": 73352,
+      "external_conv_calls": 1,
+      "portable_addf_ops": 1,
+      "portable_maxnumf_ops": 1,
+      "output_elements": 100,
+      "max_abs_error": 0.0,
+      "bitwise_equal": true
+    },
+    "fallback": {
+      "krnl_ir_sha256": "c853e4a7998ca136b226f3bb3efdc18be5954d83e281323b7fde30492f7a28eb",
+      "artifact_sha256": "343e516f3f267b6b40f63548f8be3e40a152588b40c782936fb0f8df4348bd0d",
+      "artifact_bytes": 73352,
+      "external_conv_calls": 1,
+      "portable_addf_ops": 1,
+      "portable_maxnumf_ops": 1,
+      "output_elements": 100,
+      "max_abs_error": 0.0,
+      "bitwise_equal": true
+    }
+  },
+  "timing_policy": "This is functional S0 preflight. No smoke-test compiler or inference timing is publication evidence."
+}

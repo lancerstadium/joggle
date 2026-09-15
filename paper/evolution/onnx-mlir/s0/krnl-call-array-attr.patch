@@ -1,0 +1,27 @@
+diff --git a/src/Conversion/KrnlToLLVM/KrnlCall.cpp b/src/Conversion/KrnlToLLVM/KrnlCall.cpp
+index df1dc248..4442bd6f 100644
+--- a/src/Conversion/KrnlToLLVM/KrnlCall.cpp
++++ b/src/Conversion/KrnlToLLVM/KrnlCall.cpp
+@@ -162,6 +162,22 @@ private:
+         RuntimeAPIRegistry(module, rewriter, *llvmTypeConverter);
+ 
+     TypeSwitch<Attribute>(attribute)
++        .Case<ArrayAttr>([&](ArrayAttr arrayAttr) {
++          // krnl.call copies ONNX integer-list attributes such as Conv pads
++          // and strides. Preserve their order as individual i64 arguments in
++          // the external-call ABI, just as scalar IntegerAttr is handled below.
++          for (Attribute element : arrayAttr) {
++            auto integerAttr = mlir::dyn_cast<IntegerAttr>(element);
++            if (!integerAttr)
++              llvm_unreachable(
++                  "Only integer ArrayAttr elements are supported by krnl.call");
++            auto int64Ty = IntegerType::get(context, 64);
++            Value cst = LLVM::ConstantOp::create(
++                rewriter, loc, int64Ty, integerAttr);
++            parameterTypeList.emplace_back(int64Ty);
++            parameterList.emplace_back(cst);
++          }
++        })
+         .Case<StringAttr>([&](StringAttr strAttr) {
+           StringRef attrValue = strAttr.getValue();
+           LLVM::GlobalOp globalStr = krnl::getOrCreateGlobalString(

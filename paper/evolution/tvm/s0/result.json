@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "status": "functional-preflight-not-frozen",
+  "system": {
+    "name": "TVM",
+    "revision": "c7b458e946bc4266915da582457476bdcd9705ae",
+    "configuration": "separate build-llvm, Release, LLVM 21.1.8, native macOS arm64",
+    "llvm_enabled": true,
+    "source_checkout_modified": false
+  },
+  "contract": {
+    "stage": "s0-external",
+    "external": "Conv",
+    "portable": ["Add", "Relu"],
+    "model_sha256": {
+      "eligible": "35eadad31f1caef8e0b9eafef93de019272e88b6028edefa7edcc9915b5e98e7",
+      "fallback": "1ee99baae12b523580f03a7d3812832e003e075704a21c44309aa989591b40d2"
+    },
+    "supplied_kernel_sha256": "077f4b3b5be70a2b77e92da0c6f0f567fd250da786bdbb4d70fb131dca109a9c",
+    "extension_build_sha256": "a7df31c40819684eaea436f5b90335f21442994f1c7f716791a8621cab705ab5",
+    "fresh_process_runner_sha256": "7f9b780c8faec88d0c7ea25d716a0abdac70d1e2eb15be8a3c2e6df5e734da28"
+  },
+  "initial_boundary_surface": {
+    "source": false,
+    "semantics": false,
+    "representation": true,
+    "policy": false,
+    "target": true,
+    "artifact": true,
+    "host": false
+  },
+  "initial_boundary_surface_note": "TensorIR declares the external target call and Relax call_tir selects it; export_library links the supplied C object. S0 has no preceding stage, so these are not revisited boundaries.",
+  "cases": {
+    "eligible": {
+      "selected_ir_sha256": "8d1d48fea17ed29a281a776e6deb11e4ad577538873ef7d02c8a88c6ed0a5c20",
+      "artifact_sha256": "4d178507d2131a36a53b275fd0db6a13dd703fc3a5704a2d36ca78daba899437",
+      "artifact_bytes": 67832,
+      "external_conv_calls": 1,
+      "portable_relax_add_calls": 1,
+      "portable_relax_relu_calls": 1,
+      "output_elements": 100,
+      "max_abs_error": 0.0,
+      "bitwise_equal_in_fresh_process": true
+    },
+    "fallback": {
+      "selected_ir_sha256": "a1b524211331de42cceaf55e15fcbd77e415be1f6ef18274bab204b2dc8296dc",
+      "artifact_sha256": "c08c8f6042266c8b33ed34aba0da77633a6569bf41559ec8fe04421932e14140",
+      "artifact_bytes": 51320,
+      "external_conv_calls": 1,
+      "portable_relax_add_calls": 1,
+      "portable_relax_relu_calls": 1,
+      "output_elements": 100,
+      "max_abs_error": 0.0,
+      "bitwise_equal_in_fresh_process": true
+    }
+  },
+  "timing_policy": "Functional S0 preflight only. No smoke-test compiler or inference timing is publication evidence."
+}

@@ -250,6 +250,93 @@ def numeric_format(contract: dict[str, Any]) -> dict[str, bytes]:
     return files
 
 
+def evolution(contract: dict[str, Any]) -> dict[str, bytes]:
+    source = contract["source"]
+    if source["format"] != "ONNX" or source["graph"] != "Conv -> Add -> Relu":
+        raise ValueError(
+            "evolution fixture requires the frozen ONNX Conv -> Add -> Relu graph"
+        )
+    if source["layout"] != "NCHW" or source["weight_layout"] != "OIHW":
+        raise ValueError("evolution fixture requires NCHW activations and OIHW weights")
+
+    stride = [int(value) for value in source["stride"]]
+    pads = [int(value) for value in source["pads"]]
+    if len(stride) != 2 or len(pads) != 4:
+        raise ValueError("evolution fixture has invalid convolution attributes")
+
+    rng = np.random.default_rng(int(source["seed"]))
+    files: dict[str, bytes] = {}
+    for case in source["cases"]:
+        name = str(case["id"])
+        input_shape = tuple(int(value) for value in case["input"])
+        weight_shape = tuple(int(value) for value in case["weight"])
+        bias_shape = tuple(int(value) for value in case["bias"])
+        output_shape = tuple(int(value) for value in case["output"])
+        if len(input_shape) != 4 or len(weight_shape) != 4:
+            raise ValueError(f"evolution case must be rank four: {name}")
+        if bias_shape != (1, weight_shape[0], 1, 1):
+            raise ValueError(f"evolution case has inconsistent bias shape: {name}")
+        if input_shape[1] != weight_shape[1]:
+            raise ValueError(f"evolution case has inconsistent channels: {name}")
+
+        x = (rng.standard_normal(input_shape) * 0.25).astype(np.float32)
+        weight = (rng.standard_normal(weight_shape) * 0.25).astype(np.float32)
+        bias = (rng.standard_normal(bias_shape) * 0.10).astype(np.float32)
+        weight_proto = numpy_helper.from_array(weight, "weight")
+        bias_proto = numpy_helper.from_array(bias, "bias")
+        graph = helper.make_graph(
+            [
+                helper.make_node(
+                    "Conv",
+                    ["x", "weight"],
+                    ["convolved"],
+                    name="projection_conv",
+                    strides=stride,
+                    pads=pads,
+                ),
+                helper.make_node(
+                    "Add", ["convolved", "bias"], ["biased"], name="projection_bias"
+                ),
+                helper.make_node(
+                    "Relu", ["biased"], ["y"], name="projection_relu"
+                ),
+            ],
+            f"joggle_vertical_evolution_{name}",
+            [helper.make_tensor_value_info("x", TensorProto.FLOAT, input_shape)],
+            [helper.make_tensor_value_info("y", TensorProto.FLOAT, output_shape)],
+            initializer=[weight_proto, bias_proto],
+        )
+        model = helper.make_model(
+            graph,
+            producer_name="joggle-evolution-study",
+            producer_version="1",
+            opset_imports=[helper.make_opsetid("", int(source["opset"]))],
+            ir_version=8,
+        )
+        onnx.checker.check_model(model)
+        expected = ReferenceEvaluator(model).run(None, {"x": x})[0]
+        if tuple(expected.shape) != output_shape:
+            raise ValueError(f"evolution case has inconsistent output shape: {name}")
+        if not np.isfinite(expected).all():
+            raise ValueError(f"evolution case produced a non-finite oracle: {name}")
+
+        prefix = f"{name}/"
+        files[prefix + "model.onnx"] = encode(model)
+        files[prefix + "weight.pb"] = encode(weight_proto)
+        files[prefix + "bias.pb"] = encode(bias_proto)
+        files[prefix + "test_data_set_0/input_0.pb"] = encode(
+            numpy_helper.from_array(x, "x")
+        )
+        files[prefix + "test_data_set_0/output_0.pb"] = encode(
+            numpy_helper.from_array(expected.astype(np.float32), "y")
+        )
+        files[prefix + "input.bin"] = x.tobytes(order="C")
+        files[prefix + "expected.bin"] = expected.astype(np.float32).tobytes(
+            order="C"
+        )
+    return files
+
+
 def materialize(
     root: Path,
     files: dict[str, bytes],
@@ -284,7 +371,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--fixture",
-        choices=("implementation", "policy", "numeric-format"),
+        choices=("implementation", "policy", "numeric-format", "evolution"),
         default="implementation",
     )
     parser.add_argument(
@@ -311,6 +398,7 @@ def main() -> None:
         "implementation": implementation,
         "policy": policy,
         "numeric-format": numeric_format,
+        "evolution": evolution,
     }
     materialize(
         output,

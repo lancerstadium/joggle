@@ -28,6 +28,18 @@ extension path. The stored outputs are the saturating-format oracle, not the
 ordinary ONNX Add result; the generator checks both that the oracle follows the
 frozen width rule and that normal ONNX evaluation differs from it.
 
+`evolution/` contains the two immutable inputs for the sequential vertical
+study. Both are ordinary opset-13 `Conv -> Add -> Relu` graphs with embedded
+OIHW weights and broadcast bias. The explicit `Add` keeps the S0 external-Conv
+boundary neutral across systems that represent optional Conv bias differently.
+`eligible/` has four input channels and can use the later
+`OIHW2` target representation; `fallback/` has three input channels and must
+remain portable after that revision. Raw weight and bias TensorProtos are
+stored next to each model so the payload transformation can be audited without
+treating a prepacked buffer as an input. Stage S1 and S2 never regenerate these
+files. `input.bin` and `expected.bin` are byte-identical raw float payloads for
+the generated C harness; the TensorProto copies remain the interchange oracle.
+
 Regenerate or verify it from the repository root with Python 3.11 or 3.12 in an
 isolated environment:
 
@@ -40,6 +52,8 @@ python3.12 -m venv .venv-fixtures
 .venv-fixtures/bin/python paper/fixtures/generate.py --fixture policy --check
 .venv-fixtures/bin/python paper/fixtures/generate.py --fixture numeric-format
 .venv-fixtures/bin/python paper/fixtures/generate.py --fixture numeric-format --check
+.venv-fixtures/bin/python paper/fixtures/generate.py --fixture evolution
+.venv-fixtures/bin/python paper/fixtures/generate.py --fixture evolution --check
 ```
 
 The dependencies are generation-only. Building or running Joggle does not

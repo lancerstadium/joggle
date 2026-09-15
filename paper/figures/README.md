@@ -4,36 +4,33 @@ Only submission candidates rendered from frozen records belong here. The old
 pass table and three-panel source-line chart were removed: both described
 implementation inventory rather than testing a systems claim.
 
-The planned evidence sequence is:
+The figure selection and evidence order are maintained in
+[the research plan](../plan.md). The following inventory describes existing
+draft assets, not completed evidence for the revised thesis:
 
-1. **Motivation figure:** one vertical extension before and after a hardware
-   revision. The horizontal path is relation → representation → structure →
-   target → artifact; vertical callouts show which contracts the revision
-   invalidates. A lower strip contrasts the stable boundaries offered by
-   MLIR/Relax, kernel DSLs, and ISA-derived backends. This is a conceptual vector
-   figure, not a performance chart.
-2. **Mechanism figure:** one Joggle function progressively exposed from a source
-   call to an executable alternative, with portable and specialized paths
-   coexisting. Modules and checked choice appear only where they affect the
-   running example; there is no box for every implementation class.
-3. **Evolution evidence:** an aligned change-path diagram plus a native LaTeX
-   table for initial implementation and two withheld revisions. Cells report
-   contracts touched, rebuild obligations, preserved paths, diagnostics, and
-   artifact correctness; no composite “ease” score is permitted.
-4. **Operator evidence:** full-width native LaTeX speedup matrices, one baseline
-   section at a time, with rotated shape headers, exact values, restrained
-   shading, explicit unsupported cells, and a geometric mean. These reproduce
-   the information density of the supplied Axon table without copying its data
-   or turning the matrix into a raster heatmap.
-5. **Whole-model evidence:** four aligned horizontal panels sharing model order:
-   latency, peak memory/workspace, compile/load cost, and artifact footprint.
-   Absolute values and task accuracy live in a compact adjacent table. CNN,
-   detection, ViT, and compact attention/LM workloads appear only after their
-   complete paths execute.
-6. **Ablation/failure evidence:** small multiples for progressive exposure,
-   target policy components, chooser substitution, and rejected/rolled-back
-   candidates. This panel explains causality; it does not compare Joggle with
-   itself as if those variants were external baselines.
+1. **Unit-of-change figure (implemented in `submission/main.tex`):** a vertical
+   co-design revision crosses source relation, graph rewrite, tensor body,
+   schedule, target hook, and artifact ABI in a phase-aligned stack. The Joggle
+   row keeps those roles distinct while placing them in one module lifecycle
+   above a progressive-program rail. It is a conceptual vector figure, not a
+   measured comparison.
+2. **Mechanism figure (implemented in `submission/main.tex`):** a checked trace
+   of `examples/edge`, not a synthetic three-state sketch. `edge.apply` selects
+   compatible external matrix and multi-result calls while retaining an
+   incompatible-layout convolution; `c.prepare` subsequently exposes the
+   remaining portable bodies as loops without disturbing the external calls.
+   The three excerpts are revisions of one serialized program and use the same
+   typed object model and verifier. Replaced operation/value handles may still
+   become stale; the figure therefore claims object-model continuity, not
+   identity preservation for every node. Reproduce columns B and C from a
+   configured tree with:
+
+   ```sh
+   ./build/joggle run edge.apply examples/edge/model.jog \
+     -M examples -M build/modules
+   ./build/joggle run edge.apply c.prepare examples/edge/model.jog \
+     -M examples -M build/modules
+   ```
 
 No placeholder chart is checked in before its complete record set exists.
 Figures use the venue's two-column geometry and native vector/PDF or LaTeX

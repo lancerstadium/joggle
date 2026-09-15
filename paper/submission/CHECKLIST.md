@@ -1,50 +1,34 @@
-# EuroSys submission status
+# EuroSys submission checklist
 
-This directory is a reproducible view of the evidence manuscript, not a claim
-that the paper is submission-ready. The checklist keeps formatting progress
-separate from scientific progress.
+The [research plan](../plan.md) owns the thesis, work order, and calendar.
+This checklist records delivery. The manuscript is not submission-ready and
+has not yet been synchronized with the September 15 mechanism freeze.
 
-## Closed
+## Argument and evidence
 
-- [x] Anonymous two-column review layout.
-- [x] Mechanical Markdown-to-LaTeX rendering with unsupported-input failure.
-- [x] Fresh seven-page argument draft builds within the 12-page technical-content
-      limit; evidence tables and figures have not yet been inserted.
-- [ ] Rebuild the citation surface from the verified literature ledger; the
-      clean-slate manuscript deliberately removed the old citation catalogue.
-- [x] Literature map states the strongest competing explanations from MLIR,
-      Relax, Exo, ACT/ATLAAS, Ladder, Mirage, and Axon and derives falsifiable
-      experiments from them.
-- [x] Deterministic operator corpus covers 441 cases: nine pointwise/
-      normalization rows and eight contraction/Transformer rows.
-- [x] XCiT-Tiny infers all 1,333 initially unknown results; its seven-call
-      conversion frontier is preserved rather than reported as end-to-end
-      support.
+- [x] Freeze the title and consolidate the active research plan.
+- [ ] Synchronize abstract, motivation, design, and contributions with that plan.
+- [ ] Trace every primary claim to a mechanism and a completed experiment.
+- [ ] Complete a decisive externally compared composition or derivation result.
+- [ ] Show an actual mixed-state program and its edits, not just a syntax sketch.
+- [ ] Report complete-artifact correctness and matched cost/performance results.
+- [ ] Preserve unsupported paths, timeouts, and negative production-runtime gaps.
+- [ ] Verify related-work claims against primary sources, especially MLIR
+      Transform, xDSL, AnyDSL, Relax/TensorIR, and programmable scheduling.
+- [ ] Keep all paper tables/plots traceable to raw records; no repeated or
+      placeholder speedup cells.
 
-## Submission blockers
+## Delivery
 
-- [ ] Replace shared-runner timings with controlled, repeatable Linux results.
-- [ ] Complete the pre-registered evolution-continuity experiment against the
-      documented native paths in TVM/Relax and ONNX-MLIR/MLIR.
-- [ ] Demonstrate chooser substitution and one generic target policy across
-      several functions and at least two complete models.
-- [ ] Report external compiler baselines on matching models and hardware.
-- [ ] Add an architecture figure that makes the progressive function IR and
-      extension boundary concrete.
-- [ ] Freeze the title, abstract, research questions, and three contributions
-      after the evidence tables stop changing.
-- [ ] Use at least 50 relevant verified works and run
-      an independent claim-to-source audit; every comparison claim needs a
-      primary source and a verified bibliography entry.
-- [ ] Add artifact, AI-use, conflicts, ethics, and reproducibility disclosures
-      required by the venue.
-- [ ] Run a strict systems-paper review, revise, then repeat the review once.
-- [ ] Build and test the anonymized artifact from a clean machine or image.
+- [ ] Prepare a truthful abstract and author/conflict metadata for registration.
+- [ ] Rebuild and visually inspect the final two-column PDF within 12 technical
+      pages plus references; an earlier successful build is not final validation.
+- [ ] Audit anonymous text, links, metadata, artifact, and acknowledgments.
+- [ ] Complete required AI-use, artifact, ethics, and reproducibility disclosures.
+- [ ] Reproduce the retained artifact commands from a clean installation.
+- [ ] Perform adversarial argument/evidence review and resolve its blockers.
+- [ ] Obtain author approval and confirm registration and final submission.
 
-## Engineering work allowed before submission
-
-Only refactors that unblock measurement, correctness, or artifact review are
-on the critical path. Broad parser/printer/verifier decomposition is deferred
-until the submission evidence is frozen; targeted extraction is appropriate
-when a touched subsystem cannot be safely tested or reviewed in its current
-form.
+Shared Linux-runner results must be identified as such, with matched settings
+and dispersion; do not silently relabel them isolated-host measurements.
+The official deadlines and internal stop rules are recorded only in the plan.

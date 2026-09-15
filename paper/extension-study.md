@@ -19,9 +19,12 @@ one “extensibility” number:
 The existing four contracts cover role breadth. They do not by themselves prove
 vertical closure, evolution continuity, usability, or generality. The module
 lifecycle is covered by project tests but still needs clean-install measurements.
-The vertical and revision studies remain submission blockers. Source lines are
-never treated as developer productivity, and the existing authors are not
-treated as independent participants.
+The vertical and revision studies remain submission blockers. Their frozen
+sequential protocol is [`evolution-study.md`](evolution-study.md), with the
+machine-readable contract in
+[`tasks/evolution.json`](tasks/evolution.json). Source lines are never treated
+as developer productivity, and the existing authors are not treated as
+independent participants.
 
 ## Role-breadth contracts
 

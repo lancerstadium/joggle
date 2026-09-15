@@ -1,6 +1,6 @@
 # EuroSys 2027 paper workspace
 
-This directory contains the manuscript, frozen study contracts, baseline
+This directory contains the manuscript, frozen study protocols, baseline
 implementations, and raw pilot records for the Joggle paper. Implemented
 features are not automatically treated as research contributions. A result may
 enter the paper only when its inputs, command, environment, and raw output are
@@ -30,21 +30,20 @@ reproducible without defining a host plugin class for each role. Inference,
 emerging hardware, and generated optimization policies are demanding instances
 of this problem, not definitions of the system.
 
-The claim is not that one IR is universally superior, that all compiler concepts
-are semantically identical, or that fewer source lines prove usability. The
-required evidence includes cross-role module composition, clean package
-lifecycle and diagnostics, controlled revision studies, chooser substitution,
-generic target policies that improve complete artifacts, and explicit
-representation/failure boundaries. Inference and emerging hardware provide the
-main stress domain because they exercise every role at once; the mechanism is
-not operator- or device-specific.
+The [research plan](plan.md) is the single active scope and priority record.
+It separates progressive function representation and derivable compiler
+functions from supporting module/type/safety facilities. Analysis, selection,
+representation, transformation, and generation are all in scope; optimizing
+passes is only one application. The manuscript predates this freeze and still
+needs to be synchronized. Implemented capabilities, experimental results, and
+proposed mechanisms must remain distinguishable.
 
 ## Current evidence status
 
 | Question | Evidence present | Blocking work |
 | --- | --- | --- |
-| Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths; ten models complete semantic conversion, while XCiT-Tiny infers all 1,333 initially unknown results and leaves seven dynamic positional-embedding calls | Close or preserve the seven-call XCiT conversion boundary, then reproduce the frozen frontier and executable subset in the anonymous artifact |
-| Extension surface | Four frozen contracts; all Joggle implementations pass; pinned TVM controls pass three contracts and preserve an unsupported custom-type boundary; ONNX-MLIR passes the implementation and policy tasks, has a preserved unsupported external-call boundary, and carries the numeric-format fixture through a parameterized type to exact native execution before stopping at the required second executable target | Repeat the ONNX-MLIR build without interruption from a clean checkout |
+| Progressive representation | ONNX/TFLite decoding, one `Fn`/`Blk`/`Op`/`Val` IR, semantic expansion, explicit loops, storage planning, C and VM paths; thirteen of fourteen pinned ONNX models complete semantic conversion, while ten pass generated-C numerical oracles | Preserve the 386-call SSD frontend boundary; profile and bound XCiT's post-relation C-preparation growth, which expands 3,135 operations to 18,976 in the first round and exceeds 227 seconds at revision `8d20360` |
+| Extension surface | Four frozen role-breadth contracts; all Joggle implementations pass; pinned TVM controls pass three contracts and preserve an unsupported custom-type boundary; ONNX-MLIR passes the implementation and policy tasks, has a preserved unsupported external-call boundary, and carries the numeric-format fixture through a parameterized type to exact native execution before stopping at the required second executable target | Complete the frozen matched evolution study; the current tasks do not prove vertical closure or lower revision-coordination cost |
 | Composition and safety | Transactional edits, rollback, verifier, stable printing, installation consumer, deterministic mutation tests, and byte-identical CSE/analysis scaling pilots | Freeze a fault and diagnostic matrix; do not expand parser/printer internals unless a case exposes a correctness defect |
 | Artifact quality | Ten numerical ONNX paths; clean-revision, 20-trial MobileNetV2 and MNIST records compare generated C with ONNX Runtime on two shared-runner CPU classes; internal rewrite diagnostics remain separate; a TFLite-to-C application study and matched LiteRT diagnostic are reproducible in `linux-tflite` | Validate the TFLite study on Linux, then add an identified isolated host with dispersion and task accuracy, or narrow the paper claim explicitly to artifact correctness and transformation reach |
 
@@ -82,7 +81,8 @@ is complete.
 
 ## Repository map
 
-- [`manuscript.md`](manuscript.md): evidence-bounded working paper text.
+- [`submission/main.tex`](submission/main.tex): the single authoritative,
+  evidence-bounded manuscript source and anonymous review layout.
 - [`references.bib`](references.bib): source-verified bibliography for every
   related-work citation currently used by the manuscript.
 - [`literature-map.md`](literature-map.md): the claim-oriented evidence map,
@@ -99,6 +99,11 @@ is complete.
   every table cell.
 - [`extension-study.md`](extension-study.md): frozen extension protocol,
   fairness rules, and threats.
+- [`evolution-study.md`](evolution-study.md) and
+  [`tasks/evolution.json`](tasks/evolution.json): the pre-registered
+  three-stage external-convolution evolution study. It keeps one ONNX
+  `Conv -> Add -> Relu` meaning fixed while the target changes weight
+  representation and then its fused-epilogue ABI.
 - [`extension-tasks.json`](extension-tasks.json) and [`tasks/`](tasks/):
   machine-readable task contracts and inputs.
 - [`fixtures/`](fixtures/): reproducibly generated ONNX inputs shared by
@@ -233,38 +238,8 @@ python3 paper/measure_pair.py \
 
 ## Submission gate
 
-With the abstract deadline on September 17 and the paper deadline on September
-24, work is ordered by claim risk rather than component completeness. As of
-September 14, the abstract/title freeze has three days and the full evidence
-package has ten days:
-
-1. freeze the title, abstract, author list, conflicts, and scope of the artifact
-   claim for abstract registration;
-2. run the frozen whole-model manifests on an identified, otherwise-idle Linux
-   host and report latency dispersion, peak workspace, compile time, executable
-   size, weight size, and numerical/task correctness;
-3. fill the dense operator matrices against one-thread ONNX Runtime first, then
-   retain TVM and ONNX-MLIR only where identical model, input, thread, target,
-   and timing boundaries can be reproduced;
-4. close the extension matrix with a passing result or preserved unsupported
-   outcome for every retained comparison task;
-5. generate the model-level small multiples and native-LaTeX speedup tables
-   from raw records, then complete the 12-page anonymous manuscript and audits;
-6. defer parser/printer/verifier refactoring and new frontend or backend breadth
-   unless they block one of the preceding experiments.
-
-A EuroSys submission is justified only if all of the following are complete:
-
-1. every reported comparison task has a passing implementation or a preserved,
-   documented unsupported outcome;
-2. the selected model suite has controlled correctness, artifact, workspace,
-   compilation, and isolated latency records;
-3. tables and figures are generated from raw records rather than copied from
-   prose;
-4. an anonymized artifact reproduces on a second machine;
-5. the 12-page manuscript passes claim-to-evidence, citation, AI-disclosure,
-   and double-anonymity audits.
-
-If these conditions are not met by the venue deadline, the correct outcome is
-to continue the study for a later venue rather than weaken the task contracts
-or overstate the pilots.
+Follow [the research plan](plan.md) for the argument, mechanism experiments,
+scope, and calendar, and [the checklist](submission/CHECKLIST.md) for delivery.
+The decisive composition/derivation result precedes expansion of the operator
+matrix. Existing raw evidence and study protocols remain authoritative for
+their measurements; changing the narrative must not change their outcomes.

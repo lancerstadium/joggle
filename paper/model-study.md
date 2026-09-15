@@ -57,6 +57,10 @@ is rerun. These are structural compatibility observations only; a model still
 requires the separate artifact-execution gate before it can be reported as
 generated-code support.
 
+XCiT now crosses the frontend boundary but does not cross the artifact boundary:
+at revision `8d20360`, C preparation expanded 3,135 operations to 18,976 in its
+first round and did not finish within 227 seconds.
+
 These records are structural regression and compatibility evidence. They do
 not establish task accuracy, supported-operator percentage, generated-C
 correctness, latency, or compatibility with models absent from the configured

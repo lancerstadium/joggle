@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "id": "vertical-evolution",
+  "question": "Which framework-owned boundaries must be revisited as one external convolution specialization changes representation and ABI?",
+  "source": {
+    "format": "ONNX",
+    "opset": 13,
+    "graph": "Conv -> Add -> Relu",
+    "layout": "NCHW",
+    "weight_layout": "OIHW",
+    "stride": [1, 1],
+    "pads": [1, 1, 1, 1],
+    "seed": 2701,
+    "cases": [
+      {
+        "id": "eligible",
+        "input": [1, 4, 5, 5],
+        "weight": [4, 4, 3, 3],
+        "bias": [1, 4, 1, 1],
+        "output": [1, 4, 5, 5]
+      },
+      {
+        "id": "fallback",
+        "input": [1, 3, 5, 5],
+        "weight": [4, 3, 3, 3],
+        "bias": [1, 4, 1, 1],
+        "output": [1, 4, 5, 5]
+      }
+    ]
+  },
+  "stages": [
+    {
+      "id": "s0-external",
+      "required": [
+        "bind the supplied NCHW/OIHW external convolution kernel",
+        "keep bias Add and ReLU in the portable framework path",
+        "produce callable artifacts for both cases",
+        "pass the common numerical oracle for both cases"
+      ]
+    },
+    {
+      "id": "s1-packed",
+      "required": [
+        "derive OIHW2 [M,Q/2,R,S,2] weights from the represented constant",
+        "select the packed external kernel only when Q is even",
+        "keep the odd-Q graph on a portable fallback",
+        "preserve the source graphs and application-visible result contract"
+      ]
+    },
+    {
+      "id": "s2-epilogue",
+      "required": [
+        "extend the packed kernel ABI with bias and an activation selector",
+        "fuse Conv, bias, and ReLU only for the eligible graph",
+        "keep the odd-Q graph on the portable fallback",
+        "derive or validate the final artifact ABI and pass both oracles"
+      ]
+    }
+  ],
+  "boundary_domains": [
+    "source",
+    "semantics",
+    "representation",
+    "policy",
+    "target",
+    "artifact",
+    "host"
+  ],
+  "measurements": [
+    "named revisited-boundary vector with file and interface evidence",
+    "host, extension, and artifact rebuild scopes and times",
+    "selected and fallback path evidence",
+    "numerical error and artifact digest",
+    "compiler elapsed time and peak RSS",
+    "first diagnostic for a mismatched representation or ABI",
+    "prior-stage regression result"
+  ],
+  "exclusions": [
+    "developer productivity",
+    "authoring wall-clock time",
+    "source lines as an effort proxy",
+    "synthetic extensibility or ease score",
+    "tiny-fixture runtime as a system performance comparison"
+  ],
+  "forbidden": [
+    "modify the frozen ONNX graphs between stages",
+    "check in prepacked weights instead of deriving the payload",
+    "silently pad the odd-channel fallback case",
+    "call a reference runtime as the portable fallback",
+    "weaken a stage after observing a system result"
+  ]
+}

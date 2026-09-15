@@ -6,6 +6,13 @@ not another redesign. It is to close the gaps that determine whether the
 system is useful in a real co-design study and whether its claims survive
 evaluation.
 
+The current submission scope and dated acceptance gates are maintained only in
+[the research plan](../paper/plan.md). This roadmap is the longer-term engineering
+backlog, not permission to expand the submission. The next bounded mechanism
+work reuses function cloning, editing, and typed invocation for analyses,
+selection, representation procedures, transformations, and generation; it does
+not introduce a separate metaprogramming subsystem.
+
 ## Current baseline
 
 The repository currently provides:
