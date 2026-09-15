@@ -2510,9 +2510,8 @@ fn convert(m: Mod, rules: list<Fn>) -> bool {
     if again {
       var round_changed = false
       for phase in ["data", "compute", "shape", "control", "cleanup"] {
-        let selected = ir.where(rules, "phase", phase)
         for op in ir.ops(m) {
-          for rule in ir.where(selected, "on", ir.callee(op)) {
+          for rule in phase_rules(rules, phase, ir.callee(op)) {
             round_changed = ir.invoke<bool>(m, op, rule) || round_changed
           }
         }

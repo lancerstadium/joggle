@@ -4,6 +4,13 @@ use nn
 use quant
 use ir
 
+[memo]
+local fn phase_rules(
+  rules: list<Fn>, phase: str, callee: str
+) -> list<Fn> {
+  return ir.where(ir.where(rules, "phase", phase), "on", callee)
+}
+
 local fn set_type(m: Mod, value: Val, type: Ty) -> bool {
   if type == ty("_") {
     return false
@@ -2444,10 +2451,9 @@ local fn qlinear_avg_pool_type(m: Mod, op: Op) -> bool {
 
 local fn infer_once(m: Mod, rules: list<Fn>) -> bool {
   var changed = false
-  let selected = ir.where(rules, "phase", "infer")
-  let common = ir.where(selected, "on", "*")
+  let common = phase_rules(rules, "infer", "*")
   for op in ir.ops(m) {
-    let matches = common + ir.where(selected, "on", ir.callee(op))
+    let matches = common + phase_rules(rules, "infer", ir.callee(op))
     for rule in matches {
       changed = ir.invoke<bool>(m, op, rule) || changed
     }
