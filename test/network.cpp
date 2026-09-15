@@ -1238,6 +1238,88 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(dynamic_quant,
                                    dynamic_quant_roundtrip));
 
+  constexpr std::string_view qlinear_source =
+      "module qlinear.network\n"
+      "use onnx\n"
+      "fn matmul(\n"
+      "  a: tensor<u8, [2, 3]>, as: tensor<f32, []>,\n"
+      "  az: tensor<u8, []>, b: tensor<i8, [3, 4]>,\n"
+      "  bs: tensor<f32, []>, bz: tensor<i8, []>,\n"
+      "  ys: tensor<f32, []>, yz: tensor<u8, []>\n"
+      ") -> tensor<u8, [2, 4]> {\n"
+      "  let out = onnx.QLinearMatMul(a, as, az, b, bs, bz, ys, yz)\n"
+      "  return out\n"
+      "}\n"
+      "fn add(\n"
+      "  a: tensor<u8, [2, 3]>, as: tensor<f32, []>,\n"
+      "  az: tensor<u8, []>, b: tensor<u8, [1, 3]>,\n"
+      "  bs: tensor<f32, []>, bz: tensor<u8, []>,\n"
+      "  ys: tensor<f32, []>, yz: tensor<u8, []>\n"
+      ") -> tensor<u8, [2, 3]> {\n"
+      "  let out = com_microsoft.QLinearAdd(\n"
+      "    a, as, az, b, bs, bz, ys, yz\n"
+      "  )\n"
+      "  return out\n"
+      "}\n"
+      "fn pool(\n"
+      "  x: tensor<u8, [1, 1, 4, 4]>, xs: tensor<f32, []>,\n"
+      "  xz: tensor<u8, []>, ys: tensor<f32, []>, yz: tensor<u8, []>\n"
+      ") -> tensor<u8, [1, 1, 2, 2]> {\n"
+      "  [onnx: {kernel_shape: [2, 2], strides: [2, 2]}]\n"
+      "  let out = com_microsoft.QLinearAveragePool(x, xs, xz, ys, yz)\n"
+      "  return out\n"
+      "}\n"
+      "fn conv(\n"
+      "  x: tensor<u8, [1, 1, 3, 3]>, xs: tensor<f32, []>,\n"
+      "  xz: tensor<u8, []>, w: tensor<i8, [2, 1, 1, 1]>,\n"
+      "  ws: tensor<f32, [2]>, wz: tensor<i8, [2]>,\n"
+      "  ys: tensor<f32, []>, yz: tensor<u8, []>,\n"
+      "  bias: tensor<i32, [2]>\n"
+      ") -> tensor<u8, [1, 2, 3, 3]> {\n"
+      "  let out = onnx.QLinearConv(\n"
+      "    x, xs, xz, w, ws, wz, ys, yz, bias\n"
+      "  )\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod qlinear;
+  CHECK(joggle::parse(env, qlinear_source, qlinear, "qlinear-network.jog"));
+  CHECK(qlinear.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", qlinear));
+  CHECK(qlinear.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.convert", qlinear));
+  CHECK(qlinear.verify(env));
+  CHECK(count(qlinear, "onnx.QLinearMatMul") == 0);
+  CHECK(count(qlinear, "onnx.QLinearConv") == 0);
+  CHECK(count(qlinear, "com_microsoft.QLinearAdd") == 0);
+  CHECK(count(qlinear, "com_microsoft.QLinearAveragePool") == 0);
+  CHECK(count(qlinear, "tensor.matmul") == 1);
+  CHECK(count(qlinear, "nn.conv2d") == 1);
+  CHECK(count(qlinear, "nn.add") == 1);
+  CHECK(count(qlinear, "nn.avg_pool2d") == 1);
+  CHECK(count(qlinear, "quant.dequantize") == 8);
+  CHECK(count(qlinear, "quant.quantize") == 4);
+  std::size_t resolved_qlinear_calls = 0;
+  std::size_t annotated_qlinear_calls = 0;
+  for (joggle::Op op : qlinear.ops())
+    if (op.callee() == "quant.dequantize" ||
+        op.callee() == "quant.quantize" ||
+        op.callee() == "tensor.matmul" || op.callee() == "nn.conv2d" ||
+        op.callee() == "nn.add" || op.callee() == "nn.avg_pool2d") {
+      resolved_qlinear_calls += static_cast<bool>(env.resolve(qlinear, op));
+      annotated_qlinear_calls += !op.meta().empty();
+    }
+  CHECK(resolved_qlinear_calls == 16);
+  CHECK(annotated_qlinear_calls == 0);
+  joggle::Mod qlinear_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(qlinear), qlinear_roundtrip,
+                      "qlinear-roundtrip.jog"));
+  CHECK(qlinear_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(qlinear, qlinear_roundtrip));
+  CHECK(joggle::run(env, "c.prepare", qlinear_roundtrip));
+  CHECK(qlinear_roundtrip.verify(env));
+  CHECK(count(qlinear_roundtrip, "quant.dequantize") == 0);
+  CHECK(count(qlinear_roundtrip, "quant.quantize") == 0);
+
   constexpr std::string_view symbolic_conv_source =
       "module symbolic.conv\n"
       "use onnx\n"

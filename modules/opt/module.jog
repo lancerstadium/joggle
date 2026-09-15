@@ -851,7 +851,17 @@ fn legalize(m: Mod, caps: list<Fn>, limit: int) -> bool {
           }
         }
       }
-      again = len(calls) != 0 && ir.expand(m, calls, bodies)
+      again = false
+      if len(calls) != 0 {
+        again = ir.expand(m, calls, bodies)
+        if !again {
+          for i in 0..len(calls) {
+            if ir.live(calls[i]) {
+              again = ir.expand(m, [calls[i]], [bodies[i]]) || again
+            }
+          }
+        }
+      }
       changed = again || changed
     }
   }
@@ -874,7 +884,19 @@ local fn expand_with(
       }
     }
   }
-  return len(calls) != 0 && ir.expand(m, calls, bodies)
+  if len(calls) == 0 {
+    return false
+  }
+  if ir.expand(m, calls, bodies) {
+    return true
+  }
+  var changed = false
+  for i in 0..len(calls) {
+    if ir.live(calls[i]) {
+      changed = ir.expand(m, [calls[i]], [bodies[i]]) || changed
+    }
+  }
+  return changed
 }
 
 fn expand(m: Mod, accept: Fn) -> bool {

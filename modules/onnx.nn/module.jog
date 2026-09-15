@@ -1897,6 +1897,55 @@ local fn integer_matmul_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], shaped(ty("i32"), shape))
 }
 
+[phase: "infer", on: "onnx.QLinearMatMul"]
+local fn qlinear_matmul_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 8 || len(outputs) != 1 {
+    return false
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[3])
+  let output_zero = ir.type(inputs[7])
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     !tensor.valid(output_zero) {
+    return false
+  }
+  let shape = matmul_shape(left, right)
+  if len(shape) == 0 {
+    return false
+  }
+  return set_type(
+    m, outputs[0], shaped(tensor.elem(output_zero), shape)
+  )
+}
+
+[phase: "infer", on: "com_microsoft.QLinearAdd"]
+local fn qlinear_add_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 8 || len(outputs) != 1 {
+    return false
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[3])
+  let output_zero = ir.type(inputs[7])
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     !tensor.valid(output_zero) {
+    return false
+  }
+  let shape = tensor.broadcast_shape(
+    tensor.dims(left), tensor.dims(right)
+  )
+  if len(shape) == 0 &&
+     (len(tensor.dims(left)) != 0 || len(tensor.dims(right)) != 0) {
+    return false
+  }
+  return set_type(
+    m, outputs[0], shaped(tensor.elem(output_zero), shape)
+  )
+}
+
 local fn fused_matmul_result(op: Op) -> Ty {
   let inputs = ir.args(op)
   if len(inputs) != 2 {
@@ -2174,17 +2223,9 @@ local fn same_extent(input: Ty, stride: int) -> Ty {
   return ty("_")
 }
 
-local fn conv_result(op: Op) -> Ty {
-  let inputs = ir.args(op)
-  if len(inputs) != 2 && len(inputs) != 3 {
-    return ty("_")
-  }
-  let x = ir.type(inputs[0])
-  let weight = ir.type(inputs[1])
-  var bias = ty("_")
-  if len(inputs) == 3 {
-    bias = ir.type(inputs[2])
-  }
+local fn conv_result(
+  op: Op, x: Ty, weight: Ty, bias: Ty, elem: Ty
+) -> Ty {
   let meta = attrs(op)
   let groups = base.get(meta, "group", 1)
   if !conv_inputs(x, weight, bias, groups) {
@@ -2229,7 +2270,24 @@ local fn conv_result(op: Op) -> Ty {
     return ty("_")
   }
   let shape: list<Ty> = [xs[0], ws[0], h, w]
-  return shaped(tensor.elem(x), shape)
+  return shaped(elem, shape)
+}
+
+local fn conv_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) != 2 && len(inputs) != 3 {
+    return ty("_")
+  }
+  let x = ir.type(inputs[0])
+  let weight = ir.type(inputs[1])
+  var bias = ty("_")
+  if len(inputs) == 3 {
+    bias = ir.type(inputs[2])
+  }
+  if !tensor.valid(x) {
+    return ty("_")
+  }
+  return conv_result(op, x, weight, bias, tensor.elem(x))
 }
 
 [phase: "infer", on: "onnx.Conv"]
@@ -2239,6 +2297,41 @@ local fn conv_type(m: Mod, op: Op) -> bool {
     return false
   }
   return set_type(m, outputs[0], conv_result(op))
+}
+
+[phase: "infer", on: "onnx.QLinearConv"]
+local fn qlinear_conv_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if (len(inputs) != 8 && len(inputs) != 9) || len(outputs) != 1 {
+    return false
+  }
+  let x = ir.type(inputs[0])
+  let weight = ir.type(inputs[3])
+  let scale = ir.type(inputs[1])
+  let output_zero = ir.type(inputs[7])
+  if !tensor.valid(x) || !tensor.valid(weight) ||
+     !tensor.valid(scale) || !tensor.valid(output_zero) {
+    return false
+  }
+  let elem = tensor.elem(scale)
+  let dequant_x = shaped(elem, tensor.dims(x))
+  let dequant_weight = shaped(elem, tensor.dims(weight))
+  var dequant_bias = ty("_")
+  if len(inputs) == 9 {
+    let bias = ir.type(inputs[8])
+    if !tensor.valid(bias) {
+      return false
+    }
+    dequant_bias = shaped(elem, tensor.dims(bias))
+  }
+  return set_type(
+    m, outputs[0],
+    conv_result(
+      op, dequant_x, dequant_weight, dequant_bias,
+      tensor.elem(output_zero)
+    )
+  )
 }
 
 [phase: "infer", on: "onnx.GlobalAveragePool"]
@@ -2262,38 +2355,31 @@ local fn global_pool_type(m: Mod, op: Op) -> bool {
   )
 }
 
-[phase: "infer", on: ["onnx.AveragePool", "onnx.MaxPool"]]
-local fn pool_type(m: Mod, op: Op) -> bool {
-  let inputs = ir.args(op)
-  let outputs = ir.outs(op)
-  if len(inputs) != 1 || len(outputs) != 1 {
-    return false
-  }
-  let x = ir.type(inputs[0])
+local fn pool_result(op: Op, x: Ty, elem: Ty) -> Ty {
   if !tensor.valid(x) {
-    return false
+    return ty("_")
   }
   let shape = tensor.dims(x)
   if len(shape) != 4 ||
      (kind(shape[2]) == "int" && int(shape[2]) <= 0) ||
      (kind(shape[3]) == "int" && int(shape[3]) <= 0) {
-    return false
+    return ty("_")
   }
   let meta = attrs(op)
   if !base.has(meta, "kernel_shape") ||
      base.get(meta, "ceil_mode", 0) != 0 {
-    return false
+    return ty("_")
   }
   let kernel = meta["kernel_shape"]
   let stride = base.get(meta, "strides", [1, 1])
   let dilation = base.get(meta, "dilations", [1, 1])
   if len(kernel) != 2 || len(stride) != 2 || len(dilation) != 2 {
-    return false
+    return ty("_")
   }
   if kernel[0] <= 0 || kernel[1] <= 0 ||
      stride[0] <= 0 || stride[1] <= 0 ||
      dilation[0] <= 0 || dilation[1] <= 0 {
-    return false
+    return ty("_")
   }
   var h = ty("_")
   var w = ty("_")
@@ -2304,7 +2390,7 @@ local fn pool_type(m: Mod, op: Op) -> bool {
   } else {
     let pad = spatial_pad(op, kernel)
     if len(pad) != 4 {
-      return false
+      return ty("_")
     }
     h = conv_extent(
       shape[2], pad[0], pad[2], kernel[0], stride[0], dilation[0]
@@ -2315,11 +2401,44 @@ local fn pool_type(m: Mod, op: Op) -> bool {
   }
   if (kind(shape[2]) == "int" && h == ty("_")) ||
      (kind(shape[3]) == "int" && w == ty("_")) {
-    return false
+    return ty("_")
   }
   let result: list<Ty> = [shape[0], shape[1], h, w]
+  return shaped(elem, result)
+}
+
+[phase: "infer", on: ["onnx.AveragePool", "onnx.MaxPool"]]
+local fn pool_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 ||
+     !tensor.valid(ir.type(inputs[0])) {
+    return false
+  }
   return set_type(
-    m, outputs[0], shaped(tensor.elem(x), result)
+    m, outputs[0],
+    pool_result(op, ir.type(inputs[0]), tensor.elem(ir.type(inputs[0])))
+  )
+}
+
+[phase: "infer", on: "com_microsoft.QLinearAveragePool"]
+local fn qlinear_avg_pool_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 5 || len(outputs) != 1 {
+    return false
+  }
+  let x = ir.type(inputs[0])
+  let scale = ir.type(inputs[1])
+  let output_zero = ir.type(inputs[4])
+  if !tensor.valid(x) || !tensor.valid(scale) ||
+     !tensor.valid(output_zero) {
+    return false
+  }
+  let dequant = shaped(tensor.elem(scale), tensor.dims(x))
+  return set_type(
+    m, outputs[0],
+    pool_result(op, dequant, tensor.elem(output_zero))
   )
 }
 

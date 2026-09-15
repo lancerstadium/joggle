@@ -101,7 +101,7 @@ joggle_onnx_model(
   SOURCE validated/vision/classification/efficientnet-lite4/model/efficientnet-lite4-11-int8.onnx
   SHA256 2b3cbb5077262b20df565dacddecb3724c0976c35029a87e512d13aa4eff04a2
   TEST onnx-zoo-efficientnet-int8
-  ARGS --frontier-from-signature 95 onnx.QLinearConv onnx.QLinearMatMul
+  ARGS --frontier-from-signature 0
 )
 joggle_onnx_model(
   NAME efficientnet-lite4-11-qdq

@@ -644,6 +644,18 @@ if(JOGGLE_BUILD_TESTS)
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/quant_c.cmake
     )
     add_test(
+      NAME qlinear-c-execution
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DTOOL=$<TARGET_FILE:joggle-tool>
+        -DCC=${JOGGLE_TEST_C_COMPILER}
+        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/qlinear_c.jog
+        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/qlinear_c_main.c
+        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/qlinear-c-test
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/qlinear_c.cmake
+    )
+    add_test(
       NAME mem-execution
       COMMAND
         ${CMAKE_COMMAND}

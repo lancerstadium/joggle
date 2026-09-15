@@ -1,0 +1,54 @@
+module qlinear_c
+use onnx
+
+fn matmul(
+  a: tensor<u8, [2, 2]>, scale: tensor<f32, []>,
+  zero: tensor<u8, []>, b: tensor<i8, [2, 2]>,
+  b_zero: tensor<i8, []>
+) -> tensor<u8, [2, 2]> {
+  let result = onnx.QLinearMatMul(
+    a, scale, zero, b, scale, b_zero, scale, zero
+  )
+  return result
+}
+
+fn conv(
+  x: tensor<u8, [1, 1, 2, 2]>,
+  input_scale: tensor<f32, []>, input_zero: tensor<u8, []>,
+  weight: tensor<i8, [2, 1, 1, 1]>,
+  weight_scale: tensor<f32, [2]>, weight_zero: tensor<i8, [2]>,
+  output_scale: tensor<f32, []>, output_zero: tensor<u8, []>,
+  bias: tensor<i32, [2]>
+) -> tensor<u8, [1, 2, 2, 2]> {
+  let result = onnx.QLinearConv(
+    x, input_scale, input_zero,
+    weight, weight_scale, weight_zero,
+    output_scale, output_zero, bias
+  )
+  return result
+}
+
+fn add(
+  a: tensor<u8, [2, 3]>, a_scale: tensor<f32, []>,
+  a_zero: tensor<u8, []>, b: tensor<u8, [1, 3]>,
+  b_scale: tensor<f32, []>, b_zero: tensor<u8, []>,
+  output_scale: tensor<f32, []>, output_zero: tensor<u8, []>
+) -> tensor<u8, [2, 3]> {
+  let result = com_microsoft.QLinearAdd(
+    a, a_scale, a_zero, b, b_scale, b_zero,
+    output_scale, output_zero
+  )
+  return result
+}
+
+fn avg_pool(
+  x: tensor<u8, [1, 1, 4, 4]>, input_scale: tensor<f32, []>,
+  input_zero: tensor<u8, []>, output_scale: tensor<f32, []>,
+  output_zero: tensor<u8, []>
+) -> tensor<u8, [1, 1, 2, 2]> {
+  [onnx: {kernel_shape: [2, 2], strides: [2, 2]}]
+  let result = com_microsoft.QLinearAveragePool(
+    x, input_scale, input_zero, output_scale, output_zero
+  )
+  return result
+}
