@@ -638,12 +638,12 @@ model files are identified by source and SHA-256 rather than redistributed. An
 anonymised artifact accompanies submission.
 
 \section{Evaluation}
-The evaluation establishes four things in order: that a decision inside a
-working compiler algorithm can be revised without rewriting its analysis or its
-consumers, that the original and the derived definition stay isolated and
-contain their failures, that such an edit reaches an independently checked
-artifact at a measured cost against another system's natural route, and what
-the prototype covers with what compile-time and run-time cost. The first three
+The evaluation asks four things. Can a decision inside a working compiler
+algorithm be revised without rewriting its analysis or its consumers? Do the
+original and the derived definition stay isolated and contain their failures?
+Does such an edit reach an independently checked artifact at a measured cost
+against another system's natural route? And what does the prototype cover, at
+what compile-time and run-time cost? The first three
 come from two derivation studies and their controls, the composition boundary
 from the extension tasks, and the last from the model set and the runtime
 comparison. Compile-time evidence is a per-stage breakdown inside this system
@@ -984,14 +984,14 @@ what semantic and rebuild obligations remain afterwards.
 
 \subsection{Programmable compiler implementations}
 \label{sec:related-transform}
-Every ingredient here has precedent, and none of it is claimed: client control
-of an implementation decision is the open implementation and metaobject programme
-\cite{lamping1992open,kiczales1997open,chiba1995mop}, no-rebuild extension was
-done for {\tt lcc} \cite{engler1999interface}, copying a procedure while the
-original remains is procedure cloning \cite{cooper1993cloning} and is automatic
-in Truffle \cite{wurthinger2017practical}, and running a revision beside the
-installed definition with rollback is Erlang code loading and dynamic updating
-\cite{erlangCodeLoading,hicks2005dynamic}.
+Every ingredient here has precedent, and none of it is claimed. Client control
+of an implementation decision is the open implementation and metaobject
+programme \cite{lamping1992open,kiczales1997open,chiba1995mop}. {\tt lcc} took
+extensions without a rebuild \cite{engler1999interface}. Copying a procedure
+while the original remains is procedure cloning \cite{cooper1993cloning}, and
+Truffle does it automatically \cite{wurthinger2017practical}. Running a revision
+beside the installed definition, with rollback, is Erlang code loading and
+dynamic updating \cite{erlangCodeLoading,hicks2005dynamic}.
 
 What is claimed is the conjunction, over one typed IR that also represents the
 subject. MLIR keeps strategies as IR, and we probed its routes against LLVM
@@ -1088,10 +1088,10 @@ comparisons, so Joggle's evaluation follows the complete-artifact boundary.
 
 \subsection{Kernel construction and automatic optimization}
 Lift, RISE, and Elevate make transformation strategy explicit
-\cite{steuwer2017lift,steuwer2022rise}; Halide and Tiramisu separate algorithms
-from schedules \cite{ragankelley2013halide,baghdadi2019tiramisu}; TensorIR,
-Hidet, and TileLang expose blocks, tiles, threads, and data movement
-\cite{feng2023tensorir,ding2023hidet,wang2025tilelang}; Exo externalizes target
+\cite{steuwer2017lift,steuwer2022rise}, and Halide and Tiramisu separate
+algorithms from schedules \cite{ragankelley2013halide,baghdadi2019tiramisu}.
+TensorIR, Hidet, and TileLang expose blocks, tiles, threads, and data movement
+\cite{feng2023tensorir,ding2023hidet,wang2025tilelang}. Exo externalizes target
 instructions, memories, and trusted rewrites into user code
 \cite{ikarashi2022exo}, and sparse systems expose format and data-movement
 choices \cite{daghero2025sparse}. Joggle addresses how such choices compose
