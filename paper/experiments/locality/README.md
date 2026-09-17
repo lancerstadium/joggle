@@ -92,7 +92,8 @@ It scores candidate axis orders and reorders through `tile.reorder`. It is
 applied, not derived: this study shows that code quality is reachable from
 source without rebuilding the compiler, and it is not a third derivation case.
 
-On UltraFace it moves the output-width axis innermost in 18 convolution nests,
+On UltraFace it moves the output-width axis innermost in all 52 convolution
+nests of the prepared subject,
 changing `n,m,oh,ow,q,r,s` into `n,m,oh,q,r,s,ow`, which makes the innermost
 access contiguous instead of strided by a channel plane.
 

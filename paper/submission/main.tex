@@ -28,7 +28,7 @@ callable and verified. The compiler validates each revision and can roll it back
 so a derived procedure remains reproducible. A structurally addressed derivation also
 reproduces the validated plan where a textual patch cannot be applied at all, so
 a user or an agent can propose revisions with the same tools. Across widely used models, one source-defined locality policy
-reduces the run time of generated code on each of them, by $1.36\times$ to
+reduces the run time of generated code on each of them, by $1.44\times$ to
 $3.24\times$. It requires no compiler rebuild and matches or beats TVM's
 unscheduled C target wherever that lowering could be built and validated.
 % [claim:C-locality,C-derive-storage,C-derive-control,C-derive-external,C-derive-boundary,C-derive-composition] [evidence:E-locality,E-reuse-result,E-reuse-control,E-reuse-external,E-reuse-check,E-reuse-path] Author verification pending.
@@ -866,7 +866,7 @@ validated for, with one thread, all Joggle and TVM C artifacts compiled at \text
 the ONNX-MLIR column keeps its \texttt{-O3} route, and 20 balanced fresh
 processes per system; Figure~\ref{fig:runtime} reports those
 medians. Where both were measured, Joggle's first-fit artifact is 0.84$\times$ to
-1.00$\times$ of TVM's default C-target lowering on six models and 2.7\% and
+0.99$\times$ of TVM's default C-target lowering on six models and 2.7\% and
 14\% slower on ShuffleNetV2 and GoogLeNet, so the two scalar emitters are
 broadly comparable; the exception is MNIST, where TVM is 3.0$\times$ faster.
 The shared cost is therefore unscheduled kernel mapping rather than something
@@ -881,8 +881,9 @@ rebuild. The policy is \emph{applied}, not derived: no compiler function
 is cloned here, and the campaign below therefore measures how far one
 source-defined decision reaches, not what derivation buys. Nothing in this
 section should be read as a derivation result. On UltraFace
-the resulting artifact is 1.49$\times$ faster than the ordinary one and
-1.50$\times$ faster than TVM's unscheduled lowering.
+the resulting artifact is 1.47$\times$ faster than the ordinary one and
+1.41$\times$ faster than TVM's unscheduled lowering, both as medians of paired
+ratios.
 
 The figure bounds the claim in the other direction. ONNX-MLIR at \texttt{-O3}
 beats the policy-improved Joggle artifact on six of the nine models where both
@@ -893,7 +894,7 @@ about compiler infrastructure is not a claim about code generation, and the
 packing, vectorized microkernels, epilogue fusion, and threading that remain are
 work this substrate would host in a source-defined selection procedure rather
 than in the compiler host. The qualifications at the head of this section carry
-over unchanged. Median absolute deviations for these processes are 4.09, 2.63,
+over unchanged. On UltraFace, median absolute deviations for those processes are 4.09, 2.63,
 3.74, 2.61, and 0.40\,ms for ordinary Joggle, policy Joggle, TVM, ONNX-MLIR, and
 ONNX Runtime, larger than an earlier pair-only job recorded because this job ran
 at a higher load.
@@ -901,8 +902,9 @@ at a higher load.
 % [claim:C-locality] [evidence:E-locality]
 The policy is not specific to that model. Applied unchanged to ten pinned models
 whose ordinary run time spans 1.6\,ms to 2.3\,s, it shortens run time on every
-one of them, by $1.37\times$ to $3.24\times$ with a median of $2.04\times$, and
-every model's paired bootstrap interval excludes one. Against TVM's unscheduled
+one of them, by $1.44\times$ to $3.22\times$ with a median of $2.14\times$ as
+medians of paired ratios, and every model's paired bootstrap interval excludes
+one. Against TVM's unscheduled
 lowering, measured on nine models, the same policy is faster on eight, by
 $1.41\times$ to $2.82\times$ with intervals excluding one; MNIST is a tie at
 $1.01\times$, interval $[0.94, 1.06]$. Every artifact is admitted only if it stays inside
@@ -962,8 +964,7 @@ on disk to a loadable library, one host, one thread, one artifact per system,
 with the fixture all three share staged outside the span. Joggle takes 101.5\,s
 against 4.52\,s for TVM and 4.51\,s for ONNX-MLIR over five runs each, so its
 compile time is 22.5$\times$ theirs here. The cost sits where the design
-predicts: 55.7\,s is the interpreted \texttt{c.prepare} pass, 45.0\,s the plan,
-place, emit, and compile chain, and 0.8\,s reading and converting the model. Peak resident memory for a
+predicts, since the prototype's compiler is interpreted. Peak resident memory for a
 complete model remains unmeasured. Failure tests cover
 transactions and stale handles; generative tests cover parsing and legal IR
 edits, not module loading, serialized frontends, or the native ABI.
@@ -994,7 +995,7 @@ subject. MLIR keeps strategies as IR, and we probed its routes against LLVM
 route needs no rebuild and works: fourteen patterns compile to interpreter
 bytecode under \texttt{mlir-opt}. It cannot reach a pass's decision procedure.
 One-Shot Bufferize, which makes the storage choice this paper's cases edit,
-exposes seventeen options, all booleans, enums, or scalars, the nearest being
+exposes seventeen options, all booleans, enums, scalars, or string filters, the nearest being
 \texttt{--analysis-heuristic}, which picks among built-in heuristics
 \cite{lucke2025transform,mlirTransformDocs,mlirPdl,mlirBufferizationDocs}, so a
 ranking of one's own means editing the pass in C++ \cite{mlirTransformTutorial}. Exo 2 makes
@@ -1019,7 +1020,7 @@ the edited branch belongs to the planner, not to a model loop.
 \textbf{Table~\thetable.} What each nearest system edits, and which of three
 properties it has: running the revised definition beside the installed one,
 being checked at revision time, and needing no rebuild of the toolchain. Entries
-come from the cited documentation of each system; the MLIR row was probed on
+come from the cited documentation of each system; only the MLIR no-rebuild cell was probed, on
 LLVM 23.0.0git here. A dash means the property is absent or not documented, not
 that the system is deficient.
 
@@ -1030,12 +1031,12 @@ that the system is deficient.
  & runs beside & checked at & no \\
 Edited object & the original & revision & rebuild \\
 \midrule
-MLIR Transform or PDL & --- & --- & partial \\
-Exo 2: schedule & partial & --- & yes \\
-Truffle: node specialization & yes & --- & yes \\
-Erlang: module version & yes & --- & yes \\
-Open implementation & yes & --- & partial \\
-Magellan: pass in C++ & --- & --- & --- \\
+MLIR Transform or PDL \cite{lucke2025transform,mlirPdl} & --- & --- & partial \\
+Exo 2: schedule \cite{ikarashi2024exo2} & partial & yes & yes \\
+Truffle: node specialization \cite{wurthinger2017practical} & yes & --- & yes \\
+Erlang: module version \cite{erlangCodeLoading,hicks2005dynamic} & yes & --- & yes \\
+Open implementation \cite{lamping1992open,kiczales1997open,chiba1995mop} & yes & --- & partial \\
+Magellan: pass in C++ \cite{chen2026magellan} & --- & --- & --- \\
 Source patch: planner & --- & yes & yes \\
 \textbf{Joggle: compiler function body} & \textbf{yes} & \textbf{yes} & \textbf{yes} \\
 \bottomrule
