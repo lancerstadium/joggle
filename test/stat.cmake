@@ -1,16 +1,11 @@
-if(NOT DEFINED TOOL OR NOT DEFINED MODEL OR NOT DEFINED MODULES)
-  message(FATAL_ERROR "stat test requires TOOL, MODEL, and MODULES")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/joggle_test.cmake")
 
-execute_process(
+joggle_require("stat test requires TOOL, MODEL, and MODULES" VARS TOOL MODEL MODULES)
+
+joggle_run("stat query failed"
   COMMAND "${TOOL}" query stat.summary "${MODEL}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "stat query failed (${result}):\n${output}${error}")
-endif()
+  ERROR_VARIABLE error)
 
 string(CONCAT expected
     "{\"blks\": 7, \"branches\": 1, \"callees\": 8, \"calls\": 14, "
@@ -25,18 +20,11 @@ if(NOT output STREQUAL expected)
 endif()
 
 get_filename_component(data_dir "${MODEL}" DIRECTORY)
-execute_process(
+joggle_run("declared model dependencies were not loaded"
   COMMAND "${TOOL}" query stat.summary "${data_dir}/stat-use.jog"
           -M "${MODULES}"
-  RESULT_VARIABLE use_result
   OUTPUT_VARIABLE use_output
-  ERROR_VARIABLE use_error
-)
-if(NOT use_result EQUAL 0)
-  message(FATAL_ERROR
-          "declared model dependencies were not loaded (${use_result}):\n"
-          "${use_output}${use_error}")
-endif()
+  ERROR_VARIABLE use_error)
 if(NOT use_output MATCHES "\"uses\": 1")
   message(FATAL_ERROR "unexpected dependent-model summary:\n${use_output}")
 endif()

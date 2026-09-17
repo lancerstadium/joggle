@@ -310,6 +310,29 @@ local fn fills(m: Mod, fn: Fn) -> bool {
   return changed
 }
 
+// Match ir.ops(fn)'s preorder, but keep uses in a loop live through its
+// backedge.  A lexical last use inside the body is not a runtime last use.
+local fn use_ends(body: Blk, first: int) -> list<int> {
+  var ends: list<int> = []
+  for op in ir.ops(body) {
+    let at = first + len(ends)
+    var nested: list<int> = []
+    for child in ir.blks(op) {
+      nested += use_ends(child, at + 1 + len(nested))
+    }
+    if ir.kind(op) == "loop" {
+      let end = at + len(nested)
+      ends += [end]
+      for i in 0..len(nested) {
+        ends += [end]
+      }
+    } else {
+      ends += [at] + nested
+    }
+  }
+  return ends
+}
+
 fn plan(m: Mod, fn: Fn) -> bool {
   let before = ir.revision(m)
   fills(m, fn)
@@ -327,6 +350,7 @@ fn plan(m: Mod, fn: Fn) -> bool {
   var counts: list<int> = []
   var firsts: list<int> = []
   var returned: dict = {}
+  var borrowed: dict = {}
   for op in ops {
     if ir.kind(op) == "return" {
       for value in ir.args(op) {
@@ -336,6 +360,30 @@ fn plan(m: Mod, fn: Fn) -> bool {
         }
       }
     }
+    if ir.kind(op) == "call" &&
+       (ir.target(m, op) == "tensor.view" || ir.callee(op) == "tensor.view") {
+      // Views borrow their backing allocation and shape.  Until alias-aware
+      // liveness is available, neither side participates in slot reuse.
+      // Scanning all view edges also protects a chain of views.
+      let inputs = ir.args(op)
+      for value in inputs {
+        borrowed[ir.name(value)] = true
+      }
+      for value in ir.outs(op) {
+        borrowed[ir.name(value)] = true
+      }
+    }
+    if ir.kind(op) == "call" &&
+       (ir.target(m, op) == "tensor.make" || ir.callee(op) == "tensor.make") {
+      let inputs = ir.args(op)
+      let outputs = ir.outs(op)
+      // Dynamic extents may be read after allocation, e.g. by C dimension
+      // queries.  The constructor call is not the last use of its shape.
+      if len(inputs) == 2 && len(outputs) == 1 &&
+         !tensor.static(ir.type(outputs[0])) {
+        borrowed[ir.name(inputs[1])] = true
+      }
+    }
   }
 
   for at in 0..len(ops) {
@@ -343,14 +391,8 @@ fn plan(m: Mod, fn: Fn) -> bool {
       let type = ir.type(value)
       let name = ir.name(value)
       let count = allocated(value)
-      let definition = ir.def(value)
-      var aliases = false
-      if ir.live(definition) && ir.kind(definition) == "call" {
-        aliases = ir.target(m, definition) == "tensor.view" ||
-                  ir.callee(definition) == "tensor.view"
-      }
       if tensor.valid(type) && count >= 0 && name != "" &&
-         !aliases &&
+         !has(borrowed, name) &&
          !ir.is_const(value) && !has(parameters, name) &&
          !has(returned, name) && !has(bindings, name) {
         bindings[name] = len(names)
@@ -363,20 +405,23 @@ fn plan(m: Mod, fn: Fn) -> bool {
   }
 
   var lasts = firsts
+  let bodies = ir.blks(fn)
+  var ends: list<int> = []
+  if len(bodies) != 0 {
+    ends = use_ends(bodies[0], 0)
+  }
+  assert(len(ends) == len(ops), "mem: lifetime order disagrees with function order")
   for at in 0..len(ops) {
     let op = ops[at]
-    let kind = ir.kind(op)
-    if kind != "loop" && kind != "branch" && kind != "yield" {
-      for value in ir.args(op) {
-        let name = ir.name(value)
-        if has(bindings, name) {
-          let item = int(bindings[name])
-          assert(tensor.valid(ir.type(value)) &&
-                 tensor.elem(ir.type(value)) == types[item],
-                 "mem: one binding changed tensor element type")
-          if at > lasts[item] {
-            lasts[item] = int(at)
-          }
+    for value in ir.args(op) {
+      let name = ir.name(value)
+      if has(bindings, name) {
+        let item = int(bindings[name])
+        assert(tensor.valid(ir.type(value)) &&
+               tensor.elem(ir.type(value)) == types[item],
+               "mem: one binding changed tensor element type")
+        if ends[at] > lasts[item] {
+          lasts[item] = ends[at]
         }
       }
     }

@@ -1,0 +1,47 @@
+fn linear<E: Ty, M: int, N: int, K: int>(
+  x: tensor<E, [M, K]>, weight: tensor<E, [K, N]>
+) -> tensor<E, [M, N]> {
+  return tensor.matmul(x, weight)
+}
+
+fn linear<E: Ty, M: int, N: int, K: int>(
+  x: tensor<E, [M, K]>,
+  weight: tensor<E, [K, N]>,
+  bias: tensor<E, [N]>
+) -> tensor<E, [M, N]> {
+  var out = tensor.matmul(x, weight)
+  for i in 0..M, j in 0..N {
+    out[i, j] = out[i, j] + bias[j]
+  }
+  return out
+}
+
+fn gemm<
+  E: Ty, A: list<int>, B: list<int>, Y: list<int>
+>(
+  a: tensor<E, A>, b: tensor<E, B>,
+  transpose_a: bool, transpose_b: bool, alpha: f64
+) -> tensor<E, Y> {
+  return tensor.matmul(a, b, transpose_a, transpose_b, alpha)
+}
+
+fn gemm<
+  E: Ty,
+  A: list<int>,
+  B: list<int>,
+  C: list<int>,
+  Y: list<int>
+>(
+  a: tensor<E, A>, b: tensor<E, B>, c: tensor<E, C>,
+  transpose_a: bool, transpose_b: bool, alpha: f64, beta: f64
+) -> tensor<E, Y> {
+  var out: tensor<E, Y> = tensor.matmul(
+    a, b, transpose_a, transpose_b, alpha
+  )
+  let bias: tensor<E, Y> = tensor.broadcast(c)
+  for i in 0..tensor.numel<Y>() {
+    out[i] = out[i] + E(beta) * bias[i]
+  }
+  return out
+}
+

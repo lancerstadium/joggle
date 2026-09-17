@@ -1,0 +1,288 @@
+local fn convert_unary(m: Mod, op: Op, callee: str) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) || ir.type(outputs[0]) != input {
+    return false
+  }
+  return convert_call(m, op, callee)
+}
+
+[phase: "compute", on: [
+  "onnx.Relu", "onnx.Abs", "onnx.Sqrt", "onnx.Reciprocal",
+  "onnx.Cos", "onnx.Sin",
+  "onnx.Tanh", "onnx.Exp", "onnx.Floor", "onnx.Log", "onnx.Erf",
+  "onnx.Sigmoid", "onnx.Ceil", "onnx.Round"
+]]
+local fn convert_unary(m: Mod, op: Op) -> bool {
+  let source = ir.callee(op)
+  for rule in unary_rules() {
+    if source == rule[0] {
+      return convert_unary(m, op, rule[1])
+    }
+  }
+  return false
+}
+
+[phase: "compute", on: "onnx.Where"]
+local fn convert_where(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 ||
+     !tensor.valid(ir.type(outputs[0])) {
+    return false
+  }
+  return convert_call(m, op, "nn.where")
+}
+
+[phase: "compute", on: "onnx.LayerNormalization"]
+local fn convert_layer_norm(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 2 || len(inputs) > 3 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) || tensor.elem(input) != ty("f32") ||
+     ir.type(outputs[0]) != input {
+    return false
+  }
+  let meta = attrs(op)
+  if base.get(meta, "stash_type", 1) != 1 {
+    return false
+  }
+  var axis = base.get(meta, "axis", -1)
+  let rank = len(tensor.dims(input))
+  if axis < 0 {
+    axis += rank
+  }
+  if axis < 0 || axis >= rank {
+    return false
+  }
+  inputs += [ir.constant(m, op, axis, ty("int"))]
+  inputs += [
+    ir.constant(m, op, base.get(meta, "epsilon", 0.00001), ty("f64"))
+  ]
+  return convert_call(m, op, "nn.layer_norm", inputs)
+}
+
+[phase: "compute", on: "onnx.Dropout"]
+local fn convert_dropout(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 1 || len(inputs) > 3 ||
+     len(outputs) < 1 || len(outputs) > 2 ||
+     ir.type(inputs[0]) != ir.type(outputs[0]) {
+    return false
+  }
+  if len(inputs) == 3 {
+    if !ir.is_const(inputs[2]) ||
+       base.kind(ir.constant(inputs[2])) != "bool" ||
+       ir.constant(inputs[2]) == true {
+      return false
+    }
+  }
+  if len(outputs) == 2 && len(ir.users(outputs[1])) != 0 {
+    return false
+  }
+  let copied = ir.call(
+    m, op, "base.copy", [inputs[0]], ir.type(outputs[0])
+  )
+  if !ir.live(copied) {
+    return false
+  }
+  carry(m, outputs[0], copied)
+  if !ir.replace(m, outputs[0], copied) {
+    return false
+  }
+  return ir.erase(m, op)
+}
+
+[phase: "compute", on: "onnx.LeakyRelu"]
+local fn convert_leaky_relu(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 ||
+     ir.type(inputs[0]) != ir.type(outputs[0]) ||
+     !tensor.valid(ir.type(inputs[0])) {
+    return false
+  }
+  let alpha = base.get(attrs(op), "alpha", 0.01)
+  inputs += [ir.constant(m, op, alpha, ty("f64"))]
+  return convert_call(m, op, "nn.leaky_relu", inputs)
+}
+
+[phase: "compute", on: "onnx.BatchNormalization"]
+local fn convert_norm(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 5 || len(outputs) != 1 {
+    return false
+  }
+  if !tensor.valid(ir.type(outputs[0])) {
+    return false
+  }
+  let meta = attrs(op)
+  if base.get(meta, "spatial", 1) != 1 {
+    return false
+  }
+  inputs += [
+    ir.constant(m, op, base.get(meta, "epsilon", 0.00001), ty("f64"))
+  ]
+  return convert_call(m, op, "nn.batch_norm", inputs)
+}
+
+[phase: "compute", on: "onnx.LRN"]
+local fn convert_lrn(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 ||
+     ir.type(inputs[0]) != ir.type(outputs[0]) ||
+     !tensor.valid(ir.type(inputs[0])) {
+    return false
+  }
+  let shape = tensor.dims(ir.type(inputs[0]))
+  let meta = attrs(op)
+  let size = base.get(meta, "size", 0)
+  if len(shape) < 2 || size <= 0 {
+    return false
+  }
+  inputs += [ir.constant(m, op, size, ty("int"))]
+  inputs += [
+    ir.constant(m, op, base.get(meta, "alpha", 0.0001), ty("f64"))
+  ]
+  inputs += [ir.constant(m, op, base.get(meta, "beta", 0.75), ty("f64"))]
+  inputs += [ir.constant(m, op, base.get(meta, "bias", 1.0), ty("f64"))]
+  return convert_call(m, op, "nn.lrn", inputs)
+}
+
+[phase: "compute", on: "onnx.Softmax"]
+local fn convert_softmax(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 ||
+     ir.type(inputs[0]) != ir.type(outputs[0]) {
+    return false
+  }
+  let type = ir.type(inputs[0])
+  if !tensor.valid(type) {
+    return false
+  }
+  let rank = len(tensor.dims(type))
+  let meta = attrs(op)
+  let version = onnx.opset(m, "")
+  if rank == 0 || version < 0 {
+    return false
+  }
+  var axis = 1
+  if version >= 13 {
+    axis = -1
+  }
+  if base.has(meta, "axis") {
+    axis = meta["axis"]
+  }
+  if axis < 0 {
+    axis += rank
+  }
+  if axis < 0 || axis >= rank {
+    return false
+  }
+  if version < 13 {
+    var axes: list<int> = []
+    for value in axis..rank {
+      axes += [value]
+    }
+    inputs += [ints(m, op, axes)]
+  } else {
+    inputs += [ir.constant(m, op, axis, ty("int"))]
+  }
+  inputs += [ir.constant(m, op, 1.0, ty("f64"))]
+  return convert_call(m, op, "nn.softmax", inputs)
+}
+
+[phase: "compute", on: "onnx.Clip"]
+local fn convert_clip(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 1 || len(inputs) > 3 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) || ir.type(outputs[0]) != input {
+    return false
+  }
+  var values: list<Val> = [inputs[0]]
+  var callee = "base.copy"
+  if len(inputs) > 1 && ir.type(inputs[1]) != ty("nil") {
+    let lower = ir.type(inputs[1])
+    if !tensor.valid(lower) || tensor.elem(input) != tensor.elem(lower) ||
+       !tensor.broadcastable(tensor.dims(lower), tensor.dims(input)) {
+      return false
+    }
+    values += [inputs[1]]
+    callee = "nn.maximum"
+  }
+  if len(inputs) > 2 && ir.type(inputs[2]) != ty("nil") {
+    let upper = ir.type(inputs[2])
+    if !tensor.valid(upper) || tensor.elem(input) != tensor.elem(upper) ||
+       !tensor.broadcastable(tensor.dims(upper), tensor.dims(input)) {
+      return false
+    }
+    values += [inputs[2]]
+    if len(values) == 3 {
+      callee = "nn.clip"
+    } else {
+      callee = "nn.minimum"
+    }
+  }
+  return convert_call(m, op, callee, values)
+}
+
+[phase: "shape", on: "onnx.Cast"]
+local fn convert_cast(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let result = ir.type(outputs[0])
+  if !tensor.valid(input) || !tensor.valid(result) ||
+     tensor.dims(input) != tensor.dims(result) ||
+     tensor.elem(result) != element(base.get(attrs(op), "to", 0)) {
+    return false
+  }
+  return convert_call(m, op, "tensor.cast")
+}
+
+[phase: "compute", on: [
+  "onnx.ReduceMean", "onnx.ReduceSum", "onnx.ReduceMin", "onnx.ReduceMax"
+]]
+local fn convert_mean(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 1 || len(inputs) > 2 || len(outputs) != 1 {
+    return false
+  }
+  let expected = reduce_result(op)
+  if expected == ty("_") || ir.type(outputs[0]) != expected {
+    return false
+  }
+  let axes = reduce_axes(op, len(tensor.dims(ir.type(inputs[0]))))
+  inputs = [inputs[0]]
+  inputs += [ints(m, op, axes)]
+  var callee = "tensor.mean"
+  if ir.callee(op) == "onnx.ReduceSum" {
+    callee = "tensor.sum"
+  }
+  if ir.callee(op) == "onnx.ReduceMin" {
+    callee = "tensor.min"
+  }
+  if ir.callee(op) == "onnx.ReduceMax" {
+    callee = "tensor.max"
+  }
+  return convert_call(m, op, callee, inputs)
+}

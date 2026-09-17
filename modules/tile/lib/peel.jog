@@ -1,0 +1,150 @@
+fn peel_issue(m: Mod, source: Op, axis: int, factor: int) -> str {
+  if factor <= 0 {
+    return "requires a positive factor"
+  }
+  if !ir.live(source) || ir.kind(source) != "loop" {
+    return "requires a live loop"
+  }
+  let bodies = ir.blks(source)
+  let inputs = ir.args(source)
+  let outputs = ir.outs(source)
+  if len(bodies) != 1 || len(outputs) != 1 || len(inputs) <= len(outputs) {
+    return "requires one carried value in a structured range loop"
+  }
+  let axes = len(inputs) - len(outputs)
+  let body_args = ir.args(bodies[0])
+  if len(body_args) != len(inputs) {
+    return "found an invalid loop signature"
+  }
+  if axis < 0 || axis >= axes {
+    return "requires an axis within the loop rank"
+  }
+  let range = ir.def(inputs[axis])
+  if !syntax_op(m, range, "operator ..") {
+    return "requires the selected iterator to use a range"
+  }
+  let bounds = ir.args(range)
+  if len(bounds) != 2 || !ir.is_const(bounds[0]) ||
+     !ir.is_const(bounds[1]) ||
+     base.kind(ir.constant(bounds[0])) != "int" ||
+     base.kind(ir.constant(bounds[1])) != "int" {
+    return "requires static integer bounds"
+  }
+  var identity: list<int> = []
+  for i in 0..axes {
+    identity += [i]
+  }
+  let issue = reorder_issue(m, source, identity)
+  if issue != "" {
+    return issue
+  }
+  let state = state_axes(m, source)
+  for i in 0..axis + 1 {
+    if i >= len(state) || state[i] != i {
+      return "requires the selected axis and its outer axes to be state axes"
+    }
+  }
+  let ops = ir.ops(bodies[0])
+  if len(ops) == 0 || ir.kind(ops[len(ops) - 1]) != "yield" {
+    return "requires a terminated loop body"
+  }
+  return ""
+}
+
+fn can_peel(m: Mod, source: Op, axis: int, factor: int) -> bool {
+  let before = ir.revision(m)
+  var legal = factor > 1 && peel_issue(m, source, axis, factor) == ""
+  if legal {
+    let range = ir.def(ir.args(source)[axis])
+    let bounds = ir.args(range)
+    let lower = base.int(ir.constant(bounds[0]))
+    let upper = base.int(ir.constant(bounds[1]))
+    var width = 0
+    if upper > lower {
+      width = upper - lower
+    }
+    legal = width > factor && width % factor != 0
+  }
+  assert(ir.revision(m) == before,
+         "tile.can_peel changed the module")
+  return legal
+}
+
+fn peel(m: Mod, source: Op, axis: int, factor: int) -> list<Op> {
+  let issue = peel_issue(m, source, axis, factor)
+  assert(issue == "", "tile.peel " + issue)
+  let inputs = ir.args(source)
+  let outputs = ir.outs(source)
+  let axes = len(inputs) - len(outputs)
+  let body = ir.blks(source)[0]
+  let body_args = ir.args(body)
+  let range = ir.def(inputs[axis])
+  let bounds = ir.args(range)
+  let lower = base.int(ir.constant(bounds[0]))
+  let upper = base.int(ir.constant(bounds[1]))
+  var width = 0
+  if upper > lower {
+    width = upper - lower
+  }
+  if factor == 1 || width <= factor || width % factor == 0 {
+    return [source]
+  }
+
+  let middle = lower + width / factor * factor
+  let middle_value = keep(
+    m, ir.constant(m, source, middle, ir.type(bounds[0])), "peel_middle"
+  )
+  let prefix_range = call_like(
+    m, source, range, [bounds[0], middle_value], ir.type(inputs[axis])
+  )
+  let tail_range = call_like(
+    m, source, range, [middle_value, bounds[1]], ir.type(inputs[axis])
+  )
+
+  var names: list<str> = []
+  var prefix_sources: list<Val> = []
+  var tail_sources: list<Val> = []
+  for i in 0..axes {
+    names += [ir.name(body_args[i])]
+    if i == axis {
+      prefix_sources += [prefix_range]
+      tail_sources += [tail_range]
+    } else {
+      prefix_sources += [inputs[i]]
+      tail_sources += [inputs[i]]
+    }
+  }
+  var carried: list<Val> = []
+  for i in axes..len(inputs) {
+    carried += [inputs[i]]
+  }
+
+  let prefix = ir.loop(m, source, names, prefix_sources, carried)
+  assert(ir.live(prefix), "tile.peel could not build the aligned prefix")
+  let prefix_body = ir.blks(prefix)[0]
+  let prefix_ops = ir.ops(prefix_body)
+  let prefix_yield = prefix_ops[len(prefix_ops) - 1]
+  assert(ir.args(
+           m, prefix_yield,
+           clone_body(m, body, prefix_body, body_args, ir.args(prefix_body))
+         ),
+         "tile.peel could not connect the aligned prefix")
+
+  let tail = ir.loop(m, source, names, tail_sources, ir.outs(prefix))
+  assert(ir.live(tail), "tile.peel could not build the scalar tail")
+  let tail_body = ir.blks(tail)[0]
+  let tail_ops = ir.ops(tail_body)
+  let tail_yield = tail_ops[len(tail_ops) - 1]
+  assert(ir.args(
+           m, tail_yield,
+           clone_body(m, body, tail_body, body_args, ir.args(tail_body))
+         ),
+         "tile.peel could not connect the scalar tail")
+
+  assert(ir.replace(m, outputs, ir.outs(tail)),
+         "tile.peel could not replace the original loop results")
+  assert(ir.erase(m, source),
+         "tile.peel could not erase the original loop")
+  return [prefix, tail]
+}
+

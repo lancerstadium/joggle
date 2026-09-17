@@ -1,0 +1,331 @@
+fn dim<E: Ty, S: list<int>>(
+  data: tensor<E, S>, axis: index
+) -> index;
+
+local fn range_count<E: Ty>(first: E, last: E, step: E) -> index {
+  assert(step != E(0), "tensor.range step cannot be zero")
+  var count = index(0)
+  if step > E(0) && last > first {
+    count = index((last - first) / step)
+    if first + E(count) * step < last {
+      count += index(1)
+    }
+  }
+  if step < E(0) && last < first {
+    count = index((last - first) / step)
+    if first + E(count) * step > last {
+      count += index(1)
+    }
+  }
+  return count
+}
+
+fn range<E: Ty, Y: list<int>>(
+  start: tensor<E, []>, stop: tensor<E, []>, delta: tensor<E, []>
+) -> tensor<E, Y> {
+  let first = start[index(0)]
+  let step = delta[index(0)]
+  let count = range_count(first, stop[index(0)], step)
+  var shape = tensor<index, [1]>(index(0))
+  shape[index(0)] = count
+  var out: tensor<E, Y> = make(E(0), shape)
+  for item in index(0)..count {
+    out[item] = first + E(item) * step
+  }
+  return view(out, shape)
+}
+
+fn range<C: int, E: Ty, Y: list<int>>(
+  start: tensor<E, []>, stop: tensor<E, []>, delta: tensor<E, []>
+) -> tensor<E, Y> {
+  let first = start[index(0)]
+  let step = delta[index(0)]
+  let count = range_count(first, stop[index(0)], step)
+  assert(count <= index(C), "tensor.range exceeds its capacity")
+  var shape = tensor<index, [1]>(index(0))
+  shape[index(0)] = count
+  var out = tensor<E, [C]>(E(0))
+  for item in index(0)..count {
+    out[item] = first + E(item) * step
+  }
+  return view(out, shape)
+}
+
+[memo]
+fn valid(type: Ty) -> bool {
+  if name(type) != "tensor" {
+    return false
+  }
+  if len(args(type)) != 2 {
+    return false
+  }
+  return name(args(type)[1]) == "[]"
+}
+
+[memo]
+fn static(type: Ty) -> bool {
+  if !valid(type) {
+    return false
+  }
+  for dim in args(args(type)[1]) {
+    if kind(dim) != "int" {
+      return false
+    }
+  }
+  return true
+}
+
+[memo]
+fn elem(type: Ty) -> Ty {
+  return args(type)[0]
+}
+
+[memo]
+fn shape(type: Ty) -> list<int> {
+  var out: list<int> = []
+  for dim in args(args(type)[1]) {
+    out += [int(dim)]
+  }
+  return out
+}
+
+[memo]
+fn dims(type: Ty) -> list<Ty> {
+  return args(args(type)[1])
+}
+
+fn refined(current: Ty, candidate: Ty) -> Ty {
+  if !valid(current) || !valid(candidate) {
+    return ty("_")
+  }
+  var element = elem(current)
+  if element == ty("_") {
+    element = elem(candidate)
+  } else {
+    if elem(candidate) != ty("_") && elem(candidate) != element {
+      return ty("_")
+    }
+  }
+  let before = dims(current)
+  let after = dims(candidate)
+  if len(before) != len(after) {
+    return ty("_")
+  }
+  var shape: list<Ty> = []
+  for i in 0..len(before) {
+    var dim = before[i]
+    if dim == ty("_") {
+      dim = after[i]
+    } else {
+      if after[i] != ty("_") && after[i] != dim {
+        return ty("_")
+      }
+    }
+    shape += [dim]
+  }
+  return ty("tensor", [element, ty("[]", shape)])
+}
+
+fn type(elem: Ty, shape: list<int>) -> Ty {
+  var dims: list<Ty> = []
+  for extent in shape {
+    dims += [ty(extent)]
+  }
+  return ty("tensor", [elem, ty("[]", dims)])
+}
+
+fn type(elem: Ty, dims: list<Ty>) -> Ty {
+  return ty("tensor", [elem, ty("[]", dims)])
+}
+
+fn product(dims: list<Ty>, first: int, last: int) -> Ty {
+  if first < 0 || last < first || last > len(dims) {
+    return ty("_")
+  }
+  var value = 1
+  var symbol = ty("_")
+  var has_symbol = false
+  for i in first..last {
+    if kind(dims[i]) == "int" {
+      value *= int(dims[i])
+    } else {
+      if dims[i] == ty("_") || has_symbol {
+        return ty("_")
+      }
+      symbol = dims[i]
+      has_symbol = true
+    }
+  }
+  if has_symbol {
+    if value != 1 {
+      return ty("_")
+    }
+    return symbol
+  }
+  return ty(value)
+}
+
+fn quotient(numerator: list<Ty>, denominator: list<Ty>) -> Ty {
+  var top = 1
+  var bottom = 1
+  var top_symbols: list<Ty> = []
+  var bottom_symbols: list<Ty> = []
+  for dim in numerator {
+    if kind(dim) == "int" {
+      if int(dim) < 0 {
+        return ty("_")
+      }
+      top *= int(dim)
+    } else {
+      if dim == ty("_") {
+        return ty("_")
+      }
+      top_symbols += [dim]
+    }
+  }
+  for dim in denominator {
+    if kind(dim) == "int" {
+      if int(dim) <= 0 {
+        return ty("_")
+      }
+      bottom *= int(dim)
+    } else {
+      if dim == ty("_") {
+        return ty("_")
+      }
+      bottom_symbols += [dim]
+    }
+  }
+  for symbol in bottom_symbols {
+    var available = 0
+    var required = 0
+    for item in top_symbols {
+      if item == symbol {
+        available += 1
+      }
+    }
+    for item in bottom_symbols {
+      if item == symbol {
+        required += 1
+      }
+    }
+    if available < required {
+      return ty("_")
+    }
+  }
+  var remaining: list<Ty> = []
+  for i in 0..len(top_symbols) {
+    let symbol = top_symbols[i]
+    var occurrence = 0
+    var cancelled = 0
+    for j in 0..i + 1 {
+      if top_symbols[j] == symbol {
+        occurrence += 1
+      }
+    }
+    for item in bottom_symbols {
+      if item == symbol {
+        cancelled += 1
+      }
+    }
+    if occurrence > cancelled {
+      remaining += [symbol]
+    }
+  }
+  if bottom == 0 || top % bottom != 0 || len(remaining) > 1 {
+    return ty("_")
+  }
+  let scale = top / bottom
+  if len(remaining) == 0 {
+    return ty(scale)
+  }
+  if scale == 1 {
+    return remaining[0]
+  }
+  return ty("_")
+}
+
+fn numel<S: list<int>>() -> int {
+  var size = 1
+  for extent in S {
+    size *= extent
+  }
+  return size
+}
+
+// Write one dense trailing slice at a runtime leading coordinate.  This is an
+// ordinary body rather than a scan/NMS intrinsic; structured-control bridges
+// use it when constructing variable-length results.
+fn extent(shape: list<int>, axes: list<int>, axis: int) -> int {
+  var out = 1
+  for i in 0..len(shape) {
+    if axes[i] == axis {
+      out = shape[i]
+    }
+  }
+  return out
+}
+
+fn offset<I: Ty>(
+  shape: list<int>, axes: list<int>, coords: list<I>
+) -> int {
+  var out = 0
+  var stride = 1
+  [stage: "shape"]
+  for reverse in 0..len(shape) {
+    let i = len(shape) - reverse - 1
+    let axis = axes[i]
+    if axis >= 0 {
+      out += coords[axis] * stride
+    }
+    stride *= shape[i]
+  }
+  return out
+}
+
+fn offset<S: Ty, C: Ty, R: int>(
+  shape: tensor<S, [R]>, coords: tensor<C, [R]>
+) -> index {
+  var out = index(0)
+  for axis in 0..R {
+    out = out * index(shape[index(axis)]) + index(coords[index(axis)])
+  }
+  return out
+}
+
+fn coord(
+  shape: list<int>, axes: list<int>, linear: int, axis: int
+) -> int {
+  var out = 0
+  var stride = 1
+  [stage: "shape"]
+  for reverse in 0..len(shape) {
+    let i = len(shape) - reverse - 1
+    if axes[i] == axis {
+      out = (linear / stride) % shape[i]
+    }
+    stride *= shape[i]
+  }
+  return out
+}
+
+fn reshape<E: Ty, S: list<int>, T: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, T> {
+  var out = tensor<E, T>(E(0))
+  for i in 0..numel<T>() {
+    out[i] = x[i]
+  }
+  return out
+}
+
+fn shape<E: Ty, S: list<int>, R: int>(
+  x: tensor<E, S>
+) -> tensor<i64, [R]> {
+  var out = tensor<i64, [R]>(i64(0))
+  for axis in 0..R {
+    out[axis] = i64(S[axis])
+  }
+  return out
+}
+

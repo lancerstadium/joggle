@@ -1,0 +1,194 @@
+[phase: "infer", on: "onnx.QuantizeLinear"]
+local fn quant_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if (len(inputs) != 2 && len(inputs) != 3) || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let scale = ir.type(inputs[1])
+  if !tensor.valid(input) || !tensor.valid(scale) {
+    return false
+  }
+  var elem = ty("u8")
+  if len(inputs) == 3 {
+    let zero = ir.type(inputs[2])
+    if !tensor.valid(zero) {
+      return false
+    }
+    elem = tensor.elem(zero)
+  }
+  return set_type(m, outputs[0], shaped(elem, tensor.dims(input)))
+}
+
+[phase: "infer", on: "onnx.DequantizeLinear"]
+local fn dequant_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if (len(inputs) != 2 && len(inputs) != 3) || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let scale = ir.type(inputs[1])
+  if !tensor.valid(input) || !tensor.valid(scale) {
+    return false
+  }
+  return set_type(
+    m, outputs[0], shaped(tensor.elem(scale), tensor.dims(input))
+  )
+}
+
+[phase: "infer", on: "onnx.DynamicQuantizeLinear"]
+local fn dynamic_quant_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 3 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return false
+  }
+  let shape = tensor.dims(input)
+  var changed = set_type(
+    m, outputs[0], shaped(ty("u8"), shape)
+  )
+  changed = set_type(
+    m, outputs[1], ty("tensor<f32, []>")
+  ) || changed
+  changed = set_type(
+    m, outputs[2], ty("tensor<u8, []>")
+  ) || changed
+  return changed
+}
+
+[phase: "infer", on: "onnx.MatMulInteger"]
+local fn integer_matmul_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 2 || len(inputs) > 4 || len(outputs) != 1 {
+    return false
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[1])
+  if !tensor.valid(left) || !tensor.valid(right) {
+    return false
+  }
+  let le = tensor.elem(left)
+  let re = tensor.elem(right)
+  if (le != ty("i8") && le != ty("u8")) ||
+     (re != ty("i8") && re != ty("u8")) {
+    return false
+  }
+  let shape = matmul_shape(left, right)
+  if len(shape) == 0 {
+    return false
+  }
+  return set_type(m, outputs[0], shaped(ty("i32"), shape))
+}
+
+[phase: "infer", on: "onnx.QLinearMatMul"]
+local fn qlinear_matmul_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 8 || len(outputs) != 1 {
+    return false
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[3])
+  let output_zero = ir.type(inputs[7])
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     !tensor.valid(output_zero) {
+    return false
+  }
+  let shape = matmul_shape(left, right)
+  if len(shape) == 0 {
+    return false
+  }
+  return set_type(
+    m, outputs[0], shaped(tensor.elem(output_zero), shape)
+  )
+}
+
+[phase: "infer", on: "com_microsoft.QLinearAdd"]
+local fn qlinear_add_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 8 || len(outputs) != 1 {
+    return false
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[3])
+  let output_zero = ir.type(inputs[7])
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     !tensor.valid(output_zero) {
+    return false
+  }
+  let shape = tensor.broadcast_shape(
+    tensor.dims(left), tensor.dims(right)
+  )
+  if len(shape) == 0 &&
+     (len(tensor.dims(left)) != 0 || len(tensor.dims(right)) != 0) {
+    return false
+  }
+  return set_type(
+    m, outputs[0], shaped(tensor.elem(output_zero), shape)
+  )
+}
+
+[phase: "infer", on: "onnx.QLinearConv"]
+local fn qlinear_conv_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if (len(inputs) != 8 && len(inputs) != 9) || len(outputs) != 1 {
+    return false
+  }
+  let x = ir.type(inputs[0])
+  let weight = ir.type(inputs[3])
+  let scale = ir.type(inputs[1])
+  let output_zero = ir.type(inputs[7])
+  if !tensor.valid(x) || !tensor.valid(weight) ||
+     !tensor.valid(scale) || !tensor.valid(output_zero) {
+    return false
+  }
+  let elem = tensor.elem(scale)
+  let dequant_x = shaped(elem, tensor.dims(x))
+  let dequant_weight = shaped(elem, tensor.dims(weight))
+  var dequant_bias = ty("_")
+  if len(inputs) == 9 {
+    let bias = ir.type(inputs[8])
+    if !tensor.valid(bias) {
+      return false
+    }
+    dequant_bias = shaped(elem, tensor.dims(bias))
+  }
+  return set_type(
+    m, outputs[0],
+    conv_result(
+      op, dequant_x, dequant_weight, dequant_bias,
+      tensor.elem(output_zero)
+    )
+  )
+}
+
+[phase: "infer", on: "com_microsoft.QLinearAveragePool"]
+local fn qlinear_avg_pool_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 5 || len(outputs) != 1 {
+    return false
+  }
+  let x = ir.type(inputs[0])
+  let scale = ir.type(inputs[1])
+  let output_zero = ir.type(inputs[4])
+  if !tensor.valid(x) || !tensor.valid(scale) ||
+     !tensor.valid(output_zero) {
+    return false
+  }
+  let dequant = shaped(tensor.elem(scale), tensor.dims(x))
+  return set_type(
+    m, outputs[0],
+    pool_result(op, dequant, tensor.elem(output_zero))
+  )
+}
+

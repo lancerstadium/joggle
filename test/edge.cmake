@@ -1,11 +1,8 @@
-if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
-   NOT DEFINED KERNEL OR NOT DEFINED HARNESS OR NOT DEFINED MODULES OR
-   NOT DEFINED EXAMPLES OR NOT DEFINED ROOT)
-  message(FATAL_ERROR "external kernel example is missing an input")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/joggle_test.cmake")
 
-file(REMOVE_RECURSE "${ROOT}")
-file(MAKE_DIRECTORY "${ROOT}")
+joggle_require("external kernel extension is missing an input" VARS TOOL CC MODEL KERNEL HARNESS MODULES EXTENSIONS ROOT)
+
+joggle_workspace("${ROOT}")
 
 set(selected "${ROOT}/selected.jog")
 set(prepared "${ROOT}/model.jog")
@@ -13,16 +10,11 @@ set(source "${ROOT}/model.c")
 set(header "${ROOT}/model.h")
 set(program "${ROOT}/model")
 
-execute_process(
+joggle_run("external kernel selection failed"
   COMMAND "${TOOL}" run edge.apply "${MODEL}"
-          -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
+          -M "${EXTENSIONS}" -M "${MODULES}"
   OUTPUT_FILE "${selected}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "external kernel selection failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 
 file(READ "${selected}" selected_text)
 string(REGEX MATCHALL " = conv2d\\(" selected_convs "${selected_text}")
@@ -34,16 +26,11 @@ if(NOT selected_conv_count EQUAL 3 OR NOT semantic_conv_count EQUAL 1)
           "implementation guard did not preserve the other layout:\n${selected_text}")
 endif()
 
-execute_process(
+joggle_run("external kernel preparation failed"
   COMMAND "${TOOL}" run edge.apply c.prepare "${MODEL}"
-          -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
+          -M "${EXTENSIONS}" -M "${MODULES}"
   OUTPUT_FILE "${prepared}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "external kernel preparation failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 
 file(READ "${prepared}" prepared_text)
 if(NOT prepared_text MATCHES "use edge" OR
@@ -55,16 +42,11 @@ if(NOT prepared_text MATCHES "use edge" OR
           "external implementation selection was not preserved:\n${prepared_text}")
 endif()
 
-execute_process(
+joggle_run("external kernel emission failed"
   COMMAND "${TOOL}" emit c.source "${prepared}"
-          -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
+          -M "${EXTENSIONS}" -M "${MODULES}"
   OUTPUT_FILE "${source}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "external kernel emission failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 
 file(READ "${source}" emitted)
 if(emitted MATCHES "(^|[^A-Za-z0-9_])(joggle_|jog_|v_[A-Za-z0-9])")
@@ -112,38 +94,20 @@ if(NOT emitted MATCHES
           "external multi-result kernel boundary is absent:\n${emitted}")
 endif()
 
-execute_process(
+joggle_run("external kernel header failed"
   COMMAND "${TOOL}" emit c.header "${prepared}"
-          -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
+          -M "${EXTENSIONS}" -M "${MODULES}"
   OUTPUT_FILE "${header}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "external kernel header failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 
-execute_process(
+joggle_run("external kernel did not compile"
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
           -include "${header}" "${source}" "${KERNEL}" "${HARNESS}"
           -o "${program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "external kernel did not compile (${result}):\n${output}${error}")
-endif()
+  ERROR_VARIABLE error)
 
-execute_process(
+joggle_run("external kernel returned the wrong result"
   COMMAND "${program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "external kernel returned the wrong result (${result}):\n"
-          "${output}${error}")
-endif()
+  ERROR_VARIABLE error)

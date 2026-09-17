@@ -34,15 +34,15 @@ From the repository root:
 cmake -S . -B build
 cmake --build build
 mkdir -p build/examples/edge
-./build/joggle run edge.apply c.prepare examples/edge/model.jog \
-  -M examples -M build/modules > build/examples/edge/model.jog
+./build/joggle run edge.apply c.prepare extensions/edge/model.jog \
+  -M extensions -M build/modules > build/examples/edge/model.jog
 ./build/joggle emit c.source build/examples/edge/model.jog \
-  -M examples -M build/modules > build/examples/edge/model.c
+  -M extensions -M build/modules > build/examples/edge/model.c
 ./build/joggle emit c.header build/examples/edge/model.jog \
-  -M examples -M build/modules > build/examples/edge/model.h
+  -M extensions -M build/modules > build/examples/edge/model.h
 cc -std=c11 -Wall -Wextra -Wstrict-prototypes -Werror \
   -include build/examples/edge/model.h \
-  build/examples/edge/model.c examples/edge/kernel.c examples/edge/main.c \
+  build/examples/edge/model.c extensions/edge/kernel.c extensions/edge/main.c \
   -o build/examples/edge/model
 build/examples/edge/model
 ```

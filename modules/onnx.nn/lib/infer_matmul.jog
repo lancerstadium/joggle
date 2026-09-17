@@ -1,0 +1,166 @@
+local fn matmul_shape(
+  left: Ty, right: Ty, transpose_left: bool, transpose_right: bool
+) -> list<Ty> {
+  var none: list<Ty> = []
+  if !tensor.valid(left) || !tensor.valid(right) {
+    return none
+  }
+  let ls = tensor.dims(left)
+  let rs = tensor.dims(right)
+  if len(ls) < 2 || len(rs) < 2 {
+    return none
+  }
+  var rows = ls[len(ls) - 2]
+  var left_depth = ls[len(ls) - 1]
+  var right_depth = rs[len(rs) - 2]
+  var columns = rs[len(rs) - 1]
+  if transpose_left {
+    rows = ls[len(ls) - 1]
+    left_depth = ls[len(ls) - 2]
+  }
+  if transpose_right {
+    right_depth = rs[len(rs) - 1]
+    columns = rs[len(rs) - 2]
+  }
+  if left_depth != right_depth {
+    return none
+  }
+  var left_batch: list<Ty> = []
+  var right_batch: list<Ty> = []
+  for i in 0..len(ls) - 2 {
+    left_batch += [ls[i]]
+  }
+  for i in 0..len(rs) - 2 {
+    right_batch += [rs[i]]
+  }
+  var shape: list<Ty> = []
+  if len(left_batch) == 0 {
+    shape = right_batch
+  } else {
+    if len(right_batch) == 0 {
+      shape = left_batch
+    } else {
+      shape = tensor.broadcast_shape(left_batch, right_batch)
+    }
+  }
+  if len(left_batch) != 0 {
+    if !tensor.broadcastable(left_batch, shape) {
+      return none
+    }
+  }
+  if len(right_batch) != 0 {
+    if !tensor.broadcastable(right_batch, shape) {
+      return none
+    }
+  }
+  shape += [rows, columns]
+  return shape
+}
+
+local fn matmul_shape(left: Ty, right: Ty) -> list<Ty> {
+  return matmul_shape(left, right, false, false)
+}
+
+local fn matmul_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) != 2 {
+    return ty("_")
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[1])
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     tensor.elem(left) != tensor.elem(right) {
+    return ty("_")
+  }
+  let shape = matmul_shape(left, right)
+  if len(shape) == 0 {
+    return ty("_")
+  }
+  return shaped(tensor.elem(left), shape)
+}
+
+[phase: "infer", on: "onnx.MatMul"]
+local fn matmul_type(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  return set_type(m, outputs[0], matmul_result(op))
+}
+
+local fn gemm_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) != 2 && len(inputs) != 3 {
+    return ty("_")
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[1])
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     tensor.elem(left) != tensor.elem(right) ||
+     len(tensor.dims(left)) != 2 || len(tensor.dims(right)) != 2 {
+    return ty("_")
+  }
+  let meta = attrs(op)
+  let shape = matmul_shape(
+    left, right,
+    base.get(meta, "transA", 0) == 1,
+    base.get(meta, "transB", 0) == 1
+  )
+  if len(shape) != 2 {
+    return ty("_")
+  }
+  if len(inputs) == 3 {
+    let bias = ir.type(inputs[2])
+    if !tensor.valid(bias) || tensor.elem(bias) != tensor.elem(left) ||
+       !tensor.broadcastable(tensor.dims(bias), shape) {
+      return ty("_")
+    }
+  }
+  return shaped(tensor.elem(left), shape)
+}
+
+[phase: "infer", on: "onnx.Gemm"]
+local fn gemm_type(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  return set_type(m, outputs[0], gemm_result(op))
+}
+
+local fn fused_matmul_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) != 2 {
+    return ty("_")
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[1])
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     tensor.elem(left) != tensor.elem(right) {
+    return ty("_")
+  }
+  let meta = attrs(op)
+  let trans_a = base.get(meta, "transA", 0)
+  let trans_b = base.get(meta, "transB", 0)
+  if (trans_a != 0 && trans_a != 1) ||
+     (trans_b != 0 && trans_b != 1) ||
+     base.get(meta, "transBatchA", 0) != 0 ||
+     base.get(meta, "transBatchB", 0) != 0 {
+    return ty("_")
+  }
+  let shape = matmul_shape(left, right, trans_a == 1, trans_b == 1)
+  if len(shape) == 0 {
+    return ty("_")
+  }
+  return shaped(tensor.elem(left), shape)
+}
+
+[phase: "infer", on: "com_microsoft.FusedMatMul"]
+local fn fused_matmul_type(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  return set_type(m, outputs[0], fused_matmul_result(op))
+}
+

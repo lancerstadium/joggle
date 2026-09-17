@@ -10,6 +10,11 @@ option(JOGGLE_BUILD_ONNX "Build the optional ONNX module" OFF)
 option(JOGGLE_BUILD_TFLITE "Build the optional TFLite module" OFF)
 option(JOGGLE_BUILD_SAT "Build the optional saturating-integer module" OFF)
 option(JOGGLE_TEST_ONNX_HEAVY "Enable slow ONNX Model Zoo gates" OFF)
+# The paper/ research workspace is not part of the shipped project, so nothing
+# here may read it by default: a clone must build and test without it. The
+# research targets and record checks are registered only when this is ON.
+option(JOGGLE_RESEARCH
+       "Register tools and checks that read the paper/ research workspace" OFF)
 set(JOGGLE_TEST_ONNX_ZOO "" CACHE PATH
     "Directory containing any subset of the pinned ONNX Model Zoo test set")
 set(JOGGLE_TEST_ONNX_BACKEND "" CACHE PATH
@@ -44,6 +49,65 @@ endfunction()
 foreach(module base bounds c ir math mem nn opt quant stat tensor tile vm)
   joggle_copy_source_module(${module})
 endforeach()
+
+# joggle_script_test(<name> <script.cmake>
+#                    [DEFINES <VAR=value>...] [LABELS <label>...]
+#                    [TIMEOUT <seconds>])
+#
+# Registers one script-driven test. TOOL and MODULES are supplied here because
+# every such test needs them and spelling them out 29 times let them drift.
+# DEFINES follow the defaults, so a test that needs a different MODULES root can
+# still override it.
+function(joggle_script_test name script)
+  cmake_parse_arguments(PARSE_ARGV 2 arg "" "TIMEOUT" "DEFINES;LABELS")
+  set(defines "")
+  foreach(entry IN LISTS arg_DEFINES)
+    list(APPEND defines "-D${entry}")
+  endforeach()
+  add_test(
+    NAME ${name}
+    COMMAND
+      ${CMAKE_COMMAND}
+      -DTOOL=$<TARGET_FILE:joggle-tool>
+      -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+      ${defines}
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/${script}
+  )
+  set(properties "")
+  if(arg_LABELS)
+    list(APPEND properties LABELS "${arg_LABELS}")
+  endif()
+  if(arg_TIMEOUT)
+    list(APPEND properties TIMEOUT "${arg_TIMEOUT}")
+  endif()
+  if(properties)
+    set_tests_properties(${name} PROPERTIES ${properties})
+  endif()
+endfunction()
+
+# joggle_label(<label> <test>...)
+#
+# Adds a kind label to tests that exist, preserving labels already set.
+#
+# Tests are registered in several blocks, some conditional on an option or on a
+# pinned model being present, so the taxonomy is assigned once at the end of the
+# test section rather than at each of the fifty registration sites. A name that
+# is absent is skipped instead of raising an error, which is what lets a group
+# list a test whose option is currently off.
+function(joggle_label label)
+  foreach(name IN LISTS ARGN)
+    if(NOT TEST ${name})
+      continue()
+    endif()
+    get_test_property(${name} LABELS current)
+    set(merged "${label}")
+    if(current)
+      list(APPEND merged ${current})
+    endif()
+    list(REMOVE_DUPLICATES merged)
+    set_tests_properties(${name} PROPERTIES LABELS "${merged}")
+  endforeach()
+endfunction()
 
 add_library(joggle
   src/env.cpp
@@ -368,8 +432,12 @@ if(JOGGLE_BUILD_TESTS)
   )
   add_executable(joggle-workflow-test test/workflow.cpp)
   target_link_libraries(joggle-workflow-test PRIVATE Joggle::joggle)
-  add_executable(joggle-derive-prepare EXCLUDE_FROM_ALL paper/experiments/derive_prepare.cpp)
-  target_link_libraries(joggle-derive-prepare PRIVATE Joggle::joggle)
+  if(JOGGLE_RESEARCH)
+    add_executable(joggle-derive-prepare EXCLUDE_FROM_ALL paper/experiments/derive_prepare.cpp)
+    target_link_libraries(joggle-derive-prepare PRIVATE Joggle::joggle)
+    add_executable(joggle-progressive-trace EXCLUDE_FROM_ALL paper/experiments/progressive_trace.cpp)
+    target_link_libraries(joggle-progressive-trace PRIVATE Joggle::joggle)
+  endif()
   add_executable(joggle-network-test test/network.cpp)
   target_link_libraries(joggle-network-test PRIVATE Joggle::joggle)
   add_executable(joggle-lang-robustness-test test/lang_robustness.cpp)
@@ -436,102 +504,71 @@ if(JOGGLE_BUILD_TESTS)
   set_tests_properties(
     cli-query PROPERTIES PASS_REGULAR_EXPRESSION "\\[\\]"
   )
-  add_test(
-    NAME cli-args
-    COMMAND
-      ${CMAKE_COMMAND}
-      -DTOOL=$<TARGET_FILE:joggle-tool>
-      -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
-      -DC_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c.jog
-      -DVM_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/vm.jog
-      -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/args.cmake
+  joggle_script_test(cli-args args.cmake
+    DEFINES
+      MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
+      C_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c.jog
+      VM_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/vm.jog
+  )
+  joggle_script_test(cli-stream stream.cmake
+    DEFINES
+      MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
+      ROOT=${CMAKE_CURRENT_BINARY_DIR}/stream-test
+  )
+  joggle_script_test(cli-diagnostics diagnostics.cmake
+    DEFINES
+      MODEL=${CMAKE_CURRENT_BINARY_DIR}/modules/bad/module.jog
   )
   add_test(
-    NAME cli-stream
-    COMMAND
-      ${CMAKE_COMMAND}
-      -DTOOL=$<TARGET_FILE:joggle-tool>
-      -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
-      -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-      -DROOT=${CMAKE_CURRENT_BINARY_DIR}/stream-test
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/stream.cmake
-  )
-  add_test(
-    NAME cli-diagnostics
-    COMMAND
-      ${CMAKE_COMMAND}
-      -DTOOL=$<TARGET_FILE:joggle-tool>
-      -DMODEL=${CMAKE_CURRENT_BINARY_DIR}/modules/bad/module.jog
-      -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/diagnostics.cmake
-  )
-  add_test(
-    NAME cost-example
+    NAME cost-extension
     COMMAND $<TARGET_FILE:joggle-tool> query cost.total
-            ${CMAKE_CURRENT_SOURCE_DIR}/examples/cost/model.jog
-            -M ${CMAKE_CURRENT_SOURCE_DIR}/examples
+            ${CMAKE_CURRENT_SOURCE_DIR}/extensions/cost/model.jog
+            -M ${CMAKE_CURRENT_SOURCE_DIR}/extensions
             -M ${CMAKE_CURRENT_BINARY_DIR}/modules
   )
   set_tests_properties(
-    cost-example PROPERTIES PASS_REGULAR_EXPRESSION "5"
+    cost-extension PROPERTIES PASS_REGULAR_EXPRESSION "5"
   )
   add_test(
-    NAME cost-configured-example
+    NAME cost-configured-extension
     COMMAND $<TARGET_FILE:joggle-tool> query cost.total
-            ${CMAKE_CURRENT_SOURCE_DIR}/examples/cost/model.jog
+            ${CMAKE_CURRENT_SOURCE_DIR}/extensions/cost/model.jog
             --arg 7 --arg 2
-            -M ${CMAKE_CURRENT_SOURCE_DIR}/examples
+            -M ${CMAKE_CURRENT_SOURCE_DIR}/extensions
             -M ${CMAKE_CURRENT_BINARY_DIR}/modules
   )
   set_tests_properties(
-    cost-configured-example PROPERTIES PASS_REGULAR_EXPRESSION "9"
+    cost-configured-extension PROPERTIES PASS_REGULAR_EXPRESSION "9"
   )
-  add_test(
-    NAME stat-summary
-    COMMAND
-      ${CMAKE_COMMAND}
-      -DTOOL=$<TARGET_FILE:joggle-tool>
-      -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
-      -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/stat.cmake
+  joggle_script_test(stat-summary stat.cmake
+    DEFINES
+      MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
   )
-  add_test(
-    NAME bounds-report
-    COMMAND
-      ${CMAKE_COMMAND}
-      -DTOOL=$<TARGET_FILE:joggle-tool>
-      -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/bounds.jog
-      -DFOLD_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/bounds_resolved.jog
-      -DCUSTOM_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/bounds_custom.jog
-      -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-      -DROOT=${CMAKE_CURRENT_BINARY_DIR}/bounds-report
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/bounds.cmake
+  joggle_script_test(bounds-report bounds.cmake
+    DEFINES
+      MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/bounds.jog
+      FOLD_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/bounds_resolved.jog
+      CUSTOM_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/bounds_custom.jog
+      ROOT=${CMAKE_CURRENT_BINARY_DIR}/bounds-report
   )
-  add_test(
-    NAME opt-overloads
-    COMMAND
-      ${CMAKE_COMMAND}
-      -DTOOL=$<TARGET_FILE:joggle-tool>
-      -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/opt_custom.jog
-      -DCSE_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/opt_cse.jog
-      -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/opt.cmake
+  joggle_script_test(opt-overloads opt.cmake
+    DEFINES
+      MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/opt_custom.jog
+      CSE_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/opt_cse.jog
   )
-  add_test(
-    NAME cli-emit
-    COMMAND
-      ${CMAKE_COMMAND}
-      -DTOOL=$<TARGET_FILE:joggle-tool>
-      -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
-      -DSOURCE_MODULES=${CMAKE_CURRENT_SOURCE_DIR}/modules
-      -DBUILD_MODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-      -DOUT=${CMAKE_CURRENT_BINARY_DIR}/emit.bin
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/emit.cmake
+  joggle_script_test(cli-emit emit.cmake
+    DEFINES
+      MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
+      SOURCE_MODULES=${CMAKE_CURRENT_SOURCE_DIR}/modules
+      BUILD_MODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+      OUT=${CMAKE_CURRENT_BINARY_DIR}/emit.bin
   )
   find_program(JOGGLE_TEST_C_COMPILER NAMES cc clang gcc)
   find_program(JOGGLE_TEST_PYTHON NAMES python3 python)
-  if(JOGGLE_TEST_PYTHON)
+  # Every check below reads the paper/ research workspace, so all of them are
+  # gated. They verify recorded evidence and baseline records, which is research
+  # work rather than product coverage.
+  if(JOGGLE_TEST_PYTHON AND JOGGLE_RESEARCH)
     add_test(
       NAME paper-fixtures
       COMMAND
@@ -550,259 +587,219 @@ if(JOGGLE_BUILD_TESTS)
         ${JOGGLE_TEST_PYTHON}
         ${CMAKE_CURRENT_SOURCE_DIR}/paper/baselines/onnx-mlir/numeric-format/check.py
     )
+    # The two matched-baseline extension tables are generated from the preserved
+    # per-task records by one collector, so a table can no longer drift from the
+    # records it claims to summarise, and a task a system cannot complete stays a
+    # row rather than becoming a missing row.
+    foreach(system tvm onnx-mlir)
+      add_test(
+        NAME baseline-table-${system}
+        COMMAND
+          ${JOGGLE_TEST_PYTHON}
+          ${CMAKE_CURRENT_SOURCE_DIR}/paper/scripts/collect_baselines.py
+          ${system} --check
+      )
+      set_tests_properties(
+        baseline-table-${system} PROPERTIES LABELS "research"
+      )
+    endforeach()
     add_test(
       NAME measure-systems
       COMMAND
         ${JOGGLE_TEST_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/test/measure_systems.py
-        --runner ${CMAKE_CURRENT_SOURCE_DIR}/paper/measure_systems.py
+        --runner ${CMAKE_CURRENT_SOURCE_DIR}/paper/scripts/measure_systems.py
         --repo ${CMAKE_CURRENT_SOURCE_DIR}
         --root ${CMAKE_CURRENT_BINARY_DIR}/measure-systems
     )
   endif()
+  # Checks the layout rules stated in README.md. This needs only CMake, so it
+  # runs whether or not Python was found. See test/layout.cmake for the enforce
+  # and report classes: a report-class finding is listed and the test passes,
+  # so the list is the migration queue rather than a red suite.
+  joggle_script_test(layout layout.cmake
+    DEFINES
+      SOURCE=${CMAKE_CURRENT_SOURCE_DIR}
+    LABELS lint
+  )
   if(JOGGLE_TEST_C_COMPILER)
-    add_test(
-      NAME ikj-example
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTOOL=$<TARGET_FILE:joggle-tool>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/examples/ikj/model.jog
-        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/examples/ikj/main.c
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DEXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/examples
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/ikj-example
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/ikj.cmake
+    joggle_script_test(ikj-extension ikj.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/extensions/ikj/model.jog
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/extensions/ikj/main.c
+        EXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/extensions
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/ikj-extension
     )
-    add_test(
-      NAME edge-example
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTOOL=$<TARGET_FILE:joggle-tool>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/examples/edge/model.jog
-        -DKERNEL=${CMAKE_CURRENT_SOURCE_DIR}/examples/edge/kernel.c
-        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/examples/edge/main.c
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DEXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/examples
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/edge-example
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/edge.cmake
+    joggle_script_test(edge-extension edge.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/extensions/edge/model.jog
+        KERNEL=${CMAKE_CURRENT_SOURCE_DIR}/extensions/edge/kernel.c
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/extensions/edge/main.c
+        EXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/extensions
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/edge-extension
     )
-    add_test(
-      NAME locality-example
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTOOL=$<TARGET_FILE:joggle-tool>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/spatial.jog
-        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/spatial_main.c
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DEXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/examples
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/locality-example
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/locality.cmake
+    joggle_script_test(locality-extension locality.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/spatial.jog
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/spatial_main.c
+        EXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/extensions
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/locality-extension
     )
-    add_test(
-      NAME compact-example
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTOOL=$<TARGET_FILE:joggle-tool>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/spatial.jog
-        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/spatial_main.c
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DEXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/examples
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/compact-example
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/compact.cmake
+    joggle_script_test(compact-extension compact.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/spatial.jog
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/spatial_main.c
+        EXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/extensions
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/compact-extension
     )
-    add_test(
-      NAME c-execution
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTOOL=$<TARGET_FILE:joggle-tool>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c.jog
-        -DINVALID_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_invalid.jog
-        -DOPEN_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_open.jog
-        -DRESTRICT_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_restrict.jog
-        -DCOLLISION_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_collision.jog
-        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_main.c
-        -DBLOB_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_blob_main.c
-        -DOPEN_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_open_main.c
-        -DPYTHON=${JOGGLE_TEST_PYTHON}
-        -DGENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/examples/onnx/make_harness.py
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/c-test
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/c.cmake
+    joggle_script_test(c-execution c.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c.jog
+        INVALID_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_invalid.jog
+        OPEN_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_open.jog
+        RESTRICT_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_restrict.jog
+        COLLISION_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_collision.jog
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_main.c
+        BLOB_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_blob_main.c
+        OPEN_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_open_main.c
+        PYTHON=${JOGGLE_TEST_PYTHON}
+        GENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/test/tools/make_harness.py
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/c-test
     )
-    add_test(
-      NAME quant-c-execution
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTOOL=$<TARGET_FILE:joggle-tool>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/quant_c.jog
-        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/quant_c_main.c
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/quant-c-test
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/quant_c.cmake
+    joggle_script_test(quant-c-execution quant_c.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/quant_c.jog
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/quant_c_main.c
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/quant-c-test
     )
     if(JOGGLE_BUILD_ONNX)
+      joggle_script_test(qlinear-c-execution qlinear_c.cmake
+        DEFINES
+          CC=${JOGGLE_TEST_C_COMPILER}
+          MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/qlinear_c.jog
+          HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/qlinear_c_main.c
+          ROOT=${CMAKE_CURRENT_BINARY_DIR}/qlinear-c-test
+      )
+    endif()
+    joggle_script_test(mem-execution mem.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/plan.jog
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem_main.c
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/mem-test
+    )
+    joggle_script_test(mem-safety mem_safety.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem_safety.jog
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem_safety_main.c
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/mem-safety-test
+    )
+    if(JOGGLE_RESEARCH)
       add_test(
-        NAME qlinear-c-execution
+        NAME derive-memory
         COMMAND
           ${CMAKE_COMMAND}
           -DTOOL=$<TARGET_FILE:joggle-tool>
           -DCC=${JOGGLE_TEST_C_COMPILER}
-          -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/qlinear_c.jog
-          -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/qlinear_c_main.c
+          -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem_safety.jog
+          -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem_safety_main.c
           -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-          -DROOT=${CMAKE_CURRENT_BINARY_DIR}/qlinear-c-test
-          -P ${CMAKE_CURRENT_SOURCE_DIR}/test/qlinear_c.cmake
+          -DROOT=${CMAKE_CURRENT_BINARY_DIR}/derive-memory-test
+          -DEXPERIMENTS=${CMAKE_CURRENT_SOURCE_DIR}/paper/experiments
+          -DTEST_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/test/mem_safety.cmake
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/paper/experiments/reuse/check.cmake
       )
     endif()
-    add_test(
-      NAME mem-execution
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTOOL=$<TARGET_FILE:joggle-tool>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/plan.jog
-        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem_main.c
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/mem-test
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/mem.cmake
+    joggle_script_test(dynamic-c-execution dynamic_c.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/dynamic_c.jog
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/dynamic_c_main.c
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/dynamic-c-test
     )
-    add_test(
-      NAME dynamic-c-execution
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTOOL=$<TARGET_FILE:joggle-tool>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/dynamic_c.jog
-        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/dynamic_c_main.c
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/dynamic-c-test
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/dynamic_c.cmake
+    joggle_script_test(nms-c-execution nms_c.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/nms_c.jog
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/nms_c_main.c
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/nms-c-test
     )
-    add_test(
-      NAME nms-c-execution
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTOOL=$<TARGET_FILE:joggle-tool>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/nms_c.jog
-        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/nms_c_main.c
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/nms-c-test
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/nms_c.cmake
+    joggle_script_test(nonzero-c-execution nonzero_c.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/nonzero_c.jog
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/nonzero_c_main.c
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/nonzero-c-test
     )
-    add_test(
-      NAME nonzero-c-execution
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTOOL=$<TARGET_FILE:joggle-tool>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/nonzero_c.jog
-        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/nonzero_c_main.c
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/nonzero-c-test
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/nonzero_c.cmake
+    joggle_script_test(dynamic-slice-c-execution dynamic_slice_c.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/dynamic_slice_c.jog
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/dynamic_slice_c_main.c
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/dynamic-slice-c-test
     )
-    add_test(
-      NAME dynamic-slice-c-execution
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTOOL=$<TARGET_FILE:joggle-tool>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/dynamic_slice_c.jog
-        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/dynamic_slice_c_main.c
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/dynamic-slice-c-test
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/dynamic_slice_c.cmake
+    joggle_script_test(range-c-execution range_c.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/range_c.jog
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/range_c_main.c
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/range-c-test
     )
-    add_test(
-      NAME range-c-execution
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTOOL=$<TARGET_FILE:joggle-tool>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/range_c.jog
-        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/range_c_main.c
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/range-c-test
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/range_c.cmake
+    joggle_script_test(topk-c-execution topk_c.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/topk_c.jog
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/topk_c_main.c
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/topk-c-test
     )
-    add_test(
-      NAME topk-c-execution
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTOOL=$<TARGET_FILE:joggle-tool>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/topk_c.jog
-        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/topk_c_main.c
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/topk-c-test
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/topk_c.cmake
+    joggle_script_test(resize-c-execution resize_c.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/resize_c.jog
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/resize_c_main.c
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/resize-c-test
     )
-    add_test(
-      NAME resize-c-execution
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTOOL=$<TARGET_FILE:joggle-tool>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/resize_c.jog
-        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/resize_c_main.c
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/resize-c-test
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/resize_c.cmake
-    )
-    add_test(
-      NAME tile-execution
-      COMMAND
-        ${CMAKE_COMMAND}
-        -DTOOL=$<TARGET_FILE:joggle-tool>
-        -DCC=${JOGGLE_TEST_C_COMPILER}
-        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile.jog
-        -DFORM_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_form.jog
-        -DCUSTOM_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_custom.jog
-        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_main.c
-        -DFUSE_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem.jog
-        -DFUSE_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem_main.c
-        -DINVALID_FUSE_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_invalid.jog
-        -DEFFECT_FUSE_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_effect.jog
-        -DKEEP_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_keep.jog
-        -DKEEP_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_keep_main.c
-        -DRELU_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_relu.jog
-        -DRELU_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_relu_main.c
-        -DMULTI_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_multi.jog
-        -DMULTI_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_multi_main.c
-        -DMERGE_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_merge.jog
-        -DMERGE_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_merge_main.c
-        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-        -DEXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/examples
-        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/tile-test
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/tile.cmake
+    joggle_script_test(tile-execution tile.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile.jog
+        FORM_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_form.jog
+        CUSTOM_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_custom.jog
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_main.c
+        FUSE_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem.jog
+        FUSE_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem_main.c
+        INVALID_FUSE_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_invalid.jog
+        EFFECT_FUSE_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_effect.jog
+        KEEP_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_keep.jog
+        KEEP_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_keep_main.c
+        RELU_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_relu.jog
+        RELU_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_relu_main.c
+        MULTI_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_multi.jog
+        MULTI_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_multi_main.c
+        MERGE_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_merge.jog
+        MERGE_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_merge_main.c
+        EXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/extensions
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/tile-test
     )
   endif()
-  add_test(
-    NAME cli-report
-    COMMAND
-      ${CMAKE_COMMAND}
-      -DTOOL=$<TARGET_FILE:joggle-tool>
-      -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
-      -DSOURCE_MODULES=${CMAKE_CURRENT_SOURCE_DIR}/modules
-      -DBUILD_MODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-      -DOUT=${CMAKE_CURRENT_BINARY_DIR}/run-report.attr
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/report.cmake
+  joggle_script_test(cli-report report.cmake
+    DEFINES
+      MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
+      SOURCE_MODULES=${CMAKE_CURRENT_SOURCE_DIR}/modules
+      BUILD_MODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+      OUT=${CMAKE_CURRENT_BINARY_DIR}/run-report.attr
   )
-  add_test(
-    NAME cli-module
-    COMMAND
-      ${CMAKE_COMMAND}
-      -DTOOL=$<TARGET_FILE:joggle-tool>
-      -DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/modules
-      -DBUILD_ROOT=${CMAKE_CURRENT_BINARY_DIR}/modules
-      -DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/module-test
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/module.cmake
+  joggle_script_test(cli-module module.cmake
+    DEFINES
+      SOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/modules
+      BUILD_ROOT=${CMAKE_CURRENT_BINARY_DIR}/modules
+      TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/module-test
   )
   if(NOT CMAKE_CXX_FLAGS MATCHES "sanitize")
     add_test(
@@ -941,7 +938,7 @@ if(JOGGLE_BUILD_TESTS)
           -DCC=${JOGGLE_TEST_C_COMPILER}
           -DCASE=${case}
           -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-          -DEXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/examples
+          -DEXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/extensions
           -DROOT=${CMAKE_CURRENT_BINARY_DIR}/${name}
           -P ${CMAKE_CURRENT_SOURCE_DIR}/test/onnx_execute.cmake
       )
@@ -958,19 +955,23 @@ if(JOGGLE_BUILD_TESTS)
       endif()
     endfunction()
 
-    set(onnx_matched_case
-        "${CMAKE_CURRENT_SOURCE_DIR}/paper/fixtures/implementation")
-    joggle_check_onnx_case(
-      "${onnx_matched_case}"
-      662fd988387d6e33bce053676711295f8b6f82b83baf171412d4a48f0e6c7284
-      b819079e4e6f60a2b29c5473b2d0e77a56bfc0fc3766ee48d3ef173e7b4854e6
-      0af081f30a3c7f3b58048f7f1642393afbc5a431bae498c4effe6c820c698b03
-      ca2186ef8510389441295b5dc2f952e15f8c645ad44c05c56e7ea69428bd8195
-    )
-    joggle_onnx_execution(
-      onnx-matched-implementation "${onnx_matched_case}"
-      "onnx;execution;paper"
-    )
+    # The matched-implementation contract and its fixture belong to the paper
+    # workspace, so this check is gated with the rest of the research checks.
+    if(JOGGLE_RESEARCH)
+      set(onnx_matched_case
+          "${CMAKE_CURRENT_SOURCE_DIR}/paper/fixtures/implementation")
+      joggle_check_onnx_case(
+        "${onnx_matched_case}"
+        662fd988387d6e33bce053676711295f8b6f82b83baf171412d4a48f0e6c7284
+        b819079e4e6f60a2b29c5473b2d0e77a56bfc0fc3766ee48d3ef173e7b4854e6
+        0af081f30a3c7f3b58048f7f1642393afbc5a431bae498c4effe6c820c698b03
+        ca2186ef8510389441295b5dc2f952e15f8c645ad44c05c56e7ea69428bd8195
+      )
+      joggle_onnx_execution(
+        onnx-matched-implementation "${onnx_matched_case}"
+        "onnx;execution;paper"
+      )
+    endif()
 
     if(NOT JOGGLE_TEST_ONNX_BACKEND STREQUAL "")
       set(onnx_execute_case "${JOGGLE_TEST_ONNX_BACKEND}/test_matmul_2d")
@@ -990,7 +991,7 @@ if(JOGGLE_BUILD_TESTS)
      (NOT JOGGLE_EXAMPLE_MNIST STREQUAL "" OR
       NOT JOGGLE_EXAMPLE_MOBILENET STREQUAL ""))
     find_program(JOGGLE_PYTHON_EXECUTABLE NAMES python3 python REQUIRED)
-    add_executable(joggle-onnx-app examples/onnx/app.cpp)
+    add_executable(joggle-onnx-app test/onnx-app/app.cpp)
     target_link_libraries(
       joggle-onnx-app PRIVATE Joggle::joggle joggle-onnx-proto
     )
@@ -1027,10 +1028,10 @@ if(JOGGLE_BUILD_TESTS)
           -DOUTPUT=${case}/test_data_set_0/output_0.pb
           -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
           -DPYTHON=${JOGGLE_PYTHON_EXECUTABLE}
-          -DGENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/examples/onnx/make_harness.py
-          -DROOT=${CMAKE_CURRENT_BINARY_DIR}/examples/${name}
+          -DGENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/test/tools/make_harness.py
+          -DROOT=${CMAKE_CURRENT_BINARY_DIR}/onnx-app/${name}
           -DVM=${vm}
-          -P ${CMAKE_CURRENT_SOURCE_DIR}/examples/onnx/run.cmake
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/test/onnx-app/run.cmake
       )
       set_tests_properties(
         onnx-app-${name} PROPERTIES LABELS "${labels}" TIMEOUT ${timeout}
@@ -1104,18 +1105,58 @@ if(JOGGLE_BUILD_TESTS)
               ${CMAKE_CURRENT_BINARY_DIR}/modules
     )
     if(JOGGLE_TEST_C_COMPILER)
-      add_test(
-        NAME sat-c-execution
-        COMMAND
-          ${CMAKE_COMMAND}
-          -DTOOL=$<TARGET_FILE:joggle-tool>
-          -DCC=${JOGGLE_TEST_C_COMPILER}
-          -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/sat_c.jog
-          -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/sat_c_main.c
-          -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-          -DROOT=${CMAKE_CURRENT_BINARY_DIR}/sat-c
-          -P ${CMAKE_CURRENT_SOURCE_DIR}/test/sat_c.cmake
+      joggle_script_test(sat-c-execution sat_c.cmake
+        DEFINES
+          CC=${JOGGLE_TEST_C_COMPILER}
+          MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/sat_c.jog
+          HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/sat_c_main.c
+          ROOT=${CMAKE_CURRENT_BINARY_DIR}/sat-c
       )
     endif()
   endif()
+
+  # Every test carries exactly one kind label, so a useful subset is selectable
+  # without knowing test names:
+  #
+  #   ctest -LE model      the everyday loop: everything except pinned models
+  #   ctest -L unit        native C++ tests
+  #   ctest -L c           generated-C emission, compilation, and execution
+  #   ctest -L extension   out-of-tree module packages under extensions/
+  #   ctest -L example     example applications; the suite does not need them
+  #   ctest -L model       pinned ONNX and TFLite gates; minutes, not seconds
+  #
+  # Existing labels such as onnx-zoo are preserved, because docs/guide/
+  # documents `ctest -L onnx-zoo`.
+  joggle_label(unit
+    workflow network lang-robustness edit-robustness module-robustness vm
+    onnx-codec tflite tflite-value sat
+  )
+  joggle_label(cli
+    cli-version cli-check cli-run cli-query cli-args cli-stream
+    cli-diagnostics cli-emit cli-report cli-module
+  )
+  joggle_label(c
+    c-execution quant-c-execution qlinear-c-execution mem-execution
+    mem-safety dynamic-c-execution dynamic-slice-c-execution nms-c-execution
+    nonzero-c-execution range-c-execution topk-c-execution resize-c-execution
+    tile-execution sat-c-execution
+  )
+  joggle_label(analysis stat-summary bounds-report opt-overloads)
+  joggle_label(extension
+    ikj-extension edge-extension locality-extension compact-extension
+    cost-extension cost-configured-extension
+  )
+  joggle_label(example onnx-app-mnist onnx-app-mobilenet)
+  joggle_label(model
+    onnx-zoo-mnist onnx-zoo-mobilenet onnx-zoo-squeezenet
+    onnx-zoo-squeezenet-qdq onnx-zoo-resnet onnx-zoo-tinyyolo
+    onnx-zoo-tinyyolov3 onnx-zoo-ultraface onnx-zoo-ssd-mobilenet
+    onnx-zoo-shufflenet onnx-zoo-densenet onnx-zoo-googlenet
+    onnx-zoo-mobilenet-contract
+  )
+  joggle_label(install install-consumer)
+  joggle_label(research
+    paper-fixtures onnx-mlir-policy-record onnx-mlir-numeric-format-record
+    measure-systems derive-memory onnx-matched-implementation
+  )
 endif()

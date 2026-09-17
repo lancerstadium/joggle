@@ -1,0 +1,130 @@
+[memo]
+local fn phase_rules(
+  rules: list<Fn>, phase: str, callee: str
+) -> list<Fn> {
+  return ir.where(ir.where(rules, "phase", phase), "on", callee)
+}
+
+local fn set_type(m: Mod, value: Val, type: Ty) -> bool {
+  if type == ty("_") {
+    return false
+  }
+  let current = ir.type(value)
+  if current == ty("_") {
+    return ir.type(m, value, type)
+  }
+  let refined = tensor.refined(current, type)
+  if refined != ty("_") && refined != current {
+    return ir.type(m, value, refined)
+  }
+  return false
+}
+
+local fn attrs(op: Op) -> Attr {
+  return base.get(ir.meta(op), "onnx", {})
+}
+
+local fn refine_graph_ref(m: Mod, op: Op, ref: Attr) -> bool {
+  if base.kind(ref) != "dict" || !base.has(ref, "fn") ||
+     !base.has(ref, "inputs") || !base.has(ref, "captures") ||
+     base.kind(ref["fn"]) != "str" ||
+     base.kind(ref["inputs"]) != "int" ||
+     base.kind(ref["captures"]) != "list" {
+    return false
+  }
+  let graph = ir.find(m, base.str(ref["fn"]))
+  if !ir.live(graph) {
+    return false
+  }
+  let first = base.int(ref["inputs"])
+  let params = ir.params(graph)
+  let inputs = ir.args(op)
+  if first < 0 || first + len(ref["captures"]) > len(params) {
+    return false
+  }
+  for capture in ref["captures"] {
+    if base.kind(capture) != "int" {
+      return false
+    }
+    let index = base.int(capture)
+    if index < 0 || index >= len(inputs) {
+      return false
+    }
+  }
+  var changed = false
+  var offset = 0
+  for capture in ref["captures"] {
+    let index = base.int(capture)
+    changed = set_type(
+      m, params[first + offset], ir.type(inputs[index])
+    ) || changed
+    offset += 1
+  }
+  return changed
+}
+
+[phase: "infer", on: "*"]
+local fn refine_graphs(m: Mod, op: Op) -> bool {
+  var changed = false
+  let meta = attrs(op)
+  for key in base.keys(meta) {
+    let value = meta[key]
+    if base.kind(value) == "dict" {
+      changed = refine_graph_ref(m, op, value) || changed
+    }
+    if base.kind(value) == "list" {
+      for item in value {
+        changed = refine_graph_ref(m, op, item) || changed
+      }
+    }
+  }
+  return changed
+}
+
+local fn shaped(elem: Ty, dims: list<Ty>) -> Ty {
+  return ty("tensor", [elem, ty("[]", dims)])
+}
+
+local fn same_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 0 && len(outputs) == 1 {
+    let type = ir.type(inputs[0])
+    if tensor.valid(type) {
+      return set_type(m, outputs[0], type)
+    }
+  }
+  return false
+}
+
+local fn signed(data: Attr, offset: int, width: int) -> int {
+  var value = base.byte(data, offset + width - 1)
+  if value >= 128 {
+    value -= 256
+  }
+  for reverse in 1..width {
+    value = value * 256 + base.byte(data, offset + width - reverse - 1)
+  }
+  return value
+}
+
+local fn positive(dim: Ty) -> bool {
+  return kind(dim) == "int" && int(dim) > 0
+}
+
+local fn known_mismatch(left: Ty, right: Ty) -> bool {
+  return kind(left) == "int" && kind(right) == "int" && left != right
+}
+
+local fn infer_once(m: Mod, rules: list<Fn>) -> bool {
+  var changed = false
+  let common = phase_rules(rules, "infer", "*")
+  for op in ir.ops(m) {
+    let matches = common + phase_rules(rules, "infer", ir.callee(op))
+    for rule in matches {
+      changed = ir.invoke<bool>(m, op, rule) || changed
+    }
+  }
+  return changed
+}
+

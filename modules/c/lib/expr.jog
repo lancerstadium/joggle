@@ -1,0 +1,325 @@
+local fn logical(
+  m: Mod, op: Op, blob: str, data_fns: list<Fn>, config: dict
+) -> str {
+  if ir.kind(op) != "branch" {
+    return ""
+  }
+  let inputs = ir.args(op)
+  let bodies = ir.blks(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(bodies) != 2 || len(outputs) != 1 ||
+     ir.type(outputs[0]) != ty("bool") {
+    return ""
+  }
+  let first_args = ir.args(bodies[0])
+  let second_args = ir.args(bodies[1])
+  let first_ops = ir.ops(bodies[0])
+  let second_ops = ir.ops(bodies[1])
+  if len(first_args) != 1 || len(second_args) != 1 ||
+     len(first_ops) == 0 || len(second_ops) == 0 {
+    return ""
+  }
+  let first_yield = first_ops[len(first_ops) - 1]
+  let second_yield = second_ops[len(second_ops) - 1]
+  if ir.kind(first_yield) != "yield" ||
+     ir.kind(second_yield) != "yield" ||
+     len(ir.args(first_yield)) != 1 || len(ir.args(second_yield)) != 1 {
+    return ""
+  }
+  let first = ir.args(first_yield)[0]
+  let second = ir.args(second_yield)[0]
+  if second == second_args[0] && first != first_args[0] {
+    return "(" + expr(m, inputs[0], blob, data_fns, config) + " && " +
+           expr(m, first, blob, data_fns, config) + ")"
+  }
+  if first == first_args[0] && second != second_args[0] {
+    return "(" + expr(m, inputs[0], blob, data_fns, config) + " || " +
+           expr(m, second, blob, data_fns, config) + ")"
+  }
+  return ""
+}
+
+local fn expr(
+  m: Mod, value: Val, blob: str, data_fns: list<Fn>, config: dict
+) -> str {
+  if ir.is_const(value) {
+    let source = ir.def(value)
+    if !tensor.valid(ir.type(value)) &&
+       ir.form(source) != "var" && !reuses(source) {
+      return text(ir.constant(value))
+    }
+  }
+  if ir.name(value) != "" {
+    return val(value)
+  }
+  if tensor.valid(ir.type(value)) {
+    return val(value)
+  }
+  let op = ir.def(value)
+  assert(ir.live(op),
+         "c: unnamed " + text(ir.type(value)) +
+         " value has no definition")
+  if ir.kind(op) == "branch" {
+    let out = logical(m, op, blob, data_fns, config)
+    assert(out != "", "c: unnamed branch value is not a logical expression")
+    return out
+  }
+  assert(ir.kind(op) == "call",
+         "c: unnamed " + text(ir.type(value)) +
+         " value is neither a constant nor a call result")
+  let name = call_name(m, op)
+  let inputs = ir.args(op)
+  if name == "operator []" {
+    return index(m, inputs[0], inputs, blob, data_fns, config)
+  }
+  if ir.target(m, op) == "tensor.dim" && len(inputs) == 2 {
+    return dimension(m, inputs[0], inputs[1], blob, data_fns, config)
+  }
+  let binary_op = binary(name)
+  if binary_op != "" && len(inputs) == 2 {
+    return "(" + expr(m, inputs[0], blob, data_fns, config) + " " +
+           binary_op + " " +
+           expr(m, inputs[1], blob, data_fns, config) + ")"
+  }
+  let unary_op = unary(name)
+  if unary_op != "" && len(inputs) == 1 {
+    return "(" + unary_op +
+           expr(m, inputs[0], blob, data_fns, config) + ")"
+  }
+  if len(inputs) == 1 && scalar_name(name, config) {
+    return "((" + scalar(ty(name), config) + ")(" +
+           expr(m, inputs[0], blob, data_fns, config) + "))"
+  }
+  let bound = binding(m, op)
+  if bound != "" && len(ir.outs(op)) == 1 &&
+     !tensor.valid(ir.type(ir.outs(op)[0])) {
+    return bound + "(" + args(m, inputs, blob, data_fns, config) + ")"
+  }
+  let target = ir.resolve(m, op)
+  if callable(m, target, config) && len(ir.outs(op)) == 1 &&
+     !tensor.valid(ir.type(value)) &&
+     len(ir.users(value)) == 1 {
+    var actuals = args(m, inputs, blob, data_fns, config)
+    if blob != "" && owned(m, target) && has_fn(data_fns, target) {
+      if actuals != "" {
+        actuals += ", "
+      }
+      actuals += blob
+    }
+    return symbol(m, target, config) + "(" + actuals + ")"
+  }
+  assert(false, "c: unnamed call must be assigned or exposed: " + name)
+  return ""
+}
+
+local fn reuses(op: Op) -> bool {
+  let form = ir.form(op)
+  return form == "assign" || form == "compound" || form == "index_assign"
+}
+
+local fn lhs(op: Op, output: Val, config: dict) -> str {
+  if reuses(op) {
+    return val(output)
+  }
+  var type = scalar(ir.type(output), config)
+  if ir.form(op) == "let" {
+    type = "const " + type
+  }
+  return type + " " + val(output)
+}
+
+local fn index(
+  m: Mod, value: Val, indices: list<Val>, blob: str,
+  data_fns: list<Fn>, config: dict
+) -> str {
+  let type = ir.type(value)
+  if tensor.valid(type) {
+    let dims = tensor.dims(type)
+    assert(len(indices) == 2 || len(indices) == len(dims) + 1,
+           "c: tensor index must be linear or match its rank")
+    var out = expr(m, indices[1], blob, data_fns, config)
+    if len(indices) != 2 {
+      for i in 2..len(indices) {
+        out = "(" + out + " * " + extent(m, value, i - 1) + " + " +
+              expr(m, indices[i], blob, data_fns, config) + ")"
+      }
+    }
+    return val(value) + "[" + out + "]"
+  }
+  let source = ir.def(value)
+  let types = base.args(type)
+  assert(base.name(type) == "list" && len(types) == 1 &&
+         len(indices) == 2 &&
+         ir.live(source) && ir.callee(source) == "base.list",
+         "c: scalar index requires a literal list")
+  return "((const " + scalar(types[0], config) + "[]){" +
+         args(m, ir.args(source), blob, data_fns, config) + "})[" +
+         expr(m, indices[1], blob, data_fns, config) + "]"
+}
+
+local fn args(
+  m: Mod, values: list<Val>, blob: str, data_fns: list<Fn>, config: dict
+) -> str {
+  var out = ""
+  for i in 0..len(values) {
+    if i != 0 {
+      out += ", "
+    }
+    out += expr(m, values[i], blob, data_fns, config)
+    if tensor.valid(ir.type(values[i])) {
+      let dims = tensor.dims(ir.type(values[i]))
+      for axis in 0..len(dims) {
+        if base.kind(dims[axis]) != "int" {
+          out += ", " + extent(m, values[i], axis)
+        }
+      }
+    }
+  }
+  return out
+}
+
+[memo]
+local fn binary(op: str) -> str {
+  let operators = {
+    "operator %": "%", "operator &": "&", "operator &&": "&&",
+    "operator *": "*", "operator +": "+", "operator -": "-",
+    "operator /": "/", "operator <": "<", "operator <<": "<<",
+    "operator <=": "<=", "operator ==": "==", "operator >": ">",
+    "operator >=": ">=", "operator >>": ">>", "operator ^": "^",
+    "operator |": "|", "operator ||": "||", "operator !=": "!="
+  }
+  if has(operators, op) {
+    return str(operators[op])
+  }
+  return ""
+}
+
+[memo]
+local fn unary(op: str) -> str {
+  let operators = {
+    "operator !": "!", "operator +": "+", "operator -": "-",
+    "operator ~": "~"
+  }
+  if has(operators, op) {
+    return str(operators[op])
+  }
+  return ""
+}
+
+local fn binary_types(
+  op: str, inputs: list<Val>, output: Val, config: dict
+) -> bool {
+  if len(inputs) != 2 || binary(op) == "" {
+    return false
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[1])
+  let result = ir.type(output)
+  let compatible = same_repr(left, right, config) ||
+                   (number(left, config) && number(right, config) &&
+                    (ir.is_const(inputs[0]) || ir.is_const(inputs[1])))
+  if op == "operator &&" || op == "operator ||" {
+    return class(left, config) != "" && class(right, config) != "" &&
+           result == ty("bool")
+  }
+  if op == "operator ==" || op == "operator !=" ||
+     op == "operator <" || op == "operator <=" ||
+     op == "operator >" || op == "operator >=" {
+    return compatible && result == ty("bool")
+  }
+  if op == "operator <<" || op == "operator >>" {
+    return integer(left, config) && integer(right, config) &&
+           same_repr(result, left, config)
+  }
+  if op == "operator %" || op == "operator &" ||
+     op == "operator ^" || op == "operator |" {
+    return integer(left, config) && integer(right, config) &&
+           same_repr(left, right, config) && same_repr(result, left, config)
+  }
+  return number(left, config) && number(right, config) && compatible &&
+         same_repr(result, left, config)
+}
+
+local fn unary_types(
+  op: str, input: Val, output: Val, config: dict
+) -> bool {
+  let source = ir.type(input)
+  let result = ir.type(output)
+  if op == "operator !" {
+    return class(source, config) != "" && result == ty("bool")
+  }
+  if op == "operator ~" {
+    return integer(source, config) && same_repr(result, source, config)
+  }
+  return number(source, config) && same_repr(result, source, config)
+}
+
+local fn copy(
+  m: Mod, op: Op, depth: int, blob: str, data_fns: list<Fn>, config: dict,
+  direct: list<str>, results: list<str>
+) -> str {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  assert(len(inputs) == 1 && len(outputs) == 1,
+         "c: copy requires one input and one output")
+  let input = inputs[0]
+  let output = outputs[0]
+  let type = ir.type(output)
+  let indent = pad(depth)
+  if tensor.valid(type) {
+    var out = ""
+    if !reuses(op) && !mem.planned(output) {
+      let target = direct_result(output, direct, results)
+      if target == "" {
+        out = indent + scalar(tensor.elem(type), config) + " " + val(output) +
+              "[" + text(allocation_count(m, output)) + "];\n"
+      } else {
+        out = indent + scalar(tensor.elem(type), config) + "* " + val(output) +
+              " = " + target + ";\n"
+      }
+    }
+    if val(output) != val(input) {
+      var copied = ""
+      if tensor.static(type) {
+        copied = text(count(type))
+      } else {
+        var capacity = mem.capacity(m, input)
+        var bounded = input
+        if len(capacity) != len(tensor.dims(type)) {
+          capacity = mem.capacity(m, output)
+          bounded = output
+        }
+        if len(capacity) == len(tensor.dims(type)) {
+          copied = text(storage_count(m, bounded))
+        } else {
+          copied = logical_count(m, input)
+        }
+      }
+      out += indent + "memcpy(" + val(output) + ", " + val(input) + ", " +
+             "(" + copied + ") * " +
+             text(width(tensor.elem(type), config)) + ");\n"
+    }
+    return out
+  }
+  return indent + lhs(op, output, config) + " = " +
+         expr(m, input, blob, data_fns, config) + ";\n"
+}
+
+local fn compound_identity(
+  op: str, value: Val, type: Ty, config: dict
+) -> bool {
+  if !integer(type, config) || !ir.is_const(value) ||
+     base.kind(ir.constant(value)) != "int" {
+    return false
+  }
+  let literal = base.int(ir.constant(value))
+  if op == "+" || op == "-" || op == "|" || op == "^" ||
+     op == "<<" || op == ">>" {
+    return literal == 0
+  }
+  if op == "*" || op == "/" {
+    return literal == 1
+  }
+  return false
+}
+

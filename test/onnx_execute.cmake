@@ -1,31 +1,21 @@
-if(NOT DEFINED TEST OR NOT DEFINED CC OR NOT DEFINED CASE OR
-   NOT DEFINED MODULES OR NOT DEFINED EXAMPLES OR NOT DEFINED ROOT)
-  message(FATAL_ERROR
-          "ONNX execution test requires TEST, CC, CASE, MODULES, "
-          "EXAMPLES, and ROOT")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/joggle_test.cmake")
 
-file(REMOVE_RECURSE "${ROOT}")
-file(MAKE_DIRECTORY "${ROOT}")
+joggle_require("ONNX execution test requires TEST, CC, CASE, MODULES, EXTENSIONS, and ROOT" VARS TEST CC CASE MODULES EXTENSIONS ROOT)
+
+joggle_workspace("${ROOT}")
 set(source "${ROOT}/model.c")
 set(harness "${ROOT}/harness.c")
 set(program "${ROOT}/model")
 
-execute_process(
+joggle_run("ONNX VM execution failed"
   COMMAND "${TEST}"
           "${CASE}/model.onnx"
           "${CASE}/test_data_set_0/input_0.pb"
           "${CASE}/test_data_set_0/input_1.pb"
           "${CASE}/test_data_set_0/output_0.pb"
-          "${source}" "${harness}" "${MODULES}" "${EXAMPLES}"
-  RESULT_VARIABLE result
+          "${source}" "${harness}" "${MODULES}" "${EXTENSIONS}"
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "ONNX VM execution failed (${result}):\n${output}${error}")
-endif()
+  ERROR_VARIABLE error)
 
 execute_process(
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Werror
@@ -41,14 +31,7 @@ if(NOT result EQUAL 0)
           "${output}${error}\n${emitted}")
 endif()
 
-execute_process(
+joggle_run("ONNX-generated C disagrees with the official output"
   COMMAND "${program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "ONNX-generated C disagrees with the official output (${result}):\n"
-          "${output}${error}")
-endif()
+  ERROR_VARIABLE error)

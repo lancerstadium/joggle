@@ -1,0 +1,381 @@
+local fn ints(m: Mod, before: Op, value: Attr) -> Val {
+  var items: list<Val> = []
+  for item in value {
+    items += [ir.constant(m, before, item, ty("int"))]
+  }
+  return ir.call(m, before, "base.list", items, ty("list", [ty("int")]))
+}
+
+local fn mapped(value: Val, old: list<Val>, next: list<Val>) -> Val {
+  for i in 0..len(old) {
+    if value == old[i] {
+      return next[i]
+    }
+  }
+  return value
+}
+
+local fn scalar(m: Mod, before: Op, value: Val) -> Val {
+  let type = ir.type(value)
+  assert(tensor.valid(type) && len(tensor.dims(type)) == 0,
+         "onnx.nn: scalar tensor expected")
+  let zero = ir.constant(m, before, 0, ty("index"))
+  return ir.call(
+    m, before, "operator []", [value, zero], tensor.elem(type)
+  )
+}
+
+local fn shape_value(
+  m: Mod, before: Op, dims: list<Ty>, leading: Val
+) -> Val {
+  assert(len(dims) != 0 && dims[0] == ty("_"),
+         "onnx.nn: dynamic leading dimension expected")
+  let shape_type = tensor.type(ty("index"), [len(dims)])
+  let zero_literal = ir.constant(m, before, 0, ty("int"))
+  let zero = ir.call(m, before, "index", [zero_literal], ty("index"))
+  var shape = ir.call(m, before, "tensor.tensor", [zero], shape_type)
+  var shape_name = local_name(before, "shape_", 0)
+  assert(ir.live(shape) && shape_name != "" &&
+         ir.rename(m, shape, shape_name),
+         "onnx.nn: could not create runtime shape")
+  for axis in 0..len(dims) {
+    var extent = leading
+    if axis != 0 {
+      extent = zero
+      if base.kind(dims[axis]) == "int" {
+        assert(base.int(dims[axis]) >= 0,
+               "onnx.nn: negative scan dimension")
+        extent = ir.constant(
+          m, before, base.int(dims[axis]), ty("index")
+        )
+      }
+    }
+    let at = ir.constant(m, before, axis, ty("index"))
+    let updated = ir.call(
+      m, before, "tensor.operator []=", [shape, at, extent], shape_type
+    )
+    shape_name = local_name(before, "shape_", axis + 1)
+    assert(ir.live(updated) && shape_name != "" &&
+           ir.rename(m, updated, shape_name),
+           "onnx.nn: could not update runtime shape")
+    shape = updated
+  }
+  return shape
+}
+
+local fn scan_shape(
+  m: Mod, before: Op, leading: Val, sample: Val
+) -> Val {
+  let rank = len(tensor.dims(ir.type(sample))) + 1
+  let shape_type = tensor.type(ty("index"), [rank])
+  let zero = ir.constant(m, before, 0, ty("index"))
+  var shape = ir.call(m, before, "tensor.tensor", [zero], shape_type)
+  for axis in 0..rank {
+    var extent = leading
+    if axis != 0 {
+      let sample_axis = ir.constant(m, before, axis - 1, ty("index"))
+      extent = ir.call(
+        m, before, "tensor.dim", [sample, sample_axis], ty("index")
+      )
+    }
+    let at = ir.constant(m, before, axis, ty("index"))
+    shape = ir.call(
+      m, before, "tensor.operator []=", [shape, at, extent], shape_type
+    )
+  }
+  return shape
+}
+
+local fn trimmed_scan_shape(
+  m: Mod, before: Op, leading: Val, storage: Val
+) -> Val {
+  let rank = len(tensor.dims(ir.type(storage)))
+  let shape_type = tensor.type(ty("index"), [rank])
+  let zero = ir.constant(m, before, 0, ty("index"))
+  var shape = ir.call(m, before, "tensor.tensor", [zero], shape_type)
+  for axis in 0..rank {
+    var extent = leading
+    if axis != 0 {
+      let storage_axis = ir.constant(m, before, axis, ty("index"))
+      extent = ir.call(
+        m, before, "tensor.dim", [storage, storage_axis], ty("index")
+      )
+    }
+    let at = ir.constant(m, before, axis, ty("index"))
+    shape = ir.call(
+      m, before, "tensor.operator []=", [shape, at, extent], shape_type
+    )
+  }
+  return shape
+}
+
+local fn initialize_scan(
+  m: Mod, before: Op, storage: Val, sample: Val,
+  leading: Val, written: Val
+) -> Val {
+  var dynamic = false
+  for dim in tensor.dims(ir.type(sample)) {
+    if base.kind(dim) != "int" {
+      dynamic = true
+    }
+  }
+  if !dynamic {
+    return storage
+  }
+  let zero_index = ir.constant(m, before, 0, ty("index"))
+  let first = ir.call(
+    m, before, "operator ==", [written, zero_index], ty("bool")
+  )
+  let branch = ir.branch(m, before, first, [storage])
+  assert(ir.live(branch), "onnx.nn: could not guard scan allocation")
+  let then_body = ir.blks(branch)[0]
+  let then_storage = ir.args(then_body)[0]
+  let then_yield = ir.ops(then_body)[0]
+  let shape = scan_shape(m, then_yield, leading, sample)
+  let fill = zero(m, then_yield, tensor.elem(ir.type(storage)))
+  let allocated = ir.call(
+    m, then_yield, "tensor.make", [fill, shape], ir.type(storage)
+  )
+  let assigned = ir.assign(m, then_yield, then_storage, allocated)
+  assert(ir.live(assigned) && ir.args(m, then_yield, [assigned]),
+         "onnx.nn: could not initialize dynamic scan storage")
+  return ir.outs(branch)[0]
+}
+
+local fn zero(m: Mod, before: Op, type: Ty) -> Val {
+  let name = base.name(type)
+  if name == "f16" || name == "bf16" || name == "f32" || name == "f64" {
+    return ir.constant(m, before, 0.0, type)
+  }
+  if name == "bool" {
+    return ir.constant(m, before, false, type)
+  }
+  return ir.constant(m, before, 0, type)
+}
+
+local fn local_name(before: Op, stem: str, ordinal: int) -> str {
+  let owner = ir.owner(ir.blk(before))
+  var attempt = ordinal
+  for unused in 0..len(ir.vals(owner)) + 2 {
+    let candidate = stem + text(attempt)
+    var taken = false
+    for value in ir.vals(owner) {
+      if ir.name(value) == candidate {
+        taken = true
+      }
+    }
+    if !taken {
+      return candidate
+    }
+    attempt += 1
+  }
+  return ""
+}
+
+local fn local_copy(
+  m: Mod, before: Op, value: Val, stem: str, ordinal: int
+) -> Val {
+  let copy = ir.call(m, before, "base.copy", [value], ir.type(value))
+  let name = local_name(before, stem, ordinal)
+  assert(ir.live(copy) && name != "" && ir.rename(m, copy, name),
+         "onnx.nn: could not create loop state")
+  return copy
+}
+
+local fn compatible_shape(left: Ty, right: Ty) -> bool {
+  if left == right || left == ty("_") || right == ty("_") {
+    return true
+  }
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     tensor.elem(left) != tensor.elem(right) ||
+     len(tensor.dims(left)) != len(tensor.dims(right)) {
+    return false
+  }
+  for i in 0..len(tensor.dims(left)) {
+    if known_mismatch(tensor.dims(left)[i], tensor.dims(right)[i]) {
+      return false
+    }
+  }
+  return true
+}
+
+local fn branch_seed(before: Op, type: Ty) -> Val {
+  for value in ir.args(before) {
+    if compatible_shape(ir.type(value), type) {
+      return value
+    }
+  }
+  return ir.outs(before)[0]
+}
+
+local fn scalar_tensor(
+  m: Mod, before: Op, element: Ty, stem: str, ordinal: int
+) -> Val {
+  let value = zero(m, before, element)
+  let dims: list<int> = []
+  let result_type = tensor.type(element, dims)
+  let result = ir.call(m, before, "tensor.tensor", [value], result_type)
+  let name = local_name(before, stem, ordinal)
+  assert(ir.live(result) && name != "" && ir.rename(m, result, name),
+         "onnx.nn: could not create an optional scalar")
+  return result
+}
+
+local fn optional_scalar(
+  m: Mod, before: Op, inputs: list<Val>, position: int,
+  element: Ty, stem: str, ordinal: int
+) -> Val {
+  if position < len(inputs) && ir.type(inputs[position]) != ty("nil") {
+    return inputs[position]
+  }
+  return scalar_tensor(m, before, element, stem, ordinal)
+}
+
+local fn convert_call(m: Mod, op: Op, callee: str) -> bool {
+  if !ir.retarget(m, op, callee, ir.args(op)) {
+    return false
+  }
+  ir.unset(m, op, "onnx")
+  return true
+}
+
+local fn convert_call(
+  m: Mod, op: Op, callee: str, inputs: list<Val>
+) -> bool {
+  if !ir.retarget(m, op, callee, inputs) {
+    return false
+  }
+  ir.unset(m, op, "onnx")
+  return true
+}
+
+[phase: "data", on: "onnx.tensor"]
+local fn convert_tensor(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 ||
+     !tensor.valid(ir.type(outputs[0])) || !ir.is_const(inputs[2]) ||
+     base.kind(ir.constant(inputs[2])) != "bytes" {
+    return false
+  }
+  let data = ir.constant(inputs[2])
+  if !ir.replace(m, op, data) {
+    return false
+  }
+  ir.unset(m, op, "onnx")
+  return true
+}
+
+[phase: "cleanup", on: "onnx.model"]
+local fn convert_model(m: Mod, op: Op) -> bool {
+  for candidate in ir.ops(m) {
+    if ir.live(candidate) && candidate != op && ir.has(candidate, "onnx") {
+      return false
+    }
+  }
+  return ir.erase(m, op)
+}
+
+local fn carry(m: Mod, source: Val, target: Val) -> bool {
+  var changed = false
+  let value_name = ir.name(source)
+  if value_name != "" {
+    changed = ir.rename(m, target, value_name) || changed
+  }
+  let metadata = ir.meta(source)
+  for key in base.keys(metadata) {
+    changed = ir.set(m, target, key, metadata[key]) || changed
+  }
+  return changed
+}
+
+local fn carry(m: Mod, source: Op, target: Op) -> bool {
+  var changed = false
+  let metadata = ir.meta(source)
+  for key in base.keys(metadata) {
+    if key != "onnx" {
+      changed = ir.set(m, target, key, metadata[key]) || changed
+    }
+  }
+  return changed
+}
+
+[phase: "shape", on: "onnx.Identity"]
+local fn convert_identity(m: Mod, op: Op) -> bool {
+  return convert_unary(m, op, "base.copy")
+}
+
+local fn fill_if_arm(
+  m: Mod, source: Fn, info: Attr, call: Op, target: Blk
+) -> bool {
+  if base.kind(info) != "dict" || !base.has(info, "inputs") ||
+     !base.has(info, "captures") || base.int(info["inputs"]) != 0 ||
+     base.kind(info["captures"]) != "list" ||
+     len(ir.blks(source)) != 1 {
+    return false
+  }
+  let params = ir.params(source)
+  if len(params) != len(info["captures"]) {
+    return false
+  }
+  var old: list<Val> = []
+  var next: list<Val> = []
+  let inputs = ir.args(call)
+  for i in 0..len(params) {
+    let position = base.int(info["captures"][i])
+    if position < 0 || position >= len(inputs) {
+      return false
+    }
+    old += [params[i]]
+    next += [inputs[position]]
+  }
+  let outer = ir.generics(ir.owner(ir.blk(call)))
+  for generic in ir.generics(source) {
+    for candidate in outer {
+      if ir.name(generic) == ir.name(candidate) {
+        old += [generic]
+        next += [candidate]
+      }
+    }
+  }
+
+  let target_ops = ir.ops(target)
+  if len(target_ops) != 1 || ir.kind(target_ops[0]) != "yield" {
+    return false
+  }
+  let terminator = target_ops[0]
+  let source_ops = ir.ops(ir.blks(source)[0])
+  if len(source_ops) == 0 ||
+     ir.kind(source_ops[len(source_ops) - 1]) != "return" {
+    return false
+  }
+  for i in 0..len(source_ops) - 1 {
+    let copy = ir.clone(m, source_ops[i], terminator, old, next)
+    if !ir.live(copy) {
+      return false
+    }
+    old += ir.outs(source_ops[i])
+    next += ir.outs(copy)
+  }
+  let returned = ir.args(source_ops[len(source_ops) - 1])
+  let carried = ir.args(target)
+  if len(returned) != len(carried) {
+    return false
+  }
+  var yielded: list<Val> = []
+  for i in 0..len(returned) {
+    let value = mapped(returned[i], old, next)
+    if !compatible_shape(ir.type(value), ir.type(carried[i])) ||
+       !ir.type(m, value, ir.type(carried[i])) {
+      return false
+    }
+    let assigned = ir.assign(
+      m, terminator, carried[i], value
+    )
+    if !ir.live(assigned) {
+      return false
+    }
+    yielded += [assigned]
+  }
+  return ir.args(m, terminator, yielded)
+}

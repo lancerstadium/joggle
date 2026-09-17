@@ -1,0 +1,445 @@
+local fn direct_result(
+  value: Val, direct: list<str>, results: list<str>
+) -> str {
+  assert(len(direct) == len(results),
+         "c: direct result map is inconsistent")
+  if !tensor.valid(ir.type(value)) {
+    return ""
+  }
+  for i in 0..len(direct) {
+    if direct[i] != "" && label(value) == direct[i] {
+      return results[i]
+    }
+  }
+  return ""
+}
+
+local fn returned_only(value: Val) -> bool {
+  let users = ir.users(value)
+  return len(users) == 1 && ir.kind(users[0]) == "return"
+}
+
+local fn call(
+  m: Mod, op: Op, depth: int, blob: str, data_fns: list<Fn>, config: dict,
+  direct: list<str>, results: list<str>
+) -> str {
+  let name = call_name(m, op)
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  let indent = pad(depth)
+  assert(accepts_with(m, op, config), "c: call must be prepared: " + name)
+  let resolved = ir.target(m, op)
+  if resolved == "tensor.make" {
+    return tensor_make(m, op, depth, blob, data_fns, config)
+  }
+  if resolved == "tensor.view" {
+    return tensor_view(op, depth, config)
+  }
+  if resolved == "tensor.dim" {
+    assert(len(inputs) == 2 && len(outputs) == 1,
+           "c: tensor.dim requires data and axis")
+    if ir.name(outputs[0]) == "" {
+      return ""
+    }
+    return indent + lhs(op, outputs[0], config) + " = " +
+           dimension(m, inputs[0], inputs[1], blob, data_fns, config) + ";\n"
+  }
+  if name == "base.list" || name == "operator .." {
+    return ""
+  }
+  if name == "base.assert" || resolved == "base.assert" {
+    assert(len(inputs) == 2 && len(outputs) == 1,
+           "c: assert requires condition and message")
+    var out = indent + "assert(" +
+              expr(m, inputs[0], blob, data_fns, config) + ");\n"
+    if ir.name(outputs[0]) != "" {
+      out += indent + lhs(op, outputs[0], config) + " = true;\n"
+    }
+    return out
+  }
+  if name == "base.copy" {
+    return copy(m, op, depth, blob, data_fns, config, direct, results)
+  }
+  if name == "operator []" {
+    assert(len(outputs) == 1 && len(inputs) >= 2,
+           "c: invalid tensor load")
+    if ir.name(outputs[0]) == "" {
+      return ""
+    }
+    return indent + lhs(op, outputs[0], config) +
+           " = " +
+           index(m, inputs[0], inputs, blob, data_fns, config) + ";\n"
+  }
+  if name == "operator []=" {
+    assert(len(outputs) == 1 && len(inputs) >= 3,
+           "c: invalid tensor store")
+    if !runtime_storage(m, inputs[0]) {
+      return ""
+    }
+    var access: list<Val> = [inputs[0]]
+    for i in 1..len(inputs) - 1 {
+      access += [inputs[i]]
+    }
+    return indent +
+           index(m, inputs[0], access, blob, data_fns, config) + " = " +
+           expr(m, inputs[len(inputs) - 1], blob, data_fns, config) + ";\n"
+  }
+
+  let target = ir.resolve(m, op)
+  if len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
+     ir.live(target) && ir.symbol(target) == "tensor.tensor" {
+    return tensor_new(
+      m, op, depth, blob, data_fns, config, direct, results
+    )
+  }
+  let binary_op = binary(name)
+  if binary_op != "" && len(inputs) == 2 && len(outputs) == 1 &&
+     !tensor.valid(ir.type(outputs[0])) {
+    if ir.name(outputs[0]) == "" {
+      return ""
+    }
+    if ir.form(op) == "compound" {
+      if compound_identity(
+           binary_op, inputs[1], ir.type(outputs[0]), config
+         ) {
+        return ""
+      }
+      return indent + val(outputs[0]) + " " + binary_op + "= " +
+             expr(m, inputs[1], blob, data_fns, config) + ";\n"
+    }
+    return indent + lhs(op, outputs[0], config) + " = " +
+           expr(m, inputs[0], blob, data_fns, config) + " " + binary_op +
+           " " + expr(m, inputs[1], blob, data_fns, config) + ";\n"
+  }
+
+  let unary_op = unary(name)
+  if unary_op != "" && len(inputs) == 1 && len(outputs) == 1 &&
+     !tensor.valid(ir.type(outputs[0])) {
+    if ir.name(outputs[0]) == "" {
+      return ""
+    }
+    return indent + lhs(op, outputs[0], config) + " = " + unary_op +
+           expr(m, inputs[0], blob, data_fns, config) + ";\n"
+  }
+
+  if len(inputs) == 1 && len(outputs) == 1 && scalar_name(name, config) &&
+     !tensor.valid(ir.type(outputs[0])) {
+    if ir.name(outputs[0]) == "" {
+      return ""
+    }
+    return indent + lhs(op, outputs[0], config) + " = (" +
+           scalar(ty(name), config) + ")(" +
+           expr(m, inputs[0], blob, data_fns, config) + ");\n"
+  }
+
+  if len(outputs) == 1 {
+    let bound = binding(m, op)
+    if bound != "" && !tensor.valid(ir.type(outputs[0])) {
+      if ir.name(outputs[0]) == "" {
+        return ""
+      }
+      return indent + lhs(op, outputs[0], config) + " = " + bound + "(" +
+             args(m, inputs, blob, data_fns, config) + ");\n"
+    }
+  }
+
+  let callee = symbol(m, target, config)
+  var actuals = args(m, inputs, blob, data_fns, config)
+  if blob != "" && owned(m, target) && has_fn(data_fns, target) {
+    if actuals != "" {
+      actuals += ", "
+    }
+    actuals += blob
+  }
+  if len(outputs) == 0 {
+    return indent + callee + "(" + actuals + ");\n"
+  }
+  if len(outputs) > 1 {
+    assert(!reuses(op), "c: multi-result call cannot update one binding")
+    var out = ""
+    for i in 0..len(outputs) {
+      let output = outputs[i]
+      let type = ir.type(output)
+      if tensor.valid(type) {
+        if !mem.planned(output) {
+          let target = direct_result(output, direct, results)
+          if target == "" {
+            out += indent + scalar(tensor.elem(type), config) + " " +
+                   val(output) + "[" +
+                   text(allocation_count(m, output)) + "];\n"
+          } else {
+            out += indent + scalar(tensor.elem(type), config) + "* " +
+                   val(output) + " = " + target + ";\n"
+          }
+        }
+      } else {
+        out += indent + scalar(type, config) + " " + val(output) + ";\n"
+      }
+      if actuals != "" {
+        actuals += ", "
+      }
+      if tensor.valid(type) {
+        actuals += val(output)
+        let dims = tensor.dims(type)
+        for axis in 0..len(dims) {
+          if base.kind(dims[axis]) != "int" {
+            out += indent + index_type(config) + " " + val(output) +
+                   "_dim_" + text(axis) + ";\n"
+            actuals += ", &" + val(output) + "_dim_" + text(axis)
+          }
+        }
+      } else {
+        actuals += "&" + val(output)
+      }
+    }
+    return out + indent + callee + "(" + actuals + ");\n"
+  }
+  let output = outputs[0]
+  if tensor.valid(ir.type(output)) {
+    let type = ir.type(output)
+    var out = ""
+    var destination = val(output)
+    if !reuses(op) && !mem.planned(output) {
+      let target = direct_result(output, direct, results)
+      if target == "" {
+        out = indent + scalar(tensor.elem(type), config) + " " + val(output) +
+              "[" + text(allocation_count(m, output)) + "];\n"
+      } else {
+        if returned_only(output) {
+          destination = target
+        } else {
+          out = indent + scalar(tensor.elem(type), config) + "* " +
+                val(output) + " = " + target + ";\n"
+        }
+      }
+    }
+    if actuals != "" {
+      actuals += ", "
+    }
+    actuals += destination
+    let dims = tensor.dims(type)
+    for axis in 0..len(dims) {
+      if base.kind(dims[axis]) != "int" {
+        out += indent + index_type(config) + " " + val(output) +
+               "_dim_" + text(axis) + ";\n"
+        actuals += ", &" + val(output) + "_dim_" + text(axis)
+      }
+    }
+    out += indent + callee + "(" + actuals + ");\n"
+    return out
+  }
+  if ir.name(output) == "" {
+    return ""
+  }
+  return indent + lhs(op, output, config) + " = " + callee + "(" +
+         actuals + ");\n"
+}
+
+local fn ret(
+  m: Mod, op: Op, depth: int, blob: str, data_fns: list<Fn>, config: dict,
+  direct: list<str>, results: list<str>
+) -> str {
+  let values = ir.args(op)
+  let indent = pad(depth)
+  assert(len(values) == len(results), "c: return arity is inconsistent")
+  if len(values) == 0 {
+    return indent + "return;\n"
+  }
+  if len(values) == 1 && !tensor.valid(ir.type(values[0])) {
+    return indent + "return " +
+           expr(m, values[0], blob, data_fns, config) + ";\n"
+  }
+  var out = ""
+  for i in 0..len(values) {
+    let value = values[i]
+    let output = results[i]
+    var iterator = "i"
+    if len(values) != 1 {
+      iterator += "_" + text(i)
+    }
+    if tensor.valid(ir.type(value)) {
+      if direct_result(value, direct, results) != output {
+        var n = ""
+        if tensor.static(ir.type(value)) {
+          n = text(count(ir.type(value)))
+        } else {
+          n = logical_count(m, value)
+        }
+        out += indent + "for (" + index_type(config) + " " + iterator +
+               " = 0; " + iterator + " < " + n + "; ++" + iterator +
+               ") " + output + "[" + iterator + "] = " + val(value) + "[" +
+               iterator + "];\n"
+      }
+      let dims = tensor.dims(ir.type(value))
+      for axis in 0..len(dims) {
+        if base.kind(dims[axis]) != "int" {
+          out += indent + "*" + output + "_dim_" + text(axis) + " = " +
+                 extent(m, value, axis) + ";\n"
+        }
+      }
+    } else {
+      out += indent + "*" + output + " = " +
+             expr(m, value, blob, data_fns, config) + ";\n"
+    }
+  }
+  return out + indent + "return;\n"
+}
+
+local fn constant(op: Op, depth: int, config: dict) -> str {
+  let outputs = ir.outs(op)
+  assert(len(outputs) == 1, "c: constant must have one result")
+  let output = outputs[0]
+  if ir.name(output) == "" {
+    return ""
+  }
+  let form = ir.form(op)
+  if form == "var" {
+    return pad(depth) + scalar(ir.type(output), config) + " " + val(output) +
+           " = " + text(ir.constant(output)) + ";\n"
+  }
+  if reuses(op) {
+    return pad(depth) + val(output) + " = " + text(ir.constant(output)) +
+           ";\n"
+  }
+  assert(form == "hidden" || form == "expr" || form == "let",
+         "c: unsupported constant form " + form)
+  return ""
+}
+
+local fn loop(
+  m: Mod, op: Op, depth: int, blob: str, data_fns: list<Fn>, config: dict,
+  offsets: dict, direct: list<str>, results: list<str>
+) -> str {
+  let bodies = ir.blks(op)
+  assert(len(bodies) == 1, "c: loop must have one body")
+  let body = bodies[0]
+  let body_args = ir.args(body)
+  let sources = ir.args(op)
+  let carried = len(ir.outs(op))
+  let iterators = len(body_args) - carried
+  assert(iterators > 0 && len(sources) >= iterators,
+         "c: loop source structure is invalid")
+  var out = ""
+  for i in 0..iterators {
+    let source = ir.def(sources[i])
+    assert(ir.live(source), "c: loop source has no definition")
+    let iterator = val(body_args[i])
+    if ir.callee(source) == "operator .." {
+      let bounds = ir.args(source)
+      assert(len(bounds) == 2, "c: range must have two bounds")
+      out += pad(depth + i) + "for (" + index_type(config) + " " + iterator +
+             " = " +
+             expr(m, bounds[0], blob, data_fns, config) + "; " +
+             iterator + " < " +
+             expr(m, bounds[1], blob, data_fns, config) +
+             "; ++" + iterator + ") {\n"
+    } else {
+      assert(ir.callee(source) == "base.list",
+             "c: loop source must be a range or scalar list")
+      let items = ir.args(source)
+      if len(items) == 0 {
+        out += pad(depth + i) + "for (" + index_type(config) + " " + iterator +
+               " = 0; " + iterator + " < 0; ++" + iterator + ") {\n"
+      } else {
+        let index = "index_" + c_name(ir.name(body_args[i]))
+        let type = scalar(ir.type(body_args[i]), config)
+        out += pad(depth + i) + "for (" + index_type(config) + " " + index +
+               " = 0; " + index +
+               " < " + text(len(items)) + "; ++" + index + ") {\n"
+        out += pad(depth + i + 1) + "const " + type + " " + iterator +
+               " = (const " + type + "[]){" +
+               args(m, items, blob, data_fns, config) + "}[" + index +
+               "];\n"
+      }
+    }
+  }
+  out += block(
+    m, body, depth + iterators, blob, data_fns, config, offsets, direct,
+    results
+  )
+  for reverse in 0..iterators {
+    out += pad(depth + iterators - reverse - 1) + "}\n"
+  }
+  return out
+}
+
+local fn branch(
+  m: Mod, op: Op, depth: int, blob: str, data_fns: list<Fn>, config: dict,
+  offsets: dict, direct: list<str>, results: list<str>
+) -> str {
+  let bodies = ir.blks(op)
+  let inputs = ir.args(op)
+  assert(len(bodies) == 2 && len(inputs) >= 1,
+         "c: branch structure is invalid")
+  let first = block(
+    m, bodies[0], depth + 1, blob, data_fns, config, offsets, direct, results
+  )
+  let second = block(
+    m, bodies[1], depth + 1, blob, data_fns, config, offsets, direct, results
+  )
+  var condition = expr(m, inputs[0], blob, data_fns, config)
+  let source = ir.def(inputs[0])
+  if ir.name(inputs[0]) == "" && ir.live(source) &&
+     ir.kind(source) == "call" && len(ir.args(source)) == 2 &&
+     binary(call_name(m, source)) != "" {
+    let values = ir.args(source)
+    condition = expr(m, values[0], blob, data_fns, config) + " " +
+                binary(call_name(m, source)) + " " +
+                expr(m, values[1], blob, data_fns, config)
+  }
+  var out = pad(depth) + "if (" + condition +
+            ") {\n" + first
+  if second == "" {
+    out += pad(depth) + "}\n"
+  } else {
+    out += pad(depth) + "} else {\n" + second + pad(depth) + "}\n"
+  }
+  return out
+}
+
+local fn block(
+  m: Mod, body: Blk, depth: int, blob: str,
+  data_fns: list<Fn>, config: dict,
+  offsets: dict, direct: list<str>, results: list<str>
+) -> str {
+  var out = ""
+  for op in ir.ops(body) {
+    let kind = ir.kind(op)
+    if kind == "call" {
+      out += call(m, op, depth, blob, data_fns, config, direct, results)
+    } else {
+      if kind == "loop" {
+        out += loop(
+          m, op, depth, blob, data_fns, config, offsets, direct, results
+        )
+      } else {
+        if kind == "branch" {
+          let logic = logical(m, op, blob, data_fns, config)
+          let outputs = ir.outs(op)
+          if logic == "" ||
+             (len(outputs) == 1 && ir.name(outputs[0]) != "") {
+            out += branch(
+              m, op, depth, blob, data_fns, config, offsets, direct, results
+            )
+          }
+        } else {
+          if kind == "return" {
+            out += ret(m, op, depth, blob, data_fns, config, direct, results)
+          } else {
+            if kind == "constant" {
+              if payload(op) {
+                out += tensor_constant(op, depth, blob, offsets, config)
+              } else {
+                out += constant(op, depth, config)
+              }
+            } else {
+              assert(kind == "yield", "c: unsupported operation kind " + kind)
+            }
+          }
+        }
+      }
+    }
+  }
+  return out
+}
+

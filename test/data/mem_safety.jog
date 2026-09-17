@@ -1,0 +1,91 @@
+module mem_safety
+use tensor
+
+fn view_reuse(a: f32, b: f32) -> f32 {
+  let shape = tensor<index, [1]>(index(4))
+  let first = tensor<f32, [4]>(a)
+  let view: tensor<f32, [4]> = tensor.view(first, shape)
+  let next = tensor<f32, [4]>(b)
+  return view[index(0)] + next[index(0)]
+}
+
+fn view_chain(a: f32, b: f32) -> f32 {
+  let shape = tensor<index, [1]>(index(4))
+  let first = tensor<f32, [4]>(a)
+  let view: tensor<f32, [4]> = tensor.view(first, shape)
+  let alias: tensor<f32, [4]> = tensor.view(view, shape)
+  let next = tensor<f32, [4]>(b)
+  return alias[index(0)] + next[index(0)]
+}
+
+fn return_view(a: f32, b: f32) -> tensor<f32, [4]> {
+  let shape = tensor<index, [1]>(index(4))
+  var first = tensor<f32, [4]>(a)
+  let view: tensor<f32, [4]> = tensor.view(first, shape)
+  let next = tensor<f32, [4]>(b)
+  first[index(0)] = view[index(0)] + next[index(0)]
+  return view
+}
+
+fn view_shape(a: f32, count: index, replacement: index) -> f32 {
+  let shape = tensor<index, [1]>(count)
+  let first = tensor<f32, [4]>(a)
+  let view: tensor<f32, [_]> = tensor.view(first, shape)
+  let next = tensor<index, [1]>(replacement)
+  return view[index(0)] + f32(tensor.dim(view, index(0))) + f32(next[index(0)])
+}
+
+fn make_shape(a: f32, choose: bool, replacement: index) -> f32 {
+  var count = index(2)
+  if choose {
+    count = index(3)
+  }
+  let shape = tensor<index, [1]>(count)
+  let first: tensor<f32, [_]> = tensor.make(a, shape)
+  let next = tensor<index, [1]>(replacement)
+  return first[index(0)] + f32(tensor.dim(first, index(0))) + f32(next[index(0)])
+}
+
+fn loop_reuse(a: f32, b: f32, count: index) -> f32 {
+  let first = tensor<f32, [4]>(a)
+  var sum = f32(0)
+  for i in index(0)..count {
+    sum += first[index(0)]
+    let next = tensor<f32, [4]>(b)
+    sum += next[index(0)]
+  }
+  return sum
+}
+
+fn nested_loop(a: f32, b: f32, count: index) -> f32 {
+  let first = tensor<f32, [4]>(a)
+  var sum = f32(0)
+  for i in index(0)..count {
+    for j in 0..2 {
+      sum += first[index(0)]
+      let next = tensor<f32, [4]>(b)
+      sum += next[index(0)]
+    }
+  }
+  return sum
+}
+
+fn branch_view(a: f32, b: f32, choose: bool) -> f32 {
+  let shape = tensor<index, [1]>(index(4))
+  let first = tensor<f32, [4]>(a)
+  let view: tensor<f32, [4]> = tensor.view(first, shape)
+  var sum = f32(0)
+  if choose {
+    let next = tensor<f32, [4]>(b)
+    sum = next[index(0)]
+  }
+  return view[index(0)] + sum
+}
+
+fn selection(a: f32, b: f32, c: f32) -> f32 {
+  let small = tensor<f32, [4]>(a)
+  let large = tensor<f32, [16]>(b)
+  let sum = small[index(0)] + large[index(0)]
+  let next = tensor<f32, [16]>(c)
+  return sum + next[index(0)]
+}

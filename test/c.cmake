@@ -1,13 +1,6 @@
-if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
-   NOT DEFINED INVALID_MODEL OR
-   NOT DEFINED OPEN_MODEL OR NOT DEFINED COLLISION_MODEL OR
-   NOT DEFINED RESTRICT_MODEL OR
-   NOT DEFINED HARNESS OR NOT DEFINED BLOB_HARNESS OR
-   NOT DEFINED OPEN_HARNESS OR
-   NOT DEFINED MODULES OR NOT DEFINED ROOT)
-  message(FATAL_ERROR
-          "C execution test requires TOOL, CC, models, harnesses, MODULES, ROOT")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/joggle_test.cmake")
+
+joggle_require("C execution test requires TOOL, CC, models, harnesses, MODULES, ROOT" VARS TOOL CC MODEL INVALID_MODEL OPEN_MODEL COLLISION_MODEL RESTRICT_MODEL HARNESS BLOB_HARNESS OPEN_HARNESS MODULES ROOT)
 
 execute_process(
   COMMAND "${TOOL}" run c.prepare "${INVALID_MODEL}" -M "${MODULES}"
@@ -22,8 +15,7 @@ if(invalid_result EQUAL 0 OR
           "(${invalid_result}):\n${invalid_output}${invalid_error}")
 endif()
 
-file(REMOVE_RECURSE "${ROOT}")
-file(MAKE_DIRECTORY "${ROOT}")
+joggle_workspace("${ROOT}")
 
 execute_process(
   COMMAND "${TOOL}" emit c.source "${COLLISION_MODEL}" -M "${MODULES}"
@@ -64,51 +56,26 @@ set(restricted "${ROOT}/restricted.jog")
 set(restricted_again "${ROOT}/restricted-again.jog")
 set(restricted_source "${ROOT}/restricted.c")
 set(restricted_object "${ROOT}/restricted.o")
-execute_process(
+joggle_run("C preparation failed"
   COMMAND "${TOOL}" run c.prepare "${OPEN_MODEL}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${prepared}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "C preparation failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("C restrict proof failed"
   COMMAND "${TOOL}" run c.prepare mem.plan c.restrict
           "${RESTRICT_MODEL}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${restricted}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "C restrict proof failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("repeated C restrict proof failed"
   COMMAND "${TOOL}" run c.restrict "${restricted}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${restricted_again}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "repeated C restrict proof failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("C restrict proof is not idempotent"
   COMMAND "${CMAKE_COMMAND}" -E compare_files
-          "${restricted}" "${restricted_again}"
-  RESULT_VARIABLE result
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "C restrict proof is not idempotent")
-endif()
-execute_process(
+          "${restricted}" "${restricted_again}")
+joggle_run("restricted C emission failed"
   COMMAND "${TOOL}" emit c.source "${restricted}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${restricted_source}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "restricted C emission failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 file(READ "${restricted_source}" restricted_text)
 if(NOT restricted_text MATCHES
    "static void separation_distinct\\(const float left\\[restrict static 4\\], const float right\\[restrict static 4\\], float out_out\\[restrict static 4\\]\\);")
@@ -126,42 +93,21 @@ if(restricted_text MATCHES
   message(FATAL_ERROR
           "repeated tensor argument received unsafe restrict:\n${restricted_text}")
 endif()
-execute_process(
+joggle_run("restricted C did not compile"
   COMMAND "${CC}" -std=c11 -Wall -Wextra -Werror
           -pedantic-errors -c "${restricted_source}" -o "${restricted_object}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "restricted C did not compile (${result}):\n${output}${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("repeated C preparation failed"
   COMMAND "${TOOL}" run c.prepare "${prepared}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${prepared_again}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "repeated C preparation failed (${result}):\n${error}")
-endif()
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E compare_files "${prepared}" "${prepared_again}"
-  RESULT_VARIABLE result
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "C preparation is not idempotent")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("C preparation is not idempotent"
+  COMMAND "${CMAKE_COMMAND}" -E compare_files "${prepared}" "${prepared_again}")
+joggle_run("prepared C emission failed"
   COMMAND "${TOOL}" emit c.source "${prepared}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${open_source}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "prepared C emission failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 file(READ "${open_source}" emitted)
 if(emitted MATCHES "(^|[^A-Za-z0-9_])(joggle_|jog_|v_[A-Za-z0-9])")
   message(FATAL_ERROR
@@ -189,15 +135,10 @@ if(NOT emitted MATCHES
   message(FATAL_ERROR
           "public C signatures differed between declarations:\n${emitted}")
 endif()
-execute_process(
+joggle_run("prepared C header emission failed"
   COMMAND "${TOOL}" emit c.header "${prepared}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${open_header}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "prepared C header emission failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 file(READ "${open_header}" emitted_header)
 if(emitted_header MATCHES "\\[static [0-9]+\\]")
   message(FATAL_ERROR
@@ -213,15 +154,10 @@ if(NOT emitted_header MATCHES "open_carry" OR
   message(FATAL_ERROR
           "prepared C header omitted a marked entry:\n${emitted_header}")
 endif()
-execute_process(
+joggle_run("C API query failed"
   COMMAND "${TOOL}" query c.api "${prepared}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE api
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "C API query failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 string(JSON api_count LENGTH "${api}")
 if(NOT api_count EQUAL 3)
   message(FATAL_ERROR "C API query reported ${api_count} entries:\n${api}")
@@ -243,60 +179,29 @@ if(NOT add_name STREQUAL "open_add" OR
    NOT add_param_pointer OR NOT add_result_pointer)
   message(FATAL_ERROR "C API query disagrees with its header:\n${api}")
 endif()
-execute_process(
+joggle_run("C noalias annotation failed"
   COMMAND "${TOOL}" run c.noalias "${prepared}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${noalias}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "C noalias annotation failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("repeated C noalias annotation failed"
   COMMAND "${TOOL}" run c.noalias "${noalias}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${noalias_again}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "repeated C noalias annotation failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("C noalias annotation is not idempotent"
   COMMAND "${CMAKE_COMMAND}" -E compare_files
-          "${noalias}" "${noalias_again}"
-  RESULT_VARIABLE result
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "C noalias annotation is not idempotent")
-endif()
-execute_process(
+          "${noalias}" "${noalias_again}")
+joggle_run("C noalias removal failed"
   COMMAND "${TOOL}" run c.noalias "${noalias}"
           --arg false -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${noalias_restored}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "C noalias removal failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("C noalias removal did not restore the module"
   COMMAND "${CMAKE_COMMAND}" -E compare_files
-          "${prepared}" "${noalias_restored}"
-  RESULT_VARIABLE result
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "C noalias removal did not restore the module")
-endif()
-execute_process(
+          "${prepared}" "${noalias_restored}")
+joggle_run("noalias C emission failed"
   COMMAND "${TOOL}" emit c.source "${noalias}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${noalias_source}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "noalias C emission failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 file(READ "${noalias_source}" noalias_text)
 if(NOT noalias_text MATCHES
    "void open_add\\(const float\\* restrict a, const float\\* restrict b, float\\* restrict out_out\\) \\{" OR
@@ -305,48 +210,32 @@ if(NOT noalias_text MATCHES
   message(FATAL_ERROR
           "C noalias contract was not limited to the definition:\n${noalias_text}")
 endif()
-execute_process(
+joggle_run("noalias C header failed"
   COMMAND "${TOOL}" emit c.header "${noalias}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${noalias_header}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "noalias C header failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 file(READ "${noalias_header}" noalias_header_text)
 if(noalias_header_text MATCHES "restrict")
   message(FATAL_ERROR
           "C noalias contract leaked into the portable header:\n"
           "${noalias_header_text}")
 endif()
-execute_process(
+joggle_run("noalias C API query failed"
   COMMAND "${TOOL}" query c.api "${noalias}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE noalias_api
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "noalias C API query failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 string(JSON add_noalias GET "${noalias_api}" 1 noalias)
 string(JSON noalias_decl GET "${noalias_api}" 1 declaration)
 if(NOT add_noalias OR NOT noalias_decl STREQUAL add_decl)
   message(FATAL_ERROR
           "C API did not report its noalias contract:\n${noalias_api}")
 endif()
-execute_process(
+joggle_run("noalias C did not compile"
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
           -include "${noalias_header}"
           "${noalias_source}" "${OPEN_HARNESS}" -lm -o "${noalias_program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "noalias C did not compile (${result}):\n${output}${error}")
-endif()
+  ERROR_VARIABLE error)
 execute_process(
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
           -include "${open_header}"
@@ -360,16 +249,10 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR
           "prepared C did not compile (${result}):\n${output}${error}\n${emitted}")
 endif()
-execute_process(
+joggle_run("prepared C returned the wrong result"
   COMMAND "${open_program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "prepared C returned the wrong result (${result}):\n${output}${error}")
-endif()
+  ERROR_VARIABLE error)
 
 set(source "${ROOT}/model.c")
 set(header "${ROOT}/model.h")
@@ -387,26 +270,16 @@ set(source32 "${ROOT}/model32.c")
 set(header32 "${ROOT}/model32.h")
 set(program32 "${ROOT}/model32")
 
-execute_process(
+joggle_run("C model preparation failed"
   COMMAND "${TOOL}" run c.prepare "${MODEL}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${model_prepared}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "C model preparation failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 
-execute_process(
+joggle_run("32-bit ABI preparation failed"
   COMMAND "${TOOL}" run c.prepare "${MODEL}"
           --arg "${abi32}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${model32_prepared}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "32-bit ABI preparation failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 
 execute_process(
   COMMAND "${TOOL}" query c.api "${model32_prepared}"
@@ -422,27 +295,17 @@ if(NOT result EQUAL 0 OR NOT api32 MATCHES
           "${error}${api32}")
 endif()
 
-execute_process(
+joggle_run("32-bit ABI source emission failed"
   COMMAND "${TOOL}" emit c.source "${model32_prepared}"
           --arg "${abi32}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${source32}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "32-bit ABI source emission failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 
-execute_process(
+joggle_run("32-bit ABI header emission failed"
   COMMAND "${TOOL}" emit c.header "${model32_prepared}"
           --arg "${abi32}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${header32}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "32-bit ABI header emission failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 file(READ "${source32}" emitted_source32)
 file(READ "${header32}" emitted_header32)
 if(emitted_source32 MATCHES
@@ -460,39 +323,21 @@ if(NOT emitted_source32 MATCHES "for \\(int32_t i = 0;" OR
           "C ABI override did not drive definitions and declarations:\n"
           "${emitted_header32}\n${emitted_source32}")
 endif()
-execute_process(
+joggle_run("32-bit ABI C did not compile"
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
           -include "${header32}" "${source32}" "${HARNESS}" -lm
           -o "${program32}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "32-bit ABI C did not compile (${result}):\n${output}${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("32-bit ABI C returned the wrong result"
   COMMAND "${program32}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "32-bit ABI C returned the wrong result (${result}):\n"
-          "${output}${error}")
-endif()
+  ERROR_VARIABLE error)
 
-execute_process(
+joggle_run("C emission failed"
   COMMAND "${TOOL}" emit c.source "${model_prepared}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${source}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "C emission failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 file(READ "${source}" emitted_source)
 if(NOT emitted_source MATCHES
    "data_values\\[3\\] = \\{0xff, 0x00, 0x7f\\};")
@@ -510,51 +355,30 @@ if(NOT emitted_source MATCHES "const float scale =")
           "${emitted_source}")
 endif()
 
-execute_process(
+joggle_run("C header emission failed"
   COMMAND "${TOOL}" emit c.header "${model_prepared}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${header}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "C header emission failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 
-execute_process(
+joggle_run("C data emission failed"
   COMMAND "${TOOL}" emit c.data "${model_prepared}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${blob_data}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "C data emission failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 file(READ "${blob_data}" emitted_data HEX)
 if(NOT emitted_data STREQUAL "ff007f000000803f00000040")
   message(FATAL_ERROR "C data emission changed literal bytes: ${emitted_data}")
 endif()
 
-execute_process(
+joggle_run("external-data C emission failed"
   COMMAND "${TOOL}" emit c.source "${model_prepared}"
           --arg "\"model\"" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${blob_source}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "external-data C emission failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("external-data C header emission failed"
   COMMAND "${TOOL}" emit c.header "${model_prepared}"
           --arg "\"model\"" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${blob_header}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "external-data C header emission failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 execute_process(
   COMMAND "${TOOL}" query c.api "${model_prepared}"
           --arg "\"model\"" -M "${MODULES}"
@@ -744,38 +568,18 @@ if(NOT result EQUAL 0)
           "generated C did not compile (${result}):\n${output}${error}\n${emitted}")
 endif()
 
-execute_process(
+joggle_run("external-data C did not compile"
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
           -I "${ROOT}" "${blob_source}" "${BLOB_HARNESS}" -lm
           -o "${blob_program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "external-data C did not compile (${result}):\n${output}${error}\n"
-          "${emitted_blob_source}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("external-data C returned the wrong result"
   COMMAND "${blob_program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "external-data C returned the wrong result (${result}):\n"
-          "${output}${error}")
-endif()
+  ERROR_VARIABLE error)
 
-execute_process(
+joggle_run("generated C returned the wrong result"
   COMMAND "${program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "generated C returned the wrong result (${result}):\n${output}${error}")
-endif()
+  ERROR_VARIABLE error)

@@ -1,0 +1,55 @@
+fn []<E: Ty, S: list<int>>(x: tensor<E, S>, i: index) -> E;
+fn []<E: Ty, M: int, N: int>(
+  x: tensor<E, [M, N]>, i: index, j: index
+) -> E;
+fn []<E: Ty, N: int, C: int, H: int, W: int>(
+  x: tensor<E, [N, C, H, W]>, n: index, c: index, h: index, w: index
+) -> E;
+fn []=<E: Ty, S: list<int>>(
+  x: tensor<E, S>, i: index, value: E
+) -> tensor<E, S>;
+fn []=<E: Ty, M: int, N: int>(
+  x: tensor<E, [M, N]>, i: index, j: index, value: E
+) -> tensor<E, [M, N]>;
+fn []=<E: Ty, N: int, C: int, H: int, W: int>(
+  x: tensor<E, [N, C, H, W]>,
+  n: index,
+  c: index,
+  h: index,
+  w: index,
+  value: E
+) -> tensor<E, [N, C, H, W]>;
+
+fn write<E: Ty, S: list<int>, T: list<int>>(
+  data: tensor<E, S>, at: index, value: tensor<E, T>
+) -> tensor<E, S> {
+  var out = data
+  var width = index(1)
+  for axis in 0..len(T) {
+    width *= dim(value, index(axis))
+  }
+  for i in index(0)..width {
+    out[at * width + i] = value[i]
+  }
+  return out
+}
+
+fn line_offset(
+  shape: list<int>, axis: int, line: int, item: int
+) -> int {
+  var offset = 0
+  var source_stride = 1
+  var line_stride = 1
+  for reverse in 0..len(shape) {
+    let dim = len(shape) - reverse - 1
+    if dim == axis {
+      offset += item * source_stride
+    } else {
+      offset += (line / line_stride) % shape[dim] * source_stride
+      line_stride *= shape[dim]
+    }
+    source_stride *= shape[dim]
+  }
+  return offset
+}
+

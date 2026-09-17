@@ -1,0 +1,167 @@
+fn concat<E: Ty, L: list<int>, R: list<int>, Y: list<int>>(
+  left: tensor<E, L>, right: tensor<E, R>, axis: int
+) -> tensor<E, Y> {
+  var inner = 1
+  for dim in axis + 1..len(Y) {
+    inner *= Y[dim]
+  }
+  var out = tensor<E, Y>(E(0))
+  for i in 0..numel<Y>() {
+    let coordinate = (i / inner) % Y[axis]
+    let group = i / (Y[axis] * inner)
+    let offset = i % inner
+    if coordinate < L[axis] {
+      out[i] = left[(group * L[axis] + coordinate) * inner + offset]
+    } else {
+      out[i] = right[
+        (group * R[axis] + coordinate - L[axis]) * inner + offset
+      ]
+    }
+  }
+  return out
+}
+
+fn one_hot<E: Ty, S: list<int>, Y: list<int>>(
+  indices: tensor<index, S>, depth: int, values: tensor<E, [2]>, axis: int
+) -> tensor<E, Y> {
+  var inner = 1
+  for dim in axis..len(S) {
+    inner *= S[dim]
+  }
+  var out = tensor<E, Y>(E(0))
+  for i in 0..numel<Y>() {
+    let category = (i / inner) % depth
+    let source = (i / (inner * depth)) * inner + i % inner
+    if indices[source] == category {
+      out[i] = values[1]
+    } else {
+      out[i] = values[0]
+    }
+  }
+  return out
+}
+
+fn permutation(axes: list<int>, rank: int) -> bool {
+  if len(axes) != rank {
+    return false
+  }
+  for axis in 0..rank {
+    var count = 0
+    for item in axes {
+      if item == axis {
+        count += 1
+      }
+    }
+    if count != 1 {
+      return false
+    }
+  }
+  return true
+}
+
+fn permuted(shape: list<int>, axes: list<int>) -> list<int> {
+  var out: list<int> = []
+  for axis in axes {
+    out += [shape[axis]]
+  }
+  return out
+}
+
+fn permuted(shape: list<Ty>, axes: list<int>) -> list<Ty> {
+  var out: list<Ty> = []
+  for axis in axes {
+    out += [shape[axis]]
+  }
+  return out
+}
+
+fn inserted(shape: list<Ty>, axis: int, dim: Ty) -> list<Ty> {
+  var out: list<Ty> = []
+  for i in 0..len(shape) + 1 {
+    if i == axis {
+      out += [dim]
+    } else {
+      var source = i
+      if i > axis {
+        source -= 1
+      }
+      out += [shape[source]]
+    }
+  }
+  return out
+}
+
+fn replaced(shape: list<Ty>, axis: int, dim: Ty) -> list<Ty> {
+  var out: list<Ty> = []
+  for i in 0..len(shape) {
+    if i == axis {
+      out += [dim]
+    } else {
+      out += [shape[i]]
+    }
+  }
+  return out
+}
+
+fn concatenated(
+  left: list<Ty>, right: list<Ty>, axis: int
+) -> list<Ty> {
+  if len(left) == 0 || len(left) != len(right) {
+    var invalid: list<Ty> = []
+    return invalid
+  }
+  var dim = axis
+  if dim < 0 {
+    dim += len(left)
+  }
+  if dim < 0 || dim >= len(left) {
+    return []
+  }
+  var out = left
+  for item in 0..len(left) {
+    if item != dim {
+      if out[item] == ty("_") {
+        out = replaced(out, item, right[item])
+      } else {
+        if right[item] != ty("_") && out[item] != right[item] {
+          return []
+        }
+      }
+    }
+  }
+  var extent = ty("_")
+  if kind(left[dim]) == "int" && kind(right[dim]) == "int" {
+    extent = ty(int(left[dim]) + int(right[dim]))
+  } else {
+    if left[dim] == ty(0) {
+      extent = right[dim]
+    }
+    if right[dim] == ty(0) {
+      extent = left[dim]
+    }
+  }
+  return replaced(out, dim, extent)
+}
+
+fn permute<E: Ty, S: list<int>, T: list<int>>(
+  x: tensor<E, S>, axes: list<int>
+) -> tensor<E, T> {
+  var out = tensor<E, T>(E(0))
+  for i in 0..numel<T>() {
+    var source = 0
+    var output_stride = 1
+    for reverse_output in 0..len(T) {
+      let output_axis = len(T) - reverse_output - 1
+      let input_axis = axes[output_axis]
+      var source_stride = 1
+      for trailing in input_axis + 1..len(S) {
+        source_stride *= S[trailing]
+      }
+      source += i / output_stride % T[output_axis] * source_stride
+      output_stride *= T[output_axis]
+    }
+    out[i] = x[source]
+  }
+  return out
+}
+

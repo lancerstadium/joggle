@@ -1,0 +1,104 @@
+[memo]
+local fn c_name(text: str) -> str {
+  let name = base.ident(text)
+  let reserved = [
+    "alignas", "alignof", "auto", "bool", "break", "case", "char",
+    "const", "constexpr", "continue", "default", "do", "double", "else",
+    "enum", "extern", "false", "float", "for", "goto", "if", "inline",
+    "int", "long", "nullptr", "register", "restrict", "return", "short",
+    "signed", "sizeof", "static", "static_assert", "struct", "switch",
+    "thread_local", "true", "typedef", "typeof", "typeof_unqual", "union",
+    "unsigned", "void", "volatile", "while", "_Alignas", "_Alignof",
+    "_Atomic", "_Bool", "_Complex", "_Generic", "_Imaginary", "_Noreturn",
+    "_Static_assert", "_Thread_local"
+  ]
+  for keyword in reserved {
+    if name == keyword {
+      return name + "_"
+    }
+  }
+  return name
+}
+
+[memo]
+local fn label(value: Val) -> str {
+  let name = ir.name(value)
+  if name == "" {
+    return "tmp_" + text(ir.key(value))
+  }
+  return c_name(name)
+}
+
+[memo]
+local fn val(value: Val) -> str {
+  if mem.planned(value) {
+    let type = ir.type(value)
+    assert(tensor.valid(type), "c: planned value must be a tensor")
+    return "slot_" + c_name(base.name(tensor.elem(type))) + "_" +
+           text(mem.slot(value))
+  }
+  return label(value)
+}
+
+[memo]
+local fn call_name(m: Mod, op: Op) -> str {
+  let target = ir.resolve(m, op)
+  if ir.live(target) {
+    let name = ir.name(target)
+    let symbol = ir.symbol(target)
+    if base.replace(name, "operator ", "") != name {
+      if symbol == "base." + name || symbol == "tensor." + name {
+        return name
+      }
+      return symbol
+    }
+  }
+  return ir.callee(op)
+}
+
+[memo]
+local fn pad(depth: int) -> str {
+  var out = ""
+  for i in 0..depth {
+    out += "  "
+  }
+  return out
+}
+
+local fn symbol(m: Mod, fn: Fn, config: dict) -> str {
+  assert(ir.live(fn), "c: function has no symbol")
+  let bound = binding(fn)
+  if bound != "" {
+    return bound
+  }
+  return c_name(base.replace(ir.symbol(fn), ".", "_"))
+}
+
+[memo]
+local fn binding(fn: Fn) -> str {
+  if !ir.live(fn) || !ir.has(fn, "c") {
+    return ""
+  }
+  let spec = ir.meta(fn, "c")
+  assert(base.kind(spec) == "dict", "c: binding must be a dictionary")
+  let name = base.get(spec, "name", "")
+  assert(base.kind(name) == "str", "c: binding name must be a string")
+  return base.str(name)
+}
+
+[memo]
+local fn binding(m: Mod, op: Op) -> str {
+  return binding(ir.resolve(m, op))
+}
+
+local fn binding_header(fn: Fn) -> str {
+  if !ir.live(fn) || !ir.has(fn, "c") {
+    return ""
+  }
+  let spec = ir.meta(fn, "c")
+  assert(base.kind(spec) == "dict", "c: binding must be a dictionary")
+  let name = base.get(spec, "include", "")
+  assert(base.kind(name) == "str", "c: binding header must be a string")
+  return base.str(name)
+}
+

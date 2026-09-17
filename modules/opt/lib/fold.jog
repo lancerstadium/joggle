@@ -1,0 +1,122 @@
+[memo]
+local fn matches(m: Mod, op: Op, name: str) -> bool {
+  if ir.callee(op) == name {
+    return true
+  }
+  let symbol = ir.target(m, op)
+  if symbol != ir.callee(op) {
+    return symbol == name
+  }
+  let builtin = base.replace(name, "base.", "")
+  return builtin != name && ir.callee(op) == builtin
+}
+
+local fn mapped(value: Val, old: list<Val>, next: list<Val>) -> Val {
+  for i in 0..len(old) {
+    if value == old[i] {
+      return next[i]
+    }
+  }
+  return value
+}
+
+local fn project(m: Mod) -> bool {
+  var changed = false
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" &&
+       matches(m, op, "base.operator []") {
+      let args = ir.args(op)
+      let outs = ir.outs(op)
+      if len(args) == 2 && len(outs) == 1 && ir.is_const(args[1]) &&
+         base.kind(ir.constant(args[1])) == "int" {
+        let list = ir.def(args[0])
+        if ir.live(list) && ir.kind(list) == "call" &&
+           matches(m, list, "base.list") {
+          let items = ir.args(list)
+          let index = base.int(ir.constant(args[1]))
+          if index >= 0 && index < len(items) &&
+             ir.type(outs[0]) == ir.type(items[index]) {
+            changed = ir.replace(m, outs[0], items[index]) || changed
+            changed = ir.erase(m, op) || changed
+          }
+        }
+      }
+    }
+  }
+  return changed
+}
+
+local fn select(m: Mod) -> bool {
+  var changed = false
+  let candidates = ir.ops(m)
+  for branch in candidates {
+    if ir.live(branch) && ir.kind(branch) == "branch" &&
+       len(ir.meta(branch)) == 0 {
+      let inputs = ir.args(branch)
+      let outputs = ir.outs(branch)
+      let bodies = ir.blks(branch)
+      if len(inputs) > 0 && len(bodies) == 2 &&
+         ir.is_const(inputs[0]) &&
+         base.kind(ir.constant(inputs[0])) == "bool" {
+        var chosen = bodies[1]
+        if ir.constant(inputs[0]) == true {
+          chosen = bodies[0]
+        }
+        let args = ir.args(chosen)
+        let ops = ir.ops(chosen)
+        if len(args) == len(outputs) && len(inputs) == len(outputs) + 1 &&
+           len(ops) > 0 && ir.kind(ops[len(ops) - 1]) == "yield" {
+          var old = args
+          var next: list<Val> = []
+          for i in 1..len(inputs) {
+            next += [inputs[i]]
+          }
+          for i in 0..len(ops) - 1 {
+            let copy = ir.clone(m, ops[i], branch, old, next)
+            assert(ir.live(copy), "opt.fold could not select a branch")
+            old += ir.outs(ops[i])
+            next += ir.outs(copy)
+          }
+          var values: list<Val> = []
+          for value in ir.args(ops[len(ops) - 1]) {
+            values += [mapped(value, old, next)]
+          }
+          if len(outputs) != 0 {
+            for i in 0..len(outputs) {
+              let output_type = ir.type(outputs[i])
+              let value_type = ir.type(values[i])
+              if output_type == ty("_") && value_type != ty("_") {
+                assert(ir.type(m, outputs[i], value_type),
+                       "opt.fold could not refine a branch result")
+              } else {
+                if value_type == ty("_") && output_type != ty("_") {
+                  assert(ir.type(m, values[i], output_type),
+                         "opt.fold could not refine a selected value")
+                }
+              }
+              let selected_type = ir.type(values[i])
+              let result_type = ir.type(outputs[i])
+              if selected_type != result_type &&
+                 ((selected_type == ty("index") && result_type == ty("int")) ||
+                  (selected_type == ty("int") && result_type == ty("index"))) {
+                values[i] = ir.call(
+                  m, branch, text(result_type), [values[i]], result_type
+                )
+              }
+              assert(ir.type(outputs[i]) == ir.type(values[i]),
+                     "opt.fold branch type mismatch: " +
+                     text(ir.type(outputs[i])) + " and " +
+                     text(ir.type(values[i])))
+            }
+            assert(ir.replace(m, outputs, values),
+                   "opt.fold could not replace branch results")
+          }
+          assert(ir.erase(m, branch), "opt.fold could not erase a branch")
+          changed = true
+        }
+      }
+    }
+  }
+  return changed
+}
+

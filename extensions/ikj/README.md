@@ -12,19 +12,19 @@ dimensions are inferred from each call.
 From the repository root:
 
 ```sh
-cmake -S . -B build-dev -DCMAKE_BUILD_TYPE=Release
-cmake --build build-dev
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
 
-build-dev/joggle run ikj.apply c.prepare examples/ikj/model.jog \
-  -M examples -M build-dev/modules > build-dev/ikj.jog
-build-dev/joggle emit c.source build-dev/ikj.jog \
-  -M examples -M build-dev/modules > build-dev/ikj.c
-build-dev/joggle emit c.header build-dev/ikj.jog \
-  -M examples -M build-dev/modules > build-dev/ikj.h
+build/joggle run ikj.apply c.prepare examples/ikj/model.jog \
+  -M examples -M build/modules > build/ikj.jog
+build/joggle emit c.source build/ikj.jog \
+  -M examples -M build/modules > build/ikj.c
+build/joggle emit c.header build/ikj.jog \
+  -M examples -M build/modules > build/ikj.h
 cc -std=c99 -Wall -Wextra -Werror \
-  -include build-dev/ikj.h \
-  build-dev/ikj.c examples/ikj/main.c -o build-dev/ikj
-build-dev/ikj
+  -include build/ikj.h \
+  build/ikj.c examples/ikj/main.c -o build/ikj
+build/ikj
 ```
 
 The first command sequence performs two explicit ordinary transforms:
@@ -34,7 +34,7 @@ The first command sequence performs two explicit ordinary transforms:
    directly.
 
 `c.source` and `c.header` stay read-only. The harness consumes only the
-generated declaration. Inspect `build-dev/ikj.jog` to see the actual loop body
+generated declaration. Inspect `build/ikj.jog` to see the actual loop body
 received by the emitter; no hidden lowering or target registry is used.
 
 Every test build with the optional ONNX module enabled runs the frozen

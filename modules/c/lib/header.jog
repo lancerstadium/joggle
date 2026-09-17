@@ -1,0 +1,190 @@
+local fn dependencies(m: Mod, config: dict) -> list<Op> {
+  var out: list<Op> = []
+  var seen_calls: list<Op> = []
+  for op in ir.ops(m) {
+    if external_call(m, op, config) {
+      let fn = ir.resolve(m, op)
+      var seen = false
+      for existing in seen_calls {
+        let prior_fn = ir.resolve(m, existing)
+        if symbol(m, prior_fn, config) == symbol(m, fn, config) {
+          let prior_abi = external_abi(m, existing, config)
+          let current_abi = external_abi(m, op, config)
+          assert(prior_abi == current_abi,
+                 "c: external symbol " + symbol(m, fn, config) +
+                 " has incompatible call ABIs: " + prior_abi + " and " +
+                 current_abi)
+          assert(binding_header(prior_fn) == binding_header(fn),
+                 "c: one external symbol has conflicting headers")
+          seen = true
+        }
+      }
+      if !seen {
+        seen_calls += [op]
+        if binding_header(fn) == "" {
+          out += [op]
+        }
+      }
+    }
+  }
+  return out
+}
+
+local fn binding_headers(m: Mod, config: dict) -> list<str> {
+  var out: list<str> = []
+  for op in ir.ops(m) {
+    if external_call(m, op, config) {
+      let fn = ir.resolve(m, op)
+      let name = binding_header(fn)
+      if name != "" {
+        var seen = false
+        for existing in out {
+          seen = seen || existing == name
+        }
+        if !seen {
+          out += [name]
+        }
+      }
+    }
+  }
+  return out
+}
+
+local fn includes(names: list<str>) -> str {
+  var out = ""
+  var emitted: list<str> = []
+  for name in names {
+    if name != "" {
+      var seen = false
+      for existing in emitted {
+        seen = seen || existing == name
+      }
+      if !seen {
+        out += "#include <" + name + ">\n"
+        emitted += [name]
+      }
+    }
+  }
+  return out
+}
+
+[memo]
+local fn type_header(type: Ty, config: dict) -> str {
+  var scalar_type = type
+  if tensor.valid(type) {
+    scalar_type = tensor.elem(type)
+  }
+  return str(field(config, base.name(scalar_type), "include"))
+}
+
+local fn type_headers(fns: list<Fn>, config: dict) -> list<str> {
+  var out: list<str> = []
+  for fn in fns {
+    for param in ir.params(fn) {
+      out += [type_header(ir.type(param), config)]
+    }
+    for type in ir.returns(fn) {
+      out += [type_header(type, config)]
+    }
+  }
+  return out
+}
+
+local fn value_headers(fns: list<Fn>, config: dict) -> list<str> {
+  var out: list<str> = []
+  for fn in fns {
+    for value in ir.vals(fn) {
+      let type = ir.type(value)
+      if supported(type, config) {
+        out += [type_header(type, config)]
+      }
+    }
+  }
+  return out
+}
+
+local fn source_headers(
+  m: Mod, fns: list<Fn>, blob: str, config: dict
+) -> list<str> {
+  var out = binding_headers(m, config) + type_headers(fns, config) +
+            value_headers(fns, config)
+  out += [type_header(ty("index"), config)]
+  var needs_string = false
+  var needs_assert = false
+  for op in ir.ops(m) {
+    if external_call(m, op, config) {
+      for value in ir.args(op) {
+        out += [type_header(ir.type(value), config)]
+      }
+      for value in ir.outs(op) {
+        out += [type_header(ir.type(value), config)]
+      }
+    }
+    if (blob == "" && payload(op)) ||
+       (ir.kind(op) == "call" && ir.callee(op) == "base.copy" &&
+        len(ir.outs(op)) == 1 && tensor.valid(ir.type(ir.outs(op)[0]))) {
+      needs_string = true
+    }
+    if ir.kind(op) == "call" &&
+       (ir.callee(op) == "base.assert" ||
+        ir.target(m, op) == "base.assert") {
+      needs_assert = true
+    }
+  }
+  if needs_string {
+    out += ["string.h"]
+  }
+  if needs_assert {
+    out += ["assert.h"]
+  }
+  return out
+}
+
+local fn prototypes(
+  m: Mod, fns: list<Fn>, calls: list<Op>, blob: str,
+  data_fns: list<Fn>, config: dict, definition_syntax: bool
+) -> str {
+  var declarations = ""
+  var names: list<str> = []
+  for op in calls {
+    let fn = ir.resolve(m, op)
+    let name = symbol(m, fn, config)
+    for existing in names {
+      assert(existing != name,
+             "c: overloaded or colliding function name " + name)
+    }
+    names += [name]
+    declarations += external_signature(m, op, config) + ";\n"
+  }
+  for fn in fns {
+    let name = symbol(m, fn, config)
+    for existing in names {
+      assert(existing != name,
+             "c: overloaded or colliding function name " + name)
+    }
+    names += [name]
+    declarations += linkage(m, fn) +
+                    signature(
+                      m, fn, blob, data_fns, config,
+                      definition_syntax && ir.local(fn)
+                    ) + ";\n"
+  }
+  return declarations
+}
+
+local fn header_with(m: Mod, blob: str, config: dict) -> str {
+  let fns = exports(m)
+  assert(len(fns) != 0, "c: module has no function definitions")
+  let calls: list<Op> = []
+  var data_fns: list<Fn> = []
+  if blob != "" {
+    data_fns = data_functions(m)
+  }
+  let declarations = prototypes(m, fns, calls, blob, data_fns, config, false)
+  return "#pragma once\n\n" +
+         includes(type_headers(fns, config)) + "\n" +
+         "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n" +
+         declarations +
+         "\n#ifdef __cplusplus\n}\n#endif\n"
+}
+

@@ -1,6 +1,15 @@
 # ONNX application path
 
-This example runs an official ONNX model through the same explicit Joggle
+This is the application gate for the whole frontend-to-artifact path, and the
+`onnx-app-*` tests run it. It lives here rather than under an `examples/`
+directory because the suite depends on it: `app.cpp` is a build target and
+`run.cmake` is the driver the tests invoke.
+
+It is opt-in. It is built and tested only when `JOGGLE_EXAMPLE_MNIST` or
+`JOGGLE_EXAMPLE_MOBILENET` names a model, so the default configuration neither
+builds nor tests anything here.
+
+It runs an official ONNX model through the same explicit Joggle
 pipeline used by applications:
 
 1. import the binary model;
@@ -56,7 +65,7 @@ scalar instructions. It is a correctness stress test, not the preferred
 optimized execution strategy.
 
 Each configured case leaves these inspectable artifacts under
-`build-onnx-app/examples/<name>/`:
+`build/onnx-app/<name>/`:
 
 ```text
 canonical.jog

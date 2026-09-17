@@ -1,13 +1,8 @@
-if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
-   NOT DEFINED HARNESS OR NOT DEFINED MODULES OR NOT DEFINED EXAMPLES OR
-   NOT DEFINED ROOT)
-  message(FATAL_ERROR
-          "locality example requires TOOL, CC, MODEL, HARNESS, module roots, "
-          "and ROOT")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/joggle_test.cmake")
 
-file(REMOVE_RECURSE "${ROOT}")
-file(MAKE_DIRECTORY "${ROOT}")
+joggle_require("locality extension requires TOOL, CC, MODEL, HARNESS, module roots, and ROOT" VARS TOOL CC MODEL HARNESS MODULES EXTENSIONS ROOT)
+
+joggle_workspace("${ROOT}")
 set(canonical "${ROOT}/canonical.jog")
 set(bounded "${ROOT}/bounded.jog")
 set(bounded_source "${ROOT}/bounded.c")
@@ -41,41 +36,25 @@ set(source "${ROOT}/model.c")
 set(program "${ROOT}/model")
 set(plan "${ROOT}/plan.attr")
 
-execute_process(
+joggle_run("canonical preparation failed"
   COMMAND "${TOOL}" run c.prepare mem.plan "${MODEL}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${canonical}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "canonical preparation failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("guarded affine index canonicalization failed"
   COMMAND "${TOOL}" run tile.canon "${canonical}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${canon_guarded}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "guarded affine index canonicalization failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 file(READ "${canon_guarded}" canon_guarded_text)
 if(NOT canon_guarded_text MATCHES "var xi(_[A-Za-z0-9]+)* =")
   message(FATAL_ERROR
           "affine index canonicalization erased a guard-shared tree:\n"
           "${canon_guarded_text}")
 endif()
-execute_process(
+joggle_run("locality plan query failed"
   COMMAND "${TOOL}" query locality.plan "${canonical}"
-          -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
+          -M "${EXTENSIONS}" -M "${MODULES}"
   OUTPUT_FILE "${plan}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "locality plan query failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 file(READ "${plan}" plan_text)
 string(FIND "${plan_text}" "\"candidates\": 3" candidates_at)
 string(FIND "${plan_text}"
@@ -93,198 +72,92 @@ if(candidates_at EQUAL -1 OR current_at EQUAL -1 OR selected_at EQUAL -1 OR
    scalar_cost_at EQUAL -1)
   message(FATAL_ERROR "locality plan omitted its evidence:\n${plan_text}")
 endif()
-execute_process(
+joggle_run("reorder contract failed"
   COMMAND "${TOOL}" run tile_pass.check_reorder "${canonical}"
           -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_QUIET
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "reorder contract failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("scalar tail safety failed"
   COMMAND "${TOOL}" run tile_pass.check_scalarize_tail "${canonical}"
           -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_QUIET
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "scalar tail safety failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("loop peel contract failed"
   COMMAND "${TOOL}" run tile_pass.check_peel "${canonical}"
           -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_QUIET
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "loop peel contract failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("Conv bounds folding failed"
   COMMAND "${TOOL}" run bounds.fold opt.fold opt.basic "${canonical}"
           -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${bounded}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "Conv bounds folding failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 file(READ "${bounded}" bounded_text)
 if(bounded_text MATCHES "if h(_[A-Za-z0-9]+)* >=" OR
    NOT bounded_text MATCHES "if value < f32\\(0\\)")
   message(FATAL_ERROR
           "Conv bounds folding changed the wrong branches:\n${bounded_text}")
 endif()
-execute_process(
+joggle_run("bounded C emission failed"
   COMMAND "${TOOL}" emit c.source "${bounded}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${bounded_source}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "bounded C emission failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("bounded C did not compile"
   COMMAND "${CC}" -std=c99 -O2 -Wall -Wextra -Wstrict-prototypes -Werror
           "${bounded_source}" "${HARNESS}" -lm -o "${bounded_program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "bounded C did not compile (${result}):\n${output}${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("bounded C returned the wrong result"
   COMMAND "${bounded_program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "bounded C returned the wrong result (${result}):\n${output}${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("affine index canonicalization failed"
   COMMAND "${TOOL}" run tile.canon "${bounded}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${canon}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "affine index canonicalization failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("repeated affine index canonicalization failed"
   COMMAND "${TOOL}" run tile.canon "${canon}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${canon_stable}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "repeated affine index canonicalization failed (${result}):\n${error}")
-endif()
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E compare_files "${canon}" "${canon_stable}"
-  RESULT_VARIABLE result
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "affine index canonicalization is not idempotent")
-endif()
+  ERROR_VARIABLE error)
+joggle_run("affine index canonicalization is not idempotent"
+  COMMAND "${CMAKE_COMMAND}" -E compare_files "${canon}" "${canon_stable}")
 file(READ "${canon}" canon_text)
 if(canon_text MATCHES "var (xi|wi|yi)(_[A-Za-z0-9]+)* =" OR
    NOT canon_text MATCHES "out_1\\[int\\(n\\) \\* 4")
   message(FATAL_ERROR
           "affine index canonicalization retained a stride chain:\n${canon_text}")
 endif()
-execute_process(
+joggle_run("canonical-index C emission failed"
   COMMAND "${TOOL}" emit c.source "${canon}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${canon_source}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "canonical-index C emission failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("canonical-index C did not compile"
   COMMAND "${CC}" -std=c99 -O2 -Wall -Wextra -Wstrict-prototypes -Werror
           "${canon_source}" "${HARNESS}" -lm -o "${canon_program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "canonical-index C did not compile (${result}):\n${output}${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("canonical-index C returned the wrong result"
   COMMAND "${canon_program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "canonical-index C returned the wrong result (${result}):\n${output}${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("scalar promotion contract failed"
   COMMAND "${TOOL}" run tile_pass.check_scalarize "${canonical}"
           -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_QUIET
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "scalar promotion contract failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("composed Conv improvement failed"
   COMMAND "${TOOL}" run tile.scalarize bounds.fold opt.fold opt.basic
           "${canonical}"
           -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${scalarized}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "composed Conv improvement failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("scalar promotion structure check failed"
   COMMAND "${TOOL}" run tile_pass.check_scalarized "${scalarized}"
           -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_QUIET
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "scalar promotion structure check failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("repeated scalar promotion failed"
   COMMAND "${TOOL}" run tile.scalarize "${scalarized}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${scalarized_stable}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "repeated scalar promotion failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("scalar promotion is not idempotent"
   COMMAND "${CMAKE_COMMAND}" -E compare_files
-          "${scalarized}" "${scalarized_stable}"
-  RESULT_VARIABLE result
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "scalar promotion is not idempotent")
-endif()
+          "${scalarized}" "${scalarized_stable}")
 file(READ "${scalarized}" scalarized_text)
 if(NOT scalarized_text MATCHES "var acc =" OR
    scalarized_text MATCHES "spatial\.nn\.conv2d|edge\.nn\.conv2d")
@@ -295,130 +168,61 @@ if(scalarized_text MATCHES "var (xi|wi)(_[A-Za-z0-9]+)* =")
   message(FATAL_ERROR
           "scalar promotion retained expanded affine address state:\n${scalarized_text}")
 endif()
-execute_process(
+joggle_run("scalarized C emission failed"
   COMMAND "${TOOL}" emit c.source "${scalarized}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${scalarized_source}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "scalarized C emission failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("scalarized C did not compile"
   COMMAND "${CC}" -std=c99 -O2 -Wall -Wextra -Wstrict-prototypes -Werror
           "${scalarized_source}" "${HARNESS}" -lm -o "${scalarized_program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "scalarized C did not compile (${result}):\n${output}${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("scalarized C returned the wrong result"
   COMMAND "${scalarized_program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "scalarized C returned the wrong result (${result}):\n${output}${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("split/reorder/scalarize composition failed"
   COMMAND "${TOOL}" run locality.block "${canonical}"
-          --arg 2 -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
+          --arg 2 -M "${EXTENSIONS}" -M "${MODULES}"
   OUTPUT_FILE "${split_scalar_raw}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "split/reorder/scalarize composition failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("bounded block composition failed"
   COMMAND "${TOOL}" run locality.block "${canonical}"
-          --arg 2 --arg 1000000 -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
+          --arg 2 --arg 1000000 -M "${EXTENSIONS}" -M "${MODULES}"
   OUTPUT_FILE "${split_scalar_bounded}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "bounded block composition failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("a loose block cost limit changed the policy"
   COMMAND "${CMAKE_COMMAND}" -E compare_files
-          "${split_scalar_raw}" "${split_scalar_bounded}"
-  RESULT_VARIABLE result
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "a loose block cost limit changed the policy")
-endif()
-execute_process(
+          "${split_scalar_raw}" "${split_scalar_bounded}")
+joggle_run("small block cost limit failed"
   COMMAND "${TOOL}" run locality.block "${canonical}"
-          --arg 2 --arg 1 -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
+          --arg 2 --arg 1 -M "${EXTENSIONS}" -M "${MODULES}"
   OUTPUT_FILE "${split_scalar_skipped}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "small block cost limit failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("a rejected block candidate changed the module"
   COMMAND "${CMAKE_COMMAND}" -E compare_files
-          "${canonical}" "${split_scalar_skipped}"
-  RESULT_VARIABLE result
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "a rejected block candidate changed the module")
-endif()
-execute_process(
+          "${canonical}" "${split_scalar_skipped}")
+joggle_run("split scalar cleanup failed"
   COMMAND "${TOOL}" run bounds.fold opt.fold opt.basic
           "${split_scalar_raw}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${split_scalar}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "split scalar cleanup failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("factor-list block composition failed"
   COMMAND "${TOOL}" run locality.block "${canonical}"
-          --arg "[2, 3]" -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
+          --arg "[2, 3]" -M "${EXTENSIONS}" -M "${MODULES}"
   OUTPUT_FILE "${split_scalar_list}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "factor-list block composition failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("factor-list block cleanup failed"
   COMMAND "${TOOL}" run bounds.fold opt.fold opt.basic
           "${split_scalar_list}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${split_scalar_list}.clean"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "factor-list block cleanup failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("factor-list policy disagrees with its first legal factor"
   COMMAND "${CMAKE_COMMAND}" -E compare_files
-          "${split_scalar}" "${split_scalar_list}.clean"
-  RESULT_VARIABLE result
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "factor-list policy disagrees with its first legal factor")
-endif()
+          "${split_scalar}" "${split_scalar_list}.clean")
 execute_process(
   COMMAND "${TOOL}" run locality.block "${canonical}"
-          --arg "[2, 1]" -M "${EXAMPLES}" -M "${MODULES}"
+          --arg "[2, 1]" -M "${EXTENSIONS}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_QUIET
   ERROR_VARIABLE error
@@ -428,17 +232,10 @@ if(result EQUAL 0 OR
   message(FATAL_ERROR
           "factor-list policy accepted an invalid trailing factor: ${error}")
 endif()
-execute_process(
+joggle_run("split scalar structure check failed"
   COMMAND "${TOOL}" run tile_pass.check_split_scalarized "${split_scalar}"
           --arg 4 --arg 2 -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_QUIET
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "split scalar structure check failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 file(READ "${split_scalar}" split_scalar_text)
 if(NOT split_scalar_text MATCHES "var acc_0 =" OR
    NOT split_scalar_text MATCHES "var acc_1 =" OR
@@ -447,39 +244,20 @@ if(NOT split_scalar_text MATCHES "var acc_0 =" OR
           "split scalar pipeline retained the wrong lane structure:\n"
           "${split_scalar_text}")
 endif()
-execute_process(
+joggle_run("split scalar C emission failed"
   COMMAND "${TOOL}" emit c.source "${split_scalar}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${split_scalar_source}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "split scalar C emission failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("split scalar C did not compile"
   COMMAND "${CC}" -std=c99 -O2 -Wall -Wextra -Wstrict-prototypes -Werror
           "${split_scalar_source}" "${HARNESS}" -lm
           -o "${split_scalar_program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "split scalar C did not compile (${result}):\n${output}${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("split scalar C returned the wrong result"
   COMMAND "${split_scalar_program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "split scalar C returned the wrong result (${result}):\n"
-          "${output}${error}")
-endif()
+  ERROR_VARIABLE error)
 execute_process(
   COMMAND "${TOOL}" run tile_pass.reject_mutating_reorder_policy
           "${canonical}" -M "${MODULES}"
@@ -491,63 +269,30 @@ if(result EQUAL 0 OR NOT error MATCHES "policy changed the module")
   message(FATAL_ERROR
           "mutating reorder policy was not rejected (${result}):\n${error}")
 endif()
-execute_process(
+joggle_run("configured reorder failed"
   COMMAND "${TOOL}" run tile_pass.reorder_configured "${canonical}"
           --arg true -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${configured}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "configured reorder failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("disabled reorder failed"
   COMMAND "${TOOL}" run tile_pass.reorder_configured "${canonical}"
           --arg false -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${disabled}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "disabled reorder failed (${result}):\n${error}")
-endif()
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E compare_files "${canonical}" "${disabled}"
-  RESULT_VARIABLE result
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "disabled reorder changed the module")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("disabled reorder changed the module"
+  COMMAND "${CMAKE_COMMAND}" -E compare_files "${canonical}" "${disabled}")
+joggle_run("locality scheduling failed"
   COMMAND "${TOOL}" run locality.apply "${canonical}"
-          -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
+          -M "${EXTENSIONS}" -M "${MODULES}"
   OUTPUT_FILE "${prepared}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "locality scheduling failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("repeated locality scheduling failed"
   COMMAND "${TOOL}" run locality.apply "${prepared}"
-          -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
+          -M "${EXTENSIONS}" -M "${MODULES}"
   OUTPUT_FILE "${stable}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "repeated locality scheduling failed (${result}):\n${error}")
-endif()
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E compare_files "${prepared}" "${stable}"
-  RESULT_VARIABLE result
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "locality scheduling is not idempotent")
-endif()
+  ERROR_VARIABLE error)
+joggle_run("locality scheduling is not idempotent"
+  COMMAND "${CMAKE_COMMAND}" -E compare_files "${prepared}" "${stable}")
 file(READ "${prepared}" text)
 if(text MATCHES "spatial.nn.conv2d" OR text MATCHES "use locality")
   message(FATAL_ERROR
@@ -557,79 +302,35 @@ if(NOT text MATCHES
    "for n in [^\n]+, m in [^\n]+, oh in [^\n]+, q in [^\n]+, r in [^\n]+, s in [^\n]+, ow in")
   message(FATAL_ERROR "locality policy omitted its loop order:\n${text}")
 endif()
-execute_process(
+joggle_run("spatial axis dependence check failed"
   COMMAND "${TOOL}" run tile_pass.check_spatial_axes "${prepared}"
-          -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_QUIET
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "spatial axis dependence check failed (${result}):\n${error}")
-endif()
-execute_process(
+          -M "${EXTENSIONS}" -M "${MODULES}"
+  ERROR_VARIABLE error)
+joggle_run("tiled scalar promotion contract failed"
   COMMAND "${TOOL}" run tile_pass.check_spatial_scalarize "${prepared}"
           --arg 2 -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_QUIET
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "tiled scalar promotion contract failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("tiled scalar promotion failed"
   COMMAND "${TOOL}" run tile_pass.scalarize_budget "${prepared}"
           --arg 2 -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${tiled_scalar_raw}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "tiled scalar promotion failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("tiled scalar cleanup failed"
   COMMAND "${TOOL}" run opt.basic "${tiled_scalar_raw}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${tiled_scalar}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "tiled scalar cleanup failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("tiled scalar structure check failed"
   COMMAND "${TOOL}" run tile_pass.check_spatial_scalarized "${tiled_scalar}"
           --arg 2 -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_QUIET
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "tiled scalar structure check failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("repeated tiled scalar promotion failed"
   COMMAND "${TOOL}" run tile_pass.scalarize_budget "${tiled_scalar}"
           --arg 2 -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${tiled_scalar_stable}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "repeated tiled scalar promotion failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("tiled scalar promotion is not idempotent"
   COMMAND "${CMAKE_COMMAND}" -E compare_files
-          "${tiled_scalar}" "${tiled_scalar_stable}"
-  RESULT_VARIABLE result
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "tiled scalar promotion is not idempotent")
-endif()
+          "${tiled_scalar}" "${tiled_scalar_stable}")
 file(READ "${tiled_scalar}" tiled_scalar_text)
 if(NOT tiled_scalar_text MATCHES "var acc_0 =" OR
    NOT tiled_scalar_text MATCHES "var acc_1 =" OR
@@ -638,49 +339,25 @@ if(NOT tiled_scalar_text MATCHES "var acc_0 =" OR
           "tiled scalar promotion did not expose two accumulators:\n"
           "${tiled_scalar_text}")
 endif()
-execute_process(
+joggle_run("tiled scalar C emission failed"
   COMMAND "${TOOL}" emit c.source "${tiled_scalar}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${tiled_scalar_source}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "tiled scalar C emission failed (${result}):\n${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("tiled scalar C did not compile"
   COMMAND "${CC}" -std=c99 -O2 -Wall -Wextra -Wstrict-prototypes -Werror
           "${tiled_scalar_source}" "${HARNESS}" -lm
           -o "${tiled_scalar_program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "tiled scalar C did not compile (${result}):\n${output}${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("tiled scalar C returned the wrong result"
   COMMAND "${tiled_scalar_program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "tiled scalar C returned the wrong result (${result}):\n"
-          "${output}${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("spatial C emission failed"
   COMMAND "${TOOL}" emit c.source "${prepared}"
-          -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
+          -M "${EXTENSIONS}" -M "${MODULES}"
   OUTPUT_FILE "${source}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "spatial C emission failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 file(READ "${source}" text)
 if(NOT text MATCHES
    "void model_main\\(const float\\* x, const float\\* weight, float\\* [A-Za-z_][A-Za-z0-9_]*\\)")
@@ -690,24 +367,12 @@ endif()
 if(text MATCHES "(^|[^A-Za-z0-9_])(joggle_|jog_|v_[A-Za-z0-9])")
   message(FATAL_ERROR "spatial C introduced an opaque generated prefix:\n${text}")
 endif()
-execute_process(
+joggle_run("spatial C did not compile"
   COMMAND "${CC}" -std=c99 -O2 -Wall -Wextra -Wstrict-prototypes -Werror
           "${source}" "${HARNESS}" -lm -o "${program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "spatial C did not compile (${result}):\n${output}${error}")
-endif()
-execute_process(
+  ERROR_VARIABLE error)
+joggle_run("spatial C returned the wrong result"
   COMMAND "${program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "spatial C returned the wrong result (${result}):\n${output}${error}")
-endif()
+  ERROR_VARIABLE error)

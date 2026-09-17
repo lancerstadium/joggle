@@ -1,0 +1,263 @@
+[memo]
+local fn owned(m: Mod, fn: Fn) -> bool {
+  for candidate in ir.fns(m) {
+    if candidate == fn {
+      return true
+    }
+  }
+  return false
+}
+
+local fn has_fn(values: list<Fn>, value: Fn) -> bool {
+  for candidate in values {
+    if candidate == value {
+      return true
+    }
+  }
+  return false
+}
+
+local fn has_name(values: list<str>, name: str) -> bool {
+  for value in values {
+    if value == name {
+      return true
+    }
+  }
+  return false
+}
+
+local fn data_functions(m: Mod) -> list<Fn> {
+  let fns = ir.fns(m)
+  var out: list<Fn> = []
+  for fn in fns {
+    for op in ir.ops(fn) {
+      let outputs = ir.outs(op)
+      if ir.kind(op) == "constant" && len(outputs) == 1 &&
+         tensor.valid(ir.type(outputs[0])) && !has_fn(out, fn) {
+        out += [fn]
+      }
+    }
+  }
+  var again = true
+  for round in 0..len(fns) {
+    if again {
+      let before = len(out)
+      var names: list<str> = []
+      for target in out {
+        names += [ir.name(target), ir.symbol(target)]
+      }
+      for fn in fns {
+        if !has_fn(out, fn) {
+          for op in ir.ops(fn) {
+            if ir.kind(op) == "call" && has_name(names, ir.callee(op)) {
+              let target = ir.resolve(m, op)
+              if owned(m, target) && has_fn(out, target) {
+                out += [fn]
+              }
+            }
+          }
+        }
+      }
+      again = len(out) != before
+    }
+  }
+  return out
+}
+
+local fn data_name(m: Mod, requested: str) -> str {
+  let name = c_name(requested)
+  for fn in ir.fns(m) {
+    if len(ir.blks(fn)) != 0 {
+      for param in ir.params(fn) {
+        assert(val(param) != name,
+               "c: external data name collides with parameter " + name)
+      }
+    }
+  }
+  return name
+}
+
+[memo]
+local fn callable(m: Mod, fn: Fn, config: dict) -> bool {
+  if !ir.live(fn) || len(ir.generics(fn)) != 0 {
+    return false
+  }
+  for type in ir.returns(fn) {
+    if !supported(type, config) {
+      return false
+    }
+  }
+  for param in ir.params(fn) {
+    if !supported(ir.type(param), config) {
+      return false
+    }
+  }
+  return owned(m, fn) || len(ir.blks(fn)) == 0
+}
+
+[memo]
+local fn external_call(m: Mod, op: Op, config: dict) -> bool {
+  if !ir.live(op) || ir.kind(op) != "call" {
+    return false
+  }
+  let name = call_name(m, op)
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  let fn = ir.resolve(m, op)
+  if !ir.live(fn) || owned(m, fn) || len(ir.blks(fn)) != 0 ||
+     !ir.accepts(op, fn) {
+    return false
+  }
+  if name == "base.list" || name == "operator .." ||
+     name == "base.copy" || name == "base.assert" ||
+     name == "operator []" ||
+     name == "operator []=" ||
+     ir.symbol(fn) == "tensor.make" ||
+     ir.symbol(fn) == "tensor.view" ||
+     ir.symbol(fn) == "tensor.dim" ||
+     (len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
+      ir.symbol(fn) == "tensor.tensor") ||
+     (binary(name) != "" && len(inputs) == 2 && len(outputs) == 1) ||
+     (unary(name) != "" && len(inputs) == 1 && len(outputs) == 1) ||
+     (scalar_name(name, config) && len(inputs) == 1 && len(outputs) == 1) {
+    return false
+  }
+  for value in inputs {
+    if !supported(ir.type(value), config) {
+      return false
+    }
+  }
+  for value in outputs {
+    if !supported(ir.type(value), config) {
+      return false
+    }
+  }
+  return true
+}
+
+[memo]
+local fn noalias_enabled(fn: Fn) -> bool {
+  if !ir.live(fn) || !ir.has(fn, "c") {
+    return false
+  }
+  let spec = ir.meta(fn, "c")
+  assert(base.kind(spec) == "dict", "c: binding must be a dictionary")
+  let enabled = base.get(spec, "noalias", false)
+  assert(base.kind(enabled) == "bool",
+         "c: noalias must be a Boolean")
+  let proven = base.get(spec, "restrict", false)
+  assert(base.kind(proven) == "bool",
+         "c: restrict proof must be a Boolean")
+  return enabled == true || proven == true
+}
+
+[memo]
+local fn accepts_with(m: Mod, op: Op, config: dict) -> bool {
+  let name = call_name(m, op)
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if name == "base.list" || name == "operator .." {
+    return true
+  }
+  if name == "base.assert" || ir.target(m, op) == "base.assert" {
+    return len(inputs) == 2 && len(outputs) == 1 &&
+           ir.type(inputs[0]) == ty("bool") &&
+           ir.type(inputs[1]) == ty("str") &&
+           ir.type(outputs[0]) == ty("bool")
+  }
+  if name == "base.copy" {
+    return len(inputs) == 1 && len(outputs) == 1 &&
+           ir.type(inputs[0]) == ir.type(outputs[0]) &&
+           supported(ir.type(outputs[0]), config)
+  }
+  let resolved = ir.target(m, op)
+  if resolved == "tensor.make" {
+    return len(inputs) == 2 && len(outputs) == 1 &&
+           tensor.valid(ir.type(outputs[0])) &&
+           supported(ir.type(outputs[0]), config) &&
+           supported(ir.type(inputs[1]), config) &&
+           len(mem.capacity(m, outputs[0])) ==
+             len(tensor.dims(ir.type(outputs[0])))
+  }
+  if resolved == "tensor.view" {
+    return len(inputs) == 2 && len(outputs) == 1 &&
+           tensor.valid(ir.type(inputs[0])) &&
+           tensor.valid(ir.type(outputs[0])) &&
+           supported(ir.type(inputs[0]), config) &&
+           supported(ir.type(outputs[0]), config) &&
+           supported(ir.type(inputs[1]), config) &&
+           len(mem.capacity(m, outputs[0])) ==
+             len(tensor.dims(ir.type(outputs[0])))
+  }
+  if resolved == "tensor.dim" {
+    return len(inputs) == 2 && len(outputs) == 1 &&
+           tensor.valid(ir.type(inputs[0])) &&
+           supported(ir.type(inputs[0]), config) &&
+           integer(ir.type(outputs[0]), config)
+  }
+  if name == "operator []" {
+    if len(outputs) != 1 || len(inputs) < 2 ||
+       tensor.valid(ir.type(outputs[0])) {
+      return false
+    }
+    if tensor.valid(ir.type(inputs[0])) {
+      return supported(ir.type(inputs[0]), config)
+    }
+    let source = ir.def(inputs[0])
+    return len(inputs) == 2 && ir.live(source) &&
+           ir.callee(source) == "base.list"
+  }
+  if name == "operator []=" {
+    return len(outputs) == 1 && len(inputs) >= 3 &&
+           tensor.valid(ir.type(outputs[0])) &&
+           supported(ir.type(outputs[0]), config)
+  }
+  let target = ir.resolve(m, op)
+  if len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
+     ir.live(target) && ir.symbol(target) == "tensor.tensor" {
+    return supported(ir.type(outputs[0]), config)
+  }
+  if binary(name) != "" && len(inputs) == 2 && len(outputs) == 1 {
+    return !tensor.valid(ir.type(outputs[0])) &&
+           binary_types(name, inputs, outputs[0], config)
+  }
+  if unary(name) != "" && len(inputs) == 1 && len(outputs) == 1 {
+    return !tensor.valid(ir.type(outputs[0])) &&
+           unary_types(name, inputs[0], outputs[0], config)
+  }
+  if scalar_name(name, config) && len(inputs) == 1 && len(outputs) == 1 {
+    return !tensor.valid(ir.type(outputs[0]))
+  }
+  return callable(m, target, config) || external_call(m, op, config)
+}
+
+local fn prepare_with(m: Mod, config: dict) -> bool {
+  let limit = len(ir.ops(m)) + 1
+  let accept = ir.find(
+    "c.accepts", [ty("Mod"), ty("Op"), ty("dict")]
+  )
+  var changed = opt.expose(m, accept, config, limit)
+  if ir.type(m) {
+    changed = true
+  }
+  if opt.expose(m, accept, config, limit) {
+    changed = true
+  }
+  if opt.specialize(m, "stage", "shape") {
+    changed = true
+  }
+  if opt.basic(m) {
+    changed = true
+  }
+  if ir.trim(m) {
+    changed = true
+  }
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" {
+      assert(accepts_with(m, op, config),
+             "c: unsupported call remains: " + ir.callee(op))
+    }
+  }
+  return changed
+}
+

@@ -1,66 +1,35 @@
-if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
-   NOT DEFINED HARNESS OR NOT DEFINED MODULES OR NOT DEFINED ROOT)
-  message(FATAL_ERROR
-          "quantized C test requires TOOL, CC, MODEL, HARNESS, MODULES, ROOT")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/joggle_test.cmake")
 
-file(REMOVE_RECURSE "${ROOT}")
-file(MAKE_DIRECTORY "${ROOT}")
+joggle_require("quantized C test requires TOOL, CC, MODEL, HARNESS, MODULES, ROOT" VARS TOOL CC MODEL HARNESS MODULES ROOT)
+
+joggle_workspace("${ROOT}")
 set(prepared "${ROOT}/model.jog")
 set(source "${ROOT}/model.c")
 set(header "${ROOT}/model.h")
 set(program "${ROOT}/model")
 
-execute_process(
+joggle_run("quantized C preparation failed"
   COMMAND "${TOOL}" run c.prepare "${MODEL}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${prepared}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "quantized C preparation failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 
-execute_process(
+joggle_run("quantized C emission failed"
   COMMAND "${TOOL}" emit c.source "${prepared}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${source}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "quantized C emission failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 
-execute_process(
+joggle_run("quantized C header failed"
   COMMAND "${TOOL}" emit c.header "${prepared}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_FILE "${header}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "quantized C header failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 
-execute_process(
+joggle_run("quantized C did not compile"
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
           -include "${header}" "${source}" "${HARNESS}" -lm -o "${program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "quantized C did not compile (${result}):\n${output}${error}")
-endif()
+  ERROR_VARIABLE error)
 
-execute_process(
+joggle_run("quantized C returned the wrong result"
   COMMAND "${program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "quantized C returned the wrong result (${result}):\n"
-          "${output}${error}")
-endif()
+  ERROR_VARIABLE error)

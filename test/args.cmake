@@ -1,7 +1,6 @@
-if(NOT DEFINED TOOL OR NOT DEFINED MODEL OR NOT DEFINED C_MODEL OR
-   NOT DEFINED VM_MODEL OR NOT DEFINED MODULES)
-  message(FATAL_ERROR "argument test requires TOOL, models, and MODULES")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/joggle_test.cmake")
+
+joggle_require("argument test requires TOOL, models, and MODULES" VARS TOOL MODEL C_MODEL VM_MODEL MODULES)
 
 execute_process(
   COMMAND "${TOOL}" query opt.count "${MODEL}"

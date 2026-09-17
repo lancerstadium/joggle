@@ -1,0 +1,396 @@
+local fn tensor_literal(op: Op) -> Attr {
+  let meta = attrs(op)
+  if !base.has(meta, "value") {
+    return {}
+  }
+  let literal = meta["value"]
+  if base.kind(literal) != "dict" ||
+     !base.has(literal, "type") ||
+     !base.has(literal, "shape") ||
+     !base.has(literal, "data") ||
+     base.kind(literal["type"]) != "int" ||
+     base.kind(literal["shape"]) != "list" ||
+     base.kind(literal["data"]) != "bytes" {
+    return {}
+  }
+  return literal
+}
+
+local fn tensor_data(op: Op) -> Attr {
+  let outputs = ir.outs(op)
+  if ir.kind(op) == "constant" && len(outputs) == 1 &&
+     tensor.valid(ir.type(outputs[0])) &&
+     base.kind(ir.constant(outputs[0])) == "bytes" {
+    return ir.constant(outputs[0])
+  }
+  if ir.callee(op) == "onnx.tensor" {
+    let inputs = ir.args(op)
+    let index = 2
+    if len(inputs) > index && ir.is_const(inputs[index]) {
+      return ir.constant(inputs[index])
+    }
+  }
+  if ir.callee(op) == "onnx.Constant" {
+    let literal = tensor_literal(op)
+    if base.kind(literal) == "dict" {
+      return literal["data"]
+    }
+  }
+  return ir.meta(op)
+}
+
+local fn literal_ints(value: Val) -> list<int> {
+  var out: list<int> = []
+  let type = ir.type(value)
+  if !tensor.valid(type) {
+    return out
+  }
+  var width = 0
+  if tensor.elem(type) == ty("i32") {
+    width = 4
+  }
+  if tensor.elem(type) == ty("i64") {
+    width = 8
+  }
+  if width == 0 {
+    return out
+  }
+  let producer = ir.def(value)
+  if !ir.live(producer) {
+    return out
+  }
+  let data = tensor_data(producer)
+  if base.kind(data) != "bytes" {
+    return out
+  }
+  if base.size(data) % width != 0 {
+    return out
+  }
+  for i in 0..base.size(data) / width {
+    out += [signed(data, i * width, width)]
+  }
+  return out
+}
+
+local fn static_count(type: Ty) -> int {
+  if !tensor.valid(type) {
+    return -1
+  }
+  var out = 1
+  for dim in tensor.dims(type) {
+    if kind(dim) != "int" || int(dim) < 0 {
+      return -1
+    }
+    out *= int(dim)
+  }
+  return out
+}
+
+local fn splat(value: int, count: int) -> list<int> {
+  var out: list<int> = []
+  if count < 0 {
+    return out
+  }
+  for i in 0..count {
+    out += [value]
+  }
+  return out
+}
+
+local fn selected(values: list<int>, index: int, count: int) -> int {
+  base.assert(
+    len(values) == 1 || len(values) == count,
+    "static tensor broadcast is incompatible"
+  )
+  if len(values) == 1 {
+    return values[0]
+  }
+  return values[index]
+}
+
+local fn const_ints(value: Val) -> list<int> {
+  let literal = literal_ints(value)
+  if len(literal) != 0 {
+    return literal
+  }
+  let producer = ir.def(value)
+  if !ir.live(producer) {
+    return []
+  }
+  let callee = ir.callee(producer)
+  let inputs = ir.args(producer)
+  let count = static_count(ir.type(value))
+
+  if callee == "base.list" {
+    var out: list<int> = []
+    for input in inputs {
+      if !ir.is_const(input) || base.kind(ir.constant(input)) != "int" {
+        return []
+      }
+      out += [base.int(ir.constant(input))]
+    }
+    return out
+  }
+
+  if callee == "tensor.shape" && len(inputs) == 1 {
+    let input = ir.type(inputs[0])
+    if !tensor.valid(input) {
+      return []
+    }
+    var out: list<int> = []
+    for dim in tensor.dims(input) {
+      if kind(dim) != "int" || int(dim) < 0 {
+        return []
+      }
+      out += [int(dim)]
+    }
+    return out
+  }
+
+  if (callee == "onnx.ConstantOfShape" || callee == "tensor.fill") &&
+     count >= 0 {
+    if callee == "tensor.fill" && len(inputs) == 1 {
+      let fill = const_ints(inputs[0])
+      if len(fill) == 1 {
+        return splat(fill[0], count)
+      }
+      return []
+    }
+    let meta = attrs(producer)
+    if !base.has(meta, "value") {
+      return splat(0, count)
+    }
+    let value_attr = meta["value"]
+    if base.kind(value_attr) != "dict" ||
+       !base.has(value_attr, "data") ||
+       base.kind(value_attr["data"]) != "bytes" {
+      return []
+    }
+    let elem = tensor.elem(ir.type(value))
+    var width = 0
+    if elem == ty("i32") {
+      width = 4
+    }
+    if elem == ty("i64") {
+      width = 8
+    }
+    if width == 0 || base.size(value_attr["data"]) != width {
+      return []
+    }
+    return splat(signed(value_attr["data"], 0, width), count)
+  }
+
+  if (callee == "onnx.Mul" || callee == "nn.mul" ||
+      callee == "base.operator *") && len(inputs) == 2 && count >= 0 {
+    let left = const_ints(inputs[0])
+    let right = const_ints(inputs[1])
+    if (len(left) != 1 && len(left) != count) ||
+       (len(right) != 1 && len(right) != count) {
+      return []
+    }
+    var out: list<int> = []
+    for i in 0..count {
+      out += [selected(left, i, count) * selected(right, i, count)]
+    }
+    return out
+  }
+
+  if (callee == "onnx.Equal" || callee == "operator ==") &&
+     len(inputs) == 2 && count >= 0 {
+    let left = const_ints(inputs[0])
+    let right = const_ints(inputs[1])
+    if (len(left) != 1 && len(left) != count) ||
+       (len(right) != 1 && len(right) != count) {
+      return []
+    }
+    var out: list<int> = []
+    for i in 0..count {
+      var equal = 0
+      if selected(left, i, count) == selected(right, i, count) {
+        equal = 1
+      }
+      out += [equal]
+    }
+    return out
+  }
+
+  if (callee == "onnx.Where" || callee == "nn.where") &&
+     len(inputs) == 3 && count >= 0 {
+    let condition = const_ints(inputs[0])
+    let left = const_ints(inputs[1])
+    let right = const_ints(inputs[2])
+    if (len(condition) != 1 && len(condition) != count) ||
+       (len(left) != 1 && len(left) != count) ||
+       (len(right) != 1 && len(right) != count) {
+      return []
+    }
+    var out: list<int> = []
+    for i in 0..count {
+      if selected(condition, i, count) != 0 {
+        out += [selected(left, i, count)]
+      } else {
+        out += [selected(right, i, count)]
+      }
+    }
+    return out
+  }
+  return []
+}
+
+local fn int_vector_len(value: Val) -> int {
+  let type = ir.type(value)
+  if !tensor.valid(type) ||
+     (tensor.elem(type) != ty("i32") && tensor.elem(type) != ty("i64")) {
+    return -1
+  }
+  let shape = tensor.dims(type)
+  if len(shape) != 1 || kind(shape[0]) != "int" || int(shape[0]) < 0 {
+    return -1
+  }
+  return int(shape[0])
+}
+
+local fn attr_ints(value: Attr) -> list<int> {
+  var out: list<int> = []
+  if base.kind(value) != "list" {
+    return out
+  }
+  for item in value {
+    if base.kind(item) != "int" {
+      var invalid: list<int> = []
+      return invalid
+    }
+    out += [base.int(item)]
+  }
+  return out
+}
+
+local fn element(code: int) -> Ty {
+  var out = ty("_")
+  if code == 1 {
+    out = ty("f32")
+  }
+  if code == 2 {
+    out = ty("u8")
+  }
+  if code == 3 {
+    out = ty("i8")
+  }
+  if code == 4 {
+    out = ty("u16")
+  }
+  if code == 5 {
+    out = ty("i16")
+  }
+  if code == 6 {
+    out = ty("i32")
+  }
+  if code == 7 {
+    out = ty("i64")
+  }
+  if code == 9 {
+    out = ty("bool")
+  }
+  if code == 10 {
+    out = ty("f16")
+  }
+  if code == 11 {
+    out = ty("f64")
+  }
+  if code == 12 {
+    out = ty("u32")
+  }
+  if code == 13 {
+    out = ty("u64")
+  }
+  if code == 16 {
+    out = ty("bf16")
+  }
+  return out
+}
+
+local fn element_bytes(code: int) -> int {
+  if code == 2 || code == 3 || code == 9 {
+    return 1
+  }
+  if code == 4 || code == 5 || code == 10 || code == 16 {
+    return 2
+  }
+  if code == 1 || code == 6 || code == 12 {
+    return 4
+  }
+  if code == 7 || code == 11 || code == 13 {
+    return 8
+  }
+  return 0
+}
+
+local fn constant_result(op: Op) -> Ty {
+  let literal = tensor_literal(op)
+  if base.kind(literal) != "dict" {
+    return ty("_")
+  }
+  let code = base.int(literal["type"])
+  let elem = element(code)
+  let width = element_bytes(code)
+  if elem == ty("_") || width == 0 {
+    return ty("_")
+  }
+  let bytes = base.size(literal["data"])
+  var count = 1
+  var shape: list<Ty> = []
+  for item in literal["shape"] {
+    if base.kind(item) != "int" {
+      return ty("_")
+    }
+    let dim = base.int(item)
+    if dim < 0 {
+      return ty("_")
+    }
+    if dim == 0 {
+      count = 0
+    } else {
+      if count > bytes / width / dim {
+        return ty("_")
+      }
+      count *= dim
+    }
+    shape += [ty(dim)]
+  }
+  if count * width != bytes {
+    return ty("_")
+  }
+  return shaped(elem, shape)
+}
+
+[phase: "infer", on: "onnx.Constant"]
+local fn constant_type(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  return set_type(m, outputs[0], constant_result(op))
+}
+
+[phase: "infer", on: "onnx.ConstantOfShape"]
+local fn constant_shape_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let shape = shape_terms(inputs[0])
+  if len(shape) == 0 {
+    return false
+  }
+  var elem = ty("f32")
+  let meta = attrs(op)
+  if base.has(meta, "value") {
+    elem = element(base.get(meta["value"], "type", 1))
+  }
+  if elem == ty("_") {
+    return false
+  }
+  return set_type(m, outputs[0], shaped(elem, shape))
+}
+

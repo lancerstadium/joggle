@@ -1,0 +1,132 @@
+fn batch_norm<E: Ty, N: int, C: int, H: int, W: int>(
+  x: tensor<E, [N, C, H, W]>,
+  scale: tensor<E, [C]>,
+  bias: tensor<E, [C]>,
+  mean: tensor<E, [C]>,
+  variance: tensor<E, [C]>,
+  epsilon: f64
+) -> tensor<E, [N, C, H, W]> {
+  var out = tensor<E, [N, C, H, W]>(E(0))
+  for i in 0..N * C * H * W {
+    let c = i / (H * W) % C
+    out[i] = (x[i] - mean[c]) /
+             sqrt(variance[c] + E(epsilon)) * scale[c] + bias[c]
+  }
+  return out
+}
+
+fn lrn<E: Ty, S: list<int>>(
+  x: tensor<E, S>, size: int, alpha: f64, beta: f64, bias: f64
+) -> tensor<E, S> {
+  let channels = S[1]
+  var channel_stride = 1
+  for axis in 2..len(S) {
+    channel_stride *= S[axis]
+  }
+  let lower = (size - 1) / 2
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    let channel = i / channel_stride % channels
+    var first = channel - lower
+    if first < 0 {
+      first = 0
+    }
+    var last = channel + size - lower
+    if last > channels {
+      last = channels
+    }
+    var sum = E(0)
+    for c in first..last {
+      let value = x[i + (c - channel) * channel_stride]
+      sum += value * value
+    }
+    let scale = E(bias) + E(alpha) / E(size) * sum
+    out[i] = x[i] / pow(scale, E(beta))
+  }
+  return out
+}
+
+fn softmax<E: Ty, S: list<int>>(
+  x: tensor<E, S>, axis: int, beta: f64
+) -> tensor<E, S> {
+  return softmax(x, [axis], beta)
+}
+
+fn softmax<E: Ty, S: list<int>>(
+  x: tensor<E, S>, axes: list<int>, beta: f64
+) -> tensor<E, S> {
+  var width = 1
+  for axis in axes {
+    width *= S[axis]
+  }
+  let lines = tensor.numel<S>() / width
+  var out = tensor<E, S>(E(0))
+  for line in 0..lines {
+    let first = tensor.reduce_offset(S, axes, line, 0)
+    var peak = x[first]
+    for column in 1..width {
+      let offset = tensor.reduce_offset(S, axes, line, column)
+      if x[offset] > peak {
+        peak = x[offset]
+      }
+    }
+    var sum = E(0)
+    for column in 0..width {
+      let offset = tensor.reduce_offset(S, axes, line, column)
+      let value = exp((x[offset] - peak) * E(beta))
+      out[offset] = value
+      sum += value
+    }
+    for column in 0..width {
+      let offset = tensor.reduce_offset(S, axes, line, column)
+      out[offset] = out[offset] / sum
+    }
+  }
+  return out
+}
+
+fn layer_norm<
+  E: Ty, S: list<int>, P: list<int>
+>(
+  x: tensor<E, S>, scale: tensor<E, P>, axis: int, epsilon: f64
+) -> tensor<E, S> {
+  var width = 1
+  for dim in axis..len(S) {
+    width *= S[dim]
+  }
+  let lines = tensor.numel<S>() / width
+  var out = tensor<E, S>(E(0))
+  for line in 0..lines {
+    let first = line * width
+    var mean = E(0)
+    for column in 0..width {
+      mean += x[first + column]
+    }
+    mean = mean / E(width)
+    var variance = E(0)
+    for column in 0..width {
+      let centered = x[first + column] - mean
+      variance += centered * centered
+    }
+    variance = variance / E(width)
+    let inverse = E(1) / sqrt(variance + E(epsilon))
+    for column in 0..width {
+      let index = first + column
+      let parameter = tensor.broadcast_offset(P, S, index)
+      out[index] = (x[index] - mean) * inverse * scale[parameter]
+    }
+  }
+  return out
+}
+
+fn layer_norm<
+  E: Ty, S: list<int>, P: list<int>, B: list<int>
+>(
+  x: tensor<E, S>, scale: tensor<E, P>, bias: tensor<E, B>,
+  axis: int, epsilon: f64
+) -> tensor<E, S> {
+  let normalized: tensor<E, S> = layer_norm(x, scale, axis, epsilon)
+  let shifted: tensor<E, S> = add(normalized, bias)
+  return shifted
+}
+

@@ -1,0 +1,139 @@
+local fn api_value(
+  type: Ty, name: str, pointer: bool, config: dict, capacity: list<int>
+) -> dict {
+  var out: dict = {}
+  out["name"] = name
+  out["type"] = text(type)
+  out["pointer"] = pointer
+  if tensor.valid(type) {
+    let element = tensor.elem(type)
+    var storage = capacity
+    var shape: list<Attr> = []
+    for dim in tensor.dims(type) {
+      if base.kind(dim) == "int" {
+        shape += [base.int(dim)]
+      } else {
+        shape += ["_"]
+      }
+    }
+    var elements = -1
+    if tensor.static(type) {
+      elements = count(type)
+      storage = tensor.shape(type)
+    } else {
+      if len(storage) == len(tensor.dims(type)) {
+        elements = 1
+        for extent in storage {
+          elements *= extent
+        }
+      }
+    }
+    out["c"] = scalar(element, config)
+    out["kind"] = class(element, config)
+    out["shape"] = shape
+    out["capacity"] = storage
+    out["dynamic"] = !tensor.static(type)
+    out["elements"] = elements
+    if elements < 0 {
+      out["bytes"] = -1
+    } else {
+      out["bytes"] = elements * width(element, config)
+    }
+    return out
+  }
+  out["c"] = scalar(type, config)
+  out["kind"] = class(type, config)
+  out["shape"] = []
+  out["elements"] = 1
+  out["bytes"] = width(type, config)
+  return out
+}
+
+local fn api_with(m: Mod, blob: str, config: dict) -> list<dict> {
+  let fns = exports(m)
+  assert(len(fns) != 0, "c: module has no function definitions")
+  var data_fns: list<Fn> = []
+  if blob != "" {
+    data_fns = data_functions(m)
+  }
+  var out: list<dict> = []
+  for fn in fns {
+    assert(callable(m, fn, config), "c: function has no representable ABI")
+    var params: list<dict> = []
+    for param in ir.params(fn) {
+      let type = ir.type(param)
+      params += [api_value(
+        type, val(param), tensor.valid(type), config, mem.capacity(m, param)
+      )]
+    }
+    var data = ""
+    if blob != "" && owned(m, fn) && has_fn(data_fns, fn) {
+      data = blob
+    }
+    let types = ir.returns(fn)
+    let names = result_names(fn, data)
+    let returned = result_values(fn)
+    var results: list<dict> = []
+    for i in 0..len(types) {
+      var name = names[i]
+      let direct = len(types) == 1 && !tensor.valid(types[i])
+      if direct {
+        name = ""
+      }
+      var capacity: list<int> = []
+      if len(returned) == len(types) {
+        capacity = mem.capacity(m, returned[i])
+      }
+      results += [api_value(types[i], name, !direct, config, capacity)]
+    }
+    var entry: dict = {}
+    entry["name"] = symbol(m, fn, config)
+    entry["declaration"] =
+      signature(m, fn, blob, data_fns, config, false) + ";"
+    entry["noalias"] = noalias_enabled(fn)
+    entry["params"] = params
+    entry["results"] = results
+    entry["data"] = data
+    out += [entry]
+  }
+  return out
+}
+
+local fn data_with(m: Mod, config: dict) -> bytes {
+  var out = hex""
+  for op in ir.ops(m) {
+    if payload(op) {
+      let outputs = ir.outs(op)
+      let offset = aligned(
+        base.size(out), alignment(tensor.elem(ir.type(outputs[0])), config)
+      )
+      for i in base.size(out)..offset {
+        out += hex"00"
+      }
+      out += payload_data(op)
+    }
+  }
+  return out
+}
+
+local fn emit(m: Mod, blob: str, config: dict) -> str {
+  let fns = functions(m)
+  assert(len(fns) != 0, "c: module has no function definitions")
+  let calls = dependencies(m, config)
+  var data_fns: list<Fn> = []
+  if blob != "" {
+    data_fns = data_functions(m)
+  }
+  var offsets: dict = {}
+  if blob != "" {
+    offsets = payload_offsets(m, config)
+  }
+  let declarations = prototypes(m, fns, calls, blob, data_fns, config, true)
+  var definitions = ""
+  for fn in fns {
+    definitions += definition(m, fn, blob, data_fns, config, offsets) + "\n"
+  }
+  return includes(source_headers(m, fns, blob, config)) + "\n" +
+         declarations + "\n" + definitions
+}
+

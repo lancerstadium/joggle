@@ -1,8 +1,6 @@
-if(NOT DEFINED TOOL OR NOT DEFINED SOURCE_ROOT OR NOT DEFINED BUILD_ROOT OR
-   NOT DEFINED TEST_ROOT)
-  message(FATAL_ERROR
-          "module test requires TOOL, SOURCE_ROOT, BUILD_ROOT, TEST_ROOT")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/joggle_test.cmake")
+
+joggle_require("module test requires TOOL, SOURCE_ROOT, BUILD_ROOT, TEST_ROOT" VARS TOOL SOURCE_ROOT BUILD_ROOT TEST_ROOT)
 
 function(invoke expected)
   execute_process(
@@ -22,8 +20,7 @@ function(invoke expected)
   set(COMMAND_ERROR "${error}" PARENT_SCOPE)
 endfunction()
 
-file(REMOVE_RECURSE "${TEST_ROOT}")
-file(MAKE_DIRECTORY "${TEST_ROOT}")
+joggle_workspace("${TEST_ROOT}")
 
 set(fragment_root "${TEST_ROOT}.fragment-source")
 file(REMOVE_RECURSE "${fragment_root}")
@@ -154,8 +151,11 @@ endif()
 
 invoke(ok "${TOOL}" module check nn -M "${SOURCE_ROOT}")
 invoke(ok "${TOOL}" module info tensor -M "${SOURCE_ROOT}")
+# A module may be split across lib/ fragments. module.jog is always reported
+# first and the fragments follow in sorted order, so the listing stays
+# deterministic as the split changes.
 if(NOT COMMAND_OUTPUT MATCHES
-   "^module tensor\npath .+\nuse base\nsource module.jog\nfn tensor<E: Ty, S: list<int>>\\(\\) -> Ty;\n")
+   "^module tensor\npath .+\nuse base\nsource module.jog\n(source lib/[a-z_]+\\.jog\n)+fn tensor<E: Ty, S: list<int>>\\(\\) -> Ty;\n")
   message(FATAL_ERROR "unexpected module info:\n${COMMAND_OUTPUT}")
 endif()
 

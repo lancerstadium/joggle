@@ -1,27 +1,19 @@
-if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
-   NOT DEFINED HARNESS OR NOT DEFINED MODULES OR NOT DEFINED EXAMPLES OR
-   NOT DEFINED ROOT)
-  message(FATAL_ERROR "IKJ example test is missing an input")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/joggle_test.cmake")
 
-file(REMOVE_RECURSE "${ROOT}")
-file(MAKE_DIRECTORY "${ROOT}")
+joggle_require("IKJ extension test is missing an input" VARS TOOL CC MODEL HARNESS MODULES EXTENSIONS ROOT)
+
+joggle_workspace("${ROOT}")
 
 set(prepared "${ROOT}/model.jog")
 set(source "${ROOT}/model.c")
 set(header "${ROOT}/model.h")
 set(program "${ROOT}/model")
 
-execute_process(
+joggle_run("IKJ preparation failed"
   COMMAND "${TOOL}" run ikj.apply c.prepare "${MODEL}"
-          -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
+          -M "${EXTENSIONS}" -M "${MODULES}"
   OUTPUT_FILE "${prepared}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "IKJ preparation failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 
 file(READ "${prepared}" prepared_text)
 if(NOT prepared_text MATCHES
@@ -32,27 +24,17 @@ if(prepared_text MATCHES "tensor\\.matmul")
   message(FATAL_ERROR "IKJ preparation left the source matrix multiplication")
 endif()
 
-execute_process(
+joggle_run("IKJ C emission failed"
   COMMAND "${TOOL}" emit c.source "${prepared}"
-          -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
+          -M "${EXTENSIONS}" -M "${MODULES}"
   OUTPUT_FILE "${source}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "IKJ C emission failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 
-execute_process(
+joggle_run("IKJ C header emission failed"
   COMMAND "${TOOL}" emit c.header "${prepared}"
-          -M "${EXAMPLES}" -M "${MODULES}"
-  RESULT_VARIABLE result
+          -M "${EXTENSIONS}" -M "${MODULES}"
   OUTPUT_FILE "${header}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "IKJ C header emission failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 
 file(READ "${source}" emitted_source)
 file(READ "${header}" emitted_header)
@@ -70,25 +52,13 @@ if(NOT emitted_source MATCHES
           "IKJ C did not preserve its source-derived names:\n${emitted_source}")
 endif()
 
-execute_process(
+joggle_run("IKJ C compilation failed"
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
           -include "${header}" "${source}" "${HARNESS}" -o "${program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "IKJ C compilation failed (${result}):\n${output}${error}")
-endif()
+  ERROR_VARIABLE error)
 
-execute_process(
+joggle_run("IKJ result is wrong"
   COMMAND "${program}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "IKJ result is wrong (${result}):\n${output}${error}")
-endif()
+  ERROR_VARIABLE error)

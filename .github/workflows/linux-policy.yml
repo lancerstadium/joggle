@@ -6,11 +6,11 @@ name: linux-policy
     branches: [main]
     paths:
       - .github/workflows/linux-policy.yml
-      - examples/onnx/app.cpp
-      - examples/locality/**
+      - test/onnx-app/app.cpp
+      - extensions/locality/**
       - modules/**
-      - paper/measure_reorder.py
-      - paper/measure_systems.py
+      - paper/scripts/measure_reorder.py
+      - paper/scripts/measure_systems.py
       - paper/experiments/mobilenetv2-policy.json
 
 permissions:
@@ -65,7 +65,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p build-policy
-          python3 paper/measure_reorder.py \
+          python3 paper/scripts/measure_reorder.py \
             --tool build-app/joggle \
             --modules build-app/modules \
             --examples examples \
@@ -98,7 +98,7 @@ jobs:
             -M build-app/modules > "$root/model.bin"
           build-app/joggle query c.api "$root/placed.jog" \
             --arg '"weights"' -M build-app/modules > "$root/api.json"
-          python3 examples/onnx/make_harness.py \
+          python3 test/tools/make_harness.py \
             "$root/api.json" "$root/harness.c" --header model.h
           cc -std=c11 -O3 -Wall -Wextra -Wstrict-prototypes -Werror \
             -I "$root" "$root/model.c" "$root/harness.c" -lm \
@@ -118,14 +118,14 @@ jobs:
           print(min(os.sched_getaffinity(0)))
           PY
           )"
-          python3 paper/measure_systems.py \
+          python3 paper/scripts/measure_systems.py \
             --manifest paper/experiments/mobilenetv2.json \
             --repo . \
             --output build-policy/results/mobilenetv2-plain.csv \
             --record build-policy/results/mobilenetv2-plain.json \
             --cpu "$cpu" --require-clean \
             2>&1 | tee build-policy/results/mobilenetv2-plain.log
-          python3 paper/measure_systems.py \
+          python3 paper/scripts/measure_systems.py \
             --manifest paper/experiments/mobilenetv2-policy.json \
             --repo . \
             --output build-policy/results/mobilenetv2-policy.csv \

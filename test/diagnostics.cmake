@@ -1,6 +1,6 @@
-if(NOT DEFINED TOOL OR NOT DEFINED MODEL OR NOT DEFINED MODULES)
-  message(FATAL_ERROR "diagnostics test requires TOOL, MODEL, and MODULES")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/joggle_test.cmake")
+
+joggle_require("diagnostics test requires TOOL, MODEL, and MODULES" VARS TOOL MODEL MODULES)
 
 execute_process(
   COMMAND "${TOOL}" --diagnostics jog check "${MODEL}" -M "${MODULES}"

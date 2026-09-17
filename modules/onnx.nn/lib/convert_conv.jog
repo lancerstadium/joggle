@@ -1,0 +1,114 @@
+local fn conv_config(
+  m: Mod, op: Op, weight: Ty, biased: bool
+) -> list<Val> {
+  if !tensor.valid(weight) || len(tensor.dims(weight)) != 4 {
+    return []
+  }
+  let meta = attrs(op)
+  let weights = tensor.dims(weight)
+  let pad = spatial_pad(op, [int(weights[2]), int(weights[3])])
+  if len(pad) != 4 {
+    return []
+  }
+  var config = [
+    ints(m, op, base.get(meta, "strides", [1, 1])),
+    ints(m, op, pad),
+    ints(m, op, base.get(meta, "dilations", [1, 1])),
+    ir.constant(m, op, base.get(meta, "group", 1), ty("int"))
+  ]
+  if biased {
+    config += [ints(m, op, [0, 1, 2, 3])]
+    config += [ints(m, op, [0, 1, 2, 3])]
+    config += [ints(m, op, [0, 1, 2, 3])]
+    config += [ir.constant(m, op, "NONE", ty("str"))]
+  }
+  return config
+}
+
+[phase: "compute", on: "onnx.Conv"]
+local fn convert_conv(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if (len(inputs) != 2 && len(inputs) != 3) || len(outputs) != 1 {
+    return false
+  }
+  let biased = len(inputs) == 3
+  let expected = conv_result(op)
+  if expected == ty("_") || ir.type(outputs[0]) != expected {
+    return false
+  }
+  let weight = ir.type(inputs[1])
+  let config = conv_config(m, op, weight, biased)
+  if len(config) == 0 {
+    return false
+  }
+  inputs += config
+  return convert_call(m, op, "nn.conv2d", inputs)
+}
+
+local fn pool_config(m: Mod, op: Op, average: bool) -> list<Val> {
+  let meta = attrs(op)
+  if !base.has(meta, "kernel_shape") ||
+     base.get(meta, "ceil_mode", 0) != 0 {
+    return []
+  }
+  if average &&
+     base.get(meta, "count_include_pad", 0) != 0 {
+    return []
+  }
+  if !average &&
+     base.get(meta, "storage_order", 0) != 0 {
+    return []
+  }
+  let kernel = meta["kernel_shape"]
+  let stride = base.get(meta, "strides", [1, 1])
+  let dilation = base.get(meta, "dilations", [1, 1])
+  let pad = spatial_pad(op, kernel)
+  if len(kernel) != 2 || len(stride) != 2 || len(dilation) != 2 {
+    return []
+  }
+  var config = [ints(m, op, kernel), ints(m, op, stride)]
+  if len(pad) == 4 {
+    config += [ints(m, op, pad)]
+  } else {
+    let mode = base.get(meta, "auto_pad", "NOTSET")
+    if mode != "SAME_UPPER" && mode != "SAME_LOWER" {
+      return []
+    }
+    config += [ir.constant(m, op, mode, ty("str"))]
+  }
+  config += [ints(m, op, dilation)]
+  config += [ints(m, op, [0, 1, 2, 3])]
+  return config
+}
+
+local fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 ||
+     !tensor.valid(ir.type(inputs[0])) ||
+     !tensor.valid(ir.type(outputs[0])) {
+    return false
+  }
+  let config = pool_config(m, op, callee == "nn.avg_pool2d")
+  if len(config) == 0 {
+    return false
+  }
+  inputs += config
+  return convert_call(m, op, callee, inputs)
+}
+
+[phase: "compute", on: "onnx.GlobalAveragePool"]
+local fn convert_global_pool(m: Mod, op: Op) -> bool {
+  return convert_call(m, op, "nn.global_avg_pool2d")
+}
+
+[phase: "compute", on: "onnx.AveragePool"]
+local fn convert_avg_pool(m: Mod, op: Op) -> bool {
+  return convert_pool(m, op, "nn.avg_pool2d")
+}
+
+[phase: "compute", on: "onnx.MaxPool"]
+local fn convert_max_pool(m: Mod, op: Op) -> bool {
+  return convert_pool(m, op, "nn.max_pool2d")
+}

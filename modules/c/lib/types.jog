@@ -1,0 +1,87 @@
+[memo]
+local fn spec(config: dict, name: str) -> Attr {
+  if base.has(config, name) {
+    return config[name]
+  }
+  let defaults = abi()
+  assert(base.has(defaults, name), "c: ABI has no type " + name)
+  return defaults[name]
+}
+
+[memo]
+local fn field(config: dict, name: str, key: str) -> Attr {
+  let type = spec(config, name)
+  assert(base.kind(type) == "dict",
+         "c: ABI type " + name + " must be a dictionary")
+  assert(base.has(type, key), "c: ABI type " + name + " has no " + key)
+  return base.get(type, key)
+}
+
+[memo]
+local fn scalar(type: Ty, config: dict) -> str {
+  return str(field(config, base.name(type), "name"))
+}
+
+[memo]
+local fn scalar_name(name: str, config: dict) -> bool {
+  return base.has(config, name) || base.has(abi(), name)
+}
+
+[memo]
+local fn class(type: Ty, config: dict) -> str {
+  let name = base.name(type)
+  if !scalar_name(name, config) {
+    return ""
+  }
+  return str(field(config, name, "kind"))
+}
+
+[memo]
+local fn number(type: Ty, config: dict) -> bool {
+  let kind = class(type, config)
+  return kind == "signed" || kind == "unsigned" || kind == "float"
+}
+
+[memo]
+local fn integer(type: Ty, config: dict) -> bool {
+  let kind = class(type, config)
+  return kind == "signed" || kind == "unsigned"
+}
+
+[memo]
+local fn same_repr(left: Ty, right: Ty, config: dict) -> bool {
+  return class(left, config) != "" && class(right, config) != "" &&
+         scalar(left, config) == scalar(right, config)
+}
+
+[memo]
+local fn width(type: Ty, config: dict) -> int {
+  let bytes = base.int(field(config, base.name(type), "bytes"))
+  assert(bytes > 0, "c: ABI byte width must be positive")
+  return bytes
+}
+
+[memo]
+local fn alignment(type: Ty, config: dict) -> int {
+  let desc = spec(config, base.name(type))
+  var bytes = width(type, config)
+  if base.has(desc, "align") {
+    bytes = base.int(desc["align"])
+  }
+  assert(bytes > 0, "c: ABI alignment must be positive")
+  return bytes
+}
+
+[memo]
+local fn index_type(config: dict) -> str {
+  return scalar(ty("index"), config)
+}
+
+[memo]
+local fn supported(type: Ty, config: dict) -> bool {
+  if tensor.valid(type) {
+    return scalar_name(base.name(tensor.elem(type)), config)
+  }
+  return scalar_name(base.name(type), config)
+}
+

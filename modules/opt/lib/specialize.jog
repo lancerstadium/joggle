@@ -1,0 +1,110 @@
+local fn specialize_loop(m: Mod, loop: Op) -> bool {
+  let inputs = ir.args(loop)
+  let outputs = ir.outs(loop)
+  let bodies = ir.blks(loop)
+  let axes = len(inputs) - len(outputs)
+  if ir.kind(loop) != "loop" || len(bodies) != 1 || axes <= 0 {
+    return false
+  }
+  let body = bodies[0]
+  let body_args = ir.args(body)
+  let body_ops = ir.ops(body)
+  if len(body_args) != axes + len(outputs) || len(body_ops) == 0 ||
+     ir.kind(body_ops[len(body_ops) - 1]) != "yield" {
+    return false
+  }
+
+  var lower: list<int> = []
+  var sizes: list<int> = []
+  var count = 1
+  for axis in 0..axes {
+    let range = ir.def(inputs[axis])
+    if !ir.live(range) || ir.kind(range) != "call" ||
+       ir.callee(range) != "operator .." {
+      return false
+    }
+    let bounds = ir.args(range)
+    if len(bounds) != 2 || !ir.is_const(bounds[0]) ||
+       !ir.is_const(bounds[1]) ||
+       base.kind(ir.constant(bounds[0])) != "int" ||
+       base.kind(ir.constant(bounds[1])) != "int" {
+      return false
+    }
+    let begin = base.int(ir.constant(bounds[0]))
+    let end = base.int(ir.constant(bounds[1]))
+    var size = 0
+    if end > begin {
+      size = end - begin
+    }
+    lower += [begin]
+    sizes += [size]
+    count *= size
+  }
+
+  var current: list<Val> = []
+  for i in axes..len(inputs) {
+    current += [inputs[i]]
+  }
+  let yield = body_ops[len(body_ops) - 1]
+  var source_ops: list<Op> = []
+  for i in 0..len(body_ops) - 1 {
+    source_ops += [body_ops[i]]
+  }
+  for point in 0..count {
+    var remainder = point
+    var coords: list<int> = []
+    for axis in 0..axes {
+      coords += [0]
+    }
+    for reverse in 0..axes {
+      let axis = axes - reverse - 1
+      coords[axis] = lower[axis] + remainder % sizes[axis]
+      remainder /= sizes[axis]
+    }
+
+    var old: list<Val> = []
+    var next: list<Val> = []
+    for axis in 0..axes {
+      old += [body_args[axis]]
+      next += [ir.constant(m, loop, coords[axis], ty("index"))]
+    }
+    for i in 0..len(outputs) {
+      old += [body_args[axes + i]]
+      next += [current[i]]
+    }
+    let copies = ir.clone(m, source_ops, loop, old, next)
+    assert(len(copies) == len(source_ops),
+           "opt.specialize could not clone a loop body")
+    for i in 0..len(source_ops) {
+      old += ir.outs(source_ops[i])
+      next += ir.outs(copies[i])
+    }
+    current = []
+    for value in ir.args(yield) {
+      current += [mapped(value, old, next)]
+    }
+  }
+
+  if len(outputs) != 0 {
+    assert(ir.replace(m, outputs, current),
+           "opt.specialize could not replace loop results")
+  }
+  assert(ir.erase(m, loop), "opt.specialize could not erase a loop")
+  return true
+}
+
+local fn template_name(m: Mod, name: str) -> str {
+  var out = ""
+  for attempt in 0..len(ir.fns(m)) + 2 {
+    var candidate = name + "_template"
+    if attempt != 0 {
+      candidate += "_" + text(attempt)
+    }
+    if out == "" && !ir.live(ir.find(m, candidate)) {
+      out = candidate
+    }
+  }
+  assert(out != "", "opt.instantiate could not reserve a temporary name")
+  return out
+}
+

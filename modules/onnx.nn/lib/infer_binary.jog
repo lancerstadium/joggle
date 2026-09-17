@@ -1,0 +1,83 @@
+local fn broadcast_type(m: Mod, op: Op, result_elem: Ty) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) == 0 || len(outputs) != 1 {
+    return false
+  }
+  let first = ir.type(inputs[0])
+  if !tensor.valid(first) {
+    return false
+  }
+  let source_elem = tensor.elem(first)
+  var shape: list<Ty> = tensor.dims(first)
+  for input in inputs {
+    let type = ir.type(input)
+    if !tensor.valid(type) || tensor.elem(type) != source_elem {
+      return false
+    }
+    let dims: list<Ty> = tensor.dims(type)
+    let next: list<Ty> = tensor.broadcast_shape(shape, dims)
+    if !tensor.broadcastable(shape, next) ||
+       !tensor.broadcastable(dims, next) {
+      return false
+    }
+    shape = next
+  }
+  var elem = result_elem
+  if elem == ty("_") {
+    elem = source_elem
+  }
+  return set_type(m, outputs[0], shaped(elem, shape))
+}
+
+[phase: "infer", on: ["onnx.Add", "onnx.Sub", "onnx.Mul", "onnx.Div", "onnx.Pow"]]
+local fn binary_type(m: Mod, op: Op) -> bool {
+  if len(ir.args(op)) != 2 {
+    return false
+  }
+  return broadcast_type(m, op, ty("_"))
+}
+
+[phase: "infer", on: ["onnx.Equal", "onnx.Greater", "onnx.Less"]]
+local fn compare_type(m: Mod, op: Op) -> bool {
+  if len(ir.args(op)) != 2 {
+    return false
+  }
+  return broadcast_type(m, op, ty("bool"))
+}
+
+[phase: "infer", on: "onnx.Where"]
+local fn where_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 {
+    return false
+  }
+  let condition = ir.type(inputs[0])
+  let left = ir.type(inputs[1])
+  let right = ir.type(inputs[2])
+  if !tensor.valid(condition) || tensor.elem(condition) != ty("bool") ||
+     !tensor.valid(left) || !tensor.valid(right) ||
+     tensor.elem(left) != tensor.elem(right) {
+    return false
+  }
+  var shape = tensor.broadcast_shape(
+    tensor.dims(condition), tensor.dims(left)
+  )
+  if !tensor.broadcastable(tensor.dims(condition), shape) ||
+     !tensor.broadcastable(tensor.dims(left), shape) {
+    return false
+  }
+  let next = tensor.broadcast_shape(shape, tensor.dims(right))
+  if !tensor.broadcastable(shape, next) ||
+     !tensor.broadcastable(tensor.dims(right), next) {
+    return false
+  }
+  return set_type(m, outputs[0], shaped(tensor.elem(left), next))
+}
+
+[phase: "infer", on: ["onnx.Max", "onnx.Min"]]
+local fn extrema_type(m: Mod, op: Op) -> bool {
+  return broadcast_type(m, op, ty("_"))
+}
+

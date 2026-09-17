@@ -1,0 +1,75 @@
+local fn matmul_param(type: Ty, elem: Ty, extent: Ty) -> bool {
+  if !tensor.valid(type) || tensor.elem(type) != elem {
+    return false
+  }
+  let shape = tensor.dims(type)
+  return len(shape) == 0 ||
+         (len(shape) == 1 &&
+          (shape[0] == ty(1) || shape[0] == extent))
+}
+
+[phase: "compute", on: "com_microsoft.FusedMatMul"]
+local fn convert_fused_matmul(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 1 {
+    return false
+  }
+  let expected = fused_matmul_result(op)
+  if expected == ty("_") || ir.type(outputs[0]) != expected {
+    return false
+  }
+  let meta = attrs(op)
+  inputs += [
+    ir.constant(m, op, base.get(meta, "transA", 0) == 1, ty("bool"))
+  ]
+  inputs += [
+    ir.constant(m, op, base.get(meta, "transB", 0) == 1, ty("bool"))
+  ]
+  inputs += [
+    ir.constant(m, op, base.get(meta, "alpha", 1.0), ty("f64"))
+  ]
+  return convert_call(m, op, "tensor.matmul", inputs)
+}
+
+[phase: "compute", on: "onnx.MatMul"]
+local fn convert_matmul(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  let expected = matmul_result(op)
+  if expected == ty("_") || ir.type(outputs[0]) != expected {
+    return false
+  }
+  return convert_call(m, op, "tensor.matmul")
+}
+
+[phase: "compute", on: "onnx.Gemm"]
+local fn convert_gemm(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if (len(inputs) != 2 && len(inputs) != 3) || len(outputs) != 1 {
+    return false
+  }
+  let expected = gemm_result(op)
+  if expected == ty("_") || ir.type(outputs[0]) != expected {
+    return false
+  }
+  let meta = attrs(op)
+  inputs += [
+    ir.constant(m, op, base.get(meta, "transA", 0) == 1, ty("bool"))
+  ]
+  inputs += [
+    ir.constant(m, op, base.get(meta, "transB", 0) == 1, ty("bool"))
+  ]
+  inputs += [
+    ir.constant(m, op, base.get(meta, "alpha", 1.0), ty("f64"))
+  ]
+  if len(ir.args(op)) == 3 {
+    inputs += [
+      ir.constant(m, op, base.get(meta, "beta", 1.0), ty("f64"))
+    ]
+  }
+  return convert_call(m, op, "nn.gemm", inputs)
+}

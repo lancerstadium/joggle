@@ -1,0 +1,164 @@
+local fn nonzero_value<E: Ty>(value: E) -> bool {
+  return value != E(0)
+}
+
+local fn nonzero_value(value: bool) -> bool {
+  return value
+}
+
+// Compact selected coordinates into a bounded dynamic result. The first
+// extent is the input rank; the second is the number of selected elements.
+fn nonzero<E: Ty, S: list<int>, R: int>(
+  x: tensor<E, S>
+) -> tensor<i64, [R, _]> {
+  assert(R == len(S), "nn.nonzero result rank must match its input")
+  let total = tensor.numel<S>()
+  var count = index(0)
+  for linear in 0..total {
+    if nonzero_value(x[linear]) {
+      count += index(1)
+    }
+  }
+
+  var capacity_shape = tensor<index, [2]>(index(0))
+  capacity_shape[0] = index(R)
+  capacity_shape[1] = index(total)
+  var out: tensor<i64, [R, _]> = tensor.make(i64(0), capacity_shape)
+  var item = index(0)
+  for linear in 0..total {
+    if nonzero_value(x[linear]) {
+      for axis in 0..R {
+        var stride = 1
+        for dim in axis + 1..R {
+          stride *= S[dim]
+        }
+        out[axis * count + item] = i64((linear / stride) % S[axis])
+      }
+      item += index(1)
+    }
+  }
+
+  var result_shape = tensor<index, [2]>(index(0))
+  result_shape[0] = index(R)
+  result_shape[1] = count
+  return tensor.view(out, result_shape)
+}
+
+local fn iou<E: Ty>(
+  a0: E, a1: E, a2: E, a3: E,
+  b0: E, b1: E, b2: E, b3: E,
+  center: int
+) -> E {
+  var ay0 = a0
+  var ax0 = a1
+  var ay1 = a2
+  var ax1 = a3
+  var by0 = b0
+  var bx0 = b1
+  var by1 = b2
+  var bx1 = b3
+  if center != 0 {
+    ax0 = a0 - a2 / E(2)
+    ax1 = a0 + a2 / E(2)
+    ay0 = a1 - a3 / E(2)
+    ay1 = a1 + a3 / E(2)
+    bx0 = b0 - b2 / E(2)
+    bx1 = b0 + b2 / E(2)
+    by0 = b1 - b3 / E(2)
+    by1 = b1 + b3 / E(2)
+  }
+  let ah = maximum(E(0), maximum(ay0, ay1) - minimum(ay0, ay1))
+  let aw = maximum(E(0), maximum(ax0, ax1) - minimum(ax0, ax1))
+  let bh = maximum(E(0), maximum(by0, by1) - minimum(by0, by1))
+  let bw = maximum(E(0), maximum(bx0, bx1) - minimum(bx0, bx1))
+  let iy0 = maximum(minimum(ay0, ay1), minimum(by0, by1))
+  let ix0 = maximum(minimum(ax0, ax1), minimum(bx0, bx1))
+  let iy1 = minimum(maximum(ay0, ay1), maximum(by0, by1))
+  let ix1 = minimum(maximum(ax0, ax1), maximum(bx0, bx1))
+  let intersection = maximum(E(0), iy1 - iy0) * maximum(E(0), ix1 - ix0)
+  let union = ah * aw + bh * bw - intersection
+  var out = E(0)
+  if union > E(0) {
+    out = intersection / union
+  }
+  return out
+}
+
+// Shared variable-result suppression.  Runtime shape stays a value: `make`
+// owns the working storage and `view` exposes only the selected prefix.
+fn nms<E: Ty, I: Ty, B: list<int>, S: list<int>>(
+  boxes: tensor<E, B>,
+  scores: tensor<E, S>,
+  maximum_output: tensor<I, []>,
+  overlap_threshold: tensor<E, []>,
+  score_threshold: tensor<E, []>,
+  center: int
+) -> tensor<i64, [_, 3]> {
+  assert(len(B) == 3 && len(S) == 3,
+         "nn.nms expects rank-three boxes and scores")
+  let batches = tensor.dim(boxes, index(0))
+  let box_count = tensor.dim(boxes, index(1))
+  let classes = tensor.dim(scores, index(1))
+  var capacity_shape = tensor<index, [2]>(index(0))
+  capacity_shape[0] = batches * classes * box_count
+  capacity_shape[1] = index(3)
+  var out: tensor<i64, [_, 3]> = tensor.make(i64(0), capacity_shape)
+  var count = index(0)
+  let maximum_count = index(maximum_output[0])
+  for batch in index(0)..batches, category in index(0)..classes {
+    var blocked_shape = tensor<index, [1]>(index(0))
+    blocked_shape[0] = box_count
+    var blocked: tensor<bool, [_]> = tensor.make(false, blocked_shape)
+    var active = true
+    var selected = index(0)
+    for step in index(0)..box_count {
+      if active {
+        var found = false
+        var best = index(0)
+        var best_score = E(0)
+        for candidate in index(0)..box_count {
+          let score = scores[
+            (batch * classes + category) * box_count + candidate
+          ]
+          if !blocked[candidate] && score > score_threshold[0] &&
+             (!found || score > best_score) {
+            found = true
+            best = index(candidate)
+            best_score = score
+          }
+        }
+        if found && selected < maximum_count {
+          var row = tensor<i64, [3]>(i64(0))
+          row[0] = i64(batch)
+          row[1] = i64(category)
+          row[2] = i64(best)
+          out = tensor.write(out, count, row)
+          count += index(1)
+          selected += index(1)
+          blocked[best] = true
+          let chosen = (batch * box_count + best) * index(4)
+          for candidate in index(0)..box_count {
+            let other = (batch * box_count + candidate) * index(4)
+            if !blocked[candidate] {
+              let overlap = iou(
+                boxes[chosen], boxes[chosen + index(1)],
+                boxes[chosen + index(2)], boxes[chosen + index(3)],
+                boxes[other], boxes[other + 1],
+                boxes[other + 2], boxes[other + 3], center
+              )
+              if overlap > overlap_threshold[0] {
+                blocked[candidate] = true
+              }
+            }
+          }
+        } else {
+          active = false
+        }
+      }
+    }
+  }
+  var result_shape = tensor<index, [2]>(index(0))
+  result_shape[0] = count
+  result_shape[1] = index(3)
+  return tensor.view(out, result_shape)
+}

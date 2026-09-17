@@ -1,0 +1,76 @@
+local fn expand_with(
+  m: Mod, accept: Fn, arg: Attr, configured: bool
+) -> bool {
+  var calls: list<Op> = []
+  var bodies: list<Fn> = []
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" &&
+       !supports_with(m, op, accept, arg, configured) &&
+       len(ir.meta(op)) == 0 {
+      let target = ir.resolve(m, op)
+      if ir.live(target) && len(ir.blks(target)) != 0 {
+        calls += [op]
+        bodies += [target]
+      }
+    }
+  }
+  if len(calls) == 0 {
+    return false
+  }
+  if ir.expand(m, calls, bodies) {
+    return true
+  }
+  var changed = false
+  for i in 0..len(calls) {
+    if ir.live(calls[i]) {
+      changed = ir.expand(m, [calls[i]], [bodies[i]]) || changed
+    }
+  }
+  return changed
+}
+
+local fn legalize_with(
+  m: Mod, accept: Fn, arg: Attr, configured: bool, limit: int
+) -> bool {
+  assert(limit >= 0, "opt.legalize limit must not be negative")
+  var changed = false
+  var again = true
+  var exceeded = false
+  for round in 0..(limit + 1) {
+    if again {
+      again = expand_with(m, accept, arg, configured)
+      changed = again || changed
+      if round == limit && again {
+        exceeded = true
+      }
+    }
+  }
+  assert(!exceeded, "opt.legalize did not converge within its limit")
+  return changed
+}
+
+local fn expose_with(
+  m: Mod, accept: Fn, arg: Attr, configured: bool, limit: int
+) -> bool {
+  assert(limit >= 0, "opt.expose limit must not be negative")
+  var changed = false
+  var again = true
+  var exceeded = false
+  for round in 0..(limit + 1) {
+    if again {
+      let before = ir.revision(m)
+      fold(m)
+      copy(m)
+      dce(m, [])
+      expand_with(m, accept, arg, configured)
+      again = ir.revision(m) != before
+      changed = again || changed
+      if round == limit && again {
+        exceeded = true
+      }
+    }
+  }
+  assert(!exceeded, "opt.expose did not converge within its limit")
+  return changed
+}
+

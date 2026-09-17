@@ -1,0 +1,238 @@
+fn broadcastable(from: list<int>, to: list<int>) -> bool {
+  if len(from) > len(to) {
+    return false
+  }
+  let shift = len(to) - len(from)
+  for i in 0..len(from) {
+    if from[i] != 1 && from[i] != to[shift + i] {
+      return false
+    }
+  }
+  return true
+}
+
+fn broadcastable(from: list<Ty>, to: list<Ty>) -> bool {
+  if len(from) > len(to) {
+    return false
+  }
+  let shift = len(to) - len(from)
+  for i in 0..len(from) {
+    if from[i] != ty(1) && from[i] != ty("_") &&
+       to[shift + i] != ty("_") && from[i] != to[shift + i] {
+      return false
+    }
+  }
+  return true
+}
+
+fn broadcast_shape(left: list<int>, right: list<int>) -> list<int> {
+  var rank = len(left)
+  if len(right) > rank {
+    rank = len(right)
+  }
+  var out: list<int> = []
+  for axis in 0..rank {
+    var l = 1
+    var r = 1
+    let li = axis - (rank - len(left))
+    let ri = axis - (rank - len(right))
+    if li >= 0 {
+      l = left[li]
+    }
+    if ri >= 0 {
+      r = right[ri]
+    }
+    if l != r && l != 1 && r != 1 {
+      return []
+    }
+    if l == 1 {
+      out += [r]
+    } else {
+      out += [l]
+    }
+  }
+  return out
+}
+
+fn broadcast_shape(left: list<Ty>, right: list<Ty>) -> list<Ty> {
+  var rank = len(left)
+  if len(right) > rank {
+    rank = len(right)
+  }
+  var out: list<Ty> = []
+  for axis in 0..rank {
+    var a = ty(1)
+    var b = ty(1)
+    if axis >= rank - len(left) {
+      a = left[axis - (rank - len(left))]
+    }
+    if axis >= rank - len(right) {
+      b = right[axis - (rank - len(right))]
+    }
+    if (a == ty("_") || kind(a) != "int") &&
+       kind(b) == "int" && b != ty(1) {
+      out += [b]
+    } else {
+      if (b == ty("_") || kind(b) != "int") &&
+         kind(a) == "int" && a != ty(1) {
+        out += [a]
+      } else {
+        if a == ty(1) {
+          out += [b]
+        } else {
+          out += [a]
+        }
+      }
+    }
+  }
+  return out
+}
+
+fn broadcast_offset(
+  from: list<int>, to: list<int>, linear: int
+) -> int {
+  var out = 0
+  var from_stride = 1
+  var to_stride = 1
+  let shift = len(to) - len(from)
+  [stage: "shape"]
+  for reverse in 0..len(from) {
+    let source = len(from) - reverse - 1
+    let axis = source + shift
+    if from[source] != 1 {
+      out += (linear / to_stride) % to[axis] * from_stride
+    }
+    from_stride *= from[source]
+    to_stride *= to[axis]
+  }
+  return out
+}
+
+fn broadcast<E: Ty, S: list<int>, T: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, T> {
+  var out = tensor<E, T>(E(0))
+  if len(S) == 0 {
+    for i in 0..numel<T>() {
+      out[i] = x[0]
+    }
+  } else {
+    for i in 0..numel<T>() {
+      out[i] = x[broadcast_offset(S, T, i)]
+    }
+  }
+  return out
+}
+
+local fn broadcast_runtime<
+  E: Ty, S: list<int>, T: list<int>, I: Ty, R: int, P: int
+>(
+  x: tensor<E, S>, target: tensor<I, [R]>
+) -> tensor<E, T> {
+  assert(R >= P, "tensor.broadcast target rank is smaller than input rank")
+  var source_shape = tensor<index, [P]>(index(0))
+  var result_shape = tensor<index, [R]>(index(0))
+  [stage: "shape"]
+  for axis in 0..P {
+    source_shape[axis] = dim(x, index(axis))
+  }
+  for axis in 0..R {
+    let extent = index(target[axis])
+    assert(extent >= index(0), "tensor.broadcast extent is negative")
+    result_shape[axis] = extent
+  }
+  let shift = R - P
+  for axis in 0..P {
+    let source = source_shape[axis]
+    let result = result_shape[shift + axis]
+    assert(source == index(1) || source == result,
+           "tensor.broadcast shapes are incompatible")
+  }
+
+  var out: tensor<E, T> = make(E(0), result_shape)
+  var count = index(1)
+  for axis in 0..R {
+    count *= result_shape[axis]
+  }
+  for linear in index(0)..count {
+    var source = index(0)
+    var source_stride = index(1)
+    var result_stride = index(1)
+    for reverse in 0..P {
+      let source_axis = P - reverse - 1
+      let result_axis = source_axis + shift
+      if source_shape[source_axis] != index(1) {
+        source += (linear / result_stride) % result_shape[result_axis] *
+                  source_stride
+      }
+      source_stride *= source_shape[source_axis]
+      result_stride *= result_shape[result_axis]
+    }
+    out[linear] = x[source]
+  }
+  return view(out, result_shape)
+}
+
+fn broadcast<
+  E: Ty, S: list<int>, T: list<int>, I: Ty, R: int
+>(
+  x: tensor<E, S>, target: tensor<I, [R]>
+) -> tensor<E, T> {
+  return broadcast_runtime<E, S, T, I, R, len<S>>(x, target)
+}
+
+fn tiled(shape: list<Ty>, repeats: list<int>) -> list<Ty> {
+  var out: list<Ty> = []
+  if len(shape) != len(repeats) {
+    return out
+  }
+  for axis in 0..len(shape) {
+    if repeats[axis] < 0 {
+      return []
+    }
+    if kind(shape[axis]) == "int" {
+      out += [ty(int(shape[axis]) * repeats[axis])]
+    } else {
+      if repeats[axis] == 1 {
+        out += [shape[axis]]
+      } else {
+        out += [ty("_")]
+      }
+    }
+  }
+  return out
+}
+
+fn tile_offset(from: list<int>, to: list<int>, linear: int) -> int {
+  var out = 0
+  var from_stride = 1
+  var to_stride = 1
+  [stage: "shape"]
+  for reverse in 0..len(from) {
+    let axis = len(from) - reverse - 1
+    let coord = linear / to_stride % to[axis]
+    out += coord % from[axis] * from_stride
+    from_stride *= from[axis]
+    to_stride *= to[axis]
+  }
+  return out
+}
+
+fn tile<E: Ty, S: list<int>, T: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, T> {
+  var out = tensor<E, T>(E(0))
+  for i in 0..numel<T>() {
+    out[i] = x[tile_offset(S, T, i)]
+  }
+  return out
+}
+
+fn tile<
+  E: Ty, S: list<int>, T: list<int>, I: Ty, N: int
+>(
+  x: tensor<E, S>, repeats: tensor<I, [N]>
+) -> tensor<E, T> {
+  return tile(x)
+}
+

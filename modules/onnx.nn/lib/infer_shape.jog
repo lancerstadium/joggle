@@ -1,0 +1,539 @@
+[phase: "infer", on: "onnx.Cast"]
+local fn cast_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let elem = element(base.get(attrs(op), "to", 0))
+  if !tensor.valid(input) || elem == ty("_") {
+    return false
+  }
+  return set_type(m, outputs[0], shaped(elem, tensor.dims(input)))
+}
+
+[phase: "infer", on: "onnx.Shape"]
+local fn shape_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 ||
+     !tensor.valid(ir.type(inputs[0])) {
+    return false
+  }
+  let rank = len(tensor.dims(ir.type(inputs[0])))
+  let shape: list<Ty> = [ty(rank)]
+  return set_type(m, outputs[0], shaped(ty("i64"), shape))
+}
+
+local fn axes(op: Op) -> list<int> {
+  let meta = attrs(op)
+  var out: list<int> = []
+  if base.has(meta, "axes") {
+    for axis in meta["axes"] {
+      out += [axis]
+    }
+    return out
+  }
+  let inputs = ir.args(op)
+  if len(inputs) >= 2 {
+    return const_ints(inputs[1])
+  }
+  return out
+}
+
+local fn unsqueeze_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) != 1 && len(inputs) != 2 {
+    return ty("_")
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return ty("_")
+  }
+  let source = tensor.dims(input)
+  let raw = axes(op)
+  let rank = len(source) + len(raw)
+  var normalized: list<int> = []
+  for value in raw {
+    var axis = value
+    if axis < 0 {
+      axis += rank
+    }
+    normalized += [axis]
+  }
+  if !tensor.valid_axes(normalized, rank) {
+    return ty("_")
+  }
+  var shape: list<Ty> = []
+  var source_axis = 0
+  for axis in 0..rank {
+    var selected = false
+    for value in normalized {
+      if value == axis {
+        selected = true
+      }
+    }
+    if selected {
+      shape += [ty(1)]
+    } else {
+      shape += [source[source_axis]]
+      source_axis += 1
+    }
+  }
+  return shaped(tensor.elem(input), shape)
+}
+
+local fn squeeze_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) != 1 && len(inputs) != 2 {
+    return ty("_")
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return ty("_")
+  }
+  let source = tensor.dims(input)
+  let raw = axes(op)
+  var normalized: list<int> = []
+  if len(raw) == 0 {
+    for axis in 0..len(source) {
+      if source[axis] == ty(1) {
+        normalized += [axis]
+      }
+    }
+  } else {
+    for value in raw {
+      var axis = value
+      if axis < 0 {
+        axis += len(source)
+      }
+      normalized += [axis]
+    }
+  }
+  if !tensor.valid_axes(normalized, len(source)) {
+    return ty("_")
+  }
+  var shape: list<Ty> = []
+  for axis in 0..len(source) {
+    var selected = false
+    for value in normalized {
+      if value == axis {
+        selected = true
+      }
+    }
+    if selected {
+      if kind(source[axis]) == "int" && source[axis] != ty(1) {
+        return ty("_")
+      }
+    } else {
+      shape += [source[axis]]
+    }
+  }
+  return shaped(tensor.elem(input), shape)
+}
+
+[phase: "infer", on: "onnx.Unsqueeze"]
+local fn unsqueeze_type(m: Mod, op: Op) -> bool {
+  return unary_shape_type(m, op, false)
+}
+
+[phase: "infer", on: "onnx.Squeeze"]
+local fn squeeze_type(m: Mod, op: Op) -> bool {
+  return unary_shape_type(m, op, true)
+}
+
+[phase: "infer", on: "onnx.Expand"]
+local fn expand_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let shape = shape_terms(inputs[1])
+  if !tensor.valid(input) {
+    return false
+  }
+  let source_shape = tensor.dims(input)
+  if len(shape) < len(source_shape) {
+    return false
+  }
+  for dim in shape {
+    if kind(dim) == "int" && int(dim) < 0 {
+      return false
+    }
+  }
+  let result = tensor.broadcast_shape(source_shape, shape)
+  if len(result) == 0 {
+    return false
+  }
+  return set_type(m, outputs[0], shaped(tensor.elem(input), result))
+}
+
+[phase: "infer", on: "onnx.Tile"]
+local fn tile_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return false
+  }
+  let source = tensor.dims(input)
+  let repeats = const_ints(inputs[1])
+  if len(repeats) == 0 {
+    let repeat_type = ir.type(inputs[1])
+    if !tensor.valid(repeat_type) || tensor.elem(repeat_type) != ty("i64") {
+      return false
+    }
+    let repeat_shape = tensor.dims(repeat_type)
+    if len(repeat_shape) != 1 || repeat_shape[0] != ty(len(source)) {
+      return false
+    }
+    var open: list<Ty> = []
+    for dim in source {
+      open += [ty("_")]
+    }
+    return set_type(m, outputs[0], shaped(tensor.elem(input), open))
+  }
+  if len(repeats) != len(source) {
+    return false
+  }
+  for repeat in repeats {
+    if repeat < 0 {
+      return false
+    }
+  }
+  return set_type(
+    m, outputs[0], shaped(tensor.elem(input), tensor.tiled(source, repeats))
+  )
+}
+
+local fn concat_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) == 0 {
+    return ty("_")
+  }
+  let first = ir.type(inputs[0])
+  if !tensor.valid(first) {
+    return ty("_")
+  }
+  let source = tensor.dims(first)
+  var axis = base.get(attrs(op), "axis", 0)
+  if axis < 0 {
+    axis += len(source)
+  }
+  if axis < 0 || axis >= len(source) {
+    return ty("_")
+  }
+  var shape = source
+  for i in 1..len(inputs) {
+    let input = inputs[i]
+    let type = ir.type(input)
+    if !tensor.valid(type) || tensor.elem(type) != tensor.elem(first) ||
+       len(tensor.dims(type)) != len(source) {
+      return ty("_")
+    }
+    shape = tensor.concatenated(shape, tensor.dims(type), axis)
+    if len(shape) == 0 {
+      return ty("_")
+    }
+  }
+  return shaped(tensor.elem(first), shape)
+}
+
+[phase: "infer", on: "onnx.Concat"]
+local fn concat_type(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  return set_type(m, outputs[0], concat_result(op))
+}
+
+[phase: "infer", on: "onnx.Split"]
+local fn split_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if (len(inputs) != 1 && len(inputs) != 2) || len(outputs) == 0 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return false
+  }
+  let shape = tensor.dims(input)
+  var axis = base.get(attrs(op), "axis", 0)
+  if axis < 0 {
+    axis += len(shape)
+  }
+  if axis < 0 || axis >= len(shape) {
+    return false
+  }
+  var sizes: list<int> = []
+  var symbolic = false
+  if len(inputs) == 2 {
+    sizes = const_ints(inputs[1])
+  } else {
+    let meta = attrs(op)
+    if base.has(meta, "split") {
+      for size in meta["split"] {
+        sizes += [size]
+      }
+    }
+  }
+  if len(sizes) == 0 && kind(shape[axis]) == "int" &&
+     int(shape[axis]) % len(outputs) == 0 {
+    let size = int(shape[axis]) / len(outputs)
+    for output in outputs {
+      sizes += [size]
+    }
+  }
+  if len(sizes) == 0 && kind(shape[axis]) != "int" {
+    symbolic = true
+    for output in outputs {
+      sizes += [-1]
+    }
+  }
+  if len(sizes) != len(outputs) {
+    return false
+  }
+  var total = 0
+  for size in sizes {
+    if size < 0 && !symbolic {
+      return false
+    }
+    if size >= 0 {
+      total += size
+    }
+  }
+  if kind(shape[axis]) == "int" && total != int(shape[axis]) {
+    return false
+  }
+  var changed = false
+  for i in 0..len(outputs) {
+    var extent = ty("_")
+    if sizes[i] >= 0 {
+      extent = ty(sizes[i])
+    }
+    changed = set_type(
+      m, outputs[i], shaped(
+        tensor.elem(input), tensor.replaced(shape, axis, extent)
+      )
+    ) || changed
+  }
+  return changed
+}
+
+[phase: "infer", on: "onnx.OneHot"]
+local fn one_hot_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 {
+    return false
+  }
+  let indices = ir.type(inputs[0])
+  let values = ir.type(inputs[2])
+  let depth = const_ints(inputs[1])
+  if !tensor.valid(indices) || !tensor.valid(values) || len(depth) != 1 ||
+     depth[0] <= 0 {
+    return false
+  }
+  let value_shape = tensor.dims(values)
+  if len(value_shape) != 1 || value_shape[0] != ty(2) {
+    return false
+  }
+  let source = tensor.dims(indices)
+  var axis = base.get(attrs(op), "axis", -1)
+  if axis < 0 {
+    axis += len(source) + 1
+  }
+  if axis < 0 || axis > len(source) {
+    return false
+  }
+  return set_type(
+    m, outputs[0], shaped(
+      tensor.elem(values), tensor.inserted(source, axis, ty(depth[0]))
+    )
+  )
+}
+
+local fn reshape_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) != 2 {
+    return ty("_")
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return ty("_")
+  }
+  let source = tensor.dims(input)
+  let allowzero = base.get(attrs(op), "allowzero", 0)
+  if allowzero != 0 && allowzero != 1 {
+    return ty("_")
+  }
+  let requested = shape_terms(inputs[1])
+  if len(requested) == 0 {
+    let shape_type = ir.type(inputs[1])
+    if !tensor.valid(shape_type) || tensor.elem(shape_type) != ty("i64") {
+      return ty("_")
+    }
+    let shape_shape = tensor.dims(shape_type)
+    if len(shape_shape) != 1 || kind(shape_shape[0]) != "int" ||
+       int(shape_shape[0]) < 0 {
+      return ty("_")
+    }
+    var open: list<Ty> = []
+    for i in 0..int(shape_shape[0]) {
+      open += [ty("_")]
+    }
+    return shaped(tensor.elem(input), open)
+  }
+  var inferred = -1
+  var factors: list<Ty> = []
+  for i in 0..len(requested) {
+    if kind(requested[i]) == "int" {
+      let extent = int(requested[i])
+      if extent == -1 {
+        if inferred != -1 {
+          return ty("_")
+        }
+        inferred = i
+      } else {
+        if extent == 0 && allowzero == 0 {
+          if i >= len(source) {
+            return ty("_")
+          }
+          factors += [source[i]]
+        } else {
+          if extent >= 0 {
+            factors += [requested[i]]
+          } else {
+            return ty("_")
+          }
+        }
+      }
+    } else {
+      factors += [requested[i]]
+    }
+  }
+  var missing = ty("_")
+  if inferred != -1 {
+    let source_total = tensor.product(source, 0, len(source))
+    let factor_total = tensor.product(factors, 0, len(factors))
+    if kind(source_total) == "int" && kind(factor_total) == "int" &&
+       (int(factor_total) <= 0 ||
+        int(source_total) % int(factor_total) != 0) {
+      return ty("_")
+    }
+    missing = tensor.quotient(source, factors)
+  }
+  var shape: list<Ty> = []
+  for i in 0..len(requested) {
+    if kind(requested[i]) == "int" && int(requested[i]) == -1 {
+      shape += [missing]
+    } else {
+      if kind(requested[i]) == "int" &&
+         int(requested[i]) == 0 && allowzero == 0 {
+        shape += [source[i]]
+      } else {
+        shape += [requested[i]]
+      }
+    }
+  }
+  let source_total = tensor.product(source, 0, len(source))
+  let result_total = tensor.product(shape, 0, len(shape))
+  if kind(source_total) == "int" && kind(result_total) == "int" &&
+     source_total != result_total {
+    return ty("_")
+  }
+  return shaped(tensor.elem(input), shape)
+}
+
+[phase: "infer", on: "onnx.Reshape"]
+local fn reshape_type(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  return set_type(m, outputs[0], reshape_result(op))
+}
+
+local fn flattened(input: Ty, axis: int) -> Ty {
+  let dims = tensor.dims(input)
+  let outer = tensor.product(dims, 0, axis)
+  let inner = tensor.product(dims, axis, len(dims))
+  if outer == ty("_") || inner == ty("_") {
+    return ty("_")
+  }
+  let shape: list<Ty> = [outer, inner]
+  return shaped(tensor.elem(input), shape)
+}
+
+[phase: "infer", on: "onnx.Flatten"]
+local fn infer_flatten(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return false
+  }
+  let shape = tensor.dims(input)
+  var axis = base.get(attrs(op), "axis", 1)
+  if axis < 0 {
+    axis += len(shape)
+  }
+  if axis < 0 || axis > len(shape) {
+    return false
+  }
+  let result = flattened(input, axis)
+  if result == ty("_") {
+    return false
+  }
+  return set_type(m, outputs[0], result)
+}
+
+local fn transpose_axes(op: Op, rank: int) -> list<int> {
+  let meta = attrs(op)
+  var axes: list<int> = []
+  if base.has(meta, "perm") {
+    for axis in meta["perm"] {
+      axes += [axis]
+    }
+  } else {
+    for axis in 0..rank {
+      axes += [rank - axis - 1]
+    }
+  }
+  return axes
+}
+
+[phase: "infer", on: "onnx.Transpose"]
+local fn transpose_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return false
+  }
+  let shape = tensor.dims(input)
+  let axes = transpose_axes(op, len(shape))
+  if !tensor.permutation(axes, len(shape)) {
+    return false
+  }
+  return set_type(
+    m, outputs[0], shaped(
+      tensor.elem(input), tensor.permuted(shape, axes)
+    )
+  )
+}
+

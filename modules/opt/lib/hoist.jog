@@ -1,0 +1,116 @@
+local fn local_value(block: Blk, value: Val) -> bool {
+  for arg in ir.args(block) {
+    if arg == value {
+      return true
+    }
+  }
+  let source = ir.def(value)
+  return ir.live(source) && ir.blk(source) == block
+}
+
+local fn movable(op: Op) -> bool {
+  let form = ir.form(op)
+  if form != "hidden" && form != "expr" && form != "let" {
+    return false
+  }
+  return ir.kind(op) == "constant" || ir.kind(op) == "call"
+}
+
+local fn approved(m: Mod, op: Op, safe: list<str>) -> bool {
+  for callee in safe {
+    if matches(m, op, callee) {
+      return true
+    }
+  }
+  return false
+}
+
+local fn approved(m: Mod, op: Op, policy: Fn) -> bool {
+  assert(ir.live(policy), "opt.hoist requires a valid policy")
+  let before = ir.revision(m)
+  let out = ir.invoke<bool>(m, op, policy)
+  assert(ir.revision(m) == before,
+         "opt.hoist policy changed the module")
+  return out
+}
+
+local fn name_conflict(m: Mod, target: Blk, op: Op) -> bool {
+  for output in ir.outs(op) {
+    let name = ir.name(output)
+    if name != "" {
+      for fn in ir.fns(m) {
+        var owns = false
+        for block in ir.blks(fn) {
+          if block == target {
+            owns = true
+          }
+        }
+        if owns {
+          for value in ir.generics(fn) + ir.params(fn) {
+            if ir.name(value) == name {
+              return true
+            }
+          }
+        }
+      }
+      for value in ir.args(target) {
+        if ir.name(value) == name {
+          return true
+        }
+      }
+      for candidate in ir.ops(target) {
+        if candidate != op {
+          for value in ir.outs(candidate) {
+            if ir.name(value) == name {
+              return true
+            }
+          }
+        }
+      }
+    }
+  }
+  return false
+}
+
+local fn hoist_loop<P: Ty>(m: Mod, loop: Op, policy: P) -> bool {
+  let bodies = ir.blks(loop)
+  if len(bodies) != 1 {
+    return false
+  }
+  let body = bodies[0]
+  let candidates = ir.ops(body)
+  var changed = false
+  for op in candidates {
+    if ir.live(op) && movable(op) &&
+       !name_conflict(m, ir.blk(loop), op) {
+      var invariant = ir.kind(op) == "constant" || approved(m, op, policy)
+      for value in ir.args(op) {
+        if local_value(body, value) {
+          invariant = false
+        }
+      }
+      if invariant {
+        assert(ir.move(m, op, loop),
+               "opt.hoist could not move a proved invariant")
+        changed = true
+      }
+    }
+  }
+  return changed
+}
+
+local fn hoist_all<P: Ty>(m: Mod, policy: P) -> bool {
+  let candidates = ir.ops(m)
+  var changed = false
+  for reverse in 0..len(candidates) {
+    let op = candidates[len(candidates) - reverse - 1]
+    if ir.live(op) && ir.kind(op) == "loop" {
+      changed = hoist_loop(m, op, policy) || changed
+    }
+  }
+  return changed
+}
+
+// Move explicitly safe loop-invariant expressions to the nearest dominating
+// block. Inner loops are visited first, so one invocation can carry an
+// expression through several nested loops when its operands permit it.

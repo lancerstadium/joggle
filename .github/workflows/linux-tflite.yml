@@ -6,12 +6,12 @@ name: linux-tflite
     branches: [main]
     paths:
       - .github/workflows/linux-tflite.yml
-      - examples/onnx/make_harness.py
+      - test/tools/make_harness.py
       - modules/**
-      - paper/bench_litert.py
-      - paper/make_tflite_fixture.py
-      - paper/prepare_tflite.py
-      - paper/measure_systems.py
+      - paper/scripts/bench_litert.py
+      - paper/scripts/make_tflite_fixture.py
+      - paper/scripts/prepare_tflite.py
+      - paper/scripts/measure_systems.py
       - paper/experiments/requirements-litert.txt
       - paper/experiments/tflite-mobilenetv2.json
 
@@ -62,17 +62,17 @@ jobs:
 
       - name: Compile the TFLite model to C
         run: |
-          python3 paper/prepare_tflite.py \
+          python3 paper/scripts/prepare_tflite.py \
             --tool build-tflite/joggle \
             --modules build-tflite/modules \
             --model .cache/models/mobilenet_v2.tflite \
             --out-dir build-tflite-study
-          python3 paper/make_tflite_fixture.py \
+          python3 paper/scripts/make_tflite_fixture.py \
             .cache/models/mobilenet_v2.tflite \
             build-tflite-study/input.bin \
             build-tflite-study/expected.bin \
             build-tflite-study/fixture.json
-          python3 examples/onnx/make_harness.py \
+          python3 test/tools/make_harness.py \
             build-tflite-study/api.json \
             build-tflite-study/harness.c --header model.h
           cc -std=c11 -O3 -DNDEBUG -Wall -Wextra \
@@ -94,7 +94,7 @@ jobs:
           print(min(os.sched_getaffinity(0)))
           PY
           )"
-          python3 paper/measure_systems.py \
+          python3 paper/scripts/measure_systems.py \
             --manifest paper/experiments/tflite-mobilenetv2.json \
             --repo . \
             --output build-tflite-study/results/tflite-mobilenetv2.csv \

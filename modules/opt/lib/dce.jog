@@ -1,0 +1,111 @@
+local fn dead(m: Mod, ops: list<Op>, pure: list<str>) -> list<Op> {
+  var assigned = {}
+  for op in ops {
+    let form = ir.form(op)
+    let outputs = ir.outs(op)
+    if ir.live(op) && len(outputs) == 1 &&
+       (form == "assign" || form == "compound" ||
+        form == "index_assign") {
+      assigned[ir.name(outputs[0])] = true
+    }
+  }
+  var dead: list<Op> = []
+  for op in ops {
+    if ir.live(op) {
+      var allowed = ir.kind(op) == "constant"
+      for callee in pure {
+        if ir.kind(op) == "call" && matches(m, op, callee) {
+          allowed = true
+        }
+      }
+      let form = ir.form(op)
+      let outputs = ir.outs(op)
+      if form == "var" && len(outputs) == 1 &&
+         base.has(assigned, ir.name(outputs[0])) {
+        allowed = false
+      }
+      allowed = allowed && form != "index_assign"
+      if allowed {
+        var unused = true
+        for value in outputs {
+          if len(ir.users(value)) != 0 {
+            unused = false
+          }
+        }
+        if unused {
+          dead += [op]
+        }
+      }
+    }
+  }
+  return dead
+}
+
+local fn cse_key(op: Op) -> str {
+  let callee = ir.callee(op)
+  var out = callee + "|"
+  for value in ir.args(op) {
+    out += text(ir.key(value)) + ","
+  }
+  out += "|"
+  for value in ir.outs(op) {
+    out += text(ir.type(value)) + ";"
+  }
+  return out + "|" + text(ir.meta(op))
+}
+
+local fn cse_block(m: Mod, block: Blk, pure: list<str>) -> bool {
+  var changed = false
+  let ops = ir.ops(block)
+  var seen: dict = {}
+  for i in 0..len(ops) {
+    let op = ops[i]
+    if ir.live(op) {
+      var allowed = false
+      for callee in pure {
+        if matches(m, op, callee) {
+          allowed = true
+        }
+      }
+      let form = ir.form(op)
+      if ir.kind(op) == "call" && allowed &&
+         (form == "expr" || form == "let") {
+        var merged = false
+        let key = cse_key(op)
+        if has(seen, key) {
+          let prior = ops[int(seen[key])]
+          if ir.live(prior) && ir.kind(prior) == "call" &&
+             ir.blk(prior) == ir.blk(op) {
+            let left = ir.outs(prior)
+            let right = ir.outs(op)
+            var same = len(left) == len(right)
+            if same {
+              for k in 0..len(left) {
+                if ir.type(left[k]) != ir.type(right[k]) {
+                  same = false
+                }
+              }
+            }
+            if same && ir.callee(prior) == ir.callee(op) &&
+               ir.args(prior) == ir.args(op) &&
+               ir.meta(prior) == ir.meta(op) {
+              var replaced = true
+              for k in 0..len(right) {
+                replaced = ir.replace(m, right[k], left[k]) && replaced
+              }
+              if replaced {
+                merged = ir.erase(m, op)
+                changed = merged || changed
+              }
+            }
+          }
+        }
+        if !merged {
+          seen[key] = i
+        }
+      }
+    }
+  }
+  return changed
+}
+

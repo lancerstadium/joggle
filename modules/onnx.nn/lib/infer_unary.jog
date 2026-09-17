@@ -1,0 +1,117 @@
+local fn dropout_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 1 || len(inputs) > 3 ||
+     len(outputs) < 1 || len(outputs) > 2 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return false
+  }
+  var changed = set_type(m, outputs[0], input)
+  if len(outputs) == 2 {
+    changed = set_type(
+      m, outputs[1], shaped(ty("bool"), tensor.dims(input))
+    ) || changed
+  }
+  return changed
+}
+
+local fn layer_norm_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 2 || len(inputs) > 3 ||
+     len(outputs) < 1 || len(outputs) > 3 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return false
+  }
+  let shape = tensor.dims(input)
+  var axis = base.get(attrs(op), "axis", -1)
+  if axis < 0 {
+    axis += len(shape)
+  }
+  if axis < 0 || axis >= len(shape) {
+    return false
+  }
+  var changed = set_type(m, outputs[0], input)
+  if len(outputs) > 1 {
+    var reduced = shape
+    for dim in axis..len(shape) {
+      reduced[dim] = ty(1)
+    }
+    let saved = shaped(ty("f32"), reduced)
+    changed = set_type(m, outputs[1], saved) || changed
+    if len(outputs) > 2 {
+      changed = set_type(m, outputs[2], saved) || changed
+    }
+  }
+  return changed
+}
+
+local fn unary_rules() -> list<list<str>> {
+  return [
+    ["onnx.Relu", "nn.relu"],
+    ["onnx.Abs", "nn.abs"],
+    ["onnx.Sqrt", "nn.sqrt"],
+    ["onnx.Cos", "nn.cos"],
+    ["onnx.Sin", "nn.sin"],
+    ["onnx.Reciprocal", "nn.recip"],
+    ["onnx.Tanh", "nn.tanh"],
+    ["onnx.Exp", "nn.exp"],
+    ["onnx.Floor", "nn.floor"],
+    ["onnx.Log", "nn.log"],
+    ["onnx.Erf", "nn.erf"],
+    ["onnx.Sigmoid", "nn.sigmoid"],
+    ["onnx.Ceil", "nn.ceil"],
+    ["onnx.Round", "nn.round_even"]
+  ]
+}
+
+[phase: "infer", on: [
+  "onnx.Relu", "onnx.Abs", "onnx.Dropout", "onnx.Sqrt", "onnx.Reciprocal",
+  "onnx.Cos", "onnx.Sin",
+  "onnx.Tanh", "onnx.Exp", "onnx.Floor", "onnx.Log", "onnx.Erf",
+  "onnx.Sigmoid", "onnx.Ceil", "onnx.Round",
+  "onnx.BatchNormalization", "onnx.LeakyRelu", "onnx.Softmax",
+  "onnx.Identity", "onnx.Clip", "onnx.LRN"
+]]
+local fn infer_unary(m: Mod, op: Op) -> bool {
+  let callee = ir.callee(op)
+  if callee == "onnx.Dropout" {
+    return dropout_type(m, op)
+  }
+  for rule in unary_rules() {
+    if callee == rule[0] {
+      return same_type(m, op)
+    }
+  }
+  if callee == "onnx.BatchNormalization" ||
+     callee == "onnx.LeakyRelu" || callee == "onnx.Softmax" ||
+     callee == "onnx.Identity" || callee == "onnx.Clip" ||
+     callee == "onnx.LRN" {
+    return same_type(m, op)
+  }
+  return false
+}
+
+[phase: "infer", on: "onnx.LayerNormalization"]
+local fn infer_layer_norm(m: Mod, op: Op) -> bool {
+  return layer_norm_type(m, op)
+}
+
+local fn unary_shape_type(m: Mod, op: Op, squeeze: bool) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  var result = unsqueeze_result(op)
+  if squeeze {
+    result = squeeze_result(op)
+  }
+  return set_type(m, outputs[0], result)
+}
+

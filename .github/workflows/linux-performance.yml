@@ -6,9 +6,9 @@ name: linux-performance
     branches: [main]
     paths:
       - .github/workflows/linux-performance.yml
-      - examples/onnx/app.cpp
+      - test/onnx-app/app.cpp
       - modules/**
-      - paper/measure_systems.py
+      - paper/scripts/measure_systems.py
       - test/models.cmake
       - test/zoo.cmake
 
@@ -120,14 +120,14 @@ jobs:
           print(min(os.sched_getaffinity(0)))
           PY
           )"
-          python3 paper/measure_systems.py \
+          python3 paper/scripts/measure_systems.py \
             --manifest paper/experiments/mnist.json \
             --repo . \
             --output build-app/performance/mnist.csv \
             --record build-app/performance/mnist.json \
             --cpu "$cpu" --require-clean \
             2>&1 | tee build-app/performance/mnist.log
-          python3 paper/measure_systems.py \
+          python3 paper/scripts/measure_systems.py \
             --manifest paper/experiments/mobilenetv2.json \
             --repo . \
             --output build-app/performance/mobilenetv2.csv \

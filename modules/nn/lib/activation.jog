@@ -1,0 +1,56 @@
+fn relu<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    let value = x[i]
+    if value > E(0) {
+      out[i] = value
+    }
+  }
+  return out
+}
+
+fn leaky_relu<E: Ty, S: list<int>>(
+  x: tensor<E, S>, alpha: f64
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    var value = x[i]
+    if value < E(0) {
+      value = E(alpha) * value
+    }
+    out[i] = value
+  }
+  return out
+}
+
+fn clip<
+  E: Ty, S: list<int>, L: list<int>, H: list<int>
+>(
+  x: tensor<E, S>, lower: tensor<E, L>, upper: tensor<E, H>
+) -> tensor<E, S> {
+  let bounded: tensor<E, S> = maximum(x, lower)
+  return minimum(bounded, upper)
+}
+
+fn tanh<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = tanh(x[i])
+  }
+  return out
+}
+
+fn sigmoid<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = E(1) / (E(1) + exp(E(0) - x[i]))
+  }
+  return out
+}
+

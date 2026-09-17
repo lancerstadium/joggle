@@ -9,8 +9,8 @@ From the repository root:
 ```sh
 cmake -S . -B build
 cmake --build build
-./build/joggle query cost.total examples/cost/model.jog \
-  -M examples -M build/modules
+./build/joggle query cost.total extensions/cost/model.jog \
+  -M extensions -M build/modules
 ```
 
 The result is `5`: one call plus one return. Replace `cost.weight` with a
@@ -21,8 +21,8 @@ The same callback can receive structural policy instead of requiring one
 wrapper per device configuration:
 
 ```sh
-./build/joggle query cost.total examples/cost/model.jog \
-  --arg 7 --arg 2 -M examples -M build/modules
+./build/joggle query cost.total extensions/cost/model.jog \
+  --arg 7 --arg 2 -M extensions -M build/modules
 ```
 
 This returns `9`: the call weight is seven and the return weight is two. The
@@ -38,7 +38,7 @@ extent and recursive call count fit caller-provided budgets:
 
 ```sh
 ./build/joggle run cost.fuse prepared.jog \
-  --arg 65536 --arg 100 -M examples -M build/modules > selected.jog
+  --arg 65536 --arg 100 -M extensions -M build/modules > selected.jog
 ```
 
 This is intentionally a policy example, not a claim that those two features

@@ -1,64 +1,9 @@
-if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
-   NOT DEFINED HARNESS OR NOT DEFINED MODULES OR NOT DEFINED ROOT)
-  message(FATAL_ERROR
-          "TopK C test requires TOOL, CC, MODEL, HARNESS, MODULES, ROOT")
-endif()
+set(NAME "TopK")
 
-file(REMOVE_RECURSE "${ROOT}")
-file(MAKE_DIRECTORY "${ROOT}")
-set(prepared "${ROOT}/prepared.jog")
-set(planned "${ROOT}/planned.jog")
-set(source "${ROOT}/model.c")
-set(program "${ROOT}/model")
+# A shape-only result must not survive into emitted C as a runtime storage slot.
+macro(c_pipeline_checks)
+  joggle_expect("TopK C retains a shape-only runtime storage slot"
+    FILE "${source}" NOT_MATCHES "slot_index_[0-9]+\\[")
+endmacro()
 
-execute_process(
-  COMMAND "${TOOL}" run c.prepare "${MODEL}" -M "${MODULES}"
-  RESULT_VARIABLE result OUTPUT_FILE "${prepared}" ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "TopK preparation failed (${result}):\n${error}")
-endif()
-execute_process(
-  COMMAND "${TOOL}" run mem.plan "${prepared}" -M "${MODULES}"
-  RESULT_VARIABLE result OUTPUT_FILE "${planned}" ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "TopK planning failed (${result}):\n${error}")
-endif()
-execute_process(
-  COMMAND "${TOOL}" query c.frontier "${planned}" -M "${MODULES}"
-  RESULT_VARIABLE result OUTPUT_VARIABLE frontier ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0 OR NOT frontier STREQUAL "[]\n")
-  message(FATAL_ERROR
-          "prepared TopK retains a C frontier (${result}):\n${frontier}${error}")
-endif()
-execute_process(
-  COMMAND "${TOOL}" emit c.source "${planned}" -M "${MODULES}"
-  RESULT_VARIABLE result OUTPUT_FILE "${source}" ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "TopK emission failed (${result}):\n${error}")
-endif()
-file(READ "${source}" generated)
-if(generated MATCHES "slot_index_[0-9]+\\[")
-  message(FATAL_ERROR
-          "TopK C retained a shape-only runtime storage slot")
-endif()
-execute_process(
-  COMMAND "${CC}" -std=c11 -O2 -Wall -Wextra -Werror -pedantic-errors
-          "${source}" "${HARNESS}" -o "${program}"
-  RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "TopK C did not compile (${result}):\n${output}${error}")
-endif()
-execute_process(
-  COMMAND "${program}"
-  RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "TopK C returned wrong values (${result}):\n${output}${error}")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/c_pipeline.cmake")

@@ -1,8 +1,6 @@
-if(NOT DEFINED BUILD_ROOT OR NOT DEFINED SOURCE_ROOT OR
-   NOT DEFINED TEST_ROOT OR NOT DEFINED SUFFIX)
-  message(FATAL_ERROR
-          "install test requires BUILD_ROOT, SOURCE_ROOT, TEST_ROOT, SUFFIX")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/joggle_test.cmake")
+
+joggle_require("install test requires BUILD_ROOT, SOURCE_ROOT, TEST_ROOT, SUFFIX" VARS BUILD_ROOT SOURCE_ROOT TEST_ROOT SUFFIX)
 
 function(invoke)
   execute_process(

@@ -8,7 +8,7 @@ match this signature remain unchanged, so the module composes with the shared
 
 ```sh
 joggle run compact.apply semantic.jog \
-  -M examples -M build/modules > selected.jog
+  -M extensions -M build/modules > selected.jog
 ```
 
 Passing a configuration dictionary makes the decision independently for each
@@ -20,7 +20,7 @@ semantics:
 ```sh
 joggle run compact.apply semantic.jog \
   --arg '{max_extra_elems: 262144}' \
-  -M examples -M build/modules > selected.jog
+  -M extensions -M build/modules > selected.jog
 ```
 
 `select` is an ordinary read-only

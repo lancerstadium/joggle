@@ -1,0 +1,298 @@
+[phase: "control", on: "onnx.If"]
+local fn convert_if(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  let meta = attrs(op)
+  if len(inputs) == 0 || len(outputs) == 0 ||
+     !base.has(meta, "then_branch") ||
+     !base.has(meta, "else_branch") {
+    return false
+  }
+  let then_fn = onnx.graph(m, op, "then_branch")
+  let else_fn = onnx.graph(m, op, "else_branch")
+  if !ir.live(then_fn) || !ir.live(else_fn) {
+    return false
+  }
+  let condition_type = ir.type(inputs[0])
+  if !tensor.valid(condition_type) ||
+     tensor.elem(condition_type) != ty("bool") ||
+     len(tensor.dims(condition_type)) != 0 {
+    return false
+  }
+  var sources: list<Val> = []
+  for i in 0..len(outputs) {
+    let source = branch_seed(op, ir.type(outputs[i]))
+    if !ir.live(source) || ir.def(source) == op {
+      return false
+    }
+    sources += [source]
+  }
+  var seeds: list<Val> = []
+  for i in 0..len(outputs) {
+    let seed = local_copy(m, op, sources[i], "if_value_", i)
+    if !ir.live(seed) || !ir.type(m, seed, ir.type(outputs[i])) {
+      return false
+    }
+    seeds += [seed]
+  }
+  let condition = scalar(m, op, inputs[0])
+  let branch = ir.branch(m, op, condition, seeds)
+  if !ir.live(branch) ||
+     !fill_if_arm(m, then_fn, meta["then_branch"], op, ir.blks(branch)[0]) ||
+     !fill_if_arm(m, else_fn, meta["else_branch"], op, ir.blks(branch)[1]) {
+    return false
+  }
+  for i in 0..len(outputs) {
+    carry(m, outputs[i], ir.outs(branch)[i])
+  }
+  carry(m, op, branch)
+  if !ir.replace(m, outputs, ir.outs(branch)) || !ir.erase(m, op) ||
+     !ir.erase(m, then_fn) || !ir.erase(m, else_fn) {
+    return false
+  }
+  return true
+}
+
+[phase: "control", on: "onnx.Loop"]
+local fn convert_loop(m: Mod, op: Op) -> bool {
+  let body = onnx.graph(m, op, "body")
+  if !ir.live(body) {
+    return false
+  }
+  let info = base.get(attrs(op), "body", {})
+  let input_count = base.int(base.get(info, "inputs", -1))
+  let captures = base.get(info, "captures", [])
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  let params = ir.params(body)
+  let bodies = ir.blks(body)
+  if input_count < 2 || len(inputs) < input_count ||
+     len(params) != input_count + len(captures) || len(bodies) != 1 {
+    return false
+  }
+  let body_ops = ir.ops(bodies[0])
+  if len(body_ops) == 0 ||
+     ir.kind(body_ops[len(body_ops) - 1]) != "return" {
+    return false
+  }
+  for i in 0..len(body_ops) - 1 {
+    if ir.kind(body_ops[i]) == "return" {
+      return false
+    }
+  }
+  let returned = ir.args(body_ops[len(body_ops) - 1])
+  let carried_count = input_count - 2
+  let scan_count = len(outputs) - carried_count
+  if scan_count < 0 || len(returned) != 1 + carried_count + scan_count {
+    return false
+  }
+  let trip_type = ir.type(inputs[0])
+  let condition_type = ir.type(inputs[1])
+  if !tensor.valid(trip_type) || len(tensor.dims(trip_type)) != 0 ||
+     !tensor.valid(condition_type) || len(tensor.dims(condition_type)) != 0 ||
+     tensor.elem(condition_type) != ty("bool") {
+    return false
+  }
+  for i in 0..carried_count {
+    if ir.type(inputs[i + 2]) != ir.type(outputs[i]) ||
+       ir.type(returned[i + 1]) != ir.type(outputs[i]) {
+      return false
+    }
+  }
+  var scan_types: list<Ty> = []
+  for i in 0..scan_count {
+    let output_type = ir.type(outputs[carried_count + i])
+    let sample_type = ir.type(returned[1 + carried_count + i])
+    if !tensor.valid(output_type) || !tensor.valid(sample_type) ||
+       tensor.elem(output_type) != tensor.elem(sample_type) {
+      return false
+    }
+    let dims = tensor.dims(output_type)
+    if len(dims) != len(tensor.dims(sample_type)) + 1 ||
+       len(dims) == 0 || dims[0] != ty("_") {
+      return false
+    }
+    let expected = shaped(
+      tensor.elem(sample_type), [ty("_")] + tensor.dims(sample_type)
+    )
+    if !compatible_shape(output_type, expected) {
+      return false
+    }
+    scan_types += [expected]
+  }
+  for i in 0..scan_count {
+    if !ir.type(m, outputs[carried_count + i], scan_types[i]) {
+      return false
+    }
+  }
+  let trip = scalar(m, op, inputs[0])
+  let condition = scalar(m, op, inputs[1])
+  if !ir.live(trip) || !ir.live(condition) {
+    return false
+  }
+  var trip_index = trip
+  if ir.type(trip) != ty("index") {
+    trip_index = ir.call(m, op, "index", [trip], ty("index"))
+  }
+  let begin = ir.constant(m, op, 0, ty("index"))
+  let range = ir.call(
+    m, op, "operator ..", [begin, trip_index], ty("range")
+  )
+
+  var state: list<Val> = []
+  let condition_state = local_copy(
+    m, op, inputs[1], "loop_condition_", 0
+  )
+  if !ir.live(condition_state) {
+    return false
+  }
+  state += [condition_state]
+  for i in 0..carried_count {
+    let carried = local_copy(
+      m, op, inputs[i + 2], "loop_value_", i
+    )
+    if !ir.live(carried) {
+      return false
+    }
+    state += [carried]
+  }
+  for i in 0..scan_count {
+    let output_type = ir.type(outputs[carried_count + i])
+    let shape = shape_value(m, op, tensor.dims(output_type), trip_index)
+    if !ir.live(shape) {
+      return false
+    }
+    let fill = zero(m, op, tensor.elem(output_type))
+    let storage = ir.call(
+      m, op, "tensor.make", [fill, shape], output_type
+    )
+    if !ir.live(storage) {
+      return false
+    }
+    let storage_name = local_name(op, "loop_scan_", i)
+    if storage_name == "" || !ir.rename(m, storage, storage_name) {
+      return false
+    }
+    state += [storage]
+  }
+  let count_index = len(state)
+  let count = ir.constant(m, op, 0, ty("index"))
+  let count_name = local_name(op, "loop_count_", 0)
+  if count_name == "" || !ir.rename(m, count, count_name) {
+    return false
+  }
+  state += [count]
+
+  let loop = ir.loop(m, op, ["iteration"], [range], state)
+  if !ir.live(loop) {
+    return false
+  }
+  carry(m, op, loop)
+  let loop_body = ir.blks(loop)[0]
+  let loop_args = ir.args(loop_body)
+  let loop_yield = ir.ops(loop_body)[0]
+  let active = scalar(m, loop_yield, loop_args[1])
+  if !ir.live(active) {
+    return false
+  }
+  var current: list<Val> = []
+  for i in 1..len(loop_args) {
+    current += [loop_args[i]]
+  }
+  let branch = ir.branch(m, loop_yield, active, current)
+  if !ir.live(branch) {
+    return false
+  }
+  let then_body = ir.blks(branch)[0]
+  let then_args = ir.args(then_body)
+  let then_yield = ir.ops(then_body)[0]
+
+  var old: list<Val> = []
+  var next: list<Val> = []
+  let iteration_i64 = ir.call(
+    m, then_yield, "i64", [loop_args[0]], ty("i64")
+  )
+  let iteration = ir.call(
+    m, then_yield, "tensor.tensor", [iteration_i64], ir.type(params[0])
+  )
+  old += [params[0], params[1]]
+  next += [iteration, then_args[0]]
+  for i in 0..carried_count {
+    old += [params[i + 2]]
+    next += [then_args[i + 1]]
+  }
+  for i in 0..len(captures) {
+    let position = base.int(captures[i])
+    if position < 0 || position >= len(inputs) {
+      return false
+    }
+    old += [params[input_count + i]]
+    next += [inputs[position]]
+  }
+  for i in 0..len(body_ops) - 1 {
+    let copy = ir.clone(m, body_ops[i], then_yield, old, next)
+    if !ir.live(copy) {
+      return false
+    }
+    old += ir.outs(body_ops[i])
+    next += ir.outs(copy)
+  }
+
+  var yielded: list<Val> = [mapped(returned[0], old, next)]
+  for i in 0..carried_count {
+    yielded += [mapped(returned[i + 1], old, next)]
+  }
+  let written_at = then_args[count_index]
+  for i in 0..scan_count {
+    let scan_storage = then_args[1 + carried_count + i]
+    let sample = mapped(returned[1 + carried_count + i], old, next)
+    let storage = initialize_scan(
+      m, then_yield, scan_storage, sample, trip_index, written_at
+    )
+    let written = ir.call(
+      m, then_yield, "tensor.write", [storage, written_at, sample],
+      ir.type(storage)
+    )
+    if !ir.live(written) {
+      return false
+    }
+    yielded += [written]
+  }
+  let one = ir.constant(m, then_yield, 1, ty("index"))
+  yielded += [ir.call(
+    m, then_yield, "operator +", [written_at, one], ty("index")
+  )]
+  if !ir.args(m, then_yield, yielded) ||
+     !ir.args(m, loop_yield, ir.outs(branch)) {
+    return false
+  }
+
+  let loop_outputs = ir.outs(loop)
+  var replacements: list<Val> = []
+  for i in 0..carried_count {
+    replacements += [loop_outputs[i + 1]]
+  }
+  for i in 0..scan_count {
+    let output_type = ir.type(outputs[carried_count + i])
+    let shape = trimmed_scan_shape(
+      m, op, loop_outputs[count_index],
+      loop_outputs[1 + carried_count + i]
+    )
+    let viewed = ir.call(
+      m, op, "tensor.view",
+      [loop_outputs[1 + carried_count + i], shape], output_type
+    )
+    if !ir.live(viewed) {
+      return false
+    }
+    replacements += [viewed]
+  }
+  for i in 0..len(outputs) {
+    carry(m, outputs[i], replacements[i])
+  }
+  if !ir.replace(m, outputs, replacements) || !ir.erase(m, op) ||
+     !ir.erase(m, body) {
+    return false
+  }
+  return true
+}

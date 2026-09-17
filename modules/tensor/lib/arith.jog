@@ -1,0 +1,116 @@
+fn cast<A: Ty, B: Ty, S: list<int>>(
+  x: tensor<A, S>
+) -> tensor<B, S> {
+  var out = tensor<B, S>(B(0))
+  for i in 0..numel<S>() {
+    out[i] = B(x[i])
+  }
+  return out
+}
+
+fn fill<E: Ty, S: list<int>>(
+  value: tensor<E, [1]>
+) -> tensor<E, S> {
+  return tensor<E, S>(value[0])
+}
+
+fn +<E: Ty, S: list<int>>(
+  a: tensor<E, S>, b: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..numel<S>() {
+    out[i] = a[i] + b[i]
+  }
+  return out
+}
+
+fn -<E: Ty, S: list<int>>(
+  a: tensor<E, S>, b: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..numel<S>() {
+    out[i] = a[i] - b[i]
+  }
+  return out
+}
+
+fn *<E: Ty, S: list<int>>(
+  a: tensor<E, S>, b: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..numel<S>() {
+    out[i] = a[i] * b[i]
+  }
+  return out
+}
+
+fn /<E: Ty, S: list<int>>(
+  a: tensor<E, S>, b: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..numel<S>() {
+    out[i] = a[i] / b[i]
+  }
+  return out
+}
+
+fn ==<E: Ty, S: list<int>>(
+  a: tensor<E, S>, b: tensor<E, S>
+) -> tensor<bool, S> {
+  var out = tensor<bool, S>(false)
+  for i in 0..numel<S>() {
+    out[i] = a[i] == b[i]
+  }
+  return out
+}
+
+fn ==<
+  E: Ty, L: list<int>, R: list<int>, Y: list<int>
+>(
+  a: tensor<E, L>, b: tensor<E, R>
+) -> tensor<bool, Y> {
+  let left: tensor<E, Y> = broadcast(a)
+  let right: tensor<E, Y> = broadcast(b)
+  return left == right
+}
+
+fn < <E: Ty, S: list<int>>(
+  a: tensor<E, S>, b: tensor<E, S>
+) -> tensor<bool, S> {
+  var out = tensor<bool, S>(false)
+  for i in 0..numel<S>() {
+    out[i] = a[i] < b[i]
+  }
+  return out
+}
+
+fn < <
+  E: Ty, L: list<int>, R: list<int>, Y: list<int>
+>(
+  a: tensor<E, L>, b: tensor<E, R>
+) -> tensor<bool, Y> {
+  let left: tensor<E, Y> = broadcast(a)
+  let right: tensor<E, Y> = broadcast(b)
+  return left < right
+}
+
+fn ><E: Ty, S: list<int>>(
+  a: tensor<E, S>, b: tensor<E, S>
+) -> tensor<bool, S> {
+  var out = tensor<bool, S>(false)
+  for i in 0..numel<S>() {
+    out[i] = a[i] > b[i]
+  }
+  return out
+}
+
+fn ><
+  E: Ty, L: list<int>, R: list<int>, Y: list<int>
+>(
+  a: tensor<E, L>, b: tensor<E, R>
+) -> tensor<bool, Y> {
+  let left: tensor<E, Y> = broadcast(a)
+  let right: tensor<E, Y> = broadcast(b)
+  return left > right
+}
+

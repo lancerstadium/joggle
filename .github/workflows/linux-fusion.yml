@@ -6,10 +6,10 @@ name: linux-fusion
     branches: [main]
     paths:
       - .github/workflows/linux-fusion.yml
-      - examples/onnx/**
+      - test/onnx-app/**
       - modules/**
-      - paper/measure_fusion.py
-      - paper/measure_systems.py
+      - paper/scripts/measure_fusion.py
+      - paper/scripts/measure_systems.py
       - paper/experiments/mobilenetv2-fusion.json
       - paper/experiments/mobilenetv2-unfused.json
 
@@ -59,7 +59,7 @@ jobs:
 
       - name: Build matched fusion variants
         run: |
-          python3 paper/measure_fusion.py \
+          python3 paper/scripts/measure_fusion.py \
             --tool build-app/joggle \
             --modules build-app/modules \
             --model build-app/examples/mobilenet/canonical.jog \
@@ -76,7 +76,7 @@ jobs:
               -M build-app/modules > "$root/model.bin"
             build-app/joggle query c.api "$root/placed.jog" \
               --arg '"weights"' -M build-app/modules > "$root/api.json"
-            python3 examples/onnx/make_harness.py \
+            python3 test/tools/make_harness.py \
               "$root/api.json" "$root/harness.c" --header model.h
             cc -std=c11 -O3 -DNDEBUG -Wall -Wextra \
               -Wstrict-prototypes -Werror -I "$root" \
@@ -95,13 +95,13 @@ jobs:
           print(min(os.sched_getaffinity(0)))
           PY
           )"
-          python3 paper/measure_systems.py \
+          python3 paper/scripts/measure_systems.py \
             --manifest paper/experiments/mobilenetv2-unfused.json \
             --repo . \
             --output build-fusion/results/mobilenetv2-unfused.csv \
             --record build-fusion/results/mobilenetv2-unfused.json \
             --cpu "$cpu" --require-clean
-          python3 paper/measure_systems.py \
+          python3 paper/scripts/measure_systems.py \
             --manifest paper/experiments/mobilenetv2-fusion.json \
             --repo . \
             --output build-fusion/results/mobilenetv2-fusion.csv \

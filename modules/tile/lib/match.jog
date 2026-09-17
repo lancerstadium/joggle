@@ -1,0 +1,387 @@
+[memo]
+local fn base_op(m: Mod, op: Op, name: str) -> bool {
+  if !ir.live(op) || ir.kind(op) != "call" {
+    return false
+  }
+  let target = ir.target(m, op)
+  return target == "base." + name ||
+         (target == ir.callee(op) && target == name)
+}
+
+[memo]
+local fn base_fn(name: str, arity: int) -> Fn {
+  for fn in ir.fns("base") {
+    if ir.name(fn) == name && len(ir.params(fn)) == arity {
+      return fn
+    }
+  }
+  assert(false, "tile requires base." + name)
+  return ir.find("")
+}
+
+local fn call_like(
+  m: Mod, before: Op, source: Op, args: list<Val>, type: Ty
+) -> Val {
+  let target = ir.resolve(m, source)
+  if ir.live(target) {
+    return ir.call(m, before, target, args, type)
+  }
+  return ir.call(m, before, ir.callee(source), args, type)
+}
+
+[memo]
+local fn syntax_op(m: Mod, op: Op, name: str) -> bool {
+  if !ir.live(op) || ir.kind(op) != "call" {
+    return false
+  }
+  let target = ir.resolve(m, op)
+  if ir.live(target) {
+    return ir.name(target) == name
+  }
+  return ir.callee(op) == name
+}
+local fn mapped(value: Val, old: list<Val>, next: list<Val>) -> Val {
+  for i in 0..len(old) {
+    if value == old[i] {
+      return next[i]
+    }
+  }
+  return value
+}
+
+local fn mapped(values: list<Val>, old: list<Val>, next: list<Val>)
+    -> list<Val> {
+  var out: list<Val> = []
+  for value in values {
+    out += [mapped(value, old, next)]
+  }
+  return out
+}
+
+local fn same_value(left: Val, right: Val) -> bool {
+  if left == right {
+    return true
+  }
+  return ir.type(left) == ir.type(right) &&
+         ir.is_const(left) && ir.is_const(right) &&
+         ir.constant(left) == ir.constant(right)
+}
+
+local fn same_range(m: Mod, left: Val, right: Val) -> bool {
+  if left == right {
+    return true
+  }
+  let left_op = ir.def(left)
+  let right_op = ir.def(right)
+  if !syntax_op(m, left_op, "operator ..") ||
+     !syntax_op(m, right_op, "operator ..") {
+    return false
+  }
+  let a = ir.args(left_op)
+  let b = ir.args(right_op)
+  return len(a) == 2 && len(b) == 2 &&
+         same_value(a[0], b[0]) && same_value(a[1], b[1])
+}
+
+[memo]
+local fn captured(op: Op, value: Val) -> bool {
+  for input in ir.args(op) {
+    if input == value {
+      return true
+    }
+  }
+  for body in ir.blks(op) {
+    for child in ir.ops(body) {
+      if captured(child, value) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+[memo]
+local fn contains(root: Op, selected: Op) -> bool {
+  if root == selected {
+    return true
+  }
+  for body in ir.blks(root) {
+    for child in ir.ops(body) {
+      if contains(child, selected) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+local fn load(m: Mod, op: Op, tensor: Val, index: Val) -> bool {
+  let inputs = ir.args(op)
+  return syntax_op(m, op, "operator []") &&
+         len(inputs) == 2 && inputs[0] == tensor && inputs[1] == index
+}
+
+local fn same_form(left: list<int>, right: list<int>) -> bool {
+  if len(left) == 0 || len(left) != len(right) {
+    return false
+  }
+  for i in 0..len(left) {
+    if left[i] != right[i] {
+      return false
+    }
+  }
+  return true
+}
+
+local fn dense_form(shape: list<int>, form: list<int>) -> bool {
+  if len(shape) == 0 || len(form) != len(shape) + 1 || form[0] != 0 {
+    return false
+  }
+  var stride = 1
+  for reverse in 0..len(shape) {
+    let axis = len(shape) - reverse - 1
+    if shape[axis] <= 0 || form[axis + 1] != stride {
+      return false
+    }
+    let next = affine_mul_int(stride, shape[axis])
+    if len(next) == 0 {
+      return false
+    }
+    stride = next[0]
+  }
+  return true
+}
+
+local fn zero_range(m: Mod, value: Val, extent: int) -> bool {
+  let op = ir.def(value)
+  if !syntax_op(m, op, "operator ..") {
+    return false
+  }
+  let bounds = ir.args(op)
+  return len(bounds) == 2 && ir.is_const(bounds[0]) &&
+         ir.is_const(bounds[1]) &&
+         base.kind(ir.constant(bounds[0])) == "int" &&
+         base.kind(ir.constant(bounds[1])) == "int" &&
+         base.int(ir.constant(bounds[0])) == 0 &&
+         base.int(ir.constant(bounds[1])) == extent
+}
+
+local fn collapsed_iteration(
+  m: Mod,
+  producer: Op,
+  producer_tensor: Val,
+  producer_indices: list<Val>,
+  consumer: Op
+) -> bool {
+  let producer_inputs = ir.args(producer)
+  let producer_axes = len(producer_inputs) - len(ir.outs(producer))
+  let consumer_inputs = ir.args(consumer)
+  let consumer_axes = len(consumer_inputs) - len(ir.outs(consumer))
+  if producer_axes <= 1 || consumer_axes != 1 {
+    return false
+  }
+  let shape = extents(m, producer)
+  if len(shape) != producer_axes ||
+     !dense_form(
+       shape,
+       address_form(m, producer, producer_tensor, producer_indices)
+     ) {
+    return false
+  }
+  var total = 1
+  for axis in 0..producer_axes {
+    if !zero_range(m, producer_inputs[axis], shape[axis]) {
+      return false
+    }
+    let next = affine_mul_int(total, shape[axis])
+    if len(next) == 0 {
+      return false
+    }
+    total = next[0]
+  }
+  return zero_range(m, consumer_inputs[0], total)
+}
+
+// Compare two addresses in their respective iteration spaces. The loop axes
+// need not share SSA values or source names; equal affine forms establish the
+// coordinate-wise mapping used by fusion.
+local fn same_point(
+  m: Mod,
+  left_loop: Op,
+  left_tensor: Val,
+  left: list<Val>,
+  right_loop: Op,
+  right_tensor: Val,
+  right: list<Val>
+) -> bool {
+  let left_form = address_form(m, left_loop, left_tensor, left)
+  let right_form = address_form(m, right_loop, right_tensor, right)
+  return same_form(left_form, right_form) ||
+         (right_form == [0, 1] &&
+          dense_form(extents(m, left_loop), left_form))
+}
+
+local fn same_iteration(
+  m: Mod,
+  producer: Op,
+  producer_tensor: Val,
+  producer_indices: list<Val>,
+  consumer: Op
+) -> bool {
+  let producer_inputs = ir.args(producer)
+  let producer_axes = len(producer_inputs) - len(ir.outs(producer))
+  let consumer_inputs = ir.args(consumer)
+  let consumer_axes = len(consumer_inputs) - len(ir.outs(consumer))
+  if producer_axes == consumer_axes {
+    for axis in 0..producer_axes {
+      if !same_range(m, producer_inputs[axis], consumer_inputs[axis]) {
+        return false
+      }
+    }
+    return true
+  }
+  return collapsed_iteration(
+    m, producer, producer_tensor, producer_indices, consumer
+  )
+}
+
+local fn subscripts(op: Op, write: bool) -> list<Val> {
+  let inputs = ir.args(op)
+  var end = len(inputs)
+  if write {
+    end -= 1
+  }
+  var out: list<Val> = []
+  for i in 1..end {
+    out += [inputs[i]]
+  }
+  return out
+}
+
+local fn load_at(
+  m: Mod,
+  loop: Op,
+  op: Op,
+  tensor: Val,
+  source_loop: Op,
+  source_tensor: Val,
+  source_indices: list<Val>
+) -> bool {
+  let inputs = ir.args(op)
+  return syntax_op(m, op, "operator []") && len(inputs) >= 2 &&
+         inputs[0] == tensor &&
+         same_point(
+           m, source_loop, source_tensor, source_indices,
+           loop, tensor, subscripts(op, false)
+         )
+}
+
+local fn constructor(op: Op) -> bool {
+  let outputs = ir.outs(op)
+  return ir.kind(op) == "call" && len(outputs) == 1 &&
+         ir.callee(op) == text(ir.type(outputs[0]))
+}
+
+local fn pointwise_at(
+  m: Mod,
+  loop: Op,
+  op: Op,
+  tensor: Val,
+  source_loop: Op,
+  source_tensor: Val,
+  source_indices: list<Val>
+) -> bool {
+  var touches = false
+  for input in ir.args(op) {
+    if input == tensor {
+      touches = true
+    }
+  }
+  if touches {
+    return load_at(
+      m, loop, op, tensor, source_loop, source_tensor, source_indices
+    )
+  }
+  for body in ir.blks(op) {
+    for child in ir.ops(body) {
+      if !pointwise_at(
+           m, loop, child, tensor, source_loop, source_tensor,
+           source_indices
+         ) {
+        return false
+      }
+    }
+  }
+  return true
+}
+
+local fn keep(m: Mod, value: Val, stem: str) -> Val {
+  assert(ir.live(value), "tile: cannot retain an invalid value")
+  assert(ir.rename(m, value, stem + "_" + text(ir.key(value))),
+         "tile: cannot name a generated value")
+  return value
+}
+
+local fn last_axis(source: Op) -> int {
+  if !ir.live(source) || ir.kind(source) != "loop" {
+    return -1
+  }
+  return len(ir.args(source)) - len(ir.outs(source)) - 1
+}
+
+local fn clone_body(
+  m: Mod, source: Blk, target: Blk,
+  old: list<Val>, next: list<Val>,
+  replace_old: list<Val>, replace_next: list<Val>
+) -> list<Val> {
+  assert(len(replace_old) == len(replace_next),
+         "tile requires paired clone replacements")
+  let source_ops = ir.ops(source)
+  let target_ops = ir.ops(target)
+  assert(len(source_ops) > 0 && len(target_ops) > 0 &&
+         ir.kind(source_ops[len(source_ops) - 1]) == "yield" &&
+         ir.kind(target_ops[len(target_ops) - 1]) == "yield",
+         "tile requires terminated source and target blocks")
+  let before = target_ops[len(target_ops) - 1]
+  var old_values = old
+  var next_values = next
+  for i in 0..len(source_ops) - 1 {
+    let copy = ir.clone(
+      m, source_ops[i], before, old_values, next_values
+    )
+    assert(ir.live(copy), "tile could not clone a loop body")
+    let source_outputs = ir.outs(source_ops[i])
+    let target_outputs = ir.outs(copy)
+    assert(len(source_outputs) == len(target_outputs),
+           "tile cloned an inconsistent operation")
+    for output in 0..len(source_outputs) {
+      var replaced = false
+      for candidate in 0..len(replace_old) {
+        if source_outputs[output] == replace_old[candidate] {
+          old_values += [source_outputs[output]]
+          next_values += [replace_next[candidate]]
+          replaced = true
+        }
+      }
+      if !replaced {
+        old_values += [source_outputs[output]]
+        next_values += [target_outputs[output]]
+      }
+    }
+  }
+  return mapped(
+    ir.args(source_ops[len(source_ops) - 1]), old_values, next_values
+  )
+}
+
+local fn clone_body(
+  m: Mod, source: Blk, target: Blk,
+  old: list<Val>, next: list<Val>
+) -> list<Val> {
+  return clone_body(m, source, target, old, next, [], [])
+}
+
+local fn adjacent_axis(source: Op) -> int {
+  return last_axis(source) - 1
+}
+

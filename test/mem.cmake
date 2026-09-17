@@ -1,11 +1,7 @@
-if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
-   NOT DEFINED HARNESS OR NOT DEFINED MODULES OR NOT DEFINED ROOT)
-  message(FATAL_ERROR
-          "memory planning test requires TOOL, CC, MODEL, HARNESS, MODULES, ROOT")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/joggle_test.cmake")
 
-file(REMOVE_RECURSE "${ROOT}")
-file(MAKE_DIRECTORY "${ROOT}")
+joggle_require("memory planning test" VARS TOOL CC MODEL HARNESS MODULES ROOT)
+joggle_workspace("${ROOT}")
 
 set(prepared "${ROOT}/prepared.jog")
 set(planned "${ROOT}/planned.jog")
@@ -13,126 +9,60 @@ set(planned_again "${ROOT}/planned-again.jog")
 set(source "${ROOT}/model.c")
 set(program "${ROOT}/model")
 
-execute_process(
+joggle_run("C preparation"
   COMMAND "${TOOL}" run c.prepare "${MODEL}" -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_FILE "${prepared}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "C preparation failed (${result}):\n${error}")
-endif()
+  OUTPUT_FILE "${prepared}")
 
-execute_process(
+joggle_run("memory planning"
   COMMAND "${TOOL}" run mem.plan "${prepared}" -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_FILE "${planned}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "memory planning failed (${result}):\n${error}")
-endif()
+  OUTPUT_FILE "${planned}")
 
-execute_process(
+joggle_run("buffer count query"
   COMMAND "${TOOL}" query mem.buffers "${planned}" -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_VARIABLE buffers
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0 OR NOT buffers STREQUAL "2\n")
-  message(FATAL_ERROR
-          "memory planning used the wrong buffer count (${result}):\n"
-          "${buffers}${error}")
-endif()
+  OUTPUT_VARIABLE buffers)
+joggle_expect("memory planning used the wrong buffer count"
+  TEXT "${buffers}" MATCHES "^2\n$")
 
-execute_process(
+joggle_run("structural summary query"
   COMMAND "${TOOL}" query stat.summary "${planned}" -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_VARIABLE summary
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0 OR
-   NOT summary MATCHES "\"mem_slots\": 2" OR
-   NOT summary MATCHES "\"mem_elems\": 8")
-  message(FATAL_ERROR
-          "planned structural summary is invalid (${result}):\n"
-          "${summary}${error}")
-endif()
+  OUTPUT_VARIABLE summary)
+joggle_expect("planned summary lost its slot count"
+  TEXT "${summary}" MATCHES "\"mem_slots\": 2")
+joggle_expect("planned summary lost its element count"
+  TEXT "${summary}" MATCHES "\"mem_elems\": 8")
 
-execute_process(
+joggle_run("repeated memory planning"
   COMMAND "${TOOL}" run mem.plan "${planned}" -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_FILE "${planned_again}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "repeated memory planning failed (${result}):\n${error}")
-endif()
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E compare_files "${planned}" "${planned_again}"
-  RESULT_VARIABLE result
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "memory planning is not idempotent")
-endif()
+  OUTPUT_FILE "${planned_again}")
+joggle_expect_same("memory planning is not idempotent" "${planned}" "${planned_again}")
 
-execute_process(
+joggle_run("planned C emission"
   COMMAND "${TOOL}" emit c.source "${planned}" -M "${MODULES}"
-  RESULT_VARIABLE result
-  OUTPUT_FILE "${source}"
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "planned C emission failed (${result}):\n${error}")
-endif()
+  OUTPUT_FILE "${source}")
 
 file(READ "${source}" emitted)
-string(REGEX MATCHALL "float slot_f32_[0-9]+" buffers "${emitted}")
-list(LENGTH buffers buffer_count)
-if(NOT buffer_count EQUAL 2)
-  message(FATAL_ERROR
-          "planned C did not declare exactly two buffers:\n${emitted}")
-endif()
-if(emitted MATCHES "third_out\\[[^]]+\\] = slot_f32_")
-  message(FATAL_ERROR
-          "planned C copied its final tensor instead of writing the result:\n"
-          "${emitted}")
-endif()
-if(NOT emitted MATCHES "float\\* third = third_out;" OR
-   NOT emitted MATCHES "third\\[[^]]+\\] = \\(")
-  message(FATAL_ERROR
-          "planned C did not write its final computation into the result:\n"
-          "${emitted}")
+string(REGEX MATCHALL "float slot_f32_[0-9]+" declared "${emitted}")
+list(LENGTH declared declared_count)
+if(NOT declared_count EQUAL 2)
+  message(FATAL_ERROR "planned C did not declare exactly two buffers:\n${emitted}")
 endif()
 string(REGEX MATCHALL "= \\(\\(float\\)\\(0\\)\\);" zero_fills "${emitted}")
 list(LENGTH zero_fills zero_fill_count)
 if(NOT zero_fill_count EQUAL 0)
-  message(FATAL_ERROR
-          "planned C retained dead tensor fills:\n${emitted}")
-endif()
-if(NOT emitted MATCHES "= \\(\\(float\\)\\(7\\)\\);")
-  message(FATAL_ERROR
-          "planned C removed a live tensor fill:\n${emitted}")
+  message(FATAL_ERROR "planned C retained dead tensor fills:\n${emitted}")
 endif()
 
-execute_process(
+joggle_expect("planned C did not alias its result buffer"
+  FILE "${source}" MATCHES "float\\* third = third_out;")
+joggle_expect("planned C did not compute into its result"
+  FILE "${source}" MATCHES "third\\[[^]]+\\] = \\(")
+joggle_expect("planned C copied its final tensor instead of writing it"
+  FILE "${source}" NOT_MATCHES "third_out\\[[^]]+\\] = slot_f32_")
+joggle_expect("planned C removed a live tensor fill"
+  FILE "${source}" MATCHES "= \\(\\(float\\)\\(7\\)\\);")
+
+joggle_run("planned C compilation"
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
-          "${source}" "${HARNESS}" -o "${program}"
-  RESULT_VARIABLE result
-  OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "planned C did not compile (${result}):\n${output}${error}\n${emitted}")
-endif()
-execute_process(
-  COMMAND "${program}"
-  RESULT_VARIABLE result
-  OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "planned C returned the wrong result (${result}):\n${output}${error}")
-endif()
+          "${source}" "${HARNESS}" -o "${program}")
+
+joggle_run("planned C execution" COMMAND "${program}")

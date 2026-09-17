@@ -1,0 +1,236 @@
+local fn count(type: Ty) -> int {
+  assert(tensor.static(type), "c: tensor shape must be static: " + text(type))
+  var out = 1
+  for extent in tensor.shape(type) {
+    out *= extent
+  }
+  return out
+}
+
+local fn storage_count(m: Mod, value: Val) -> int {
+  let shape = mem.capacity(m, value)
+  assert(len(shape) == len(tensor.dims(ir.type(value))),
+         "c: dynamic tensor has no finite capacity: " + ir.name(value))
+  var out = 1
+  for extent in shape {
+    assert(extent >= 0 && (extent == 0 ||
+           out <= 9223372036854775807 / extent),
+           "c: dynamic tensor capacity overflows")
+    out *= extent
+  }
+  return out
+}
+
+local fn allocation_count(m: Mod, value: Val) -> int {
+  if tensor.static(ir.type(value)) {
+    return count(ir.type(value))
+  }
+  return storage_count(m, value)
+}
+
+local fn extent(m: Mod, value: Val, axis: int) -> str {
+  let dims = tensor.dims(ir.type(value))
+  assert(axis >= 0 && axis < len(dims), "c: tensor axis is out of range")
+  if base.kind(dims[axis]) == "int" {
+    return text(base.int(dims[axis]))
+  }
+  let source = ir.def(value)
+  if ir.live(source) && ir.kind(source) == "call" &&
+     (ir.target(m, source) == "tensor.make" ||
+      ir.target(m, source) == "tensor.view" ||
+      ir.callee(source) == "tensor.make" ||
+      ir.callee(source) == "tensor.view") && len(ir.args(source)) == 2 {
+    return val(ir.args(source)[1]) + "[" + text(axis) + "]"
+  }
+  return val(value) + "_dim_" + text(axis)
+}
+
+local fn logical_count(m: Mod, value: Val) -> str {
+  let dims = tensor.dims(ir.type(value))
+  var out = "1"
+  for axis in 0..len(dims) {
+    out = "(" + out + " * " + extent(m, value, axis) + ")"
+  }
+  return out
+}
+
+local fn dimension(
+  m: Mod, value: Val, axis: Val, blob: str,
+  data_fns: list<Fn>, config: dict
+) -> str {
+  let dims = tensor.dims(ir.type(value))
+  assert(len(dims) != 0, "c: tensor.dim requires a non-scalar tensor")
+  let selected = expr(m, axis, blob, data_fns, config)
+  var out = extent(m, value, 0)
+  for i in 1..len(dims) {
+    out = "(" + selected + " == " + text(i) + " ? " +
+          extent(m, value, i) + " : " + out + ")"
+  }
+  return out
+}
+
+local fn tensor_new(
+  m: Mod, op: Op, depth: int, blob: str, data_fns: list<Fn>, config: dict,
+  direct: list<str>, results: list<str>
+) -> str {
+  let outputs = ir.outs(op)
+  let inputs = ir.args(op)
+  assert(len(outputs) == 1 && len(inputs) == 1,
+         "c: tensor construction requires one fill value")
+  let output = outputs[0]
+  let type = ir.type(output)
+  if !runtime_storage(m, output) {
+    return ""
+  }
+  let n = count(type)
+  let indent = pad(depth)
+  var out = ""
+  if !reuses(op) && !mem.planned(output) {
+    let target = direct_result(output, direct, results)
+    if target == "" {
+      out = indent + scalar(tensor.elem(type), config) + " " + val(output) +
+            "[" + text(n) + "];\n"
+    } else {
+      out = indent + scalar(tensor.elem(type), config) + "* " + val(output) +
+            " = " + target + ";\n"
+    }
+  }
+  if !ir.has(op, "mem.fill") || ir.meta(op, "mem.fill") != false {
+    out += indent + "for (" + index_type(config) +
+           " i = 0; i < " + text(n) +
+           "; ++i) " + val(output) + "[i] = " +
+           expr(m, inputs[0], blob, data_fns, config) + ";\n"
+  }
+  return out
+}
+
+local fn tensor_make(
+  m: Mod, op: Op, depth: int, blob: str,
+  data_fns: list<Fn>, config: dict
+) -> str {
+  let outputs = ir.outs(op)
+  let inputs = ir.args(op)
+  assert(len(outputs) == 1 && len(inputs) == 2,
+         "c: tensor.make requires a fill and shape")
+  let output = outputs[0]
+  if !runtime_storage(m, output) {
+    return ""
+  }
+  let n = storage_count(m, output)
+  let indent = pad(depth)
+  var out = ""
+  if !reuses(op) && !mem.planned(output) {
+    var storage = n
+    if storage == 0 {
+      storage = 1
+    }
+    out = indent + scalar(tensor.elem(ir.type(output)), config) + " " +
+          val(output) + "[" + text(storage) + "];\n"
+  }
+  if !ir.has(op, "mem.fill") || ir.meta(op, "mem.fill") != false {
+    out += indent + "for (" + index_type(config) +
+           " i = 0; i < " + text(n) + "; ++i) " + val(output) +
+           "[i] = " + expr(m, inputs[0], blob, data_fns, config) + ";\n"
+  }
+  return out
+}
+
+local fn tensor_view(
+  op: Op, depth: int, config: dict
+) -> str {
+  let outputs = ir.outs(op)
+  let inputs = ir.args(op)
+  assert(len(outputs) == 1 && len(inputs) == 2,
+         "c: tensor.view requires data and shape")
+  let output = outputs[0]
+  if len(ir.users(output)) == 0 || reuses(op) ||
+     val(output) == val(inputs[0]) {
+    return ""
+  }
+  return pad(depth) + scalar(tensor.elem(ir.type(output)), config) + "* " +
+         val(output) + " = " + val(inputs[0]) + ";\n"
+}
+
+local fn payload_data(op: Op) -> Attr {
+  let outputs = ir.outs(op)
+  if ir.kind(op) == "constant" && len(outputs) == 1 &&
+     tensor.valid(ir.type(outputs[0])) &&
+     base.kind(ir.constant(outputs[0])) == "bytes" {
+    return ir.constant(outputs[0])
+  }
+  return {}
+}
+
+local fn payload(op: Op) -> bool {
+  return base.kind(payload_data(op)) == "bytes"
+}
+
+local fn aligned(offset: int, alignment: int) -> int {
+  return ((offset + alignment - 1) / alignment) * alignment
+}
+
+local fn payload_offsets(m: Mod, config: dict) -> dict {
+  var offsets: dict = {}
+  var out = 0
+  for op in ir.ops(m) {
+    if payload(op) {
+      let outputs = ir.outs(op)
+      assert(len(outputs) == 1,
+             "c: tensor payload must have one result")
+      out = aligned(
+        out, alignment(tensor.elem(ir.type(outputs[0])), config)
+      )
+      offsets[text(ir.key(outputs[0]))] = out
+      out += base.size(payload_data(op))
+    }
+  }
+  return offsets
+}
+
+local fn payload_offset(offsets: dict, output: Val) -> int {
+  let key = text(ir.key(output))
+  assert(base.has(offsets, key),
+         "c: tensor constant is outside the payload layout")
+  return int(offsets[key])
+}
+
+local fn tensor_constant(
+  op: Op, depth: int, blob: str, offsets: dict, config: dict
+) -> str {
+  let outputs = ir.outs(op)
+  let data = payload_data(op)
+  assert(len(outputs) == 1 && base.kind(data) == "bytes",
+         "c: tensor constant requires bytes")
+  let output = outputs[0]
+  let type = ir.type(output)
+  let indent = pad(depth)
+  let bytes = base.size(data)
+  let elements = count(type)
+  assert(bytes == elements * width(tensor.elem(type), config),
+         "c: tensor constant byte size does not match its type")
+  if blob != "" {
+    return indent + "const " + scalar(tensor.elem(type), config) + "* " +
+           val(output) + " = (const " + scalar(tensor.elem(type), config) +
+           "*)(const void*)(" + blob + " + " +
+           text(payload_offset(offsets, output)) + ");\n"
+  }
+  var storage = elements
+  if storage == 0 {
+    storage = 1
+  }
+  var out = ""
+  if !reuses(op) && !mem.planned(output) {
+    out = indent + scalar(tensor.elem(type), config) + " " + val(output) + "[" +
+          text(storage) + "];\n"
+  }
+  if bytes == 0 {
+    return out
+  }
+  out += indent + "static const unsigned char data_" +
+         label(output) +
+         "[" + text(bytes) + "] = {0x" + base.hex(data, ", 0x") +
+         "};\n" + indent + "memcpy(" + val(output) + ", data_" +
+         label(output) + ", " + text(bytes) + ");\n"
+  return out
+}
+

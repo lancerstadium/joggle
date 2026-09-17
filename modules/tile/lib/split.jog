@@ -1,0 +1,295 @@
+fn split_issue(m: Mod, source: Op, axis: int, factor: int) -> str {
+  if factor <= 0 {
+    return "requires a positive factor"
+  }
+  if !ir.live(source) || ir.kind(source) != "loop" {
+    return "requires a live loop"
+  }
+  let bodies = ir.blks(source)
+  let inputs = ir.args(source)
+  let outputs = ir.outs(source)
+  if len(bodies) != 1 || len(inputs) <= len(outputs) {
+    return "requires a structured range loop"
+  }
+  let body = bodies[0]
+  let body_args = ir.args(body)
+  let axes = len(inputs) - len(outputs)
+  if axes <= 0 || len(body_args) != axes + len(outputs) {
+    return "found an invalid loop signature"
+  }
+  if axis < 0 || axis >= axes {
+    return "requires an axis within the loop rank"
+  }
+  let range_op = ir.def(inputs[axis])
+  if !syntax_op(m, range_op, "operator ..") {
+    return "requires the selected iterator to use a range"
+  }
+  let bounds = ir.args(range_op)
+  if len(bounds) != 2 || ir.type(bounds[0]) != ir.type(bounds[1]) {
+    return "requires matching range bounds"
+  }
+  if ir.type(body_args[axis]) != ty("index") {
+    return "requires an index iterator"
+  }
+  let ops = ir.ops(body)
+  if len(ops) == 0 || ir.kind(ops[len(ops) - 1]) != "yield" {
+    return "requires a terminated loop body"
+  }
+  return ""
+}
+
+fn split_issue(m: Mod, source: Op, factor: int) -> str {
+  return split_issue(m, source, last_axis(source), factor)
+}
+
+fn can_split(m: Mod, source: Op, axis: int, factor: int) -> bool {
+  let before = ir.revision(m)
+  let legal = factor > 1 && split_issue(m, source, axis, factor) == ""
+  assert(ir.revision(m) == before,
+         "tile.can_split changed the module")
+  return legal
+}
+
+fn can_split(m: Mod, source: Op, factor: int) -> bool {
+  return can_split(m, source, last_axis(source), factor)
+}
+
+fn splittable(m: Mod, axis: int, factor: int) -> list<Op> {
+  let before = ir.revision(m)
+  var out: list<Op> = []
+  for op in ir.ops(m) {
+    if can_split(m, op, axis, factor) {
+      out += [op]
+    }
+  }
+  assert(ir.revision(m) == before,
+         "tile.splittable changed the module")
+  return out
+}
+
+fn splittable(m: Mod, factor: int) -> list<Op> {
+  let before = ir.revision(m)
+  var out: list<Op> = []
+  for op in ir.ops(m) {
+    if can_split(m, op, last_axis(op), factor) {
+      out += [op]
+    }
+  }
+  assert(ir.revision(m) == before,
+         "tile.splittable changed the module")
+  return out
+}
+
+fn split(m: Mod, source: Op, axis: int, factor: int) -> Op {
+  let issue = split_issue(m, source, axis, factor)
+  assert(issue == "", "tile.split " + issue)
+  if factor == 1 {
+    return source
+  }
+
+  let bodies = ir.blks(source)
+  let inputs = ir.args(source)
+  let outputs = ir.outs(source)
+  let body = bodies[0]
+  let body_args = ir.args(body)
+  let axes = len(inputs) - len(outputs)
+
+  let range = inputs[axis]
+  let range_op = ir.def(range)
+  let bounds = ir.args(range_op)
+
+  let type = ty("index")
+  var lower = bounds[0]
+  var upper = bounds[1]
+  var exact = false
+  let fixed = ir.is_const(bounds[0]) && ir.is_const(bounds[1]) &&
+              base.kind(ir.constant(bounds[0])) == "int" &&
+              base.kind(ir.constant(bounds[1])) == "int"
+  if fixed {
+    lower = keep(
+      m, ir.constant(
+        m, source, base.int(ir.constant(bounds[0])), type
+      ),
+      "tile_begin"
+    )
+    upper = keep(
+      m, ir.constant(
+        m, source, base.int(ir.constant(bounds[1])), type
+      ),
+      "tile_end"
+    )
+  } else {
+    if ir.type(lower) != type {
+      lower = keep(
+        m, ir.call(m, source, text(type), [lower], type), "tile_begin"
+      )
+      upper = keep(
+        m, ir.call(m, source, text(type), [upper], type), "tile_end"
+      )
+    }
+  }
+  let zero = keep(m, ir.constant(m, source, 0, type), "tile_zero")
+  let factor_value = keep(
+    m, ir.constant(m, source, factor, type), "tile_factor"
+  )
+  var blocks = zero
+  if fixed {
+    let begin = base.int(ir.constant(bounds[0]))
+    let end = base.int(ir.constant(bounds[1]))
+    var width = 0
+    if end > begin {
+      width = end - begin
+    }
+    exact = width % factor == 0
+    var block_count = width / factor
+    if width % factor != 0 {
+      block_count += 1
+    }
+    blocks = keep(
+      m, ir.constant(
+        m, source, block_count, type
+      ),
+      "tile_blocks"
+    )
+  } else {
+    let one = keep(m, ir.constant(m, source, 1, type), "tile_one")
+    let width = keep(
+      m, ir.call(
+        m, source, base_fn("operator -", 2), [upper, lower], type
+      ),
+      "tile_width"
+    )
+    let factor_less_one = keep(
+      m, ir.call(
+        m, source, base_fn("operator -", 2), [factor_value, one], type
+      ),
+      "tile_tail"
+    )
+    let padded = keep(
+      m, ir.call(
+        m, source, base_fn("operator +", 2), [width, factor_less_one], type
+      ),
+      "tile_padded"
+    )
+    blocks = keep(
+      m, ir.call(
+        m, source, base_fn("operator /", 2), [padded, factor_value], type
+      ),
+      "tile_blocks"
+    )
+  }
+  let outer_range = call_like(
+    m, source, range_op, [zero, blocks], ir.type(range)
+  )
+  let inner_range = call_like(
+    m, source, range_op, [zero, factor_value], ir.type(range)
+  )
+
+  var sources: list<Val> = []
+  var names: list<str> = []
+  for i in 0..axes {
+    if i == axis {
+      sources += [outer_range, inner_range]
+      names += [ir.name(body_args[i]) + "_tile", ir.name(body_args[i])]
+    } else {
+      sources += [inputs[i]]
+      names += [ir.name(body_args[i])]
+    }
+  }
+  var carried: list<Val> = []
+  for i in axes..len(inputs) {
+    carried += [inputs[i]]
+  }
+
+  let split = ir.loop(m, source, names, sources, carried)
+  assert(ir.live(split), "tile.split could not build the split loop")
+  let split_body = ir.blks(split)[0]
+  let split_args = ir.args(split_body)
+  let split_ops = ir.ops(split_body)
+  let split_yield = split_ops[len(split_ops) - 1]
+
+  let scaled = keep(
+    m,
+    ir.call(
+      m, split_yield, base_fn("operator *", 2),
+      [split_args[axis], factor_value], type
+    ),
+    "tile_scaled"
+  )
+  let base = keep(
+    m, ir.call(
+      m, split_yield, base_fn("operator +", 2), [lower, scaled], type
+    ),
+    "tile_base"
+  )
+  let index = keep(
+    m, ir.call(
+      m, split_yield, base_fn("operator +", 2),
+      [base, split_args[axis + 1]], type
+    ),
+    "tile_index"
+  )
+
+  var old: list<Val> = []
+  var next: list<Val> = []
+  for i in 0..axes {
+    old += [body_args[i]]
+    if i == axis {
+      next += [index]
+    } else {
+      var split_axis = i
+      if i > axis {
+        split_axis += 1
+      }
+      next += [split_args[split_axis]]
+    }
+  }
+  if exact {
+    for i in 0..len(outputs) {
+      old += [body_args[axes + i]]
+      next += [split_args[axes + 1 + i]]
+    }
+    assert(ir.args(m, split_yield,
+                   clone_body(m, body, split_body, old, next)),
+           "tile.split could not connect an exact split loop")
+  } else {
+    let inside = keep(
+      m, ir.call(
+        m, split_yield, base_fn("operator <", 2),
+        [index, upper], ty("bool")
+      ),
+      "tile_inside"
+    )
+    var guarded_carried: list<Val> = []
+    for i in axes + 1..len(split_args) {
+      guarded_carried += [split_args[i]]
+    }
+    let guard = ir.branch(m, split_yield, inside, guarded_carried)
+    assert(ir.live(guard), "tile.split could not build the tail guard")
+    let then_body = ir.blks(guard)[0]
+    let then_args = ir.args(then_body)
+    let then_ops = ir.ops(then_body)
+    let then_yield = then_ops[len(then_ops) - 1]
+    for i in 0..len(outputs) {
+      old += [body_args[axes + i]]
+      next += [then_args[i]]
+    }
+    assert(ir.args(m, then_yield,
+                   clone_body(m, body, then_body, old, next)),
+           "tile.split could not connect the guarded body")
+    assert(ir.args(m, split_yield, ir.outs(guard)),
+           "tile.split could not connect the split loop")
+  }
+  if len(outputs) != 0 {
+    assert(ir.replace(m, outputs, ir.outs(split)),
+           "tile.split could not replace the original loop results")
+  }
+  assert(ir.erase(m, source),
+         "tile.split could not erase the original loop")
+  return split
+}
+
+fn split(m: Mod, source: Op, factor: int) -> Op {
+  return split(m, source, last_axis(source), factor)
+}
+

@@ -1,0 +1,37 @@
+local fn supports_with(
+  m: Mod, op: Op, accept: Fn, arg: Attr, configured: bool
+) -> bool {
+  let before = ir.revision(m)
+  var result = false
+  if configured {
+    result = ir.invoke<bool>(m, op, accept, arg)
+  } else {
+    result = ir.invoke<bool>(m, op, accept)
+  }
+  assert(ir.revision(m) == before,
+         "opt: capability function must not mutate the module")
+  return result
+}
+
+local fn frontier_with(
+  m: Mod, accept: Fn, arg: Attr, configured: bool
+) -> list<str> {
+  var out: list<str> = []
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" &&
+       !supports_with(m, op, accept, arg, configured) {
+      let symbol = ir.target(m, op)
+      var seen = false
+      for item in out {
+        if item == symbol {
+          seen = true
+        }
+      }
+      if !seen {
+        out += [symbol]
+      }
+    }
+  }
+  return out
+}
+

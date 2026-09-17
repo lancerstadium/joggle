@@ -1,17 +1,11 @@
-if(NOT DEFINED TOOL OR NOT DEFINED MODEL OR NOT DEFINED CSE_MODEL OR
-   NOT DEFINED MODULES)
-  message(FATAL_ERROR "opt test requires TOOL, MODEL, CSE_MODEL, and MODULES")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/joggle_test.cmake")
 
-execute_process(
+joggle_require("opt test requires TOOL, MODEL, CSE_MODEL, and MODULES" VARS TOOL MODEL CSE_MODEL MODULES)
+
+joggle_run("indexed CSE failed"
   COMMAND "${TOOL}" run opt.basic "${CSE_MODEL}" -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "indexed CSE failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 string(REGEX MATCHALL "x \\+ i32\\(1\\)" additions "${output}")
 list(LENGTH additions addition_count)
 string(REGEX MATCHALL "x \\+ one" shared_additions "${output}")
@@ -22,17 +16,11 @@ if(NOT addition_count EQUAL 2 OR NOT shared_count EQUAL 1 OR
           "CSE crossed a block or retained a same-block duplicate:\n${output}")
 endif()
 
-execute_process(
+joggle_run("overload-safe optimization failed"
   COMMAND "${TOOL}" run opt.fold_add_zero opt.basic "${MODEL}"
           -M "${MODULES}"
-  RESULT_VARIABLE result
   OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR
-          "overload-safe optimization failed (${result}):\n${error}")
-endif()
+  ERROR_VARIABLE error)
 string(FIND "${output}" "return x + i32(0)" used)
 string(FIND "${output}" "let observed = x + i32(1)" unused)
 if(used EQUAL -1 OR unused EQUAL -1)

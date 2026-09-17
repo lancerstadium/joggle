@@ -1,0 +1,391 @@
+fn gather<E: Ty, D: list<int>, S: list<int>, Y: list<int>>(
+  data: tensor<E, D>, indices: tensor<index, S>, axis: int
+) -> tensor<E, Y> {
+  var inner = 1
+  for dim in axis + 1..len(D) {
+    inner *= D[dim]
+  }
+  var outer = 1
+  for dim in 0..axis {
+    outer *= D[dim]
+  }
+  let count = numel<S>()
+  var out = tensor<E, Y>(E(0))
+  for group in 0..outer, item in 0..count, offset in 0..inner {
+    var selected = indices[item]
+    if selected < 0 {
+      selected += D[axis]
+    }
+    let source =
+      (group * D[axis] + selected) * inner + offset
+    let target = (group * count + item) * inner + offset
+    out[target] = data[source]
+  }
+  return out
+}
+
+// Deterministic selection along one logical axis.  Scanning candidates in
+// ascending index order and replacing only on a strict improvement gives the
+// ONNX tie rule (the lower index wins) without embedding source-format policy
+// in a backend.
+fn topk<E: Ty, S: list<int>, Y: list<int>>(
+  x: tensor<E, S>, count_value: tensor<i64, [1]>, axis: int, largest: bool
+) -> (tensor<E, Y>, tensor<i64, Y>) {
+  assert(axis >= 0 && axis < len(S), "tensor.topk axis is out of range")
+  let extent = index(S[axis])
+  let count = index(count_value[0])
+  assert(count > index(0) && count <= extent,
+         "tensor.topk count is out of range")
+  assert(len(Y) == len(S) && index(Y[axis]) == count,
+         "tensor.topk result shape does not match count")
+
+  var outer = index(1)
+  for dim_index in 0..axis {
+    outer *= index(S[dim_index])
+  }
+  var inner = index(1)
+  for dim_index in axis + 1..len(S) {
+    inner *= index(S[dim_index])
+  }
+
+  var values = tensor<E, Y>(E(0))
+  var indices = tensor<i64, Y>(i64(0))
+
+  for group in index(0)..outer, offset in index(0)..inner {
+    for selected in index(0)..count {
+      var found = false
+      var best = index(0)
+      var best_value = E(0)
+      for candidate in index(0)..extent {
+        let source = (group * extent + candidate) * inner + offset
+        let candidate_value = x[source]
+        var used = false
+        for prior in index(0)..selected {
+          let prior_target = (group * count + prior) * inner + offset
+          if index(indices[prior_target]) == candidate {
+            used = true
+          }
+        }
+        var better = false
+        if found {
+          if largest {
+            better = candidate_value > best_value
+          } else {
+            better = candidate_value < best_value
+          }
+        }
+        if !used && (!found || better) {
+          found = true
+          best = candidate
+          best_value = candidate_value
+        }
+      }
+      assert(found, "tensor.topk could not select a candidate")
+      let target = (group * count + selected) * inner + offset
+      values[target] = best_value
+      indices[target] = i64(best)
+    }
+  }
+  return values, indices
+}
+
+fn slice_offset(
+  source: list<int>, result: list<int>, starts: list<int>,
+  axes: list<int>, steps: list<int>, linear: int
+) -> int {
+  var out = 0
+  var source_stride = 1
+  var result_stride = 1
+  for reverse in 0..len(source) {
+    let dim = len(source) - reverse - 1
+    var start = 0
+    var step = 1
+    for item in 0..len(axes) {
+      if axes[item] == dim {
+        start = starts[item]
+        step = steps[item]
+        if start < 0 {
+          start += source[dim]
+        }
+      }
+    }
+    let coordinate = (linear / result_stride) % result[dim]
+    out += (start + coordinate * step) * source_stride
+    source_stride *= source[dim]
+    result_stride *= result[dim]
+  }
+  return out
+}
+
+fn slice<E: Ty, S: list<int>, Y: list<int>>(
+  x: tensor<E, S>, starts: list<int>, axes: list<int>, steps: list<int>
+) -> tensor<E, Y> {
+  var out = tensor<E, Y>(E(0))
+  for i in 0..numel<Y>() {
+    out[i] = x[slice_offset(S, Y, starts, axes, steps, i)]
+  }
+  return out
+}
+
+fn slice_offset<
+  S: list<int>, I: Ty, N: int
+>(
+  starts: tensor<I, [N]>, axes: tensor<I, [N]>,
+  steps: tensor<I, [N]>, result: list<int>, linear: int
+) -> int {
+  var out = 0
+  var source_stride = 1
+  var result_stride = 1
+  for reverse in 0..len(S) {
+    let dim = len(S) - reverse - 1
+    var start = 0
+    var step = 1
+    for item in 0..N {
+      var axis = int(axes[item])
+      if axis < 0 {
+        axis += len(S)
+      }
+      if axis == dim {
+        start = int(starts[item])
+        step = int(steps[item])
+        if start < 0 {
+          start += S[dim]
+        }
+      }
+    }
+    let coordinate = (linear / result_stride) % result[dim]
+    out += (start + coordinate * step) * source_stride
+    source_stride *= S[dim]
+    result_stride *= result[dim]
+  }
+  return out
+}
+
+local fn slice_runtime<
+  E: Ty, S: list<int>, Y: list<int>, I: Ty, N: int, R: int
+>(
+  x: tensor<E, S>, starts: tensor<I, [N]>, ends: tensor<I, [N]>,
+  axes: tensor<I, [N]>, steps: tensor<I, [N]>
+) -> tensor<E, Y> {
+  assert(N <= R, "tensor.slice has more axes than input dimensions")
+
+  var source_shape = tensor<index, [R]>(index(0))
+  var result_shape = tensor<index, [R]>(index(0))
+  var begin = tensor<index, [N]>(index(0))
+  var stride = tensor<index, [N]>(index(1))
+  [stage: "shape"]
+  for axis in 0..R {
+    let extent = dim(x, index(axis))
+    source_shape[axis] = extent
+    result_shape[axis] = extent
+  }
+  for item in 0..N {
+    var axis = int(axes[item])
+    if axis < 0 {
+      axis += R
+    }
+    assert(axis >= 0 && axis < R, "tensor.slice axis is out of range")
+    let extent = source_shape[axis]
+    let step = index(steps[item])
+    assert(step != index(0), "tensor.slice step cannot be zero")
+    var first = index(starts[item])
+    var last = index(ends[item])
+    var count = index(0)
+    if step > index(0) {
+      if first < index(0) {
+        first += extent
+      }
+      if last < index(0) {
+        last += extent
+      }
+      if first < index(0) {
+        first = index(0)
+      }
+      if first > extent {
+        first = extent
+      }
+      if last < index(0) {
+        last = index(0)
+      }
+      if last > extent {
+        last = extent
+      }
+      if last > first {
+        count = (last - first + step - index(1)) / step
+      }
+    } else {
+      let high = extent - index(1)
+      if first < index(0) {
+        first += extent
+      }
+      if last < -extent {
+        last = -index(1)
+      } else {
+        if last < index(0) {
+          last += extent
+        }
+      }
+      if first < -index(1) {
+        first = -index(1)
+      }
+      if first > high {
+        first = high
+      }
+      if last < -index(1) {
+        last = -index(1)
+      }
+      if last > high {
+        last = high
+      }
+      let magnitude = -step
+      if first > last {
+        count = (first - last + magnitude - index(1)) / magnitude
+      }
+    }
+    begin[item] = first
+    stride[item] = step
+    result_shape[axis] = count
+  }
+
+  var out: tensor<E, Y> = make(E(0), source_shape)
+  var count = index(1)
+  for axis in 0..R {
+    count *= result_shape[axis]
+  }
+  for linear in index(0)..count {
+    var source = index(0)
+    var source_stride = index(1)
+    var result_stride = index(1)
+    for reverse in 0..R {
+      let axis = R - reverse - 1
+      var coordinate = (linear / result_stride) % result_shape[axis]
+      for item in 0..N {
+        var selected = int(axes[item])
+        if selected < 0 {
+          selected += R
+        }
+        if selected == axis {
+          coordinate = begin[item] + coordinate * stride[item]
+        }
+      }
+      source += coordinate * source_stride
+      source_stride *= source_shape[axis]
+      result_stride *= result_shape[axis]
+    }
+    out[linear] = x[source]
+  }
+  return view(out, result_shape)
+}
+
+fn slice<
+  E: Ty, S: list<int>, Y: list<int>, I: Ty, N: int
+>(
+  x: tensor<E, S>, starts: tensor<I, [N]>, ends: tensor<I, [N]>,
+  axes: tensor<I, [N]>, steps: tensor<I, [N]>
+) -> tensor<E, Y> {
+  return slice_runtime<E, S, Y, I, N, len<S>>(
+    x, starts, ends, axes, steps
+  )
+}
+
+fn slice<
+  E: Ty, S: list<int>, Y: list<int>, I: Ty, N: int
+>(
+  x: tensor<E, S>, starts: tensor<I, [N]>, ends: tensor<I, [N]>,
+  axes: tensor<I, [N]>
+) -> tensor<E, Y> {
+  var steps = tensor<I, [N]>(I(1))
+  return slice(x, starts, ends, axes, steps)
+}
+
+fn slice<
+  E: Ty, S: list<int>, Y: list<int>, I: Ty, N: int
+>(
+  x: tensor<E, S>, starts: tensor<I, [N]>, ends: tensor<I, [N]>
+) -> tensor<E, Y> {
+  var axes = tensor<I, [N]>(I(0))
+  var steps = tensor<I, [N]>(I(1))
+  for item in 0..N {
+    axes[item] = I(item)
+  }
+  return slice(x, starts, ends, axes, steps)
+}
+
+fn gathered(
+  data: list<Ty>, indices: list<Ty>, axis: int
+) -> list<Ty> {
+  var out: list<Ty> = []
+  for i in 0..axis {
+    out += [data[i]]
+  }
+  out += indices
+  for i in axis + 1..len(data) {
+    out += [data[i]]
+  }
+  return out
+}
+
+fn sliced(
+  source: list<Ty>, starts: list<int>, ends: list<int>,
+  axes: list<int>, steps: list<int>
+) -> list<Ty> {
+  if len(starts) == 0 || len(starts) != len(ends) ||
+     len(starts) != len(axes) || len(starts) != len(steps) {
+    var invalid: list<Ty> = []
+    return invalid
+  }
+  var out = source
+  for item in 0..len(axes) {
+    var axis = axes[item]
+    if axis < 0 {
+      axis += len(source)
+    }
+    if axis < 0 || axis >= len(source) || steps[item] <= 0 {
+      return []
+    }
+    for previous in 0..item {
+      var before = axes[previous]
+      if before < 0 {
+        before += len(source)
+      }
+      if before == axis {
+        return []
+      }
+    }
+    if kind(source[axis]) != "int" {
+      if starts[item] != 0 ||
+         ends[item] != 9223372036854775807 || steps[item] != 1 {
+        out = replaced(out, axis, ty("_"))
+      }
+    } else {
+      let extent = int(source[axis])
+      var first = starts[item]
+      var last = ends[item]
+      if first < 0 {
+        first += extent
+      }
+      if last < 0 {
+        last += extent
+      }
+      if first < 0 {
+        first = 0
+      }
+      if first > extent {
+        first = extent
+      }
+      if last < 0 {
+        last = 0
+      }
+      if last > extent {
+        last = extent
+      }
+      var size = 0
+      if last > first {
+        size = (last - first + steps[item] - 1) / steps[item]
+      }
+      out = replaced(out, axis, ty(size))
+    }
+  }
+  return out
+}
+

@@ -1,0 +1,214 @@
+[phase: "shape", on: "onnx.Slice"]
+local fn convert_slice(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) == 0 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let output = ir.type(outputs[0])
+  if !tensor.valid(input) || !tensor.valid(output) ||
+     tensor.elem(input) != tensor.elem(output) {
+    return false
+  }
+  let starts = slice_starts(op)
+  let ends = slice_ends(op)
+  let selected = slice_axes(op)
+  let steps = slice_steps(op)
+  let expected = tensor.sliced(
+    tensor.dims(input), starts, ends, selected, steps
+  )
+  if len(expected) != 0 && tensor.dims(output) == expected {
+    var values: list<Val> = [inputs[0]]
+    values += [ints(m, op, starts)]
+    values += [ints(m, op, selected)]
+    values += [ints(m, op, steps)]
+    return convert_call(m, op, "tensor.slice", values)
+  }
+  if len(inputs) < 3 || len(inputs) > 5 {
+    return false
+  }
+  let control = ir.type(inputs[1])
+  if !tensor.valid(control) || len(tensor.dims(control)) != 1 {
+    return false
+  }
+  for i in 2..len(inputs) {
+    if ir.type(inputs[i]) != control {
+      return false
+    }
+  }
+  return convert_call(m, op, "tensor.slice")
+}
+
+[phase: "compute", on: "onnx.NonZero"]
+local fn convert_nonzero(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let source = ir.type(inputs[0])
+  let result = ir.type(outputs[0])
+  if !tensor.valid(source) || !tensor.valid(result) ||
+     tensor.elem(result) != ty("i64") ||
+     len(tensor.dims(result)) != 2 ||
+     tensor.dims(result)[0] != ty(len(tensor.dims(source))) {
+    return false
+  }
+  return convert_call(m, op, "nn.nonzero")
+}
+
+[phase: "compute", on: "onnx.Range"]
+local fn convert_range(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 {
+    return false
+  }
+  let result = ir.type(outputs[0])
+  if !tensor.valid(result) || tensor.dims(result) != [ty("_")] {
+    return false
+  }
+  let element = tensor.elem(result)
+  if element != ty("i16") && element != ty("i32") &&
+     element != ty("i64") && element != ty("f32") &&
+     element != ty("f64") {
+    return false
+  }
+  return convert_call(m, op, "tensor.range")
+}
+
+[phase: "compute", on: "onnx.TopK"]
+local fn convert_topk(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 2 {
+    return false
+  }
+  let source = ir.type(inputs[0])
+  let count = ir.type(inputs[1])
+  let values = ir.type(outputs[0])
+  let indices = ir.type(outputs[1])
+  if !tensor.valid(source) || count != ty("tensor<i64, [1]>") ||
+     !tensor.valid(values) || !tensor.valid(indices) ||
+     tensor.elem(values) != tensor.elem(source) ||
+     tensor.elem(indices) != ty("i64") ||
+     tensor.dims(values) != tensor.dims(indices) {
+    return false
+  }
+  let rank = len(tensor.dims(source))
+  var axis = base.get(attrs(op), "axis", -1)
+  if axis < 0 {
+    axis += rank
+  }
+  if axis < 0 || axis >= rank {
+    return false
+  }
+  let largest = base.get(attrs(op), "largest", 1)
+  let sorted = base.get(attrs(op), "sorted", 1)
+  if (largest != 0 && largest != 1) ||
+     (sorted != 0 && sorted != 1) {
+    return false
+  }
+  inputs += [ir.constant(m, op, axis, ty("int"))]
+  inputs += [ir.constant(m, op, largest == 1, ty("bool"))]
+  return convert_call(m, op, "tensor.topk", inputs)
+}
+
+[phase: "compute", on: "onnx.Resize"]
+local fn convert_resize(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if (len(inputs) != 3 && len(inputs) != 4) || len(outputs) != 1 ||
+     !tensor.valid(ir.type(inputs[0])) ||
+     !tensor.valid(ir.type(outputs[0])) {
+    return false
+  }
+  let meta = attrs(op)
+  let mode = base.get(meta, "mode", "nearest")
+  if (mode != "nearest" && mode != "linear") ||
+     base.get(meta, "coordinate_transformation_mode", "half_pixel") !=
+       "asymmetric" ||
+     (mode == "nearest" &&
+      base.get(meta, "nearest_mode", "round_prefer_floor") != "floor") {
+    return false
+  }
+  if len(inputs) == 4 {
+    if ir.type(inputs[2]) != ty("tensor<f32, [0]>") ||
+       ir.type(inputs[3]) != ty("tensor<i64, [4]>") {
+      return false
+    }
+    return convert_call(
+      m, op, "nn.resize2d", [
+        inputs[0], inputs[3], ints(m, op, [0, 1, 2, 3]),
+        ir.constant(m, op, mode, ty("str"))
+      ]
+    )
+  }
+  if ir.type(inputs[2]) != ty("tensor<f32, [4]>") {
+    return false
+  }
+  if mode != "nearest" {
+    return false
+  }
+  return convert_call(
+    m, op, "nn.resize2d", [
+      inputs[0], inputs[2], ints(m, op, [0, 1, 2, 3])
+    ]
+  )
+}
+
+[phase: "compute", on: "onnx.NonMaxSuppression"]
+local fn convert_nms(m: Mod, op: Op) -> bool {
+  let source_inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(source_inputs) < 2 || len(source_inputs) > 5 || len(outputs) != 1 {
+    return false
+  }
+  let boxes = ir.type(source_inputs[0])
+  let scores = ir.type(source_inputs[1])
+  let result = ir.type(outputs[0])
+  if !tensor.valid(boxes) || !tensor.valid(scores) ||
+     !tensor.valid(result) || len(tensor.dims(boxes)) != 3 ||
+     len(tensor.dims(scores)) != 3 ||
+     tensor.elem(boxes) != tensor.elem(scores) ||
+     tensor.dims(boxes)[2] != ty(4) ||
+     known_mismatch(tensor.dims(boxes)[0], tensor.dims(scores)[0]) ||
+     known_mismatch(tensor.dims(boxes)[1], tensor.dims(scores)[2]) ||
+     result != shaped(ty("i64"), [ty("_"), ty(3)]) {
+    return false
+  }
+  var inputs: list<Val> = [source_inputs[0], source_inputs[1]]
+  let maximum_value = optional_scalar(
+    m, op, source_inputs, 2, ty("i64"), "nms_default_", 0
+  )
+  let overlap_value = optional_scalar(
+    m, op, source_inputs, 3, tensor.elem(boxes), "nms_default_", 1
+  )
+  let score_value = optional_scalar(
+    m, op, source_inputs, 4, tensor.elem(boxes), "nms_default_", 2
+  )
+  if !ir.live(maximum_value) || !ir.live(overlap_value) ||
+     !ir.live(score_value) {
+    return false
+  }
+  inputs += [maximum_value, overlap_value, score_value]
+  let maximum = ir.type(maximum_value)
+  if !tensor.valid(maximum) || len(tensor.dims(maximum)) != 0 ||
+     tensor.elem(maximum) != ty("i64") {
+    return false
+  }
+  for i in 3..5 {
+    let threshold = ir.type(inputs[i])
+    if !tensor.valid(threshold) || len(tensor.dims(threshold)) != 0 ||
+       tensor.elem(threshold) != tensor.elem(boxes) {
+      return false
+    }
+  }
+  let center = base.get(attrs(op), "center_point_box", 0)
+  if center != 0 && center != 1 {
+    return false
+  }
+  inputs += [ir.constant(m, op, center, ty("int"))]
+  return convert_call(m, op, "nn.nms", inputs)
+}

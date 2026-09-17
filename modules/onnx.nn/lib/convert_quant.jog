@@ -1,0 +1,489 @@
+[phase: "compute", on: "onnx.QLinearConv"]
+local fn convert_qlinear_conv(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if (len(inputs) != 8 && len(inputs) != 9) || len(outputs) != 1 {
+    return false
+  }
+  let x = ir.type(inputs[0])
+  let weight = ir.type(inputs[3])
+  let result = ir.type(outputs[0])
+  if !tensor.valid(x) || !tensor.valid(weight) || !tensor.valid(result) ||
+     len(tensor.dims(weight)) != 4 || !quant_elem(tensor.elem(x)) ||
+     !quant_elem(tensor.elem(weight)) || !quant_elem(tensor.elem(result)) ||
+     !scalar_pair(ir.type(inputs[1]), ir.type(inputs[2]), tensor.elem(x)) ||
+     !channel_pair(
+       ir.type(inputs[4]), ir.type(inputs[5]), tensor.elem(weight),
+       tensor.dims(weight)[0]
+     ) ||
+     !scalar_pair(
+       ir.type(inputs[6]), ir.type(inputs[7]), tensor.elem(result)
+     ) || tensor.elem(ir.type(inputs[1])) !=
+          tensor.elem(ir.type(inputs[4])) ||
+     tensor.elem(ir.type(inputs[1])) !=
+       tensor.elem(ir.type(inputs[6])) {
+    return false
+  }
+  let elem = tensor.elem(ir.type(inputs[1]))
+  let dequant_x = dequantized(
+    m, op, inputs[0], inputs[1], inputs[2], 0
+  )
+  let dequant_weight = dequantized(
+    m, op, inputs[3], inputs[4], inputs[5], 0
+  )
+  var conv_inputs = [dequant_x, dequant_weight]
+  if len(inputs) == 9 {
+    let bias = ir.type(inputs[8])
+    if !tensor.valid(bias) || tensor.elem(bias) != ty("i32") ||
+       len(tensor.dims(bias)) != 1 ||
+       tensor.dims(bias)[0] != tensor.dims(weight)[0] {
+      return false
+    }
+    let weight_scale = ir.type(inputs[4])
+    var input_scale = inputs[1]
+    if ir.type(input_scale) != weight_scale {
+      input_scale = ir.call(
+        m, op, "tensor.broadcast", [input_scale], weight_scale
+      )
+      let name = local_name(op, "bias_input_scale_", 0)
+      if name == "" || !ir.rename(m, input_scale, name) {
+        return false
+      }
+    }
+    let bias_scale = ir.call(
+      m, op, "tensor.operator *", [input_scale, inputs[4]], weight_scale
+    )
+    let scale_name = local_name(op, "bias_scale_", 0)
+    if scale_name == "" || !ir.rename(m, bias_scale, scale_name) {
+      return false
+    }
+    let bias_zero_type = shaped(ty("i32"), tensor.dims(weight_scale))
+    let bias_zero = ir.call(
+      m, op, "tensor.tensor", [ir.constant(m, op, 0, ty("i32"))],
+      bias_zero_type
+    )
+    let zero_name = local_name(op, "bias_zero_", 0)
+    if zero_name == "" || !ir.rename(m, bias_zero, zero_name) {
+      return false
+    }
+    let dequant_bias = dequantized(
+      m, op, inputs[8], bias_scale, bias_zero, 0
+    )
+    if !ir.live(input_scale) || !ir.live(bias_scale) ||
+       !ir.live(bias_zero) || !ir.live(dequant_bias) {
+      return false
+    }
+    conv_inputs += [dequant_bias]
+  }
+  let config = conv_config(m, op, ir.type(dequant_weight), len(inputs) == 9)
+  if !ir.live(dequant_x) || !ir.live(dequant_weight) || len(config) == 0 {
+    return false
+  }
+  conv_inputs += config
+  let float_result = shaped(elem, tensor.dims(result))
+  let convolved = ir.call(
+    m, op, "nn.conv2d", conv_inputs, float_result
+  )
+  let conv_name = local_name(op, "convolved_", 0)
+  if conv_name == "" || !ir.rename(m, convolved, conv_name) {
+    return false
+  }
+  let quantized = requantized(
+    m, op, convolved, inputs[6], inputs[7], result
+  )
+  if !ir.live(convolved) || !ir.live(quantized) {
+    return false
+  }
+  carry(m, outputs[0], quantized)
+  return ir.replace(m, outputs[0], quantized) && ir.erase(m, op)
+}
+
+local fn quant_axis(op: Op, data: Ty, params: Ty) -> int {
+  if !tensor.valid(data) || !tensor.valid(params) {
+    return -1
+  }
+  let shape = tensor.dims(data)
+  let parameter_shape = tensor.dims(params)
+  if len(parameter_shape) == 0 ||
+     (len(parameter_shape) == 1 && parameter_shape[0] == ty(1)) {
+    return 0
+  }
+  if len(parameter_shape) != 1 {
+    return -1
+  }
+  var axis = base.int(base.get(attrs(op), "axis", 1))
+  if axis < 0 {
+    axis += len(shape)
+  }
+  if axis < 0 || axis >= len(shape) ||
+     parameter_shape[0] != shape[axis] {
+    return -1
+  }
+  return axis
+}
+
+local fn quant_bounds(elem: Ty) -> list<int> {
+  if elem == ty("u8") {
+    return [0, 255]
+  }
+  if elem == ty("i8") {
+    return [-128, 127]
+  }
+  if elem == ty("u16") {
+    return [0, 65535]
+  }
+  if elem == ty("i16") {
+    return [-32768, 32767]
+  }
+  var unsupported: list<int> = []
+  return unsupported
+}
+
+local fn quant_elem(elem: Ty) -> bool {
+  return elem == ty("u8") || elem == ty("i8") ||
+         elem == ty("u16") || elem == ty("i16")
+}
+
+local fn scale_elem(elem: Ty) -> bool {
+  return elem == ty("f16") || elem == ty("bf16") ||
+         elem == ty("f32") || elem == ty("f64")
+}
+
+local fn scalar_pair(scale: Ty, zero: Ty, elem: Ty) -> bool {
+  if !tensor.valid(scale) || !tensor.valid(zero) ||
+     !scale_elem(tensor.elem(scale)) || tensor.elem(zero) != elem ||
+     tensor.dims(scale) != tensor.dims(zero) {
+    return false
+  }
+  let dims = tensor.dims(scale)
+  return len(dims) == 0 ||
+         (len(dims) == 1 && dims[0] == ty(1))
+}
+
+local fn channel_pair(
+  scale: Ty, zero: Ty, elem: Ty, channels: Ty
+) -> bool {
+  if scalar_pair(scale, zero, elem) {
+    return true
+  }
+  return tensor.valid(scale) && tensor.valid(zero) &&
+         scale_elem(tensor.elem(scale)) && tensor.elem(zero) == elem &&
+         tensor.dims(scale) == [channels] &&
+         tensor.dims(zero) == [channels]
+}
+
+local fn matmul_pair(data: Ty, scale: Ty, zero: Ty, left: bool) -> int {
+  if !tensor.valid(data) || !tensor.valid(scale) || !tensor.valid(zero) ||
+     !scale_elem(tensor.elem(scale)) ||
+     tensor.elem(zero) != tensor.elem(data) ||
+     tensor.dims(scale) != tensor.dims(zero) {
+    return -1
+  }
+  let params = tensor.dims(scale)
+  if len(params) == 0 ||
+     (len(params) == 1 && params[0] == ty(1)) {
+    return 0
+  }
+  let shape = tensor.dims(data)
+  if len(shape) < 2 || len(params) != 1 {
+    return -1
+  }
+  var axis = len(shape) - 1
+  if left {
+    axis -= 1
+  }
+  if params[0] != shape[axis] {
+    return -1
+  }
+  return axis
+}
+
+local fn dequantized(
+  m: Mod, before: Op, data: Val, scale: Val, zero: Val, axis: int
+) -> Val {
+  let data_type = ir.type(data)
+  let scale_type = ir.type(scale)
+  if !tensor.valid(data_type) || !tensor.valid(scale_type) {
+    return data
+  }
+  let result = shaped(tensor.elem(scale_type), tensor.dims(data_type))
+  let axis_value = ir.constant(m, before, axis, ty("int"))
+  return ir.call(
+    m, before, "quant.dequantize", [data, scale, zero, axis_value], result
+  )
+}
+
+local fn requantized(
+  m: Mod, before: Op, data: Val, scale: Val, zero: Val, result: Ty
+) -> Val {
+  let bounds = quant_bounds(tensor.elem(result))
+  if len(bounds) != 2 {
+    return data
+  }
+  return ir.call(
+    m, before, "quant.quantize",
+    [data, scale, zero,
+     ir.constant(m, before, 0, ty("int")),
+     ir.constant(m, before, bounds[0], ty("int")),
+     ir.constant(m, before, bounds[1], ty("int"))],
+    result
+  )
+}
+
+[phase: "compute", on: "onnx.QuantizeLinear"]
+local fn convert_quantize(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 {
+    return false
+  }
+  let data = ir.type(inputs[0])
+  let scale = ir.type(inputs[1])
+  let zero = ir.type(inputs[2])
+  let result = ir.type(outputs[0])
+  if !tensor.valid(data) || !tensor.valid(scale) ||
+     !tensor.valid(zero) || !tensor.valid(result) ||
+     tensor.elem(scale) != tensor.elem(data) ||
+     tensor.elem(zero) != tensor.elem(result) ||
+     tensor.dims(zero) != tensor.dims(scale) ||
+     tensor.dims(result) != tensor.dims(data) {
+    return false
+  }
+  let axis = quant_axis(op, data, scale)
+  let bounds = quant_bounds(tensor.elem(result))
+  if axis < 0 || len(bounds) != 2 {
+    return false
+  }
+  inputs += [ir.constant(m, op, axis, ty("int"))]
+  inputs += [ir.constant(m, op, bounds[0], ty("int"))]
+  inputs += [ir.constant(m, op, bounds[1], ty("int"))]
+  return convert_call(m, op, "quant.quantize", inputs)
+}
+
+[phase: "compute", on: "onnx.DequantizeLinear"]
+local fn convert_dequantize(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 {
+    return false
+  }
+  let data = ir.type(inputs[0])
+  let scale = ir.type(inputs[1])
+  let zero = ir.type(inputs[2])
+  let result = ir.type(outputs[0])
+  if !tensor.valid(data) || !tensor.valid(scale) ||
+     !tensor.valid(zero) || !tensor.valid(result) ||
+     tensor.elem(zero) != tensor.elem(data) ||
+     tensor.elem(scale) != tensor.elem(result) ||
+     tensor.dims(zero) != tensor.dims(scale) ||
+     tensor.dims(result) != tensor.dims(data) {
+    return false
+  }
+  let axis = quant_axis(op, data, scale)
+  if axis < 0 {
+    return false
+  }
+  inputs += [ir.constant(m, op, axis, ty("int"))]
+  return convert_call(m, op, "quant.dequantize", inputs)
+}
+
+[phase: "compute", on: "onnx.DynamicQuantizeLinear"]
+local fn convert_dynamic_quant(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 3 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return false
+  }
+  let shape = tensor.dims(input)
+  if ir.type(outputs[0]) != shaped(ty("u8"), shape) ||
+     ir.type(outputs[1]) != ty("tensor<f32, []>") ||
+     ir.type(outputs[2]) != ty("tensor<u8, []>") ||
+     tensor.elem(input) != ty("f32") {
+    return false
+  }
+  return convert_call(m, op, "quant.dynamic")
+}
+
+[phase: "compute", on: "onnx.QLinearMatMul"]
+local fn convert_qlinear_matmul(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 8 || len(outputs) != 1 {
+    return false
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[3])
+  let result = ir.type(outputs[0])
+  let left_axis = matmul_pair(
+    left, ir.type(inputs[1]), ir.type(inputs[2]), true
+  )
+  let right_axis = matmul_pair(
+    right, ir.type(inputs[4]), ir.type(inputs[5]), false
+  )
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     !tensor.valid(result) || !quant_elem(tensor.elem(left)) ||
+     !quant_elem(tensor.elem(right)) || !quant_elem(tensor.elem(result)) ||
+     left_axis < 0 || right_axis < 0 ||
+     !scalar_pair(ir.type(inputs[6]), ir.type(inputs[7]),
+                  tensor.elem(result)) ||
+     tensor.elem(ir.type(inputs[1])) != tensor.elem(ir.type(inputs[4])) ||
+     tensor.elem(ir.type(inputs[1])) != tensor.elem(ir.type(inputs[6])) {
+    return false
+  }
+  let shape = matmul_shape(left, right)
+  let elem = tensor.elem(ir.type(inputs[1]))
+  if len(shape) == 0 || result != shaped(tensor.elem(result), shape) {
+    return false
+  }
+  let dequant_left = dequantized(
+    m, op, inputs[0], inputs[1], inputs[2], left_axis
+  )
+  let dequant_right = dequantized(
+    m, op, inputs[3], inputs[4], inputs[5], right_axis
+  )
+  let product = ir.call(
+    m, op, "tensor.matmul", [dequant_left, dequant_right],
+    shaped(elem, shape)
+  )
+  let product_name = local_name(op, "product_", 0)
+  if product_name == "" || !ir.rename(m, product, product_name) {
+    return false
+  }
+  let quantized = requantized(
+    m, op, product, inputs[6], inputs[7], result
+  )
+  if !ir.live(dequant_left) || !ir.live(dequant_right) ||
+     !ir.live(product) || !ir.live(quantized) {
+    return false
+  }
+  carry(m, outputs[0], quantized)
+  return ir.replace(m, outputs[0], quantized) && ir.erase(m, op)
+}
+
+[phase: "compute", on: "com_microsoft.QLinearAdd"]
+local fn convert_qlinear_add(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 8 || len(outputs) != 1 {
+    return false
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[3])
+  let result = ir.type(outputs[0])
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     !tensor.valid(result) || !quant_elem(tensor.elem(left)) ||
+     !quant_elem(tensor.elem(right)) || !quant_elem(tensor.elem(result)) ||
+     !scalar_pair(ir.type(inputs[1]), ir.type(inputs[2]),
+                  tensor.elem(left)) ||
+     !scalar_pair(ir.type(inputs[4]), ir.type(inputs[5]),
+                  tensor.elem(right)) ||
+     !scalar_pair(ir.type(inputs[6]), ir.type(inputs[7]),
+                  tensor.elem(result)) ||
+     tensor.elem(ir.type(inputs[1])) != tensor.elem(ir.type(inputs[4])) ||
+     tensor.elem(ir.type(inputs[1])) != tensor.elem(ir.type(inputs[6])) {
+    return false
+  }
+  let shape = tensor.broadcast_shape(
+    tensor.dims(left), tensor.dims(right)
+  )
+  if result != shaped(tensor.elem(result), shape) {
+    return false
+  }
+  let dequant_left = dequantized(
+    m, op, inputs[0], inputs[1], inputs[2], 0
+  )
+  let dequant_right = dequantized(
+    m, op, inputs[3], inputs[4], inputs[5], 0
+  )
+  let sum = ir.call(
+    m, op, "nn.add", [dequant_left, dequant_right],
+    shaped(tensor.elem(ir.type(inputs[1])), shape)
+  )
+  let sum_name = local_name(op, "sum_", 0)
+  if !ir.live(dequant_left) || !ir.live(dequant_right) || !ir.live(sum) ||
+     sum_name == "" || !ir.rename(m, sum, sum_name) {
+    return false
+  }
+  let quantized = requantized(
+    m, op, sum, inputs[6], inputs[7], result
+  )
+  if !ir.live(quantized) {
+    return false
+  }
+  carry(m, outputs[0], quantized)
+  return ir.replace(m, outputs[0], quantized) && ir.erase(m, op)
+}
+
+[phase: "compute", on: "onnx.MatMulInteger"]
+local fn convert_integer_matmul(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 4 || len(outputs) != 1 {
+    return false
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[1])
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     len(tensor.dims(left)) < 2 || len(tensor.dims(right)) < 2 ||
+     !matmul_param(
+       ir.type(inputs[2]), tensor.elem(left),
+       tensor.dims(left)[len(tensor.dims(left)) - 2]
+     ) ||
+     !matmul_param(
+       ir.type(inputs[3]), tensor.elem(right),
+       tensor.dims(right)[len(tensor.dims(right)) - 1]
+     ) {
+    return false
+  }
+  let shape = matmul_shape(left, right)
+  if len(shape) == 0 ||
+     ir.type(outputs[0]) != shaped(ty("i32"), shape) {
+    return false
+  }
+  return convert_call(m, op, "quant.matmul")
+}
+
+[phase: "compute", on: "com_microsoft.QLinearAveragePool"]
+local fn convert_qlinear_avg_pool(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 5 || len(outputs) != 1 {
+    return false
+  }
+  let x = ir.type(inputs[0])
+  let result = ir.type(outputs[0])
+  if !tensor.valid(x) || !tensor.valid(result) ||
+     !quant_elem(tensor.elem(x)) || !quant_elem(tensor.elem(result)) ||
+     !scalar_pair(ir.type(inputs[1]), ir.type(inputs[2]), tensor.elem(x)) ||
+     !scalar_pair(ir.type(inputs[3]), ir.type(inputs[4]),
+                  tensor.elem(result)) ||
+     tensor.elem(ir.type(inputs[1])) != tensor.elem(ir.type(inputs[3])) {
+    return false
+  }
+  let dequant = dequantized(m, op, inputs[0], inputs[1], inputs[2], 0)
+  let config = pool_config(m, op, true)
+  if !ir.live(dequant) || len(config) == 0 {
+    return false
+  }
+  let pooled = ir.call(
+    m, op, "nn.avg_pool2d", [dequant] + config,
+    shaped(tensor.elem(ir.type(inputs[1])), tensor.dims(result))
+  )
+  let pool_name = local_name(op, "pooled_", 0)
+  if !ir.live(pooled) || pool_name == "" ||
+     !ir.rename(m, pooled, pool_name) {
+    return false
+  }
+  let quantized = requantized(
+    m, op, pooled, inputs[3], inputs[4], result
+  )
+  if !ir.live(quantized) {
+    return false
+  }
+  carry(m, outputs[0], quantized)
+  return ir.replace(m, outputs[0], quantized) && ir.erase(m, op)
+}

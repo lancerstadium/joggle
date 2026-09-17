@@ -1,0 +1,273 @@
+fn avg_pool2d<E: Ty, X: list<int>, Y: list<int>>(
+  x: tensor<E, X>,
+  kernel: list<int>,
+  stride: list<int>,
+  pad: list<int>,
+  dilation: list<int>,
+  axes: list<int>
+) -> tensor<E, Y> {
+  let n_size = tensor.extent(X, axes, 0)
+  let c_size = tensor.extent(X, axes, 1)
+  let h_size = tensor.extent(X, axes, 2)
+  let w_size = tensor.extent(X, axes, 3)
+  let oh_size = tensor.extent(Y, axes, 2)
+  let ow_size = tensor.extent(Y, axes, 3)
+  var out = tensor<E, Y>(E(0))
+  for n in 0..n_size, c in 0..c_size,
+      oh in 0..oh_size, ow in 0..ow_size {
+    var sum = E(0)
+    var count = 0
+    for r in 0..kernel[0], s in 0..kernel[1] {
+      let h = oh * stride[0] + r * dilation[0] - pad[0]
+      let w = ow * stride[1] + s * dilation[1] - pad[1]
+      if h >= 0 && h < h_size && w >= 0 && w < w_size {
+        let xi = tensor.offset(X, axes, [n, c, h, w])
+        sum += x[xi]
+        count += 1
+      }
+    }
+    let yi = tensor.offset(Y, axes, [n, c, oh, ow])
+    out[yi] = sum / E(count)
+  }
+  return out
+}
+
+fn avg_pool2d<E: Ty, X: list<int>, Y: list<int>>(
+  x: tensor<E, X>,
+  kernel: list<int>,
+  stride: list<int>,
+  padding: str,
+  dilation: list<int>,
+  axes: list<int>
+) -> tensor<E, Y> {
+  let pad = same_pad(
+    X, kernel, stride, dilation, axes, padding == "SAME_LOWER"
+  )
+  return avg_pool2d(x, kernel, stride, pad, dilation, axes)
+}
+
+fn avg_pool2d<E: Ty, X: list<int>, Y: list<int>>(
+  x: tensor<E, X>,
+  kernel: list<int>,
+  stride: list<int>,
+  pad: list<int>,
+  dilation: list<int>,
+  axes: list<int>,
+  activation: str
+) -> tensor<E, Y> {
+  let pooled: tensor<E, Y> = avg_pool2d(
+    x, kernel, stride, pad, dilation, axes
+  )
+  return activate(pooled, activation)
+}
+
+fn avg_pool2d<E: Ty, X: list<int>, Y: list<int>>(
+  x: tensor<E, X>,
+  kernel: list<int>,
+  stride: list<int>,
+  pad: list<int>,
+  axes: list<int>
+) -> tensor<E, Y> {
+  return avg_pool2d(x, kernel, stride, pad, [1, 1], axes)
+}
+
+fn avg_pool2d<E: Ty, X: list<int>, Y: list<int>>(
+  x: tensor<E, X>,
+  kernel: list<int>,
+  stride: list<int>,
+  pad: list<int>,
+  axes: list<int>,
+  activation: str
+) -> tensor<E, Y> {
+  return avg_pool2d(
+    x, kernel, stride, pad, [1, 1], axes, activation
+  )
+}
+
+fn max_pool2d<E: Ty, X: list<int>, Y: list<int>>(
+  x: tensor<E, X>,
+  kernel: list<int>,
+  stride: list<int>,
+  pad: list<int>,
+  dilation: list<int>,
+  axes: list<int>
+) -> tensor<E, Y> {
+  let n_size = tensor.extent(X, axes, 0)
+  let c_size = tensor.extent(X, axes, 1)
+  let h_size = tensor.extent(X, axes, 2)
+  let w_size = tensor.extent(X, axes, 3)
+  let oh_size = tensor.extent(Y, axes, 2)
+  let ow_size = tensor.extent(Y, axes, 3)
+  var out = tensor<E, Y>(E(0))
+  for n in 0..n_size, c in 0..c_size,
+      oh in 0..oh_size, ow in 0..ow_size {
+    var peak = E(0)
+    var found = false
+    for r in 0..kernel[0], s in 0..kernel[1] {
+      let h = oh * stride[0] + r * dilation[0] - pad[0]
+      let w = ow * stride[1] + s * dilation[1] - pad[1]
+      if h >= 0 && h < h_size && w >= 0 && w < w_size {
+        let xi = tensor.offset(X, axes, [n, c, h, w])
+        if !found || x[xi] > peak {
+          peak = x[xi]
+          found = true
+        }
+      }
+    }
+    let yi = tensor.offset(Y, axes, [n, c, oh, ow])
+    out[yi] = peak
+  }
+  return out
+}
+
+fn max_pool2d<E: Ty, X: list<int>, Y: list<int>>(
+  x: tensor<E, X>,
+  kernel: list<int>,
+  stride: list<int>,
+  padding: str,
+  dilation: list<int>,
+  axes: list<int>
+) -> tensor<E, Y> {
+  let pad = same_pad(
+    X, kernel, stride, dilation, axes, padding == "SAME_LOWER"
+  )
+  return max_pool2d(x, kernel, stride, pad, dilation, axes)
+}
+
+fn max_pool2d<E: Ty, X: list<int>, Y: list<int>>(
+  x: tensor<E, X>,
+  kernel: list<int>,
+  stride: list<int>,
+  pad: list<int>,
+  dilation: list<int>,
+  axes: list<int>,
+  activation: str
+) -> tensor<E, Y> {
+  let pooled: tensor<E, Y> = max_pool2d(
+    x, kernel, stride, pad, dilation, axes
+  )
+  return activate(pooled, activation)
+}
+
+fn max_pool2d<E: Ty, X: list<int>, Y: list<int>>(
+  x: tensor<E, X>,
+  kernel: list<int>,
+  stride: list<int>,
+  pad: list<int>,
+  axes: list<int>
+) -> tensor<E, Y> {
+  return max_pool2d(x, kernel, stride, pad, [1, 1], axes)
+}
+
+fn max_pool2d<E: Ty, X: list<int>, Y: list<int>>(
+  x: tensor<E, X>,
+  kernel: list<int>,
+  stride: list<int>,
+  pad: list<int>,
+  axes: list<int>,
+  activation: str
+) -> tensor<E, Y> {
+  return max_pool2d(
+    x, kernel, stride, pad, [1, 1], axes, activation
+  )
+}
+
+fn global_avg_pool2d<
+  E: Ty, N: int, C: int, H: int, W: int
+>(
+  x: tensor<E, [N, C, H, W]>
+) -> tensor<E, [N, C, 1, 1]> {
+  let out: tensor<E, [N, C, 1, 1]> = avg_pool2d(
+    x, [H, W], [1, 1], [0, 0, 0, 0], [1, 1], [0, 1, 2, 3]
+  )
+  return out
+}
+
+fn resize2d<
+  E: Ty, X: list<int>, Y: list<int>
+>(
+  x: tensor<E, X>, scales: tensor<f32, [4]>, axes: list<int>
+) -> tensor<E, Y> {
+  let n_size = tensor.extent(Y, axes, 0)
+  let c_size = tensor.extent(Y, axes, 1)
+  let h_size = tensor.extent(Y, axes, 2)
+  let w_size = tensor.extent(Y, axes, 3)
+  var out = tensor<E, Y>(E(0))
+  for n in 0..n_size, c in 0..c_size,
+      h in 0..h_size, w in 0..w_size {
+    let source_h = int(f32(h) / scales[2])
+    let source_w = int(f32(w) / scales[3])
+    let source = tensor.offset(X, axes, [n, c, source_h, source_w])
+    let target = tensor.offset(Y, axes, [n, c, h, w])
+    out[target] = x[source]
+  }
+  return out
+}
+
+fn resize2d<
+  E: Ty, X: list<int>, Y: list<int>
+>(
+  x: tensor<E, X>, sizes: tensor<i64, [4]>, axes: list<int>, mode: str
+) -> tensor<E, Y> {
+  let n_size = tensor.extent(Y, axes, 0)
+  let c_size = tensor.extent(Y, axes, 1)
+  let h_size = tensor.extent(Y, axes, 2)
+  let w_size = tensor.extent(Y, axes, 3)
+  assert(i64(n_size) == sizes[index(0)] &&
+         i64(c_size) == sizes[index(1)] &&
+         i64(h_size) == sizes[index(2)] &&
+         i64(w_size) == sizes[index(3)],
+         "nn.resize2d sizes do not match its result type")
+  assert(mode == "nearest" || mode == "linear",
+         "nn.resize2d interpolation mode is unsupported")
+  var source_shape = tensor<index, [4]>(index(0))
+  [stage: "shape"]
+  for axis in 0..4 {
+    source_shape[index(axis)] = tensor.dim(x, index(axis))
+  }
+  var out = tensor<E, Y>(E(0))
+  for n in 0..n_size, c in 0..c_size,
+      h in 0..h_size, w in 0..w_size {
+    let input_h = source_shape[index(axes[2])]
+    let input_w = source_shape[index(axes[3])]
+    let source_h = index(h) * input_h / index(h_size)
+    let source_w = index(w) * input_w / index(w_size)
+    var coords = tensor<index, [4]>(index(0))
+    coords[index(axes[0])] = index(n)
+    coords[index(axes[1])] = index(c)
+    coords[index(axes[2])] = source_h
+    coords[index(axes[3])] = source_w
+    let target = tensor.offset(Y, axes, [n, c, h, w])
+    if mode == "nearest" {
+      out[target] = x[tensor.offset(source_shape, coords)]
+    } else {
+      var next_h = source_h + index(1)
+      var next_w = source_w + index(1)
+      if next_h >= input_h {
+        next_h = input_h - index(1)
+      }
+      if next_w >= input_w {
+        next_w = input_w - index(1)
+      }
+      let position_h = E(h) * E(input_h) / E(h_size)
+      let position_w = E(w) * E(input_w) / E(w_size)
+      let weight_h = position_h - E(source_h)
+      let weight_w = position_w - E(source_w)
+      let one = E(1)
+      let top_left = x[tensor.offset(source_shape, coords)]
+      coords[index(axes[3])] = next_w
+      let top_right = x[tensor.offset(source_shape, coords)]
+      coords[index(axes[2])] = next_h
+      let bottom_right = x[tensor.offset(source_shape, coords)]
+      coords[index(axes[3])] = source_w
+      let bottom_left = x[tensor.offset(source_shape, coords)]
+      out[target] =
+        (one - weight_h) *
+          ((one - weight_w) * top_left + weight_w * top_right) +
+        weight_h *
+          ((one - weight_w) * bottom_left + weight_w * bottom_right)
+    }
+  }
+  return out
+}
+
