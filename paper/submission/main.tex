@@ -210,11 +210,17 @@ present prototype claims about update cost (Section~\ref{sec:reactive}).
 
 \subsection{Design requirements and scope}
 The requirements are asymmetric. Body-level derivation is the capability under
-study. Module composition must preserve the copied algorithm's dependencies,
-and execution must isolate compiler code from the subject it changes. Selective
-exposure lets a consumer request subject detail without lowering the whole
-program. Dependency-sensitive recomputation would further reduce repeated work;
-establishing derivation does not depend on it.
+study; module composition must preserve the copied algorithm's dependencies and
+execution must isolate compiler code from the subject. Selective exposure lets a
+consumer request subject detail without lowering the whole program, and
+dependency-sensitive recomputation would reduce repeated work but is not needed
+to establish derivation.
+
+The evaluation domain is deliberately narrow, and the co-design scenario above
+served to derive requirements rather than as an implemented configuration: ONNX
+models are compiled to scalar C on one host at one thread, and an accelerator
+backend, a low-precision deployment path, and dataset-level accuracy are not
+exercised.
 
 The resulting research question is whether a compiler algorithm body can be
 retained, derived, internally revised, and independently executed while its
@@ -313,9 +319,9 @@ fn plan(m: Mod, fn: Fn) -> bool {
 The excerpt is copied from \texttt{modules/mem/module.jog} at revision
 \texttt{27b37c75} with no change other than elision marks.
 
-Let $S$ hold an installed source definition $f$, $K$ derived compiler
-definitions, and $P$ model computation, each a value of the public \texttt{Mod}
-type. A derivation $D(S,f,e;K)$ creates a fresh definition $f_e$ in $K$ by
+Figure~\ref{fig:structure} fixes the containment and the roles. Let $S$ hold an
+installed source definition $f$, $K$ derived compiler definitions, and $P$ model
+computation, each a value of the public \texttt{Mod} type. A derivation $D(S,f,e;K)$ creates a fresh definition $f_e$ in $K$ by
 cloning $f$ and applying an edit $e$ to the inactive copy, leaving $f$ in $S$
 callable. An execution $\mathit{invoke}(f_e,P)$ reads or edits $P$; $f_e$ is
 not appended to $P$. A read-only query verifies and executes a copy of $P$ and
@@ -371,9 +377,10 @@ allocation safety. Numerical and storage checks therefore remain necessary
 when the derived planner executes on a subject program.
 
 \begin{center}
-\includegraphics[width=0.88\columnwidth]{../figures/structure.pdf}
+\includegraphics[width=0.86\columnwidth]{../figures/structure.pdf}
 
 \vspace{2pt}
+\refstepcounter{figure}\label{fig:structure}
 {\footnotesize\textbf{Figure~\thefigure.} The representation's containment and the three roles a module can
 hold. A \texttt{Mod} is one program holding typed \texttt{Fn} definitions, each
 with blocks, operations, and values; the same representation carries the
@@ -725,16 +732,15 @@ The pinned TVM planner factory exposes no ranking parameter and its allocator is
 C++, so the natural route for the same change is a source edit of the compiler,
 which the pip wheel does not permit. We replaced the allocator's windowed
 best-fit search with the ranking used above, leaving eligibility and rewriting
-unchanged, and rebuilt an existing source build, about nine minutes clean on
-this host. Five fresh processes per route then give the following. The Joggle
-route rebuilds nothing: deriving the recipe costs 0.04\,s and the derived
-planner 2.48\,s. The TVM route pays one translation unit and a relink per edit,
-8.0\,s and 7.7\,s on revert, after a 514\,s clean build. It then plans natively
-far faster than Joggle's interpreted planner, which pays interpretation cost
-instead of rebuilding. Both artifacts
-pass the same oracle. The rule lowers Joggle's first-fit plan yet raises TVM's
-capacity-aware plan, and each system accounts for storage its own way, so the
-two figures are not comparable and the rule itself is not a contribution.
+unchanged, and rebuilt an existing source build, about nine minutes clean here.
+Five fresh processes per route then give the following. The Joggle route
+rebuilds nothing: deriving the recipe costs 0.04\,s and the derived planner
+2.48\,s. The TVM route pays a translation unit and a relink per edit, 8.0\,s and
+7.7\,s on revert, after a 514\,s clean build, and then plans natively far faster
+than Joggle's interpreted planner. Both artifacts pass the same oracle. The rule
+lowers Joggle's first-fit plan yet raises TVM's capacity-aware one, and each
+system accounts for storage its own way, so the two figures are not comparable
+and the rule itself is not a contribution.
 The control covers one model and one host and measures a rebuild and
 feedback boundary, not developer effort or maintenance over upstream changes.
 ONNX-MLIR at \texttt{4a13c34} has the same route shape by source inspection:
@@ -955,18 +961,15 @@ with the planning logic itself minor. The interpreter's cost is therefore a
 value-representation cost, addressable by interned types, shared attributes,
 and arena-allocated frames without changing the function model.
 
-XCiT's preparation exceeds its recorded timeout; an earlier single-model probe
-at revision \texttt{8d20360} observed its first preparation round grow from
-3,135 to 18,976 operations, which is a prose observation from that probe rather
-than a record at the revision this campaign cites. Selective exposure bounds
-what a consumer requests, not the cost of reaching it on a large transformer. Compilation time is now
-measured on one span: the pinned ONNX file on disk to a loadable library, one
-host, one thread, with the fixture all three systems share staged outside the
-span and one artifact built per system. Joggle takes 101.5\,s against 4.52\,s
-for TVM and 4.51\,s for ONNX-MLIR over five runs each, so its compile time is
-22.5$\times$ theirs on this model. The cost is where the design predicts: 55.7\,s
-is the interpreted \texttt{c.prepare} pass, 45.0\,s the plan, place, emit, and
-compile chain, and 0.8\,s ONNX reading and conversion. Peak resident memory for a
+XCiT's preparation exceeds its recorded timeout, and selective exposure bounds
+what a consumer requests rather than the cost of reaching it on a large
+transformer. Compilation time is now measured on one span: the pinned ONNX file
+on disk to a loadable library, one host, one thread, one artifact per system,
+with the fixture all three share staged outside the span. Joggle takes 101.5\,s
+against 4.52\,s for TVM and 4.51\,s for ONNX-MLIR over five runs each, so its
+compile time is 22.5$\times$ theirs here. The cost sits where the design
+predicts: 55.7\,s is the interpreted \texttt{c.prepare} pass, 45.0\,s the plan,
+place, emit, and compile chain, and 0.8\,s reading and converting the model. Peak resident memory for a
 complete model remains unmeasured. Failure tests cover
 transactions and stale handles; generative tests cover parsing and legal IR
 edits, not module loading, serialized frontends, or the native ABI.
@@ -1094,8 +1097,7 @@ organization, kernels, and compiler integration as one systems result
 \cite{burrello2021dory,lin2020mcunet,wang2024ladder,daghero2025sparse};
 TensorFlow Lite Micro, ncnn, and IREE supply deployment baselines
 \cite{david2021tflm,ncnnProject,ireeDocs}, and FlashInfer shows the same
-vertical pressure in attention kernels \cite{ye2025flashinfer}. Joggle uses
-edge inference as a demanding evaluation domain, not as a scope restriction.
+vertical pressure in attention kernels \cite{ye2025flashinfer}.
 Generated mappings and kernels depend on compilers, profilers, and oracles to
 be admitted \cite{hong2025autocomp,mai2026argus}, and compiler fuzzing shows how
 large the semantic failure surface is
@@ -1131,21 +1133,19 @@ Model oracles establish agreement on recorded inputs, not dataset-level
 accuracy, and support for dynamic shapes, stateful execution, concurrent
 devices, and distributed placement remains incomplete. The same-host comparison
 above shows what the substrate does and does not buy: loop reordering is now a
-measured source-level change; the rest of the kernel checklist (register
-accumulation, GEMM mapping, epilogue fusion, parallelization) remains, each
-likewise a source-defined selection or emission procedure. This paper evaluates
-the route by which that work enters, not how far it runs.
+measured source-level change, and the rest of the kernel checklist remains a
+source-defined selection or emission procedure. This paper evaluates the route
+by which that work enters, not how far it runs.
 
 \section{Conclusion}
 Joggle treats a source-defined compiler algorithm body as a reusable program
 artifact: a derivation copies the definition and its private helper closure,
-admits an internal structural edit, and executes on a separate subject while
-the original stays callable, with module resolution, verification, and rollback
-making that boundary explicit. The planner and preparation cases carry such
-edits to checked artifacts, and one matched control reaches the same artifact
-through TVM's source route at the cost of a rebuild that derivation avoids.
-What we claim is bounded by the source-patch control, by unmeasured compilation
-and inference costs, and by dependency-sensitive recomputation still to come.
+admits an internal structural edit, and executes on a separate subject while the
+original stays callable. The planner and preparation cases carry such edits to
+checked artifacts, and a matched control reaches the same artifact through TVM's
+source route at the cost of a rebuild that derivation avoids. The claim is
+bounded by the source-patch control and by compilation and inference costs that
+remain high.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{../references}
