@@ -661,9 +661,8 @@ or dataset-level accuracy.
 \paragraph{Which system answers which question.}
 One system is present for each axis it can carry, and a gap is stated rather
 than implied. Rebuild scope and edit survival are measured against TVM's source
-route; MLIR Transform is the fairer mechanism comparison, since its natural route
-replaces an implementation body, but it stays a bounded textual comparison with
-no measured data.
+route, and the MLIR boundary is probed against a real build rather than
+measured end to end, since no MLIR route reaches an artifact on these models.
 
 \subsection{Revising one decision inside a working planner}
 \label{sec:eval-derive}
@@ -742,15 +741,13 @@ The pinned TVM planner factory exposes no ranking parameter and its allocator is
 C++, so the natural route for the same change is a source edit of the compiler,
 which the pip wheel does not permit. We replaced the allocator's windowed
 best-fit search with the ranking used above, leaving eligibility and rewriting
-unchanged, and rebuilt an existing source build, about nine minutes clean here.
-Five fresh processes per route then give the following. The Joggle route
-rebuilds nothing: deriving the recipe costs 0.04\,s and the derived planner
-2.48\,s. The TVM route pays a translation unit and a relink per edit, 8.0\,s and
-7.7\,s on revert, after a 514\,s clean build, and then plans natively far faster
-than Joggle's interpreted planner. Both artifacts pass the same oracle. The rule
-lowers Joggle's first-fit plan yet raises TVM's capacity-aware one, and each
-system accounts for storage its own way, so the two figures are not comparable
-and the rule itself is not a contribution.
+unchanged, and rebuilt an existing source build. The Joggle route rebuilds
+nothing: deriving the recipe costs 0.04\,s and the derived planner 2.48\,s. The
+TVM route pays a translation unit and a relink per edit, 8.0\,s and 7.7\,s on
+revert, after a 514\,s clean build, and then plans natively far faster than
+Joggle's interpreted planner. Both artifacts pass the same oracle, but the rule
+lowers Joggle's first-fit plan yet raises TVM's capacity-aware one, so the two
+storage figures are not comparable and the rule is not a contribution.
 The control covers one model and one host and measures a rebuild and
 feedback boundary, not developer effort or maintenance over upstream changes.
 ONNX-MLIR at \texttt{4a13c34} has the same route shape by source inspection:
@@ -999,10 +996,16 @@ definition with rollback on failure is Erlang code loading and dynamic updating
 \cite{erlangCodeLoading,hicks2005dynamic}. None of this is claimed.
 
 What is claimed is the conjunction, over one typed IR that also represents the
-subject. MLIR Transform keeps strategies as IR but implements a new action in
-C++ \cite{lucke2025transform,mlirTransformDocs,mlirTransformTutorial}, and its
-pattern language adds a rewrite rule without a rebuild while being unable to
-express a pass's decision procedure \cite{mlirPdl}. Exo 2 makes
+subject. MLIR keeps transformation strategies as IR
+\cite{lucke2025transform,mlirTransformDocs}. We probed its two routes against
+LLVM 23.0.0git rather than a tutorial. The pattern-descriptor route needs no
+rebuild and works: fourteen patterns compile to interpreter bytecode under
+\texttt{mlir-opt}. It cannot reach a pass's decision procedure. One-Shot
+Bufferize, which makes the storage choice this paper's cases edit, exposes
+seventeen options, all booleans, enums, or scalars, the nearest being
+\texttt{--analysis-heuristic}, which picks among built-in heuristics
+\cite{mlirPdl,mlirBufferizationDocs}, so a ranking of one's own means editing
+the pass in C++ and rebuilding \cite{mlirTransformTutorial}. Exo 2 makes
 scheduling libraries programmable with versioned cursors that survive edits
 \cite{ikarashi2024exo2}, but edits schedules rather than a planner's internal
 branch. AnyDSL specializes higher-order closures by partial evaluation

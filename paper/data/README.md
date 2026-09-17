@@ -1032,3 +1032,18 @@ which is noise. The result is negative and is reported as such: the manuscript's
 4.49 percent declared-slot figure is a proxy, and this record shows the change
 carries no size or memory consequence that survives measurement on more than one
 model. Regenerate with `paper/scripts/measure_planner_artifact.py`.
+
+`mlir-route-probe.json` records what MLIR's two routes can express, probed
+against a build of LLVM version 23.0.0git rather than taken from documentation. The
+pattern-descriptor route is real and needs no rebuild: 14
+patterns from the MLIR test suite compile to interpreter bytecode under
+`mlir-opt --convert-pdl-to-pdl-interp`, exit 0. The
+bufferization route does not reach a decision procedure: One-Shot Bufferize
+exposes 17 options and every one is a
+boolean, an enum, or a scalar, the closest being `--analysis-heuristic`, which
+selects among built-in heuristics. Supplying a ranking of one's own is therefore
+an edit to the pass in C++ and a rebuild. The distinction matters because the
+manuscript's earlier MLIR comparison rested on the Transform route's C++
+extension tutorial, which is the least favourable of the available routes; the
+probe replaces that basis. Regenerate the record by rerunning the probe against
+the same `mlir-opt`.
