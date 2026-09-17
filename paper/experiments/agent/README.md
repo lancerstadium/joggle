@@ -100,3 +100,37 @@ against the tree, so a model that declares victory without making the change
 scores as a failure. The harness was smoke-tested on a throwaway constant-change
 task before any study run: six steps, 363 tokens, 54 seconds, the change landed,
 and the predicate confirmed it independently of the model's summary.
+
+## Status: harness built and verified, task set not yet valid
+
+The harness is finished and smoke-tested. The three-arm task set is not, and
+running it now would produce a number that means nothing. Two blockers were
+found by trying, and both are recorded rather than papered over.
+
+**A control task must be comparable across the three systems, and it is not.**
+The three arms expose different extension surfaces: Joggle takes a typed
+function in a loaded module, TVM takes a Python or C++ extension against its
+runtime, ONNX-MLIR takes an out-of-tree dialect and pass. A change that is
+trivial in one idiom, such as adding a module definition, has no counterpart in
+the other two, so a control built that way measures the idiom rather than the
+mechanism. The control exists to bound tooling confounds, and no candidate
+found so far does that.
+
+**Reverting a historical commit to obtain a known-solvable task does not apply
+cleanly.** The obvious route to a task that is provably solvable is to take a
+real commit, revert it in a scratch tree, and ask the agent to restore the
+behaviour, with the repository's own tests as the oracle. The tree has moved on:
+`modules/opt` was split into fragments after the change in question, later work
+rewrote the function it touched, and the helper it added no longer exists.
+Reverting the file wholesale fails with duplicate definitions, and reverting the
+change in place is no longer a mechanical operation.
+
+The study therefore stays out of the manuscript. What is already established and
+worth keeping: the harness runs and its success predicate is evaluated against
+the tree rather than taken from the model's own summary; ollama tool calling
+returns structured calls and is deterministic under a fixed seed; the Joggle CLI
+is fully scriptable for an agent; and this codebase contains a genuine
+discriminating check for such an agent, since its own test suite requires that a
+user-defined `+` overload is *not* folded by the identity-folding pass. A task
+built on that trap would separate an agent that reasons about the
+representation from one that pattern-matches.
