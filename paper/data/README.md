@@ -1021,3 +1021,14 @@ prepare and build as separate stages. Joggle's span breaks down as 0.07 s ONNX
 read, 0.69 s conversion, 55.68 s in the interpreted `c.prepare` pass, and 45.0 s
 in plan, place, emit, and compile. Peak resident memory for a complete model is
 still not measured. Regenerate with `paper/scripts/measure_compile.py`.
+
+`planner-artifact-same-host.csv` measures what the derived storage planner
+changes in the artifact rather than in the plan, on 5
+models. Both planners validate against the stored references on every model.
+The emitted C is identical on 4 of them and differs by 20 bytes on
+UltraFace RFB-320, and peak resident set size, taken from `/usr/bin/time -l`
+around the executing subject, moves by at most two percent in either direction,
+which is noise. The result is negative and is reported as such: the manuscript's
+4.49 percent declared-slot figure is a proxy, and this record shows the change
+carries no size or memory consequence that survives measurement on more than one
+model. Regenerate with `paper/scripts/measure_planner_artifact.py`.

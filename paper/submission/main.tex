@@ -698,9 +698,16 @@ is a harness admission check, not a reported metric. The reported quantity is
 numerical agreement: across two calls per variant on one recorded input, the
 8,840 scores and 17,680 box coordinates have a maximum absolute error of
 $3.58\times10^{-7}$ against those references, below the $10^{-5}$ threshold. Declared static slots fall from 6,837,984 to 6,530,808
-bytes (4.49\%), including a 24-byte increase in integer slots. This measures
-declared slot capacity, excluding inputs, outputs, weights, other temporaries,
-and runtime overhead; it is not a peak-memory or latency result.
+bytes (4.49\%), including a 24-byte increase in integer slots, which measures
+declared slot capacity rather than memory in use.
+
+That proxy is the change's only artifact-level consequence. Extending the same
+derived planner to four further models shows what it carries: all five validate
+under both planners, the emitted C differs on one model by 20 bytes and is
+identical on the others, and peak RSS moves by at most two percent either way,
+which is noise. A capacity-ordered ranking recovers what a competent planner
+already does, so the 4.49\% measures this prototype's first-fit baseline and the
+decision is worth what it costs to express and check, not what it saves.
 
 \paragraph{Why structural derivation matters.}
 % [claim:C-derive-control] [evidence:E-reuse-control]
@@ -777,16 +784,9 @@ are rejected before serialization; the installed C module is unchanged.
 \subsection{Composing definitions into artifacts}
 \label{sec:eval-modules}
 The four frozen extension tasks distinguish implementing one computation from
-connecting it to selection and execution. For implementation and selection
-policy together, Joggle uses a source module and TVM its Python and runtime
-interfaces, and ONNX-MLIR an accelerator extension; all three systems complete
-both tasks. For an external kernel, Joggle again uses a source module and TVM
-its external-code integration, both completing, while ONNX-MLIR's tested option
-retains loops at the required MatMul. For a numeric format, Joggle builds an
-optional native module and completes both targets; TVM's required public
-registration is unavailable at the pinned revision; ONNX-MLIR passes its native
-checks but the second target is absent. A completed task means an oracle-checked
-artifact. No task modifies an existing framework-core file, and every
+connecting it to selection and execution, and Table~\ref{tab:scope} gives each
+route with the obligations it creates. A completed task means an oracle-checked
+artifact, no task modifies a framework-core file in any system, and each
 limitation applies to the pinned, tested route rather than asserting
 ecosystem-wide impossibility.
 
@@ -1132,9 +1132,9 @@ types and shared attributes; dependency-sensitive recomputation becomes
 worthwhile only once that baseline is competitive.
 
 \paragraph{Deployment and evidence.}
-Model oracles establish agreement on recorded inputs, not dataset-level
-accuracy, and support for dynamic shapes, stateful execution, concurrent
-devices, and distributed placement remains incomplete. This paper evaluates the route by which such work enters, not how far it runs.
+Support for dynamic shapes, stateful execution, concurrent devices, and
+distributed placement remains incomplete, and the oracles establish agreement on
+recorded inputs rather than dataset accuracy.
 
 \section{Conclusion}
 Joggle treats a source-defined compiler algorithm body as a reusable program

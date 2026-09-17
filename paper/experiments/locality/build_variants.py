@@ -44,6 +44,10 @@ def main():
     ap.add_argument("out", type=Path, help="output directory")
     ap.add_argument("--cc", default="cc")
     ap.add_argument("--data-arg", default='"weights"')
+    ap.add_argument("--planner", default="mem.plan",
+                    help="planner entry point; a derived module supplies its own")
+    ap.add_argument("--planner-modules", nargs="*", default=[],
+                    help="extra -M roots the planner module needs")
     ap.add_argument("--variant", choices=["base", "locality", "both"],
                     default="both",
                     help="build one artifact or the pair; a one-artifact span "
@@ -68,7 +72,11 @@ def main():
         d = a.out / variant
         d.mkdir(exist_ok=True)
         steps = []
-        run([TOOL, "run", "mem.plan", subject, *MODS], out=d / "planned.jog", record=steps)
+        planner_mods = []
+        for root in a.planner_modules:
+            planner_mods += ["-M", root]
+        run([TOOL, "run", a.planner, subject, *planner_mods, *MODS],
+            out=d / "planned.jog", record=steps)
         run([TOOL, "run", "c.place", d / "planned.jog", "--arg", '"static"', *MODS],
             out=d / "placed.jog", record=steps)
         run([TOOL, "emit", "c.source", d / "placed.jog", "--arg", a.data_arg, *MODS],
