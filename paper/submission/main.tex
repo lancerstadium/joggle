@@ -377,7 +377,7 @@ allocation safety. Numerical and storage checks therefore remain necessary
 when the derived planner executes on a subject program.
 
 \begin{center}
-\includegraphics[width=0.86\columnwidth]{../figures/structure.pdf}
+\includegraphics[width=0.82\columnwidth]{../figures/structure.pdf}
 
 \vspace{2pt}
 \refstepcounter{figure}\label{fig:structure}
@@ -924,17 +924,11 @@ own frontend study.}
 \end{figure*}
 
 \paragraph{Run time.}
-The UltraFace outcome is in Figure~\ref{fig:runtime}: the policy passes TVM's
-unscheduled lowering and an optimizing compiler passes the policy. What follows
-is whether that direction survives other models, and it is a different set of
-jobs. The same policy class reproduces on a second
-model and host. A generic loop
-policy rewrites 54 affine-proved MobileNetV2 bodies. Across two independent
-runner cohorts, its generated-C median falls from 139.679 to 102.638\,ms
-(26.5\%), and from 178.796 to 131.557\,ms (26.4\%). ONNX Runtime medians
-recorded beside them are 8.382 and 11.261\,ms, so the first pair retains a
-12.24$\times$ gap. The repeated direction supports the policy's utility on these
-inputs; the two cohorts are separate jobs and are not pooled.
+Figure~\ref{fig:runtime} carries the UltraFace outcome. The same policy class
+also reproduces on a second model and host, where a generic loop policy rewrites
+54 affine-proved MobileNetV2 bodies and reduces the generated-C median by about
+a quarter in two independent runner cohorts recorded separately from this
+campaign; the direction repeats, and the cohorts are not pooled with it.
 
 Fusion supplies a counterexample to optimizing structural counts alone.
 It reduces loops from 156 to 110 and C source from 192,209 to 188,244 bytes,
@@ -983,46 +977,70 @@ what semantic and rebuild obligations remain afterwards.
 
 \subsection{Programmable compiler implementations}
 \label{sec:related-transform}
-Every ingredient here has precedent. Letting a client control an implementation
-decision while the default stays reachable is the open implementation and
-compile-time metaobject programme
-\cite{lamping1992open,kiczales1997open,chiba1995mop}; dynamically linking a user
-module into a compiler so new transformations need no rebuild was done for
-{\tt lcc} \cite{engler1999interface}; deriving a specialized copy while the
-original remains is procedure cloning, standard for three decades
-\cite{cooper1993cloning}, and automatic in Truffle
-\cite{wurthinger2017practical}; and running a revision beside the installed
-definition with rollback on failure is Erlang code loading and dynamic updating
-\cite{erlangCodeLoading,hicks2005dynamic}. None of this is claimed.
+Every ingredient here has precedent, and none of it is claimed. Letting a client
+control an implementation decision while the default stays reachable is the open
+implementation and compile-time metaobject programme
+\cite{lamping1992open,kiczales1997open,chiba1995mop}; linking a user module into
+a compiler so new transformations need no rebuild was done for {\tt lcc}
+\cite{engler1999interface}; deriving a specialized copy while the original
+remains is procedure cloning \cite{cooper1993cloning} and is automatic in
+Truffle \cite{wurthinger2017practical}; and running a revision beside the
+installed definition with rollback is Erlang code loading and dynamic updating
+\cite{erlangCodeLoading,hicks2005dynamic}.
 
 What is claimed is the conjunction, over one typed IR that also represents the
-subject. MLIR keeps transformation strategies as IR
-\cite{lucke2025transform,mlirTransformDocs}. We probed its two routes against
-LLVM 23.0.0git rather than a tutorial. The pattern-descriptor route needs no
-rebuild and works: fourteen patterns compile to interpreter bytecode under
-\texttt{mlir-opt}. It cannot reach a pass's decision procedure. One-Shot
-Bufferize, which makes the storage choice this paper's cases edit, exposes
-seventeen options, all booleans, enums, or scalars, the nearest being
+subject. MLIR keeps strategies as IR, and we probed its routes against LLVM
+23.0.0git rather than a tutorial. The pattern-descriptor
+route needs no rebuild and works: fourteen patterns compile to interpreter
+bytecode under \texttt{mlir-opt}. It cannot reach a pass's decision procedure.
+One-Shot Bufferize, which makes the storage choice this paper's cases edit,
+exposes seventeen options, all booleans, enums, or scalars, the nearest being
 \texttt{--analysis-heuristic}, which picks among built-in heuristics
-\cite{mlirPdl,mlirBufferizationDocs}, so a ranking of one's own means editing
-the pass in C++ and rebuilding \cite{mlirTransformTutorial}. Exo 2 makes
+\cite{lucke2025transform,mlirTransformDocs,mlirPdl,mlirBufferizationDocs}, so a
+ranking of one's own means editing the pass in C++ \cite{mlirTransformTutorial}. Exo 2 makes
 scheduling libraries programmable with versioned cursors that survive edits
 \cite{ikarashi2024exo2}, but edits schedules rather than a planner's internal
-branch. AnyDSL specializes higher-order closures by partial evaluation
-\cite{leissa2018anydsl}, LMS supplies staged abstractions \cite{rompf2016lms},
-and Weval specializes an existing interpreter \cite{fallin2025weval};
-specialization resolves supplied inputs, whereas the edit here changes a
-decision inside a represented algorithm that still needs its own semantic
-validation. TVM's PackedFunc gives type-erased calls across languages and
-deployed functions \cite{tvmRuntimeDocs}, but a call interface does not describe
-the callee's body.
+branch. AnyDSL, LMS, and Weval specialize closures, staged abstractions, or an existing
+interpreter \cite{leissa2018anydsl,rompf2016lms,fallin2025weval}, which resolves
+supplied inputs, whereas the edit here changes a decision inside a represented
+algorithm that still needs its own semantic validation. TVM's PackedFunc gives
+type-erased calls across languages and deployed functions \cite{tvmRuntimeDocs},
+but a call interface does not describe the callee's body.
 
-The difference is therefore which body is editable, in which IR, and under which
-checks: Joggle applies function-body operations to source-defined analyses and
-generators as well as to model code, keeps compiler and subject edits on separate
-rollback boundaries, and yields an independently callable definition without a
-new native hook. In the storage case the edited branch belongs to the planner,
-not to a model loop or the invoking sequence.
+Table~\ref{tab:capability} sets the difference out. Joggle applies
+function-body operations to analyses and generators as well as to model code,
+keeps compiler and subject edits on separate rollback boundaries, and yields an
+independently callable definition without a new native hook; in the storage case
+the edited branch belongs to the planner, not to a model loop.
+
+\begin{center}
+\small
+\refstepcounter{table}\label{tab:capability}
+\textbf{Table~\thetable.} What each nearest system edits, and which of three
+properties it has: running the revised definition beside the installed one,
+being checked at revision time, and needing no rebuild of the toolchain. Entries
+come from the cited documentation of each system; the MLIR row was probed on
+LLVM 23.0.0git here. A dash means the property is absent or not documented, not
+that the system is deficient.
+
+\vspace{2pt}
+{\footnotesize
+\begin{tabular}{@{}lccc@{}}
+\toprule
+ & runs beside & checked at & no \\
+Edited object & the original & revision & rebuild \\
+\midrule
+MLIR Transform or PDL & --- & --- & partial \\
+Exo 2: schedule & partial & --- & yes \\
+Truffle: node specialization & yes & --- & yes \\
+Erlang: module version & yes & --- & yes \\
+Open implementation & yes & --- & partial \\
+Magellan: pass in C++ & --- & --- & --- \\
+Source patch: planner & --- & yes & yes \\
+\textbf{Joggle: compiler function body} & \textbf{yes} & \textbf{yes} & \textbf{yes} \\
+\bottomrule
+\end{tabular}}
+\end{center}
 
 \subsection{Module boundaries and extensibility}
 JastAdd and Polyglot modularize language definitions and analyses
@@ -1047,17 +1065,14 @@ shared resolution and execution rules across compiler roles, leaving
 domain-specific checks and native bindings explicit.
 
 \subsection{Mixed representations and deployment}
-TVM's IRModule composes Relax functions, tensor programs, and external calls
-for cross-level optimization \cite{lai2025relax,tvmArchitectureDocs}.
-Relax's \texttt{call\_tir} and library-call primitives connect functional graph
-semantics to destination-passing implementations. Partial lowering, analysis
-feedback, and joint caller/callee rewrites make these boundaries active
-optimization interfaces, not merely a shared container \cite{lai2025relax}.
-MLIR's common operation, region, block, and value structure likewise permits
-multiple dialects in one program
-\cite{lattner2021mlir,mlirLangRefDocs,mlirConversionDocs}.
-Consequently, mixed abstraction levels do not require abandoning specialized
-invariants or converting an entire program in one step.
+TVM's IRModule composes Relax functions, tensor programs, and external calls for
+cross-level optimization; partial lowering, analysis feedback, and joint
+caller/callee rewrites make those boundaries active optimization interfaces
+rather than a shared container \cite{lai2025relax,tvmArchitectureDocs}. MLIR's
+common operation, region, block, and value structure permits multiple dialects in
+one program \cite{lattner2021mlir,mlirLangRefDocs,mlirConversionDocs}, so mixed
+abstraction levels need not abandon specialized invariants or convert a whole
+program in one step.
 
 Joggle combines this local coexistence with a common function-body model for
 computation and source-defined compiler procedures: a consumer can retain a
