@@ -97,7 +97,14 @@ integration sites. Under \emph{redundant work}, preparation exposes bodies no
 consumer needs, or revisits the whole program after a local edit. This mismatch
 between the scope of a change and the scope of the work matters most in
 feedback-driven development, where every generated candidate must be compiled
-and validated \cite{ouyang2025kernelbench}. Section~\ref{sec:motivation}
+and validated \cite{ouyang2025kernelbench}, and automated agents increasingly
+drive that loop by proposing mappings and kernels that a compiler, a profiler,
+and an oracle must admit \cite{hong2025autocomp,mai2026argus}. Such an agent can
+write a candidate kernel or a conversion, yet the compiler decisions that
+determine how that candidate executes stay out of reach, because changing one
+means editing a separately maintained implementation and rebuilding the compiler.
+The obstacle therefore bounds not only how quickly a revision can be evaluated
+but who, or what, can propose one. Section~\ref{sec:motivation}
 develops all three on a running example.
 
 Joggle's premise is that a compiler algorithm should be reusable at body
@@ -144,10 +151,10 @@ of reuse. Concretely:
   with the same change through TVM's natural source route, and a preparation
   procedure whose cleanup step acquires guard folding; both reach artifacts
   checked by the same oracle (Section~\ref{sec:eval-derive}).
-\item A measured boundary: extension tasks across three systems, fourteen
-  pinned ONNX models, a same-host runtime comparison against unscheduled
-  compiler output and a production runtime, and a profile that locates the
-  interpreter's cost (Sections~\ref{sec:eval-modules} to~\ref{sec:eval-work}).
+\item A measured boundary: extension tasks across three systems, sixteen pinned
+  models of which eleven produce validated artifacts, a five-system runtime
+  comparison under one job, and a profile that locates the interpreter's cost
+  (Sections~\ref{sec:eval-modules} to~\ref{sec:eval-work}).
 \end{itemize}
 
 \section{Motivation}
@@ -567,11 +574,26 @@ executable artifacts, not efficient ones: scalar C remains the fallback when
 target tiling, packing, vectorization, or library selection is missing.
 
 \section{System realization}
-The C++20 host exposes a textual module language and embedding API, owns
-structural validity, and leaves meaning and decisions to modules. It stores
-\texttt{Fn/Blk/Op/Val} programs, resolves overloads, verifies edits, loads
-modules, and prints programs deterministically, with no operator enumeration,
-schedule vocabulary, or target lowering table.
+The C++20 host owns structural validity and leaves meaning and decisions to
+modules. It stores \texttt{Fn/Blk/Op/Val} programs, resolves overloads, verifies
+edits, loads modules, and prints programs deterministically, with no operator
+enumeration, schedule vocabulary, or target lowering table. The host, its
+embedding API, and the command-line tool together are about 13{,}800 lines, and
+the representation is the whole of the compiler's vocabulary: nothing in the
+host enumerates an operator or names a lowering.
+
+\paragraph{Module package.}
+A module is a directory. \texttt{module.jog} is its entry point, and optional
+sorted \texttt{lib/*.jog} fragments share one module-wide scope, so a definition
+may be split across files without re-export or a forward declaration. A module
+that must reach outside the host language carries at most one native library
+under \texttt{src/}; the numeric-format extension is the only shipped module
+that does. Twenty modules come with the compiler, covering the core
+representation, the C and TFLite paths, tensor and numeric definitions, and the
+ONNX frontend. Five more under \texttt{extensions/} exercise the extension
+surface as an outside contributor would meet it, and the default suite runs 68
+tests, including a checker that enforces this section's layout rules over the
+workspace.
 
 % [claim:C-invocation-cost] [evidence:E-invocation-source] Author verification pending.
 \paragraph{Invocation and isolation.}

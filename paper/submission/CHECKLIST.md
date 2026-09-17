@@ -91,6 +91,28 @@ remains open.
       pages plus references; an earlier successful build is not final validation.
 - [ ] Audit anonymous text, links, metadata, artifact, and acknowledgments.
 - [ ] Complete required AI-use, artifact, ethics, and reproducibility disclosures.
+  - **Generative-AI disclosure is required and is currently missing.** ACM's
+    authorship policy requires that use of generative AI tools be fully
+    disclosed in the acknowledgements, "including the tool name and how it was
+    used to create text, tables, graphs, code, or data". Four manuscript figures
+    were produced with a built-in image-generation tool and their own records
+    say so: `paper/figures/{overview,architecture,derivation,binding}.md` each
+    begin with that provenance, and three add "accountable author verification
+    remains pending". `runtime.pdf` is produced by
+    `paper/scripts/render_runtime.py` from recorded data and needs no
+    disclosure.
+  - Draft text, to be placed where the venue requires it (acknowledgements at
+    camera-ready, or the submission form's AI-use field if the double-blind
+    submission asks there): "Figures 1--4 were created with <tool name and
+    version> from author-specified content and layout, then inspected and
+    revised by the authors against the implementation; the authors verified
+    every label and claim in them. All data figures and tables were generated
+    programmatically from recorded measurements and involved no generative
+    model."
+  - Confirm against the EuroSys call for papers whether the disclosure belongs
+    in the submission or only in the camera-ready, and whether the venue adds
+    requirements beyond the ACM policy. Some publishers prohibit generative
+    images outright; ACM requires disclosure rather than prohibition.
 - [ ] Finalize Figure 1 production typography and editable labels; its current
       image-generated serif lettering is raster, not an embedded font guarantee.
 - [ ] Finalize Figures 2--4 typography at the required minimum 10-point size;
