@@ -822,10 +822,14 @@ with no source-format call left, including the cases that earlier stopped at
 280, 6790, and 1333 unknown results. Eleven also have executed artifacts that
 pass a stored reference: MNIST, MobileNetV2, two SqueezeNet variants including
 QDQ, ResNet18, TinyYOLOv2, UltraFace, ShuffleNetV2, DenseNet, GoogLeNet, and the
-TFLite model, which agrees with LiteRT to $1.0\times10^{-6}$. Five reach
-conversion without an executed-artifact record, and this paper does not read
-reach as execution: TinyYOLOv3, SSD-MobileNetV1, both EfficientNet-Lite4
-variants, and XCiT-Tiny, whose C preparation exceeded its recorded timeout.
+TFLite model, which agrees with LiteRT to $1.0\times10^{-6}$. Reach is not execution. Three
+models stop at conversion (TinyYOLOv3, SSD-MobileNetV1, EfficientNet-Lite4 QDQ)
+and XCiT-Tiny exceeds its recorded preparation timeout. EfficientNet-Lite4 INT8
+goes further and fails later: preparation completes in 1{,}036\,s, both variants
+emit and compile, and execution misses the stored reference by
+$4.46\times10^{-3}$ with 130 elements outside tolerance. Both variants report
+the same error, so the gap is in the shared quantised path, not the policy, and
+no timing is reported for a model that does not validate.
 Keeping reach and execution apart prevents frontend coverage from being
 mistaken for deployable support. A model whose conversion frontier closed at
 this revision is not thereby shown to produce a runnable artifact, and no row
@@ -969,26 +973,23 @@ what semantic and rebuild obligations remain afterwards.
 
 \subsection{Programmable compiler implementations}
 \label{sec:related-transform}
-Every ingredient Joggle uses has precedent, and its claim depends on which
-combination is new. Letting a client control an implementation decision while
-the default stays reachable is the open implementation and compile-time
-metaobject programme \cite{lamping1992open,kiczales1997open,chiba1995mop}, and
-dynamically linking a user module into a compiler so that new transformations
-need no rebuild was demonstrated for {\tt lcc} \cite{engler1999interface}.
-Deriving a specialized copy of a procedure while the original remains is
-procedure cloning, standard in production compilers for three decades
-\cite{cooper1993cloning}, and Truffle clones node bodies into specializations
-automatically while the generic node stays live \cite{wurthinger2017practical}.
-Running a revised definition beside the installed one and keeping the old one
-valid on failure is Erlang's two-version code loading and the dynamic-updating
-literature \cite{erlangCodeLoading,hicks2005dynamic}. None of this is claimed
-here.
+Every ingredient here has precedent. Letting a client control an implementation
+decision while the default stays reachable is the open implementation and
+compile-time metaobject programme
+\cite{lamping1992open,kiczales1997open,chiba1995mop}; dynamically linking a user
+module into a compiler so new transformations need no rebuild was done for
+{\tt lcc} \cite{engler1999interface}; deriving a specialized copy while the
+original remains is procedure cloning, standard for three decades
+\cite{cooper1993cloning}, and automatic in Truffle
+\cite{wurthinger2017practical}; and running a revision beside the installed
+definition with rollback on failure is Erlang code loading and dynamic updating
+\cite{erlangCodeLoading,hicks2005dynamic}. None of this is claimed.
 
 What is claimed is the conjunction, over one typed IR that also represents the
 subject. MLIR Transform keeps strategies as IR but implements a new action in
 C++ \cite{lucke2025transform,mlirTransformDocs,mlirTransformTutorial}, and its
-pattern descriptor language can add a rewrite rule without a rebuild while
-being unable to express a pass's decision procedure \cite{mlirPdl}. Exo 2 makes
+pattern language adds a rewrite rule without a rebuild while being unable to
+express a pass's decision procedure \cite{mlirPdl}. Exo 2 makes
 scheduling libraries programmable with versioned cursors that survive edits
 \cite{ikarashi2024exo2}, but edits schedules rather than a planner's internal
 branch. AnyDSL specializes higher-order closures by partial evaluation
@@ -1093,14 +1094,12 @@ TensorFlow Lite Micro, ncnn, and IREE supply deployment baselines
 \cite{david2021tflm,ncnnProject,ireeDocs}, and FlashInfer shows the same
 vertical pressure in attention kernels \cite{ye2025flashinfer}. Joggle uses
 edge inference as a demanding evaluation domain, not as a scope restriction.
-Generated mappings and kernels in turn depend on compilers, profilers, and
-oracles to be admitted \cite{hong2025autocomp,mai2026argus}, and an agent can
-now synthesise the compiler's own decision logic and integrate it into a
-production backend \cite{chen2026magellan}, while compiler
-fuzzing shows how large the semantic failure surface is
+Generated mappings and kernels depend on compilers, profilers, and oracles to
+be admitted \cite{hong2025autocomp,mai2026argus}, and compiler fuzzing shows how
+large the semantic failure surface is
 \cite{liu2023nnsmith,ma2023hirgen,zheng2021compilerbugs,xiao2022metamorphic}.
-Joggle's transactional edits and capability queries bound the structural
-effects of a proposal; numerical correctness stays the oracle's role.
+Joggle's transactional edits bound the structural effects of a proposal;
+numerical correctness stays the oracle's role.
 
 \section{Discussion and limitations}
 \paragraph{Customization boundary.}
@@ -1132,10 +1131,10 @@ Model oracles establish agreement on recorded inputs, not dataset-level
 accuracy, and support for dynamic shapes, stateful execution, concurrent
 devices, and distributed placement remains incomplete. The same-host comparison
 above shows what the substrate does and does not buy: loop reordering is now a
-measured source-level change, and the rest of the familiar kernel
-checklist (register accumulation, GEMM mapping, epilogue fusion,
-parallelization) remains, each likewise a source-defined selection or emission
-procedure. This paper evaluates the route by which that work enters, not how far it runs.
+measured source-level change; the rest of the kernel checklist (register
+accumulation, GEMM mapping, epilogue fusion, parallelization) remains, each
+likewise a source-defined selection or emission procedure. This paper evaluates
+the route by which that work enters, not how far it runs.
 
 \section{Conclusion}
 Joggle treats a source-defined compiler algorithm body as a reusable program
@@ -1146,9 +1145,7 @@ making that boundary explicit. The planner and preparation cases carry such
 edits to checked artifacts, and one matched control reaches the same artifact
 through TVM's source route at the cost of a rebuild that derivation avoids.
 What we claim is bounded by the source-patch control, by unmeasured compilation
-and inference costs, and by dependency-sensitive recomputation still to come;
-each is work this substrate can host as an ordinary source-defined function
-rather than as a change to the compiler.
+and inference costs, and by dependency-sensitive recomputation still to come.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{../references}
