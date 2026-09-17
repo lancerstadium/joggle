@@ -31,6 +31,7 @@ the same tools. Across widely used models, one source-defined locality policy
 reduces the run time of generated code on each of them, by $1.4\times$ to
 $3.2\times$. It requires no compiler rebuild and outperforms TVM's unscheduled C
 target on every model measured.
+% [claim:C-locality,C-derive-storage,C-derive-control,C-derive-external,C-derive-boundary,C-derive-composition] [evidence:E-locality,E-reuse-result,E-reuse-control,E-reuse-external,E-reuse-check,E-reuse-path] Author verification pending.
 \end{abstract}
 \keywords{malleable compilation, progressive intermediate representation, compiler infrastructure, hardware-software co-design, program optimization}
 \maketitle
@@ -644,12 +645,15 @@ without rewriting its analysis and its consumers?
 failures contained?
 \textbf{Q3} Does the change reach an independently checked artifact, and what
 does the same change cost through another system's natural route?
-\textbf{Q4} What does the prototype cover, and what does it cost at compile
-time and at run time?
+\textbf{Q4} What does the prototype cover, and where does its cost fall at
+compile time and at run time?
 Section~\ref{sec:eval-derive} answers Q1 to Q3 with two derivation studies
 and their controls; Section~\ref{sec:eval-modules} adds the composition
 boundary for Q2; Sections~\ref{sec:eval-reach} and~\ref{sec:eval-work}
-answer Q4.
+answer Q4. For Q4 the compile-time evidence is a per-stage breakdown inside
+this system plus one cross-system route comparison; a matched cross-system
+compile-time and memory suite is stated as absent rather than approximated by
+figures that were not measured together.
 
 \paragraph{Evidence and conditions.}
 The studies have different measurement units. Derivation uses a fixed prepared
