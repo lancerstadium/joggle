@@ -283,6 +283,34 @@ analysis, \texttt{fn(Mod,Op)->bool} a structural edit, and
 \texttt{fn(Mod)->str} a generator. No host-side pass subclass identifies
 these roles.
 
+A storage planner from the shipped \texttt{mem} module shows the shape of such
+a function and the decision the next section revises. Its signature is typed,
+its state is ordinary local data, and slot selection is a first-fit search
+written in the same language as the model it plans for:
+
+\begin{verbatim}
+// a compiler algorithm, written in .jog
+fn plan(m: Mod, fn: Fn) -> bool {
+  ...
+  var slot_types: list<Ty> = []
+  var slot_ends:  list<int> = []
+  for item in 0..len(names) {
+    var selected = -1
+    for slot in 0..len(slot_types) {  // first fit
+      if selected < 0 &&
+         slot_types[slot] == types[item] &&
+         slot_ends[slot] < firsts[item] {
+        selected = slot
+      }
+    }
+    ...
+  }
+}
+\end{verbatim}
+
+The excerpt is copied from \texttt{modules/mem/module.jog} at revision
+\texttt{27b37c75} with no change other than elision marks.
+
 Let $S$ hold an installed source definition $f$, $K$ derived compiler
 definitions, and $P$ model computation, each a value of the public \texttt{Mod}
 type. A derivation $D(S,f,e;K)$ creates a fresh definition $f_e$ in $K$ by
