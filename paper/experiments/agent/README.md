@@ -15,14 +15,35 @@ a *validated* change, and at what cost, when the decision is an editable and
 checked source definition (arm A) versus when it lives in a separately
 maintained implementation that must be rebuilt (arm B)?
 
-**Arms.**
-- **A, malleable.** The agent works in a scratch copy of a Joggle module
-  directory. It may read the module sources, edit `.jog` files, and run
-  `joggle check`, `joggle query`, and `joggle emit` against the copy. The
-  installed original is untouched, so a failed attempt cannot damage it.
-- **B, maintained implementation.** The agent works in a scratch copy of the
-  equivalent decision as it exists inside a separately maintained compiler. It
-  may edit and rebuild. Rebuild cycles are counted.
+**Arms.** An agent-versus-compiler comparison is only meaningful against the
+systems the paper already measures, so the arms are the three compilers, not a
+generic C++ stand-in.
+- **A, Joggle.** The decision is a definition in a loaded `.jog` module. The
+  agent edits the module and re-runs the query; nothing is rebuilt, and the
+  installed original stays callable.
+- **B, TVM.** The same decision as it exists in TVM's source tree. The agent
+  edits C++ and relinks.
+- **C, ONNX-MLIR.** The same decision as it exists in ONNX-MLIR's source tree.
+  The agent edits and rebuilds.
+
+All three source trees are already built on this host, so no arm is penalised
+for a cold start. A decision that a system does not expose is recorded as *not
+expressible* for that arm rather than as a failure, because reach is itself part
+of the comparison.
+
+**Reference metrics.** The field's recognised measures for this kind of claim
+are task success under the system's own verifier, time to a validated change
+including all rebuilds, numerical agreement against a stored reference, and
+median latency with dispersion over repeated fresh processes. Token and call
+counts are reported as agent cost, not as a compiler property.
+
+**Datasets.** The subject is a fixed model from the ONNX Model Zoo, the same
+one the rest of the paper measures, so no arm gains an input advantage. This is
+deliberately **not** an MLPerf evaluation: MLPerf Inference is the recognised
+suite for end-to-end inference benchmarking, it presupposes a deployment stack
+and accuracy protocol that this study does not implement, and claiming it
+without running it would be the kind of overstatement the rest of this paper
+avoids. The limitation is stated in the paper rather than left to the reader.
 
 **Tasks.** Frozen in `tasks.json` before the pilot. Each task states the desired
 behaviour in prose only; no task names a file, a symbol, or a line. A control

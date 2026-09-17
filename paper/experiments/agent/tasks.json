@@ -3,15 +3,47 @@
   "agent": {
     "backend": "ollama",
     "model": "qwen3.5:9b",
-    "options": {"temperature": 0, "seed": 42, "think": false},
+    "options": {
+      "temperature": 0,
+      "seed": 42,
+      "think": false
+    },
     "step_cap": 24
   },
   "runs_per_task_per_arm": 5,
   "arms": {
-    "A": {"name": "malleable", "workdir": "scratch copy of a Joggle module directory",
-          "tools": ["read_file", "write_file", "run: joggle check", "run: joggle query", "run: joggle emit"]},
-    "B": {"name": "maintained", "workdir": "scratch copy of the same decision in a separately maintained implementation",
-          "tools": ["read_file", "write_file", "run: build"]}
+    "A": {
+      "name": "Joggle",
+      "workdir": "scratch copy of a loaded .jog module",
+      "rebuild": "none; module reload only",
+      "tools": [
+        "read_file",
+        "write_file",
+        "joggle check",
+        "joggle query",
+        "joggle emit"
+      ]
+    },
+    "B": {
+      "name": "TVM",
+      "workdir": "scratch copy of the TVM source tree",
+      "rebuild": "compile one translation unit and relink",
+      "tools": [
+        "read_file",
+        "write_file",
+        "make/relink"
+      ]
+    },
+    "C": {
+      "name": "ONNX-MLIR",
+      "workdir": "scratch copy of the ONNX-MLIR source tree",
+      "rebuild": "incremental build",
+      "tools": [
+        "read_file",
+        "write_file",
+        "build"
+      ]
+    }
   },
   "tasks": [
     {
@@ -41,5 +73,22 @@
       "frozen": false,
       "note": "Requires locating one constant, not reasoning about a decision. If both arms fail this, the harness or the model is the problem, not the mechanism."
     }
-  ]
+  ],
+  "metrics": {
+    "primary": [
+      "validated_change (bool)",
+      "seconds_to_validated_change",
+      "rebuild_cycles"
+    ],
+    "cost": [
+      "model_calls",
+      "tokens"
+    ],
+    "artifact": [
+      "median_latency_ms",
+      "mad_ms",
+      "max_abs_error_vs_reference"
+    ]
+  },
+  "dataset": "fixed ONNX Model Zoo subject used elsewhere in the paper; explicitly not MLPerf"
 }

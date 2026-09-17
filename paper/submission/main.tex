@@ -63,23 +63,17 @@ open question is what remains reusable when a researcher must revise an
 algorithm inside such a system, and how the revision runs alongside its
 original.
 
-One obstacle and two pressures run along this path. The obstacle is
-\emph{restricted customization}: an algorithm is easy to invoke, but the
-required edit lies inside its body, past the parameters it exposes. Under \emph{fragmented integration}, a working revision still needs
-call selection, data conversion, and a matching artifact interface, so one
-change can require coordinated edits at several sites. Under \emph{redundant
-work}, preparation exposes bodies no consumer needs, or revisits the whole
-program after a local edit. This mismatch
-between the scope of a change and the scope of the work matters most in
-feedback-driven development, where every generated candidate must be compiled
-and validated \cite{ouyang2025kernelbench}, and automated agents increasingly
-drive that loop by proposing mappings and kernels that a compiler, a profiler,
-and an oracle must admit \cite{hong2025autocomp,mai2026argus}. Such an agent already writes not only the candidate but the compiler decision
-that governs it: Magellan synthesises inlining and register-allocation
-heuristics directly into LLVM \cite{chen2026magellan}. What it cannot do cheaply
-is run that decision beside the installed one. The change lands in a separately
-maintained implementation, so evaluating it means rebuilding the compiler, and a
-proposal that fails leaves the compiler partially rewritten. The obstacle
+One obstacle and two pressures run along this path, and the next three
+subsections take them in turn. This mismatch between the scope of a change and
+the scope of the work matters most in feedback-driven development, where every
+generated candidate must be compiled and validated
+\cite{ouyang2025kernelbench}. Automated agents now drive that loop and write not
+only the candidate but the compiler decision governing it: Magellan synthesises
+inlining and register-allocation heuristics directly into LLVM
+\cite{chen2026magellan,hong2025autocomp,mai2026argus}. What an agent cannot do
+cheaply is run that decision beside the installed one, because the change lands
+in a separately maintained implementation, so evaluating it means rebuilding the
+compiler and a failed proposal leaves the compiler partially rewritten. The obstacle
 therefore bounds not only how quickly a revision can be evaluated but how safely
 a machine-proposed one can be tried at all. Section~\ref{sec:motivation}
 develops all three on a running example.
@@ -368,6 +362,16 @@ ordinary IR checking supplies type and structural validity, not a proof of
 allocation safety. Numerical and storage checks therefore remain necessary
 when the derived planner executes on a subject program.
 
+\begin{center}
+\includegraphics[width=0.88\columnwidth]{../figures/structure.pdf}
+
+\vspace{2pt}
+{\footnotesize\textbf{Figure~\thefigure.} The representation's containment and the three roles a module can
+hold. A \texttt{Mod} is one program holding typed \texttt{Fn} definitions, each
+with blocks, operations, and values; the same representation carries the
+installed compiler definition, the derived copy, and the subject.}
+\end{center}
+
 \subsection{Modular management}
 \label{sec:modules}
 Modules compose typed definitions through explicit dependencies, visibility,
@@ -627,25 +631,22 @@ not measured together.
 
 \paragraph{Evidence and conditions.}
 The studies have different measurement units. Derivation uses a fixed prepared
-UltraFace program and local correctness checks. Extension tasks use a fixed
-Conv--Add--Relu chain and shared oracles at the recorded revisions, so they
-bound a layout-and-ABI composition study rather than a general co-design
-result. Model coverage aggregates checksum-pinned, revision-tagged records; it is
-not a simultaneous benchmark. Runtime comparisons use one-thread controls and 20
-balanced fresh-process trials per system, excluding setup and validating outputs,
-and the external planner control and the same-host comparison share one macOS
-arm64 host. Different jobs and revisions remain separate, and no result below
-measures developer productivity or dataset-level accuracy.
+UltraFace program and local correctness checks; the extension tasks use a fixed
+Conv--Add--Relu chain and shared oracles at the recorded revisions, so they bound
+a layout-and-ABI composition study rather than a general co-design result. Model
+coverage aggregates revision-tagged records rather than forming a simultaneous
+benchmark, and runtime comparisons use one-thread controls with 20 balanced
+fresh-process trials per system on one macOS arm64 host. Different jobs and
+revisions remain separate, and no result below measures developer productivity
+or dataset-level accuracy.
 
 \paragraph{Which system answers which question.}
 One system is present for each axis it can carry, and a gap is stated rather
 than implied. Rebuild scope and edit survival are measured against TVM's source
 route. MLIR Transform is the fairer mechanism comparison, since its natural route
 replaces a transformation's implementation body, but it remains a bounded
-textual comparison with no measured data. Revision cost is measured as extension surface
-over four frozen tasks, of which Joggle completes four, TVM three, and ONNX-MLIR
-two, with only the first two tasks common to all three systems; a task a system
-cannot complete is preserved as a row rather than dropped. Run time is a
+textual comparison with no measured data. Revision cost is measured as the shape of the change rather
+than its length, over four frozen tasks (Table~\ref{tab:scope}). Run time is a
 paired comparison of five systems in one job on one model. The ten-model job
 supplies every column of Figure~\ref{fig:runtime}, but only its Joggle-pair
 comparison is Joggle-internal; the TVM, ONNX-MLIR, and ONNX Runtime columns of
@@ -722,13 +723,12 @@ which the pip wheel does not permit. We replaced the allocator's windowed
 best-fit search with the ranking used above, leaving eligibility and rewriting
 unchanged, and rebuilt an existing source build, about nine minutes clean on
 this host. Five fresh processes per route then give the following. The Joggle
-route rebuilds nothing: deriving the recipe costs 0.04\,s, the derived planner
-2.48\,s on the prepared program, placing 0.29\,s and emitting 2.90\,s, and
-compiling and checking both variants 2.42\,s. The TVM route pays one translation
-unit and a relink per edit, 8.0\,s and 7.7\,s on revert, after a 514\,s clean
-build, with a 0.15\,s import and lowering prefix and 1.39\,s to build and export
-the C target. It then plans natively far faster than Joggle's interpreted
-planner, which pays interpretation cost instead of rebuilding. Both artifacts
+route rebuilds nothing: deriving the recipe costs 0.04\,s and the derived
+planner 2.48\,s, placing and emitting 3.2\,s, and compiling and checking both
+variants 2.4\,s. The TVM route pays one translation unit and a relink per edit,
+8.0\,s and 7.7\,s on revert, after a 514\,s clean build. It then plans natively
+far faster than Joggle's interpreted planner, which pays interpretation cost
+instead of rebuilding. Both artifacts
 pass the same oracle. The rule lowers Joggle's first-fit plan yet raises TVM's
 capacity-aware plan, and each system accounts for storage its own way, so the
 two figures are not comparable and the rule itself is not a contribution.
@@ -793,6 +793,25 @@ a nonconflicting export are accepted, while incompatible signatures, missing
 dependencies, and an overload that redirects a dependent call are rejected
 with the installed source unchanged (Figure~\ref{fig:binding}).
 
+\begin{center}
+\small
+\refstepcounter{table}\label{tab:scope}
+\textbf{Table~\thetable.} Files, then the obligations a change creates: \texttt{dep} a dependency declaration, \texttt{mod} a second module, \texttt{build} a build-manifest edit, \texttt{reg} a native registration. Source lines are recorded and deliberately not shown. No task modifies a framework-core file in any system.
+
+\vspace{2pt}
+{\footnotesize
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Task & Joggle & TVM & ONNX-MLIR \\
+\midrule
+Implementation   & 1, dep3 & 1 & 6, build3, reg1 \\
+Selection policy & 1, dep4 & 1 & 7, build3, reg1 \\
+External kernel  & 1, dep4 & 3 & --- \\
+Numeric format   & 4, mod3, dep4 & --- & --- \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
 \subsection{Reach across the pinned model set}
 \label{sec:eval-reach}
 The pinned set holds sixteen models, fifteen from the ONNX Model Zoo and one
@@ -855,25 +874,19 @@ section should be read as one. On UltraFace
 the resulting artifact is 1.49$\times$ faster than the ordinary one and
 1.50$\times$ faster than TVM's unscheduled lowering.
 
-The figure bounds the claim in the other direction, and the bound matters for
-how the rest of this paper should be read. ONNX-MLIR at \texttt{-O3} is faster
-than the policy-improved Joggle artifact on six of the nine models where both
-were built, by up to $3.83\times$, and the policy artifact is faster on the
-remaining three, by up to $1.27\times$. An optimizing backend therefore still
-leads on most models, so a claim about compiler infrastructure is not a claim
-about code generation. Against the hand-tuned runtime the picture is uniform:
-ONNX Runtime stays $7.7\times$ to $85.9\times$ ahead of the policy artifact on
-every model. What remains is packing, vectorized microkernels, epilogue fusion,
-and threading, and the point is where that work would live: in a source-defined
-selection procedure, not in the compiler host. All five systems were measured in one job, and the
-qualifications stated at the head of this section carry over: the ONNX Runtime
-row bounds a hand-tuned production runtime rather than a compiler, the TVM row
-is unscheduled and without LLVM, and the ONNX-MLIR row is an optimizing backend
-run at \texttt{-O3} rather than at its \texttt{-O0} default.
-Median absolute deviations for those same campaign processes are 4.09, 2.63,
-3.74, 2.61, and 0.40\,ms for ordinary Joggle, policy Joggle, TVM, ONNX-MLIR,
-and ONNX Runtime, larger than the figures an earlier pair-only job recorded for
-the same systems because this job ran at a higher load.
+The figure bounds the claim in the other direction. ONNX-MLIR at \texttt{-O3}
+beats the policy-improved Joggle artifact on six of the nine models where both
+were built, by up to $3.83\times$, and loses on the other three by up to
+$1.27\times$; ONNX Runtime stays $7.7\times$ to $85.9\times$ ahead on every
+model. An optimizing backend therefore still leads on most models, so a claim
+about compiler infrastructure is not a claim about code generation, and the
+packing, vectorized microkernels, epilogue fusion, and threading that remain are
+work this substrate would host in a source-defined selection procedure rather
+than in the compiler host. The qualifications at the head of this section carry
+over unchanged. Median absolute deviations for these processes are 4.09, 2.63,
+3.74, 2.61, and 0.40\,ms for ordinary Joggle, policy Joggle, TVM, ONNX-MLIR, and
+ONNX Runtime, larger than an earlier pair-only job recorded because this job ran
+at a higher load.
 
 % [claim:C-locality] [evidence:E-locality]
 The policy is not specific to that model. Applied unchanged to ten pinned models
@@ -1122,8 +1135,7 @@ above shows what the substrate does and does not buy: loop reordering is now a
 measured source-level change, and the rest of the familiar kernel
 checklist (register accumulation, GEMM mapping, epilogue fusion,
 parallelization) remains, each likewise a source-defined selection or emission
-procedure. The mechanism evaluated here is the route by which that work enters
-and is compared; it is not a claim that the route has been walked to its end.
+procedure. This paper evaluates the route by which that work enters, not how far it runs.
 
 \section{Conclusion}
 Joggle treats a source-defined compiler algorithm body as a reusable program
