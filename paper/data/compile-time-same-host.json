@@ -1,0 +1,16 @@
+{
+  "host": "macOS-15.7.3-arm64-arm-64bit-Mach-O",
+  "cpu": "Apple M4",
+  "threads": 1,
+  "runs": 5,
+  "systems": [
+    "joggle",
+    "tvm",
+    "onnxmlir"
+  ],
+  "models": [
+    "ultraface-rfb-320"
+  ],
+  "span": "pinned ONNX file on disk to loadable shared library",
+  "date_utc": "2026-09-17T20:42:01Z"
+}

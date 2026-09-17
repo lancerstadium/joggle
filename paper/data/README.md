@@ -1006,3 +1006,18 @@ SHA-256
 `7166b99e0ff9e909606898a175e070cf85dcfa23c03fc279f9f1309ca7cfe874`.
 This is one unisolated engineering run. It demonstrates a scaling mechanism
 and semantic identity, not a publication-grade compiler-throughput result.
+
+`compile-time-same-host.csv` records one uniform span on three systems: the
+pinned ONNX file on disk to a loadable shared library, one host, one thread, one
+artifact per system, with the ABI fixture all three share staged outside the
+timed span. Five runs each give medians of 101.46 s for Joggle,
+4.52 s for TVM, and 4.51 s for ONNX-MLIR, so Joggle's
+compile time is 22.5x theirs on this model. The
+three systems do not record a comparable field by default, which is why this was
+measured rather than assembled: TVM's `build_and_export_seconds` covers only
+`relax.build` and `export_library` and excludes ONNX import, ONNX-MLIR's
+`build_and_link_seconds` covers its whole command line, and Joggle records
+prepare and build as separate stages. Joggle's span breaks down as 0.07 s ONNX
+read, 0.69 s conversion, 55.68 s in the interpreted `c.prepare` pass, and 45.0 s
+in plan, place, emit, and compile. Peak resident memory for a complete model is
+still not measured. Regenerate with `paper/scripts/measure_compile.py`.

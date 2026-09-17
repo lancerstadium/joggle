@@ -44,6 +44,10 @@ def main():
     ap.add_argument("out", type=Path, help="output directory")
     ap.add_argument("--cc", default="cc")
     ap.add_argument("--data-arg", default='"weights"')
+    ap.add_argument("--variant", choices=["base", "locality", "both"],
+                    default="both",
+                    help="build one artifact or the pair; a one-artifact span "
+                         "is what a cross-system compile-time comparison needs")
     a = ap.parse_args()
 
     a.out.mkdir(parents=True, exist_ok=True)
@@ -57,7 +61,10 @@ def main():
     log["locality_sha256"] = digest(localised)
     log["locality_changed"] = log["locality_sha256"] != log["prepared_sha256"]
 
-    for variant, subject in (("base", a.prepared), ("locality", localised)):
+    wanted = [("base", a.prepared)] if a.variant == "base" else \
+             [("locality", localised)] if a.variant == "locality" else \
+             [("base", a.prepared), ("locality", localised)]
+    for variant, subject in wanted:
         d = a.out / variant
         d.mkdir(exist_ok=True)
         steps = []
@@ -84,6 +91,13 @@ def main():
                        ("planned.jog", "placed.jog", "model.c", "model.h", "weights.bin")},
             "c_bytes": (d / "model.c").stat().st_size}
 
+    if a.variant == "base":
+        log["c_bytes"] = {"base": log["variants"]["base"]["c_bytes"]}
+        log["weights_identical"] = True
+        a.out.joinpath("build.json").write_text(json.dumps(log, indent=1) + "\n")
+        print(json.dumps({"variants": list(log["variants"]),
+                          "c_bytes": log["c_bytes"]}, indent=1))
+        return
     base, loc = log["variants"]["base"], log["variants"]["locality"]
     log["weights_identical"] = base["sha256"]["weights.bin"] == loc["sha256"]["weights.bin"]
     log["c_identical"] = base["sha256"]["model.c"] == loc["sha256"]["model.c"]

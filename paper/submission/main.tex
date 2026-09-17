@@ -656,12 +656,7 @@ One system is present for each axis it can carry, and a gap is stated rather
 than implied. Rebuild scope and edit survival are measured against TVM's source
 route; MLIR Transform is the fairer mechanism comparison, since its natural route
 replaces an implementation body, but it stays a bounded textual comparison with
-no measured data. Revision cost is the shape of the change rather than its
-length, over four frozen tasks (Table~\ref{tab:scope}). Run time comes from one
-job that ran every system on every model it could be built for, so the columns
-of Figure~\ref{fig:runtime} share one set of conditions; ONNX Runtime also
-generates the references the others are checked against, which makes its error
-row a tautology and its latency a production bound rather than a compiler.
+no measured data.
 
 \subsection{Revising one decision inside a working planner}
 \label{sec:eval-derive}
@@ -733,8 +728,7 @@ best-fit search with the ranking used above, leaving eligibility and rewriting
 unchanged, and rebuilt an existing source build, about nine minutes clean on
 this host. Five fresh processes per route then give the following. The Joggle
 route rebuilds nothing: deriving the recipe costs 0.04\,s and the derived
-planner 2.48\,s, placing and emitting 3.2\,s, and compiling and checking both
-variants 2.4\,s. The TVM route pays one translation unit and a relink per edit,
+planner 2.48\,s. The TVM route pays one translation unit and a relink per edit,
 8.0\,s and 7.7\,s on revert, after a 514\,s clean build. It then plans natively
 far faster than Joggle's interpreted planner, which pays interpretation cost
 instead of rebuilding. Both artifacts
@@ -877,13 +871,10 @@ That mapping is decided by \texttt{locality.choose}, an ordinary source-defined
 function that scores axis orders and reorders through \texttt{tile.reorder}.
 Applying it to the same prepared subject moves the output-width axis innermost
 in all 52 convolution nests of that subject, costs 2.2\,s, and requires no host
-rebuild. This policy
-is \emph{applied}, not derived: no compiler function is cloned here, and the
-policy is an ordinary module call that the compiler did not have before. The
-campaign below therefore measures how far one source-defined decision reaches
-once the compiler can accept it, which is a claim about the representation and
-its module boundary. It is not a measurement of derivation, and nothing in this
-section should be read as one. On UltraFace
+rebuild. The policy is \emph{applied}, not derived: no compiler function
+is cloned here, and the campaign below therefore measures how far one
+source-defined decision reaches, not what derivation buys. Nothing in this
+section should be read as a derivation result. On UltraFace
 the resulting artifact is 1.49$\times$ faster than the ordinary one and
 1.50$\times$ faster than TVM's unscheduled lowering.
 
@@ -968,8 +959,15 @@ XCiT's preparation exceeds its recorded timeout; an earlier single-model probe
 at revision \texttt{8d20360} observed its first preparation round grow from
 3,135 to 18,976 operations, which is a prose observation from that probe rather
 than a record at the revision this campaign cites. Selective exposure bounds
-what a consumer requests, not the cost of reaching it on a large transformer. Matched compilation-time
-and peak-RSS comparisons remain future measurements. Failure tests cover
+what a consumer requests, not the cost of reaching it on a large transformer. Compilation time is now
+measured on one span: the pinned ONNX file on disk to a loadable library, one
+host, one thread, with the fixture all three systems share staged outside the
+span and one artifact built per system. Joggle takes 101.5\,s against 4.52\,s
+for TVM and 4.51\,s for ONNX-MLIR over five runs each, so its compile time is
+22.5$\times$ theirs on this model. The cost is where the design predicts: 55.7\,s
+is the interpreted \texttt{c.prepare} pass, 45.0\,s the plan, place, emit, and
+compile chain, and 0.8\,s ONNX reading and conversion. Peak resident memory for a
+complete model remains unmeasured. Failure tests cover
 transactions and stale handles; generative tests cover parsing and legal IR
 edits, not module loading, serialized frontends, or the native ABI.
 
@@ -1072,16 +1070,16 @@ instructions, memories, and trusted rewrites into user code
 choices \cite{daghero2025sparse}. Joggle addresses how such choices compose
 with model recognition, portable definitions, compiler policies, and artifact
 generation; scheduling quality itself is the gap Section~\ref{sec:eval-code}
-measures. Ansor searches tensor programs; Roller constrains shapes to hardware-friendly
-tiles; Welder jointly schedules operators through a tile graph; Ladder couples
-custom datatypes with storage, access, conversion, and scheduling
-~\cite{zheng2020ansor,zhu2022roller,shi2023welder,wang2024ladder}. TASO, Tensat,
-Glenside, Mirage, and Axon enlarge the transformation space through generated
-substitutions, equality saturation, access-pattern rewriting, or multi-level
-superoptimization
-~\cite{jia2019taso,yang2021tensat,smith2021glenside,wu2024mirage,kothari2026axon}.
-ACT generates instruction selection and scratchpad allocation from tensor-ISA
-semantics, while ATLAAS lifts RTL behavior toward those specifications
+measures. Ansor, Roller, and Welder search or constrain tensor programs and tile graphs,
+and Ladder couples custom datatypes with storage, access, conversion, and
+scheduling
+~\cite{zheng2020ansor,zhu2022roller,shi2023welder,wang2024ladder}. TASO,
+Tensat, Glenside, Mirage, and Axon enlarge the transformation space through
+generated substitutions, equality saturation, access-pattern rewriting, or
+multi-level superoptimization
+~\cite{jia2019taso,yang2021tensat,smith2021glenside,wu2024mirage,kothari2026axon};
+ACT and ATLAAS derive instruction selection and scratchpad allocation from
+tensor-ISA semantics and lift RTL toward them
 ~\cite{jain2026act,gao2026atlaas}.
 
 These works improve generation or selection within specific search spaces
@@ -1110,9 +1108,8 @@ numerical correctness stays the oracle's role.
 A policy argument avoids matching a body, while derivation reaches decisions
 outside that interface but needs algorithm-specific structural preconditions.
 The source-patch control obtains the same artifact, and TVM's source route its
-own after a rebuild; maintenance cost is unmeasured on either side. The planner
-edit and the MobileNetV2 trace show complementary uses of the representation, not
-a combined benefit.
+own after a rebuild; maintenance cost is unmeasured on either side. The planner edit and the
+MobileNetV2 trace show complementary uses, not a combined benefit.
 
 \paragraph{Shared structure and specialized meaning.}
 Common structure does not make domain semantics interchangeable: repacking
@@ -1121,14 +1118,13 @@ a kernel's expectations, so modules and algorithm-specific oracles establish
 such properties. Joggle shares editing facilities, not domain semantics.
 
 \paragraph{Editability and cost.}
-Derivation copies helper closures, and revision-keyed snapshots consume memory.
+Derivation copies helper closures and revision-keyed snapshots consume memory.
 Selective exposure retains accepted calls, yet repeated scans and coarse
-invalidation can dominate preparation, as the XCiT timeout illustrates. The
-sampled profiles show that the interpreter's overhead is representational,
-not structural: the same typed function model can be executed over interned
-types and shared attributes. Dependency-sensitive recomputation becomes
-worthwhile only once that baseline is competitive, which fixes the order of
-future work.
+invalidation dominate preparation, as the XCiT timeout and the measured compile
+time both show. The profiles place the interpreter's overhead in representation
+rather than structure, so the same typed function model can run over interned
+types and shared attributes; dependency-sensitive recomputation becomes
+worthwhile only once that baseline is competitive.
 
 \paragraph{Deployment and evidence.}
 Model oracles establish agreement on recorded inputs, not dataset-level
