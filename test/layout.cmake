@@ -258,8 +258,7 @@ endif()
 # into a subdirectory: every `../` in it silently gains a level.
 file(GLOB_RECURSE markdown "${SOURCE}/docs/*.md" "${SOURCE}/paper/*.md")
 file(GLOB more_markdown
-     "${SOURCE}/README.md" "${SOURCE}/extensions/*/README.md"
-     "${SOURCE}/examples/*/README.md")
+     "${SOURCE}/README.md" "${SOURCE}/extensions/*/README.md")
 list(APPEND markdown ${more_markdown})
 list(REMOVE_DUPLICATES markdown)
 

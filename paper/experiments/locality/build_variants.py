@@ -15,7 +15,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[3]
 TOOL = REPO / "build/joggle"
 MODS = ["-M", str(REPO / "modules"), "-M", str(REPO / "build/modules")]
-EXAMPLES = ["-M", str(REPO / "examples"), "-M", str(REPO / "modules")]
+EXTENSIONS = ["-M", str(REPO / "extensions"), "-M", str(REPO / "modules")]
 SO = "dylib" if platform.system() == "Darwin" else "so"
 
 
@@ -52,7 +52,7 @@ def main():
     commands = log["commands"]
 
     localised = a.out / "prepared-locality.jog"
-    run([TOOL, "run", "locality.apply", a.prepared, *EXAMPLES],
+    run([TOOL, "run", "locality.apply", a.prepared, *EXTENSIONS],
         out=localised, record=commands)
     log["locality_sha256"] = digest(localised)
     log["locality_changed"] = log["locality_sha256"] != log["prepared_sha256"]
