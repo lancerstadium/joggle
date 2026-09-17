@@ -630,6 +630,13 @@ integration runs on Linux and macOS with address and undefined-behavior
 sanitizers, and large model artifacts are checksum-pinned outside the
 repository.
 
+\paragraph{Availability.}
+The compiler, its twenty modules, and the test suite are one tree needing only a
+C++20 compiler and CMake; the evaluation's records, the scripts that render each
+display from them, and the measurement programs are kept beside the paper, and
+model files are identified by source and SHA-256 rather than redistributed. An
+anonymised artifact accompanies submission.
+
 \section{Evaluation}
 The evaluation establishes four things in order: that a decision inside a
 working compiler algorithm can be revised without rewriting its analysis or its
@@ -690,11 +697,10 @@ Both planners receive the same prepared UltraFace RFB-320 program.
 Prerequisite fixes for views, dynamic shape storage, and loop backedges are
 shared by both variants and are not attributed to the ranking edit.
 Apple Clang 17 compiles both artifacts with \texttt{-O2} and strict C99
-warnings. Every process is validated against the stored ONNX Runtime references
-before its timing is admitted, and a repetition whose output digest departs from
-the first run of the same variant is discarded rather than averaged. That digest
-is a harness admission check, not a reported metric. The reported quantity is
-numerical agreement: across two calls per variant on one recorded input, the
+warnings. Every process is validated against the stored references before its timing is
+admitted, and a repetition whose output digest departs from its variant's first
+run is discarded; that digest is an admission check, not a reported metric. The
+reported quantity is numerical agreement: across two calls per variant on one recorded input, the
 8,840 scores and 17,680 box coordinates have a maximum absolute error of
 $3.58\times10^{-7}$ against those references, below the $10^{-5}$ threshold. Declared static slots fall from 6,837,984 to 6,530,808
 bytes (4.49\%), including a 24-byte increase in integer slots, which measures
@@ -915,7 +921,7 @@ Figure~\ref{fig:runtime} shows every model rather than a summary over the set.
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=\textwidth]{../figures/runtime.pdf}
+\includegraphics[width=0.96\textwidth]{../figures/runtime.pdf}
 \caption{Every system measured on each pinned model, normalized to that model's
 own Joggle first-fit artifact, over 20 fresh processes on one host at one
 thread. A group is a model and its bars are the systems run on it, so a group is
@@ -978,14 +984,12 @@ what semantic and rebuild obligations remain afterwards.
 
 \subsection{Programmable compiler implementations}
 \label{sec:related-transform}
-Every ingredient here has precedent, and none of it is claimed. Letting a client
-control an implementation decision while the default stays reachable is the open
-implementation and compile-time metaobject programme
-\cite{lamping1992open,kiczales1997open,chiba1995mop}; linking a user module into
-a compiler so new transformations need no rebuild was done for {\tt lcc}
-\cite{engler1999interface}; deriving a specialized copy while the original
-remains is procedure cloning \cite{cooper1993cloning} and is automatic in
-Truffle \cite{wurthinger2017practical}; and running a revision beside the
+Every ingredient here has precedent, and none of it is claimed: client control
+of an implementation decision is the open implementation and metaobject programme
+\cite{lamping1992open,kiczales1997open,chiba1995mop}, no-rebuild extension was
+done for {\tt lcc} \cite{engler1999interface}, copying a procedure while the
+original remains is procedure cloning \cite{cooper1993cloning} and is automatic
+in Truffle \cite{wurthinger2017practical}, and running a revision beside the
 installed definition with rollback is Erlang code loading and dynamic updating
 \cite{erlangCodeLoading,hicks2005dynamic}.
 
@@ -1057,13 +1061,11 @@ its reverse-dependency checks bound what a replacement may redirect.
 
 MLIR supports runtime-defined dialects, IRDL definitions, external interface
 models, and partial conversion
-\cite{mlirDynamicDialectDocs,mlirIrdlDocs,mlirInterfacesDocs,mlirConversionDocs}.
-xDSL couples Python prototyping to MLIR through shared textual IR and IRDL
-definitions. Its sidekick workflow can insert a prototype into an existing
-compilation flow and return to MLIR for later processing \cite{fehr2023xdsl}.
-Joggle instead centers source extensions on typed function definitions with
-shared resolution and execution rules across compiler roles, leaving
-domain-specific checks and native bindings explicit.
+\cite{mlirDynamicDialectDocs,mlirIrdlDocs,mlirInterfacesDocs,mlirConversionDocs},
+and xDSL inserts a Python prototype into an existing compilation flow through
+shared textual IR \cite{fehr2023xdsl}. Joggle instead centers source extensions
+on typed function definitions with one resolution and execution rule across
+compiler roles, leaving domain-specific checks and native bindings explicit.
 
 \subsection{Mixed representations and deployment}
 TVM's IRModule composes Relax functions, tensor programs, and external calls for
@@ -1114,25 +1116,20 @@ policy's integration from its optimization quality; it implements none of
 those search or synthesis algorithms.
 
 \subsection{Co-design, deployment, and generated policies}
-DORY, MCUNet, Ladder, and sparse-MCU systems treat datatype, encoding, memory
-organization, kernels, and compiler integration as one systems result
-\cite{burrello2021dory,lin2020mcunet,wang2024ladder,daghero2025sparse};
-TensorFlow Lite Micro, ncnn, and IREE supply deployment baselines
-\cite{david2021tflm,ncnnProject,ireeDocs}, and FlashInfer shows the same
-vertical pressure in attention kernels \cite{ye2025flashinfer}.
-Generated mappings and kernels depend on compilers, profilers, and oracles to
-be admitted \cite{hong2025autocomp,mai2026argus}, and compiler fuzzing shows how
-large the semantic failure surface is
-\cite{liu2023nnsmith,ma2023hirgen,zheng2021compilerbugs,xiao2022metamorphic}.
-Joggle's transactional edits bound the structural effects of a proposal;
-numerical correctness stays the oracle's role.
+Co-design systems treat datatype, encoding, memory organization, kernels, and
+compiler integration as one result, and edge runtimes supply the deployment
+baselines \cite{burrello2021dory,lin2020mcunet,wang2024ladder,daghero2025sparse,david2021tflm,ncnnProject,ireeDocs,ye2025flashinfer}.
+Generated mappings in turn depend on compilers and oracles to be admitted, and
+fuzzing shows how large the failure surface is
+\cite{hong2025autocomp,mai2026argus,liu2023nnsmith,ma2023hirgen,zheng2021compilerbugs,xiao2022metamorphic};
+Joggle's transactional edits bound a proposal's structural effects only.
 
 \section{Discussion and limitations}
 \paragraph{Customization boundary.}
 A policy argument avoids matching a body, while derivation reaches decisions
 outside that interface but needs algorithm-specific structural preconditions.
-The source-patch control obtains the same artifact, and TVM's source route its
-own after a rebuild; maintenance cost is unmeasured on either side. The planner edit and the
+The source-patch control and TVM's source route reach the same artifact, so what
+remains unmeasured on either side is maintenance cost. The planner edit and the
 MobileNetV2 trace show complementary uses, not a combined benefit.
 
 \paragraph{Shared structure and specialized meaning.}
@@ -1142,27 +1139,23 @@ kernel's expectations, so oracles, not the representation, establish such
 properties.
 
 \paragraph{Editability and cost.}
-Derivation copies helper closures and revision-keyed snapshots consume memory.
-Selective exposure retains accepted calls, yet repeated scans and coarse
-invalidation dominate preparation, as the XCiT timeout and the measured compile
-time both show. The profiles place the interpreter's overhead in representation
-rather than structure, so the same typed function model can run over interned
-types and shared attributes; dependency-sensitive recomputation becomes
-worthwhile only once that baseline is competitive.
+Derivation copies helper closures and revision-keyed snapshots consume memory,
+and repeated scans with coarse invalidation dominate preparation, as the XCiT
+timeout and the measured compile time both show. The profiles place the
+interpreter's cost in representation rather than structure; dependency-sensitive
+recomputation becomes worthwhile only once that baseline is competitive.
 
 \paragraph{Deployment and evidence.}
-Support for dynamic shapes, stateful execution, concurrent devices, and
-distributed placement remains incomplete, and the oracles establish agreement on
-recorded inputs rather than dataset accuracy.
+Dynamic shapes, stateful execution, concurrent devices, and distributed
+placement remain incomplete, and the oracles establish agreement on recorded
+inputs rather than dataset accuracy.
 
 \section{Conclusion}
-Joggle treats a source-defined compiler algorithm body as a reusable program
-artifact: a derivation copies the definition with its private helper closure,
-edits it structurally, and runs the copy on a separate subject while the
-original stays callable. The planner and preparation cases reach checked
-artifacts, and a matched control reaches the same artifact through TVM's source
-route at the cost of a rebuild derivation avoids. The source-patch control and
-the measured compile cost bound the claim.
+Joggle makes a source-defined compiler algorithm body a reusable artifact: a
+derivation copies it with its private helper closure, edits it structurally, and
+runs the copy beside the original. The planner and preparation cases reach
+checked artifacts; the source-patch control and the measured compile cost bound
+the claim.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{../references}

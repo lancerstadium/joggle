@@ -31,13 +31,16 @@ remains open.
       a capability pilot as a comparative benefit.
 - [x] Add a second derivation case in a different compiler role (C preparation
       cleanup) with oracle, negative controls, and same-host latency.
-- [ ] Trace every primary claim to a mechanism and a completed experiment.
+- [x] Trace every primary claim to a mechanism and a completed experiment.
+  Done: two independent audits (paper/evidence-audit-final.md) recomputed 47 measured
+  claims straight from the records; 42 matched exactly and every mismatch was fixed.
 - [x] Execute the predeclared TVM natural-route control for the storage-planner
       change on one model and host; report it as a rebuild/feedback boundary
       with the same oracle, not as plan quality or developer effort.
 - [x] Source-audit ONNX-MLIR's storage route at the pinned revision and state
       its shape in one sentence; no executed ONNX-MLIR result is claimed.
 - [ ] Broaden the external control to a second model or host; runnable
+  Open: the external control remains one model and one host.
       ONNX-MLIR, MLIR Transform, and xDSL routes remain post-submission work.
 - [x] Make the four evaluation questions explicit (Q1 to Q4) and label each
       evaluation subsection; add a four-item contribution list; merge the two
@@ -61,12 +64,15 @@ remains open.
       TVM unscheduled C target, ONNX Runtime) on UltraFace; keep the older
       Linux cohorts as separate records.
 - [ ] Extend matched cost/performance results beyond one model and host.
+  Partly open: compilation time covers one model on one host; the artifact
+  consequence covers five models but still one host.
 - [x] Measure the ONNX-MLIR run time on the same host, model, and protocol,
       closing the largest gap in the comparison matrix. The column is its `-O3`
       route because the tool defaults to `-O0`, and it is a negative result:
       ONNX-MLIR is 2.17x faster than the policy-improved Joggle artifact, which
       the manuscript now states wherever the advantage is claimed.
-- [ ] Recover the twelve-page technical-content limit. Technical content ends on
+- [x] Recover the twelve-page technical-content limit. Technical content ends on
+  Done: the conclusion ends on page 12 and references begin on page 13.
       page 13. A redundancy pass removed three restatements and took the PDF from
       16 pages to 15, but the remaining page would cost a display or a result,
       and the limit is inactive for this cycle. Recorded as open, not resolved.
@@ -79,17 +85,26 @@ remains open.
       extension tutorial, Exo 2's scheduling/cursor mechanisms, and AnyDSL's
       embedding/specialization passages; update Exo 2 to its published record.
 - [ ] Complete the remaining claim-to-source and bibliography-field audit,
+  Partly open: the claim-to-source audit is complete, but the added bibliography
+  entries were taken from Crossref metadata and have not been field-checked by hand.
       including TensorIR and modular language tools; obtain author verification
       for the assistant-inspected comparisons.
-- [ ] Keep all paper tables/plots traceable to raw records; no repeated or
+- [x] Keep all paper tables/plots traceable to raw records; no repeated or
+  Done: both tables and every figure are generated from records by scripts under
+  paper/scripts/, so no cell or bar is transcribed by hand.
       placeholder speedup cells.
 
 ## Delivery
 
-- [ ] Prepare a truthful abstract and author/conflict metadata for registration.
-- [ ] Rebuild and visually inspect the final two-column PDF within 12 technical
+- [x] Prepare a truthful abstract and author/conflict metadata for registration.
+  Done: one paragraph, ranges only, no defensive clause.
+- [x] Rebuild and visually inspect the final two-column PDF within 12 technical
+  Done: 12 technical pages, 0 overfull boxes, 0 undefined references, every page
+  inspected, figures numbered 1-4 and tables 1-2.
       pages plus references; an earlier successful build is not final validation.
-- [ ] Audit anonymous text, links, metadata, artifact, and acknowledgments.
+- [x] Audit anonymous text, links, metadata, artifact, and acknowledgments.
+  Done: anonymous author block, no identifying strings in the text, bibliography
+  links are publisher pages only, and no figure file carries author metadata.
 - [ ] Complete required AI-use, artifact, ethics, and reproducibility disclosures.
   - **Generative-AI disclosure is required and is currently missing.** ACM's
     authorship policy requires that use of generative AI tools be fully
@@ -113,13 +128,21 @@ remains open.
     in the submission or only in the camera-ready, and whether the venue adds
     requirements beyond the ACM policy. Some publishers prohibit generative
     images outright; ACM requires disclosure rather than prohibition.
-- [ ] Finalize Figure 1 production typography and editable labels; its current
+- [x] Finalize Figure 1 production typography and editable labels; its current
+  Superseded: the design overview was removed when the four full-width schematics
+  were measured to cost three pages of layout.
       image-generated serif lettering is raster, not an embedded font guarantee.
-- [ ] Finalize Figures 2--4 typography at the required minimum 10-point size;
+- [x] Finalize Figures 2--4 typography at the required minimum 10-point size;
+  Done: effective figure type is 10.1 pt (runtime) and 10.7 pt (structure), both
+  above the ten-point floor.
       native code excerpts do not solve smaller in-image labels.
 - [ ] Reproduce the retained artifact commands from a clean installation.
-- [ ] Perform adversarial argument/evidence review and resolve its blockers.
+  Open: the retained commands have not been replayed from a clean installation.
+- [x] Perform adversarial argument/evidence review and resolve its blockers.
+  Done: a hostile program-committee review, a claim-by-claim audit, and a novelty
+  search were run; every objection W1-W10 was answered or narrowed to its evidence.
 - [ ] Obtain author approval and confirm registration and final submission.
+  Open, and only the author can close it.
 
 Shared Linux-runner results must be identified as such, with matched settings
 and dispersion; do not silently relabel them isolated-host measurements.
