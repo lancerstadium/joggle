@@ -5,6 +5,18 @@ This directory holds manuscript assets, not an implementation inventory.
 
 ## Current figures
 
+Two schematics that earlier drafts included are no longer in the manuscript:
+the design overview (`overview.png`) and the system architecture
+(`architecture.png`). Measurement settled the choice: the four full-width
+schematics cost three pages of layout, and text plus captions alone come to ten
+pages, so the paper could not fit the twelve-page limit with all four. Both were
+also the most redundant with the prose, since the Introduction states the
+obstacle and the two pressures, the metaprogramming section states the Mod S /
+Mod K / subject separation, and the MLIR inset was a drawing rather than
+evidence. Both assets are retained here with their records
+([overview](overview.md), [architecture](architecture.md)) so the dropped drafts
+can be restored if the page budget changes.
+
 1. **Overview** (`overview.png`, `fig:overview`): six general panels in three
    paired columns contrast customization obstacles with corresponding facilities.
    Red crosses locate obstacles; green checks identify implemented capabilities,

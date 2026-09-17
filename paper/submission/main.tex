@@ -54,29 +54,6 @@ feedback may motivate a different layout and, consequently, a revision to the
 compiler procedure that constructs or selects it. Compiler algorithms thus
 become part of the experiment, rather than fixed tools applied to the program.
 
-\begin{figure*}[t]
-\centering
-\includegraphics[width=\textwidth]{../figures/overview.png}
-\caption{Joggle's design overview. Body-level customization is the central
-problem; composition and repeated work are operational pressures on a usable
-solution. The lower panels show derivation and its supporting module and
-exposure boundaries; \emph{reactive updates} names the broader goal of letting
-work follow dependencies, of which Joggle implements consumer-directed exposure.
-Checks mark implemented facilities; dashed dependency updating is planned.}
-\Description{Six panels form three paired columns. An attempted body edit
-stops at a compiler boundary, leading to a copied implementation; below, a
-derived function changes locally while its source is retained. A changed
-definition fans out across integration files; below, modules share symbol
-resolution and a replacement check. A whole-graph revisit surrounds a local
-consumer demand; below, one body is exposed while other calls remain compact.
-Crosses mark the obstacles and checks mark implemented facilities. A dashed
-inset separately identifies planned dependency-sensitive updating. The central
-MobileNetV2 example retains an external convolution alongside exposed
-BatchNorm and ReLU bodies. File, edit, port, and demand symbols explain roles,
-not affiliations with particular compiler products.}
-\label{fig:overview}
-\end{figure*}
-
 Existing systems already expose substantial control: MLIR offers partial
 conversion and programmable transformations
 \cite{mlirConversionDocs,lucke2025transform}, Relax connects graphs, tensor
@@ -86,10 +63,9 @@ open question is what remains reusable when a researcher must revise an
 algorithm inside such a system, and how the revision runs alongside its
 original.
 
-Figure~\ref{fig:overview} identifies one obstacle and two pressures along this
-path. The obstacle is \emph{restricted customization}: an algorithm is easy to
-invoke, but the required edit lies inside its body, past the parameters it
-exposes. Under \emph{fragmented integration}, a working revision still needs
+One obstacle and two pressures run along this path. The obstacle is
+\emph{restricted customization}: an algorithm is easy to invoke, but the
+required edit lies inside its body, past the parameters it exposes. Under \emph{fragmented integration}, a working revision still needs
 call selection, data conversion, and a matching artifact interface, so one
 change can require coordinated edits at several sites. Under \emph{redundant
 work}, preparation exposes bodies no consumer needs, or revisits the whole
@@ -178,8 +154,7 @@ procedure, kernel accesses, and interface description must agree on the new
 layout. By contrast, changing how a scale is chosen can alter decoded values
 and requires renewed numerical evaluation. Both are small source-level
 revisions, yet they affect different definitions and invalidate different
-conclusions. This distinction motivates the obstacle and the two pressures in
-Figure~\ref{fig:overview}.
+conclusions. This distinction motivates the obstacle and the two pressures that follow.
 
 \subsection{Restricted customization}
 The existing packing procedure may already traverse eligible calls, check
@@ -285,10 +260,9 @@ calls. A consumer that rejects it requests more detail, causing a portable body
 to be instantiated as explicit loops and scalar operations. Alternatively, a
 selection policy may bind a type-compatible external implementation without
 first exposing that body. These choices are per call, so one program may contain
-both states. Figure~\ref{fig:progressive} situates this mixed representation
-within the system: module imports organize definitions, compiler functions
-act on a separate subject, and the subject retains its common object model.
-These are distinct relationships rather than successive IR levels. In the
+both states. Three relationships hold at once and are not successive IR levels:
+module imports organize definitions, compiler functions act on a separate
+subject, and the subject retains its common object model. In the
 recorded MobileNetV2 trace, selected convolutions remain external calls while
 portable batch-normalization and ReLU bodies are exposed locally.
 
@@ -297,31 +271,6 @@ Rather, every exposed state remains a typed function program accepted by the
 same verifier and edit API. Specialized modules may establish stronger local
 contracts, but crossing that contract does not require moving the whole model
 into another host representation.
-
-\begin{figure*}[t]
-\centering
-\includegraphics[width=\textwidth]{../figures/architecture.png}
-% [claim:C-architecture-imports,C-architecture-derivation,C-architecture-mlir]
-% [evidence:E-module-headers,E-reuse-path,E-transform-implementation] Author verification pending.
-\caption{Joggle's organization and implementation boundary. Selected import
-edges organize reusable definitions; they do not prescribe pass order.
-A source function and its private closure can be copied into a separate
-compiler module, edited, and invoked on a subject program. The subject can
-mix external calls, portable calls, and explicit bodies; the graph is
-schematic, not a model trace. The C files illustrate emission after target
-preparation. The inset shows MLIR Transform's documented extension path, a
-C++ action over payload IR; Section~\ref{sec:related-transform} compares the
-two.}
-\Description{An asymmetric architecture diagram. A small MLIR inset separates
-Transform IR, a C++ action, and mixed-level payload IR. Joggle's larger view
-shows selected module imports beside source and derived compiler functions,
-with separately copied helpers. Invocation targets a distinct subject Mod
-whose dataflow contains external calls, portable calls, and explicit loops.
-Core type, resolution, verification, editing, and invocation services support
-these definitions. Dashed edges mean imports; blue arrows mean invocation or
-editing; black arrows within program graphs mean computation.}
-\label{fig:progressive}
-\end{figure*}
 
 \subsection{Derivable compiler functions}
 \label{sec:metaprogramming}
