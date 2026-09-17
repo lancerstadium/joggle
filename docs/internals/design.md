@@ -345,4 +345,4 @@ Project and paper claims use distinct levels of evidence:
 Passing one level does not imply the next. Negative measurements are retained
 as design evidence, not rewritten as successful optimization claims. The
 evaluation plan and current evidence ledger live in
-[paper/README.md](../paper/README.md).
+[paper/README.md](../../paper/README.md).

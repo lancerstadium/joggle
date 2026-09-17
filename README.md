@@ -46,6 +46,56 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+One configured directory is enough. `build` is the working tree for everything
+below, and every option is additive, so enabling a codec later reconfigures the
+same directory rather than starting a second one. **Always pass
+`CMAKE_BUILD_TYPE`**: CMake's default is an empty build type, which compiles
+without optimization, and a directory configured that way will silently
+misreport any timing taken in it. Use a separate `build-debug` only when you
+want a debug or sanitizer build alongside the optimized one.
+
+### Running a subset of the tests
+
+Every test carries a kind label, so the everyday loop does not have to pay for
+the pinned-model gates:
+
+```sh
+ctest --test-dir build -LE model      # everything except the pinned models
+ctest --test-dir build -L unit        # native C++ tests; about two seconds
+ctest --test-dir build -L c           # generated-C emission and execution
+ctest --test-dir build -L cli         # command-line behavior
+ctest --test-dir build -L extension   # out-of-tree packages under extensions/
+ctest --test-dir build -L example     # example applications
+ctest --test-dir build -L model       # pinned ONNX and TFLite gates; minutes
+```
+
+The labels are `unit`, `cli`, `c`, `analysis`, `extension`, `example`, `model`,
+`install`, `lint`, and `research`. They are assigned in one place at the end of
+the test section in `CMakeLists.txt`, so the whole taxonomy can be read at once,
+and the existing `onnx-zoo` labels are preserved.
+
+The full configuration, with every optional module enabled and the research
+checks registered, is:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+  -DJOGGLE_BUILD_ONNX=ON -DJOGGLE_BUILD_TFLITE=ON -DJOGGLE_BUILD_SAT=ON \
+  -DJOGGLE_TEST_ONNX_ZOO=.cache/onnx-zoo -DJOGGLE_RESEARCH=ON
+cmake --build build
+```
+
+`JOGGLE_RESEARCH` is off by default and is the only switch that makes the build
+read `paper/`. It registers two research targets and the checks that verify
+recorded evidence and baseline records. Keeping it off is what makes a clone
+self-contained: the default configuration builds and tests the project without
+the research workspace, so nothing under `src/`, `test/`, or `tool/` depends on
+`paper/`. Turn it on when working on the paper rather than on the project.
+
+`JOGGLE_BUILD_ONNX` needs Protobuf and `JOGGLE_BUILD_TFLITE` needs FlatBuffers.
+If either is installed outside the default search path, point CMake at it with
+`-DCMAKE_PREFIX_PATH=<prefix>`; nothing else in the build depends on where those
+libraries live.
+
 Check a program and run a transformation:
 
 ```sh
@@ -95,7 +145,7 @@ structural operation kinds. Concrete computation is an ordinary function call.
 A graph is the calls and values in a function; exposing a semantic body adds
 loops and scalar calls to that same function.
 
-The [language reference](docs/language.md) covers control flow, multiple
+The [language reference](docs/reference/language.md) covers control flow, multiple
 results, compile-time functions, structural types, overload resolution, and
 open metadata.
 
@@ -104,7 +154,7 @@ open metadata.
 Enable the optional ONNX codec and decode a model:
 
 ```sh
-cmake -S . -B build -DJOGGLE_BUILD_ONNX=ON
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DJOGGLE_BUILD_ONNX=ON
 cmake --build build
 
 ./build/joggle read onnx.read model.onnx \
@@ -226,20 +276,20 @@ target class or changing the implementation functions. `opt.candidates`
 exposes the unmodified compatible set for reports and policy development.
 
 The complete out-of-tree
-[`ikj` example](examples/ikj/module.jog) replaces matrix multiplication with
-an inspectable loop body. The [`edge` example](examples/edge) selects a generic
+[`ikj` extension](extensions/ikj/module.jog) replaces matrix multiplication with
+an inspectable loop body. The [`edge` extension](extensions/edge) selects a generic
 external kernel while the unchanged model continues to call its semantic
 functions; that ABI escape hatch is distinct from optimizing an inspectable
-body. [`locality`](examples/locality) reorders a proved affine reduction, and the
+body. [`locality`](extensions/locality) reorders a proved affine reduction, and the
 generic `tile.canon` pass compacts proved affine index trees without another
 Conv overload. The separate `tile.scalarize` mechanism lets an explicit policy
 promote carried output elements when replication is profitable, while
 `tile.merge` can linearize adjacent static axes without changing their
 lexicographic order or losing loop-carried state.
-[`compact`](examples/compact)
+[`compact`](extensions/compact)
 demonstrates the distinct case of selecting a fused implementation with
 different workspace behavior.
-Neither changes the frontend or C emitter. [Module documentation](docs/modules.md) covers
+Neither changes the frontend or C emitter. [Module documentation](docs/reference/module-catalogue.md) covers
 packaging, discovery, lifecycle, and every bundled module.
 
 ## Artifacts and weights
@@ -352,15 +402,106 @@ instruction steps, not hardware cycles.
 ```text
 include/joggle/   public C++ API
 src/              parser, IR, verifier, resolver, and runtime
-modules/          bundled source and optional native modules
-examples/         out-of-tree extensions and application workflows
-test/             contract and integration tests
-docs/             design, language, module, tutorial, and roadmap references
-paper/            evidence plan and reproducible measurements
+tool/             the `joggle` command-line tool
+modules/          bundled source modules; <module>/lib/ holds auto-loaded
+                  fragments of the same module scope
+extensions/       out-of-tree module packages loaded with -M extensions
+test/             contract and integration tests; test/onnx-app/ is the
+                  opt-in application gate, test/tools/ its generators
+docs/             guide, reference, and internals, indexed by docs/README.md
+paper/            research workspace: plan, evidence records, and manuscript
 ```
 
-Generated files, downloaded models, and experiment outputs belong in build or
-managed artifact directories, not in the source tree.
+`paper/` is a research workspace rather than part of the shipped project, and
+the project does not read it. That boundary is enforced, not merely intended:
+the default configuration builds and tests without it, and `JOGGLE_RESEARCH=ON`
+is the only switch that changes that.
+
+### Where generated files go
+
+The tree separates three kinds of file on purpose, and mixing them is the main
+source of confusion in this repository:
+
+| Kind | Location | Tracked |
+| --- | --- | --- |
+| Hand-written source, fixtures, recorded results | `src/`, `modules/`, `test/`, `paper/data/`, `paper/fixtures/` | yes |
+| Compiler and test output | `build/`, or another `build-*` tree you configure | no |
+| Study output and raw working records | `build-study/` | no |
+
+Three rules follow from this:
+
+- `build/` is a build tree. Configure it, build it, run `ctest` in it, and take
+  compiler timings from it. Study output does not belong there; a script whose
+  default output root is inside `build/` is a bug in that script.
+- A measurement becomes evidence only once it is promoted into `paper/data/`
+  or the relevant `paper/baselines/<system>/<task>/` and described in that
+  directory's `README.md`. Numbers that exist only under a `build*` tree are
+  working data, and no claim may cite them.
+- Nothing under a `build*` tree is deleted because it looks unreferenced. A
+  tree can hold the only copy of a record, and a recorded result that was never
+  promoted is invisible to `git grep`. Promote first, reclaim second.
+
+### Current build trees
+
+Three, each with one role. Nothing else belongs at the top level.
+
+| Tree | Role |
+| --- | --- |
+| `build/` | development, test, and compiler-timing tree |
+| `build-deps/` | installed FlatBuffers prefix that `build/` is configured against |
+| `build-study/` | every study's output: working artifacts, study inputs, and raw records |
+
+Earlier revisions kept one `build-*` tree per study, which is how fifteen of them
+accumulated while the README claimed one configured directory was enough. They
+are gone: their records were preserved under `build-study/legacy/`, the study
+input they held is under `build-study/inputs/`, and their generated artifacts are
+reproducible from the pinned models and modules. Do not add a per-study build
+tree; point the study's output root at `build-study/` instead.
+
+One name looks like a fourth tree and is not: `build-app` is created inside the
+GitHub runners by `.github/workflows/linux-{performance,policy,fusion}.yml`,
+which build there, measure, and upload the result. Records under `paper/data/`
+cite paths under `build-app` because that is where the artifact lived during the
+CI run, so those paths are CI provenance and must not be rewritten to a local
+path. No local `build-app` is needed.
+
+`docs/guide/` writes its demonstration output into `build/`, which is ordinary
+working scratch and is cleared by a rebuild. Study output is different: it is
+kept, so it goes in `build-study/`, and a script whose default output root is
+inside `build/` is a bug in that script.
+
+### Checking the layout
+
+The rules above are checked, not merely stated. `test/layout.cmake` runs as
+part of the suite and needs only CMake:
+
+```sh
+ctest --test-dir build -R layout --output-on-failure
+cmake -DSOURCE="$PWD" -P test/layout.cmake   # standalone, same output
+```
+
+Each rule is classed `enforce` or `report`. An `enforce` rule already holds, so
+a violation is a regression and the test fails. A `report` rule is stated above
+but the tree does not satisfy it yet: the finding is listed, the suite stays
+green, and the list is the migration queue. Promote a rule to `enforce` in
+`test/layout.cmake` once its findings reach zero; every rule ends up there.
+
+Six rules are enforced: no tracked file under a generated tree; every `build*`
+directory on disk has a role in the table above; no paper script defaults its
+output into `build/`; every repository path quoted in the documentation exists,
+with generated trees judged by their declared root rather than by their
+contents; every markdown link resolves relative to the file that links it; and
+every study directory carries a README.
+
+One metric is reported rather than enforced: how much of `paper/` is still flat.
+It is judged acceptable because `paper/README.md` indexes every script with its
+output and relocating them would break the recorded reproduction commands that
+name them, so the count stays visible without being a defect.
+
+A seventh check was removed as redundant: counting records under generated trees
+duplicated the `script-output-root` rule, and it could not separate a violation
+from a CTest working directory, which lives in `build/` by design and writes the
+same kinds of file.
 
 ## Boundaries
 
@@ -376,14 +517,19 @@ managed artifact directories, not in the source tree.
 
 ## Documentation
 
-- [Design](docs/design.md): architecture and stable invariants.
-- [Language](docs/language.md): complete `.jog` grammar and semantics.
-- [Modules](docs/modules.md): packaging, composition, and bundled libraries.
-- [Tutorial](docs/tutorial.md): extension-oriented walkthroughs.
-- [Roadmap](docs/roadmap.md): current gaps and evidence priorities.
+`docs/` is organized by who is reading. Its [index](docs/README.md) carries the
+full list and a table mapping each walkthrough to the tests that prove it.
+
+- [Guide](docs/guide/README.md): task-oriented walkthroughs for writing
+  extensions.
+- [Reference](docs/reference/language.md): the `.jog` language, and the
+  catalogue of bundled modules.
+- [Internals](docs/internals/design.md): architecture, module lifecycle, and
+  the engineering roadmap.
 - [Paper plan](paper/README.md): research questions, evidence ledger, and
   evaluation protocol.
-- [Examples](examples/README.md): runnable extensions and application gates.
+- [Extensions](extensions/README.md): out-of-tree module packages the suite
+  loads, each a worked example of one compiler boundary.
 
 The implementation removed during the clean redesign remains recoverable at
 Git tag `archive/pre-relaunch-a2a281e`.

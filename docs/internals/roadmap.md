@@ -7,7 +7,7 @@ system is useful in a real co-design study and whether its claims survive
 evaluation.
 
 The current submission scope and dated acceptance gates are maintained only in
-[the research plan](../paper/plan.md). This roadmap is the longer-term engineering
+[the research plan](../../paper/plan.md). This roadmap is the longer-term engineering
 backlog, not permission to expand the submission. The next bounded mechanism
 work reuses function cloning, editing, and typed invocation for analyses,
 selection, representation procedures, transformations, and generation; it does
@@ -364,7 +364,7 @@ A submission is ready only when:
 - the limitations section matches the measured boundary.
 
 The working evidence plan and outline are in
-[paper/README.md](../paper/README.md).
+[paper/README.md](../../paper/README.md).
 
 ## Near-term sequence
 
