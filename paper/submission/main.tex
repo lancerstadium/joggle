@@ -29,8 +29,8 @@ so a derived procedure remains reproducible. It also survives source refactoring
 that break an equivalent patch, so a user or an agent can propose revisions with
 the same tools. Across widely used models, one source-defined locality policy
 reduces the run time of generated code on each of them, by $1.36\times$ to
-$3.24\times$. It requires no compiler rebuild and outperforms TVM's unscheduled
-C target wherever that lowering could be built and validated.
+$3.24\times$. It requires no compiler rebuild and matches or beats TVM's
+unscheduled C target wherever that lowering could be built and validated.
 % [claim:C-locality,C-derive-storage,C-derive-control,C-derive-external,C-derive-boundary,C-derive-composition] [evidence:E-locality,E-reuse-result,E-reuse-control,E-reuse-external,E-reuse-check,E-reuse-path] Author verification pending.
 \end{abstract}
 \keywords{malleable compilation, progressive intermediate representation, compiler infrastructure, hardware-software co-design, program optimization}
@@ -638,29 +638,30 @@ memory suite is stated as absent rather than approximated by figures that were
 not measured together.
 
 \paragraph{Evidence and conditions.}
-The studies have different measurement units. Derivation uses a fixed prepared
-UltraFace program and local correctness checks; the extension tasks use a fixed
-Conv--Add--Relu chain and shared oracles at the recorded revisions, so they bound
-a layout-and-ABI composition study rather than a general co-design result. Model
-coverage aggregates revision-tagged records rather than forming a simultaneous
-benchmark, and runtime comparisons use one-thread controls with 20 balanced
-fresh-process trials per system on one macOS arm64 host. Different jobs and
+The studies have different units. Derivation uses a fixed prepared UltraFace
+program and local correctness checks; the extension tasks use a fixed
+Conv--Add--Relu chain and shared oracles, so they bound a layout-and-ABI
+composition study rather than a general co-design result. Coverage aggregates
+revision-tagged records rather than forming a benchmark, and runtime comparisons
+use one-thread controls with 20 balanced fresh-process trials per system on one
+Apple M4 host running macOS 15.7.3.
+Every comparison names its revision: Joggle at \texttt{27b37c75}, TVM v0.26.0 at
+\texttt{c7b458e9}, and ONNX-MLIR 0.4.2 at \texttt{4a13c34a} against LLVM
+\texttt{1053047a}. Different jobs and
 revisions remain separate, and no result below measures developer productivity
 or dataset-level accuracy.
 
 \paragraph{Which system answers which question.}
 One system is present for each axis it can carry, and a gap is stated rather
 than implied. Rebuild scope and edit survival are measured against TVM's source
-route. MLIR Transform is the fairer mechanism comparison, since its natural route
-replaces a transformation's implementation body, but it remains a bounded
-textual comparison with no measured data. Revision cost is measured as the shape of the change rather
-than its length, over four frozen tasks (Table~\ref{tab:scope}). Run time is a
-paired comparison of five systems in one job on one model. The ten-model job
-supplies every column of Figure~\ref{fig:runtime}, but only its Joggle-pair
-comparison is Joggle-internal; the TVM, ONNX-MLIR, and ONNX Runtime columns of
-that figure come from running those systems on the same subjects. ONNX Runtime generates the stored references every
-other system is checked against, so its error row is a tautology and its latency
-bounds a production runtime rather than a compiler.
+route; MLIR Transform is the fairer mechanism comparison, since its natural route
+replaces an implementation body, but it stays a bounded textual comparison with
+no measured data. Revision cost is the shape of the change rather than its
+length, over four frozen tasks (Table~\ref{tab:scope}). Run time comes from one
+job that ran every system on every model it could be built for, so the columns
+of Figure~\ref{fig:runtime} share one set of conditions; ONNX Runtime also
+generates the references the others are checked against, which makes its error
+row a tautology and its latency a production bound rather than a compiler.
 
 \subsection{Revising one decision inside a working planner}
 \label{sec:eval-derive}
@@ -903,15 +904,15 @@ at a higher load.
 % [claim:C-locality] [evidence:E-locality]
 The policy is not specific to that model. Applied unchanged to ten pinned models
 whose ordinary run time spans 1.6\,ms to 2.3\,s, it shortens run time on every
-one of them, by $1.37\times$ to $3.24\times$ with a median of $2.04\times$. It
-also beats TVM's unscheduled lowering on all nine models where TVM was measured,
-by $1.06\times$ to $2.85\times$. Every artifact is admitted only if it stays
-inside the study's $10^{-4}$ tolerance of its stored ONNX Runtime reference, and
-the largest error observed anywhere in the campaign is $1.87\times10^{-5}$. The two variants differ only in the policy, so the campaign measures
-the reach of one source-defined rule rather than a per-model tuning effort; no
-model regressed and none required a rebuild. Figure~\ref{fig:runtime} reports
-those measurements, so a reader can see each model's bar rather than a summary
-statistic over the set.
+one of them, by $1.37\times$ to $3.24\times$ with a median of $2.04\times$, and
+every model's paired bootstrap interval excludes one. Against TVM's unscheduled
+lowering, measured on nine models, the same policy is faster on eight, by
+$1.41\times$ to $2.82\times$ with intervals excluding one; MNIST is a tie at
+$1.01\times$, interval $[0.94, 1.06]$. Every artifact is admitted only if it stays inside
+the study's $10^{-4}$ tolerance of its stored reference, the largest observed
+error being $1.87\times10^{-5}$. The variants differ only in the policy, so this
+measures the reach of one source-defined rule rather than per-model tuning, and
+Figure~\ref{fig:runtime} shows every model rather than a summary over the set.
 
 \begin{figure*}[t]
 \centering

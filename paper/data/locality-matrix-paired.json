@@ -1,0 +1,201 @@
+{
+  "record": "locality-matrix.csv",
+  "draws": 10000,
+  "seed": 42,
+  "unit": "per-trial ratio of the baseline to the locality artifact",
+  "statistic": "median of paired ratios, percentile bootstrap interval",
+  "versus_first_fit": {
+    "densenet-12": {
+      "pairs": 20,
+      "median": 2.30597399632953,
+      "ci95": [
+        1.8125954379706675,
+        2.520356721919156
+      ],
+      "baseline": "base",
+      "verdict": "locality faster"
+    },
+    "googlenet-12": {
+      "pairs": 20,
+      "median": 2.31953591215169,
+      "ci95": [
+        2.2965650300787215,
+        2.326637143638291
+      ],
+      "baseline": "base",
+      "verdict": "locality faster"
+    },
+    "mnist-8": {
+      "pairs": 20,
+      "median": 3.224039103595742,
+      "ci95": [
+        2.971710327329033,
+        3.47566714236981
+      ],
+      "baseline": "base",
+      "verdict": "locality faster"
+    },
+    "mobilenetv2-7": {
+      "pairs": 20,
+      "median": 2.564864839010725,
+      "ci95": [
+        2.4765551838435225,
+        2.750614970849562
+      ],
+      "baseline": "base",
+      "verdict": "locality faster"
+    },
+    "resnet18-v1-7": {
+      "pairs": 20,
+      "median": 1.7773982284072551,
+      "ci95": [
+        1.7584628625928311,
+        1.7847896870154925
+      ],
+      "baseline": "base",
+      "verdict": "locality faster"
+    },
+    "shufflenet-v2-12": {
+      "pairs": 20,
+      "median": 2.483494284543395,
+      "ci95": [
+        2.468325043286721,
+        2.4904999044081775
+      ],
+      "baseline": "base",
+      "verdict": "locality faster"
+    },
+    "squeezenet1.0-13-qdq": {
+      "pairs": 20,
+      "median": 1.9757827695626724,
+      "ci95": [
+        1.9425933810010503,
+        1.9838139818339773
+      ],
+      "baseline": "base",
+      "verdict": "locality faster"
+    },
+    "squeezenet1.1-7": {
+      "pairs": 20,
+      "median": 1.9172660483389956,
+      "ci95": [
+        1.9070562125023418,
+        1.9370467469577712
+      ],
+      "baseline": "base",
+      "verdict": "locality faster"
+    },
+    "tinyyolov2-8": {
+      "pairs": 20,
+      "median": 1.44121379775234,
+      "ci95": [
+        1.276811899039728,
+        1.6019357794260543
+      ],
+      "baseline": "base",
+      "verdict": "locality faster"
+    },
+    "ultraface-rfb-320": {
+      "pairs": 20,
+      "median": 1.4667424613214743,
+      "ci95": [
+        1.4475773289517981,
+        1.4787797042141821
+      ],
+      "baseline": "base",
+      "verdict": "locality faster"
+    }
+  },
+  "versus_tvm": {
+    "densenet-12": {
+      "pairs": 20,
+      "median": 2.221185415989219,
+      "ci95": [
+        1.9022443686986024,
+        2.5384491904755837
+      ],
+      "baseline": "tvm",
+      "verdict": "locality faster"
+    },
+    "googlenet-12": {
+      "pairs": 20,
+      "median": 2.0332780387767655,
+      "ci95": [
+        1.868875164753018,
+        2.0444444089099525
+      ],
+      "baseline": "tvm",
+      "verdict": "locality faster"
+    },
+    "mnist-8": {
+      "pairs": 20,
+      "median": 1.0109869783215975,
+      "ci95": [
+        0.941683653180976,
+        1.0566889520551723
+      ],
+      "baseline": "tvm",
+      "verdict": "tie"
+    },
+    "mobilenetv2-7": {
+      "pairs": 20,
+      "median": 2.8153847543121575,
+      "ci95": [
+        2.6486325451989754,
+        2.9560182163157487
+      ],
+      "baseline": "tvm",
+      "verdict": "locality faster"
+    },
+    "resnet18-v1-7": {
+      "pairs": 20,
+      "median": 1.8820260104537492,
+      "ci95": [
+        1.8325115218934431,
+        1.8892005873980622
+      ],
+      "baseline": "tvm",
+      "verdict": "locality faster"
+    },
+    "shufflenet-v2-12": {
+      "pairs": 20,
+      "median": 2.413465148031559,
+      "ci95": [
+        2.399983246935671,
+        2.450542148927622
+      ],
+      "baseline": "tvm",
+      "verdict": "locality faster"
+    },
+    "squeezenet1.1-7": {
+      "pairs": 20,
+      "median": 2.2743043896044686,
+      "ci95": [
+        2.2620030369212185,
+        2.2899299483821283
+      ],
+      "baseline": "tvm",
+      "verdict": "locality faster"
+    },
+    "tinyyolov2-8": {
+      "pairs": 20,
+      "median": 1.541646440604013,
+      "ci95": [
+        1.381859088322902,
+        1.7800188611920627
+      ],
+      "baseline": "tvm",
+      "verdict": "locality faster"
+    },
+    "ultraface-rfb-320": {
+      "pairs": 20,
+      "median": 1.414230771678548,
+      "ci95": [
+        1.3683853511692563,
+        1.4922551980001781
+      ],
+      "baseline": "tvm",
+      "verdict": "locality faster"
+    }
+  }
+}
