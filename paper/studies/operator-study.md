@@ -125,11 +125,11 @@ generator materializes eight rows over 27 shapes (216 contraction cases), plus
 the 225 two-dimensional cases, into the ignored build tree with:
 
 ```sh
-.venv-fixtures/bin/python paper/operator_suite.py
+.venv-fixtures/bin/python paper/scripts/operator_suite.py
 ```
 
 Each case has one runtime input, constant ONNX initializers, one reference
-output, and hashes in `build/operator-study/fixtures/manifest.json`. Multi-
+output, and hashes in `build-study/operator-study/fixtures/manifest.json`. Multi-
 projection rows retain every initializer and report their total immutable
 weight elements. The recorded `matmul_flops` counts only matrix products; it
 does not pretend that exponentials, reductions, or activations are equivalent
@@ -139,16 +139,16 @@ consume. A case is prepared with independent weights and a balanced
 Joggle/ONNX Runtime manifest:
 
 ```sh
-python3 paper/prepare_operator_case.py \
-  --fixture build/operator-study/fixtures/matmul-m1-k128-n128 \
-  --output build/operator-study/prepared/matmul-m1-k128-n128 \
+python3 paper/scripts/prepare_operator_case.py \
+  --fixture build-study/operator-study/fixtures/matmul-m1-k128-n128 \
+  --output build-study/operator-study/prepared/matmul-m1-k128-n128 \
   --app build/joggle-onnx-app --tool build/joggle \
   --modules build/modules --cc /usr/bin/cc \
   --ort-python /path/to/python-with-onnxruntime \
   --module-root examples --pass spatial.apply
 ```
 
-`paper/measure_systems.py` then consumes the emitted `systems.json`; it balances
+`paper/scripts/measure_systems.py` then consumes the emitted `systems.json`; it balances
 execution order, checks matching output hashes, and records artifacts, versions,
 host state, and latency without changing the speedup definition above.
 
@@ -156,12 +156,12 @@ After every case has a clean `record.json` and `runs.csv`, generate the dense
 native-LaTeX table and its auditable cell summary with:
 
 ```sh
-python3 paper/render_operator_table.py \
-  --fixtures build/operator-study/fixtures/manifest.json \
-  --runs-root build/operator-study/sweep \
+python3 paper/scripts/render_operator_table.py \
+  --fixtures build-study/operator-study/fixtures/manifest.json \
+  --runs-root build-study/operator-study/sweep \
   --matrix contraction \
-  --output build/operator-study/sweep/operator-table.tex \
-  --summary build/operator-study/sweep/operator-summary.csv
+  --output build-study/operator-study/sweep/operator-table.tex \
+  --summary build-study/operator-study/sweep/operator-summary.csv
 ```
 
 Use `--matrix row` for the nine-row, 25-column pointwise/normalization table.

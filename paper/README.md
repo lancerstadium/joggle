@@ -31,12 +31,14 @@ emerging hardware, and generated optimization policies are demanding instances
 of this problem, not definitions of the system.
 
 The [research plan](plan.md) is the single active scope and priority record.
-It separates progressive function representation and derivable compiler
-functions from supporting module/type/safety facilities. Analysis, selection,
-representation, transformation, and generation are all in scope; optimizing
-passes is only one application. The manuscript predates this freeze and still
-needs to be synchronized. Implemented capabilities, experimental results, and
-proposed mechanisms must remain distinguishable.
+Its approved main line connects three obstacles: **能调用，难改造**,
+**单点实现，跨层接线**, and **局部改动，成片重做**. Unified metaprogramming,
+modular management, and reactive updates address expression, organization,
+and evolution through a progressive IR. Analysis, selection, representation,
+transformation, and generation are all in scope; passes are one application.
+The abstract, introduction, and motivation now follow this line. Method and
+evaluation restructuring remains open. Dependency-sensitive recomputation is
+proposed, whereas local exposure and module-revision caching already exist.
 
 ## Current evidence status
 
@@ -81,47 +83,54 @@ is complete.
 
 ## Repository map
 
+Three kinds of file, kept apart on purpose. `scripts/` holds every measurement
+script in one directory, so the cross-imports between them stay local;
+`studies/` holds the study documents those scripts serve; the remaining
+directories are the record stores the studies write into, each named for what it
+holds. This file and [`plan.md`](plan.md) are the only markdown left at the top
+level, because they are the two a reader starts from.
+
 - [`submission/main.tex`](submission/main.tex): the single authoritative,
   evidence-bounded manuscript source and anonymous review layout.
 - [`references.bib`](references.bib): source-verified bibliography for every
   related-work citation currently used by the manuscript.
-- [`literature-map.md`](literature-map.md): the claim-oriented evidence map,
+- [`literature-map.md`](studies/literature-map.md): the claim-oriented evidence map,
   strongest competing explanations, falsifiable experiments, and reading queue
   used to grow the bibliography beyond 50 actually cited works.
-- [`operator-study.md`](operator-study.md): exact shape grids, speedup
+- [`operator-study.md`](studies/operator-study.md): exact shape grids, speedup
   convention, baseline fairness, LaTeX layout, and optimization gate for the
   dense operator table.
-- [`operator_suite.py`](operator_suite.py) and
-  [`prepare_operator_case.py`](prepare_operator_case.py): deterministic
+- [`operator_suite.py`](scripts/operator_suite.py) and
+  [`prepare_operator_case.py`](scripts/prepare_operator_case.py): deterministic
   generation of 441 operator/subgraph cases (216 contraction and Transformer
   cases plus 225 pointwise/normalization cases), followed by generated-C,
   independent-weight, correctness, and balanced cross-system manifests for
   every table cell.
-- [`extension-study.md`](extension-study.md): frozen extension protocol,
+- [`extension-study.md`](studies/extension-study.md): frozen extension protocol,
   fairness rules, and threats.
-- [`evolution-study.md`](evolution-study.md) and
+- [`evolution-study.md`](studies/evolution-study.md) and
   [`tasks/evolution.json`](tasks/evolution.json): the pre-registered
   three-stage external-convolution evolution study. It keeps one ONNX
   `Conv -> Add -> Relu` meaning fixed while the target changes weight
   representation and then its fused-epilogue ABI.
-- [`extension-tasks.json`](extension-tasks.json) and [`tasks/`](tasks/):
+- [`extension-tasks.json`](tasks/extension-tasks.json) and [`tasks/`](tasks):
   machine-readable task contracts and inputs.
-- [`fixtures/`](fixtures/): reproducibly generated ONNX inputs shared by
+- [`fixtures/`](fixtures): reproducibly generated ONNX inputs shared by
   Joggle and system-level baselines; these are not model benchmarks.
-- [`baselines/tvm/`](baselines/tvm/): pinned TVM build record and matched
+- [`baselines/tvm/`](baselines/tvm): pinned TVM build record and matched
   mechanism-level controls.
-- [`baselines/onnx-mlir/`](baselines/onnx-mlir/): pinned protocol, sources,
+- [`baselines/onnx-mlir/`](baselines/onnx-mlir): pinned protocol, sources,
   artifacts, passing tasks, and preserved unsupported boundaries for the
   end-to-end neural-network compiler baseline.
-- [`model-study.md`](model-study.md): model selection and staged compatibility
+- [`model-study.md`](studies/model-study.md): model selection and staged compatibility
   protocol.
-- [`data/`](data/): raw pilot records and provenance.
-- [`experiments/`](experiments/): frozen cross-system command manifests. The
+- [`data/`](data): raw pilot records and provenance.
+- [`experiments/`](experiments): frozen cross-system command manifests. The
   runner requires one subject per independent system, rotates process trials,
   and rejects a busy host when a publication run supplies a load threshold.
-- [`prepare_tflite.py`](prepare_tflite.py),
-  [`make_tflite_fixture.py`](make_tflite_fixture.py), and
-  [`bench_litert.py`](bench_litert.py): the second-frontend application gate,
+- [`prepare_tflite.py`](scripts/prepare_tflite.py),
+  [`make_tflite_fixture.py`](scripts/make_tflite_fixture.py), and
+  [`bench_litert.py`](scripts/bench_litert.py): the second-frontend application gate,
   deterministic LiteRT oracle, and matched one-thread runtime command.
 
 ## Reproduction entry points
@@ -129,13 +138,13 @@ is complete.
 Measure the Joggle extension implementations from a configured build:
 
 ```sh
-python3 paper/measure_extensions.py \
-  --manifest paper/extension-tasks.json \
+python3 paper/scripts/measure_extensions.py \
+  --manifest paper/tasks/extension-tasks.json \
   --repo . \
-  --tool build-san/joggle \
-  --build build-san \
-  --module-path examples \
-  --module-path build-san/modules \
+  --tool build/joggle \
+  --build build \
+  --module-path extensions \
+  --module-path build/modules \
   --output paper/data/extension-footprint-pilot.csv
 ```
 
@@ -149,34 +158,44 @@ python3.12 -m venv .venv-fixtures
 ```
 
 Measure the pinned TVM implementations after following
-[`baselines/tvm/README.md`](baselines/tvm/README.md):
+[`baselines/tvm/README.md`](README.md):
 
 ```sh
 TVM_ROOT=/path/to/tvm \
 TVM_LIBRARY_PATH=/path/to/tvm/build/lib \
 PYTHONPATH=/path/to/tvm/python \
-python3 paper/measure_baselines.py \
+python3 paper/scripts/measure_baselines.py \
   --record paper/baselines/tvm/record.json \
-  --contracts paper/extension-tasks.json \
+  --contracts paper/tasks/extension-tasks.json \
   --repo . \
   --output paper/data/extension-tvm-pilot.csv
 ```
 
+That runner only emits a row for a task it can execute. The published tables are
+generated from the preserved per-task records by one collector instead, so every
+frozen task appears for every system and an unsupported task is a row that says
+so. `--check` fails when a table disagrees with its records:
+
+```sh
+python3 paper/scripts/collect_baselines.py tvm          # or onnx-mlir
+python3 paper/scripts/collect_baselines.py tvm --check
+```
+
 Other scripts in this directory each regenerate the correspondingly named CSV.
 The provenance and interpretation boundary for every record is documented in
-[`data/README.md`](data/README.md).
+[`data/README.md`](README.md).
 
 The remaining paired-variant scripts are internal pass diagnostics. They test
 structural mutation, numerical preservation, and code-growth bounds; they must
 not be used as the paper's system-performance comparison. The publication
-runner is [`measure_systems.py`](measure_systems.py), whose subjects are
-independent external commands declared under [`experiments/`](experiments/).
+runner is [`measure_systems.py`](scripts/measure_systems.py), whose subjects are
+independent external commands declared under [`experiments/`](experiments).
 
 For pass regression work only, build matched original and rewritten sources
 from an already prepared model, then run the alternating harness:
 
 ```sh
-python3 paper/measure_reorder.py \
+python3 paper/scripts/measure_reorder.py \
   --tool build/joggle \
   --modules build/modules \
   --examples examples \
@@ -184,12 +203,12 @@ python3 paper/measure_reorder.py \
   --out-dir build-study/reorder/UltraFace-study \
   --output paper/data/reorder-ultraface-pilot.csv
 
-python3 paper/measure_pair.py \
+python3 paper/scripts/measure_pair.py \
   --model UltraFace --cc /usr/bin/clang \
   --baseline build-study/reorder/UltraFace-study/UltraFace/baseline/model.c \
   --candidate reorder=build-study/reorder/UltraFace-study/UltraFace/reorder/model.c \
   --candidate canon=build-study/reorder/UltraFace-study/UltraFace/canon/model.c \
-  --input build-matrix/ultraface-rfb-320/input.bin \
+  --input build-study/inputs/ultraface-rfb-320/input.bin \
   --weights build-study/ultraface-block/weights.bin \
   --output-count 8840 --output-count 17680 --repetitions 20 \
   --out-dir build-study/reorder/UltraFace-study/UltraFace/paired \
@@ -206,7 +225,7 @@ Measure the structural-cost frontier of an already prepared model without
 placing artifacts in a temporary directory:
 
 ```sh
-python3 paper/measure_block_frontier.py \
+python3 paper/scripts/measure_block_frontier.py \
   --tool build/joggle \
   --modules build/modules \
   --examples examples \
@@ -216,20 +235,20 @@ python3 paper/measure_block_frontier.py \
   --output paper/data/block-frontier-pilot.csv
 ```
 
-`paper/measure_pair.py` then strictly compiles one baseline and any number of
+`paper/scripts/measure_pair.py` then strictly compiles one baseline and any number of
 candidates, generates an alternating harness for the declared result arity,
 and writes every raw timing observation. The caller supplies managed input and
 weight artifacts; neither script downloads or invents model data.
 
 ```sh
-python3 paper/measure_pair.py \
+python3 paper/scripts/measure_pair.py \
   --model UltraFace \
   --cc /usr/bin/clang \
   --baseline build-study/block-frontier/UltraFace/0/model.c \
   --candidate 500=build-study/block-frontier/UltraFace/500/model.c \
   --candidate 1500=build-study/block-frontier/UltraFace/1500/model.c \
   --candidate 1000000=build-study/block-frontier/UltraFace/1000000/model.c \
-  --input build-matrix/ultraface-rfb-320/input.bin \
+  --input build-study/inputs/ultraface-rfb-320/input.bin \
   --weights build-study/ultraface-block/weights.bin \
   --output-count 8840 --output-count 17680 --repetitions 10 \
   --out-dir build-study/block-frontier/UltraFace/paired \

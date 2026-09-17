@@ -6,7 +6,7 @@ generated-artifact execution and task-level accuracy.
 
 ## Subjects
 
-[`test/models.cmake`](../test/models.cmake) is the authoritative subject list.
+[`test/models.cmake`](../../test/models.cmake) is the authoritative subject list.
 It pins the ONNX Model Zoo revision, source path, SHA-256, test name, and
 expected structural frontier. The normal list contains fourteen models; BiDAF
 is an additional heavy, non-vision gate. A result table contains only models
@@ -35,8 +35,8 @@ compatibility.
 From a configured ONNX build and pinned model cache:
 
 ```sh
-python3 paper/collect_models.py \
-  --build build-zoo \
+python3 paper/scripts/collect_models.py \
+  --build build \
   --output paper/data/model-frontier-pilot.csv
 ```
 

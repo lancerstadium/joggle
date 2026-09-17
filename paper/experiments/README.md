@@ -38,7 +38,7 @@ Run a comparison after building the corresponding ONNX application gate. For
 example, the MobileNetV2 study is:
 
 ```sh
-python3 paper/measure_systems.py \
+python3 paper/scripts/measure_systems.py \
   --manifest paper/experiments/mobilenetv2.json \
   --repo . \
   --output paper/data/mobilenetv2-systems.csv \
@@ -51,7 +51,7 @@ model. It deliberately names its own model, generated artifact, input, and
 reference rather than treating another Joggle configuration as a subject:
 
 ```sh
-python3 paper/measure_systems.py \
+python3 paper/scripts/measure_systems.py \
   --manifest paper/experiments/mnist.json \
   --repo . \
   --output paper/data/mnist-systems.csv \

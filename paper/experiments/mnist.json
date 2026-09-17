@@ -30,7 +30,7 @@
       "system": "onnxruntime",
       "command": [
         "python3",
-        "paper/bench_onnxruntime.py",
+        "paper/scripts/bench_onnxruntime.py",
         ".cache/onnx-zoo/app/mnist-8/model.onnx",
         "build-app/examples/mnist/input.bin",
         "build-app/examples/mnist/expected.bin",

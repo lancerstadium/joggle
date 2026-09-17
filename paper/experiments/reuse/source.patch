@@ -1,0 +1,12 @@
+diff --git a/module.jog b/module.jog
+--- a/module.jog
++++ b/module.jog
+@@ -434,7 +434,7 @@
+   for item in 0..len(names) {
+     var selected = -1
+     for slot in 0..len(slot_types) {
+-      if selected < 0 && slot_types[slot] == types[item] &&
++      if reuse.better(selected, slot, counts[item], slot_counts) && slot_types[slot] == types[item] &&
+          slot_ends[slot] < firsts[item] {
+         selected = slot
+       }

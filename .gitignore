@@ -15,3 +15,5 @@ __pycache__/
 *.out
 *.run.xml
 *.synctex.gz
+# Research workspace backup snapshots, regenerated on every wiki write.
+/.research/backups/

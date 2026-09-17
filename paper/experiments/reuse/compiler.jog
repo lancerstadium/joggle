@@ -1,0 +1,13 @@
+module planned
+use ir
+use mem
+
+fn apply(m: Mod) -> bool {
+  var changed = mem.bound(m)
+  for fn in ir.fns(m) {
+    if len(ir.blks(fn)) != 0 {
+      changed = mem.plan(m, fn) || changed
+    }
+  }
+  return changed
+}

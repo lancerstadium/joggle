@@ -25,7 +25,7 @@
     {
       "system": "litert",
       "command": [
-        "python3", "paper/bench_litert.py",
+        "python3", "paper/scripts/bench_litert.py",
         ".cache/models/mobilenet_v2.tflite",
         "build-tflite-study/input.bin",
         "build-tflite-study/expected.bin",

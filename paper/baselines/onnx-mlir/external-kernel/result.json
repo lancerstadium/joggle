@@ -18,11 +18,11 @@
   },
   "supplied_inputs": [
     {
-      "path": "examples/edge/kernel.c",
+      "path": "extensions/edge/kernel.c",
       "sha256": "00c00c65fb953b527db9be9f57e5322bb10f98492de49c5f2174fd4653b0512c"
     },
     {
-      "path": "examples/edge/main.c",
+      "path": "extensions/edge/main.c",
       "sha256": "75202669e9a2254a5d9bae954e7587d446d7e55abd4f6117604397fe62b98574"
     }
   ],

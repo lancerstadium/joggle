@@ -1,0 +1,211 @@
+module reuse
+use ir
+use mem
+
+fn better(selected: int, slot: int, need: int, capacities: list<int>) -> bool {
+  if selected < 0 {
+    return true
+  }
+  let size = capacities[slot]
+  let previous = capacities[selected]
+  var growth = 0
+  var old_growth = 0
+  if need > size {
+    growth = need - size
+  }
+  if need > previous {
+    old_growth = need - previous
+  }
+  if growth != old_growth {
+    return growth < old_growth
+  }
+  if size != previous {
+    return size < previous
+  }
+  return slot < selected
+}
+
+local fn inside(op: Op, loop: Op) -> bool {
+  let parent = ir.op(ir.blk(op))
+  if parent == loop {
+    return true
+  }
+  return ir.live(parent) && inside(parent, loop)
+}
+
+local fn read(value: Val) -> list<Val> {
+  let source = ir.def(value)
+  if ir.live(source) && ir.kind(source) == "call" &&
+     ir.callee(source) == "operator []" && len(ir.args(source)) == 2 {
+    return ir.args(source)
+  }
+  return []
+}
+
+// Follow branch-carried operands back to the surrounding item-loop body.
+// Crossing another loop would require reasoning about its recurrence.
+local fn capture(value: Val, body: Blk, stop: Blk) -> Val {
+  if body == stop {
+    return value
+  }
+  let parent = ir.op(body)
+  assert(ir.live(parent) && ir.kind(parent) == "branch",
+         "reuse: unsupported capture boundary")
+  let params = ir.args(body)
+  for i in 0..len(params) {
+    if params[i] == value {
+      return capture(ir.args(parent)[i + 1], ir.blk(parent), stop)
+    }
+  }
+  return capture(value, ir.blk(parent), stop)
+}
+
+// The short-circuit conjunction must retain its false arm unchanged.
+// An OR, additional side effect, or different yielded value is not accepted.
+local fn user(value: Val) -> Op {
+  let users = ir.users(value)
+  assert(len(users) != 0, "reuse: selection value is unused")
+  for op in users {
+    assert(op == users[0], "reuse: selection value has extra users")
+  }
+  return users[0]
+}
+
+local fn conjunction(value: Val) -> list<Val> {
+  let branch = user(value)
+  let bodies = ir.blks(branch)
+  assert(ir.kind(branch) == "branch" && ir.args(branch) == [value, value] &&
+         len(bodies) == 2 && len(ir.outs(branch)) == 1,
+         "reuse: expected selection conjunction")
+  let yes = ir.ops(bodies[0])
+  let no = ir.ops(bodies[1])
+  assert(len(yes) == 4 && len(no) == 1 && ir.kind(yes[3]) == "yield" &&
+         ir.kind(no[0]) == "yield" && ir.args(no[0]) == ir.args(bodies[1]) &&
+         len(ir.args(yes[3])) == 1,
+         "reuse: selection conjunction changed")
+  let result = ir.args(yes[3])[0]
+  assert(ir.def(result) == yes[2] && len(ir.args(yes[2])) == 2 &&
+         ir.def(ir.args(yes[2])[0]) == yes[0] &&
+         ir.def(ir.args(yes[2])[1]) == yes[1],
+         "reuse: selection predicate changed")
+  return [result, ir.outs(branch)[0]]
+}
+
+fn derive(code: Mod) -> bool {
+  let source = ir.find("mem.plan", [ty("Mod"), ty("Fn")])
+  let plan = ir.clone(code, source, "ranked")
+  assert(ir.live(plan), "reuse: could not derive mem.plan")
+  var matches: list<Op> = []
+  for op in ir.ops(plan) {
+    let args = ir.args(op)
+    if ir.kind(op) == "call" && ir.callee(op) == "operator <" &&
+       len(args) == 2 &&
+       ir.is_const(args[1]) && ir.constant(args[1]) == 0 {
+      let loop = ir.op(ir.blk(op))
+      if ir.live(loop) && ir.kind(loop) == "loop" {
+        let params = ir.args(ir.blk(op))
+        if len(params) == 2 && params[1] == args[0] {
+          matches += [op]
+        }
+      }
+    }
+  }
+  assert(len(matches) == 1, "reuse: expected one slot-selection guard")
+  let guard = matches[0]
+  let selected = ir.args(guard)[0]
+  let loop = ir.op(ir.blk(guard))
+  let slot = ir.args(ir.blk(guard))[0]
+  let outer = ir.blk(loop)
+  assert(ir.kind(ir.op(outer)) == "loop" && len(ir.args(outer)) > 0 &&
+         len(ir.outs(loop)) == 1, "reuse: expected nested slot loop")
+  let item = ir.args(outer)[0]
+  let type_test = conjunction(ir.outs(guard)[0])
+  let lifetime_test = conjunction(type_test[1])
+  let equal = ir.def(type_test[0])
+  let before = ir.def(lifetime_test[0])
+  assert(ir.callee(equal) == "operator ==" && ir.callee(before) == "operator <",
+         "reuse: slot eligibility changed")
+  let left_type = read(ir.args(equal)[0])
+  let right_type = read(ir.args(equal)[1])
+  let end = read(ir.args(before)[0])
+  let start = read(ir.args(before)[1])
+  assert(len(left_type) == 2 && len(right_type) == 2 &&
+         len(end) == 2 && len(start) == 2 &&
+         left_type[1] == slot && right_type[1] == item &&
+         end[1] == slot && start[1] == item,
+         "reuse: slot eligibility indexing changed")
+  let choose = user(lifetime_test[1])
+  let arms = ir.blks(choose)
+  assert(ir.kind(choose) == "branch" &&
+         ir.args(choose) == [lifetime_test[1], selected] && len(arms) == 2,
+         "reuse: slot assignment condition changed")
+  let yes = ir.ops(arms[0])
+  let no = ir.ops(arms[1])
+  assert(len(yes) == 2 && len(no) == 1 &&
+         ir.callee(yes[0]) == "base.copy" && ir.form(yes[0]) == "assign" &&
+         ir.args(yes[0]) == [slot] && ir.kind(yes[1]) == "yield" &&
+         ir.args(yes[1]) == ir.outs(yes[0]) && ir.kind(no[0]) == "yield" &&
+         ir.args(no[0]) == ir.args(arms[1]),
+         "reuse: slot assignment changed")
+  let body_ops = ir.ops(ir.blk(guard))
+  assert(len(body_ops) == 6 && body_ops[1] == guard &&
+         body_ops[4] == choose && ir.kind(body_ops[5]) == "yield" &&
+         ir.args(body_ops[5]) == ir.outs(choose),
+         "reuse: slot loop body changed")
+
+  // Identify demand and capacity via the actual post-selection growth test.
+  // Block arguments are projected through branch inputs, never matched by name.
+  var growth: list<Op> = []
+  for op in ir.ops(plan) {
+    if inside(op, ir.op(outer)) && !inside(op, loop) &&
+       ir.callee(op) == "operator >" && len(ir.args(op)) == 2 {
+      let demand = read(ir.args(op)[0])
+      let capacity = read(ir.args(op)[1])
+      if len(demand) == 2 && len(capacity) == 2 && demand[1] == item &&
+         capture(capacity[1], ir.blk(op), outer) == ir.outs(loop)[0] {
+        growth += [op]
+      }
+    }
+  }
+  assert(len(growth) == 1, "reuse: expected one capacity-growth test")
+  let comparison = growth[0]
+  let counts = read(ir.args(comparison)[0])[0]
+  let capacities = capture(read(ir.args(comparison)[1])[0], ir.blk(comparison), outer)
+  assert(ir.type(counts) == ty("list<int>") && ir.type(capacities) == ty("list<int>"),
+         "reuse: capacity types changed")
+  let grow = user(ir.outs(comparison)[0])
+  let grow_arms = ir.blks(grow)
+  assert(ir.kind(grow) == "branch" && len(grow_arms) == 2 &&
+         ir.args(grow)[0] == ir.outs(comparison)[0],
+         "reuse: capacity growth condition changed")
+  let updates = ir.ops(grow_arms[0])
+  assert(len(updates) == 3 && ir.callee(updates[1]) == "operator []=" &&
+         len(ir.args(updates[1])) == 3 && ir.kind(updates[2]) == "yield" &&
+         ir.args(updates[2]) == ir.outs(updates[1]),
+         "reuse: capacity update changed")
+  let stored = ir.args(updates[1])
+  assert(capture(stored[0], grow_arms[0], outer) == capacities &&
+         capture(stored[1], grow_arms[0], outer) == ir.outs(loop)[0] &&
+         read(stored[2]) == [counts, item] && ir.def(stored[2]) == updates[0],
+         "reuse: capacity update operands changed")
+  let need = ir.call(code, guard, "operator []", [counts, item], ty("int"))
+  let replacement = ir.call(
+    code, guard, ir.find("reuse.better"),
+    [selected, slot, need, capacities], ty("bool")
+  )
+  assert(ir.live(need) && ir.live(replacement), "reuse: invalid ranking inputs")
+  assert(ir.replace(code, ir.outs(guard)[0], replacement),
+         "reuse: could not replace ranking guard")
+  assert(ir.erase(code, guard), "reuse: could not erase old guard")
+
+  let driver = ir.find(code, "apply", [ty("Mod")])
+  var calls: list<Op> = []
+  for op in ir.ops(driver) {
+    if ir.kind(op) == "call" && ir.resolve(code, op) == source {
+      calls += [op]
+    }
+  }
+  assert(len(calls) == 1, "reuse: expected one planner call in driver")
+  assert(ir.retarget(code, calls[0], plan), "reuse: could not select derived planner")
+  return true
+}

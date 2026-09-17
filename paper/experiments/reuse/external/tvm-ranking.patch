@@ -1,0 +1,68 @@
+--- a/src/relax/transform/static_plan_block_memory.cc
++++ b/src/relax/transform/static_plan_block_memory.cc
+@@ -238,33 +238,41 @@
+       }
+       return std::nullopt;
+     }
+-    // Step 2. Get the range of memory blocks in [size / match_range_, size * match_range_)
+-    auto begin = pool.lower_bound(size / match_range_);
+-    auto mid = pool.lower_bound(size);
+-    auto end = pool.upper_bound(size * match_range_);
+-    // Step 3. Search for memory block that equals or is larger than the requested size.
+-    if (mid != end) {
+-      StorageToken available_token = mid->second;
++    // Predeclared control ranking (storage-planner study): among every available
++    // token of this scope/dtype with a constant size, prefer the token whose reuse
++    // adds the least capacity, then the smallest capacity, then the earliest
++    // storage id. This mirrors the compared Joggle `reuse.better` rule and replaces
++    // TVM's windowed best-fit/enlarge-smaller search; eligibility is unchanged.
++    auto best = pool.end();
++    int64_t best_growth = 0;
++    int64_t best_size = 0;
++    for (auto it = pool.begin(); it != pool.end(); ++it) {
++      int64_t available_size = it->second->const_bytes();
++      if (available_size < 0) {
++        continue;
++      }
++      int64_t growth = size > available_size ? size - available_size : 0;
++      bool better = best == pool.end() || growth < best_growth ||
++                    (growth == best_growth &&
++                     (available_size < best_size ||
++                      (available_size == best_size &&
++                       it->second->storage_id < best->second->storage_id)));
++      if (better) {
++        best = it;
++        best_growth = growth;
++        best_size = available_size;
++      }
++    }
++    if (best != pool.end()) {
++      StorageToken available_token = best->second;
+       TVM_FFI_ICHECK_EQ(available_token->ref_counter, 0)
+           << "Available tokens are expected to have 0 reference.";
+-      TVM_FFI_ICHECK_LE(size, available_token->const_bytes());
++      if (size > best_size) {
++        // Enlarge the token size.
++        available_token->bytes = IntImm::Int64(size);
++      }
+       available_token->ref_counter = prototype->ref_counter;
+-      pool.erase(mid);
+-      return available_token;
+-    }
+-    // Step 4. Then search for memory block that is smaller than the requested size.
+-    if (mid != begin) {
+-      --mid;
+-      StorageToken available_token = mid->second;
+-      int64_t available_size = available_token->const_bytes();
+-      TVM_FFI_ICHECK_EQ(available_token->ref_counter, 0)
+-          << "Available tokens are expected to have 0 reference.";
+-      TVM_FFI_ICHECK_GE(available_size, 0);
+-      TVM_FFI_ICHECK_GE(size, available_size);
+-      // Enlarge the token size.
+-      available_token->bytes = IntImm::Int64(size);
+-      available_token->ref_counter = prototype->ref_counter;
+-      pool.erase(mid);
++      pool.erase(best);
+       return available_token;
+     }
+     // Return `std::nullopt` indicating that no satisfiable storage token is found in the available

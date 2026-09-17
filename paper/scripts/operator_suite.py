@@ -366,7 +366,7 @@ def materialize(root: Path, selected: set[str], check: bool) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--output", type=Path, default=Path("build/operator-study/fixtures")
+        "--output", type=Path, default=Path("build-study/operator-study/fixtures")
     )
     parser.add_argument(
         "--case", action="append", default=[], help="materialize one named case"

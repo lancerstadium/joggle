@@ -38,8 +38,8 @@
       "joggle": {
         "scope": "out-of-tree source module",
         "modules": ["ikj"],
-        "sources": ["examples/ikj/module.jog"],
-        "tests": ["ikj-example"]
+        "sources": ["extensions/ikj/module.jog"],
+        "tests": ["ikj-extension"]
       }
     },
     {
@@ -64,10 +64,10 @@
       "joggle": {
         "scope": "out-of-tree source module",
         "modules": ["cost"],
-        "sources": ["examples/cost/module.jog"],
+        "sources": ["extensions/cost/module.jog"],
         "tests": [
-          "cost-example",
-          "cost-configured-example",
+          "cost-extension",
+          "cost-configured-extension",
           "tile-execution"
         ]
       }
@@ -78,8 +78,8 @@
       "contract": {
         "inputs": [
           "paper/tasks/external-kernel.json",
-          "examples/edge/kernel.c",
-          "examples/edge/main.c"
+          "extensions/edge/kernel.c",
+          "extensions/edge/main.c"
         ],
         "required": [
           "bind the supplied C matrix kernel at two different static shapes through one generic adapter",
@@ -97,8 +97,8 @@
       "joggle": {
         "scope": "out-of-tree source module using supplied C kernels",
         "modules": ["edge"],
-        "sources": ["examples/edge/module.jog"],
-        "tests": ["edge-example"]
+        "sources": ["extensions/edge/module.jog"],
+        "tests": ["edge-extension"]
       }
     },
     {

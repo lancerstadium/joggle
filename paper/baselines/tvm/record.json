@@ -41,8 +41,8 @@
       "command": [
         "paper/baselines/tvm/external_kernel.py",
         "paper/tasks/external-kernel.json",
-        "examples/edge/kernel.c",
-        "examples/edge/main.c"
+        "extensions/edge/kernel.c",
+        "extensions/edge/main.c"
       ],
       "core_files": [],
       "build_files": [],

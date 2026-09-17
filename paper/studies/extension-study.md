@@ -22,14 +22,14 @@ lifecycle is covered by project tests but still needs clean-install measurements
 The vertical and revision studies remain submission blockers. Their frozen
 sequential protocol is [`evolution-study.md`](evolution-study.md), with the
 machine-readable contract in
-[`tasks/evolution.json`](tasks/evolution.json). Source lines are never treated
+[`tasks/evolution.json`](../tasks/evolution.json). Source lines are never treated
 as developer productivity, and the existing authors are not treated as
 independent participants.
 
 ## Role-breadth contracts
 
 The system-neutral contracts and the corresponding Joggle records are listed in
-[`extension-tasks.json`](extension-tasks.json):
+[`extension-tasks.json`](../tasks/extension-tasks.json):
 
 1. replace a shared matrix implementation with an inspectable loop body;
 2. define a structural cost measure and fusion-selection policy;
@@ -57,8 +57,8 @@ developer productivity, difficulty, or correctness beyond the named tests.
 From a configured sanitizer build with the optional `sat` module:
 
 ```sh
-python3 paper/measure_extensions.py \
-  --manifest paper/extension-tasks.json \
+python3 paper/scripts/measure_extensions.py \
+  --manifest paper/tasks/extension-tasks.json \
   --repo . \
   --tool build-san/joggle \
   --build build-san \
@@ -109,7 +109,7 @@ the relevant boundary because the official project imports ONNX, lowers it to
 native artifacts, documents generated ONNX operation definitions, and exposes
 an accelerator integration path for dialects and passes. The task-to-hook
 protocol is recorded in
-[`baselines/onnx-mlir/README.md`](baselines/onnx-mlir/README.md). The
+[`baselines/onnx-mlir/README.md`](../README.md). The
 implementation-task fixture is checked in under `fixtures/implementation` and
 is executed by Joggle's normal ONNX path. Fixtures for the other contracts must
 be frozen before their ONNX-MLIR implementations or measurements begin.
@@ -154,3 +154,24 @@ plumbing cost but cannot close RQ2.
 - Report unavailable requirements rather than weakening a task after starting.
 - Do not infer general usability from structural extension measurements.
 - Keep raw build timing and command logs, not only derived tables.
+
+## Manuscript mechanism evidence
+
+The following IDs support the module-mechanism revision. They identify local
+sources inspected by the assistant; human author verification remains pending.
+This revision neither reran the lifecycle suite nor added measurements. Test
+locators describe assertions in the regression sources, not fresh run results.
+
+| Claim ID | Evidence ID and locator | Scope |
+| --- | --- | --- |
+| `C-extension-source` | `E-extension-tasks`: `extension-tasks.json`, the first three task source paths and oracle tests; `data/extension-footprint-pilot.csv`, `implementation`, `policy`, and `external-kernel` rows with `validation=pass` | Abstract: three out-of-tree source-module tasks execute without rebuilding the compiler host. Supplied external C kernels and generated artifacts can still require compilation; the optional native numeric-format task is excluded. This is not a build-time speedup or human-effort measurement. |
+| `C-module-composition` | `E-module-format`: `modules/sat/module.jog`, `storage`, `stored`, `materialize`; `modules/sat.c/module.jog` and `modules/sat.vm/module.jog`, `prepare` | Both target modules reuse shared materialization with distinct storage choices; this is a concrete composition example, not a new hardware result |
+| `C-module-binding` | `E-module-upgrade`: `tool/module.cpp`, `signature`, `compatible`, `affected_modules`, `preserves_resolutions`, `validate_upgrade`; `E-module-tests`: `test/module.cmake`, compatible upgrade and provider/facade/client cases | Export preservation uses normalized generic names; upgrade compares qualified signatures of previously resolved calls in installed reverse dependents, including additive overload redirection |
+| `C-module-scope` | `E-module-upgrade`: `tool/module.cpp`, `install`, `upgrade`; `E-module-load`: `src/env.cpp`, `Env::load` and its `Rollback`; `test/module_robustness.cpp`, failed-closure retry case | Staged validation and environment rollback are separate from filesystem commit; backup/rename is not crash-atomic publication, semantic equivalence, live reload, or automatic propagation into derived functions |
+
+The method's binding equation summarizes the implemented comparison, not a new
+semantic preservation theorem. The checked set excludes arbitrary clients
+outside the installation root and does not enumerate runtime handle targets.
+The candidate must preserve old public signatures even if no installed client
+currently calls them. Declared dependency roots, rather than the candidate's
+parent directory, determine validation visibility.

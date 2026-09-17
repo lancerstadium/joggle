@@ -1,0 +1,111 @@
+{
+ "scope": "External natural-route control for the UltraFace storage-planner change; customization/rebuild boundary, not plan quality across systems or inference speed",
+ "host": "macOS-15.7.3-arm64-arm-64bit",
+ "date_utc": "2026-09-16T18:35:14Z",
+ "tvm": {
+  "revision": "c7b458e946bc4266915da582457476bdcd9705ae",
+  "build": "from-source, USE_LLVM=OFF, Unix Makefiles, build-make (2026-09-13)",
+  "python": "3.11.14",
+  "numpy": "2.4.6",
+  "onnx": "1.22.0",
+  "fixture_conversion": {
+   "path": "/Users/lancer/Documents/Item/joggle/build-study/tvm-control/ultraface-rfb-320-opset13.onnx",
+   "opset": 13,
+   "sha256": "8e4a0ccb60fd2a0ec415be3c5502d701aa732a8a01c9a5b8a6e656b3986e019f"
+  },
+  "patch": "tvm-ranking.patch (TokenAllocatorMixed::RequestReuse Steps 2-4 replaced by growth/capacity/storage-id ranking)",
+  "incremental_rebuild_seconds": {
+   "apply": 8.034092,
+   "revert": 7.653783,
+   "compiled_units": 1,
+   "relink": true
+  },
+  "feedback_import_plus_plan_median_seconds": {
+   "default": 0.15055716736242175,
+   "ranked": 0.15323420893400908,
+   "default_after_revert": 0.15299987513571978
+  },
+  "build_c_target_and_export_seconds": {
+   "default": 1.3491011247970164,
+   "ranked": 1.391216500196606
+  },
+  "planned_storage": {
+   "default": {
+    "storages": 14,
+    "bytes": 5634560
+   },
+   "ranked": {
+    "storages": 9,
+    "bytes": 5694400
+   },
+   "default_after_revert": {
+    "storages": 14,
+    "bytes": 5634560
+   },
+   "unplanned_alloc_tensor": 2,
+   "ranked_minus_default_bytes": 59840,
+   "ranked_over_default_percent": 1.06
+  },
+  "oracle": {
+   "default": {
+    "scores_max_abs_error": 2.60770320892334e-07,
+    "boxes_max_abs_error": 3.5762786865234375e-07,
+    "passed": true,
+    "repeat_identical": true
+   },
+   "ranked": {
+    "scores_max_abs_error": 2.60770320892334e-07,
+    "boxes_max_abs_error": 3.5762786865234375e-07,
+    "passed": true,
+    "repeat_identical": true
+   },
+   "default_after_revert": {
+    "scores_max_abs_error": 2.60770320892334e-07,
+    "boxes_max_abs_error": 3.5762786865234375e-07,
+    "passed": true,
+    "repeat_identical": true
+   }
+  },
+  "restored": true,
+  "clean_source_build": {
+   "configuration": "USE_LLVM=OFF, USE_METAL=OFF, USE_RPC=OFF, USE_CPP_RPC=OFF, USE_RANDOM=OFF, Unix Makefiles, Release",
+   "parallel": 10,
+   "compiled_units": 558,
+   "build_seconds": 514,
+   "log": "build-initial.log",
+   "started_utc": "2026-09-16T18:36:14Z",
+   "ended_utc": "2026-09-16T18:44:48Z"
+  }
+ },
+ "joggle": {
+  "tool_sha256": "55b0c874099162ccf5007d4317aedb11743e5c43031dc9ee09f84607a318b9a6",
+  "compiler_rebuild": "none",
+  "rounds": 5,
+  "all_rounds_passed": true,
+  "stage_seconds_median": {
+   "derive_planner": 0.04088733298704028,
+   "prepare_model": 4.635670749936253,
+   "plan_original": 2.394699166994542,
+   "plan_derived": 2.478622958995402,
+   "place_original": 0.286187541205436,
+   "emit_original": 2.838141124229878,
+   "place_derived": 0.2828441667370498,
+   "emit_derived": 2.8981730844825506,
+   "compile_and_check_both": 2.4169990001246333,
+   "derive_and_plan_derived": 2.529005874413997
+  },
+  "declared_static_slots": {
+   "original": 6837984,
+   "derived": 6530808
+  },
+  "max_abs_error": {
+   "original": 3.5762786865234375e-07,
+   "derived": 3.5762786865234375e-07
+  },
+  "matches_recorded_study": {
+   "derived_planned.jog": true,
+   "original_planned.jog": true,
+   "derived_module.jog": true
+  }
+ }
+}

@@ -1,0 +1,89 @@
+module guard
+use ir
+use c
+use opt
+use bounds
+
+// Second derivation case: revise the C preparation procedure so that exposed
+// bodies pass through interval-bounds folding and constant-branch selection
+// during cleanup. The structural edit retargets the cleanup call inside the
+// private helper `prepare_with`, copied with `c.prepare`, to the source-defined
+// policy below; the installed procedure is retained.
+
+fn cleanup(m: Mod) -> bool {
+  var changed = opt.basic(m)
+  if bounds.fold(m) {
+    changed = true
+  }
+  if opt.fold(m) {
+    changed = true
+  }
+  if opt.basic(m) {
+    changed = true
+  }
+  return changed
+}
+
+local fn only(ops: list<Op>, what: str) -> Op {
+  assert(len(ops) == 1, "guard: expected exactly one " + what)
+  return ops[0]
+}
+
+local fn calls_to(code: Mod, owner: Fn, name: str) -> list<Op> {
+  var found: list<Op> = []
+  for op in ir.ops(owner) {
+    if ir.live(op) && ir.kind(op) == "call" && ir.callee(op) == name {
+      found += [op]
+    }
+  }
+  return found
+}
+
+fn derive(code: Mod) -> bool {
+  let source = ir.find("c.prepare", [ty("Mod")])
+  let prepare = ir.clone(code, source, "folded")
+  assert(ir.live(prepare), "guard: could not derive c.prepare")
+
+  // The public wrapper delegates to one private helper; follow the copied edge.
+  // Derivation prefixes copied private helpers with the derived name.
+  var helper_calls: list<Op> = []
+  for op in ir.ops(prepare) {
+    if ir.live(op) && ir.kind(op) == "call" {
+      let target = ir.resolve(code, op)
+      if ir.live(target) && ir.name(target) == "folded_prepare_with" {
+        helper_calls += [op]
+      }
+    }
+  }
+  let helper = ir.resolve(code, only(helper_calls, "prepare_with call"))
+  let params = ir.params(helper)
+  assert(len(params) == 2 && ir.type(params[0]) == ty("Mod"),
+         "guard: prepare_with signature changed")
+  let subject = params[0]
+
+  // Anchor on the existing cleanup structure: basic simplification feeds the
+  // changed flag and trim follows in the same block. Retarget that one call to
+  // the guard-folding cleanup; its arguments and result use are unchanged.
+  let basic = only(calls_to(code, helper, "opt.basic"), "opt.basic call")
+  let trim = only(calls_to(code, helper, "ir.trim"), "ir.trim call")
+  assert(ir.args(basic) == [subject] && ir.args(trim) == [subject],
+         "guard: cleanup calls no longer take the subject")
+  assert(ir.blk(basic) == ir.blk(trim), "guard: cleanup calls moved apart")
+  let users = ir.users(ir.outs(basic)[0])
+  assert(len(users) == 1 && ir.kind(users[0]) == "branch",
+         "guard: basic simplification result no longer drives the changed flag")
+  assert(ir.retarget(code, basic, ir.find("guard.cleanup", [ty("Mod")])),
+         "guard: could not retarget cleanup")
+
+  // Retarget the driver to the derived preparation.
+  let driver = ir.find(code, "apply", [ty("Mod")])
+  var calls: list<Op> = []
+  for op in ir.ops(driver) {
+    if ir.kind(op) == "call" && ir.resolve(code, op) == source {
+      calls += [op]
+    }
+  }
+  assert(len(calls) == 1, "guard: expected one c.prepare call in driver")
+  assert(ir.retarget(code, calls[0], prepare), "guard: could not select derived preparation")
+  return true
+}

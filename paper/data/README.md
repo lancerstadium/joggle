@@ -1,5 +1,55 @@
 # Pilot measurements
 
+`ultraface-guard-same-host.csv` and `.json` (September 17, 2026, same host and
+protocol as below) compare the installed UltraFace C artifact with the artifact
+prepared through the derived guard-folding procedure
+(`paper/experiments/guard/`): medians 42.905 and 43.089 ms, both bit-identical
+in output. No latency change is claimed.
+
+`ultraface-same-host.csv` and `ultraface-same-host.json` (September 17, 2026,
+Apple M4 laptop, macOS 15.7) compare three UltraFace RFB-320 artifacts on one
+host with one thread: Joggle's recorded `-O2` C artifact
+(`build-study/derivation/ultraface/original`), TVM `c7b458e`'s default
+C-target lowering without scheduling or LLVM, exported with `cc -O2`
+(`paper/experiments/reuse/external/bench/tvm_export_O2.json`), and ONNX
+Runtime 1.30.0 with one intra-op thread on the original opset-9 graph. Twenty
+balanced fresh processes per system, three warmup calls and one timed call
+each, every process validated against the stored references. Medians are
+43.976, 38.192, and 2.883 ms (median absolute deviations 0.330, 0.319, and
+0.008 ms). The TVM row bounds unscheduled compiler output, not tuned TVM. The
+runner is `paper/experiments/reuse/external/bench/driver.py`; the host was a
+shared laptop with load average about 1.7, so this is a same-host pilot, not an
+isolated-machine measurement.
+
+`ultraface-five-system-same-host.csv` and `.json` (September 17, 2026, Apple M4
+laptop, macOS 15.7, load 2.20 before and 2.35 after) supersede the four-way
+comparison above for any claim the paper makes, because all five systems were
+measured in one job under one rotation: 20 balanced fresh processes per system,
+one thread, three warmup calls and one timed call each, setup excluded, and every
+process validated against the same stored references. Medians are 3.043 ms for
+one-thread ONNX Runtime, 12.793 ms for ONNX-MLIR at `-O3`, 27.772 ms for the
+Joggle artifact after `locality.apply`, 39.555 ms for TVM's default C target, and
+40.844 ms for ordinary Joggle preparation; the two Joggle rows share one output
+checksum.
+
+Two properties of the ONNX-MLIR row belong in any reading of it. It is built at
+`-O3` because that tool's command-line default is `-O0`, so the row is its
+optimized route rather than its default one, and the flag is recorded in the
+study's `onnxmlir.json`. The library comes from ONNX-MLIR 0.4.2 at revision
+`4a13c34aa695b228599d637cdb772c19b4b18dba`, the same revision the other ONNX-MLIR
+records cite, built as a native arm64 macOS binary outside the repository. The
+pinned original ONNX model is consumed directly, so unlike the TVM column no
+opset conversion is involved and the two external columns are not fed
+byte-identical inputs.
+
+This record is a negative result for Joggle and is kept for that reason:
+ONNX-MLIR's LLVM-backed backend is 2.17x faster than the policy-improved Joggle
+artifact and 3.09x faster than TVM, which is why the paper states that an
+optimizing backend beats both scalar emitters. The same job also lowers Joggle's
+advantage over TVM from the 1.57x that two separate jobs had suggested to 1.42x.
+The four-way file above is retained, not deleted, as the earlier job it is.
+
+
 Files in this directory are auditable engineering observations, not final
 paper measurements. They preserve negative results that determine the next
 experiment instead of presenting them as controlled performance claims.
@@ -59,6 +109,27 @@ input, and reference artifacts. Absolute plain/canonical medians shift to
 0.7358. Both runs report an AMD EPYC 9V74 runner class, so this establishes
 repeatability across workflow executions, not a distinct physical machine.
 
+`mobilenetv2-policy/artifact-5dac130/` preserves a third execution of the same
+mechanism, recovered from a build tree during the September 17 repository
+boundary pass. Its revision appears in no other record: the tracked
+`block-artifact-pilot.csv` stops at `7cc089a` and `e096fcc`. Twenty balanced
+fresh-process trials per system give plain/policy Joggle medians of
+140.017/102.806 ms, a ratio of 0.7343, against adjacent one-thread ONNX Runtime
+medians of 8.663/8.678 ms. Each variant keeps a single output checksum, and
+every trial validates 1,000 elements within `2.1934509e-05`. The host reported
+load 1.181 before and 1.233 after. This is a third repeatability point across
+workflow executions, not a new machine and not a controlled-host result.
+
+`xcit/` holds the two TensorProto tensors recovered from the XCiT conversion
+working directory in the same pass: an `f32` `[1, 3, 224, 224]` input and an
+`f32` `[1, 1000]` reference output. They are the test tensors of the pinned
+`xcit_tiny_12_p8_224_Opset17` model whose SHA-256 is recorded in
+`test/models.cmake`. They are deliberately not placed under `paper/fixtures/`,
+which is owned and hash-checked by `paper/fixtures/generate.py`, and they are
+not part of the registered ONNX Zoo test path, because `joggle_onnx_model`
+consumes only the `.onnx` file. They are retained because the XCiT C-preparation
+timeout is a recorded negative result and this is its numerical reference.
+
 `linux-replication/` preserves the independent-system workflow dispatched at
 revision `b79c225`. Unlike the primary AMD EPYC 7763 record, this run reports
 an Intel Xeon Platinum 8370C. Generated artifact hashes and numerical checks
@@ -68,7 +139,7 @@ cross-CPU result reproduces correctness and the negative performance boundary,
 but shared runners still do not provide load, thermal, or frequency control.
 
 `model-frontier-pilot.csv` is the schema-2 ledger generated by
-`paper/collect_models.py` from configured `onnx-zoo-record` tests. It records
+`paper/scripts/collect_models.py` from configured `onnx-zoo-record` tests. It records
 decode, inference, and semantic conversion separately, together with exact
 unknown-result and remaining-call frontiers. Every row carries its Joggle
 revision and model SHA-256; older rows therefore remain honest provenance
@@ -77,7 +148,7 @@ combine rows as one matched run unless their revision agrees. The ledger does
 not claim execution, task accuracy, or support for absent models.
 
 `extension-footprint-pilot.csv` is generated from the schema-2 task manifest by
-`paper/measure_extensions.py`. The manifest freezes system-neutral inputs,
+`paper/scripts/measure_extensions.py`. The manifest freezes system-neutral inputs,
 observable requirements, and forbidden shortcuts alongside each Joggle
 implementation record. The collector validates those inputs and the named
 modules and tests, then records only mechanically observable footprint: source
@@ -93,20 +164,36 @@ usability and therefore do not answer RQ2 without controlled baselines.
 Each row also stores a digest over the measured relative paths and source bytes
 so regeneration cannot silently measure a different implementation.
 
-`extension-tvm-pilot.csv` is generated by `paper/measure_baselines.py` from the
-pinned record under `paper/baselines/tvm/`. Before running a task, the collector
-requires the exact TVM revision and a clean TVM checkout. It then runs the exact
-recorded command, accepts only the task's structured pass report, and hashes the
-measured implementation sources. The three completed TVM tasks contain 62, 126,
-and 355 source lines, respectively. The numeric-format task stops at its first
-mandatory requirement because the pinned release exposes no working public
+`extension-tvm-pilot.csv` and `extension-onnx-mlir-pilot.csv` are both generated
+by `paper/scripts/collect_baselines.py` from the preserved per-task records under
+`paper/baselines/<system>/`. One collector produces both tables so the two cannot
+disagree about which tasks were attempted, and every frozen task is a row for
+every system: a task a system cannot complete appears with an empty footprint and
+`validation=unsupported` instead of being absent. `measure_baselines.py` remains
+the runner, and it can only emit a row for a task it executes, which is why the
+unsupported rows were missing before.
+
+Counts in both tables are recomputed from the declared source files with the same
+definition the Joggle collector uses, and any count a record already states is
+checked against the recomputation rather than trusted. `baseline-table-tvm` and
+`baseline-table-onnx-mlir` run the collector with `--check`, which fails when a
+table disagrees with the records it summarises; a corrupted cell is reported with
+the recorded and recomputed values and the command that regenerates the table.
+
+`extension-tvm-pilot.csv` covers the pinned record under `paper/baselines/tvm/`;
+the collector requires the task's sources to be present. The three completed TVM
+tasks contain 62, 126, and 355 source lines. The numeric-format task stops at its
+first mandatory requirement because the pinned release exposes no working public
 custom-datatype registration path; its exact probe and unsupported record are
 under `paper/baselines/tvm/numeric-format/`. These are raw matched-task
 footprints and boundaries, not an extensibility ranking. Clean-build timing and
 independent-machine reproduction are still missing.
 
-`extension-onnx-mlir-pilot.csv` records the end-to-end system-baseline tasks at
-ONNX-MLIR `4a13c34a` and its documented LLVM revision. A six-file,
+`extension-onnx-mlir-pilot.csv` covers the end-to-end system-baseline tasks at
+ONNX-MLIR `4a13c34a` and its documented LLVM revision, including the
+external-kernel task, which is unsupported because the documented
+`--ops-for-call=MatMul` option accepts the frozen case but emits ordinary affine
+loops rather than `krnl.call`. A six-file,
 167-line accelerator extension imports the unchanged ONNX fixture, emits the
 required explicit `i-k-j` affine loop nest, produces a native shared library,
 and returns `[58, 64, 139, 154]` with zero maximum absolute error. The preserved
@@ -229,7 +316,7 @@ semantic IR, input, and reference hashes are respectively
 and `8411a51bfb945b17a4cd7ebb75a512849a902878c02e8212741ab11d6149bac8`.
 This remains a direction-setting pilot: processes were alternated but the
 machine was not isolated, pinned, or frequency controlled, and only one model
-was rerun. [`paper/locality-pilot.cmake`](../locality-pilot.cmake) reproduces the
+was rerun. [`paper/experiments/locality-pilot.cmake`](../experiments/locality-pilot.cmake) reproduces the
 complete instantiation, preparation, pass, planning, placement, emission,
 strict compilation, interface/payload equality checks, numerical check, and
 four-process measurement from caller-supplied managed artifacts.
@@ -258,7 +345,7 @@ performance measurements.
 `reorder-ultraface-pilot.csv` and
 `reorder-ultraface-runtime-pilot.csv` repeat the same operator-independent
 mechanism on the two-result UltraFace RFB-320 fixture at revision `e840fd4`.
-`paper/measure_reorder.py` starts both variants from the identical
+`paper/scripts/measure_reorder.py` starts both variants from the identical
 2,675,643-byte canonical IR and runs matched cleanup, memory planning, static
 no-alias annotation, placement, and external-weight C emission. The source
 policy reorders 37 loop
@@ -275,7 +362,7 @@ columns and remain pilot records from their named revisions; they are not
 silently reinterpreted as measurements of the new variant or the corrected
 ABI contract.
 
-`paper/measure_pair.py` strictly compiles those exact sources into one process
+`paper/scripts/measure_pair.py` strictly compiles those exact sources into one process
 and alternates call order for 20 pairs. All 20 pairs favor the reordered
 variant. Baseline/candidate medians are 40.457/24.895 ms and the median
 within-pair ratio is 1.624. Both result tensors are bit-identical between
@@ -436,7 +523,7 @@ and that the current first-fit policy needs a benefit signal in addition to a
 cost limit.
 
 `block-frontier-runtime-pilot.csv` contains the raw alternating measurements
-produced by `paper/measure_pair.py` from those exact generated sources. With
+produced by `paper/scripts/measure_pair.py` from those exact generated sources. With
 ten paired calls per candidate, the median within-pair baseline/candidate
 ratios are 1.039, 1.052, and 2.260 for limits 500, 1,500, and 1,000,000. Both
 result tensors are bit-identical to the paired baseline in every row. The
@@ -480,7 +567,7 @@ interpreter work; it is not a publication-grade compile-time result.
 `revision-memo-pilot.csv` isolates the subsequent snapshot-query extension at
 revision `4c062d1`. Both variants retain the earlier value-only annotations;
 the control mechanically strips `[memo]` from the 16 named IR-query helpers
-listed in [`paper/measure_memo.py`](../measure_memo.py), while the candidate
+listed in [`paper/scripts/measure_memo.py`](../scripts/measure_memo.py), while the candidate
 uses the checked-in modules. Two independent processes per variant are run in
 opposite orders on the same exact-split MobileNetV2 input. Every run performs
 10,008 edits and emits the same 28,565,283-byte IR with SHA-256
@@ -598,14 +685,14 @@ isolated or frequency-controlled, so it is a direction-setting pilot rather
 than a paper performance result.
 
 The ONNX Runtime rows can be reproduced with
-`python3 paper/bench_onnxruntime.py MODEL INPUT EXPECTED --repetitions 10` in
+`python3 paper/scripts/bench_onnxruntime.py MODEL INPUT EXPECTED --repetitions 10` in
 an environment containing the recorded ONNX Runtime and NumPy versions. The C
 rows used the revision-matched fixed harness and the flags stated above. New
 studies use the inspectable `harness-blob.c` generated beside each model
 artifact from its structured C API.
 
 `tinyyolo-backend-pilot.csv` adds a fifth numerically executed ONNX Zoo model.
-`paper/reference.py` generated one seed-0 f32 input and the ONNX Runtime 1.26.0
+`paper/scripts/reference.py` generated one seed-0 f32 input and the ONNX Runtime 1.26.0
 reference for explicit shape `1,3,416,416`; the model's symbolic batch was
 instantiated as one before target preparation. Strict generated C agrees over
 21,125 outputs with maximum absolute error `1.6689301e-5`. Its ten-call median

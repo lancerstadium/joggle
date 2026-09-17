@@ -213,7 +213,7 @@ def main() -> None:
 
     harness_command = [
         str(ort_python),
-        str(repo / "examples/onnx/make_harness.py"),
+        str(repo / "test/tools/make_harness.py"),
         str(paths["api"]),
         str(paths["harness"]),
         "--header",

@@ -30,7 +30,7 @@
       "name": "onnxruntime",
       "command": [
         "python3",
-        "paper/bench_onnxruntime.py",
+        "paper/scripts/bench_onnxruntime.py",
         ".cache/onnx-zoo/app/mobilenetv2-7/mobilenetv2-7.onnx",
         "build-app/examples/mobilenet/input.bin",
         "build-app/examples/mobilenet/expected.bin",

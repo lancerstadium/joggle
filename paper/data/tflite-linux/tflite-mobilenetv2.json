@@ -100,7 +100,7 @@
       },
       "command": [
         "python3",
-        "paper/bench_litert.py",
+        "paper/scripts/bench_litert.py",
         ".cache/models/mobilenet_v2.tflite",
         "build-tflite-study/input.bin",
         "build-tflite-study/expected.bin",

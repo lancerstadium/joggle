@@ -1,7 +1,7 @@
 # Vertical evolution implementations
 
 This directory contains stage implementations for the frozen contract in
-[`../evolution-study.md`](../evolution-study.md). `common/` is supplied task
+[`../evolution-study.md`](../studies/evolution-study.md). `common/` is supplied task
 code shared by every system; system directories contain only framework-specific
 extensions and reproduction records.
 

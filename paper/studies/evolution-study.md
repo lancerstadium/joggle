@@ -6,7 +6,7 @@ construction without repeatedly coordinating unrelated host extension
 lifecycles. It is not a usability study and does not measure developer
 productivity.
 
-The task contract is frozen in [`tasks/evolution.json`](tasks/evolution.json).
+The task contract is frozen in [`tasks/evolution.json`](../tasks/evolution.json).
 Implementations and measurements must not weaken a stage after a system result
 is known.
 
@@ -194,7 +194,7 @@ Each prepared program contains one external convolution call, no remaining
 `nn.*` calls, and four ordinary loops implementing the portable broadcast,
 addition, and ReLU path. Both artifacts match the frozen oracle with zero
 maximum absolute error; their source hashes and artifact digests are recorded
-in [`evolution/joggle/s0/result.json`](evolution/joggle/s0/result.json).
+in [`evolution/joggle/s0/result.json`](../evolution/joggle/s0/result.json).
 
 ONNX-MLIR's normal `--ops-for-call=Conv` route initially stopped at
 Krnl-to-LLVM conversion because its `krnl.call` attribute handler did not
@@ -204,14 +204,14 @@ bridge links the same supplied convolution kernel through `-L`/`-l`. Both
 normal `--EmitLib` artifacts preserve portable affine Add and ReLU operations
 and match the 100-element oracle bitwise. The patch, ABI, first diagnostic,
 and digests are in
-[`evolution/onnx-mlir/s0/result.json`](evolution/onnx-mlir/s0/result.json).
+[`evolution/onnx-mlir/s0/result.json`](../evolution/onnx-mlir/s0/result.json).
 TVM's pinned ONNX-to-Relax path now builds both graph shapes with one Conv
 replaced by `call_tir` to a TensorIR external-kernel wrapper; Add and ReLU
 remain ordinary Relax calls. The LLVM-enabled build exports native libraries
 containing the supplied convolution object. Both libraries reload in fresh
 processes and match the 100-element oracle bitwise. Imported/selected IR,
 artifact digests, and the initial extension surface are preserved in
-[`evolution/tvm/s0/result.json`](evolution/tvm/s0/result.json). All three
+[`evolution/tvm/s0/result.json`](../evolution/tvm/s0/result.json). All three
 systems therefore pass functional S0 preflight on macOS, but S0 remains
 unfrozen until matched Linux artifacts and measurement protocol checks pass.
 No smoke-test compiler or inference time is a cross-system result.

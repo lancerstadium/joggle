@@ -8,7 +8,7 @@ preserved unsupported boundary at the required second executable target. These
 records do not support a broad extensibility claim.
 
 Before implementing the policy extension, the policy input was checked through
-the documented built-in path under [`policy/`](policy/).
+the documented built-in path under [`policy/`](policy).
 Default ONNX-MLIR fusion lowers the unchanged three-`Add` model to one affine
 loop; `--disable-krnl-op-fusion` preserves three. This establishes the two
 structural endpoints, but the global Boolean does not implement the contract's
@@ -52,11 +52,11 @@ same frozen task input, preserve the task's forbidden shortcuts, and execute
 the same numerical or diagnostic oracle.
 
 The first such input is
-[`../../fixtures/implementation`](../../fixtures/implementation), whose model,
+[`../../fixtures/implementation`](implementation), whose model,
 TensorProto data, generator, dependency versions, contract digest, and file
 digests are committed. Joggle executes this fixture through its ONNX, VM, and
 generated-C paths. The preserved ONNX-MLIR implementation and result are under
-[`implementation/`](implementation/).
+[`implementation/`](implementation).
 
 | Contract | ONNX-MLIR path to evaluate | Required end-to-end evidence |
 | --- | --- | --- |
@@ -78,7 +78,7 @@ submodules. Its documented LLVM revision
 Release mode, assertions, RTTI, and the host target. StableHLO was disabled
 because the task does not use that input path.
 
-The exact added tree is preserved in [`implementation/`](implementation/).
+The exact added tree is preserved in [`implementation/`](implementation).
 Reproduction copies its `src/` and `test/` subtrees into a clean ONNX-MLIR
 checkout, then configures with `ONNX_MLIR_ACCELERATORS=IKJ` and the five empty
 instrumentation/reporting macros required by `Accelerator.hpp`:
@@ -141,8 +141,17 @@ configuration accepts both and emits one. Both shared libraries return
 measurement fixture reports costs 5 and 9 for weight pairs `(4, 1)` and
 `(7, 2)`, respectively.
 
-Reproduction copies [`policy/src/`](policy/src/) and
-[`policy/test/`](policy/test/) into the pinned checkout, configures with
+The per-library numerical oracles recovered from that run are preserved as
+[`policy/accept-oracle.json`](policy/accept-oracle.json) and
+[`policy/reject-oracle.json`](policy/reject-oracle.json); both record
+`[28, 32, 36, 40]` with zero maximum absolute error. The emitted IR of the two
+cost probes is preserved as
+[`policy/measure-4-1.onnx.mlir`](policy/measure-4-1.onnx.mlir) and
+[`policy/measure-7-2.onnx.mlir`](policy/measure-7-2.onnx.mlir), one file per
+weight pair named above.
+
+Reproduction copies [`policy/src/`](policy/src) and
+[`policy/test/`](policy/test) into the pinned checkout, configures with
 `ONNX_MLIR_ACCELERATORS=Policy` and the same five empty infrastructure macros
 shown above, and invokes `onnx-mlir` twice:
 
@@ -178,7 +187,7 @@ registers only its ordinary lowering pattern and does not receive the option.
 Consequently the first mandatory case cannot reach the supplied external
 kernel through the documented path. The exact command output, emitted MLIR,
 digests, source observations, and boundary decision are preserved under
-[`external-kernel/`](external-kernel/). This is an unsupported outcome, not a
+[`external-kernel/`](external-kernel). This is an unsupported outcome, not a
 failed build and not evidence that ONNX-MLIR cannot be extended through a new
 accelerator or source change.
 
@@ -195,7 +204,11 @@ The native shared library returns all five frozen outputs exactly. Preserved
 tests also reject invalid and mixed widths, absent accelerator registration,
 missing and duplicate mappings, and helper collisions. The typed and lowered
 IR and the complete 516-line accelerator/test surface are under
-[`numeric-format/`](numeric-format/). The result remains unsupported at the
+[`numeric-format/`](numeric-format).
+[`numeric-format/input.onnx.mlir`](numeric-format/input.onnx.mlir) and
+[`numeric-format/materialized.onnx.mlir`](numeric-format/materialized.onnx.mlir)
+preserve the imported and materialized stages of that run. The result remains
+unsupported at the
 fourth mandatory requirement: ONNX-MLIR provides the native path but no second
 executable C or deterministic-VM target matching the frozen contract. Emitted
 ONNX or LLVM IR is not treated as an independent execution path.

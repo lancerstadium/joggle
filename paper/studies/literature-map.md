@@ -1,8 +1,8 @@
 # Literature map
 
 This file records competing mechanisms and source boundaries. The active thesis,
-experiments, calendar, and writing plan live only in [plan.md](plan.md).
-The bibliography remains in [references.bib](references.bib). A linked source
+experiments, calendar, and writing plan live only in [plan.md](../plan.md).
+The bibliography remains in [references.bib](../references.bib). A linked source
 is not a claim that every result in it has been independently reproduced.
 
 ## Closest mechanism comparisons
@@ -40,6 +40,83 @@ Primary sources:
   [MAGIK](https://www.usenix.org/conference/dsl-97/incorporating-application-semantics-and-control-compilation);
   [Datalog IR modules](https://doi.org/10.1145/3689484.3690737).
 
+### Core claim check
+
+Checked on 2026-09-16 against the primary passages below. Coverage is limited
+to these mechanism claims, not full-paper reading, a systematic novelty search,
+retraction screening, or verification of all bibliography fields. Section
+locators refer to the linked technical texts; preprint pagination can differ
+from the published proceedings. Existing citation keys are retained.
+
+| Manuscript location | Primary passage inspected | Supported comparison and correction |
+| --- | --- | --- |
+| Related Work: programmable implementations | [Transform paper](https://arxiv.org/pdf/2409.03864), Sections 3.3--3.4, especially PDF pp. 9--10; [official dialect documentation](https://mlir.llvm.org/docs/Dialects/Transform/) | Scripts can themselves be analyzed, inlined, simplified, and introspected. The manuscript now credits this directly. Compare editing a represented algorithm with the implementation boundary of an invoked primitive; do not claim that transformation-on-transformation is new. |
+| Related Work: staging | [AnyDSL paper](https://compilers.cs.uni-saarland.de/papers/anydsl.pdf), Sections 2--2.1 and 3.1, printed pp. 119:3--119:6 | The paper distinguishes closure-based shallow embedding from explicit syntax supporting later rewrites. The revised comparison identifies this embedding boundary without denying Thorin IR or general specialization. Added the paper's stated 30-page count to its bibliography entry. |
+| Related Work: invocation | [TVM runtime documentation](https://tvm.apache.org/docs/arch/runtime.html#packedfunc), PackedFunc and Module sections | Type-erased cross-language calls include callbacks, compiler passes, and deployed functions. A call interface is not an algorithm-body representation. This does not imply that the rest of TVM lacks editable IR. |
+| Related Work: module boundaries | [xDSL paper](https://arxiv.org/pdf/2311.07422), Sections 1--2, PDF pp. 1--3; [current project overview](https://xdsl.dev/) | Sidekick compilation exchanges IR and definitions and can insert a Python prototype into an MLIR flow. The paragraph now identifies this reuse boundary rather than describing xDSL only as lightweight. The 2024 revision inspected does not establish a current absence of any transformation-sharing facility. |
+| Related Work: mixed representations | [Relax paper](https://arxiv.org/html/2311.02103), Sections 3.3, 4.2, 4.4, 4.6 | Functional graph calls connect to destination-passing tensor/library implementations. Partial lowering, analysis feedback, and joint caller/callee rewriting are explicit capabilities. The text now credits those mechanisms rather than only mixed storage in IRModule. |
+
+The resulting comparison concerns **what implementation structure is exposed to
+an edit and how the edited definition is executed**. It is not an expressiveness
+ranking: these passages do not establish that competitors cannot reproduce the
+Joggle workflow. The decisive control should carry the same internal algorithm
+change through each system's natural extension path, preserving original and
+revised behavior. Current Joggle isolation tests and separate extension tasks
+remain capability evidence, not measurements of that comparative benefit.
+
+### Rhetorical pattern from the closest papers
+
+A 2026-09-16 title/abstract search for user-extensible compilers, programmable
+compiler algorithms, compiler metaprogramming, and transformation languages
+did not reveal a closer mechanism paper than the works already above. This is
+a bounded search, not an exhaustive novelty claim. The Transform dialect,
+Exo 2, and Relax abstracts nevertheless provide a useful presentation pattern:
+
+1. start from the workload or user pressure, then identify the specific control
+   boundary rather than asserting that compilers are generally inflexible;
+2. name a small mechanism vocabulary and state the represented objects on which
+   it operates; and
+3. close with concrete case studies and their measured consequence.
+
+Joggle should follow that order while keeping a stricter evidence boundary.
+Its abstract can name function/closure copying, module resolution and
+replacement validation, and consumer-directed exposure, but the current case
+studies do not establish reduced revision effort or competitive inference
+performance. Transform already claims reusable composition without rebuilding,
+Exo 2 already claims extensible inspection/action/reference mechanisms, and
+Relax already claims one representation spanning graphs, tensor programs, and
+external calls. Joggle's comparison must therefore stay on editable algorithm
+bodies, independent derived execution, checked module replacement, and their
+costs. The current revised abstract follows this problem--mechanism--evidence--
+boundary sequence and keeps `fourteen` as its only quantitative fact.
+
+### Implementation-boundary comparison
+
+The 2026-09-16 follow-up inspects the following passages for the programmable-
+implementations subsection. These are assistant-inspected sources; human
+author verification remains pending. No comparative execution was performed.
+
+| Claim ID | Evidence and locator | Bounded interpretation |
+| --- | --- | --- |
+| `C-related-transform` | `E-transform-script`: [paper](https://arxiv.org/pdf/2409.03864), Section 3.4; `E-transform-implementation`: [official tutorial, Chapter 2](https://mlir.llvm.org/docs/Tutorials/transform/Ch2/), `TransformOpInterface::apply` implementation | Transform scripts admit optimization; the tutorial's primitive action is C++ reached through an interface method. This distinguishes represented orchestration from that implementation, not all possible MLIR extensions. |
+| `C-related-exo` | `E-exo-schedule`: [author paper](https://arxiv.org/pdf/2411.07211), Sections 2--3 and 5.1--5.2, PDF pp. 2--3 and 6--8 | Python schedules compose checked actions over object procedures. Versioned cursors support forwarding. This is substantive programmable compiler reuse, not merely a fixed scheduling API. |
+| `C-related-staging` | `E-anydsl-specialization`: [author paper](https://compilers.cs.uni-saarland.de/papers/anydsl.pdf), Sections 2.1 and 3.1, Figure 2, printed pp. 119:4--119:6 | Closure composition plus partial evaluation removes abstraction overhead. The shallow-embedding restriction concerns subsequent embedded-program rewriting, not the existence of Thorin or the ability to change library source. |
+| `C-onnxmlir-audit` | `E-onnxmlir-source`: pinned ONNX-MLIR `4a13c34`, `src/Compiler/CompilerPasses.cpp` lines 355--360, 376--385, 480--492 (OneShotBufferize, BufferLoopHoisting, buffer-deallocation pipeline, OptimizeAllocationLiveness); `src/Compiler/CompilerOptions.cpp` lines 261--266 and `src/Conversion/ONNXToKrnl/Math/Elementwise.cpp` lines 84--85 (`--enable-krnl-buffer-reuse`, per-operation) | Storage decisions are upstream MLIR passes with one per-operation flag, so a cross-operation ranking change is a C++ pass plus rebuild, the same route shape as TVM. Source audit on 2026-09-17; not executed or measured. See the [derivation study](../experiments/derive-prepare.md#pinned-external-interface-audit). |
+
+The local comparison distinguishes changing a compiler algorithm's decision
+from specializing an algorithm for supplied inputs or composing trusted
+transformations. It does not claim that competitors cannot encode or implement
+the same algorithm. Joggle's structural validity checks do not replace the
+semantic obligations enforced by domain-specific transformations. Its source-
+defined bodies and opaque native boundary must be described together.
+
+Exo 2's bibliography entry now uses the published record while retaining its
+existing citation key. The paper title page and
+[publisher-deposited Crossref record](https://api.crossref.org/works/10.1145/3669940.3707218)
+agree on the DOI and authors; the latter supplies the proceedings title,
+2025 publication date, and pages 426--444. The extended arXiv PDF has 35 pages;
+that is not the proceedings page count. No full-bibliography audit is implied.
+
 ### TVM evolution: what it teaches
 
 TE exposes computation/schedule separation; TensorIR makes schedulable program
@@ -68,7 +145,7 @@ computation and compiler roles, with executable derived versions. Measure the
 representation, legality/effect boundary, reuse, and cost. A copied function
 with a changed constant proves an API path, not compiler acceleration.
 
-### Packaging is supporting machinery
+### Module organization and prior art
 
 Spoofax already composes syntax, analysis, transformation, generation, and editor
 services. MAGIK already exposes IR editing to dynamic extensions. A text module,
@@ -77,6 +154,27 @@ research result. Avoid the former yes/no ecosystem matrix: absence from a paper
 or one failed implementation is not proof that an ecosystem cannot do it.
 
 ## Current pressures and specialized systems
+
+### Scenario evidence
+
+The approved motivation follows a new representation from numerical exploration
+to target implementation and repeated revision. The wording and mechanism
+mapping live in [plan.md](../plan.md#argument-to-preserve), not in a second outline.
+The following primary records were checked on 2026-09-15. Paper metadata and
+abstracts, and the MX repository's README, support these bounded statements;
+this is not a claim of full-paper reading or reproduced performance.
+
+| Source | Observation supported by the source | Design inference and boundary |
+| --- | --- | --- |
+| [Microscaling Data Formats for Deep Learning](https://arxiv.org/abs/2310.10537), 2023 preprint | MX combines narrow element formats and block scaling | A representation change can affect both numerical meaning and physical implementation; it does not prove that Joggle supports MX |
+| [Microsoft MX emulation library](https://github.com/microsoft/microxcaling), project documentation | Emulates representable values using wider arithmetic; offers model replacements and C++/CUDA extensions | Numerical exploration and native deployment are distinct tasks; the project's structure is not a measured integration disadvantage |
+| [TileLang](https://arxiv.org/abs/2504.17577), 2025 preprint | Separates kernel dataflow from customizable scheduling choices | Investigate algorithm changes beyond available configuration; do not claim TileLang lacks low-level control |
+| [KernelBench](https://proceedings.mlr.press/v267/ouyang25a.html), ICML 2025 | Evaluates correctness and speed, including execution/profiling feedback for iterative refinement | Feedback cost is relevant to repeated candidates; compile-time dominance and Joggle agent-success gains remain unmeasured |
+
+Retain the distinction between a semantics-preserving layout revision and a
+numerical-rule revision. The latter needs a fresh accuracy/error evaluation.
+The existing Conv packing/ABI study represents only the former class and does
+not become an MX study through new Motivation wording.
 
 | Pressure | Relevant work | What the source can motivate, not prove about Joggle |
 | --- | --- | --- |

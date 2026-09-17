@@ -1,7 +1,7 @@
 # TVM matched baseline
 
 This directory contains comparison implementations for the frozen contracts in
-[`extension-tasks.json`](../../extension-tasks.json). It is experiment code,
+[`extension-tasks.json`](../../tasks/extension-tasks.json). It is experiment code,
 not a Joggle dependency.
 
 The baseline is pinned to Apache TVM tag `v0.26.0`, commit
@@ -52,16 +52,16 @@ PYTHONPATH="$TVM_ROOT/python" \
 "$TVM_ROOT/.venv/bin/python" \
 paper/baselines/tvm/external_kernel.py \
 paper/tasks/external-kernel.json \
-examples/edge/kernel.c \
-examples/edge/main.c
+extensions/edge/kernel.c \
+extensions/edge/main.c
 
 TVM_ROOT="$TVM_ROOT" \
 TVM_LIBRARY_PATH="$TVM_ROOT/build-make/lib" \
 PYTHONPATH="$TVM_ROOT/python" \
 "$TVM_ROOT/.venv/bin/python" \
-paper/measure_baselines.py \
+paper/scripts/measure_baselines.py \
 --record paper/baselines/tvm/record.json \
---contracts paper/extension-tasks.json \
+--contracts paper/tasks/extension-tasks.json \
 --repo . \
 --output paper/data/extension-tvm-pilot.csv
 ```
