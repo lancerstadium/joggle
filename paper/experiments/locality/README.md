@@ -44,10 +44,37 @@ python3 paper/experiments/locality/build_variants.py \
 python3 paper/experiments/locality/gen_reference.py \
   .cache/onnx-zoo/<model>.onnx build-study/locality-matrix/<model>
 
+# pinned ONNX-MLIR at -O3, then a sidecar naming the library and its revisions
+python3 paper/experiments/locality/build_onnxmlir.py
+
 # balanced alternating fresh processes, one thread, per-process validation
 python3 paper/experiments/locality/matrix_driver.py \
   build-study/locality-matrix/<model> ... --trials 20
 ```
+
+The driver measures the external columns of every model that carries the
+matching sidecar: `tvm.json`, `onnxmlir.json`, and the pinned ONNX file that
+gives ONNX Runtime its input. A subject that fails is recorded with its reason
+in the run metadata and produces no timing for that model; the remaining models
+still run. An earlier version aborted the whole job on the first failure, which
+is why the ten-model matrix previously had a TVM column for one model only: the
+`-O3` ONNX-MLIR library is built per model, and a build that is missing is
+indistinguishable from a column that was never wanted unless the sidecar is
+checked.
+
+The ONNX-MLIR column has two recorded gaps. `squeezenet1.0-13-qdq` aborts the
+compiler itself at the pinned revision with
+
+```
+Assertion failed: (isScalarValue(operands[i]) && "unary expected scalar
+additional values"), function operator(), file Elementwise.cpp, line 2176.
+```
+
+so that model has no ONNX-MLIR bar. `tvm` on the same model fails the stored
+reference instead, at a maximum absolute error of `2.065900e-02` with 30 of 1000
+values outside the study's `1e-4` tolerance, so no timing is reported for a
+variant that does not validate. Both are properties of the pinned external
+tools, not of Joggle, and both are stated rather than smoothed over.
 
 `--batch 1` is required by ResNet18 and TinyYOLOv2, whose ONNX batch axis is a
 free variable; without it `c.prepare` stops at `opt.specialize requires finite

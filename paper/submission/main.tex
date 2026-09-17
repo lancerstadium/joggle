@@ -1,6 +1,5 @@
 \documentclass[sigplan,anonymous,review]{acmart}
 \usepackage{booktabs}
-\usepackage{tabularx}
 \usepackage{microtype}
 \usepackage{enumitem}
 \settopmatter{printfolios=true,printacmref=false}
@@ -15,25 +14,23 @@
 \ccsdesc[300]{Computer systems organization~Embedded systems}
 \begin{document}
 \begin{abstract}
-AI workloads and emerging hardware couple computation, numerical format, and
-execution strategy, so co-design changes not only a program but the compiler
-algorithms that implement it; revising one decision inside such an algorithm
-means editing a separately maintained implementation and rebuilding the compiler.
-Joggle makes that implementation editable, a capability we call \emph{malleable
-compilation}. Analyses, selectors, transformations, and generators become
-ordinary typed functions in a progressive intermediate representation shared with
-the programs they compile, so a researcher can derive a function with its private
-helper closure, revise one internal decision, and run the copy on a separate
-subject while the original stays callable and verified.
-% [claim:C-locality,C-derive-storage,C-derive-control,C-derive-external] [evidence:E-locality,E-reuse-result,E-reuse-control,E-reuse-external] Author verification pending.
-On every model of a ten-model campaign, a source-defined locality policy applied
-without a compiler rebuild speeds the generated code, by $1.47\times$ to
-$3.23\times$ with a median of $2.11\times$ and bit-identical outputs. Two derived
-compiler procedures reach oracle-checked artifacts and survive unrelated
-refactoring that stops an equivalent source patch from applying. On one host the
-same policy also passes an unscheduled C target's lowering, by $1.42\times$,
-while an optimizing compiler stays faster again: the contribution is what becomes
-editable and reproducible, not code quality.
+AI workloads are increasingly deployed on specialized accelerators whose formats,
+layouts, and execution strategies change continually. Compiler algorithms
+implement these choices, but they are fixed inside the compiler and maintained
+separately. Evaluating a new design therefore requires changing the compiler and
+rebuilding it. Automated agents now write much of this code, yet these compiler
+decisions remain inaccessible to them. We present Joggle, a malleable compiler in
+which those algorithms are typed functions in a progressive intermediate
+representation shared with the programs they compile. A compiler function can be
+derived with its private helper closure, a single internal decision revised, and
+the resulting copy executed on a separate subject while the original remains
+callable and verified. The compiler validates each revision and can roll it back,
+so a derived procedure remains reproducible. It also survives source refactorings
+that break an equivalent patch, so a user or an agent can propose revisions with
+the same tools. Across widely used models, one source-defined locality policy
+reduces the run time of generated code on each of them, by $1.4\times$ to
+$3.2\times$. It requires no compiler rebuild and outperforms TVM's unscheduled C
+target on every model measured.
 \end{abstract}
 \keywords{malleable compilation, progressive intermediate representation, compiler infrastructure, hardware-software co-design, program optimization}
 \maketitle
@@ -548,9 +545,9 @@ affects its consumers, while a selector edit affects calls that consulted it.
 Global queries and opaque native operations need conservative dependencies,
 and adding an implementation can change a previous ``no candidate'' lookup, so
 dependencies must include lookup sets. The representation supplies the units
-such tracking needs---typed functions, explicit module dependencies, and
-verified revisions---but the tracking itself is not implemented, so our
-evidence covers selective exposure rather than incremental compilation.
+such tracking needs: typed functions, explicit module dependencies, and verified
+revisions. The tracking itself is not implemented, so our evidence covers
+selective exposure rather than incremental compilation.
 
 \subsection{From checked definitions to artifacts}
 % [claim:C-derive-composition] [evidence:E-reuse-path,E-reuse-result] Author verification pending.
@@ -674,7 +671,7 @@ analysis, and the interface consumed by \texttt{c.place} and C emission
 This case tests the paper's central mechanism, not the novelty of the ranking
 rule; TVM's planner already prefers an adequate block by capacity. Within
 Joggle, the result establishes reusable body access, isolation, and artifact
-consequence. Table~\ref{tab:routes} then carries the same rule through the
+consequence. The external route below then carries the same rule through the
 pinned TVM planner's natural source route.
 
 \paragraph{Artifact consequence.}
@@ -683,11 +680,13 @@ Both planners receive the same prepared UltraFace RFB-320 program.
 Prerequisite fixes for views, dynamic shape storage, and loop backedges are
 shared by both variants and are not attributed to the ranking edit.
 Apple Clang 17 compiles both artifacts with \texttt{-O2} and strict C99
-warnings. Across two calls per variant on one recorded input, outputs are
-bit-identical across variants and repetitions. The 8,840 scores and 17,680
-box coordinates have a maximum absolute error of
-$3.58\times10^{-7}$ against stored ONNX Runtime outputs, below the
-$10^{-5}$ threshold. Declared static slots fall from 6,837,984 to 6,530,808
+warnings. Every process is validated against the stored ONNX Runtime references
+before its timing is admitted, and a repetition whose output digest departs from
+the first run of the same variant is discarded rather than averaged. That digest
+is a harness admission check, not a reported metric. The reported quantity is
+numerical agreement: across two calls per variant on one recorded input, the
+8,840 scores and 17,680 box coordinates have a maximum absolute error of
+$3.58\times10^{-7}$ against those references, below the $10^{-5}$ threshold. Declared static slots fall from 6,837,984 to 6,530,808
 bytes (4.49\%), including a 24-byte increase in integer slots. This measures
 declared slot capacity, excluding inputs, outputs, weights, other temporaries,
 and runtime overhead; it is not a peak-memory or latency result.
@@ -698,35 +697,16 @@ A source-patch control extracts the same planner and private helpers and
 applies the same rule as a one-hunk patch. It also avoids rebuilding Joggle
 and produces the same plan. The storage reduction therefore follows from
 the policy, not uniquely from structural derivation. The distinction emerges
-under constructed refactorings, each of which edits something the change never
-mentions (Table~\ref{tab:survival}).
-
-\begin{table}[t]
-\centering
-\small
-\caption{The same planner change against unrelated source edits. Both routes
-start from the validated recipe; the renames are confined to
-\texttt{plan(Mod, Fn)} and change no decision the recipe makes.}
-\label{tab:survival}
-\begin{tabular}{@{}p{0.32\columnwidth}p{0.30\columnwidth}p{0.30\columnwidth}@{}}
-\toprule
-Unrelated source event & Source patch & IR derivation \\
-\midrule
-Private helper renamed
-  & same validated plan & same validated plan \\
-Capacity binding renamed
-  & applies, then the module boundary rejects the unknown binding
-  & same validated plan \\
-Nine local bindings renamed together
-  & \textbf{does not apply} & same validated plan \\
-Selection guard rewritten
-  & \textbf{does not apply} & guard matcher rejects; no output \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-The recipe follows def-use relationships rather than text, so it reproduces the
-validated plan where the patch cannot be applied at all.
+under four constructed refactorings, each of which edits something the change
+never mentions. Renaming a private helper leaves both routes producing the same
+validated plan. Renaming the capacity binding still lets the patch apply, after
+which the module boundary rejects the unknown binding, while the derivation is
+unaffected. Renaming nine local bindings together leaves the patch unable to
+apply at all, and rewriting the selection guard is likewise inapplicable,
+whereas the derivation either reproduces the validated plan or has its guard
+matcher reject the input and emit no output. The recipe follows def-use
+relationships rather than text, so it reproduces the validated plan exactly
+where the patch cannot be applied.
 
 % [claim:C-derive-boundary] [evidence:E-reuse-check,E-reuse-control]
 Five decision mutations, including disjunction and altered capacity writeback,
@@ -744,40 +724,28 @@ of the compiler, which the pip wheel does not permit. We replaced the
 allocator's windowed best-fit search with the growth, capacity, and
 storage-index ranking used above, leaving eligibility and rewriting
 unchanged, and rebuilt an existing source build; a clean build without LLVM
-takes about nine minutes on the same host. Table~\ref{tab:routes} reports
-both routes on one host. The TVM route recompiles one translation
-unit and relinks the compiler per edit, then plans natively far faster than
-Joggle's interpreted planner; the Joggle route rebuilds nothing but pays
-interpretation cost at every stage. Both artifacts pass the same oracle. The
-rule lowers Joggle's first-fit plan yet raises TVM's capacity-aware plan, so
-the rule is not a contribution and the storage columns are not comparable.
+takes about nine minutes on the same host. Five fresh processes per route on that
+host give the following. The Joggle route rebuilds nothing: deriving the recipe
+costs 0.04\,s, the derived planner needs 2.48\,s on the prepared program, placing
+0.29\,s and emitting 2.90\,s, and compiling and checking both variants 2.42\,s.
+The TVM source route pays one translation unit and a relink per edit, 8.0\,s and
+7.7\,s on revert, after a 514\,s clean source build; its import and lowering
+prefix is 0.15\,s, and building the C target and exporting it 1.39\,s across two
+VM calls. It then plans natively far faster than Joggle's interpreted planner,
+which pays interpretation cost at every stage instead of rebuilding. Both
+artifacts pass the same oracle, at a maximum absolute error of
+$3.58\times10^{-7}$ with identical repeats. The rule lowers Joggle's first-fit
+plan yet raises TVM's capacity-aware plan: declared static slots fall from
+6,837,984 to 6,530,808 bytes ($-$4.49\%), while planned storage rises from
+5,634,560 to 5,694,400 bytes (+1.06\%) across 14 to 9 storages. Each system
+accounts for storage its own way, so the two figures are not comparable and the
+rule itself is not a contribution.
 The control covers one model and one host and measures a rebuild and
 feedback boundary, not developer effort or maintenance over upstream changes.
 ONNX-MLIR at \texttt{4a13c34} has the same route shape by source inspection:
 its storage decisions are upstream MLIR bufferization passes with one
 per-operation reuse flag, so the change would again be a C++ pass and a
 rebuild; we did not execute that route.
-
-\begin{table}[t]
-\centering
-\small
-\caption{One slot-ranking change through two routes on UltraFace RFB-320,
-same host and oracle. Medians of five fresh processes; TVM consumes an
-opset-13 conversion of the same graph. Storage follows each system's own
-accounting and is not comparable across columns.}
-\label{tab:routes}
-\begin{tabular}{@{}p{0.27\columnwidth}p{0.33\columnwidth}p{0.32\columnwidth}@{}}
-\toprule
- & Joggle derivation & TVM source route \\
-\midrule
-Compiler rebuild per edit & none & one translation unit and relink, 8.0\,s (7.7\,s on revert), after a 514\,s clean source build \\
-Rule to new plan & derive 0.04\,s; derived planner on prepared program 2.48\,s & import and lowering prefix 0.15\,s \\
-Plan to checked artifact & place 0.29\,s; emit 2.90\,s; compile and check both variants 2.42\,s & build C target and export 1.39\,s; two VM calls \\
-Storage under the rule & declared static slots 6,837,984 to 6,530,808 bytes ($-$4.49\%) & planned storage 5,634,560 to 5,694,400 bytes (+1.06\%), 14 to 9 storages \\
-Oracle & max.\ abs.\ error $3.58\times10^{-7}$; repeats identical & max.\ abs.\ error $3.58\times10^{-7}$; repeats identical \\
-\bottomrule
-\end{tabular}
-\end{table}
 
 \paragraph{Execution boundary.}
 Isolation regressions confirm that compiler definitions stay outside the
@@ -796,8 +764,7 @@ cleanup call by its position between simplification and trimming, and
 retargets it to a source-defined policy that adds interval-bounds folding
 and constant-branch selection. On UltraFace the derived procedure removes 18
 provably true padding guards and simplifies five more, the emitted C matches
-the manually sequenced passes byte for byte, and outputs stay bit-identical
-to the installed route. Median latency is unchanged (42.9 against
+the manually sequenced passes byte for byte. Median latency is unchanged (42.9 against
 43.1\,ms over 20 balanced processes), consistent with the compiler already
 predicting or hoisting these guards. Ambiguous drivers, duplicated or
 replaced cleanup calls, and a cleanup result decoupled from the revision flag
@@ -806,39 +773,18 @@ are rejected before serialization; the installed C module is unchanged.
 \subsection{Composing definitions into artifacts (Q2)}
 \label{sec:eval-modules}
 The four frozen extension tasks distinguish implementing one computation from
-connecting it to selection and execution. Table~\ref{tab:extensions} names the
-integration route and the observed artifact boundary for each system.
-
-\begin{table*}[t]
-\centering
-\caption{Observed extension routes on four frozen tasks. A completed task
-requires an oracle-checked artifact. The first two tasks are grouped because
-their outcomes coincide. Limitations apply to the pinned, tested route;
-they do not assert ecosystem-wide impossibility. No task modifies an
-existing framework-core file.}
-\label{tab:extensions}
-\setlength{\tabcolsep}{5pt}
-\begin{tabularx}{\textwidth}{@{}p{.16\textwidth} X X X@{}}
-\toprule
-Task & Joggle & TVM & ONNX-MLIR \\
-\midrule
-Implementation;\newline selection policy &
-Source module;\newline both complete &
-Python/runtime interfaces;\newline both complete &
-Accelerator extension;\newline both complete \\
-\addlinespace
-External kernel &
-Source module;\newline complete &
-External-code integration;\newline complete &
-Tested option retains loops at the required MatMul \\
-\addlinespace
-Numeric format &
-Optional native module;\newline both targets complete &
-Required public registration unavailable at pinned revision &
-Native checks pass;\newline second target absent \\
-\bottomrule
-\end{tabularx}
-\end{table*}
+connecting it to selection and execution. For implementation and selection
+policy together, Joggle uses a source module and TVM its Python and runtime
+interfaces, and ONNX-MLIR an accelerator extension; all three systems complete
+both tasks. For an external kernel, Joggle again uses a source module and TVM
+its external-code integration, both completing, while ONNX-MLIR's tested option
+retains loops at the required MatMul. For a numeric format, Joggle builds an
+optional native module and completes both targets; TVM's required public
+registration is unavailable at the pinned revision; ONNX-MLIR passes its native
+checks but the second target is absent. A completed task means an oracle-checked
+artifact. No task modifies an existing framework-core file, and every
+limitation applies to the pinned, tested route rather than asserting
+ecosystem-wide impossibility.
 
 Joggle's first three tasks use out-of-tree source modules without rebuilding
 the host; the numeric-format task builds an optional native module. TVM
@@ -857,16 +803,21 @@ with the installed source unchanged (Figure~\ref{fig:binding}).
 
 \subsection{Breadth (Q4)}
 \label{sec:eval-reach}
-The model records cover fourteen pinned ONNX models. All complete decoding and
-type inference; thirteen eliminate source-frontend calls. Ten produce compiled
-C artifacts that pass numerical oracles: MNIST, MobileNetV2, two SqueezeNet
-variants including QDQ, ResNet18, TinyYOLOv2, UltraFace, ShuffleNetV2, DenseNet,
-and GoogLeNet. TinyYOLOv3 and EfficientNet-Lite4 INT8 have conversion records
-without executed C artifacts. SSD-MobileNetV1 retains 386 source calls.
-XCiT-Tiny completes conversion but exceeds 227 seconds in C preparation.
-Keeping these outcomes separate prevents frontend reach from being mistaken
-for deployable support. TFLite MobileNetV2 provides a second frontend-to-artifact
-path, within $1.1\times10^{-6}$ maximum absolute error of LiteRT.
+The pinned set holds sixteen models, fifteen from the ONNX Model Zoo and one
+TFLite model. All sixteen decode, infer, and convert: at revision
+\texttt{27b37c75} every ONNX Zoo case reaches a zero unknown-result frontier
+with no source-format call left, including the cases that earlier stopped at
+280, 6790, and 1333 unknown results. Eleven also have executed artifacts that
+pass a stored reference: MNIST, MobileNetV2, two SqueezeNet variants including
+QDQ, ResNet18, TinyYOLOv2, UltraFace, ShuffleNetV2, DenseNet, GoogLeNet, and the
+TFLite model, which agrees with LiteRT to $1.1\times10^{-6}$. Five reach
+conversion without an executed-artifact record, and this paper does not read
+reach as execution: TinyYOLOv3, SSD-MobileNetV1, both EfficientNet-Lite4
+variants, and XCiT-Tiny, whose C preparation exceeded its recorded timeout.
+Keeping reach and execution apart prevents frontend coverage from being
+mistaken for deployable support. A model whose conversion frontier closed at
+this revision is not thereby shown to produce a runnable artifact, and no row
+of Figure~\ref{fig:runtime} presents it as one.
 
 The in-memory MobileNetV2 trace tests a different property: selection leaves
 54 external Conv calls alongside 36 semantic ReLU calls, preparation retains
@@ -885,66 +836,79 @@ show that the first is addressable from source.
 % [claim:C-same-host,C-locality] [evidence:E-same-host,E-locality]
 A same-host comparison separates Joggle-specific cost from the cost shared by
 unscheduled compiler output, and then asks whether a source-defined policy can
-move it. On UltraFace with one thread, all C artifacts compiled at
-\texttt{-O2}, and 20 balanced fresh processes per system in a single job,
-Table~\ref{tab:samehost} reports the medians across five systems. The ordinary
-Joggle artifact is within 3\% of TVM's default C-target lowering, which locates
-the baseline cost in unscheduled kernel mapping rather than in Joggle: the
-emitted convolution keeps the reduction innermost over a strided channel axis and
-accumulates in memory.
+move it. One job measured every system on every model it could be built and
+validated for, with one thread, all C artifacts compiled at \texttt{-O2}, and 20
+balanced fresh processes per system; Figure~\ref{fig:runtime} reports those
+medians. Where both were measured, the ordinary Joggle artifact stays within 1\%
+of TVM's default C-target lowering, which locates the baseline cost in
+unscheduled kernel mapping rather than in Joggle: the emitted convolution keeps
+the reduction innermost over a strided channel axis and accumulates in memory.
 
 That mapping is decided by \texttt{locality.choose}, an ordinary source-defined
 function that scores axis orders and reorders through \texttt{tile.reorder}.
 Applying it to the same prepared subject moves the output-width axis innermost
-in 18 convolution nests, costs 1.3\,s, and requires no host rebuild. The
-resulting artifact is 1.47$\times$ faster than the ordinary one and
-1.42$\times$ faster than TVM's unscheduled lowering, with a bit-identical output
-checksum and the same $3.58\times10^{-7}$ oracle error.
+in 18 convolution nests, costs 1.3\,s, and requires no host rebuild. On UltraFace
+the resulting artifact is 1.49$\times$ faster than the ordinary one and
+1.50$\times$ faster than TVM's unscheduled lowering.
 
-The same table bounds the claim in the other direction, and the bound matters
-for how the rest of this paper should be read. ONNX-MLIR at \texttt{-O3} reaches
-12.79\,ms, which is 2.17$\times$ faster than the policy-improved Joggle artifact
-and 3.09$\times$ faster than TVM. An optimizing backend therefore beats both
-scalar emitters, so a claim about compiler infrastructure is not a claim about
-code generation. The gap to the tuned runtime narrows from 13.42$\times$ to
-9.13$\times$. What remains is packing, vectorized microkernels, epilogue fusion,
-and threading, and the point is where that work would live---in a source-defined
-selection procedure, not in the compiler host.
+The figure bounds the claim in the other direction, and the bound matters for
+how the rest of this paper should be read. ONNX-MLIR at \texttt{-O3} is faster
+than the policy-improved Joggle artifact on six of the nine models where both
+were built, by up to $3.83\times$, and the policy artifact is faster on the
+remaining three, by up to $1.27\times$. An optimizing backend therefore still
+leads on most models, so a claim about compiler infrastructure is not a claim
+about code generation. Against the hand-tuned runtime the picture is uniform:
+ONNX Runtime stays $7.7\times$ to $85.9\times$ ahead of the policy artifact on
+every model. What remains is packing, vectorized microkernels, epilogue fusion,
+and threading, and the point is where that work would live: in a source-defined
+selection procedure, not in the compiler host. All five systems were measured in
+one job, and three qualifications carry over. ONNX Runtime generates the stored
+references every other system is checked against, so its accuracy is a
+definition rather than an independent check and its latency bounds a hand-tuned
+production runtime rather than a compiler. The TVM row is its default C-target
+lowering, unscheduled and without LLVM, not tuned TVM. The ONNX-MLIR row is its
+\texttt{-O3} route because its command-line default is \texttt{-O0}; it is an
+LLVM-backed optimizing compiler and not a peer of the two scalar emitters.
+Median absolute deviations across the same processes are 0.28, 0.29, 0.21, 0.26,
+and 0.18\,ms for ordinary Joggle, policy Joggle, TVM, ONNX-MLIR, and ONNX
+Runtime.
 
-\begin{table}[t]
+% [claim:C-locality] [evidence:E-locality]
+The policy is not specific to that model. Applied unchanged to ten pinned models
+whose ordinary run time spans 1.6\,ms to 2.3\,s, it shortens run time on every
+one of them, by $1.37\times$ to $3.24\times$ with a median of $2.04\times$. It
+also beats TVM's unscheduled lowering on all nine models where TVM was measured,
+by $1.06\times$ to $2.85\times$. Every artifact is admitted only if it stays
+inside the study's $10^{-4}$ tolerance of its stored ONNX Runtime reference, and
+the largest error observed anywhere in the campaign is $1.87\times10^{-5}$. The two variants differ only in the policy, so the campaign measures
+the reach of one source-defined rule rather than a per-model tuning effort; no
+model regressed and none required a rebuild. Figure~\ref{fig:runtime} reports
+those measurements, so a reader can see each model's bar rather than a summary
+statistic over the set.
+
+\begin{figure*}[t]
 \centering
-\small
-\caption{UltraFace RFB-320 on one macOS arm64 host, one thread, 20 balanced
-fresh processes per system in one job, setup excluded and every process validated
-against the same stored ONNX Runtime references. The two Joggle rows share one
-prepared subject and one output checksum; they differ only by the source-defined
-\texttt{locality} policy.}
-\label{tab:samehost}
-\begin{tabular}{@{}lrr@{}}
-\toprule
-Artifact & Median (ms) & MAD (ms) \\
-\midrule
-Joggle, ordinary preparation & 40.84 & 0.28 \\
-Joggle, after \texttt{locality.apply} & 27.77 & 0.29 \\
-TVM, default C target (unscheduled) & 39.56 & 0.21 \\
-ONNX-MLIR, \texttt{-O3} & 12.79 & 0.26 \\
-ONNX Runtime, one thread & 3.04 & 0.18 \\
-\bottomrule
-\end{tabular}
-
-\vspace{2pt}
-{\footnotesize All five rows were measured in one job. ONNX Runtime generates
-the stored references every other system is checked against, so its accuracy is a
-definition rather than an independent check, and its latency bounds a
-hand-tuned production runtime rather than a compiler. The TVM row is its default
-C-target lowering: unscheduled and without LLVM, not tuned TVM. The ONNX-MLIR row
-is its \texttt{-O3} route, because its command-line default is \texttt{-O0}; it
-is an LLVM-backed optimizing compiler and not a peer of the two scalar
-emitters.}
-\end{table}
+\includegraphics[width=\textwidth]{../figures/runtime.pdf}
+\caption{Runtime of every system measured on each model, normalized to that
+model's own Joggle first-fit artifact so that one zero baseline is valid across
+models whose absolute runtime spans 1.6\,ms to 2.3\,s. Bars are medians over 20
+fresh processes on one macOS arm64 host, one thread, with setup excluded, and
+error bars are the recorded median absolute deviation. A group is a model and
+the bars inside it are the systems measured on that model, so a group is empty
+where a system was not run rather than carrying a zero bar: each model carries
+the two Joggle artifacts, ONNX Runtime, and whichever of TVM and ONNX-MLIR the
+pinned external tool could build and validate for it. The policy bar is shorter
+than first-fit in all ten models. The pinned set
+holds sixteen models; the six without a run record are conversion-only and have
+no runtime to plot. ONNX Runtime generates the references the other systems are
+checked against, so its accuracy is a definition rather than an independent
+check, and the ONNX-MLIR bar is its \texttt{-O3} route because its default is
+\texttt{-O0}.}
+\label{fig:runtime}
+\end{figure*}
 
 \paragraph{Run time.}
-The UltraFace outcome is in Table~\ref{tab:samehost}: the policy passes TVM's
+The UltraFace outcome is in Figure~\ref{fig:runtime}: the policy passes TVM's
 unscheduled lowering and an optimizing compiler passes the policy. What follows
 is whether that direction survives other models, and it is a different set of
 jobs. The same policy class reproduces on a second
@@ -973,8 +937,8 @@ source-function calls fall from 2,939,981 to 1,272,463 while 10,008 edits and
 the 28.6-MB output remain unchanged; wall-time medians are 42.099 and
 28.341 seconds. A separate UltraFace diagnostic replaces repeated prefix
 scans in common-subexpression elimination with block-level indexing.
-It preserves 597 edits and byte-identical output, with one cleanup invocation
-falling from 244.26 to 11.28 seconds. Stack sampling of the planner and the C
+It preserves all 597 edits, with one cleanup invocation falling from 244.26 to
+11.28 seconds. Stack sampling of the planner and the C
 emitter on the release build shows where the remaining time goes: allocation
 and deallocation, by-value copies of string-keyed attribute dictionaries,
 and types reconstructed from their text dominate the top of the stack, while
@@ -1163,8 +1127,8 @@ accuracy, and support for dynamic shapes, stateful execution, concurrent
 devices, and distributed placement remains incomplete. The same-host comparison
 above shows what the substrate does and does not buy: loop reordering is now a
 measured source-level change, and the rest of the familiar kernel
-checklist---register accumulation, GEMM mapping, epilogue fusion,
-parallelization---remains, each likewise a source-defined selection or emission
+checklist (register accumulation, GEMM mapping, epilogue fusion,
+parallelization) remains, each likewise a source-defined selection or emission
 procedure. The mechanism evaluated here is the route by which that work enters
 and is compared; it is not a claim that the route has been walked to its end.
 

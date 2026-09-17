@@ -1,8 +1,14 @@
 # Recorded model latency
 
+**Retained, no longer included.** `submission/main.tex` does not reference this
+asset: `fig:runtime` now carries the runtime boundary, and the
+cohorts below are older comparisons than the campaign record. The figures index
+in [README.md](README.md) states the same status. The note is kept because the
+nine records it draws remain part of the record set.
+
 ## Purpose / 论证目的
 
-Figure 5 connects executable artifacts to observed runtime cost. It shows a
+The figure connects executable artifacts to observed runtime cost. It shows a
 production-runtime gap, a repeatable direction for the loop-policy change,
 and a fusion regression. It does not support a competitive-speed claim or a
 current-revision benchmark. 图的任务是解释完整产物的性能边界，不把内部优化幅度
@@ -42,8 +48,9 @@ also not the ONNX artifact under another runtime.
 
 ## Caption and placement
 
-Native caption and alt text are in `submission/main.tex`, `fig:models`, in
-“Complete programs and generated code.” The surrounding text explains the
+No caption or placement exists in the manuscript, because the asset is not
+included. When it was included, the native caption sat at `fig:models` in
+"Complete programs and generated code" and the surrounding text explained the
 loop-policy consequence and the fusion counterexample. The graph uses points
 rather than bars because the latency range spans orders of magnitude; bars on
 a logarithmic axis would make bar length a poor comparison. Both axes explicitly
@@ -68,21 +75,24 @@ format remains pending.
 
 ## Abstract evidence selection
 
-The abstract uses C-policy-latency / E-model-trials for the two policy pairs,
-not for an external-runtime speedup. Recomputed directly from each pair's
-20 Joggle process observations:
+Superseded. This section formerly recorded that the abstract's quantitative
+claim was the two-pair policy reduction rounded to 26.4% to 26.5%, computed from
+C-policy-latency / E-model-trials:
 
 | Cohort | Base median (ms) | Policy median (ms) | Reduction |
 | --- | ---: | ---: | ---: |
 | A, revision `418a34e5` | 139.679364 | 102.637659 | 26.5191% |
 | B, revision `b79c2255` | 178.795807 | 131.557411 | 26.4203% |
 
-Reduction is `100 * (1 - policy / base)`. The abstract rounds the observed
-range to 26.4% to 26.5%; it is not a confidence interval or an average across
-models. These pairs compare a policy-enabled artifact with its corresponding
-unmodified Joggle C path, not with ONNX Runtime. The negative runtime gap
-therefore remains explicit. No new timing run was performed for this edit.
-The abstract now names the optimization categories rather than the individual
-models and explicitly calls these two case studies. Removing model names does
-not broaden either result to the coverage suite; the mappings to UltraFace
-storage and MobileNetV2 latency remain unchanged in Evaluation.
+The abstract no longer quotes that reduction and no longer draws on these
+records. Its quantitative claims are now the ten-model campaign range and the
+five-system boundary, both carried by
+[`fig:runtime`](runtime.md) from the `locality-matrix` and
+`ultraface-five-system-same-host` records. Two rules from this section survive
+and still apply: a reduction range is an observed range and not a confidence
+interval or an average across models, and a policy pair compares a
+policy-enabled artifact with its own unmodified Joggle C path rather than with
+ONNX Runtime, so the negative runtime gap stays explicit. The two rows above
+remain correct for their own cohorts and are not merged into the campaign
+result; they use different models, a different host, and older revisions than
+the campaign record.

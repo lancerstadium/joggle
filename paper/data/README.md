@@ -115,8 +115,9 @@ boundary pass. Its revision appears in no other record: the tracked
 `block-artifact-pilot.csv` stops at `7cc089a` and `e096fcc`. Twenty balanced
 fresh-process trials per system give plain/policy Joggle medians of
 140.017/102.806 ms, a ratio of 0.7343, against adjacent one-thread ONNX Runtime
-medians of 8.663/8.678 ms. Each variant keeps a single output checksum, and
-every trial validates 1,000 elements within `2.1934509e-05`. The host reported
+medians of 8.663/8.678 ms. Each variant's repetitions share one output digest,
+which the harness uses to reject a divergent repeat, and every admitted trial
+validates 1,000 elements within `2.1934509e-05`. The host reported
 load 1.181 before and 1.233 after. This is a third repeatability point across
 workflow executions, not a new machine and not a controlled-host result.
 
@@ -619,8 +620,8 @@ guard; `ce8f174` omits it only when static bounds prove exact divisibility and
 retains it for dynamic or padded ranges. The factor-two block policy removes
 82 cloned guard conditions, shortens readable IR from 3,910 to 3,664 lines,
 and reduces strict external-weight C from 230,432 to 228,488 bytes. Both
-variants compile with strict C11, use the same weights, produce checksum
-`edc2e29ecf792982`, and remain within `1.812e-5` of the stored reference. Their
+variants compile with strict C11, use the same weights, and remain within
+`1.812e-5` of the stored reference. Their
 three-call medians are 132.867 and 132.427 ms on an unisolated Apple M4, so the
 result is cleaner generated structure and numerical preservation, not a
 runtime-speed claim.
@@ -721,14 +722,56 @@ median, leaving an approximately 18.3x gap. These raw rows extend correctness
 and operator-boundary coverage; their latency is a direction-setting pilot,
 not publication evidence.
 
-`model-coverage-pilot.csv` records stage-level status for checksum-pinned ONNX
-Zoo models. A row with `compile_c=pass` is not counted as numerical
-correctness; only rows with `execute=pass` used the official stored output.
-`not_run` means that the current gate stops before that stage; it must not be
-read as either support or failure. `n/a` means that the frontend has no
-separate stage with that name. The TFLite MobileNet row uses the pinned model
-checked by `test/tflite.cpp`; its exposure gate validates structure and
-round-trip stability, not generated-C execution.
+`locality-matrix.csv` is the ten-model runtime record used by Figure 5. It was
+regenerated as one job that measured every system on every model it could be
+built and validated for: the two Joggle artifacts and ONNX Runtime on all ten
+models, TVM on nine, and ONNX-MLIR on nine, giving 960 rows of 20 balanced
+fresh processes each. One job matters here because the columns are then measured
+under one set of conditions rather than stitched together from separate runs.
+The job ran at load average 3.56 to 3.61, higher than the pair-only job it
+replaces, so its absolute milliseconds are not comparable with that earlier
+record; the within-trial variant rotation is what keeps the ratios meaningful.
+The earlier two-variant record of the same name remains in the repository
+history, and `ultraface-five-system-same-host.csv` is superseded by this file
+because the same five systems are now measured inside the campaign.
+
+Two cells are absent rather than zero. TVM fails the stored reference on
+SqueezeNet 1.0-13 QDQ, at a maximum absolute error of `2.065900e-02` with 30 of
+1000 values outside the study's `1e-4` tolerance, and the pinned ONNX-MLIR
+aborts on the same model with
+`Assertion failed: (isScalarValue(operands[i]) && "unary expected scalar
+additional values"), function operator(), file Elementwise.cpp, line 2176.`
+Both are properties of the pinned external tools. The driver records such a
+failure in the run metadata and drops only that variant, so the remaining
+systems on that model still measure.
+
+`model-coverage-pilot.csv` records stage-level status for the sixteen pinned
+models, in a fixed column order: `model,label,format,revision,decode,infer,
+convert,expose,emit_c,compile_c,execute,max_abs_error,note`. The `revision`
+column exists because this ledger previously carried no compiler revision and
+therefore drifted out of agreement with `model-frontier-pilot.csv`, which is
+revision-bound; a row whose `revision` differs from the others is a stale
+reading, not a second opinion. A row with `compile_c=pass` is not counted as
+numerical correctness; only rows with `execute=pass` used the official stored
+output. `not_run` means that the current gate stops before that stage; it must
+not be read as either support or failure. `n/a` means that the frontend has no
+separate stage with that name.
+
+Reach and execution are separate claims in this file. All sixteen rows pass
+`decode`, `infer`, and `convert`: at revision `27b37c75` every ONNX Zoo case in
+`model-frontier-pilot.csv` reports a zero unknown-result frontier and zero
+remaining source-format calls. Eleven rows also carry `execute=pass`, meaning a
+run record exists that was validated against a stored reference. The remaining
+five -- TinyYOLOv3-11, SSD-MobileNetV1-12, EfficientNet-Lite4 INT8,
+EfficientNet-Lite4 QDQ, and XCiT-Tiny -- closed their conversion frontier with
+no recorded executed artifact, and their `note` field says so. Closing a
+frontier at a given revision is therefore never presented here as producing a
+runnable artifact.
+
+The TFLite MobileNet row is a second frontend rather than an ONNX Zoo case: it
+is checked by its own gate against LiteRT, its `infer` stage is `n/a` because
+the frontend has no separate stage of that name, and its own record lives under
+`paper/data/tflite-linux/`.
 
 The same matrix now includes focused partial-cache runs for ShuffleNet V2 and
 DenseNet-121. Both decode, infer to a zero unknown-result frontier, convert to
@@ -737,17 +780,20 @@ strict C compilation, and the official stored-output check. This later result
 is recorded separately because structural compatibility alone was not treated
 as generated-code support.
 
-TinyYOLOv3-11 and SSD-MobileNetV1-12 are explicit negative rows. TinyYOLOv3
-decodes and round trips but retains 219 unknown results after inference.
-SSD-MobileNetV1 infers all result types, then retains 386 source-format calls
-after conversion. Ordinary variadic broadcast conversion to shared
-`nn.maximum` and `nn.minimum` functions removed the prior 360 Max and 451 Min
-calls. Reusable tensor comparison overloads and the ONNX semantic bridge remove
-the remaining 92 Equal, 183 Greater, and 4 Less calls. A shared `nn.clip`
-composition removes another 35 Clip calls, and a generic `tensor.tile` body
-accepts ten statically shaped Tile calls. None adds a target-emitter case. The
-remaining calls include dynamic indexing, NonZero,
-NonMaxSuppression, If, and Loop. The Zoo gate checks
+TinyYOLOv3-11 and SSD-MobileNetV1-12 were earlier recorded as negative rows:
+TinyYOLOv3 retained 219 unknown results after inference and SSD-MobileNetV1
+retained 386 source-format calls after conversion. Both frontiers now close at
+revision `27b37c75` (280 and 6790 unknown results to zero, no source call left),
+so those figures describe an earlier compiler, not the current one. The
+inference and conversion work that closed them was: ordinary variadic broadcast
+conversion to shared `nn.maximum` and `nn.minimum` functions removed the prior
+360 Max and 451 Min calls; reusable tensor comparison overloads and the ONNX
+semantic bridge removed the remaining 92 Equal, 183 Greater, and 4 Less calls; a
+shared `nn.clip` composition removed another 35 Clip calls; and a generic
+`tensor.tile` body accepts ten statically shaped Tile calls. None of these adds a
+target-emitter case, and the calls that once remained -- dynamic indexing,
+NonZero, NonMaxSuppression, If, and Loop -- no longer survive conversion at this
+revision. The Zoo gate checks
 both frontiers so later changes cannot silently relabel partial compatibility
 as full support.
 

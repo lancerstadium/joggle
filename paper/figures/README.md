@@ -34,11 +34,20 @@ This directory holds manuscript assets, not an implementation inventory.
    and binding edges explain why exports alone do not justify replacement.
    This is a single-column close-up of the actual regression, not another
    installation overview. [Source mapping and generation record](binding.md).
-5. **Recorded model latency** (`models.pdf`, `fig:models`): two panels separate
-   complete-artifact runtime comparisons from body-transformation cohorts.
-   All 20 recorded process observations and their medians are shown; no host,
-   revision, or frontend is pooled into an aggregate. This is a performance
-   boundary, not a broad speedup claim. [Data and reproduction](models.md).
+5. **Measured runtime** (`runtime.pdf`, `fig:runtime`): one grouped bar chart.
+   A group is a model and the bars inside it are the systems run on that model,
+   drawn against the zero baseline of the model's own first-fit artifact, with
+   error bars from the recorded median absolute deviation. It carries the
+   abstract's headline range and the cross-system boundary in the same display,
+   and UltraFace RFB-320 keeps the same form as every other group rather than a
+   panel of its own. [Recorded values, limits, and reproduction](runtime.md).
+
+**Recorded model latency** (`models.pdf`, `models.json`) is retained as a
+generated asset but is no longer included in the manuscript: its cohorts are
+older comparisons that the campaign record and `tab:samehost` supersede, and
+`submission/main.tex` never referenced it. It stays here with its
+[data and reproduction](models.md) note rather than being deleted, because the
+nine records it draws remain part of the record set.
 
 The old model node/count table has been removed from the manuscript. The
 extension table now states integration routes and failure boundaries rather

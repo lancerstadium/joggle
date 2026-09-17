@@ -1629,3 +1629,79 @@ stores were left flat. `paper/data/` is a ledger of 62 records with a README tha
 indexes each one, and splitting it by name prefix would create fifteen small
 directories without adding meaning while breaking the evidence paths the
 manuscript cites.
+
+September 18 displays reorganised and the coverage ledger corrected.
+
+The author rejected three earlier display attempts in one round: a two-panel
+figure that gave UltraFace RFB-320 a panel of its own, a version that carried
+only the ten models the policy improved, and a version with a stage strip, a
+scatter overlay, a text column, and min-max rules. The requirement was one
+standard academic grouped bar chart: vertical bars, a group per model, systems
+inside the group, error bars from the recorded deviation, and nothing else. The
+instruction "不要特判" applied to the model set as well as to the layout, so
+plotting only the ten improved models was selection bias, not a scope choice.
+
+`fig:runtime` is now that one figure, and all four tables are gone. What each
+table carried moved rather than disappeared: the refactor-survival matrix, the
+two-route planner comparison, and the extension-route matrix became prose in
+their own subsections, and the five-system runtime table became bars in the
+figure. The body is 12 technical pages and the document 15, with no overfull
+box, because removing four tables and adding one 3.15-inch figure saved a page.
+
+The coverage ledger was wrong, and the figure review is what exposed it.
+`model-coverage-pilot.csv` carried no revision column, so it had drifted out of
+agreement with the revision-bound `model-frontier-pilot.csv` on three models:
+it still reported TinyYOLOv3-11 at 219 unknown results after inference,
+SSD-MobileNetV1-12 at 386 remaining source calls, and XCiT-Tiny at 7. At
+revision `27b37c75` all three reach a zero frontier with no source call left,
+together with both EfficientNet-Lite4 variants. Reach and execution are now
+separate columns in one revision-bound ledger of sixteen pinned models, eleven
+of which have a validated run record. The lesson is recorded here because it is
+the second time a hand-maintained ledger has drifted: any ledger that can be
+compared against a revision-bound record must carry the revision itself.
+
+The cross-system record was regenerated rather than reused. XCiT had been
+silently dropped from `model-frontier-pilot.csv` because its ONNX file was
+absent from the model cache, and `joggle_onnx_model` skips an absent file with a
+status message rather than failing. Downloading the pinned file (SHA-256
+verified against the declaration) and reconfiguring restored the row, and the
+fifteenth gate then passed. A collection that succeeds is not evidence that the
+configured set is complete; the model set must be checked against the
+declaration, not only against the run.
+
+September 18 the ten-model matrix completed and the display set was finalised.
+
+The author rejected a two-panel figure that gave one model a panel of its own,
+a version carrying only the ten models the policy improved, and a version with a
+stage strip, scatter overlay, text column, and min-max rules. The requirement
+was one standard academic grouped bar chart: vertical bars, one group per model,
+the systems inside the group, error bars, and nothing else. "不要特判" applied to
+the model set as well as the layout, so the x axis now lists all sixteen pinned
+models and the six without a run record keep an empty group instead of being
+dropped from the chart.
+
+Two methodological corrections came out of the same review. First, the matrix
+had only ever been measured with both variants for ten models, so every group
+but one carried two bars; rebuilding the ONNX-MLIR libraries for all ten models
+and rerunning the driver as a single job produced five columns for nine models
+and three for the tenth, under one set of conditions. The driver also aborted on
+the first failing variant, which is why the earlier ten-model matrix had a TVM
+column for one model only; it now records the failure with its reason and drops
+only that variant, so a failure in one column cannot destroy the others.
+
+Second, the coverage ledger carried no revision column and had drifted out of
+agreement with the revision-bound frontier record on three models, still
+reporting TinyYOLOv3 at 219 unknown results, SSD-MobileNetV1 at 386 remaining
+source calls, and XCiT at 7. At revision 27b37c75 all three reach a zero
+frontier with no source call left. Reach and execution are now separate columns
+in one revision-bound ledger of sixteen pinned models, eleven of which have a
+validated run record. Any ledger that can be compared against a revision-bound
+record must carry the revision itself.
+
+The cross-system result is now campaign-wide and stronger than the single-model
+statement it replaces: the policy artifact is faster than TVM's unscheduled
+lowering on all nine models where TVM was measured, by 1.06x to 2.85x, and
+faster than ONNX-MLIR at -O3 on three of nine. ONNX Runtime remains ahead
+everywhere. The abstract quotes only the campaign range and the TVM comparison,
+because a checksum of output bytes is a harness admission check and must never
+be presented as a metric or an advantage.

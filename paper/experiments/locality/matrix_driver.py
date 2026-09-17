@@ -56,7 +56,7 @@ def main():
                     help="measure only the two Joggle artifacts")
     a = ap.parse_args()
 
-    rows, models, load = [], {}, os.getloadavg()[0]
+    rows, models, failures, load = [], {}, [], os.getloadavg()[0]
     for root in a.roots:
         refs = sorted(root.glob("reference_*.bin"))
         if not refs or not (root / "input.bin").exists():
@@ -91,23 +91,46 @@ def main():
             return [PY, str(SUBJECT), str(root / variant),
                     "--input", str(root / "input.bin"), *reference_args]
 
+        # A subject that fails must not silently vanish, and it must not take
+        # the other variants of the same model down with it: the failing variant
+        # is dropped for the rest of the run, with its reason recorded, while
+        # the remaining variants keep measuring.
+        failed = {}
         for trial in range(a.trials):
             for position, variant in enumerate(rotation(variants, trial)):
+                if variant in failed:
+                    continue
                 r = subprocess.run(
                     [*command(variant), "--inner", str(a.inner),
                      "--warmup", str(a.warmup), "--atol", str(a.atol)],
                     env=ENV, capture_output=True, text=True)
+                reason = None
                 if r.returncode:
-                    sys.exit(f"{root.name}/{variant} failed: {r.stderr[-1200:]}")
-                data = list(csv.DictReader(r.stdout.splitlines()))
-                secs = [float(d["seconds"]) for d in data]
-                sums = {d["checksum"] for d in data}
-                assert len(sums) == 1, f"{root.name}/{variant}: checksum varied"
-                validation = [l for l in r.stderr.splitlines() if "max_abs_error" in l][-1]
-                assert validation.endswith("pass"), f"{root.name}/{variant}: {validation}"
+                    reason = f"exit {r.returncode}: {r.stderr.strip()[-400:]}"
+                else:
+                    data = list(csv.DictReader(r.stdout.splitlines()))
+                    if not data:
+                        reason = "no timing row on stdout"
+                    else:
+                        secs = [float(d["seconds"]) for d in data]
+                        sums = {d["checksum"] for d in data}
+                        lines = [l for l in r.stderr.splitlines() if "max_abs_error" in l]
+                        if len(sums) != 1:
+                            reason = "checksum varied within the variant"
+                        elif not lines:
+                            reason = "no validation line"
+                        elif not lines[-1].endswith("pass"):
+                            reason = lines[-1]
+                if reason is not None:
+                    failures.append({"model": root.name, "variant": variant,
+                                     "trial": trial, "reason": reason})
+                    failed[variant] = reason
+                    print(f"recorded failure {root.name}/{variant}: {reason}",
+                          file=sys.stderr)
+                    continue
                 rows.append({"model": root.name, "trial": trial, "position": position,
                              "variant": variant, "seconds": sum(secs) / len(secs),
-                             "checksum": sums.pop(), "validation": validation})
+                             "checksum": sums.pop(), "validation": lines[-1]})
         models[root.name] = {"build": json.loads((root / "build.json").read_text()),
                              "reference": json.loads((root / "reference.json").read_text())
                              if (root / "reference.json").exists() else None}
@@ -134,6 +157,9 @@ def main():
         # compute the same function with a different operation order.
         checks = {r["checksum"] for r in rows
                   if r["model"] == name and r["variant"] in JOGGLE_VARIANTS}
+        if "base" not in entry or "locality" not in entry:
+            summary[name] = entry
+            continue
         entry["speedup"] = entry["base"]["median_ms"] / entry["locality"]["median_ms"]
         entry["checksum_identical_across_variants"] = len(checks) == 1
         entry["c_bytes"] = {v: models[name]["build"]["variants"][v]["c_bytes"]
@@ -148,10 +174,19 @@ def main():
             "warmup": a.warmup, "atol": a.atol, "threads": 1,
             "loadavg_before": load, "loadavg_after": os.getloadavg()[0],
             "date_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "failures": failures,
             "summary": summary}
     a.out.with_suffix(".json").write_text(json.dumps(meta, indent=1) + "\n")
+    if failures:
+        for f in failures:
+            print(f"no timing for {f['model']}/{f['variant']}: {f['reason']}",
+                  file=sys.stderr)
     for name, e in summary.items():
-        extra = "".join(f"  {v}={e[v]['median_ms']:9.3f}" for v in ("tvm", "ort") if v in e)
+        if "speedup" not in e:
+            print(f"{name:26s} incomplete: {sorted(e)}")
+            continue
+        extra = "".join(f"  {v}={e[v]['median_ms']:9.3f}"
+                        for v in ("tvm", "onnxmlir", "ort") if v in e)
         print(f"{name:26s} {e['base']['median_ms']:9.3f} -> {e['locality']['median_ms']:8.3f} ms"
               f"  {e['speedup']:5.2f}x  same={e['checksum_identical_across_variants']}{extra}")
 
