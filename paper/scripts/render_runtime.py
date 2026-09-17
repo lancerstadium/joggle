@@ -98,8 +98,8 @@ def measured():
 def main():
     # matplotlib defaults: sans-serif, the standard look for a venue figure.
     plt.rcParams.update({
-        "font.size": 8.5, "axes.labelsize": 9, "xtick.labelsize": 8,
-        "ytick.labelsize": 8.5, "legend.fontsize": 8, "axes.linewidth": 0.7,
+        "font.size": 10.5, "axes.labelsize": 11, "xtick.labelsize": 10,
+        "ytick.labelsize": 10.5, "legend.fontsize": 10, "axes.linewidth": 0.7,
         "pdf.fonttype": 42, "ps.fonttype": 42, "savefig.bbox": None,
         "figure.dpi": 150,
     })
@@ -108,8 +108,8 @@ def main():
     order.sort(key=lambda m: runs[m]["locality"]["median"])
     order += [m for m in pinned() if m not in runs]
 
-    fig = plt.figure(figsize=(7, 3.0))
-    ax = fig.add_axes([.078, .330, .900, .545])
+    fig = plt.figure(figsize=(7, 2.6))
+    ax = fig.add_axes([.088, .300, .890, .560])
 
     for index, model in enumerate(order):
         variants = runs.get(model)

@@ -25,9 +25,9 @@ representation shared with the programs they compile. A compiler function can be
 derived with its private helper closure, a single internal decision revised, and
 the resulting copy executed on a separate subject while the original remains
 callable and verified. The compiler validates each revision and can roll it back,
-so a derived procedure remains reproducible. It also survives source refactorings
-that break an equivalent patch, so a user or an agent can propose revisions with
-the same tools. Across widely used models, one source-defined locality policy
+so a derived procedure remains reproducible. A structurally addressed derivation also
+reproduces the validated plan where a textual patch cannot be applied at all, so
+a user or an agent can propose revisions with the same tools. Across widely used models, one source-defined locality policy
 reduces the run time of generated code on each of them, by $1.36\times$ to
 $3.24\times$. It requires no compiler rebuild and matches or beats TVM's
 unscheduled C target wherever that lowering could be built and validated.
@@ -708,15 +708,18 @@ A source-patch control extracts the same planner and private helpers, applies
 the same rule as a one-hunk patch, avoids rebuilding Joggle, and produces the
 same plan, so the storage reduction follows from the policy rather than from
 structural derivation. The distinction appears under four constructed
-refactorings, each editing something the change never mentions. Renaming a
-private helper leaves both routes with the same validated plan. Renaming the
-capacity binding still lets the patch apply, after which the module boundary
-rejects the unknown binding while the derivation is unaffected. Renaming nine
-local bindings together leaves the patch unable to apply, and rewriting the
-selection guard is likewise inapplicable, whereas the derivation either
-reproduces the validated plan or rejects the input and emits no output. The recipe follows def-use
-relationships rather than text, so it reproduces the validated plan exactly
-where the patch cannot be applied.
+refactorings, each editing something the change never mentions, and the count
+matters: only one of them separates the routes cleanly. Renaming a private
+helper ties, since both routes still produce the validated plan. Renaming the
+capacity binding lets the patch apply but the module boundary then rejects the
+unknown binding, which is a validation win rather than an edit-survival one.
+Renaming nine local bindings together is the clean case: the patch cannot apply
+while the derivation reproduces the validated plan. Rewriting the selection
+guard is inapplicable to the patch and makes the derivation's matcher reject the
+input, so that case fails on both sides. The recipe follows def-use
+relationships rather than text, and on this evidence it reproduces the validated
+plan only where a textual patch cannot be applied, not wherever the surrounding
+source has changed.
 
 % [claim:C-derive-boundary] [evidence:E-reuse-check,E-reuse-control]
 Five decision mutations, including disjunction and altered capacity writeback,
@@ -1114,10 +1117,10 @@ own after a rebuild; maintenance cost is unmeasured on either side. The planner 
 MobileNetV2 trace show complementary uses, not a combined benefit.
 
 \paragraph{Shared structure and specialized meaning.}
-Common structure does not make domain semantics interchangeable: repacking
-bytes behind an unchanged pointer signature passes resolution yet can violate
-a kernel's expectations, so modules and algorithm-specific oracles establish
-such properties. Joggle shares editing facilities, not domain semantics.
+Common structure does not make domain semantics interchangeable: repacking bytes
+behind an unchanged pointer signature passes resolution yet can violate a
+kernel's expectations, so oracles, not the representation, establish such
+properties.
 
 \paragraph{Editability and cost.}
 Derivation copies helper closures and revision-keyed snapshots consume memory.
@@ -1131,21 +1134,16 @@ worthwhile only once that baseline is competitive.
 \paragraph{Deployment and evidence.}
 Model oracles establish agreement on recorded inputs, not dataset-level
 accuracy, and support for dynamic shapes, stateful execution, concurrent
-devices, and distributed placement remains incomplete. The same-host comparison
-above shows what the substrate does and does not buy: loop reordering is now a
-measured source-level change, and the rest of the kernel checklist remains a
-source-defined selection or emission procedure. This paper evaluates the route
-by which that work enters, not how far it runs.
+devices, and distributed placement remains incomplete. This paper evaluates the route by which such work enters, not how far it runs.
 
 \section{Conclusion}
 Joggle treats a source-defined compiler algorithm body as a reusable program
-artifact: a derivation copies the definition and its private helper closure,
-admits an internal structural edit, and executes on a separate subject while the
-original stays callable. The planner and preparation cases carry such edits to
-checked artifacts, and a matched control reaches the same artifact through TVM's
-source route at the cost of a rebuild that derivation avoids. The claim is
-bounded by the source-patch control and by compilation and inference costs that
-remain high.
+artifact: a derivation copies the definition with its private helper closure,
+edits it structurally, and runs the copy on a separate subject while the
+original stays callable. The planner and preparation cases reach checked
+artifacts, and a matched control reaches the same artifact through TVM's source
+route at the cost of a rebuild derivation avoids. The source-patch control and
+the measured compile cost bound the claim.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{../references}
