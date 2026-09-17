@@ -85,3 +85,18 @@ that is the result and is reported as such; no task is dropped after the fact.
   writing a JSONL transcript.
 - `run_campaign.py` — the task x arm x run matrix.
 - `runs/` — transcripts and per-run records (created by the harness).
+
+## Harness
+
+`agent_loop.py` runs one session: a fixed prompt template, five tools
+(`read_file`, `write_file`, `list_dir`, `run_shell`, `finish`), and a step cap
+taken from `tasks.json`. Each run works in its own scratch copy, and every model
+call, tool call, and tool result is appended to a JSONL transcript that is kept
+beside the run record.
+
+A run's `finished` flag is the model's own claim and is never the outcome.
+Success is decided afterwards by the task's `success_<arm>` predicate evaluated
+against the tree, so a model that declares victory without making the change
+scores as a failure. The harness was smoke-tested on a throwaway constant-change
+task before any study run: six steps, 363 tokens, 54 seconds, the change landed,
+and the predicate confirmed it independently of the model's summary.

@@ -277,6 +277,14 @@ analysis, \texttt{fn(Mod,Op)->bool} a structural edit, and
 \texttt{fn(Mod)->str} a generator. No host-side pass subclass identifies
 these roles.
 
+Types are structural. A type is a name with parameters, such as
+\texttt{list<int>}, and a call binds generic parameters by unification rather
+than by matching a declaration. Where several declarations accept one call, the
+most specific wins, scoring concrete parameter types above generic,
+\texttt{Attr}, and wildcard ones. After every edit the verifier re-checks the
+whole module for block containment, def-use dominance, arity, and binding
+consistency; it establishes structural validity, not semantic correctness.
+
 A storage planner from the shipped \texttt{mem} module shows the shape of such
 a function and the decision the next section revises. Its signature is typed,
 its state is ordinary local data, and slot selection is a first-fit search
@@ -1010,20 +1018,15 @@ not to a model loop or the invoking sequence.
 
 \subsection{Module boundaries and extensibility}
 JastAdd and Polyglot modularize language definitions and analyses
-\cite{ekman2007jastadd,nystrom2003polyglot}. Spoofax composes language
-specifications across syntax, semantic analysis, transformation, generation,
-and editor services \cite{kats2010spoofax}. Nanopass organizes compiler
-construction through small languages, and MAGIK exposes compilation to
-application-specific semantics and control
-\cite{sarkar2005nanopass,engler1997magik}. These precedents motivate reuse of
-compiler definitions across roles, beyond packaging an individual pass.
-
-Klopp et al. attach module semantics directly to an IR through typed Datalog
-modules with required and provided relations and separate compilation
-\cite{klopp2024datalogmodules}. Joggle's module unit holds typed functions and
-dependencies checked on installation and replacement; reverse-dependency
-checks govern publication, and program-edit transactions govern execution on
-a subject, whatever the function's compiler role.
+\cite{ekman2007jastadd,nystrom2003polyglot}, Spoofax composes specifications
+across syntax, analysis, transformation, generation, and editor services
+\cite{kats2010spoofax}, and Nanopass and MAGIK expose compilation through small
+languages and application-specific semantics
+\cite{sarkar2005nanopass,engler1997magik}. Klopp et al. attach module semantics
+to an IR through typed Datalog modules with required and provided relations and
+separate compilation \cite{klopp2024datalogmodules}. Joggle's module unit holds
+typed functions and dependencies checked on installation and replacement, and
+its reverse-dependency checks bound what a replacement may redirect.
 
 MLIR supports runtime-defined dialects, IRDL definitions, external interface
 models, and partial conversion
