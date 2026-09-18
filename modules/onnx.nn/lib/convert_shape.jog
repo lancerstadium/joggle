@@ -40,8 +40,19 @@ local fn convert_reshape_view(m: Mod, op: Op, expected: Ty) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) < 1 || len(inputs) > 2 || len(outputs) != 1 ||
-     expected == ty("_") || ir.type(outputs[0]) != expected {
+     expected == ty("_") {
     return false
+  }
+  if ir.type(outputs[0]) != expected {
+    // The rule has computed the result type; when inference left it unknown, for
+    // instance because the input became a constant, adopt the computed one rather
+    // than refuse, which would strand the node and keep the frontend tag alive.
+    if ir.type(outputs[0]) != ty("_") {
+      return false
+    }
+    if !ir.type(m, outputs[0], expected) {
+      return false
+    }
   }
   let values: list<Val> = [inputs[0]]
   return convert_call(m, op, "tensor.reshape", values)

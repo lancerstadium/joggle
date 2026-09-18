@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-18T17:22:02Z",
+  "date_utc": "2026-09-18T18:53:56Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -35,7 +35,13 @@
         "what_was_built": "opt.bind, which replaces a parameter's uses with a constant, the value-level counterpart of opt.signature; the parameter stays in the signature so a caller still feeds it. It also needed floating-point constant construction at compile time, which the evaluator lacked: Attr already carried a real, so f32 and f64 joined int in the fundamental set and were declared in the base module.",
         "what_it_did": "binding image_shape to [416, 416] before conversion removed the unknown-typed multiply that stopped preparation. The graph then stopped on an uneliminated onnx.model instead: inserting the constant's construction into the entry keeps the conversion from consuming the model op, and binding after conversion does not help because shape inference has already run.",
         "why_it_is_not_landed": "with the feature in place eight tests fail, and the module changes depend on the evaluator change, so it is a partial feature rather than a fix. It is reverted: the tree is at the state that passes 68 of 68 with every target built.",
-        "next_step": "make the conversion tolerate the model op not being first, or place the constant without adding ops to the entry, then land the whole thing together with the tests green."
+        "next_step": "make the conversion tolerate the model op not being first, or place the constant without adding ops to the entry, then land the whole thing together with the tests green.",
+        "state_after_round_26": {
+          "what_was_found": "the model op is blocked by onnx.Squeeze -- the node that consumes image_shape. With the input bound to a constant the conversion no longer converts that node, and the frontend tag it keeps alive is what stops the model op being erased.",
+          "why": "squeeze_result computes the node's result type from its input's type, and the constant opt.bind builds arrives as tensor<f32,_> -- unranked -- because tensor.tensor is generic in its shape and does not adopt the result type the call was given. No type means the rule refuses, the node is stranded, and the conversion never finishes.",
+          "tried": "stating the result type on the call and again on the value after each step, and letting the reshape rule adopt a computed type when the declared one is unknown. The type still arrives unranked, so the remaining work is in how a constructed constant's type is established rather than in the conversion rules.",
+          "kept": "the reshape rule now adopts the type it computed when the declared type is unknown instead of refusing, which is a general robustness fix; the suite is green at 68/68 with it."
+        }
       }
     },
     "ssd-mobilenetv1-12": {

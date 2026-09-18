@@ -126,6 +126,11 @@ fn bind(m: Mod, name: str, index: int, values: list<int>) -> bool {
   if !ir.live(constant) {
     return false
   }
+  // tensor.tensor is generic in its shape, so the call does not adopt the result
+  // type it was given and the value arrives unranked. State it.
+  if !ir.type(m, constant, type) {
+    return false
+  }
   ir.unset(m, ir.def(constant), "onnx")
   untag(m, ir.constant(m, head, scalar_attr(elem, values[0]), elem))
   for i in 0..count {
@@ -139,6 +144,9 @@ fn bind(m: Mod, name: str, index: int, values: list<int>) -> bool {
       m, head, "tensor.operator []=", [constant, at, scalar], type
     )
     if !ir.live(constant) {
+      return false
+    }
+    if !ir.type(m, constant, type) {
       return false
     }
     ir.unset(m, ir.def(constant), "onnx")
