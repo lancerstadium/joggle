@@ -41,5 +41,26 @@
       "message": "agrees with LiteRT to 1.0e-6",
       "meaning": "executes, but was timed against LiteRT by its own frontend study rather than in this campaign"
     }
+  },
+  "root_causes": {
+    "shared": "Two of the four rejections are the same capability gap, not two bugs: the compiler has no support for shapes that are not static. TinyYOLOv3 declares a variable-size input and reads its own spatial extent from a second input tensor, so its convolutions carry '_' spatial dims and cannot be expanded; SSD-MobileNetV1 has free entry dims and a while loop whose carried tensors differ in rank.",
+    "tiny-yolov3-11": {
+      "evidence": "the entry reads fn main<N: int>(input_1: tensor<f32,[N,3,_,_]>, image_shape: tensor<f32,[N,2]>)",
+      "cause": "the graph's spatial extent is data-dependent, so nn.conv2d's loop bounds are unknown and the call survives into c.prepare",
+      "fix_scope": "shape-input constant folding plus dynamic extents through the specializer and the C backend"
+    },
+    "ssd-mobilenetv1-12": {
+      "evidence": "the entry carries free dims unk__6578 and a loop_scan tensor typed [_,_]",
+      "cause": "static-control folding will not fold a branch whose arms carry tensor<f32,[_,_]> and tensor<f32,_>; the two differ in rank",
+      "fix_scope": "rank unification for dynamically ranked values, plus dynamic extents"
+    },
+    "efficientnet-lite4-11-qdq": {
+      "cause": "the artifact executes and misses the stored reference in the shared quantised path",
+      "fix_scope": "numerical: this is the one of the four that looks like a defect rather than a missing feature"
+    },
+    "xcit-tiny-12-p8-224-opset17": {
+      "cause": "preparation cost exceeds its recorded timeout",
+      "fix_scope": "performance, not correctness"
+    }
   }
 }
