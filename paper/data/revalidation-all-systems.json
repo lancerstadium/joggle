@@ -1,0 +1,335 @@
+{
+  "method": "one run per variant, no timing repeated",
+  "tolerance": 0.0001,
+  "rows": [
+    {
+      "model": "densenet-12",
+      "variant": "base",
+      "verdict": "max_abs_error,8.106232e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "densenet-12",
+      "variant": "locality",
+      "verdict": "max_abs_error,8.106232e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "densenet-12",
+      "variant": "tvm",
+      "verdict": "max_abs_error,8.106232e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "densenet-12",
+      "variant": "onnxmlir",
+      "verdict": "max_abs_error,5.722046e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "densenet-12",
+      "variant": "ort",
+      "verdict": "max_abs_error,4.053116e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "efficientnet-lite4-11-int8",
+      "variant": "ort",
+      "verdict": "max_abs_error,0.000000e+00,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "efficientnet-lite4-11-qdq",
+      "variant": "base",
+      "verdict": "max_abs_error,7.450581e-09,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "efficientnet-lite4-11-qdq",
+      "variant": "locality",
+      "verdict": "max_abs_error,7.450581e-09,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "efficientnet-lite4-11-qdq",
+      "variant": "ort",
+      "verdict": "max_abs_error,0.000000e+00,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "googlenet-12",
+      "variant": "base",
+      "verdict": "max_abs_error,8.940697e-08,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "googlenet-12",
+      "variant": "locality",
+      "verdict": "max_abs_error,8.940697e-08,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "googlenet-12",
+      "variant": "tvm",
+      "verdict": "max_abs_error,8.195639e-08,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "googlenet-12",
+      "variant": "onnxmlir",
+      "verdict": "max_abs_error,6.705523e-08,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "googlenet-12",
+      "variant": "ort",
+      "verdict": "max_abs_error,1.788139e-07,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "mnist-8",
+      "variant": "base",
+      "verdict": "max_abs_error,1.907349e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "mnist-8",
+      "variant": "locality",
+      "verdict": "max_abs_error,1.907349e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "mnist-8",
+      "variant": "tvm",
+      "verdict": "max_abs_error,1.907349e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "mnist-8",
+      "variant": "onnxmlir",
+      "verdict": "max_abs_error,3.218651e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "mnist-8",
+      "variant": "ort",
+      "verdict": "max_abs_error,0.000000e+00,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "mobilenetv2-7",
+      "variant": "base",
+      "verdict": "max_abs_error,7.390976e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "mobilenetv2-7",
+      "variant": "locality",
+      "verdict": "max_abs_error,7.390976e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "mobilenetv2-7",
+      "variant": "tvm",
+      "verdict": "max_abs_error,1.025200e-05,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "mobilenetv2-7",
+      "variant": "onnxmlir",
+      "verdict": "max_abs_error,1.811981e-05,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "mobilenetv2-7",
+      "variant": "ort",
+      "verdict": "max_abs_error,7.152557e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "resnet18-v1-7",
+      "variant": "base",
+      "verdict": "max_abs_error,4.351139e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "resnet18-v1-7",
+      "variant": "locality",
+      "verdict": "max_abs_error,4.351139e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "resnet18-v1-7",
+      "variant": "tvm",
+      "verdict": "max_abs_error,4.291534e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "resnet18-v1-7",
+      "variant": "onnxmlir",
+      "verdict": "max_abs_error,4.291534e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "resnet18-v1-7",
+      "variant": "ort",
+      "verdict": "max_abs_error,3.099442e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "shufflenet-v2-12",
+      "variant": "base",
+      "verdict": "max_abs_error,7.152557e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "shufflenet-v2-12",
+      "variant": "locality",
+      "verdict": "max_abs_error,7.152557e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "shufflenet-v2-12",
+      "variant": "tvm",
+      "verdict": "max_abs_error,7.629395e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "shufflenet-v2-12",
+      "variant": "onnxmlir",
+      "verdict": "max_abs_error,9.536743e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "shufflenet-v2-12",
+      "variant": "ort",
+      "verdict": "max_abs_error,5.722046e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "squeezenet1.0-13-qdq",
+      "variant": "base",
+      "verdict": "max_abs_error,1.341105e-07,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "squeezenet1.0-13-qdq",
+      "variant": "locality",
+      "verdict": "max_abs_error,1.341105e-07,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "squeezenet1.0-13-qdq",
+      "variant": "tvm",
+      "verdict": "max_abs_error,2.065900e-02,failed,30,threads,1,fail",
+      "pass": false
+    },
+    {
+      "model": "squeezenet1.0-13-qdq",
+      "variant": "ort",
+      "verdict": "max_abs_error,0.000000e+00,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "squeezenet1.1-7",
+      "variant": "base",
+      "verdict": "max_abs_error,4.291534e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "squeezenet1.1-7",
+      "variant": "locality",
+      "verdict": "max_abs_error,4.291534e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "squeezenet1.1-7",
+      "variant": "tvm",
+      "verdict": "max_abs_error,4.291534e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "squeezenet1.1-7",
+      "variant": "onnxmlir",
+      "verdict": "max_abs_error,4.053116e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "squeezenet1.1-7",
+      "variant": "ort",
+      "verdict": "max_abs_error,4.291534e-06,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "tinyyolov2-8",
+      "variant": "base",
+      "verdict": "max_abs_error,1.716614e-05,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "tinyyolov2-8",
+      "variant": "locality",
+      "verdict": "max_abs_error,1.716614e-05,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "tinyyolov2-8",
+      "variant": "tvm",
+      "verdict": "max_abs_error,1.907349e-05,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "tinyyolov2-8",
+      "variant": "onnxmlir",
+      "verdict": "max_abs_error,2.002716e-05,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "tinyyolov2-8",
+      "variant": "ort",
+      "verdict": "max_abs_error,1.716614e-05,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "ultraface-rfb-320",
+      "variant": "base",
+      "verdict": "max_abs_error,2.458692e-07,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "ultraface-rfb-320",
+      "variant": "locality",
+      "verdict": "max_abs_error,2.458692e-07,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "ultraface-rfb-320",
+      "variant": "tvm",
+      "verdict": "max_abs_error,2.980232e-07,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "ultraface-rfb-320",
+      "variant": "onnxmlir",
+      "verdict": "max_abs_error,2.384186e-07,failed,0,threads,1,pass",
+      "pass": true
+    },
+    {
+      "model": "ultraface-rfb-320",
+      "variant": "ort",
+      "verdict": "max_abs_error,1.192093e-07,failed,0,threads,1,pass",
+      "pass": true
+    }
+  ],
+  "summary": {
+    "variants": 53,
+    "passed": 52,
+    "failed": 1,
+    "largest_passing_error": {
+      "value": 2.002716e-05,
+      "from": "tinyyolov2-8/onnxmlir"
+    },
+    "failure": "squeezenet1.0-13-qdq/tvm: max_abs_error,2.065900e-02,failed,30,threads,1,fail",
+    "note": "the single failure is the one the campaign already records for this model and system, so no verdict changed under the corrected references; the manuscript's campaign maximum moves from 1.87e-5 to 2.00e-5 to match."
+  }
+}
