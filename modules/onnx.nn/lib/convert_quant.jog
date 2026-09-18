@@ -368,25 +368,55 @@ local fn convert_qlinear_matmul(m: Mod, op: Op) -> bool {
   if len(shape) == 0 || result != shaped(tensor.elem(result), shape) {
     return false
   }
-  let dequant_left = dequantized(
-    m, op, inputs[0], inputs[1], inputs[2], left_axis
-  )
-  let dequant_right = dequantized(
-    m, op, inputs[3], inputs[4], inputs[5], right_axis
-  )
+  // The operator specifies the same exact int32 accumulation as QLinearConv.
+  // A per-row or per-column scale could not be folded into one combined value;
+  // tensor.matmul's own operand check already rejects that shape here.
+  let offset_left = offset_integer(m, op, inputs[0], inputs[2], left_axis)
+  let offset_right = offset_integer(m, op, inputs[3], inputs[5], right_axis)
+  let accumulator = shaped(ty("i32"), shape)
   let product = ir.call(
-    m, op, "tensor.matmul", [dequant_left, dequant_right],
-    shaped(elem, shape)
+    m, op, "tensor.matmul", [offset_left, offset_right], accumulator
   )
   let product_name = local_name(op, "product_", 0)
   if product_name == "" || !ir.rename(m, product, product_name) {
     return false
   }
-  let quantized = requantized(
-    m, op, product, inputs[6], inputs[7], result
+  // The weight scale is per output column, so the combined scale shares that
+  // shape and the accumulator is indexed by its last axis.
+  let channel = ir.type(inputs[4])
+  let wide_x = ir.call(m, op, "tensor.broadcast", [inputs[1]], channel)
+  let wide_y = ir.call(m, op, "tensor.broadcast", [inputs[6]], channel)
+  let zero_shape = shaped(tensor.elem(ir.type(inputs[7])), tensor.dims(channel))
+  let wide_zero = ir.call(m, op, "tensor.broadcast", [inputs[7]], zero_shape)
+  if !ir.rename(m, wide_x, local_name(op, "wide_scale_", 0)) ||
+     !ir.rename(m, wide_y, local_name(op, "wide_scale_", 1)) ||
+     !ir.rename(m, wide_zero, local_name(op, "wide_zero_", 0)) {
+    return false
+  }
+  let combined = ir.call(
+    m, op, "tensor.operator *", [inputs[4], wide_x], channel
   )
-  if !ir.live(dequant_left) || !ir.live(dequant_right) ||
-     !ir.live(product) || !ir.live(quantized) {
+  let combined_div = ir.call(
+    m, op, "tensor.operator /", [combined, wide_y], channel
+  )
+  let scaled_name = local_name(op, "combined_scale_", 0)
+  if scaled_name == "" || !ir.rename(m, combined_div, scaled_name) {
+    return false
+  }
+  let bounds = quant_bounds(tensor.elem(result))
+  if !ir.live(offset_left) || !ir.live(offset_right) || !ir.live(product) ||
+     len(bounds) != 2 {
+    return false
+  }
+  let quantized = ir.call(
+    m, op, "quant.accumulate",
+    [product, combined_div, wide_zero,
+     ir.constant(m, op, len(shape) - 1, ty("int")),
+     ir.constant(m, op, bounds[0], ty("int")),
+     ir.constant(m, op, bounds[1], ty("int"))],
+    result
+  )
+  if !ir.live(quantized) {
     return false
   }
   carry(m, outputs[0], quantized)
