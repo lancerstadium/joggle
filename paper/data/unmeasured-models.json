@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-18T15:37:13Z",
+  "date_utc": "2026-09-18T17:22:02Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -30,6 +30,12 @@
         "compiler": "a way for a caller to bind an input to a constant, so image_shape's uses are replaced by a literal and the shape arithmetic folds. opt.signature covers types; this would cover values.",
         "study": "the ONNX reference generator and the study subject both assume a single input, so a two-input model needs the shape tensor fed consistently on both sides.",
         "cost": "unlike SSD this graph is small, 1,146 operations against mnist-8's 1,108 at 1.2 s, so the iteration cost here is seconds rather than tens of minutes. The work is the feature and the plumbing, not a performance wall."
+      },
+      "bind_attempt": {
+        "what_was_built": "opt.bind, which replaces a parameter's uses with a constant, the value-level counterpart of opt.signature; the parameter stays in the signature so a caller still feeds it. It also needed floating-point constant construction at compile time, which the evaluator lacked: Attr already carried a real, so f32 and f64 joined int in the fundamental set and were declared in the base module.",
+        "what_it_did": "binding image_shape to [416, 416] before conversion removed the unknown-typed multiply that stopped preparation. The graph then stopped on an uneliminated onnx.model instead: inserting the constant's construction into the entry keeps the conversion from consuming the model op, and binding after conversion does not help because shape inference has already run.",
+        "why_it_is_not_landed": "with the feature in place eight tests fail, and the module changes depend on the evaluator change, so it is a partial feature rather than a fix. It is reverted: the tree is at the state that passes 68 of 68 with every target built.",
+        "next_step": "make the conversion tolerate the model op not being first, or place the constant without adding ops to the entry, then land the whole thing together with the tests green."
       }
     },
     "ssd-mobilenetv1-12": {
