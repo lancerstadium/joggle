@@ -184,6 +184,14 @@ local fn resize_result(op: Op) -> Ty {
      tensor.dims(scales)[0] != ty(len(source)) {
     return ty("_")
   }
+  // With scales rather than sizes the output extent is floor(input * scale), so a
+  // static input extent and a literal scale give a static output extent. The
+  // frontend needs it: a fully dynamic result cannot be expanded afterwards, and
+  // c.prepare then rejects the resize call.
+  let extents = resize_extents(source, inputs[2])
+  if len(extents) == len(source) {
+    return shaped(tensor.elem(input), extents)
+  }
   for dim in source {
     shape += [ty("_")]
   }

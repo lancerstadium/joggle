@@ -72,6 +72,60 @@ local fn literal_ints(value: Val) -> list<int> {
   return out
 }
 
+local fn scaled_floor(dim: int, data: Attr, offset: int) -> int {
+  // floor(dim * scale) for a little-endian IEEE-754 binary32 scale, in integer
+  // arithmetic only: the compile-time evaluator has no float constructor and the
+  // language has no shifts, so powers of two are built by repeated doubling.
+  let bits = base.byte(data, offset) + base.byte(data, offset + 1) * 256 +
+             base.byte(data, offset + 2) * 65536 +
+             base.byte(data, offset + 3) * 16777216
+  let exponent = (bits / 8388608) % 256
+  if exponent == 0 || exponent == 255 {
+    return -1
+  }
+  let mantissa = 8388608 + bits % 8388608
+  let shift = 150 - exponent
+  var power = 1
+  if shift > 0 {
+    for i in 0..shift {
+      power *= 2
+    }
+    return dim * mantissa / power
+  }
+  for i in 0..(0 - shift) {
+    power *= 2
+  }
+  return dim * mantissa * power
+}
+
+local fn resize_extents(source: list<Ty>, value: Val) -> list<Ty> {
+  var out: list<Ty> = []
+  let type = ir.type(value)
+  if !tensor.valid(type) || tensor.elem(type) != ty("f32") {
+    return out
+  }
+  let producer = ir.def(value)
+  if !ir.live(producer) {
+    return out
+  }
+  let data = tensor_data(producer)
+  if base.kind(data) != "bytes" || base.size(data) != len(source) * 4 {
+    return out
+  }
+  for i in 0..len(source) {
+    let dim = source[i]
+    if kind(dim) != "int" || int(dim) <= 0 {
+      return []
+    }
+    let extent = scaled_floor(int(dim), data, i * 4)
+    if extent <= 0 {
+      return []
+    }
+    out += [ty(extent)]
+  }
+  return out
+}
+
 local fn static_count(type: Ty) -> int {
   if !tensor.valid(type) {
     return -1
