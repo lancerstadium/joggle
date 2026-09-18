@@ -1075,3 +1075,13 @@ operators now accumulate in int32 as specified, which moved that error only from
 contrib operators. XCiT-Tiny exceeds its preparation timeout, a cost rather than a
 rejection, and TFLite MobileNetV2 executes but was timed against LiteRT by its own
 frontend study.
+
+## Checking the manuscript against these records
+
+`paper/scripts/check_consistency.py` asserts the invariants that have drifted
+before: the model counts, the corrected EfficientNet-Lite4 figures, the QDQ
+result, the paired estimator at both ends of the abstract's range, the measured
+preparation law, and the absence of four claims that were removed because the
+records no longer support them. It exits non-zero on any failure and prints each
+check with its value, so a reader can see what was verified rather than take the
+manuscript on trust. Run it after editing either side.
