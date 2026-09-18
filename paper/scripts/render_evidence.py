@@ -50,9 +50,9 @@ def compile_series():
 def main():
     plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": SIZE,
                          "pdf.fonttype": 42, "figure.dpi": 150})
-    fig = plt.figure(figsize=(7.0, 1.70))
-    left = fig.add_axes([.078, .470, .390, .420])
-    right = fig.add_axes([.645, .470, .310, .420])
+    fig = plt.figure(figsize=(7.0, 1.55))
+    left = fig.add_axes([.078, .490, .390, .400])
+    right = fig.add_axes([.645, .490, .310, .400])
 
     # (a) paired ratio against TVM, vertical intervals.
     rows = paired_rows()

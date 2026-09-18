@@ -818,12 +818,15 @@ source-format call left, including the three that earlier stopped at 280, 6790,
 and 1333 unknown results. Twelve also have executed artifacts that pass a stored
 reference, and the TFLite model agrees with LiteRT to $1.0\times10^{-6}$.
 
-Reach is not execution, and the models without campaign timing stand in
-different places. TinyYOLOv3 declares its input extents with no dimension parameter and
+Reach is not execution, and the models without campaign timing differ. TinyYOLOv3 declares its input extents with no dimension parameter and
 computes them at run time from a second input tensor, so declaring a shape still
 leaves seventy-three tensors dynamic and preparation stops on a stride
-computation. SSD-MobileNetV1 converts and is then declined by
-static-control folding, whose two arms carry tensor types of different rank. The
+computation. SSD-MobileNetV1 was declined by static-control
+folding, whose two arms carried tensor types of different rank; that gap is
+closed, and what remains is cost. Preparation is quadratic in graph size: across the models
+with both a record and a retained graph, seconds over operations squared stays
+between $1.6\times10^{-4}$ and $9.6\times10^{-4}$ from 18 operations to
+1{,}758, so this model's 8{,}118 predict hours. The
 EfficientNet-Lite4 INT8 variant builds, runs, and misses the stored reference by
 $4.34\times10^{-3}$ over 123 elements. Its ninety-two standard quantised operators
 now accumulate in int32 as specified, which moved that error only from
