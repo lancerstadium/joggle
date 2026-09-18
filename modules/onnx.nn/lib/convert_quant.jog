@@ -1,3 +1,35 @@
+local fn offset_integer(
+  m: Mod, before: Op, data: Val, zero: Val, axis: int
+) -> Val {
+  let data_type = ir.type(data)
+  if !tensor.valid(data_type) {
+    return data
+  }
+  let result = shaped(ty("i32"), tensor.dims(data_type))
+  let axis_value = ir.constant(m, before, axis, ty("int"))
+  return ir.call(
+    m, before, "quant.offset", [data, zero, axis_value], result
+  )
+}
+
+local fn accumulated(
+  m: Mod, before: Op, data: Val, combined: Val, zero: Val,
+  axis: int, result: Ty
+) -> Val {
+  let bounds = quant_bounds(tensor.elem(result))
+  if len(bounds) != 2 {
+    return data
+  }
+  return ir.call(
+    m, before, "quant.accumulate",
+    [data, combined, zero,
+     ir.constant(m, before, axis, ty("int")),
+     ir.constant(m, before, bounds[0], ty("int")),
+     ir.constant(m, before, bounds[1], ty("int"))],
+    result
+  )
+}
+
 [phase: "compute", on: "onnx.QLinearConv"]
 local fn convert_qlinear_conv(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
@@ -25,13 +57,14 @@ local fn convert_qlinear_conv(m: Mod, op: Op) -> bool {
     return false
   }
   let elem = tensor.elem(ir.type(inputs[1]))
-  let dequant_x = dequantized(
-    m, op, inputs[0], inputs[1], inputs[2], 0
-  )
-  let dequant_weight = dequantized(
-    m, op, inputs[3], inputs[4], inputs[5], 0
-  )
-  var conv_inputs = [dequant_x, dequant_weight]
+  // The operator specifies an exact int32 accumulation of zero-point-corrected
+  // values, scaled once afterwards. Dequantising both operands and convolving in
+  // float multiplies every product by the scales before it is summed, which is a
+  // different arithmetic from the one the operator defines and drifts over a
+  // deep stack.
+  let offset_x = offset_integer(m, op, inputs[0], inputs[2], 0)
+  let offset_weight = offset_integer(m, op, inputs[3], inputs[5], 0)
+  var conv_inputs = [offset_x, offset_weight]
   if len(inputs) == 9 {
     let bias = ir.type(inputs[8])
     if !tensor.valid(bias) || tensor.elem(bias) != ty("i32") ||
@@ -39,57 +72,53 @@ local fn convert_qlinear_conv(m: Mod, op: Op) -> bool {
        tensor.dims(bias)[0] != tensor.dims(weight)[0] {
       return false
     }
-    let weight_scale = ir.type(inputs[4])
-    var input_scale = inputs[1]
-    if ir.type(input_scale) != weight_scale {
-      input_scale = ir.call(
-        m, op, "tensor.broadcast", [input_scale], weight_scale
-      )
-      let name = local_name(op, "bias_input_scale_", 0)
-      if name == "" || !ir.rename(m, input_scale, name) {
-        return false
-      }
-    }
-    let bias_scale = ir.call(
-      m, op, "tensor.operator *", [input_scale, inputs[4]], weight_scale
-    )
-    let scale_name = local_name(op, "bias_scale_", 0)
-    if scale_name == "" || !ir.rename(m, bias_scale, scale_name) {
-      return false
-    }
-    let bias_zero_type = shaped(ty("i32"), tensor.dims(weight_scale))
-    let bias_zero = ir.call(
-      m, op, "tensor.tensor", [ir.constant(m, op, 0, ty("i32"))],
-      bias_zero_type
-    )
-    let zero_name = local_name(op, "bias_zero_", 0)
-    if zero_name == "" || !ir.rename(m, bias_zero, zero_name) {
-      return false
-    }
-    let dequant_bias = dequantized(
-      m, op, inputs[8], bias_scale, bias_zero, 0
-    )
-    if !ir.live(input_scale) || !ir.live(bias_scale) ||
-       !ir.live(bias_zero) || !ir.live(dequant_bias) {
-      return false
-    }
-    conv_inputs += [dequant_bias]
+    conv_inputs += [inputs[8]]
   }
-  let config = conv_config(m, op, ir.type(dequant_weight), len(inputs) == 9)
-  if !ir.live(dequant_x) || !ir.live(dequant_weight) || len(config) == 0 {
+  let config = conv_config(m, op, weight, len(inputs) == 9)
+  if !ir.live(offset_x) || !ir.live(offset_weight) || len(config) == 0 {
     return false
   }
   conv_inputs += config
-  let float_result = shaped(elem, tensor.dims(result))
-  let convolved = ir.call(
-    m, op, "nn.conv2d", conv_inputs, float_result
-  )
+  let accumulator = shaped(ty("i32"), tensor.dims(result))
+  let convolved = ir.call(m, op, "nn.conv2d", conv_inputs, accumulator)
   let conv_name = local_name(op, "convolved_", 0)
   if conv_name == "" || !ir.rename(m, convolved, conv_name) {
     return false
   }
-  let quantized = requantized(
-    m, op, convolved, inputs[6], inputs[7], result
+  // One scaling at the end: x_scale * w_scale / y_scale, per output channel.
+  let scalar_scales = ir.type(inputs[4])
+  let zero_shape = shaped(
+    tensor.elem(ir.type(inputs[7])), tensor.dims(scalar_scales)
+  )
+  let wide_x = ir.call(m, op, "tensor.broadcast", [inputs[1]], scalar_scales)
+  let wide_y = ir.call(m, op, "tensor.broadcast", [inputs[6]], scalar_scales)
+  let wide_zero = ir.call(
+    m, op, "tensor.broadcast", [inputs[7]], zero_shape
+  )
+  if !ir.rename(m, wide_zero, local_name(op, "wide_zero_", 0)) {
+    return false
+  }
+  let wide_name = local_name(op, "wide_scale_", 0)
+  if wide_name == "" || !ir.rename(m, wide_x, wide_name) ||
+     !ir.rename(m, wide_y, local_name(op, "wide_scale_", 1)) {
+    return false
+  }
+  let combined = ir.call(
+    m, op, "tensor.operator *", [inputs[4], wide_x], scalar_scales
+  )
+  let scaled_name = local_name(op, "combined_scale_", 0)
+  if scaled_name == "" || !ir.rename(m, combined, scaled_name) {
+    return false
+  }
+  let combined_div = ir.call(
+    m, op, "tensor.operator /", [combined, wide_y], scalar_scales
+  )
+  let divided_name = local_name(op, "combined_scale_", 1)
+  if divided_name == "" || !ir.rename(m, combined_div, divided_name) {
+    return false
+  }
+  let quantized = accumulated(
+    m, op, convolved, combined_div, wide_zero, 1, result
   )
   if !ir.live(convolved) || !ir.live(quantized) {
     return false

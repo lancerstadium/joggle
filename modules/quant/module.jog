@@ -2,6 +2,65 @@ module quant
 use tensor
 use math
 
+fn offset<
+  Q: Ty,
+  S: list<int>,
+  P: list<int>
+>(
+  x: tensor<Q, S>,
+  zero: tensor<Q, P>,
+  axis: int
+) -> tensor<i32, S> {
+  var out = tensor<i32, S>(i32(0))
+  for i in 0..tensor.numel<S>() {
+    var p = 0
+    if tensor.numel<P>() != 1 {
+      var stride = 1
+      for dim in axis + 1..len(S) {
+        stride *= S[dim]
+      }
+      p = (i / stride) % S[axis]
+    }
+    out[i] = i32(x[i]) - i32(zero[p])
+  }
+  return out
+}
+
+fn accumulate<
+  Q: Ty,
+  E: Ty,
+  S: list<int>,
+  P: list<int>
+>(
+  acc: tensor<i32, S>,
+  scale: tensor<E, P>,
+  zero: tensor<Q, P>,
+  axis: int,
+  low: int,
+  high: int
+) -> tensor<Q, S> {
+  var out = tensor<Q, S>(Q(0))
+  for i in 0..tensor.numel<S>() {
+    var p = 0
+    if tensor.numel<P>() != 1 {
+      var stride = 1
+      for dim in axis + 1..len(S) {
+        stride *= S[dim]
+      }
+      p = (i / stride) % S[axis]
+    }
+    var value: E = round_even(E(acc[i]) * scale[p]) + E(zero[p])
+    if value < E(low) {
+      value = E(low)
+    }
+    if value > E(high) {
+      value = E(high)
+    }
+    out[i] = Q(value)
+  }
+  return out
+}
+
 fn dequantize<
   Q: Ty,
   E: Ty,

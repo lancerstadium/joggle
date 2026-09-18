@@ -1296,19 +1296,26 @@ int main(int argc, char** argv) {
   CHECK(count(qlinear, "nn.conv2d") == 1);
   CHECK(count(qlinear, "nn.add") == 1);
   CHECK(count(qlinear, "nn.avg_pool2d") == 1);
-  CHECK(count(qlinear, "quant.dequantize") == 8);
-  CHECK(count(qlinear, "quant.quantize") == 4);
+  // The convolution is lowered to an exact int32 accumulation of
+  // zero-point-corrected values: an offset per operand, the int32 bias used
+  // directly, and one accumulator requantisation. That replaces the previous
+  // dequantise-dequantise-bias-dequantise and single requantise.
+  CHECK(count(qlinear, "quant.dequantize") == 5);
+  CHECK(count(qlinear, "quant.quantize") == 3);
+  CHECK(count(qlinear, "quant.offset") == 2);
+  CHECK(count(qlinear, "quant.accumulate") == 1);
   std::size_t resolved_qlinear_calls = 0;
   std::size_t annotated_qlinear_calls = 0;
   for (joggle::Op op : qlinear.ops())
     if (op.callee() == "quant.dequantize" ||
         op.callee() == "quant.quantize" ||
+        op.callee() == "quant.offset" || op.callee() == "quant.accumulate" ||
         op.callee() == "tensor.matmul" || op.callee() == "nn.conv2d" ||
         op.callee() == "nn.add" || op.callee() == "nn.avg_pool2d") {
       resolved_qlinear_calls += static_cast<bool>(env.resolve(qlinear, op));
       annotated_qlinear_calls += !op.meta().empty();
     }
-  CHECK(resolved_qlinear_calls == 16);
+  CHECK(resolved_qlinear_calls == 15);
   CHECK(annotated_qlinear_calls == 0);
   joggle::Mod qlinear_roundtrip;
   CHECK(joggle::parse(env, joggle::print(qlinear), qlinear_roundtrip,
