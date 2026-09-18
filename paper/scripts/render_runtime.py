@@ -108,8 +108,8 @@ def main():
     order.sort(key=lambda m: runs[m]["locality"]["median"])
     order += [m for m in pinned() if m not in runs]
 
-    fig = plt.figure(figsize=(7, 2.6))
-    ax = fig.add_axes([.088, .300, .890, .560])
+    fig = plt.figure(figsize=(7, 2.80))
+    ax = fig.add_axes([.062, .445, .870, .410])
 
     for index, model in enumerate(order):
         variants = runs.get(model)
@@ -125,21 +125,29 @@ def main():
                         ecolor="#1B2733", elinewidth=.7, capsize=1.5,
                         capthick=.7, zorder=4)
 
+    # The groups that carry no timing are marked rather than left blank, so the
+    # chart itself says why half the pinned set is empty.
+    measured_n = sum(1 for m in order if m in runs)
+    if measured_n < len(order):
+        ax.axvspan(measured_n - .5, len(order) - .4, color="#F1F3F5", zorder=0)
+        ax.text((measured_n + len(order)) / 2 - .85, .28, "no executed\nartifact",
+                fontsize=7.0, color="#7A8791", ha="center", va="center",
+                rotation=90, zorder=1)
     ax.axhline(1.0, color="#7A8791", linewidth=.7, linestyle=(0, (3, 3)), zorder=1)
     ax.set_xticks(range(len(order)), order, rotation=32, ha="right",
                   rotation_mode="anchor")
     ax.set_xlim(-.65, len(order) - .35)
     ax.set_ylim(0, 1.06)
     ax.set_yticks([0, .25, .5, .75, 1.0], ["0", "0.25", "0.50", "0.75", "1.00"])
-    ax.set_ylabel("Runtime relative to Joggle first-fit")
+    ax.set_ylabel("runtime ratio")
     ax.grid(axis="y", color="#D5DADF", linewidth=.5)
     ax.set_axisbelow(True)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
     handles = [Patch(facecolor=color, label=label) for _, label, color in SERIES]
-    ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(.5, 1.15),
-              ncol=5, frameon=False, columnspacing=1.1, handletextpad=.45)
+    ax.legend(handles=handles, loc="upper right", frameon=False, fontsize=9.0,
+              handlelength=1.0, handletextpad=.4, labelspacing=.30, borderpad=.2)
     out = ROOT / "figures"
     # Fixed canvas: PDF width remains exactly 7 inches; no shrink-to-fit surprises.
     fig.savefig(out / "runtime.pdf", bbox_inches=None)

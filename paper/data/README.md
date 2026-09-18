@@ -1047,3 +1047,18 @@ manuscript's earlier MLIR comparison rested on the Transform route's C++
 extension tutorial, which is the least favourable of the available routes; the
 probe replaces that basis. Regenerate the record by rerunning the probe against
 the same `mlir-opt`.
+
+`unmeasured-models.json` records why each pinned model without a campaign
+measurement has none, established by driving each through the study pipeline to
+the stage that stops it. Four are blocked by real defects rather than by the
+measurement: TinyYOLOv3 converts and is then declined by C preparation, which
+reports an unsupported convolution; SSD-MobileNetV1 converts and is then declined
+by static-control folding, whose two arms carry tensor types of different rank;
+and both EfficientNet-Lite4 variants build, run, and miss the stored reference in
+a shared quantised path, by 4.46e-3 over 130 elements for INT8 and 1.68e-3 over
+98 for QDQ, each with both variants reporting the same error. XCiT-Tiny exceeds
+its preparation timeout, which is a cost rather than a rejection, and TFLite
+MobileNetV2 executes but was timed against LiteRT by its own frontend study. None
+of the six can be added by measuring alone, and any compiler fix would change the
+revision that every existing number is pinned to, which is why the campaign
+reports ten.

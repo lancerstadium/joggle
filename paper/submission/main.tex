@@ -338,13 +338,13 @@ definitions through \texttt{ir.invoke}, or install the derived definition
 under ordinary module rules.
 
 Cloning a public wrapper is insufficient when its algorithm calls private
-helpers in the source module: ordinary dependency visibility prevents the
-copied wrapper from calling those helpers from $K$. Let $C_{\mathrm{priv}}(f)$
-be the private source definitions reachable through resolved calls from $f$.
-Derivation copies $\{f\}\cup C_{\mathrm{priv}}(f)$ into $K$, rebinds private
-edges to those copies, and retains ordinary explicit dependencies for public
-calls. The operation either copies the closure and the requested function or
-rolls back the entire derivation. This exposes the actual private algorithm, not merely its public wrapper.
+helpers in the source module, because ordinary dependency visibility prevents the
+copy from calling those helpers from $K$. Let $C_{\mathrm{priv}}(f)$ be the
+private source definitions reachable through resolved calls from $f$. Derivation
+copies $\{f\}\cup C_{\mathrm{priv}}(f)$ into $K$, rebinds private edges to
+those copies, and keeps ordinary explicit dependencies for public calls, either
+copying the closure and the requested function or rolling back the whole
+derivation. This exposes the private algorithm rather than its wrapper.
 Mutually recursive closures are rejected rather than partially copied, and
 dynamic handle selection and opaque native bodies are not inferred into the
 closure.
@@ -365,13 +365,12 @@ inner slot loop through its carried selection value, then follows that value's
 users through the short-circuit type and lifetime tests to the assignment.
 Demand and capacity are recovered from the subsequent growth comparison and
 writeback, projecting branch-carried operands through their incoming values.
-Thus local binding names do not select the edit site. Once these conditions
-hold, the insertion uses ordinary typed IR operations
-(Figure~\ref{fig:derive}). Its operands are handles recovered by the matcher,
-not strings searched in the source. Replacing the old predicate's uses and erasing it
-completes the local edit. The recipe rejects a changed conjunction, lifetime
-comparison, selection assignment, or capacity writeback before publishing
-the edited compiler module. These are algorithm-specific preconditions;
+Thus local binding names do not select the edit site. The insertion then uses
+ordinary typed IR operations whose operands are handles recovered by the matcher,
+not strings searched in the source (Figure~\ref{fig:derive}), and replacing the
+old predicate's uses completes the edit. A changed conjunction, lifetime
+comparison, selection assignment, or capacity writeback is rejected before the
+edited module is published. These are algorithm-specific preconditions;
 ordinary IR checking supplies type and structural validity, not a proof of
 allocation safety. Numerical and storage checks therefore remain necessary
 when the derived planner executes on a subject program.
@@ -404,10 +403,10 @@ Semantic and target definitions thus compose through ordinary dependencies.
 
 % [claim:C-module-binding] [evidence:E-module-upgrade,E-module-tests] Author verification pending.
 \paragraph{Replacement checks.}
-Keeping exports does not preserve bindings. Figure~\ref{fig:binding} shows
-an additive facade overload redirecting an existing client call away from a
-generic provider. Consequently, replacement must check both the declarations
-that remain available and the declarations that existing calls select.
+Keeping exports does not preserve bindings: an additive facade overload can
+redirect an existing client call away from a generic provider. Replacement must
+therefore check both the declarations that remain available and the declarations
+that existing calls select.
 
 Joggle requires each old public signature, with generic names normalized, to
 remain in the candidate. It then loads the candidate in a staged environment
@@ -472,23 +471,6 @@ rollback boundaries. Native text below the drawing gives the real clone and
 insertion calls; their operands are compiler-code values, not model tensors.}
 \label{fig:derive}
 \end{figure*}
-
-\begin{figure}[t]
-\centering
-% [claim:C-module-binding] [evidence:E-module-upgrade,E-module-tests] Author verification pending.
-\includegraphics[width=\columnwidth]{../figures/binding.png}
-\caption{Preserved exports can hide a changed binding. An added concrete
-overload redirects the client's call in the staged environment. The upgrade
-is rejected; the installed facade remains unchanged. Declaration labels
-abbreviate signatures from the regression case.}
-\Description{Two corresponding import graphs connect client to facade to
-provider. In the installed environment, the client's choose call resolves to
-the provider's generic declaration. In the staged environment, the facade
-retains keep and adds choose for i32; this more-specific declaration becomes
-the target. Dashed edges are imports and solid edges are call bindings.
-Exports are retained but the changed binding rejects the upgrade.}
-\label{fig:binding}
-\end{figure}
 
 \subsection{Consumer-directed exposure and the update boundary}
 \label{sec:reactive}
@@ -693,18 +675,18 @@ pinned TVM planner's natural source route.
 
 \paragraph{Artifact consequence.}
 % [claim:C-derive-storage] [evidence:E-reuse-result]
-Both planners receive the same prepared UltraFace RFB-320 program.
-Prerequisite fixes for views, dynamic shape storage, and loop backedges are
-shared by both variants and are not attributed to the ranking edit.
-Apple Clang 17 compiles both artifacts with \texttt{-O2} and strict C99
-warnings. Every process is validated against the stored references before its timing is
-admitted, and a repetition whose output digest departs from its variant's first
-run is discarded; that digest is an admission check, not a reported metric. The
-reported quantity is numerical agreement: across two calls per variant on one recorded input, the
-8,840 scores and 17,680 box coordinates have a maximum absolute error of
-$3.58\times10^{-7}$ against those references, below the $10^{-5}$ threshold. Declared static slots fall from 6,837,984 to 6,530,808
-bytes (4.49\%), including a 24-byte increase in integer slots, which measures
-declared slot capacity rather than memory in use.
+Both planners receive the same prepared UltraFace RFB-320 program, whose
+prerequisite fixes for views, dynamic shape storage, and loop backedges are
+shared and not attributed to the ranking edit; Apple Clang 17 compiles both with
+\texttt{-O2} and strict C99 warnings. Every process is validated against the
+stored references before its timing is admitted, and a repetition whose digest
+departs from its variant's first run is discarded, that digest being an admission
+check rather than a reported metric. Numerical agreement is the reported
+quantity: across two calls per variant on one input, the 8,840 scores and 17,680
+box coordinates have a maximum absolute error of $3.58\times10^{-7}$, below the
+$10^{-5}$ threshold. Declared static slots fall from 6,837,984 to 6,530,808 bytes
+(4.49\%), including a 24-byte increase in integer slots, which measures declared
+slot capacity rather than memory in use.
 
 That proxy is the change's only artifact-level consequence. Extending the same
 derived planner to four further models shows what it carries: all five validate
@@ -752,7 +734,7 @@ nothing: deriving the recipe costs 0.04\,s and the derived planner 2.48\,s. The
 TVM route pays a translation unit and a relink per edit, 8.0\,s and 7.7\,s on
 revert, after a 514\,s clean build, and then plans natively far faster than
 Joggle's interpreted planner. Both artifacts pass the same oracle, but the rule
-lowers Joggle's first-fit plan yet raises TVM's capacity-aware one, so the two
+lowers Joggle's first-fit plan and raises TVM's capacity-aware one, so the two
 storage figures are not comparable and the rule is not a contribution.
 The control covers one model and one host and measures a rebuild and
 feedback boundary, not developer effort or maintenance over upstream changes.
@@ -805,8 +787,8 @@ executable composition across roles, not the cost of repeated revision.
 % [claim:C-module-binding] [evidence:E-module-tests] Author verification pending.
 Replacement regressions address compatibility: a generic-parameter rename and
 a nonconflicting export are accepted, while incompatible signatures, missing
-dependencies, and an overload that redirects a dependent call are rejected
-with the installed source unchanged (Figure~\ref{fig:binding}).
+dependencies, and an overload that redirects a dependent call are rejected with
+the installed source unchanged.
 
 \begin{center}
 \small
@@ -832,23 +814,23 @@ Numeric format   & 4, mod3, dep4 & --- & --- \\
 The pinned set holds sixteen models, fifteen from the ONNX Model Zoo and one
 TFLite model. All sixteen decode and convert, and the fifteen ONNX models also
 infer, since the TFLite frontend has no separate inference stage: at revision
-\texttt{27b37c75} every ONNX Zoo case reaches a zero unknown-result frontier
-with no source-format call left, including the cases that earlier stopped at
-280, 6790, and 1333 unknown results. Eleven also have executed artifacts that
-pass a stored reference: MNIST, MobileNetV2, two SqueezeNet variants including
-QDQ, ResNet18, TinyYOLOv2, UltraFace, ShuffleNetV2, DenseNet, GoogLeNet, and the
-TFLite model, which agrees with LiteRT to $1.0\times10^{-6}$. Reach is not execution. Three
-models stop at conversion (TinyYOLOv3, SSD-MobileNetV1, EfficientNet-Lite4 QDQ)
-and XCiT-Tiny exceeds its recorded preparation timeout. EfficientNet-Lite4 INT8
-goes further and fails later: preparation completes in 1{,}036\,s, both variants
-emit and compile, and execution misses the stored reference by
-$4.46\times10^{-3}$ with 130 elements outside tolerance. Both variants report
-the same error, so the gap is in the shared quantised path, not the policy, and
-no timing is reported for a model that does not validate.
-Keeping reach and execution apart prevents frontend coverage from being
-mistaken for deployable support. A model whose conversion frontier closed at
-this revision is not thereby shown to produce a runnable artifact, and no row
-of Figure~\ref{fig:runtime} presents it as one.
+\texttt{27b37c75} every ONNX case reaches a zero unknown-result frontier with no
+source-format call left, including the three that earlier stopped at 280, 6790,
+and 1333 unknown results. Eleven also have executed artifacts that pass a stored
+reference, and the TFLite model agrees with LiteRT to $1.0\times10^{-6}$; that
+count is the top bar of Figure~\ref{fig:evidence}(c).
+
+Reach is not execution, and the models without timing fail for different
+reasons. TinyYOLOv3 converts and is then declined by C preparation, which reports
+an unsupported convolution. SSD-MobileNetV1 converts and is then declined by
+static-control folding, whose two arms carry tensor types of different
+rank. Both EfficientNet-Lite4 variants build, run, and miss
+the stored reference: $4.46\times10^{-3}$ over 130 elements quantised to INT8 and
+$1.68\times10^{-3}$ over 98 in QDQ form, each with both variants reporting the
+same error, so the gap is in the shared quantised path rather than the policy.
+XCiT-Tiny exceeds its preparation timeout, a cost rather than a rejection, and
+TFLite MobileNetV2 was timed against LiteRT by its own frontend study. No timing
+is reported for a model that does not validate.
 
 The in-memory MobileNetV2 trace tests a different property: selection leaves
 54 external Conv calls alongside 36 semantic ReLU calls, preparation retains
@@ -891,16 +873,14 @@ the resulting artifact is 1.47$\times$ faster than the ordinary one and
 1.41$\times$ faster than TVM's unscheduled lowering, both as medians of paired
 ratios.
 
-The figure bounds the claim in the other direction. ONNX-MLIR at \texttt{-O3}
-beats the policy-improved Joggle artifact on six of the nine models where both
-were built, by up to $3.83\times$, and loses on the other three by up to
-$1.27\times$; ONNX Runtime stays $7.7\times$ to $85.9\times$ ahead on every
-model. An optimizing backend therefore still leads on most models, so a claim
-about compiler infrastructure is not a claim about code generation, and the
-packing, vectorized microkernels, epilogue fusion, and threading that remain are
-work this substrate would host in a source-defined selection procedure rather
-than in the compiler host. The qualifications at the head of this section carry
-over unchanged. On UltraFace, median absolute deviations for those processes are 4.09, 2.63,
+The figure bounds the claim in the other direction: ONNX-MLIR at \texttt{-O3}
+beats the policy-improved artifact on six of the nine models where both were
+built, by up to $3.83\times$, and loses on the other three by up to
+$1.27\times$, while ONNX Runtime stays $7.7\times$ to $85.9\times$ ahead. An
+optimizing backend therefore still leads on most models, so a claim about
+compiler infrastructure is not one about code generation: the packing,
+vectorized microkernels, epilogue fusion, and threading that remain are work this
+substrate would host in a source-defined selection procedure. On UltraFace, median absolute deviations for those processes are 4.09, 2.63,
 3.74, 2.61, and 0.40\,ms for ordinary Joggle, policy Joggle, TVM, ONNX-MLIR, and
 ONNX Runtime, larger than an earlier pair-only job recorded because this job ran
 at a higher load.
@@ -921,14 +901,24 @@ Figure~\ref{fig:runtime} shows every model rather than a summary over the set.
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.96\textwidth]{../figures/runtime.pdf}
-\caption{Every system measured on each pinned model, normalized to that model's
-own Joggle first-fit artifact, over 20 fresh processes on one host at one
+\includegraphics[width=\textwidth]{../figures/runtime.pdf}
+\par\smallskip
+\includegraphics[width=\textwidth]{../figures/evidence.pdf}
+\caption{Top: every system measured on each pinned model, normalized to that
+model's own Joggle first-fit artifact, over 20 fresh processes on one host at one
 thread. A group is a model and its bars are the systems run on it, so a group is
-empty where a system was not run. Ten models carry the campaign; five reach
-conversion without an executed artifact, and TFLite MobileNetV2 was timed by its
-own frontend study.}
+empty where a system was not run; ten models carry the campaign and five never
+reached an executed artifact. Bottom: (a) the same policy against TVM's
+unscheduled lowering per model, as a median of paired ratios with a percentile
+bootstrap interval over 20 trials, where the interval for MNIST covers one and
+that model is therefore a tie rather than a win, and (b) the cost of one revision,
+from the edit to the revised plan: Joggle derives the planner and runs it in
+2.53\,s with no compiler rebuild, while TVM compiles one translation unit and
+relinks in 8.03\,s, after a clean build of its compiler that Joggle does not
+need. Raw compilation from an ONNX file to a first artifact is a different
+measure and is reported in the text.}
 \label{fig:runtime}
+\label{fig:evidence}
 \end{figure*}
 
 \paragraph{Run time.}
@@ -984,28 +974,27 @@ what semantic and rebuild obligations remain afterwards.
 
 \subsection{Programmable compiler implementations}
 \label{sec:related-transform}
-Every ingredient here has precedent, and none of it is claimed. Client control
-of an implementation decision is the open implementation and metaobject
-programme \cite{lamping1992open,kiczales1997open,chiba1995mop}. {\tt lcc} took
-extensions without a rebuild \cite{engler1999interface}. Copying a procedure
-while the original remains is procedure cloning \cite{cooper1993cloning}, and
-Truffle does it automatically \cite{wurthinger2017practical}. Running a revision
-beside the installed definition, with rollback, is Erlang code loading and
-dynamic updating \cite{erlangCodeLoading,hicks2005dynamic}.
+Every ingredient here has precedent, and none of it is claimed: open
+implementation and the metaobject protocol
+\cite{lamping1992open,kiczales1997open,chiba1995mop}, {\tt lcc}'s extensions
+without a rebuild \cite{engler1999interface}, procedure cloning
+\cite{cooper1993cloning} which Truffle does automatically
+\cite{wurthinger2017practical}, and Erlang code loading with dynamic updating
+\cite{erlangCodeLoading,hicks2005dynamic}.
 
 What is claimed is the conjunction, over one typed IR that also represents the
 subject. MLIR keeps strategies as IR, and we probed its routes against LLVM
-23.0.0git rather than a tutorial. The pattern-descriptor
-route needs no rebuild and works: fourteen patterns compile to interpreter
-bytecode under \texttt{mlir-opt}. It cannot reach a pass's decision procedure.
-One-Shot Bufferize, which makes the storage choice this paper's cases edit,
-exposes seventeen options, all booleans, enums, scalars, or string filters, the nearest being
-\texttt{--analysis-heuristic}, which picks among built-in heuristics
+23.0.0git: the pattern-descriptor route needs no rebuild, since fourteen patterns
+compile to interpreter bytecode under \texttt{mlir-opt}, but it cannot reach a
+pass's decision procedure. One-Shot Bufferize, which makes the storage choice
+this paper's cases edit, exposes seventeen options that are all booleans, enums,
+scalars, or string filters, the nearest being \texttt{--analysis-heuristic},
+which picks among built-in heuristics
 \cite{lucke2025transform,mlirTransformDocs,mlirPdl,mlirBufferizationDocs}, so a
-ranking of one's own means editing the pass in C++ \cite{mlirTransformTutorial}. Exo 2 makes
-scheduling libraries programmable with versioned cursors that survive edits
-\cite{ikarashi2024exo2}, but edits schedules rather than a planner's internal
-branch. AnyDSL, LMS, and Weval specialize closures, staged abstractions, or an existing
+ranking of one's own means editing the pass in C++ \cite{mlirTransformTutorial}.
+Exo 2 makes scheduling libraries programmable with versioned cursors that survive
+edits \cite{ikarashi2024exo2}, but edits schedules rather than a planner's
+internal branch. AnyDSL, LMS, and Weval specialize closures, staged abstractions, or an existing
 interpreter \cite{leissa2018anydsl,rompf2016lms,fallin2025weval}, which resolves
 supplied inputs, whereas the edit here changes a decision inside a represented
 algorithm that still needs its own semantic validation. TVM's PackedFunc gives
@@ -1048,16 +1037,15 @@ Source patch: planner & --- & yes & yes \\
 \end{center}
 
 \subsection{Module boundaries and extensibility}
-JastAdd and Polyglot modularize language definitions and analyses
-\cite{ekman2007jastadd,nystrom2003polyglot}, Spoofax composes specifications
-across syntax, analysis, transformation, generation, and editor services
-\cite{kats2010spoofax}, and Nanopass and MAGIK expose compilation through small
-languages and application-specific semantics
+JastAdd, Polyglot, and Spoofax modularize language definitions and analyses
+across syntax, transformation, generation, and editor services
+\cite{ekman2007jastadd,nystrom2003polyglot,kats2010spoofax}, and Nanopass and
+MAGIK expose compilation through small languages
 \cite{sarkar2005nanopass,engler1997magik}. Klopp et al. attach module semantics
-to an IR through typed Datalog modules with required and provided relations and
-separate compilation \cite{klopp2024datalogmodules}. Joggle's module unit holds
-typed functions and dependencies checked on installation and replacement, and
-its reverse-dependency checks bound what a replacement may redirect.
+to an IR through typed Datalog modules with required and provided relations
+\cite{klopp2024datalogmodules}. Joggle's module unit holds typed functions and
+dependencies checked on installation and replacement, and its reverse-dependency
+checks bound what a replacement may redirect.
 
 MLIR supports runtime-defined dialects, IRDL definitions, external interface
 models, and partial conversion
@@ -1068,14 +1056,13 @@ on typed function definitions with one resolution and execution rule across
 compiler roles, leaving domain-specific checks and native bindings explicit.
 
 \subsection{Mixed representations and deployment}
-TVM's IRModule composes Relax functions, tensor programs, and external calls for
-cross-level optimization; partial lowering, analysis feedback, and joint
-caller/callee rewrites make those boundaries active optimization interfaces
-rather than a shared container \cite{lai2025relax,tvmArchitectureDocs}. MLIR's
-common operation, region, block, and value structure permits multiple dialects in
-one program \cite{lattner2021mlir,mlirLangRefDocs,mlirConversionDocs}, so mixed
-abstraction levels need not abandon specialized invariants or convert a whole
-program in one step.
+TVM's IRModule composes Relax functions, tensor programs, and external calls;
+partial lowering, analysis feedback, and joint caller/callee rewrites make those
+boundaries active optimization interfaces rather than a shared container
+\cite{lai2025relax,tvmArchitectureDocs}. MLIR's common operation, region, block,
+and value structure permits multiple dialects in one program
+\cite{lattner2021mlir,mlirLangRefDocs,mlirConversionDocs}, so mixed levels need
+not convert a whole program at once.
 
 Joggle combines this local coexistence with a common function-body model for
 computation and source-defined compiler procedures: a consumer can retain a
@@ -1088,32 +1075,28 @@ comparisons, so Joggle's evaluation follows the complete-artifact boundary.
 
 \subsection{Kernel construction and automatic optimization}
 Lift, RISE, and Elevate make transformation strategy explicit
-\cite{steuwer2017lift,steuwer2022rise}, and Halide and Tiramisu separate
-algorithms from schedules \cite{ragankelley2013halide,baghdadi2019tiramisu}.
-TensorIR, Hidet, and TileLang expose blocks, tiles, threads, and data movement
-\cite{feng2023tensorir,ding2023hidet,wang2025tilelang}. Exo externalizes target
+\cite{steuwer2017lift,steuwer2022rise}; Halide and Tiramisu separate algorithms
+from schedules \cite{ragankelley2013halide,baghdadi2019tiramisu}; TensorIR,
+Hidet, and TileLang expose blocks, tiles, threads, and data movement
+\cite{feng2023tensorir,ding2023hidet,wang2025tilelang}; Exo externalizes target
 instructions, memories, and trusted rewrites into user code
-\cite{ikarashi2022exo}, and sparse systems expose format and data-movement
-choices \cite{daghero2025sparse}. Joggle addresses how such choices compose
-with model recognition, portable definitions, compiler policies, and artifact
-generation; scheduling quality itself is the gap Section~\ref{sec:eval-code}
-measures. Ansor, Roller, and Welder search or constrain tensor programs and tile graphs,
-and Ladder couples custom datatypes with storage, access, conversion, and
-scheduling
+\cite{ikarashi2022exo}; and sparse systems expose format and data-movement
+choices \cite{daghero2025sparse}. Ansor, Roller, and Welder search or constrain
+tensor programs and tile graphs, and Ladder couples custom datatypes with
+storage, access, conversion, and scheduling
 ~\cite{zheng2020ansor,zhu2022roller,shi2023welder,wang2024ladder}. TASO,
 Tensat, Glenside, Mirage, and Axon enlarge the transformation space through
 generated substitutions, equality saturation, access-pattern rewriting, or
 multi-level superoptimization
 ~\cite{jia2019taso,yang2021tensat,smith2021glenside,wu2024mirage,kothari2026axon};
 ACT and ATLAAS derive instruction selection and scratchpad allocation from
-tensor-ISA semantics and lift RTL toward them
-~\cite{jain2026act,gao2026atlaas}.
+tensor-ISA semantics ~\cite{jain2026act,gao2026atlaas}.
 
-These works improve generation or selection within specific search spaces
-and target models. Joggle makes the selection procedure a replaceable typed
-function and checks its structural edits before publication, separating a
-policy's integration from its optimization quality; it implements none of
-those search or synthesis algorithms.
+These works improve generation or selection inside specific search spaces.
+Joggle makes the selection procedure a replaceable typed function and checks its
+structural edits before publication, separating a policy's integration from its
+optimization quality, and implements none of those search or synthesis
+algorithms.
 
 \subsection{Co-design, deployment, and generated policies}
 Co-design systems treat datatype, encoding, memory organization, kernels, and
@@ -1128,27 +1111,26 @@ Joggle's transactional edits bound a proposal's structural effects only.
 \paragraph{Customization boundary.}
 A policy argument avoids matching a body, while derivation reaches decisions
 outside that interface but needs algorithm-specific structural preconditions.
-The source-patch control and TVM's source route reach the same artifact, so what
-remains unmeasured on either side is maintenance cost. The planner edit and the
-MobileNetV2 trace show complementary uses, not a combined benefit.
+Both controls reach the same artifact, so maintenance cost is what remains
+unmeasured. The planner edit and the MobileNetV2 trace show complementary uses,
+not a combined benefit.
 
 \paragraph{Shared structure and specialized meaning.}
 Common structure does not make domain semantics interchangeable: repacking bytes
 behind an unchanged pointer signature passes resolution yet can violate a
-kernel's expectations, so oracles, not the representation, establish such
-properties.
+kernel's expectations, so oracles establish such properties, not the
+representation.
 
 \paragraph{Editability and cost.}
 Derivation copies helper closures and revision-keyed snapshots consume memory,
 and repeated scans with coarse invalidation dominate preparation, as the XCiT
-timeout and the measured compile time both show. The profiles place the
-interpreter's cost in representation rather than structure; dependency-sensitive
-recomputation becomes worthwhile only once that baseline is competitive.
+timeout and the measured compile time show. Dependency-sensitive recomputation
+waits on a competitive interpreter.
 
 \paragraph{Deployment and evidence.}
 Dynamic shapes, stateful execution, concurrent devices, and distributed
 placement remain incomplete, and the oracles establish agreement on recorded
-inputs rather than dataset accuracy.
+inputs, not dataset accuracy.
 
 \section{Conclusion}
 Joggle makes a source-defined compiler algorithm body a reusable artifact: a

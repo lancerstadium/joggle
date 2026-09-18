@@ -1,0 +1,45 @@
+{
+  "question": "why do six of the sixteen pinned models carry no campaign measurement?",
+  "method": "each model was driven through the study pipeline to the stage that stops it",
+  "host": "macOS-15.7.3 arm64, Apple M4",
+  "date_utc": "2026-09-18T02:07:22Z",
+  "finding": "four of the six are blocked by real defects rather than by the measurement: two are rejected by the compiler after converting, and two build and run but miss the stored reference in a shared quantised path. None can be added by measuring alone, and any fix changes the compiler revision that every existing number is pinned to.",
+  "models": {
+    "tiny-yolov3-11": {
+      "stage": "c.prepare",
+      "outcome": "rejected",
+      "message": "c: unsupported call remains: conv2d",
+      "meaning": "converts with no unknown op, then the C preparation pass declines a convolution configuration this model uses"
+    },
+    "ssd-mobilenetv1-12": {
+      "stage": "opt.fold",
+      "outcome": "rejected",
+      "message": "opt.fold branch type mismatch: tensor<f32, [_, _]> and tensor<f32, _>",
+      "meaning": "converts, then static-control folding refuses because the two arms carry different tensor types, a rank-erased arm against a rank-2 one"
+    },
+    "efficientnet-lite4-11-qdq": {
+      "stage": "validation",
+      "outcome": "built and ran",
+      "message": "max_abs_error 1.681222e-03, 98 elements outside 1e-4, identical for both variants",
+      "meaning": "the artifact executes; the shared quantised path is inaccurate, and since both variants report the same error the policy is not implicated"
+    },
+    "efficientnet-lite4-11-int8": {
+      "stage": "validation",
+      "outcome": "built and ran",
+      "message": "max_abs_error 4.461586e-03, 130 elements outside 1e-4, identical for both variants",
+      "meaning": "same class as the QDQ variant"
+    },
+    "xcit-tiny-12-p8-224-opset17": {
+      "stage": "c.prepare",
+      "outcome": "exceeded timeout",
+      "message": "preparation exceeds its recorded timeout",
+      "meaning": "cost, not a rejection"
+    },
+    "tflite-mobilenetv2": {
+      "stage": "timed elsewhere",
+      "outcome": "passes",
+      "message": "agrees with LiteRT to 1.0e-6",
+      "meaning": "executes, but was timed against LiteRT by its own frontend study rather than in this campaign"
+    }
+  }
+}
