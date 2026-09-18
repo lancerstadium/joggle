@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-18T03:09:20Z",
+  "date_utc": "2026-09-18T06:23:35Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -24,11 +24,23 @@
       "meaning": "the earlier failure was the reference, not the compiler: ONNX Runtime's default optimisation rewrites DequantizeLinear->Conv->QuantizeLinear into an integer kernel, a different path from the QDQ graph the compiler implements. Joggle matches the graph as written to 7.5e-9."
     },
     "efficientnet-lite4-11-int8": {
-      "stage": "lowering",
+      "stage": "lowering, partly fixed",
       "outcome": "fails validation",
-      "message": "max_abs_error 4.461586e-03 over 130 elements, identical for both variants",
-      "meaning": "a real defect, and now precisely located. This model uses the integer operators QLinearConv (91), QLinearAdd (24), QLinearAveragePool, and QLinearMatMul, not the QDQ form. convert_quant.jog lowers QLinearConv by dequantising both operands and convolving in f32, which multiplies every product by the scales before accumulating; ONNX specifies an exact int32 accumulation of the zero-point-corrected integer products, scaled once afterwards. Over 91 layers that difference reaches 4.5e-3 in the softmax while the ranking and the sum are preserved.",
-      "fix_scope": "implement QLinear* with the operator's specified integer accumulation, in convert_quant.jog, for conv, add, average pool, and matmul. General to any integer-quantised model."
+      "message": "max_abs_error 4.344e-03 over 123 elements after the int32 accumulation fix",
+      "op_composition": {
+        "standard": {
+          "QLinearConv": 91,
+          "QLinearMatMul": 1,
+          "note": "ai.onnx operators with a specified int32 accumulation"
+        },
+        "runtime_private": {
+          "QLinearAdd": 24,
+          "QLinearAveragePool": 1,
+          "note": "com.microsoft contrib operators, numerically defined by the runtime's own kernels"
+        }
+      },
+      "meaning": "92 of the 93 quantised operators are standard and now accumulate in int32 as specified; that moved the error only from 4.462e-3 to 4.344e-3, so the accumulation arithmetic is not the dominant term. The remaining 25 instances are ONNX Runtime contrib operators whose documented formula is itself a float expression, which is what the lowering implements, while ONNX Runtime evaluates them with fixed-point kernels. The residual is therefore the distance between two implementations of runtime-private operators rather than a standard-conformance failure, which is why this is not pursued further: each iteration costs about ten minutes in c.prepare alone.",
+      "cost_note": "the model's preparation runs the interpreted compiler over 91 convolutions and takes about 600 s, so one correctness iteration is roughly fifteen minutes."
     },
     "xcit-tiny-12-p8-224-opset17": {
       "stage": "c.prepare",
