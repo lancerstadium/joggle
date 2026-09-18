@@ -1,0 +1,28 @@
+{
+  "question": "why did both EfficientNet-Lite4 variants miss the stored reference?",
+  "answer": "they did not. The reference was wrong, not the compiler.",
+  "method": "each variant was run against two ONNX Runtime references, one from a default session and one from a session with graph optimisation disabled, so that the reference reflects the graph as written",
+  "measurements": {
+    "joggle_vs_default_reference": {
+      "max_abs_error": 0.001681222,
+      "elements_over_tolerance": 98
+    },
+    "joggle_vs_literal_qdq_reference": {
+      "max_abs_error": 7.451e-09,
+      "elements_over_tolerance": 0
+    },
+    "ort_default_vs_ort_literal": {
+      "max_abs_error": 0.001681,
+      "elements_over_tolerance": 98
+    },
+    "float_models_default_vs_literal": {
+      "mnist-8": 9.537e-07,
+      "squeezenet1.1-7": 3.338e-06,
+      "ultraface-rfb-320": 1.192e-07
+    }
+  },
+  "cause": "ONNX Runtime's default optimisation level rewrites DequantizeLinear -> Conv -> QuantizeLinear into an integer kernel. That is a different numerical path from the QDQ graph the compiler is asked to implement, and on this model the two differ by 1.68e-3, which was being charged to the compiler as an error. Joggle reproduces the graph as written to 7.5e-9.",
+  "fix": "gen_reference.py and subject_ort.py both disable graph optimisation, so every system executes the graph as written and the reference is the literal semantics. The fix is general rather than per-model: it moves the float models' references by at most 3.3e-6 against a 1e-4 tolerance, so no existing verdict depends on it.",
+  "consequence": "EfficientNet-Lite4 QDQ enters the campaign and is the strongest result in it: 1139.371 ms to 350.123 ms, 3.25x, with ONNX Runtime at 43.342 ms on the same reference.",
+  "date_utc": "2026-09-18T02:45:58Z"
+}

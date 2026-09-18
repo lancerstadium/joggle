@@ -31,7 +31,18 @@ def main():
     a = ap.parse_args()
 
     api = json.loads((a.out / "base" / "api.json").read_text())[0]
-    session = ort.InferenceSession(str(a.model), providers=["CPUExecutionProvider"])
+    # Execute the graph as written. With the default optimisation level ONNX
+    # Runtime rewrites DequantizeLinear -> Conv -> QuantizeLinear into an integer
+    # kernel, which is a different numerical path from the QDQ graph the compiler
+    # is asked to implement; on EfficientNet-Lite4 that difference is 1.68e-3 and
+    # would be charged to the compiler as an error. Disabling optimisation is the
+    # general fix, not a per-model one, and it moves the float models' references
+    # by at most 3.3e-6 against a 1e-4 tolerance.
+    options = ort.SessionOptions()
+    options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+    options.log_severity_level = 3
+    session = ort.InferenceSession(str(a.model), options,
+                                   providers=["CPUExecutionProvider"])
     inputs = session.get_inputs()
     if len(inputs) != 1:
         raise SystemExit(f"{a.model.name}: {len(inputs)} graph inputs, expected 1")

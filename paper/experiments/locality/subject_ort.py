@@ -26,6 +26,11 @@ ap.add_argument("--atol", type=float, default=1e-4)
 a = ap.parse_args()
 
 options = ort.SessionOptions()
+# Execute the graph as written, matching both the stored reference and the
+# compiler under test. With the default level ONNX Runtime fuses
+# DequantizeLinear -> Conv -> QuantizeLinear into an integer kernel, which is a
+# different numerical path and fails the reference check on quantised models.
+options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
 options.intra_op_num_threads = 1
 options.inter_op_num_threads = 1
 session = ort.InferenceSession(str(a.model), options, providers=["CPUExecutionProvider"])
