@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-18T14:44:57Z",
+  "date_utc": "2026-09-18T15:16:31Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -111,7 +111,12 @@
       "the retry strategy: a pre-filter mirroring the expander's refusal excluded none of the calls, chunked retries and bisecting retries both changed nothing",
       "the graph-size proxy: let and var lines undercount by a factor of forty against ir.ops"
     ],
-    "status": "unresolved. What is established is where the time is not, which is recorded so the next attempt does not repeat these four."
+    "status": "unresolved. What is established is where the time is not, which is recorded so the next attempt does not repeat these four.",
+    "second_sample": {
+      "when": "during the fallback, its steady state",
+      "result": "3414 of 3414 samples in the thread are inside the evaluator: nested Eval::loop and Eval::branch frames with attribute and type handling beneath them",
+      "reading": "essentially all of the time is the interpreter running module code, not C++ data movement outside it, which is consistent with the cost being the interpreter's own per-call work in a loop of thousands of iterations."
+    }
   },
   "bulk_rejection": {
     "question": "why does the batch expansion of SSD-MobileNetV1's 7,278 calls fail as a whole, which sends them all down the one-at-a-time path?",
@@ -138,9 +143,10 @@
     "bisecting retries: no change",
     "a lazy store snapshot: no change",
     "removing the per-call copy of the operation list outright: still past eleven minutes",
-    "grouping the fallback by callee so the dependency closure is computed once per distinct callee: no change, so the batch's callees are not concentrated"
+    "grouping the fallback by callee so the dependency closure is computed once per distinct callee: no change, so the batch's callees are not concentrated",
+    "skipping the per-call retarget walk inside Env::expand entirely, not just its copy of the operation list: still past eleven minutes, so that walk is not the cost either"
   ],
-  "status": "unresolved after eight eliminated rejection paths and six ineffective strategies. Nothing is left half-applied: the tree is back to its committed state and the suite is green.",
+  "status": "unresolved after eight eliminated rejection paths and seven ineffective strategies, with profiling showing the time in the evaluator itself. Nothing is left half-applied: the tree is at its committed state and the suite is green at 68/68.",
   "per_expansion_cost": {
     "measurement": "the fallback was made to stop after twenty calls and report: it gave 20 expansions and 0 refusals in 11.3 s, which is about 435 ms per expansion once the 2.6 s of fold, copy and dce ahead of it is removed.",
     "arithmetic": "7,278 calls at 435 ms is about 53 minutes, which matches what the model is observed to take.",
