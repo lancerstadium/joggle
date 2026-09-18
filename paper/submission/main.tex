@@ -27,9 +27,9 @@ the resulting copy executed on a separate subject while the original remains
 callable and verified. The compiler validates each revision and can roll it back,
 so a derived procedure remains reproducible. A structurally addressed derivation also
 reproduces the validated plan where a textual patch cannot be applied at all, so
-a user or an agent can propose revisions with the same tools. Across widely used models, one source-defined locality policy
+a user can propose revisions with the same tools. Across widely used models, one source-defined locality policy
 reduces the run time of generated code on each of them, by $1.44\times$ to
-$3.24\times$. It requires no compiler rebuild and matches or beats TVM's
+$3.22\times$. It requires no compiler rebuild and matches or beats TVM's
 unscheduled C target wherever that lowering could be built and validated.
 % [claim:C-locality,C-derive-storage,C-derive-control,C-derive-external,C-derive-boundary,C-derive-composition] [evidence:E-locality,E-reuse-result,E-reuse-control,E-reuse-external,E-reuse-check,E-reuse-path] Author verification pending.
 \end{abstract}
@@ -690,8 +690,8 @@ slot capacity rather than memory in use.
 
 That proxy is the change's only artifact-level consequence. Extending the same
 derived planner to four further models shows what it carries: all five validate
-under both planners, the emitted C differs on one model by 20 bytes and is
-identical on the others, and peak RSS moves by at most two percent either way,
+under both planners, the emitted C differs on one model by 20 bytes and has the
+same size on the others, and peak RSS moves by at most two percent either way,
 which is noise. A capacity-ordered ranking recovers what a competent planner
 already does, so the 4.49\% measures this prototype's first-fit baseline and the
 decision is worth what it costs to express and check, not what it saves.
@@ -734,8 +734,8 @@ nothing: deriving the recipe costs 0.04\,s and the derived planner 2.48\,s. The
 TVM route pays a translation unit and a relink per edit, 8.0\,s and 7.7\,s on
 revert, after a 514\,s clean build, and then plans natively far faster than
 Joggle's interpreted planner. Both artifacts pass the same oracle, but the rule
-lowers Joggle's first-fit plan and raises TVM's capacity-aware one, so the two
-storage figures are not comparable and the rule is not a contribution.
+lowers Joggle's plan and raises TVM's, so the two storage figures are not
+comparable and the rule is not a contribution.
 The control covers one model and one host and measures a rebuild and
 feedback boundary, not developer effort or maintenance over upstream changes.
 ONNX-MLIR at \texttt{4a13c34} has the same route shape by source inspection:
@@ -816,20 +816,23 @@ TFLite model. All sixteen decode and convert, and the fifteen ONNX models also
 infer, since the TFLite frontend has no separate inference stage: at revision
 \texttt{27b37c75} every ONNX case reaches a zero unknown-result frontier with no
 source-format call left, including the three that earlier stopped at 280, 6790,
-and 1333 unknown results. Eleven also have executed artifacts that pass a stored
+and 1333 unknown results. Twelve also have executed artifacts that pass a stored
 reference, and the TFLite model agrees with LiteRT to $1.0\times10^{-6}$.
 
 Reach is not execution, and the models without timing fail for different
 reasons. TinyYOLOv3 declares its input extents with no dimension parameter and
-computes its own extents at run time from a second input tensor, so declaring a
-shape still leaves seventy-three tensors dynamic and preparation stops on a
-stride computation. SSD-MobileNetV1 converts and is then declined by
+computes them at run time from a second input tensor, so declaring a shape still
+leaves seventy-three tensors dynamic and preparation stops on a stride
+computation. SSD-MobileNetV1 converts and is then declined by
 static-control folding, whose two arms carry tensor types of different rank. The
 EfficientNet-Lite4 INT8 variant builds, runs, and misses the stored reference by
-$4.46\times10^{-3}$ over 130 elements, both variants reporting the same error, so
-the gap is in the shared quantised path rather than the policy; the QDQ form
-measures. XCiT-Tiny exceeds its preparation timeout, a cost rather than a
-rejection, and TFLite MobileNetV2 was timed against LiteRT by its own frontend
+$4.34\times10^{-3}$ over 123 elements. Its ninety-two standard quantised operators
+now accumulate in int32 as specified, which moved that error only from
+$4.46\times10^{-3}$, so the residual lies in twenty-five instances of two
+runtime-private contrib operators, whose documented formula is a float expression
+the runtime evaluates with fixed-point kernels. The QDQ form validates, and runs
+$1{,}139$\,ms to $350$\,ms under the same policy, $3.25\times$, in its own job. XCiT-Tiny exceeds its preparation timeout, a cost rather
+than a rejection, and TFLite MobileNetV2 was timed against LiteRT by its own
 study. No timing is reported for a model that does not validate.
 
 The in-memory MobileNetV2 trace tests a different property: selection leaves
@@ -848,12 +851,11 @@ show that the first is addressable from source.
 
 % [claim:C-same-host,C-locality] [evidence:E-same-host,E-locality]
 A same-host comparison separates Joggle-specific cost from the cost shared by
-unscheduled compiler output, and then asks whether a source-defined policy can
-move it. One job measured every system on every model it could be built and
-validated for, with one thread, all Joggle and TVM C artifacts compiled at \texttt{-O2} while
-the ONNX-MLIR column keeps its \texttt{-O3} route, and 20 balanced fresh
-processes per system; Figure~\ref{fig:runtime} reports those
-medians. Where both were measured, Joggle's first-fit artifact is 0.84$\times$ to
+unscheduled compiler output, and then asks whether a policy can move it. One job
+measured every system on every model it could be built and validated for, one
+thread, 20 balanced fresh processes per system, Joggle and TVM artifacts at
+\texttt{-O2} while the ONNX-MLIR column keeps \texttt{-O3};
+Figure~\ref{fig:runtime} reports those medians. Where both were measured, Joggle's first-fit artifact is 0.84$\times$ to
 0.99$\times$ of TVM's default C-target lowering on six models and 2.7\% and
 14\% slower on ShuffleNetV2 and GoogLeNet, so the two scalar emitters are
 broadly comparable; the exception is MNIST, where TVM is 3.0$\times$ faster.
@@ -894,10 +896,12 @@ one. Against TVM's unscheduled
 lowering, measured on nine models, the same policy is faster on eight, by
 $1.41\times$ to $2.82\times$ with intervals excluding one; MNIST is a tie at
 $1.01\times$, interval $[0.94, 1.06]$. Every artifact is admitted only if it stays inside
-the study's $10^{-4}$ tolerance of its stored reference, the largest observed
-error being $2.00\times10^{-5}$. The variants differ only in the policy, so this
-measures the reach of one source-defined rule rather than per-model tuning, and
-Figure~\ref{fig:runtime} shows every model rather than a summary over the set.
+the study's $10^{-4}$ tolerance of a reference ONNX Runtime produces with graph
+optimisation disabled, so the reference is the graph as written rather than an
+integer kernel fused from it, the largest error observed being $2.00\times10^{-5}$
+on TinyYOLOv2 under ONNX-MLIR. The timed ONNX Runtime column predates that
+correction and was not re-run. The variants differ only in the policy, so this
+measures the reach of one source-defined rule rather than per-model tuning.
 
 \begin{figure*}[t]
 \centering
@@ -907,7 +911,7 @@ Figure~\ref{fig:runtime} shows every model rather than a summary over the set.
 \caption{Top: every system measured on each pinned model, normalized to that
 model's own Joggle first-fit artifact, over 20 fresh processes on one host at one
 thread. A group is a model and its bars are the systems run on it, so a group is
-empty where a system was not run; ten models carry the campaign and five never
+empty where a system was not run; ten models carry the campaign and four never
 reached an executed artifact. Bottom: (a) the same policy against TVM's
 unscheduled lowering per model, as a median of paired ratios with a percentile
 bootstrap interval over 20 trials, where the interval for MNIST covers one and
@@ -954,14 +958,13 @@ value-representation cost, addressable by interned types, shared attributes,
 and arena-allocated frames without changing the function model.
 
 XCiT's preparation exceeds its recorded timeout, and selective exposure bounds
-what a consumer requests rather than the cost of reaching it on a large
-transformer. Compilation time is now measured on one span: the pinned ONNX file
-on disk to a loadable library, one host, one thread, one artifact per system,
-with the fixture all three share staged outside the span. Joggle takes 101.5\,s
+what a consumer requests rather than the cost of reaching it. Compilation time is
+measured on one span: the pinned ONNX file on disk to a loadable library, one
+host, one thread, one artifact per system, the shared fixture staged outside the
+span. Joggle takes 101.5\,s
 against 4.52\,s for TVM and 4.51\,s for ONNX-MLIR over five runs each, so its
 compile time is 22.5$\times$ theirs here. The cost sits where the design
-predicts, since the prototype's compiler is interpreted. Peak resident memory for a
-complete model remains unmeasured. Failure tests cover
+predicts, since the prototype's compiler is interpreted. Peak compilation memory remains unmeasured. Failure tests cover
 transactions and stale handles; generative tests cover parsing and legal IR
 edits, not module loading, serialized frontends, or the native ABI.
 

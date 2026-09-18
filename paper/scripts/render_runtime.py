@@ -108,8 +108,8 @@ def main():
     order.sort(key=lambda m: runs[m]["locality"]["median"])
     order += [m for m in pinned() if m not in runs]
 
-    fig = plt.figure(figsize=(7, 2.80))
-    ax = fig.add_axes([.062, .445, .870, .410])
+    fig = plt.figure(figsize=(7, 2.45))
+    ax = fig.add_axes([.062, .455, .870, .400])
 
     for index, model in enumerate(order):
         variants = runs.get(model)
