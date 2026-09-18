@@ -760,13 +760,15 @@ separate stage with that name.
 Reach and execution are separate claims in this file. All sixteen rows pass
 `decode`, `infer`, and `convert`: at revision `27b37c75` every ONNX Zoo case in
 `model-frontier-pilot.csv` reports a zero unknown-result frontier and zero
-remaining source-format calls. Eleven rows also carry `execute=pass`, meaning a
+remaining source-format calls. Twelve rows also carry `execute=pass`, meaning a
 run record exists that was validated against a stored reference. The remaining
-five -- TinyYOLOv3-11, SSD-MobileNetV1-12, EfficientNet-Lite4 INT8,
-EfficientNet-Lite4 QDQ, and XCiT-Tiny -- closed their conversion frontier with
-no recorded executed artifact, and their `note` field says so. Closing a
-frontier at a given revision is therefore never presented here as producing a
-runnable artifact.
+four -- TinyYOLOv3-11, SSD-MobileNetV1-12, EfficientNet-Lite4 INT8 and
+XCiT-Tiny -- have no passing executed artifact, and their `note` field says why:
+the first two never executed, the INT8 variant built and ran and missed the
+reference, and XCiT exceeded its preparation timeout. Closing a frontier at a
+given revision is therefore never presented here as producing a runnable
+artifact; see the closing section for the current position, which supersedes this
+paragraph where the two differ.
 
 The TFLite MobileNet row is a second frontend rather than an ONNX Zoo case: it
 is checked by its own gate against LiteRT, its `infer` stage is `n/a` because

@@ -123,7 +123,7 @@ of reuse. Concretely:
   procedure whose cleanup step acquires guard folding; both reach artifacts
   checked by the same oracle (Section~\ref{sec:eval-derive}).
 \item A measured boundary: extension tasks across three systems, sixteen pinned
-  models of which eleven produce validated artifacts, a five-system runtime
+  models of which twelve produce validated artifacts, a five-system runtime
   comparison under one job, and a profile that locates the interpreter's cost
   (Sections~\ref{sec:eval-modules} to~\ref{sec:eval-work}).
 \end{itemize}
@@ -650,7 +650,7 @@ or dataset-level accuracy.
 One system is present for each axis it can carry, and a gap is stated rather
 than implied. Rebuild scope and edit survival are measured against TVM's source
 route, and the MLIR boundary is probed against a real build rather than
-measured end to end, since no MLIR route reaches an artifact on these models.
+measured end to end, since no MLIR route carries the edited decision through.
 
 \subsection{Revising one decision inside a working planner}
 \label{sec:eval-derive}
@@ -818,8 +818,8 @@ source-format call left, including the three that earlier stopped at 280, 6790,
 and 1333 unknown results. Twelve also have executed artifacts that pass a stored
 reference, and the TFLite model agrees with LiteRT to $1.0\times10^{-6}$.
 
-Reach is not execution, and the models without timing fail for different
-reasons. TinyYOLOv3 declares its input extents with no dimension parameter and
+Reach is not execution, and the models without campaign timing stand in
+different places. TinyYOLOv3 declares its input extents with no dimension parameter and
 computes them at run time from a second input tensor, so declaring a shape still
 leaves seventy-three tensors dynamic and preparation stops on a stride
 computation. SSD-MobileNetV1 converts and is then declined by
@@ -910,8 +910,8 @@ measures the reach of one source-defined rule rather than per-model tuning.
 \caption{Top: every system measured on each pinned model, normalized to that
 model's own Joggle first-fit artifact, over 20 fresh processes on one host at one
 thread. A group is a model and its bars are the systems run on it, so a group is
-empty where a system was not run; ten models carry the campaign and four never
-reached an executed artifact. Bottom: (a) the same policy against TVM's
+empty where a system was not run; ten models carry the campaign, three never
+reached an executed artifact, and three executed outside it. Bottom: (a) the same policy against TVM's
 unscheduled lowering per model, as a median of paired ratios with a percentile
 bootstrap interval over 20 trials, where the interval for MNIST covers one and
 that model is therefore a tie rather than a win, and (b) the cost of one revision,
