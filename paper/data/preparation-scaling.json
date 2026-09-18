@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-18T15:16:31Z",
+  "date_utc": "2026-09-18T15:24:43Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -153,5 +153,17 @@
     "implication": "the calls are not failing -- they all succeed -- so the cost is simply the per-expansion fixed work multiplied by the batch size, and the batch rejection is not what makes it slow. It is what makes it wasteful: the batch that fails late rolls back the thousands of expansions that had already succeeded, and the fallback then repeats them.",
     "likely_fix": "expand the batch best-effort -- keep the successful prefix and stop at the first refusal -- so the work is done once instead of twice, and so Env::expand's own closure collection runs once per batch rather than once per call. That is a change of the transaction's semantics and needs its own validation, at about twenty minutes per cycle on this graph.",
     "earlier_probe_rewritten": "the probe that put the inner expand failure under observation was stopped after two minutes, which at 435 ms per expansion cannot reach a failure late in a batch of thousands, so that elimination does not stand."
-  }
+  },
+  "graph_sizes_measured": {
+    "ssd-mobilenetv1-12": {
+      "semantic_lines": 8118,
+      "operations": 19432
+    },
+    "tiny-yolov3-11": {
+      "semantic_lines": 489,
+      "operations": 1146
+    },
+    "note": "the semantic-line proxy undercounts by roughly forty times, and these are the real counts reported by ir.ops"
+  },
+  "consequence_for_tiny_yolov3": "TinyYOLOv3's graph holds 1,146 operations, comparable to mnist-8's 1,108 at 1.2 s, so it would not meet the preparation cost at all once its correctness blocker is fixed. The cost wall belongs to SSD-MobileNetV1 and XCiT-Tiny, not to it."
 }

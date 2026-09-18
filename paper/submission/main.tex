@@ -823,17 +823,17 @@ computes them at run time from a second input tensor, so declaring a shape still
 leaves seventy-three tensors dynamic and preparation stops on a stride
 computation. SSD-MobileNetV1 was declined by static-control
 folding, whose two arms carried tensor types of different rank; that gap is
-closed, and what remains is cost. Preparation is quadratic in graph size: across the models
-with both a record and a retained graph, seconds over operations squared stays
-between $1.6\times10^{-4}$ and $9.6\times10^{-4}$ from 18 operations to
-1{,}758, so this model's 8{,}118 predict hours. The
+closed, and what remains is cost. Preparation grows at about two milliseconds per
+operation: 1{,}108 operations take 1.2\,s and 17{,}467 take 43.6\,s. This
+model's 19{,}432 should take under a minute and instead runs for tens of minutes,
+because expansion proceeds one call at a time over thousands of calls at a
+measured 435\,ms each. The
 EfficientNet-Lite4 INT8 variant builds, runs, and misses the stored reference by
 $4.34\times10^{-3}$ over 123 elements. Its ninety-two standard quantised operators
-now accumulate in int32 as specified, which moved that error only from
+accumulate in int32 as specified now, which moved that error only from
 $4.46\times10^{-3}$, so the residual lies in twenty-five instances of two
-runtime-private contrib operators, whose documented formula is a float expression
-the runtime evaluates with fixed-point kernels. The QDQ form validates, and runs
-$1{,}139$\,ms to $350$\,ms under the same policy, $3.25\times$, in its own job. XCiT-Tiny exceeds its preparation timeout, a cost rather
+runtime-private contrib operators. The QDQ form validates, and runs $1{,}139$\,ms
+to $350$\,ms under the same policy, $3.25\times$, in its own job. XCiT-Tiny exceeds its preparation timeout, a cost rather
 than a rejection, and TFLite MobileNetV2 was timed against LiteRT by its own
 study. No timing is reported for a model that does not validate.
 
