@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-18T13:03:03Z",
+  "date_utc": "2026-09-18T13:59:27Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -112,5 +112,18 @@
       "the graph-size proxy: let and var lines undercount by a factor of forty against ir.ops"
     ],
     "status": "unresolved. What is established is where the time is not, which is recorded so the next attempt does not repeat these four."
+  },
+  "bulk_rejection": {
+    "question": "why does the batch expansion of SSD-MobileNetV1's 7,278 calls fail as a whole, which sends them all down the one-at-a-time path?",
+    "method": "each candidate rejection inside Env::expand and Mod::expand was turned into a probe that prints its cause and aborts, so one short run identifies the path instead of waiting twenty minutes for the fallback",
+    "eliminated": [
+      "the visibility check, which requires each implementation to be resolvable or its module usable",
+      "the clone of a local dependency",
+      "the inner expander's refusal to place a stateful body in an expression region",
+      "a recursive local dependency",
+      "a preserve_calls failure while materializing dependencies",
+      "the inner per-call expand failing, probed at the call itself"
+    ],
+    "status": "unresolved. Six paths are eliminated and the probes are reverted; the remaining candidates are the semantics computation before the backup and a rejection inside Mod::expand that was not instrumented."
   }
 }
