@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-18T08:03:22Z",
+  "date_utc": "2026-09-18T08:18:48Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -12,10 +12,12 @@
       "root_cause": "the spatial dims of this model's input are declared with no name at all, [N, 3, <empty>, <empty>], so no dimension parameter exists to bind. nn.conv2d needs static extents to expand its loop nest, so the call survives into c.prepare. The graph reads its own spatial extent from a second input tensor, which is a real property of the model.",
       "fix_scope": "a shape entry on the ONNX frontend, so a caller can declare the concrete input shape when the graph declares none. This is the same requirement TVM and ONNX-MLIR place on their users, so supplying it is parity rather than a special case.",
       "progress": {
-        "fixed": "opt.signature lets a caller declare the input shape the graph does not name. Applied to imported.jog before conversion, the entry becomes tensor<f32,[1,3,416,416]> and the convolutions come out fully static, for example tensor<f32,[1,16,416,416]> where they were [N,16,_,_]. The preparation no longer stops on conv2d.",
-        "next_blocker": "nn.resize2d survives because the Resize inference leaves its result fully dynamic, [_,_,_,_], when the node carries scales rather than sizes, and a fully dynamic result cannot be expanded. The output extent is floor(input * scale) and both operands are known here.",
-        "obstacle": "the infer_*.jog rules are evaluated by the compile-time evaluator, which has no float constructor: f32 is not among the functions available there, and the language has no f64 arithmetic, so a float literal cannot be decoded inside an inference rule. The same computation belongs in convert_slice.jog, which runs as ordinary program code where f32 exists.",
-        "attempted": "a decoder assembling the little-endian mantissa and exponent, and the corresponding change to resize_result; both were reverted once the compile-time evaluator rejected f32, and the suite is green at 68/68."
+        "fixed": [
+          "opt.signature declares the input shape the graph does not name, so the entry becomes tensor<f32,[1,3,416,416]> and the convolutions come out static.",
+          "Resize now computes its extent from literal scales: [1,128,13,13] with scales [1,1,2,2] types as tensor<f32,[1,128,26,26], which matches the model's own initialiser."
+        ],
+        "next_blocker": "c.prepare stops on an operator * that the C backend does not accept; the call is not present after conversion, so a pass creates it.",
+        "note": "each fixed layer exposes the next, which is what adding a model to a compiler looks like; the two fixes are general capabilities rather than anything about this model."
       }
     },
     "ssd-mobilenetv1-12": {
