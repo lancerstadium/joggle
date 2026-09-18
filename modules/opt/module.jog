@@ -60,6 +60,36 @@ fn specialize(m: Mod, key: str, value: Attr) -> bool {
   return changed
 }
 
+fn signature(m: Mod, name: str, types: list<Ty>) -> bool {
+  // Some graphs declare an input whose extents have no name at all, so there is
+  // no dimension parameter for opt.instantiate to bind. A caller that knows the
+  // shape it will feed can state it here before conversion, which is the same
+  // obligation TVM and ONNX-MLIR place on their users.
+  let fn = ir.find(m, name)
+  if !ir.live(fn) || len(ir.blks(fn)) == 0 {
+    return false
+  }
+  let args = ir.params(fn)
+  if len(args) != len(types) {
+    return false
+  }
+  var changed = false
+  for i in 0..len(args) {
+    if ir.type(args[i]) != types[i] {
+      changed = ir.type(m, args[i], types[i]) || changed
+    }
+  }
+  return changed
+}
+
+fn signature(m: Mod, name: str, types: list<str>) -> bool {
+  var parsed: list<Ty> = []
+  for type in types {
+    parsed += [ty(type)]
+  }
+  return signature(m, name, parsed)
+}
+
 fn instantiate(m: Mod, name: str, args: list<Ty>) -> bool {
   let source = ir.find(m, name)
   if !ir.live(source) || len(ir.generics(source)) == 0 ||
