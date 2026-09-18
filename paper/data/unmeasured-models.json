@@ -2,8 +2,8 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-18T02:07:22Z",
-  "finding": "four of the six are blocked by real defects rather than by the measurement: two are rejected by the compiler after converting, and two build and run but miss the stored reference in a shared quantised path. None can be added by measuring alone, and any fix changes the compiler revision that every existing number is pinned to.",
+  "date_utc": "2026-09-18T03:09:20Z",
+  "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
       "stage": "c.prepare",
@@ -18,16 +18,17 @@
       "meaning": "converts, then static-control folding refuses because the two arms carry different tensor types, a rank-erased arm against a rank-2 one"
     },
     "efficientnet-lite4-11-qdq": {
-      "stage": "validation",
-      "outcome": "built and ran",
-      "message": "max_abs_error 1.681222e-03, 98 elements outside 1e-4, identical for both variants",
-      "meaning": "the artifact executes; the shared quantised path is inaccurate, and since both variants report the same error the policy is not implicated"
+      "stage": "measured",
+      "outcome": "passes",
+      "message": "1139.371 ms to 350.123 ms, 3.25x, ONNX Runtime 43.342 ms on the same reference",
+      "meaning": "the earlier failure was the reference, not the compiler: ONNX Runtime's default optimisation rewrites DequantizeLinear->Conv->QuantizeLinear into an integer kernel, a different path from the QDQ graph the compiler implements. Joggle matches the graph as written to 7.5e-9."
     },
     "efficientnet-lite4-11-int8": {
-      "stage": "validation",
-      "outcome": "built and ran",
-      "message": "max_abs_error 4.461586e-03, 130 elements outside 1e-4, identical for both variants",
-      "meaning": "same class as the QDQ variant"
+      "stage": "lowering",
+      "outcome": "fails validation",
+      "message": "max_abs_error 4.461586e-03 over 130 elements, identical for both variants",
+      "meaning": "a real defect, and now precisely located. This model uses the integer operators QLinearConv (91), QLinearAdd (24), QLinearAveragePool, and QLinearMatMul, not the QDQ form. convert_quant.jog lowers QLinearConv by dequantising both operands and convolving in f32, which multiplies every product by the scales before accumulating; ONNX specifies an exact int32 accumulation of the zero-point-corrected integer products, scaled once afterwards. Over 91 layers that difference reaches 4.5e-3 in the softmax while the ranking and the sum are preserved.",
+      "fix_scope": "implement QLinear* with the operator's specified integer accumulation, in convert_quant.jog, for conv, add, average pool, and matmul. General to any integer-quantised model."
     },
     "xcit-tiny-12-p8-224-opset17": {
       "stage": "c.prepare",
