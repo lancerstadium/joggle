@@ -199,6 +199,17 @@ std::optional<std::int64_t> integer(const Item& item) {
   return value ? value->integer() : std::nullopt;
 }
 
+std::optional<double> real(const Item& item) {
+  const Attr* value = as<Attr>(item);
+  if (!value)
+    return std::nullopt;
+  if (const auto number = value->real())
+    return number;
+  if (const auto whole = value->integer())
+    return static_cast<double>(*whole);
+  return std::nullopt;
+}
+
 std::optional<std::int64_t> integer(const Ty& value) {
   std::string_view text = value.text();
   if (text.starts_with('+'))
@@ -947,6 +958,9 @@ private:
     }
     if (fn.external()) {
       const std::string symbol = fn.store_->name + "." + std::string(fn.name());
+      // f32 and f64 are implemented here rather than bound as natives, like int.
+      if (fn.module() == "base" && fn.name() == "real")
+        return fundamental(fn.name(), args, fn.loc());
       if (!env_.bound(symbol)) {
         fail("compile-time function has no implementation: " + fn.store_->name +
                  "." + std::string(fn.name()),
@@ -1477,7 +1491,7 @@ private:
            name == "kind" || name == "assert" || name == "name" ||
            name == "args" || name == "int" || name == "str" ||
            name == "text" || name == "hex" || name == "replace" ||
-           name == "ident" || name == "ty";
+           name == "ident" || name == "ty" || name == "real";
   }
 
   std::optional<Items> fundamental(std::string_view name, const Items& args,
@@ -1576,6 +1590,12 @@ private:
       } else if (const auto value = integer(args[0])) {
         return Items{Item(Attr(*value))};
       }
+    } else if (name == "real" && args.size() == 1) {
+      // The evaluator could build an integer constant but not a real one, so a
+      // module could not write a floating-point constant; opt.bind needs one to
+      // replace a shape-carrying input with a value a caller knows.
+      if (const auto value = real(args[0]))
+        return Items{Item(Attr(*value))};
     } else if (name == "str" && args.size() == 1) {
       if (const auto* type = as<Ty>(args[0]); type && type->valid()) {
         return Items{Item(Attr(std::string(type->text())))};

@@ -1,5 +1,6 @@
 module opt
 use ir
+use tensor
 
 fn fold(m: Mod, fns: list<Fn>) -> bool {
   var calls: list<Op> = []
@@ -58,6 +59,91 @@ fn specialize(m: Mod, key: str, value: Attr) -> bool {
     dce(m, ["base.list"])
   }
   return changed
+}
+
+local fn untag(m: Mod, value: Val) -> bool {
+  // The conversion erases the model op only once no op carries the frontend tag,
+  // so every op built here has to lose it.
+  let op = ir.def(value)
+  if !ir.live(op) || !ir.has(op, "onnx") {
+    return false
+  }
+  return ir.unset(m, op, "onnx")
+}
+
+local fn scalar_attr(elem: Ty, value: int) -> Attr {
+  if elem == ty("f32") || elem == ty("f64") {
+    return real(base.int(value))
+  }
+  return base.int(value)
+}
+
+fn bind(m: Mod, name: str, index: int, values: list<int>) -> bool {
+  // Some graphs read their own extent from a second input tensor rather than from
+  // their declared shape, so no amount of type information makes the shape
+  // arithmetic fold. This replaces a parameter's uses with a constant, the
+  // value-level counterpart of opt.signature; the parameter stays in the
+  // signature, so a caller still feeds it.
+  let fn = ir.find(m, name)
+  if !ir.live(fn) {
+    return false
+  }
+  let blocks = ir.blks(fn)
+  if len(blocks) == 0 {
+    return false
+  }
+  let head_ops = ir.ops(blocks[0])
+  if len(head_ops) == 0 {
+    return false
+  }
+  // An anchor that is not tagged for the frontend: the conversion erases the model
+  // op only once no tagged op is left, so anything built here must be untagged.
+  let head = head_ops[0]
+  let params = ir.params(fn)
+  if index < 0 || index >= len(params) || len(values) == 0 {
+    return false
+  }
+  let parameter = params[index]
+  let type = ir.type(parameter)
+  if !tensor.valid(type) {
+    return false
+  }
+  let elem = tensor.elem(type)
+  var count = 1
+  for dim in tensor.dims(type) {
+    if base.kind(dim) != "int" {
+      return false
+    }
+    count *= base.int(dim)
+  }
+  if count <= 0 {
+    return false
+  }
+  var constant = ir.call(
+    m, head, "tensor.tensor",
+    [ir.constant(m, head, scalar_attr(elem, values[0]), elem)], type
+  )
+  if !ir.live(constant) {
+    return false
+  }
+  ir.unset(m, ir.def(constant), "onnx")
+  untag(m, ir.constant(m, head, scalar_attr(elem, values[0]), elem))
+  for i in 0..count {
+    let at = ir.constant(m, head, base.int(i), ty("index"))
+    let scalar = ir.constant(
+      m, head, scalar_attr(elem, values[i % len(values)]), elem
+    )
+    untag(m, at)
+    untag(m, scalar)
+    constant = ir.call(
+      m, head, "tensor.operator []=", [constant, at, scalar], type
+    )
+    if !ir.live(constant) {
+      return false
+    }
+    ir.unset(m, ir.def(constant), "onnx")
+  }
+  return ir.replace(m, parameter, constant)
 }
 
 fn signature(m: Mod, name: str, types: list<Ty>) -> bool {

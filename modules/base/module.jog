@@ -23,6 +23,7 @@ fn name(type: Ty) -> str;
 fn args(type: Ty) -> list<Ty>;
 fn int(type: Ty) -> int;
 fn int(value: Attr) -> int;
+fn real(value: Attr) -> f32;
 fn str(type: Ty) -> str;
 fn str(value: Attr) -> str;
 fn text(type: Ty) -> str;
