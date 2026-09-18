@@ -16,8 +16,9 @@
           "opt.signature declares the input shape the graph does not name, so the entry becomes tensor<f32,[1,3,416,416]> and the convolutions come out static.",
           "Resize now computes its extent from literal scales: [1,128,13,13] with scales [1,1,2,2] types as tensor<f32,[1,128,26,26], which matches the model's own initialiser."
         ],
-        "next_blocker": "c.prepare stops on an operator * that the C backend does not accept; the call is not present after conversion, so a pass creates it.",
-        "note": "each fixed layer exposes the next, which is what adding a model to a compiler looks like; the two fixes are general capabilities rather than anything about this model."
+        "next_blocker": "c.prepare stops on operator * in main with an unknown-typed left operand and an int right, which is a stride computation over a shape vector. Seventy-three tensors in the converted graph still carry a dynamic extent, twenty-eight of them tensor<i32,[_]> shape vectors: this model computes its own extents at run time from a second input tensor, so declaring the input shape is not enough.",
+        "note": "each fixed layer exposes the next, which is what adding a model to a compiler looks like; the two fixes are general capabilities rather than anything about this model.",
+        "next_capability": "letting a caller supply the value of a shape-carrying input and constant-folding it, which would make those seventy-three tensors static. That is a real feature rather than a special case, and it is a further layer beyond opt.signature."
       }
     },
     "ssd-mobilenetv1-12": {
@@ -91,5 +92,16 @@
       "cause": "preparation cost exceeds its recorded timeout",
       "fix_scope": "performance, not correctness"
     }
+  },
+  "assessment": {
+    "date_utc": "2026-09-18T08:31:00Z",
+    "eleven_of_sixteen": "EfficientNet-Lite4 QDQ measures at 3.25x; the other ten campaign models are unchanged.",
+    "remaining": {
+      "tiny-yolov3-11": "advanced from conv2d to a data-dependent shape path; needs shape-value folding",
+      "ssd-mobilenetv1-12": "rank precision at a branch, and the fix belongs with the exposure mechanism",
+      "efficientnet-lite4-11-int8": "92 of 93 operators are standard and now conform; the residual is two runtime-private contrib operators",
+      "xcit-tiny-12-p8-224-opset17": "preparation cost"
+    },
+    "note": "each attempt is recorded with its outcome, including the two that were reverted for breaking tests. No model was made to pass by special-casing it."
   }
 }
