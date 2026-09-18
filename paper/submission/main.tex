@@ -817,20 +817,20 @@ infer, since the TFLite frontend has no separate inference stage: at revision
 \texttt{27b37c75} every ONNX case reaches a zero unknown-result frontier with no
 source-format call left, including the three that earlier stopped at 280, 6790,
 and 1333 unknown results. Eleven also have executed artifacts that pass a stored
-reference, and the TFLite model agrees with LiteRT to $1.0\times10^{-6}$; that
-count is the top bar of Figure~\ref{fig:evidence}(c).
+reference, and the TFLite model agrees with LiteRT to $1.0\times10^{-6}$.
 
 Reach is not execution, and the models without timing fail for different
-reasons. TinyYOLOv3 converts and is then declined by C preparation, which reports
-an unsupported convolution. SSD-MobileNetV1 converts and is then declined by
-static-control folding, whose two arms carry tensor types of different
-rank. Both EfficientNet-Lite4 variants build, run, and miss
-the stored reference: $4.46\times10^{-3}$ over 130 elements quantised to INT8 and
-$1.68\times10^{-3}$ over 98 in QDQ form, each with both variants reporting the
-same error, so the gap is in the shared quantised path rather than the policy.
-XCiT-Tiny exceeds its preparation timeout, a cost rather than a rejection, and
-TFLite MobileNetV2 was timed against LiteRT by its own frontend study. No timing
-is reported for a model that does not validate.
+reasons. TinyYOLOv3 declares its input extents with no dimension parameter and
+computes its own extents at run time from a second input tensor, so declaring a
+shape still leaves seventy-three tensors dynamic and preparation stops on a
+stride computation. SSD-MobileNetV1 converts and is then declined by
+static-control folding, whose two arms carry tensor types of different rank. The
+EfficientNet-Lite4 INT8 variant builds, runs, and misses the stored reference by
+$4.46\times10^{-3}$ over 130 elements, both variants reporting the same error, so
+the gap is in the shared quantised path rather than the policy; the QDQ form
+measures. XCiT-Tiny exceeds its preparation timeout, a cost rather than a
+rejection, and TFLite MobileNetV2 was timed against LiteRT by its own frontend
+study. No timing is reported for a model that does not validate.
 
 The in-memory MobileNetV2 trace tests a different property: selection leaves
 54 external Conv calls alongside 36 semantic ReLU calls, preparation retains
