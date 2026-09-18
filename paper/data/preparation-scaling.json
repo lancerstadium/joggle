@@ -84,11 +84,33 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-18T12:40:42Z",
+  "date_utc": "2026-09-18T13:03:03Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
     "tried": "a pre-filter mirroring the expander's own refusal to place a stateful body in an expression region, which excluded none of the calls; chunked retries; bisecting retries; and taking the store snapshot lazily. None made the preparation finish, which is what identifies the per-call scan inside the expander as the cost rather than the retry strategy.",
     "kept": "the lazy snapshot, which is a structural improvement even though it is not the measured bottleneck, with a comment saying exactly that."
+  },
+  "profiling": {
+    "method": "the running compiler was sampled with the macOS sampler while it prepared SSD-MobileNetV1",
+    "call_graph": "the main thread is in the evaluator, inside Env::expand, and the deepest frames are attribute and type handling",
+    "frame_histogram": {
+      "joggle::Attr": 144,
+      "joggle::Ty": 76,
+      "joggle::Fn": 52,
+      "joggle::Op": 51,
+      "joggle::detail::Slot": 23,
+      "joggle::detail::Eval::Frame": 22,
+      "joggle::Env::expand": 17,
+      "joggle::detail::Store": 14
+    },
+    "reading": "the cost is the per-call fixed work inside Env::expand -- collecting the local dependency closure, cloning it, expanding, and retargeting -- multiplied by the number of calls in the batch, and it is dominated by attribute and type copying rather than by any one loop.",
+    "hypotheses_falsified": [
+      "the whole-store snapshot taken before validation: making it lazy changed nothing measurable",
+      "the per-call copy of the operation list: removing it outright still ran past eleven minutes",
+      "the retry strategy: a pre-filter mirroring the expander's refusal excluded none of the calls, chunked retries and bisecting retries both changed nothing",
+      "the graph-size proxy: let and var lines undercount by a factor of forty against ir.ops"
+    ],
+    "status": "unresolved. What is established is where the time is not, which is recorded so the next attempt does not repeat these four."
   }
 }
