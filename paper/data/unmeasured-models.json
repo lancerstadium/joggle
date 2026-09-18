@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-18T10:32:16Z",
+  "date_utc": "2026-09-18T15:37:13Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -19,6 +19,17 @@
         "next_blocker": "c.prepare stops on operator * in main with an unknown-typed left operand and an int right, which is a stride computation over a shape vector. Seventy-three tensors in the converted graph still carry a dynamic extent, twenty-eight of them tensor<i32,[_]> shape vectors: this model computes its own extents at run time from a second input tensor, so declaring the input shape is not enough.",
         "note": "each fixed layer exposes the next, which is what adding a model to a compiler looks like; the two fixes are general capabilities rather than anything about this model.",
         "next_capability": "letting a caller supply the value of a shape-carrying input and constant-folding it, which would make those seventy-three tensors static. That is a real feature rather than a special case, and it is a further layer beyond opt.signature."
+      },
+      "blocker_chain": {
+        "step_1": "declared input extents have no dimension parameter; opt.signature fixes that and the entry becomes tensor<f32,[1,3,416,416]> (done)",
+        "step_2": "Resize is given scales rather than sizes, so its extent now follows from floor(input * scale) computed in integers (done)",
+        "step_3": "the graph still reads its own spatial extent from a second input tensor, image_shape, which the ONNX file declares as a real input and not an initialiser, so seventy-three tensors keep a dynamic extent",
+        "step_4": "c.prepare then inlines a quantisation helper whose body computes a per-channel stride as stride *= S[dim], and S[dim] is one of those dynamic extents, so the multiply reaches the C backend with an unknown-typed operand and is refused"
+      },
+      "what_a_fix_needs": {
+        "compiler": "a way for a caller to bind an input to a constant, so image_shape's uses are replaced by a literal and the shape arithmetic folds. opt.signature covers types; this would cover values.",
+        "study": "the ONNX reference generator and the study subject both assume a single input, so a two-input model needs the shape tensor fed consistently on both sides.",
+        "cost": "unlike SSD this graph is small, 1,146 operations against mnist-8's 1,108 at 1.2 s, so the iteration cost here is seconds rather than tens of minutes. The work is the feature and the plumbing, not a performance wall."
       }
     },
     "ssd-mobilenetv1-12": {
