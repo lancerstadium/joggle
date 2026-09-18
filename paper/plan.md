@@ -1732,3 +1732,80 @@ two runtime-private contrib operators. XCiT-Tiny exceeds its preparation timeout
 No model was made to pass by special-casing it. The two compiler changes that
 stand are general capabilities, and the one that was not is recorded with its
 outcome.
+
+## Closing state (2026-09-19, revision 1f887f1)
+
+### What the objective asked and what is true
+
+It asked for all sixteen pinned models to validate at one revision with no special
+casing, and then for the campaign to be re-run and the paper updated. Twelve of the
+sixteen validate. The four that do not are each stopped at a named place with a
+recorded cause, and none of them was made to pass by special-casing.
+
+### The twelve
+
+Ten are the campaign, measured in one job on one host at one thread. EfficientNet-Lite4
+QDQ is the eleventh: its earlier failure was the reference rather than the compiler,
+since ONNX Runtime with graph optimisation at its default level fuses the QDQ graph
+into an integer kernel, and against the graph as written the artifact agrees to
+7.45e-9. It measures 1139 ms to 350 ms under the campaign's policy, 3.25x, in its own
+job, so it is reported beside the campaign rather than counted in it. TFLite
+MobileNetV2 is the twelfth, timed by its own frontend study.
+
+### The four, and where each stops
+
+TinyYOLOv3 converts but keeps seventy-three dynamic tensors, because it reads its own
+extent from a second input tensor. Two of the three steps needed to fix that are
+landed -- declaring the input shape, and computing a resize extent from literal
+scales -- and a third, opt.bind, is landed and works: binding image_shape removes the
+unknown-typed multiply that stopped preparation. What blocks it is that the constant
+opt.bind builds arrives unranked and the conversion's inference re-derives it, so the
+Squeeze that consumes it is never converted and the model op is never erased. The
+next step is in how a constructed constant's type is established, not in the
+conversion rules, and it is recorded in paper/data/unmeasured-models.json rather than
+guessed at.
+
+SSD-MobileNetV1's rank gap is closed and committed. What remains is cost: preparation
+runs past twenty minutes where the measured law of about two milliseconds per
+operation predicts under a minute for its 19,432 operations. Eight candidate causes
+for the batch rejection are eliminated and seven optimisations were tried; profiling
+puts the time in the evaluator's own per-call work at a measured 435 ms per expansion
+over 7,278 calls. That is a property of the prototype's interpreted preparation, not
+a defect in one model.
+
+EfficientNet-Lite4 INT8 builds, runs, and misses the reference by 4.34e-3 over 123
+elements. Its ninety-two standard quantised operators accumulate in int32 as their
+specification requires, which moved the error only from 4.46e-3, so the residual lies
+in twenty-five instances of two runtime-private contrib operators. Matching those
+means reproducing MLAS's fixed-point kernels, which is not a conformance requirement.
+
+XCiT-Tiny exceeds its preparation timeout, the same cost class as SSD.
+
+### What was landed as general capability
+
+opt.signature sets a named function's parameter types, which is what let the
+convolutions convert. A resize extent now follows from literal scales by pure integer
+arithmetic, which is what let the resize convert. real constructs a floating-point
+constant at compile time, which the evaluator could not do. opt.bind replaces a
+parameter's uses with a constant, the value-level counterpart of opt.signature. Two
+attempts are recorded with their failure reasons rather than kept: an early revert of
+the tensor-rank refinement, which was the wrong call and was reinstated, and a lazy
+store snapshot, which broke a transaction the tests check and which a full build
+exposed.
+
+### The process failure worth remembering
+
+The command line tool and the test executables link the library statically, and only
+the library target was being rebuilt. Diagnostics that edited src/ could therefore be
+evaluated against a binary that did not contain them, and the suite reported green
+against stale executables. Every target is now built before a run, the one src/
+diagnostic that mattered was re-checked and holds, and the change that the stale
+build had hidden was found and reverted.
+
+### Verification at this revision
+
+Twelve technical pages, no overfull boxes, no undefined references, three figures and
+two tables, 68 of 68 tests with every target built, and 18 of 18 checks in
+paper/scripts/check_consistency.py. Every headline number was recomputed against the
+records by an independent audit. Three audits were run in total; all findings they
+raised were applied.
