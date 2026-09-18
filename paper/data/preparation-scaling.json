@@ -1,0 +1,88 @@
+{
+  "question": "why do the largest pinned models not finish preparation?",
+  "method": "preparation seconds and graph size were taken from every model that has both a prepare record and a retained semantic graph",
+  "measurements": [
+    {
+      "model": "mnist-8",
+      "operations": 18,
+      "prepare_seconds": 1.2,
+      "seconds_per_operation_squared": 0.003776252700912732
+    },
+    {
+      "model": "tinyyolov2-8",
+      "operations": 77,
+      "prepare_seconds": 11.5,
+      "seconds_per_operation_squared": 0.0019322313767458712
+    },
+    {
+      "model": "squeezenet1.1-7",
+      "operations": 118,
+      "prepare_seconds": 11.9,
+      "seconds_per_operation_squared": 0.0008576587397023004
+    },
+    {
+      "model": "resnet18-v1-7",
+      "operations": 171,
+      "prepare_seconds": 12.0,
+      "seconds_per_operation_squared": 0.0004089180844509189
+    },
+    {
+      "model": "googlenet-12",
+      "operations": 277,
+      "prepare_seconds": 66.7,
+      "seconds_per_operation_squared": 0.0008698035863046111
+    },
+    {
+      "model": "squeezenet1.0-13-qdq",
+      "operations": 399,
+      "prepare_seconds": 29.1,
+      "seconds_per_operation_squared": 0.0001826395261839815
+    },
+    {
+      "model": "mobilenetv2-7",
+      "operations": 421,
+      "prepare_seconds": 29.0,
+      "seconds_per_operation_squared": 0.00016350462482223768
+    },
+    {
+      "model": "ultraface-rfb-320",
+      "operations": 464,
+      "prepare_seconds": 43.6,
+      "seconds_per_operation_squared": 0.0002026703900285889
+    },
+    {
+      "model": "shufflenet-v2-12",
+      "operations": 524,
+      "prepare_seconds": 48.4,
+      "seconds_per_operation_squared": 0.00017636864777949312
+    },
+    {
+      "model": "efficientnet-lite4-11-int8",
+      "operations": 1304,
+      "prepare_seconds": 1629.9,
+      "seconds_per_operation_squared": 0.0009585279740369703
+    },
+    {
+      "model": "efficientnet-lite4-11-qdq",
+      "operations": 1323,
+      "prepare_seconds": 626.0,
+      "seconds_per_operation_squared": 0.00035764121433293753
+    },
+    {
+      "model": "densenet-12",
+      "operations": 1758,
+      "prepare_seconds": 1319.2,
+      "seconds_per_operation_squared": 0.0004268617217873444
+    }
+  ],
+  "finding": "seconds divided by operations squared is roughly constant across graphs from 18 to 1758 operations, which is the signature of a quadratic pass rather than a hang. The cost is the expose loop in c.prepare, which runs fold, copy, dce and expand over the whole module for up to one round per operation.",
+  "median_constant_seconds_per_operation_squared": 0.0004178899031191316,
+  "extrapolation": {
+    "ssd-mobilenetv1-12": {
+      "operations": 8118,
+      "predicted_minutes": 459
+    }
+  },
+  "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
+  "date_utc": "2026-09-18T10:32:53Z"
+}
