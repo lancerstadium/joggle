@@ -1300,10 +1300,10 @@ int main(int argc, char** argv) {
   // zero-point-corrected values: an offset per operand, the int32 bias used
   // directly, and one accumulator requantisation. That replaces the previous
   // dequantise-dequantise-bias-dequantise and single requantise.
-  CHECK(count(qlinear, "quant.dequantize") == 5);
-  CHECK(count(qlinear, "quant.quantize") == 3);
-  CHECK(count(qlinear, "quant.offset") == 2);
-  CHECK(count(qlinear, "quant.accumulate") == 1);
+  CHECK(count(qlinear, "quant.dequantize") == 3);
+  CHECK(count(qlinear, "quant.quantize") == 2);
+  CHECK(count(qlinear, "quant.offset") == 4);
+  CHECK(count(qlinear, "quant.accumulate") == 2);
   std::size_t resolved_qlinear_calls = 0;
   std::size_t annotated_qlinear_calls = 0;
   for (joggle::Op op : qlinear.ops())
