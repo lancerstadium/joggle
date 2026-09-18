@@ -1050,15 +1050,26 @@ the same `mlir-opt`.
 
 `unmeasured-models.json` records why each pinned model without a campaign
 measurement has none, established by driving each through the study pipeline to
-the stage that stops it. Four are blocked by real defects rather than by the
-measurement: TinyYOLOv3 converts and is then declined by C preparation, which
-reports an unsupported convolution; SSD-MobileNetV1 converts and is then declined
-by static-control folding, whose two arms carry tensor types of different rank;
-and both EfficientNet-Lite4 variants build, run, and miss the stored reference in
-a shared quantised path, by 4.46e-3 over 130 elements for INT8 and 1.68e-3 over
-98 for QDQ, each with both variants reporting the same error. XCiT-Tiny exceeds
-its preparation timeout, which is a cost rather than a rejection, and TFLite
-MobileNetV2 executes but was timed against LiteRT by its own frontend study. None
-of the six can be added by measuring alone, and any compiler fix would change the
-revision that every existing number is pinned to, which is why the campaign
-reports ten.
+the stage that stops it. This paragraph is the current state; where an earlier
+record disagrees with it, the earlier record is the one that predates the
+reference probe described in `qdq-reference-probe.json`.
+
+Twelve of the sixteen now have executed artifacts that validate. EfficientNet-Lite4
+QDQ is one of them: its earlier failure was the reference, not the compiler, since
+ONNX Runtime with graph optimisation on fuses the QDQ graph into an integer
+kernel, and against the graph as written the artifact agrees to 7.45e-9. It
+measures 1139 ms to 350 ms under the campaign's policy, a 3.25x reduction, but in
+its own job, so it is reported beside the campaign rather than counted in it and
+the campaign remains the ten models one job measured.
+
+Four are still blocked. TinyYOLOv3 declares its input extents with no dimension
+parameter and computes them at run time from a second input tensor, so a declared
+shape still leaves seventy-three tensors dynamic and preparation stops on a stride
+computation. SSD-MobileNetV1 is declined by static-control folding, whose two arms
+carry tensor types of different rank. EfficientNet-Lite4 INT8 misses the stored
+reference by 4.34e-3 over 123 elements; its ninety-two standard quantised
+operators now accumulate in int32 as specified, which moved that error only from
+4.46e-3, so the residual lies in twenty-five instances of two runtime-private
+contrib operators. XCiT-Tiny exceeds its preparation timeout, a cost rather than a
+rejection, and TFLite MobileNetV2 executes but was timed against LiteRT by its own
+frontend study.

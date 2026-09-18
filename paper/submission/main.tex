@@ -628,10 +628,9 @@ against another system's natural route? And what does the prototype cover, at
 what compile-time and run-time cost? The first three
 come from two derivation studies and their controls, the composition boundary
 from the extension tasks, and the last from the model set and the runtime
-comparison. Compile-time evidence is a per-stage breakdown inside this system
-plus one cross-system route comparison; a matched cross-system compile-time and
-memory suite is stated as absent rather than approximated by figures that were
-not measured together.
+comparison. Compile-time evidence is one cross-system span comparison plus this system's own
+per-stage record elsewhere; a matched cross-system compile-time and memory suite
+is stated as absent rather than approximated by figures not measured together.
 
 \paragraph{Evidence and conditions.}
 The studies have different units. Derivation uses a fixed prepared UltraFace
@@ -965,8 +964,9 @@ span. Joggle takes 101.5\,s
 against 4.52\,s for TVM and 4.51\,s for ONNX-MLIR over five runs each, so its
 compile time is 22.5$\times$ theirs here. The cost sits where the design
 predicts, since the prototype's compiler is interpreted. Peak compilation memory remains unmeasured. Failure tests cover
-transactions and stale handles; generative tests cover parsing and legal IR
-edits, not module loading, serialized frontends, or the native ABI.
+transactions, stale handles, and module-loading paths including rollback and
+duplicate exports; generative tests cover parsing and legal IR edits, not
+serialized frontends or the native ABI.
 
 \section{Related work}
 Programmable transformation languages, mixed-level IRs, and modular compilers
