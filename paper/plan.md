@@ -1705,3 +1705,30 @@ faster than ONNX-MLIR at -O3 on three of nine. ONNX Runtime remains ahead
 everywhere. The abstract quotes only the campaign range and the TVM comparison,
 because a checksum of output bytes is a harness admission check and must never
 be presented as a metric or an advantage.
+
+## Final state (2026-09-18)
+
+The paper is 12 technical pages with three figures and two tables, no overfull
+boxes, no undefined references, and the suite passes 68 of 68. Every number
+traces to a record under paper/data, checked twice by independent audits.
+
+Twelve of the sixteen pinned models have executed artifacts that validate. Ten of
+them are the campaign, measured in one job; EfficientNet-Lite4 QDQ is the
+eleventh and was measured in its own job, so it is reported beside the campaign
+rather than counted in it; TFLite MobileNetV2 was timed by its own frontend study.
+
+Four remain, each with a recorded cause rather than a guess. TinyYOLOv3 advanced
+past the convolution it used to stop on, through a new pass that lets a caller
+declare an input shape and a rule that computes a resize extent from literal
+scales, and now stops on a stride computation over a shape vector because the
+model computes its own extents at run time. SSD-MobileNetV1 is declined by
+static-control folding over a rank difference; the repair belongs with the
+exposure mechanism, and generalising the fold rule was tried and reverted after it
+broke five tests. EfficientNet-Lite4 INT8 has its ninety-two standard quantised
+operators accumulating in int32 as their specification requires, which moved the
+error from 4.46e-3 to 4.34e-3, leaving the residual in twenty-five instances of
+two runtime-private contrib operators. XCiT-Tiny exceeds its preparation timeout.
+
+No model was made to pass by special-casing it. The two compiler changes that
+stand are general capabilities, and the one that was not is recorded with its
+outcome.
