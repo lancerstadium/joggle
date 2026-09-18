@@ -46,6 +46,13 @@ local fn project(m: Mod) -> bool {
   return changed
 }
 
+local fn unranked(type: Ty) -> bool {
+  // tensor.valid requires the dimension argument to be a list, so a tensor
+  // carrying "_" there is a tensor of unknown rank rather than a valid one.
+  return base.name(type) == "tensor" && len(base.args(type)) == 2 &&
+         base.name(base.args(type)[1]) != "[]"
+}
+
 local fn select(m: Mod) -> bool {
   var changed = false
   let candidates = ir.ops(m)
@@ -92,6 +99,16 @@ local fn select(m: Mod) -> bool {
                 if value_type == ty("_") && output_type != ty("_") {
                   assert(ir.type(m, values[i], output_type),
                          "opt.fold could not refine a selected value")
+                }
+                if unranked(value_type) && !unranked(output_type) &&
+                   base.name(value_type) == base.name(output_type) &&
+                   base.args(value_type)[0] == base.args(output_type)[0] {
+                  // A tensor whose dimension argument is not a list carries no
+                  // rank, and the branch declares one; the declared rank is the
+                  // more precise fact and is what the branch's own carried value
+                  // already has.
+                  assert(ir.type(m, values[i], output_type),
+                         "opt.fold could not refine an unranked tensor")
                 }
               }
               let selected_type = ir.type(values[i])
