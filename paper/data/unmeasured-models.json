@@ -2,20 +2,22 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-18T06:23:35Z",
+  "date_utc": "2026-09-18T06:25:59Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
       "stage": "c.prepare",
-      "outcome": "rejected",
+      "outcome": "rejected after conversion",
       "message": "c: unsupported call remains: conv2d",
-      "meaning": "converts with no unknown op, then the C preparation pass declines a convolution configuration this model uses"
+      "root_cause": "the spatial dims of this model's input are declared with no name at all, [N, 3, <empty>, <empty>], so no dimension parameter exists to bind. nn.conv2d needs static extents to expand its loop nest, so the call survives into c.prepare. The graph reads its own spatial extent from a second input tensor, which is a real property of the model.",
+      "fix_scope": "a shape entry on the ONNX frontend, so a caller can declare the concrete input shape when the graph declares none. This is the same requirement TVM and ONNX-MLIR place on their users, so supplying it is parity rather than a special case."
     },
     "ssd-mobilenetv1-12": {
       "stage": "opt.fold",
-      "outcome": "rejected",
+      "outcome": "rejected after conversion",
       "message": "opt.fold branch type mismatch: tensor<f32, [_, _]> and tensor<f32, _>",
-      "meaning": "converts, then static-control folding refuses because the two arms carry different tensor types, a rank-erased arm against a rank-2 one"
+      "root_cause": "not dynamic extents, as first assumed, but a rank-inference gap. The entry's free dims are named (unk__6578..6580) and binding them to a concrete 1x320x320x3 succeeds, and the failure survives. Inside the detection postprocessor a loop carries scan values declared tensor<f32,[_,_]> while the loop body rebuilds them with tensor.make(f32(0.0), <runtime shape>), whose result type is inferred as the unknown-rank '_'. tensor.make is declared make<E,I,S,R>(fill: E, shape: tensor<I,[R]>) -> tensor<E,S>, so the result rank follows the shape operand's rank and is inferable.",
+      "fix_scope": "infer tensor.make's result rank from its shape operand, which is a general typing rule rather than anything about this model."
     },
     "efficientnet-lite4-11-qdq": {
       "stage": "measured",
