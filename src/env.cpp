@@ -811,10 +811,24 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
                  std::span<const Fn> implementations) const {
   if (calls.empty())
     return false;
-  detail::Store backup = mod.impl_->store;
+  // The snapshot is taken lazily, on the first mutation, so a batch that the
+  // checks below reject does not pay for a copy of the whole store. On a graph of
+  // several thousand operations that copy is not small, and a caller retrying
+  // call by call can take this path thousands of times. It is a structural
+  // improvement rather than a measured one: on the graph that prompted it the
+  // expansion work itself dominates, see paper/data/preparation-scaling.json.
+  detail::Store backup;
+  bool captured = false;
+  const auto capture = [&]() {
+    if (!captured) {
+      backup = mod.impl_->store;
+      captured = true;
+    }
+  };
   const auto rollback = [&]() {
     std::vector<Diag> diagnostics = std::move(mod.impl_->store.diags);
-    mod.impl_->store = std::move(backup);
+    if (captured)
+      mod.impl_->store = std::move(backup);
     mod.impl_->store.diags = std::move(diagnostics);
     return false;
   };
@@ -908,6 +922,7 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
       return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_';
     });
   };
+  capture();
   for (Fn dependency : local_dependencies) {
     const std::string group = std::string(dependency.module()) + "\n" +
                               std::string(dependency.name());
