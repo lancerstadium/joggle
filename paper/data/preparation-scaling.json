@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-18T15:24:43Z",
+  "date_utc": "2026-09-18T17:53:01Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -165,5 +165,12 @@
     },
     "note": "the semantic-line proxy undercounts by roughly forty times, and these are the real counts reported by ir.ops"
   },
-  "consequence_for_tiny_yolov3": "TinyYOLOv3's graph holds 1,146 operations, comparable to mnist-8's 1,108 at 1.2 s, so it would not meet the preparation cost at all once its correctness blocker is fixed. The cost wall belongs to SSD-MobileNetV1 and XCiT-Tiny, not to it."
+  "consequence_for_tiny_yolov3": "TinyYOLOv3's graph holds 1,146 operations, comparable to mnist-8's 1,108 at 1.2 s, so it would not meet the preparation cost at all once its correctness blocker is fixed. The cost wall belongs to SSD-MobileNetV1 and XCiT-Tiny, not to it.",
+  "revalidation_after_the_build_fix": {
+    "why": "the test executables and the command line tool link the library statically, and only the library target had been rebuilt, so a change to src/ could be evaluated against a binary that did not contain it. Module changes were unaffected because modules are loaded at run time, but every diagnostic that edited src/ was suspect.",
+    "what_was_rechecked": "the per-call copy of the operation list and the retarget walk that follows each expansion were both removed from Env::expand, and every target was rebuilt before the run. Preparation still ran past twenty minutes.",
+    "conclusion": "the negative result holds. The retarget walk is not the cost, and the elimination is now a measured true negative rather than one that could have been an artefact of a stale binary.",
+    "scope": "this covers the src/ diagnostics. The module-level ones -- the pre-filter, chunked retries, bisecting retries and grouping by callee -- were always evaluated against the module tree the tool loads at run time, so they stand as run.",
+    "still_open": "the whole-store snapshot was also a src/ change and its revert was forced by a test failure rather than by a measurement, so whether it affects the cost is not established either way. It is reverted and the transaction it broke is intact."
+  }
 }
