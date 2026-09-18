@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-18T14:33:18Z",
+  "date_utc": "2026-09-18T14:44:57Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -140,5 +140,12 @@
     "removing the per-call copy of the operation list outright: still past eleven minutes",
     "grouping the fallback by callee so the dependency closure is computed once per distinct callee: no change, so the batch's callees are not concentrated"
   ],
-  "status": "unresolved after eight eliminated rejection paths and six ineffective strategies. Nothing is left half-applied: the tree is back to its committed state and the suite is green."
+  "status": "unresolved after eight eliminated rejection paths and six ineffective strategies. Nothing is left half-applied: the tree is back to its committed state and the suite is green.",
+  "per_expansion_cost": {
+    "measurement": "the fallback was made to stop after twenty calls and report: it gave 20 expansions and 0 refusals in 11.3 s, which is about 435 ms per expansion once the 2.6 s of fold, copy and dce ahead of it is removed.",
+    "arithmetic": "7,278 calls at 435 ms is about 53 minutes, which matches what the model is observed to take.",
+    "implication": "the calls are not failing -- they all succeed -- so the cost is simply the per-expansion fixed work multiplied by the batch size, and the batch rejection is not what makes it slow. It is what makes it wasteful: the batch that fails late rolls back the thousands of expansions that had already succeeded, and the fallback then repeats them.",
+    "likely_fix": "expand the batch best-effort -- keep the successful prefix and stop at the first refusal -- so the work is done once instead of twice, and so Env::expand's own closure collection runs once per batch rather than once per call. That is a change of the transaction's semantics and needs its own validation, at about twenty minutes per cycle on this graph.",
+    "earlier_probe_rewritten": "the probe that put the inner expand failure under observation was stopped after two minutes, which at 435 ms per expansion cannot reach a failure late in a batch of thousands, so that elimination does not stand."
+  }
 }
