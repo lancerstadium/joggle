@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-18T08:18:48Z",
+  "date_utc": "2026-09-18T10:32:16Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -22,17 +22,12 @@
       }
     },
     "ssd-mobilenetv1-12": {
-      "stage": "opt.fold",
-      "outcome": "rejected after conversion",
+      "stage": "preparation cost",
+      "outcome": "no longer rejected; preparation does not finish in a practical time",
       "message": "opt.fold branch type mismatch: tensor<f32, [_, _]> and tensor<f32, _>",
-      "root_cause": "not dynamic extents, as first assumed, but a rank-inference gap. The entry's free dims are named (unk__6578..6580) and binding them to a concrete 1x320x320x3 succeeds, and the failure survives. Inside the detection postprocessor a loop carries scan values declared tensor<f32,[_,_]> while the loop body rebuilds them with tensor.make(f32(0.0), <runtime shape>), whose result type is inferred as the unknown-rank '_'. tensor.make is declared make<E,I,S,R>(fill: E, shape: tensor<I,[R]>) -> tensor<E,S>, so the result rank follows the shape operand's rank and is inferable.",
-      "fix_scope": "infer tensor.make's result rank from its shape operand, which is a general typing rule rather than anything about this model.",
-      "attempted_fix": {
-        "what": "opt.fold refines a branch result whose value carries the fully unknown type '_' to the declared type, but not a value whose type is a tensor of unknown rank, so tensor<f32,_> reaching a branch declared tensor<f32,[_,_]> stops the pass.",
-        "tried": "generalising the refinement to any less precise tensor type, first for every differing type and then narrowed to a rank difference between two tensor types",
-        "result": "both forms let the SSD preparation proceed past the mismatch, and both broke five tests: network, three extension tests, and qlinear-c-execution, the last failing with an unresolved base.copy, which is the selective-exposure call. Refining the value's type evidently interferes with resolving the exposed copy.",
-        "decision": "reverted, and the suite is green again at 68/68. The rank-precision gap is real but the fix belongs with the exposure mechanism rather than in opt.fold's refinement rule, which is why it is recorded as unresolved rather than shipped."
-      }
+      "root_cause": "a rank-precision gap, now fixed. A branch result was not folded when the value reaching it carried a tensor whose dimension argument is not a list -- a tensor of unknown rank -- while the branch declared a ranked one. opt.fold refined a value only when its type was the fully unknown '_'. The predicate matters: tensor.valid requires the dimension argument to be a list, so tensor<f32,_> is not a valid tensor type and a guard written with tensor.valid never matches it.",
+      "fix": "opt.fold now refines a tensor whose dimension argument is not a list to the rank its branch declares. Committed; the suite is green at 68/68. An earlier attempt at the same rule was reverted after five tests failed, and that revert was wrong: the failures were a missing dependency, because the rule used tensor.valid, which needs the tensor module in scope and opt did not use it. The rule now needs only base accessors.",
+      "new_blocker": "with the fold error gone the preparation runs for over fifty minutes without finishing, against 1.2 s for mnist-8, 11.9 s for squeezenet1.1-7 and 43.6 s for UltraFace. The obstruction is therefore cost rather than correctness, the same class as XCiT's timeout, and it is a pass over a graph that carries the detection postprocessor's while loops."
     },
     "efficientnet-lite4-11-qdq": {
       "stage": "measured",
