@@ -26,8 +26,8 @@ derived with its private helper closure, a single internal decision revised, and
 the resulting copy executed on a separate subject while the original remains
 callable and verified. The compiler validates each revision and can roll it back,
 so a derived procedure remains reproducible. A structurally addressed derivation also
-reproduces the validated plan where a textual patch cannot be applied at all, so
-a user can propose revisions with the same tools. Across widely used models, one source-defined locality policy
+reproduces the validated plan where a textual patch cannot be applied, so a user
+can propose revisions with the same tools. Across widely used models, one source-defined locality policy
 reduces the run time of generated code on each of them, by $1.44\times$ to
 $3.22\times$. It requires no compiler rebuild and matches or beats TVM's
 unscheduled C target wherever that lowering could be built and validated.
@@ -637,14 +637,16 @@ The studies have different units. Derivation uses a fixed prepared UltraFace
 program and local correctness checks; the extension tasks use a fixed
 Conv--Add--Relu chain and shared oracles, so they bound a layout-and-ABI
 composition study rather than a general co-design result. Coverage aggregates
-revision-tagged records rather than forming a benchmark, and runtime comparisons
-use one-thread controls with 20 balanced fresh-process trials per system on one
-Apple M4 host running macOS 15.7.3.
+revision-tagged records rather than forming a benchmark, and the campaign's runtime
+comparisons use one-thread controls with 20 balanced fresh-process trials per
+system on one Apple M4 host running macOS 15.7.3. Diagnostics reported later ran
+on shared Linux runners, and each names its host.
 Every comparison names its revision: Joggle at \texttt{27b37c75}, TVM v0.26.0 at
 \texttt{c7b458e9}, and ONNX-MLIR 0.4.2 at \texttt{4a13c34a} against LLVM
 \texttt{1053047a}. Different jobs and
-revisions remain separate, and no result below measures developer productivity
-or dataset-level accuracy.
+revisions remain separate, and no result below measures developer productivity,
+dataset-level accuracy, or an agent authoring a revision: that study is
+pre-registered but not run.
 
 \paragraph{Which system answers which question.}
 One system is present for each axis it can carry, and a gap is stated rather
@@ -901,8 +903,9 @@ $1.01\times$, interval $[0.94, 1.06]$. Every artifact is admitted only if it sta
 the study's $10^{-4}$ tolerance of a reference ONNX Runtime produces with graph
 optimisation disabled, so the reference is the graph as written rather than an
 integer kernel fused from it, the largest error observed being $2.00\times10^{-5}$
-on TinyYOLOv2 under ONNX-MLIR. The timed ONNX Runtime column predates that
-correction and was not re-run. The variants differ only in the policy, so this
+on TinyYOLOv2 under ONNX-MLIR. The timed ONNX Runtime column ran with graph
+optimisation at its default level, which fuses that graph, and was not re-timed
+after the correction. The variants differ only in the policy, so this
 measures the reach of one source-defined rule rather than per-model tuning.
 
 \begin{figure*}[t]

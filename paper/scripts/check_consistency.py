@@ -58,7 +58,9 @@ check("per-expansion cost is stated", has("435\\,ms"))
 check("no quadratic claim survives", not has("quadratic"))
 check("no semantic-line proxy survives", not has("8{,}118"))
 check("no pre-QDQ count survives", not has("of which eleven"))
-check("no agent experiment is claimed", not has("or an agent"))
+check("no agent experiment is claimed",
+      not has("we measure an agent") and not has("an agent improves")
+      and has("that study is\npre-registered but not run"))
 
 failed = [(n, d) for n, ok, d in CHECKS if not ok]
 for name, ok, detail in CHECKS:
