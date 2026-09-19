@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-19T04:00:35Z",
+  "date_utc": "2026-09-19T04:02:11Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -95,7 +95,13 @@
             "where_a_fix_belongs": {
               "corrected": "the annotation does reach the call. Probing the result types that Mod::expand collects shows 'mine' arriving as tensor<_, [4]> without an annotation and tensor<f32, [4]> with one, so a let's declared type is already carried into the call's own output type.",
               "so_the_fix_is_not_in_the_frontend": "expected_returns is correct and resolve_overload still does not bind the parameter from it. The parameter appears only in the return type, and the resolver does not use the expectation to bind it, so the generic comes back unknown and the substitution in the inlined body leaves the parameter in place.",
-              "fix": "bind a return-only type parameter from the expected return type inside resolve_overload, which is where the expectation is already available and already ignored."
+              "fix": "bind a return-only type parameter from the expected return type inside resolve_overload, which is where the expectation is already available and already ignored.",
+              "exact_site": {
+                "file": "src/verify.cpp, the expected-returns loop at 391-402, inside the overload matcher declared at src/detail.h:128",
+                "what_it_does": "for each candidate return it skips expectations that are unknown and otherwise unifies the candidate's return against the expected one, keeping the bindings. For this call that is tensor<B, S> against tensor<f32, [4]>, which should bind B to f32.",
+                "observed": "it does not. Mod::expand receives tensor<f32, [4]> as the expectation for the annotated case and the generic still comes back unknown, so the failure is inside this matcher rather than upstream of it.",
+                "next_step": "instrument inside the loop: whether it is reached for this call, whether unify returns true, and what the bindings hold afterwards. The reproduction takes a tenth of a second, so this is cheap."
+              }
             }
           }
         }
