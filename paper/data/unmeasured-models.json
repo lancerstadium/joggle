@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-19T04:11:29Z",
+  "date_utc": "2026-09-19T04:20:38Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -106,6 +106,13 @@
                   "unify_succeeds": "unify('tensor<B, S>','tensor<f32, [4]>') = 1, and it leaves two bindings where one was held before, so both B and S are bound inside the matcher.",
                   "so_the_loss_is_after_the_matcher": "the bindings are correct inside the expected-returns loop and the generic still reaches Mod::expand as unknown, so what is lost is between this loop and the caller's generics out-parameter.",
                   "next_step": "read how resolve_overload fills its generics out-parameter from the bindings the matcher produced -- whether it copies them, whether a later candidate resets them, or whether it fills the out-parameter from a different set."
+                },
+                "measured_at_the_write": {
+                  "what_the_out_parameter_is_built_from": "select_overload walks the candidate's generic names and looks each up in the bindings the matcher produced, using the unknown type when a name is absent.",
+                  "what_is_observed": "every binding set printed at that point reports hasB=0, and the keys are names like E while the values are names like B -- E->B, E->C -- so the map is keyed by one function's generic names and carries another's as values. The call whose generic is named B does not appear in the print at all, which means its bindings numbered one rather than more.",
+                  "reading": "the name the inlined body uses is not the name the matcher keys its bindings by. That is why unify succeeds inside the matcher, the expectation is correct, and the substitution in the body still finds nothing and leaves the parameter in place.",
+                  "next_step": "compare the generic names a candidate declares with the names its own body uses, at the point the bindings are keyed, on the six-line reproduction.",
+                  "why_not_done_here": "the session's context is spent. The finding is recorded with its measurement so the next attempt starts here rather than at the symptom."
                 }
               }
             }
