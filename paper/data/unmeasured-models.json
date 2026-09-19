@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-19T03:40:58Z",
+  "date_utc": "2026-09-19T03:41:16Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -86,6 +86,17 @@
             "established": "the operation does not exist before exposure -- opt.basic leaves none -- so the expander creates it while inlining a call whose result another call consumes.",
             "leading_explanation": "instantiating tensor.cast for this pair of element types leaves the conversion in its body pointing at an uninstantiated type parameter, and the resulting operation is not a call to anything. Returning the cast directly does not exercise that path; handing its result to another operation does.",
             "next_step": "watch what Mod::expand creates when the callee's body contains a conversion to a type parameter, and compare the two variants at that point rather than at the symptom."
+          },
+          "root_cause": {
+            "found": "inlining a generic function leaves a conversion to its type parameter unsubstituted. The stranded operation is named after the parameter itself.",
+            "evidence": {
+              "generic clone of tensor.cast, result consumed": "fails, and the stranded call is named 'B'",
+              "the same function written without a type parameter, result consumed": "prepares",
+              "the same non-generic function, result returned directly": "prepares"
+            },
+            "what_this_rules_out": "not the conversion, not the loop, not the consumer, and not the element pair: the non-generic version has all of those and prepares. It is the substitution of the type parameter during inlining, and only the path that inlines a body into a consuming call takes it -- returning the result directly does not.",
+            "why_the_model_hits_it": "tensor.cast is generic in its element type and its body converts through that parameter, and the model's first operation is one such cast consumed by tensor.shape and by everything downstream.",
+            "next_step": "substitute the matched generic arguments into the inlined body. Env::match already computes the binding for a call against its candidate, so the question is where the expansion should apply it and does not."
           }
         }
       }
