@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-19T02:49:32Z",
+  "date_utc": "2026-09-19T04:58:39Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -209,5 +209,22 @@
     "new_frontier": "preparation now stops on 'c: unsupported call remains: tensor.cast' rather than on cost. That is a different blocker at a different place, and it is the first time this model has been seen to reach it.",
     "why_atomicity_is_opt_in": "test/workflow.cpp asserts that a batch containing a call that cannot be expanded fails as a whole, and the unconditional version of this change failed exactly that test. The flag follows MLIR's allowPatternRollback.",
     "date": "2026-09-19T03:10:52Z"
+  },
+  "goal_status": {
+    "ssd-mobilenetv1-12": {
+      "before": "over twenty minutes, not completing",
+      "after": "35.2 s",
+      "objective_met": "yes for cost; the model now reaches a conversion frontier instead of a performance wall"
+    },
+    "xcit-tiny-12-p8-224-opset17": {
+      "state": "not verified in this session",
+      "why": "the campaign never produced a semantic graph for it, and the only XCiT artifacts under build-study are legacy files that fail type checking before preparation starts, so they are not the current pipeline's output and cannot be used to measure it.",
+      "what_would_settle_it": "regenerating the model's semantic graph through the current pipeline, convert then opt.basic, which is what every other model in the campaign has."
+    },
+    "mnist-8_floor": {
+      "before": "1.128 s",
+      "after": "1.089 s",
+      "held": true
+    }
   }
 }
