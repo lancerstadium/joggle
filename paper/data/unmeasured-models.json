@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-19T04:30:51Z",
+  "date_utc": "2026-09-19T04:40:06Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -114,12 +114,11 @@
                   "next_step": "compare the generic names a candidate declares with the names its own body uses, at the point the bindings are keyed, on the six-line reproduction.",
                   "why_not_done_here": "the session's context is spent. The finding is recorded with its measurement so the next attempt starts here rather than at the symptom."
                 },
-                "three_facts": {
-                  "binding_is_correct": "printed where the bindings are filled from the matched generics: binding 'B' -> 'f32'.",
-                  "substitute_is_correct": "src/ir.cpp:121 returns the bound type whenever the name is present, so substitute(B, bindings) is f32 by construction.",
-                  "the_copy_sees_something_else": "at the site that rewrites a callee while copying a body, the same call prints substitute(B, bindings) as '_'.",
-                  "conclusion": "the bindings the copy works from are not the bindings that were filled. That is the whole of the remaining question and it is one value's lifetime inside one function.",
-                  "next_step": "print the address and size of the bindings at both sites and the difference will be visible immediately."
+                "resolved": {
+                  "measurement": "both sites printed in one run: fill-site bindings@0x16d775a30 size=2 and copy-site bindings@0x16d775a30 size=2 hasB=1 with 'B' -> 'f32'. Same address, same map, correct binding.",
+                  "so_substitution_works": "substitute returns the bound type when the name is present and returns the type unchanged when it is absent, so it can never produce the unknown type from a missing name. The '_' that strands the operation is therefore a bound VALUE of '_', not an unsubstituted parameter.",
+                  "what_that_means": "some expansion of the call happens with the generic value unknown. Probing the result types Mod::expand collects shows exactly that: 'mine' arrives as tensor<_, [4]> when its result is bound to a let without an annotation, and tensor<f32, [4]> with one. So both expansions occur, and the unknown one is what leaves the operation behind.",
+                  "fix": "keep a call's resolved result type stable across expansions rather than re-deriving it from a binding whose type may not have been inferred, or infer the generic once at the call and reuse it."
                 }
               }
             }
