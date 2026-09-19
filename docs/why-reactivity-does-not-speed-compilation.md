@@ -89,3 +89,46 @@ definitions it read, and invalidating by reachability from the edit rather than 
 revision equality. The refactor in `preparation-cost-refactor.md` removes the
 per-attempt costs that make the current situation worse; this would be the change
 that makes reactivity pay.
+
+## What two attempts at finer invalidation established
+
+The gap described above was attacked twice, and both attempts are worth recording
+because together they say where the cost does not come from.
+
+**The key is not the problem.** The backend's predicate for every operation is
+memoized, and so is the function it calls to name a call, and each of those memos is
+keyed on the whole store's revision (`src/eval.cpp:534`). That looked like the defect:
+any mutation anywhere invalidates every memo, so the predicate is recomputed for every
+operation of every pass. So the store gained a symbol-table revision, bumped only where
+a function is created, erased or renamed, and the annotation gained a form that says a
+function reads nothing but name resolution, so its entry can be keyed on the symbol
+tables instead.
+
+It compiles, the suite passes, and it changes nothing measurable. The report says why:
+even keyed that way, naming a call is asked 38,796 times on UltraFace and answered from
+the memo 1,144 times, three per cent. The symbol table genuinely changes thousands of
+times during a pass, because expansion creates and erases helper functions as it goes.
+**The dependency is real rather than spurious, and no choice of key can make the answer
+reusable while the thing it depends on keeps changing.**
+
+**A memo downstream of it cannot help either.** Memoizing name resolution itself, which
+is what the sampler pointed at, gave a 99 per cent hit rate and also changed nothing
+measurable -- because the caller's own memo was being discarded, so the question was
+asked again anyway and answered quickly. Speed in the lookup does not pay for the
+asking.
+
+## Where that leaves the architecture
+
+The cost follows from the expansion strategy, not from a coarse key. Expansion
+materialises a callee's private closure, inlines it into the call's body and erases it
+again, for every batch, so the symbol table is different at the end of every batch than
+it was at the start. Two independent measurements from opposite ends say the same thing:
+cloning that closure is a third of what one expansion costs, and the memo that would
+avoid re-resolving anything cannot survive the churn the cloning causes.
+
+So the change that would make reactivity pay is not a finer cache key. It is to stop
+changing the symbol table underneath the pass: materialise a helper once, keep it for as
+long as the pass needs it, and erase it when the pass is over rather than per batch. That
+is item three of `preparation-cost-refactor.md`, which was marked there as possibly
+buying little and worth measuring first. It has now been measured from both sides, and it
+is where the remaining cost is.
