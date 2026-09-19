@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-19T06:20:20Z",
+  "date_utc": "2026-09-19T06:21:03Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -260,6 +260,19 @@
     "measured": "the memo worked: 3057 hits against 20 misses and 9 clears on UltraFace. It changed the total time by nothing measurable, and XCiT-Tiny still ran past ten minutes.",
     "reverted": "yes. A change with no measured improvement is reverted with its reason, which is this work's own rule.",
     "a_mistake_worth_recording": "the first reading of this experiment called it a regression, because UltraFace had been measured at 44.7 s earlier in the session and was now at 55.5 s. Reverting the change and measuring again gave 55.7 s and 56.0 s, so the earlier figure was a stale baseline and the memo had cost nothing at all. A baseline recorded in one round and compared against in another is not a baseline; it has to be taken in the same sitting as the measurement it is compared with.",
-    "what_the_memo_tells_us": "a 99 per cent hit rate on name resolution changing nothing means resolution is not where the remaining time goes, even though the sampler put Env::resolve at the bottom of the stack. The hits are cheap because the work they save is cheap; what the sampler was showing is that resolve is on the stack, not that it is expensive."
+    "what_the_memo_tells_us": "a 99 per cent hit rate on name resolution changing nothing means resolution is not where the remaining time goes, even though the sampler put Env::resolve at the bottom of the stack. The hits are cheap because the work they save is cheap; what the sampler was showing is that resolve is on the stack, not that it is expensive.",
+    "where_the_time_actually_is": {
+      "method": "the passes that can be called on their own were timed directly on XCiT-Tiny's semantic graph instead of being inferred from a sample.",
+      "measured": {
+        "opt.basic": "1.05 s",
+        "ir.trim": "0.58 s",
+        "opt.specialize": "0.77 s"
+      },
+      "so": "every pass that can be timed is fast, which leaves opt.expose -- the one that cannot be called on its own, and the one that runs twice in the pipeline and asks the backend's accepts predicate about every operation.",
+      "the_predicate": "accepts_with is memoized and so is call_name, which it calls, and call_name calls ir.resolve. That is why the sampler finds Env::resolve at the bottom of the stack with no expansion frames anywhere.",
+      "the_defect_in_one_line": "src/eval.cpp:534 builds the memo key as {store, store->revision}. Every memoized function is keyed on the whole store's revision, so any mutation anywhere invalidates all of them and the predicate is recomputed for every operation of every pass.",
+      "why_the_find_fns_memo_did_not_help": "it was downstream of this. call_name's own memo was being thrown away, so it asked again, and the answer came back quickly from the find_fns memo, but the cost is in asking at all -- the memo machinery, the argument hashing and the attribute handling around it -- not in the lookup it saves.",
+      "the_fix": "give the memo key a dependency that corresponds to what the function actually reads. call_name reads the call's resolution, which depends on the symbol tables, so a symbol-table revision -- the same idea the last attempt added -- is the right key for it, and the annotation should say so rather than leaving every memo keyed on the store."
+    }
   }
 }
