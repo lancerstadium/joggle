@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-19T06:59:31Z",
+  "date_utc": "2026-09-19T07:09:55Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -292,6 +292,13 @@
       "what_that_means": "the cost is not an artefact of a key that is coarser than the dependency; it follows from the expansion strategy itself, which materialises a helper, inlines it and erases it for every batch. Making the predicate reusable means making the pass stop changing the symbol table underneath it, which is the same observation the earlier measurement produced from the other end: the clone of the callee's local closure is a third of what an expansion costs.",
       "reverted": "yes, with the reason recorded. The suite is green at 68/68 and the tree is clean.",
       "a_method_note": "the baseline for this round was taken in the same sitting as the measurement, after last round's mistake of comparing against a figure from an earlier round. That is why the two are believed: 55.7 s against 55.7 s is a real null result, not a stale one."
+    },
+    "what_the_leaf_frames_say": {
+      "measurement": "sampling UltraFace and reading the deepest frames rather than the aggregate names: Env::match, then resolve_overload, then select_overload, then the allocator's free path. All 2534 samples are inside the evaluator, and the bottom of the stack is the overload matcher building its candidate bindings, type vectors and generic names.",
+      "so_the_work_is_not_cheap": "the earlier reading -- that a 99 per cent hit rate on resolution changing nothing proved resolution was cheap -- was wrong. Resolution is expensive; the memo did not help because it rarely hit.",
+      "why_it_rarely_hit": "its key includes the call. call_name is memoized on (m, op), so two operations that name the same function with the same argument types are different keys and each pays for its own resolution. On UltraFace that is 38796 asks for a handful of distinct answers.",
+      "the_fix_this_points_at": "key the resolution on the shape of the call -- the callee and the argument types -- rather than on the operation, so that operations which ask the same question share one answer. That survives the symbol table churn that defeated the last two attempts, because it does not need the answer to live long: it needs many asks to collapse into one.",
+      "why_this_is_different_from_the_last_two": "both previous attempts tried to make one answer live longer. This one does not; it makes many questions become the same question, which is the shape the data actually has."
     }
   },
   "machine_drift": {
