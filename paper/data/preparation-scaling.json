@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-19T05:19:24Z",
+  "date_utc": "2026-09-19T05:20:44Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -220,7 +220,23 @@
       "graph_regenerated": "its semantic graph was produced through the current pipeline for the first time in this session: onnx.read then onnx.nn.convert and opt.basic, 1,501 lines, in 2.5 s.",
       "preparation": "run past twenty minutes without completing and was stopped. Before the batch change the campaign recorded it as a preparation timeout, and it still is one.",
       "so_the_batch_change_did_not_help_it": "SSD-MobileNetV1 went from over twenty minutes to 35.2 s on the same change and this model was unchanged, so the two are not the same obstruction. The likely difference is which path they take: SSD's batch fails and its time went into the one-at-a-time fallback, while this model's appears to be in the passes themselves, as UltraFace's 44.7 s is.",
-      "worth_noting": "its graph is 1,501 lines against SSD's 8,118, so size alone does not explain it either, and the next measurement should be the same twenty-call probe that identified SSD's cost rather than another guess."
+      "worth_noting": "its graph is 1,501 lines against SSD's 8,118, so size alone does not explain it either, and the next measurement should be the same twenty-call probe that identified SSD's cost rather than another guess.",
+      "sampled": {
+        "method": "the running preparation sampled with the macOS sampler after a minute",
+        "frame_histogram": {
+          "joggle::Attr": 11144,
+          "joggle::detail::": 1833,
+          "Eval::Frame": 958,
+          "joggle::Op": 956,
+          "joggle::Blk": 799,
+          "joggle::Fn": 673,
+          "joggle::Val": 656,
+          "joggle::Ty": 596
+        },
+        "decisive": "Env::expand and Mod::expand appear in zero frames. The deepest frames are Env::resolve, Env::resolve_fns, Blk::args, Blk::fn, Blk::ops and Attr::Attr.",
+        "conclusion": "this model's preparation is not spending its time expanding. It is spending it resolving names, which is why the batch change took SSD from over twenty minutes to 35.2 s and left this model a timeout: the two obstructions are in different functions.",
+        "next_step": "resolve_fns walks module scope to find a function by name, so the question is how many times it is called and over what, and whether its result is cached. The call counts from --report will say, and they are free to collect."
+      }
     },
     "mnist-8_floor": {
       "before": "1.128 s",
