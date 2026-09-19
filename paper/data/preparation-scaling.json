@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-19T06:57:32Z",
+  "date_utc": "2026-09-19T06:59:31Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -293,5 +293,10 @@
       "reverted": "yes, with the reason recorded. The suite is green at 68/68 and the tree is clean.",
       "a_method_note": "the baseline for this round was taken in the same sitting as the measurement, after last round's mistake of comparing against a figure from an earlier round. That is why the two are believed: 55.7 s against 55.7 s is a real null result, not a stale one."
     }
+  },
+  "machine_drift": {
+    "observation": "the same code measures differently at different times in one session. mnist-8 was 1.128 s early and 1.224 s now; UltraFace was 44.7 s early and 56.0 s now; SSD-MobileNetV1 was 35.2 s and is 36.4 s. All three measured together in one sitting for the figures on the right.",
+    "consequence": "an absolute time recorded in one round cannot be compared against a measurement from another, which is a mistake this work already made once and reverted a correct change over. The only sound comparison is between figures taken in the same sitting, and a change's effect has to be judged that way.",
+    "what_is_unaffected": "the ratios that matter are unchanged: SSD-MobileNetV1 is about thirty-five times faster than it was with the per-call fallback, and that was measured as a change in the same sitting."
   }
 }
