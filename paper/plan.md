@@ -1809,3 +1809,50 @@ two tables, 68 of 68 tests with every target built, and 18 of 18 checks in
 paper/scripts/check_consistency.py. Every headline number was recomputed against the
 records by an independent audit. Three audits were run in total; all findings they
 raised were applied.
+
+## Preparation-cost work: closing state (2026-09-19, revision dc89023)
+
+### What the objective named, and where each half stands
+
+**SSD-MobileNetV1: met.** Its preparation went from over twenty minutes and not
+completing to 35.2 s. The measurement that made it possible is a phase breakdown of
+`Env::expand`: over twenty-two invocations, a store snapshot 2031 ms, cloning the
+callee's local closure 1711 ms, the inlining itself 1161 ms, the closure walk 68 ms,
+the dominance structure 6 ms, and the retarget walk nothing at all. Snapshot and clone
+are three quarters of the cost and both are per-invocation, and the fallback made one
+invocation per call -- 7,278 of them. Retrying the batch best-effort, so one invocation
+covers every call it can, is the whole change.
+
+Atomicity is preserved by default and made opt-in through a new `ir.expand_partial`
+binding, because it is a tested contract: `test/workflow.cpp` asserts that a batch
+containing a call that cannot be expanded fails as a whole, and the unconditional
+version of the change failed exactly that test. The flag is the device MLIR arrived at
+with `allowPatternRollback`.
+
+**XCiT-Tiny: not met, mechanism found.** It still runs past twenty minutes. Sampling
+puts `Env::expand` and `Mod::expand` in zero frames and the stack reads `Eval::call`,
+`Eval::intrinsic`, `Env::resolve`, `resolve_overload`: the interpreter resolves the
+callee of every interpreted call by name through the full overload matcher, and nothing
+carries a resolution from one evaluation to the next. That fits every other
+measurement -- attribute construction dominating the histogram, a 1,501-line graph
+being slower than an 8,118-line one, and the batch change being irrelevant to it.
+
+### Why the second half was not attempted
+
+The fix is to memoize a call's resolution against the store revision and the call's
+identity, and that needs invalidation finer than clearing the whole query cache on every
+mutation. `src/ir.cpp` and `src/env.cpp` clear `store.queries` outright on every change.
+That is the dependency-tracking gap described in
+`docs/why-reactivity-does-not-speed-compilation.md`, which is a project rather than a
+bounded edit, and it is where the next attempt should start.
+
+The three things it needs are in the repository: a reproduction of the adjacent failure
+that runs in a tenth of a second (`paper/experiments/repro/`), a repeatable measurement
+of the expansion cost (`docs/measure-expansion.sh`), and a record of every mechanism
+claim with the measurement behind it and the corrections marked
+(`paper/data/preparation-scaling.json`).
+
+### Verification at this revision
+
+Twelve technical pages, no overfull boxes, no undefined references, 68 of 68 tests with
+every target built, and 18 of 18 checks in `paper/scripts/check_consistency.py`.
