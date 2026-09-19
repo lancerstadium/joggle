@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-19T03:21:30Z",
+  "date_utc": "2026-09-19T03:22:00Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -61,7 +61,14 @@
           "the expression-region rule that refuses stateful bodies in a branch output, since the call sits at the top level of main"
         ],
         "what_is_established": "no other model in the campaign contains a tensor.cast at all -- UltraFace, MNIST and SqueezeNet have zero before and zero after preparation -- so this path has never been exercised by anything measured, and there is no working example to compare against.",
-        "next_step": "find what differs between the minimal function that works and this call in place: the candidates are its consumers, since the cast feeds tensor.shape, and the state of the module when the round reaches it. The iteration cost is 35 s, so this is now a cheap question; before the batch change it could not be asked at all."
+        "next_step": "find what differs between the minimal function that works and this call in place: the candidates are its consumers, since the cast feeds tensor.shape, and the state of the module when the round reaches it. The iteration cost is 35 s, so this is now a cheap question; before the batch change it could not be asked at all.",
+        "minimal_reproduction": {
+          "file": "paper/experiments/repro/cast-multi-use.jog",
+          "cost": "0.1 s, against 35 s for the model",
+          "trigger": "a tensor.cast whose result is used more than once. Returning the cast prepares, binding it and returning it prepares, and returning f + f or casting it again fails.",
+          "symptom": "preparation stops on 'c: unsupported call remains: _' -- the stranded call has an empty callee name, which is a different symptom from the model's, where the name was tensor.cast. Something in the expansion is producing a call that no longer resolves, and the model's first operation is the same shape of thing: one cast of the entry tensor, consumed by tensor.shape and by everything downstream.",
+          "why_it_matters": "this reduces the question from a 19,432-operation graph that takes 35 s per attempt to six lines that take a tenth of a second, and it is the first reproduction of this failure that does not need the model at all."
+        }
       }
     },
     "efficientnet-lite4-11-qdq": {
