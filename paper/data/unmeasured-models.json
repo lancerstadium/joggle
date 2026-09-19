@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-19T03:41:16Z",
+  "date_utc": "2026-09-19T03:50:47Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -88,15 +88,11 @@
             "next_step": "watch what Mod::expand creates when the callee's body contains a conversion to a type parameter, and compare the two variants at that point rather than at the symptom."
           },
           "root_cause": {
-            "found": "inlining a generic function leaves a conversion to its type parameter unsubstituted. The stranded operation is named after the parameter itself.",
-            "evidence": {
-              "generic clone of tensor.cast, result consumed": "fails, and the stranded call is named 'B'",
-              "the same function written without a type parameter, result consumed": "prepares",
-              "the same non-generic function, result returned directly": "prepares"
-            },
-            "what_this_rules_out": "not the conversion, not the loop, not the consumer, and not the element pair: the non-generic version has all of those and prepares. It is the substitution of the type parameter during inlining, and only the path that inlines a body into a consuming call takes it -- returning the result directly does not.",
-            "why_the_model_hits_it": "tensor.cast is generic in its element type and its body converts through that parameter, and the model's first operation is one such cast consumed by tensor.shape and by everything downstream.",
-            "next_step": "substitute the matched generic arguments into the inlined body. Env::match already computes the binding for a call against its candidate, so the question is where the expansion should apply it and does not."
+            "statement": "a generic parameter that appears only in the return type is not inferred at a call whose result is bound to a variable. tensor.cast has that shape: B is the target element type and appears nowhere in the parameters, so the call needs the expected type to get it.",
+            "evidence": "a probe on the substitution that runs while a callee's body is copied into the call site prints callee='B' valid=1 bindings=2 -> '_' beside callee='E' valid=1 bindings=2 -> 'f32': the same substitution resolves another function's parameter and leaves this one unknown.",
+            "why_binding_matters": "returning the call directly supplies the expected type and prepares; binding it to a variable does not, and annotating the binding explicitly does not either, so the expectation is not reaching the call's generic inference through the annotation.",
+            "consequence": "inlining then copies the body with B still in it, the conversion B(x[i]) becomes a call named after the type parameter, and preparation stops on it.",
+            "where_a_fix_belongs": "propagating the expected type into the generic inference of a call bound to a let, which is an inference question rather than an expansion one."
           }
         }
       }
