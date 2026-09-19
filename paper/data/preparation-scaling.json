@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-19T05:21:35Z",
+  "date_utc": "2026-09-19T06:20:20Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -254,5 +254,12 @@
       "after": "1.089 s",
       "held": true
     }
+  },
+  "fine_grained_invalidation_attempt": {
+    "design": "give the store a symbol_revision bumped only where the symbol table changes -- function created, erased or renamed, four sites in src/ir.cpp -- and memoize Env::find_fns against a signature over the loaded modules' symbol revisions rather than the store's whole revision. Name resolution depends on the symbol tables and on nothing else, so unrelated mutations should not invalidate it.",
+    "measured": "the memo worked: 3057 hits against 20 misses and 9 clears on UltraFace. It changed the total time by nothing measurable, and XCiT-Tiny still ran past ten minutes.",
+    "reverted": "yes. A change with no measured improvement is reverted with its reason, which is this work's own rule.",
+    "a_mistake_worth_recording": "the first reading of this experiment called it a regression, because UltraFace had been measured at 44.7 s earlier in the session and was now at 55.5 s. Reverting the change and measuring again gave 55.7 s and 56.0 s, so the earlier figure was a stale baseline and the memo had cost nothing at all. A baseline recorded in one round and compared against in another is not a baseline; it has to be taken in the same sitting as the measurement it is compared with.",
+    "what_the_memo_tells_us": "a 99 per cent hit rate on name resolution changing nothing means resolution is not where the remaining time goes, even though the sampler put Env::resolve at the bottom of the stack. The hits are cheap because the work they save is cheap; what the sampler was showing is that resolve is on the stack, not that it is expensive."
   }
 }
