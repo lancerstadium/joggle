@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-19T03:51:11Z",
+  "date_utc": "2026-09-19T04:00:35Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -93,10 +93,9 @@
             "why_binding_matters": "returning the call directly supplies the expected type and prepares; binding it to a variable does not, and annotating the binding explicitly does not either, so the expectation is not reaching the call's generic inference through the annotation.",
             "consequence": "inlining then copies the body with B still in it, the conversion B(x[i]) becomes a call named after the type parameter, and preparation stops on it.",
             "where_a_fix_belongs": {
-              "established": "Mod::expand already builds expected_returns from the call's own result types (src/ir.cpp:1678), so the generic would be inferred if the call had a result type. It does not: the frontend leaves the call's type unknown when the result is bound to a let.",
-              "annotation_is_present_but_unused": "'let f: tensor<f32, [4]> = mine(x)' reaches the IR with its annotation intact and preparation still fails, so the annotation is not being passed into the initializer call's generic inference.",
-              "fix": "type a let-bound call from the binding's annotation, which is the expectation that a direct return already supplies.",
-              "why_not_done_here": "the change belongs in inference rather than in expansion, and the session reached this point without the room to make it and verify it against the whole suite. It is recorded with its evidence so it can be picked up directly."
+              "corrected": "the annotation does reach the call. Probing the result types that Mod::expand collects shows 'mine' arriving as tensor<_, [4]> without an annotation and tensor<f32, [4]> with one, so a let's declared type is already carried into the call's own output type.",
+              "so_the_fix_is_not_in_the_frontend": "expected_returns is correct and resolve_overload still does not bind the parameter from it. The parameter appears only in the return type, and the resolver does not use the expectation to bind it, so the generic comes back unknown and the substitution in the inlined body leaves the parameter in place.",
+              "fix": "bind a return-only type parameter from the expected return type inside resolve_overload, which is where the expectation is already available and already ignored."
             }
           }
         }
