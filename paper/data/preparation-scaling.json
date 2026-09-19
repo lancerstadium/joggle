@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-19T05:21:01Z",
+  "date_utc": "2026-09-19T05:21:18Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -237,9 +237,9 @@
         "conclusion": "this model's preparation is not spending its time expanding. It is spending it resolving names, which is why the batch change took SSD from over twenty minutes to 35.2 s and left this model a timeout: the two obstructions are in different functions.",
         "next_step": "resolve_fns walks module scope to find a function by name, so the question is how many times it is called and over what, and whether its result is cached. The call counts from --report will say, and they are free to collect.",
         "why_resolution_is_expensive": {
-          "what_resolve_fns_does": "src/env.cpp:626 first looks the symbol up in the module's own table, which is a map lookup, and then goes on to consult impl_->visibility for the module's uses set and to walk the modules it depends on, collecting what is visible into a visited set.",
-          "the_cost": "the lookup is cheap and the visibility walk is not, and it is redone on every call. Nothing memoizes the answer for a module and symbol pair, which is the same shape of problem as the query cache that is cleared wholesale on every mutation: reuse is scoped by something coarser than what actually determines the answer.",
-          "the_fix_this_points_at": "memoize visibility per module's use set and revision, which is a bounded change in one function and is measurable with the sampler that found it."
+          "correction": "the previous version of this entry said nothing memoizes the answer. That is wrong: resolve_fns computes the visible set and stores it in impl_->visibility keyed by the module's uses, at src/env.cpp:663, and that map is cleared only when a module is loaded, at src/env.cpp:565, not on every mutation.",
+          "so_what_remains_true": "the sampler still puts Env::resolve and Env::resolve_fns at the bottom of the stack with attribute construction dominating, and Env::expand and Mod::expand in zero frames, so the time is in name resolution rather than in expansion. What is not yet known is why, given that the visible set is cached.",
+          "next_step": "the remaining candidates are the cost of the lookup itself -- the key is the module's uses vector, so each call builds and compares it -- and the work around the lookup in Env::resolve, which is called far more often than resolve_fns. Counting both from --report, or sampling with the frames below Env::resolve kept, would separate them."
         }
       }
     },
