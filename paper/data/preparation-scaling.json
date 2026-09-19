@@ -194,5 +194,20 @@
     "why_the_two_dominate": "both are per-invocation costs, and the fallback makes one invocation per call. The clone cannot be reused across invocations because each one inlines the materialised closure into its call's body and then erases it.",
     "consequence": "the highest-leverage change is not to make one invocation cheaper but to make one invocation do more calls: a best-effort batch that keeps its successful prefix pays the snapshot and the clone once per batch instead of once per call. Measured against the alternative of reducing the per-invocation cost, it is worth up to a factor of the batch size.",
     "obstacle": "atomicity is a tested contract, not an accident: test/workflow.cpp asserts that a batch containing a call that cannot be expanded fails as a whole. A best-effort mode therefore has to be opt-in, which is what MLIR did with allowPatternRollback, and it needs a new ir binding for the callers that want it."
+  },
+  "best_effort_batch": {
+    "change": "Env::expand gained an opt-in best_effort parameter; the default keeps the atomic behaviour that test/workflow.cpp asserts. expand_with's fallback now retries the whole batch best-effort instead of one call at a time, so the store snapshot and the closure clone are paid once per batch rather than once per call.",
+    "measured": {
+      "ssd-mobilenetv1-12_before": "over 20 minutes, not completing",
+      "ssd-mobilenetv1-12_after": "35.2 s, reaching a new blocker",
+      "mnist-8_before": "1.128 s",
+      "mnist-8_after": "1.089 s",
+      "ultraface_before": "44.7 s",
+      "ultraface_after": "44.8 s"
+    },
+    "reading": "the change is worth about thirty-five times on the graph whose batch fails. It does nothing for UltraFace, which is expected: that graph does not take the fallback path, so its 44.7 s is spent in the passes themselves and this change cannot touch it. UltraFace was the wrong instrument for this measurement and SSD is the right one.",
+    "new_frontier": "preparation now stops on 'c: unsupported call remains: tensor.cast' rather than on cost. That is a different blocker at a different place, and it is the first time this model has been seen to reach it.",
+    "why_atomicity_is_opt_in": "test/workflow.cpp asserts that a batch containing a call that cannot be expanded fails as a whole, and the unconditional version of this change failed exactly that test. The flag follows MLIR's allowPatternRollback.",
+    "date": "2026-09-19T03:10:52Z"
   }
 }

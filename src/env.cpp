@@ -808,7 +808,7 @@ bool Env::expand(Mod& mod, Op call, Fn implementation) const {
 }
 
 bool Env::expand(Mod& mod, std::span<const Op> calls,
-                 std::span<const Fn> implementations) const {
+                 std::span<const Fn> implementations, bool best_effort) const {
   if (calls.empty())
     return false;
   detail::Store backup = mod.impl_->store;
@@ -975,11 +975,18 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
 
   mod.impl_->store.revision = backup.revision;
   mod.impl_->store.queries.clear();
+  std::size_t expanded = 0;
   for (std::size_t index = 0; index < calls.size(); ++index) {
     const std::vector<Op> before_ops = mod.ops();
     if (!mod.expand(*this, calls[index], implementations[index],
-                    semantics[index]))
-      return rollback();
+                    semantics[index])) {
+      // Best effort keeps what succeeded so that a caller which would otherwise
+      // retry one call at a time does not repeat thousands of expansions and pay
+      // the snapshot and the closure clone for each of them.
+      if (!best_effort || expanded == 0)
+        return rollback();
+      break;
+    }
     for (Op op : mod.ops()) {
       if (op.kind() != Op::Kind::call ||
           std::find(before_ops.begin(), before_ops.end(), op) !=
@@ -998,6 +1005,7 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
         return rollback();
       }
     }
+    expanded += 1;
   }
   const std::size_t closure_limit = materialized.size() + 1;
   bool closure_complete = materialized.empty();
@@ -1053,7 +1061,7 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
       return rollback();
     }
   }
-  mod.impl_->store.revision = backup.revision + calls.size();
+  mod.impl_->store.revision = backup.revision + expanded;
   mod.impl_->store.queries.clear();
   const detail::Dom dom(mod.impl_->store);
   for (std::uint32_t id = 0; id < mod.impl_->store.ops.size(); ++id) {

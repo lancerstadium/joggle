@@ -20,13 +20,12 @@ local fn expand_with(
   if ir.expand(m, calls, bodies) {
     return true
   }
-  var changed = false
-  for i in 0..len(calls) {
-    if ir.live(calls[i]) {
-      changed = ir.expand(m, [calls[i]], [bodies[i]]) || changed
-    }
-  }
-  return changed
+  // The batch is atomic and failed, so retry it best-effort: one invocation then
+  // covers every call that can be expanded, instead of one invocation per call.
+  // A store snapshot and the clone of the callee's local closure are three quarters
+  // of what an invocation costs, and retrying call by call pays both for every
+  // call. Whatever cannot be expanded is left for the next round.
+  return ir.expand_partial(m, calls, bodies, true)
 }
 
 local fn legalize_with(

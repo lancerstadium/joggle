@@ -98,6 +98,7 @@ fn fold(m: Mod, call: Op, fn: Fn) -> bool;
 fn fold(m: Mod, op: Op, fns: list<Fn>) -> bool;
 fn fold(m: Mod, calls: list<Op>, fns: list<Fn>) -> bool;
 fn expand(m: Mod, call: Op, callee: Fn) -> bool;
+fn expand_partial(m: Mod, calls: list<Op>, fns: list<Fn>, best_effort: bool) -> bool;
 fn expand(m: Mod, calls: list<Op>, callees: list<Fn>) -> bool;
 fn move(m: Mod, op: Op, before: Op) -> bool;
 fn args(m: Mod, op: Op, values: list<Val>) -> bool;

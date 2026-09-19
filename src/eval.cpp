@@ -2845,6 +2845,32 @@ private:
                           before + index, before + index + 1);
         return Items{Item(Attr(expanded))};
       }
+    } else if (name == "expand_partial" && args.size() == 4) {
+      // The best-effort variant of expand, for a caller that will retry the calls
+      // it could not expand. See Env::expand for why it exists.
+      const auto* mod = as<Mod*>(args[0]);
+      auto ops = handles<Op>(args[1]);
+      auto fns = handles<Fn>(args[2]);
+      const Attr* flag = as<Attr>(args[3]);
+      const bool best_effort = flag && flag->integer().value_or(0) != 0;
+      if (mod && *mod && ops && fns && ops->size() == fns->size()) {
+        std::vector<std::string> sources;
+        sources.reserve(ops->size());
+        for (Op op : *ops) {
+          std::string source(op.callee());
+          if (const Fn resolved = env_.resolve(**mod, op))
+            source = std::string(resolved.module()) + "." +
+                     std::string(resolved.name());
+          sources.push_back(std::move(source));
+        }
+        const std::uint64_t before = (*mod)->revision();
+        const bool expanded = env_.expand(**mod, *ops, *fns, best_effort);
+        if (expanded)
+          for (std::size_t index = 0; index < ops->size(); ++index)
+            record_expand(std::move(sources[index]), (*fns)[index],
+                          before + index, before + index + 1);
+        return Items{Item(Attr(expanded))};
+      }
     } else if (name == "move" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* op = as<Op>(args[1]);
