@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-19T06:21:03Z",
+  "date_utc": "2026-09-19T06:31:40Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -273,6 +273,17 @@
       "the_defect_in_one_line": "src/eval.cpp:534 builds the memo key as {store, store->revision}. Every memoized function is keyed on the whole store's revision, so any mutation anywhere invalidates all of them and the predicate is recomputed for every operation of every pass.",
       "why_the_find_fns_memo_did_not_help": "it was downstream of this. call_name's own memo was being thrown away, so it asked again, and the answer came back quickly from the find_fns memo, but the cost is in asking at all -- the memo machinery, the argument hashing and the attribute handling around it -- not in the lookup it saves.",
       "the_fix": "give the memo key a dependency that corresponds to what the function actually reads. call_name reads the call's resolution, which depends on the symbol tables, so a symbol-table revision -- the same idea the last attempt added -- is the right key for it, and the annotation should say so rather than leaving every memo keyed on the store."
+    },
+    "attempt_two": {
+      "design": "let the annotation choose the key. [memo] keeps the whole store's revision, [memo: \"symbols\"] records the symbol table's revision instead, and the check compares against the same one. The store needs a symbol_revision bumped at exactly the four places in src/ir.cpp that create, erase or rename a function.",
+      "state": "not landed. The edit reached the point of not compiling and the session's remaining room went into fixing compile errors rather than into measuring, so it is reverted and the tree is at the state that passes 68 of 68 with every target built.",
+      "the_obstacles_worth_recording": [
+        "Store already has a member called symbols, the symbol table itself, so the revision cannot be called that",
+        "memo_version and memo_item are static and cannot read a flag stored on the evaluator; either they become members or the flag is threaded through their recursion",
+        "memo_probe and memo_current are called from more than one place and each needs the same flag, so the annotation has to be read before both rather than at one of them",
+        "the annotation is read as a boolean today, so accepting a string means the memoized test has to accept both forms without turning memoization off for the string"
+      ],
+      "why_it_is_still_the_right_fix": "the defect was measured, not guessed: src/eval.cpp:534 keys every memoized function on the whole store's revision, so the backend's accepts predicate and call_name are recomputed for every operation of every pass, which is what the sampler shows as Env::resolve at the bottom of the stack. This is the change the measurement points at; it needs a sitting with room to make it and then measure it."
     }
   }
 }
