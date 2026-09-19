@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-19T07:38:00Z",
+  "date_utc": "2026-09-19T08:03:01Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -305,6 +305,12 @@
       "result": "three tests fail, so the cache is unsound, and it is reverted. Adding the calling module to the key -- since visibility depends on which module is asking -- did not fix it, so the dependency set is larger than caller, callee, argument types and symbol tables.",
       "what_the_failure_establishes": "a resolution reads something this key does not name. The candidates for what is missing are the operation's own explicit generic arguments, which the callee string is parsed for, and anything else resolve reads off the call. That is the next thing to look at, and it is a smaller question than the ones before it because the failure is immediate and the reproduction is the suite.",
       "note": "this is the third design in a row to be built, measured and reverted. All three are recorded with their measurements, which is why the direction kept narrowing rather than repeating: the key was too coarse, then the dependency was real, and now the dependency set is larger than the shape."
+    },
+    "the_dependency_set_read_out": {
+      "what_resolve_reads": "reading Env::resolve at src/env.cpp:1082 enumerates it: the asking module, for visibility; the callee spelling, for the symbol and its explicit generic arguments; each argument's type; each of the call's own output types; and the enclosing function's generic parameters. All five feed resolve_overload, and resolve_fns supplies the candidates.",
+      "attempt_five": "keying on all five plus a symbol-table revision still fails three tests, so the answer depends on mutable store state that none of them names -- most plausibly a function that is retargeted or retyped without the symbol table changing, which would leave a memoized Fn stale.",
+      "conclusion": "memoizing a resolution is not sound against any cheap revision this store offers. Four designs were built, measured and reverted: a finer key, a shape key, a shape key with the caller, and a key over the complete enumerated dependency set. Each is recorded with its measurement, and together they say the resolution's dependencies are not expressible in the revisions the store maintains.",
+      "what_that_leaves": "the cost is real and measured -- the leaf frames put UltraFace's time in select_overload building candidate bindings and types for 38796 asks -- but it cannot be removed by caching the answer under the current bookkeeping. Removing it needs the store to be able to say when a resolution could have changed, which is the same gap from the other side: there is no record of what a value depends on."
     }
   },
   "machine_drift": {
