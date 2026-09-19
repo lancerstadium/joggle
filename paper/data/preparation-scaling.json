@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-19T07:09:55Z",
+  "date_utc": "2026-09-19T07:38:00Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -299,6 +299,12 @@
       "why_it_rarely_hit": "its key includes the call. call_name is memoized on (m, op), so two operations that name the same function with the same argument types are different keys and each pays for its own resolution. On UltraFace that is 38796 asks for a handful of distinct answers.",
       "the_fix_this_points_at": "key the resolution on the shape of the call -- the callee and the argument types -- rather than on the operation, so that operations which ask the same question share one answer. That survives the symbol table churn that defeated the last two attempts, because it does not need the answer to live long: it needs many asks to collapse into one.",
       "why_this_is_different_from_the_last_two": "both previous attempts tried to make one answer live longer. This one does not; it makes many questions become the same question, which is the shape the data actually has."
+    },
+    "attempt_four_shape_key": {
+      "design": "key a resolution on the shape of the call rather than on the operation, gated on the symbol tables: the reasoning was that tens of thousands of asks share a handful of shapes, so they should collapse into one another even though the symbol table churns.",
+      "result": "three tests fail, so the cache is unsound, and it is reverted. Adding the calling module to the key -- since visibility depends on which module is asking -- did not fix it, so the dependency set is larger than caller, callee, argument types and symbol tables.",
+      "what_the_failure_establishes": "a resolution reads something this key does not name. The candidates for what is missing are the operation's own explicit generic arguments, which the callee string is parsed for, and anything else resolve reads off the call. That is the next thing to look at, and it is a smaller question than the ones before it because the failure is immediate and the reproduction is the suite.",
+      "note": "this is the third design in a row to be built, measured and reverted. All three are recorded with their measurements, which is why the direction kept narrowing rather than repeating: the key was too coarse, then the dependency was real, and now the dependency set is larger than the shape."
     }
   },
   "machine_drift": {
