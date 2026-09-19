@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-19T04:20:38Z",
+  "date_utc": "2026-09-19T04:30:51Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -113,6 +113,13 @@
                   "reading": "the name the inlined body uses is not the name the matcher keys its bindings by. That is why unify succeeds inside the matcher, the expectation is correct, and the substitution in the body still finds nothing and leaves the parameter in place.",
                   "next_step": "compare the generic names a candidate declares with the names its own body uses, at the point the bindings are keyed, on the six-line reproduction.",
                   "why_not_done_here": "the session's context is spent. The finding is recorded with its measurement so the next attempt starts here rather than at the symptom."
+                },
+                "three_facts": {
+                  "binding_is_correct": "printed where the bindings are filled from the matched generics: binding 'B' -> 'f32'.",
+                  "substitute_is_correct": "src/ir.cpp:121 returns the bound type whenever the name is present, so substitute(B, bindings) is f32 by construction.",
+                  "the_copy_sees_something_else": "at the site that rewrites a callee while copying a body, the same call prints substitute(B, bindings) as '_'.",
+                  "conclusion": "the bindings the copy works from are not the bindings that were filled. That is the whole of the remaining question and it is one value's lifetime inside one function.",
+                  "next_step": "print the address and size of the bindings at both sites and the difference will be visible immediately."
                 }
               }
             }
