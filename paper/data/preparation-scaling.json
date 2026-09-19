@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-18T17:53:01Z",
+  "date_utc": "2026-09-19T02:49:32Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -179,5 +179,20 @@
     "external_grounding": "MLIR's dialect conversion has the same transactional shape and answers it two ways: rollback is an undo log rather than a copy of the IR, and LLVM commit 8bc0d4d adds allowPatternRollback so that a failed conversion can leave the IR partly rewritten, in preparation for a one-shot driver that removes rollback entirely. The greedy pattern rewriter beside it uses a worklist of operations to revisit rather than re-walking the module.",
     "ordering": "record rewrites instead of copying the store; ask Mod::expand which operations it created instead of diffing; cache the local closure per implementation and revision; scope the dominance check; and only then stop making the batch atomic, which is a semantics change that test/network.cpp already caught once.",
     "caveat": "this removes work proportional to the graph from a path that runs per call. It does not make preparation linear in graph size, and the interpreted preparation remains the prototype's design."
+  },
+  "phase_breakdown": {
+    "method": "accumulating std::chrono timers around each phase of Env::expand, printed at exit, over 22 invocations reached by stopping the fallback after twenty calls on SSD-MobileNetV1",
+    "measured_ms": {
+      "snapshot": 2031,
+      "clone": 1711,
+      "expand": 1161,
+      "locals": 68,
+      "dom": 6,
+      "retarget": 0
+    },
+    "reading": "the store snapshot and the clone of the callee's local closure are 75 per cent of the measured time at about 92 ms and 78 ms per call. The actual inlining is smaller, the closure walk and the dominance structure are negligible, and the retarget walk did not register at all -- three of the four things this investigation suspected were wrong.",
+    "why_the_two_dominate": "both are per-invocation costs, and the fallback makes one invocation per call. The clone cannot be reused across invocations because each one inlines the materialised closure into its call's body and then erases it.",
+    "consequence": "the highest-leverage change is not to make one invocation cheaper but to make one invocation do more calls: a best-effort batch that keeps its successful prefix pays the snapshot and the clone once per batch instead of once per call. Measured against the alternative of reducing the per-invocation cost, it is worth up to a factor of the batch size.",
+    "obstacle": "atomicity is a tested contract, not an accident: test/workflow.cpp asserts that a batch containing a call that cannot be expanded fails as a whole. A best-effort mode therefore has to be opt-in, which is what MLIR did with allowPatternRollback, and it needs a new ir binding for the callers that want it."
   }
 }
