@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-19T06:31:40Z",
+  "date_utc": "2026-09-19T06:57:32Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -284,6 +284,14 @@
         "the annotation is read as a boolean today, so accepting a string means the memoized test has to accept both forms without turning memoization off for the string"
       ],
       "why_it_is_still_the_right_fix": "the defect was measured, not guessed: src/eval.cpp:534 keys every memoized function on the whole store's revision, so the backend's accepts predicate and call_name are recomputed for every operation of every pass, which is what the sampler shows as Env::resolve at the bottom of the stack. This is the change the measurement points at; it needs a sitting with room to make it and then measure it."
+    },
+    "attempt_three": {
+      "design": "implemented and tested: a symbol_revision on the store bumped at the four sites that create, erase or rename a function; Version carrying both revisions so a probe needs no flag; the memo entry carrying whether it is symbols-only; [memo] still meaning the whole store and [memo: \"symbols\"] meaning the symbol tables; and call_name annotated with the latter.",
+      "result": "it compiles, and the suite passes 68 of 68 with it, so the mechanism is sound. It changes nothing measurable: UltraFace ran 55.79 s and 55.78 s with it against 56.77 s and 55.66 s without, measured in the same sitting so the two are comparable.",
+      "why_it_cannot_help": "the report answers it. Even keyed on the symbol tables, call_name is called 38796 times on UltraFace and cached only 1144 times, three per cent. The symbol revision genuinely changes thousands of times during a pass, because expansion creates and erases helper functions as it goes. The dependency is real, not spurious, so a finer key cannot make the answer reusable -- the mutations really do invalidate it.",
+      "what_that_means": "the cost is not an artefact of a key that is coarser than the dependency; it follows from the expansion strategy itself, which materialises a helper, inlines it and erases it for every batch. Making the predicate reusable means making the pass stop changing the symbol table underneath it, which is the same observation the earlier measurement produced from the other end: the clone of the callee's local closure is a third of what an expansion costs.",
+      "reverted": "yes, with the reason recorded. The suite is green at 68/68 and the tree is clean.",
+      "a_method_note": "the baseline for this round was taken in the same sitting as the measurement, after last round's mistake of comparing against a figure from an earlier round. That is why the two are believed: 55.7 s against 55.7 s is a real null result, not a stale one."
     }
   }
 }
