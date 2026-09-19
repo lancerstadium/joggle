@@ -172,5 +172,12 @@
     "conclusion": "the negative result holds. The retarget walk is not the cost, and the elimination is now a measured true negative rather than one that could have been an artefact of a stale binary.",
     "scope": "this covers the src/ diagnostics. The module-level ones -- the pre-filter, chunked retries, bisecting retries and grouping by callee -- were always evaluated against the module tree the tool loads at run time, so they stand as run.",
     "still_open": "the whole-store snapshot was also a src/ change and its revert was forced by a test failure rather than by a measurement, so whether it affects the cost is not established either way. It is reverted and the transaction it broke is intact."
+  },
+  "refactor_specification": {
+    "document": "docs/preparation-cost-refactor.md",
+    "summary": "each Env::expand invocation does work sized by the whole store rather than by the call: a full store copy for rollback, a recursive closure walk, a clone per private helper, four whole-module op walks, and a dominance structure of three store-sized vectors. The fallback makes that per call 7,278 times.",
+    "external_grounding": "MLIR's dialect conversion has the same transactional shape and answers it two ways: rollback is an undo log rather than a copy of the IR, and LLVM commit 8bc0d4d adds allowPatternRollback so that a failed conversion can leave the IR partly rewritten, in preparation for a one-shot driver that removes rollback entirely. The greedy pattern rewriter beside it uses a worklist of operations to revisit rather than re-walking the module.",
+    "ordering": "record rewrites instead of copying the store; ask Mod::expand which operations it created instead of diffing; cache the local closure per implementation and revision; scope the dominance check; and only then stop making the batch atomic, which is a semantics change that test/network.cpp already caught once.",
+    "caveat": "this removes work proportional to the graph from a path that runs per call. It does not make preparation linear in graph size, and the interpreted preparation remains the prototype's design."
   }
 }
