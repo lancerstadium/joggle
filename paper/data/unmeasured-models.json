@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-19T04:02:11Z",
+  "date_utc": "2026-09-19T04:11:29Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -100,7 +100,13 @@
                 "file": "src/verify.cpp, the expected-returns loop at 391-402, inside the overload matcher declared at src/detail.h:128",
                 "what_it_does": "for each candidate return it skips expectations that are unknown and otherwise unifies the candidate's return against the expected one, keeping the bindings. For this call that is tensor<B, S> against tensor<f32, [4]>, which should bind B to f32.",
                 "observed": "it does not. Mod::expand receives tensor<f32, [4]> as the expectation for the annotated case and the generic still comes back unknown, so the failure is inside this matcher rather than upstream of it.",
-                "next_step": "instrument inside the loop: whether it is reached for this call, whether unify returns true, and what the bindings hold afterwards. The reproduction takes a tenth of a second, so this is cheap."
+                "next_step": "instrument inside the loop: whether it is reached for this call, whether unify returns true, and what the bindings hold afterwards. The reproduction takes a tenth of a second, so this is cheap.",
+                "measured_inside": {
+                  "the_loop_is_reached": "yes, and with the right expectation: the probe prints formal='tensor<B, S>' expected='tensor<f32, [4]>'.",
+                  "unify_succeeds": "unify('tensor<B, S>','tensor<f32, [4]>') = 1, and it leaves two bindings where one was held before, so both B and S are bound inside the matcher.",
+                  "so_the_loss_is_after_the_matcher": "the bindings are correct inside the expected-returns loop and the generic still reaches Mod::expand as unknown, so what is lost is between this loop and the caller's generics out-parameter.",
+                  "next_step": "read how resolve_overload fills its generics out-parameter from the bindings the matcher produced -- whether it copies them, whether a later candidate resets them, or whether it fills the out-parameter from a different set."
+                }
               }
             }
           }
