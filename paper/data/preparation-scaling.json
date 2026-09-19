@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-19T04:58:39Z",
+  "date_utc": "2026-09-19T05:19:24Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -217,9 +217,10 @@
       "objective_met": "yes for cost; the model now reaches a conversion frontier instead of a performance wall"
     },
     "xcit-tiny-12-p8-224-opset17": {
-      "state": "not verified in this session",
-      "why": "the campaign never produced a semantic graph for it, and the only XCiT artifacts under build-study are legacy files that fail type checking before preparation starts, so they are not the current pipeline's output and cannot be used to measure it.",
-      "what_would_settle_it": "regenerating the model's semantic graph through the current pipeline, convert then opt.basic, which is what every other model in the campaign has."
+      "graph_regenerated": "its semantic graph was produced through the current pipeline for the first time in this session: onnx.read then onnx.nn.convert and opt.basic, 1,501 lines, in 2.5 s.",
+      "preparation": "run past twenty minutes without completing and was stopped. Before the batch change the campaign recorded it as a preparation timeout, and it still is one.",
+      "so_the_batch_change_did_not_help_it": "SSD-MobileNetV1 went from over twenty minutes to 35.2 s on the same change and this model was unchanged, so the two are not the same obstruction. The likely difference is which path they take: SSD's batch fails and its time went into the one-at-a-time fallback, while this model's appears to be in the passes themselves, as UltraFace's 44.7 s is.",
+      "worth_noting": "its graph is 1,501 lines against SSD's 8,118, so size alone does not explain it either, and the next measurement should be the same twenty-call probe that identified SSD's cost rather than another guess."
     },
     "mnist-8_floor": {
       "before": "1.128 s",
