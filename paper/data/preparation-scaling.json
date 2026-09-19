@@ -84,7 +84,7 @@
     }
   },
   "consequence": "the obstruction for SSD-MobileNetV1 and XCiT-Tiny is this cost, not correctness, and it is also why EfficientNet-Lite4 takes 27 minutes and DenseNet 22. It is a performance property of the prototype's interpreted preparation rather than a defect in any one model.",
-  "date_utc": "2026-09-19T05:20:44Z",
+  "date_utc": "2026-09-19T05:21:01Z",
   "correction": {
     "what_was_wrong": "the first version of this record used the number of let and var lines in the semantic file as the graph size and concluded the cost was quadratic. That proxy undercounts badly: UltraFace has 464 such lines and 17,467 operations. Measured against the real operation count the per-pass relationship is close to linear, about two milliseconds per operation.",
     "real_finding": "the cost is inside Env::expand, which for each call in a batch copies the entire operation list and then walks it again, so expanding n calls costs O(n * operations). SSD-MobileNetV1's 7,278-call batch against 17,467 operations is around 1.3e8 operation visits. This is why the model's preparation runs past twenty minutes however the caller retries.",
@@ -235,7 +235,12 @@
         },
         "decisive": "Env::expand and Mod::expand appear in zero frames. The deepest frames are Env::resolve, Env::resolve_fns, Blk::args, Blk::fn, Blk::ops and Attr::Attr.",
         "conclusion": "this model's preparation is not spending its time expanding. It is spending it resolving names, which is why the batch change took SSD from over twenty minutes to 35.2 s and left this model a timeout: the two obstructions are in different functions.",
-        "next_step": "resolve_fns walks module scope to find a function by name, so the question is how many times it is called and over what, and whether its result is cached. The call counts from --report will say, and they are free to collect."
+        "next_step": "resolve_fns walks module scope to find a function by name, so the question is how many times it is called and over what, and whether its result is cached. The call counts from --report will say, and they are free to collect.",
+        "why_resolution_is_expensive": {
+          "what_resolve_fns_does": "src/env.cpp:626 first looks the symbol up in the module's own table, which is a map lookup, and then goes on to consult impl_->visibility for the module's uses set and to walk the modules it depends on, collecting what is visible into a visited set.",
+          "the_cost": "the lookup is cheap and the visibility walk is not, and it is redone on every call. Nothing memoizes the answer for a module and symbol pair, which is the same shape of problem as the query cache that is cleared wholesale on every mutation: reuse is scoped by something coarser than what actually determines the answer.",
+          "the_fix_this_points_at": "memoize visibility per module's use set and revision, which is a bounded change in one function and is measurable with the sampler that found it."
+        }
       }
     },
     "mnist-8_floor": {
