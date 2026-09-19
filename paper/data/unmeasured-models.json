@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-19T03:22:00Z",
+  "date_utc": "2026-09-19T03:31:24Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -67,7 +67,19 @@
           "cost": "0.1 s, against 35 s for the model",
           "trigger": "a tensor.cast whose result is used more than once. Returning the cast prepares, binding it and returning it prepares, and returning f + f or casting it again fails.",
           "symptom": "preparation stops on 'c: unsupported call remains: _' -- the stranded call has an empty callee name, which is a different symptom from the model's, where the name was tensor.cast. Something in the expansion is producing a call that no longer resolves, and the model's first operation is the same shape of thing: one cast of the entry tensor, consumed by tensor.shape and by everything downstream.",
-          "why_it_matters": "this reduces the question from a 19,432-operation graph that takes 35 s per attempt to six lines that take a tenth of a second, and it is the first reproduction of this failure that does not need the model at all."
+          "why_it_matters": "this reduces the question from a 19,432-operation graph that takes 35 s per attempt to six lines that take a tenth of a second, and it is the first reproduction of this failure that does not need the model at all.",
+          "trigger_narrowed": {
+            "statement": "a tensor.cast whose result is consumed by another operation. The cast alone prepares, the consumer alone prepares, and the two together leave a live call in main with an empty callee name that resolves to nothing, which preparation then stops on.",
+            "evidence": {
+              "no cast, parameter used twice": "prepares",
+              "cast, returned directly": "prepares",
+              "cast, result consumed by operator +": "fails",
+              "cast, result consumed by a tensor constructor": "fails",
+              "two independent casts, summed": "fails"
+            },
+            "reading": "it is not the number of uses and not the cast on its own: it is one inlinable call whose result feeds another inlinable call. The cast's body is a loop over numel and so are the bodies of the operations that consume it, so the failure is in how the expander handles a call consumed by a call rather than in either one alone.",
+            "symptom": "the stranded operation is live, sits in main, takes one argument and produces one result, and has an empty callee name -- something the expander produced no longer resolves."
+          }
         }
       }
     },
