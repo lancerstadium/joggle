@@ -132,3 +132,45 @@ long as the pass needs it, and erase it when the pass is over rather than per ba
 is item three of `preparation-cost-refactor.md`, which was marked there as possibly
 buying little and worth measuring first. It has now been measured from both sides, and it
 is where the remaining cost is.
+
+## What four attempts at caching a resolution established
+
+The goal was to replace whole-store invalidation with something that names what a
+cached answer actually depends on. Four designs were built, measured against the suite
+and the models, and reverted. Each is recorded with its measurement, and together they
+bracket the problem.
+
+**A finer key is not enough (twice).** Giving the store a revision that changes only
+where the symbol table does, and keying a memoized predicate on it, compiles and passes
+but changes nothing measurable: the predicate is asked 38,796 times on UltraFace and
+answered from the memo 1,144 times. The symbol table genuinely changes thousands of
+times per pass, because expansion creates and erases helpers as it runs. The dependency
+is real, so no key makes the answer reusable while what it depends on keeps changing.
+
+**A shape key is unsound.** Keying on the callee and argument types, so that operations
+asking the same question share one answer, fails three tests. Adding the asking module
+does not fix it.
+
+**Even the complete dependency set is unsound.** Reading `Env::resolve` enumerates what
+it reads -- the asking module, the callee spelling, the argument types, the call's own
+output types, the enclosing function's generics -- and keying on all of them plus a
+symbol-table revision still fails three tests. So a resolution depends on mutable store
+state that none of those names: most plausibly a function retargeted or retyped without
+the symbol table changing, which would leave a memoized handle stale.
+
+## What that means for the architecture
+
+The cost is real. The leaf frames put UltraFace's time in `select_overload` building
+candidate bindings, type vectors and generic names for 38,796 asks. But it cannot be
+removed by caching an answer under the bookkeeping this store has, because that
+bookkeeping cannot say when an answer could have changed -- either it says "everything"
+and nothing is reusable, or it names less than the truth and the cache is wrong.
+
+Removing it needs the store to record, for each cached answer, the definitions that
+answer read, and to invalidate by reachability from an edit rather than by any revision
+comparison. That is the strong form of dependency tracking, and the four attempts above
+are the evidence that the weak forms do not substitute for it: an approximation by
+revision is either too coarse or unsound, and only a recorded read set is neither.
+
+That is a project rather than a bounded change, and it is now a measured conclusion
+rather than an estimate.
