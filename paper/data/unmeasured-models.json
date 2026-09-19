@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-18T18:53:56Z",
+  "date_utc": "2026-09-19T03:21:30Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -50,7 +50,19 @@
       "message": "opt.fold branch type mismatch: tensor<f32, [_, _]> and tensor<f32, _>",
       "root_cause": "a rank-precision gap, now fixed. A branch result was not folded when the value reaching it carried a tensor whose dimension argument is not a list -- a tensor of unknown rank -- while the branch declared a ranked one. opt.fold refined a value only when its type was the fully unknown '_'. The predicate matters: tensor.valid requires the dimension argument to be a list, so tensor<f32,_> is not a valid tensor type and a guard written with tensor.valid never matches it.",
       "fix": "opt.fold now refines a tensor whose dimension argument is not a list to the rank its branch declares. Committed; the suite is green at 68/68. An earlier attempt at the same rule was reverted after five tests failed, and that revert was wrong: the failures were a missing dependency, because the rule used tensor.valid, which needs the tensor module in scope and opt did not use it. The rule now needs only base accessors.",
-      "new_blocker": "with the fold error gone the preparation runs for over fifty minutes without finishing, against 1.2 s for mnist-8, 11.9 s for squeezenet1.1-7 and 43.6 s for UltraFace. The obstruction is therefore cost rather than correctness, the same class as XCiT's timeout, and it is a pass over a graph that carries the detection postprocessor's while loops."
+      "new_blocker": "with the fold error gone the preparation runs for over fifty minutes without finishing, against 1.2 s for mnist-8, 11.9 s for squeezenet1.1-7 and 43.6 s for UltraFace. The obstruction is therefore cost rather than correctness, the same class as XCiT's timeout, and it is a pass over a graph that carries the detection postprocessor's while loops.",
+      "new_frontier": {
+        "where": "after the best-effort batch change the preparation completes its passes in 35 s and stops on 'c: unsupported call remains: tensor.cast' -- a place this model has never reached before.",
+        "the_call": "the first one casts the entry tensor from tensor<u8,[1,320,320,3]> to tensor<f32,[1,320,320,3]>. It carries no op metadata and its callee has a body, so the exposure conditions for inlining it are all met and the inline itself is what fails.",
+        "what_it_is_not": [
+          "the element pair: a minimal function casting u8 to f32 prepares in 0.09 s",
+          "the shape: the same minimal function prepares in 0.09 s at [4], [1,32,32,3] and [1,320,320,3]",
+          "the frontend tag: the call reports meta=0",
+          "the expression-region rule that refuses stateful bodies in a branch output, since the call sits at the top level of main"
+        ],
+        "what_is_established": "no other model in the campaign contains a tensor.cast at all -- UltraFace, MNIST and SqueezeNet have zero before and zero after preparation -- so this path has never been exercised by anything measured, and there is no working example to compare against.",
+        "next_step": "find what differs between the minimal function that works and this call in place: the candidates are its consumers, since the cast feeds tensor.shape, and the state of the module when the round reaches it. The iteration cost is 35 s, so this is now a cheap question; before the batch change it could not be asked at all."
+      }
     },
     "efficientnet-lite4-11-qdq": {
       "stage": "measured",
