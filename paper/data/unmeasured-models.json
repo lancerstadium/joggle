@@ -2,7 +2,7 @@
   "question": "why do six of the sixteen pinned models carry no campaign measurement?",
   "method": "each model was driven through the study pipeline to the stage that stops it",
   "host": "macOS-15.7.3 arm64, Apple M4",
-  "date_utc": "2026-09-19T03:31:24Z",
+  "date_utc": "2026-09-19T03:40:58Z",
   "finding": "one of the four was not a defect at all. QDQ failed because the reference was computed on a different numerical path; INT8 fails because the lowering implements a different arithmetic from the operator specification; the two dynamic-shape models need a missing capability.",
   "models": {
     "tiny-yolov3-11": {
@@ -79,6 +79,13 @@
             },
             "reading": "it is not the number of uses and not the cast on its own: it is one inlinable call whose result feeds another inlinable call. The cast's body is a loop over numel and so are the bodies of the operations that consume it, so the failure is in how the expander handles a call consumed by a call rather than in either one alone.",
             "symptom": "the stranded operation is live, sits in main, takes one argument and produces one result, and has an empty callee name -- something the expander produced no longer resolves."
+          },
+          "origin": {
+            "symptom_read_carefully": "the stranded operation takes one argument and produces one result and its callee prints as '_', which is the name of the unknown type rather than an empty string. It is a conversion to a type that was never instantiated, which is the shape of the body of tensor.cast itself: out[i] = B(x[i]), where B is the element type parameter.",
+            "ruled_out": "the semantic name passed into Env::expand is not empty. A probe on the path that builds it, which would produce an empty name if the call's target failed to resolve, never fired, so every call resolved and the unnamed operation is not a call whose name was lost on the way in.",
+            "established": "the operation does not exist before exposure -- opt.basic leaves none -- so the expander creates it while inlining a call whose result another call consumes.",
+            "leading_explanation": "instantiating tensor.cast for this pair of element types leaves the conversion in its body pointing at an uninstantiated type parameter, and the resulting operation is not a call to anything. Returning the cast directly does not exercise that path; handing its result to another operation does.",
+            "next_step": "watch what Mod::expand creates when the callee's body contains a conversion to a type parameter, and compare the two variants at that point rather than at the symptom."
           }
         }
       }
