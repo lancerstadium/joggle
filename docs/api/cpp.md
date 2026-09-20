@@ -69,10 +69,10 @@ their owning graph.
 joggle::Mod mod;
 joggle::parse(env, source_text, mod, "input.jog");
 
-std::array<joggle::Source, 2> sources{{
+std::array<joggle::Source, 2> sources{
     {entry_text, "module.jog"},
     {helper_text, "lib/helper.jog"},
-}};
+};
 joggle::parse(env, sources, mod);
 
 joggle::Attr config;

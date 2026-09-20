@@ -17,7 +17,12 @@ def main() -> int:
     documents = [root / "README.md", *sorted(docs.rglob("*.md"))]
     failures: list[str] = []
     for document in documents:
-        for target in LINK.findall(document.read_text(encoding="utf-8")):
+        source = document.read_text(encoding="utf-8")
+        if "{{" in source or "{%" in source:
+            failures.append(
+                f"{document.relative_to(root)}: unescaped Liquid delimiter"
+            )
+        for target in LINK.findall(source):
             if target.startswith(("http://", "https://", "mailto:", "#")):
                 continue
             path = target.split("#", 1)[0]
