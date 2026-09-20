@@ -1,4 +1,4 @@
-module alternate
+mod alternate
 use base
 use tensor
 

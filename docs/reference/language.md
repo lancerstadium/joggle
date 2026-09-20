@@ -7,7 +7,7 @@ It is intentionally not a second pipeline or kernel language.
 The implemented surface is conventional:
 
 ```jog
-module demo
+mod demo
 use tensor
 
 fn matmul<T: Ty, M: int, N: int, K: int>(
@@ -26,10 +26,13 @@ fn matmul<T: Ty, M: int, N: int, K: int>(
 }
 ```
 
-The language uses ordinary `module`, `use`, `fn`, `let`, `var`, `for`, `if`,
+The language uses ordinary `mod`, `use`, `fn`, `let`, `var`, `for`, `if`,
 and `return`. It has generics, structural types, attributes, and overloadable
 operators. It has no `graph`, `kernel`, `compute`, `map`, `fold`, `rewrite`,
 `region`, or `pass` syntax.
+
+The matching CLI administration command is `joggle mod`. The former declaration
+and command spelling `module` is rejected; there is no compatibility alias.
 
 Module names, dependency names, and dotted function names consist of nonempty
 identifier segments separated by single dots. Invalid qualified names are
@@ -162,7 +165,7 @@ other extension. A zero-argument function returning `Ty` is a type constructor;
 its generic list is the constructor's argument list:
 
 ```jog
-module sat
+mod sat
 
 fn sat<W: int>() -> Ty;
 fn add<W: int>(a: sat<W>, b: sat<W>) -> sat<W>;
@@ -553,6 +556,16 @@ operations. They matter when one source call is decomposed into several normal
 calls: a module can preserve the externally meaningful result name without
 accessing internal storage or generated identifiers.
 
+`ir.rename(m, v, stem, ordinal)` combines collision-free local-name selection
+and the rename into one atomic edit. It tries `stem + ordinal`, then increasing
+ordinals until the name is unused in the value's function. The evaluator keeps
+an invocation-local reservation set, initializes it from the live function on
+first use, observes ordinary value renames, and invalidates it after edits such
+as cloning or loop construction that can introduce named values. The overload
+therefore avoids repeated whole-function scans while preserving the same
+function-local uniqueness and transaction semantics. It is intended for
+conversion and generation procedures; it is not a global symbol allocator.
+
 Construction also uses ordinary overloaded functions. `ir.constant` and
 `ir.call` insert leaves before a named operation. Passing a `str` to `ir.call`
 deliberately creates an open or dynamically chosen symbol. Passing a live `Fn`
@@ -837,7 +850,12 @@ The explicit result type keeps dynamic invocation typed even though `Fn` is a
 runtime handle. It rejects
 generic or incompatible callback signatures before execution, validates the
 returned value, and rolls the enclosing compile-time entry back normally on an
-error. A relation driver uses `ir.invoke<bool>`; a cost traversal can use
+error. A callback that attempts an IR edit rejected by the safe editing API is
+also an invocation error, even if the callback catches the edit's false/invalid
+return; this prevents a work-queue driver from silently committing the rest of
+a partially rejected wave. A directly invoked entry may still probe a rejected
+edit and inspect its return without changing the module. A relation driver uses
+`ir.invoke<bool>`; a cost traversal can use
 `ir.invoke<int>` without adding another callback API. Attribute names, result
 types, and selection policy remain module-owned: core does not reserve `on`,
 operator names, relation kinds, or measurement units.
@@ -878,7 +896,12 @@ Verification may fill types that follow uniquely from visible signatures and
 structured control flow. Those refinements commit only when the complete
 module verifies; a failed verification restores every prior value type while
 retaining its diagnostics.
-`ir.revision(m)` exposes that monotonically increasing revision to module code.
+`ir.revision(m)` exposes the monotonically increasing whole-program revision to
+module code. `ir.revision(f)` exposes the executable-body revision of one
+function. An edit whose owner is known advances only that function revision;
+dependency-set and other structure-wide edits conservatively advance every
+live function. This is the invalidation key for cached execution plans, while
+the `Mod` revision remains the transaction and reporting clock.
 It is intended for convergence and invalidation checks; it is not serialized
 into the model and cannot be used as a stable model identifier.
 `ir.key(v)` similarly returns a constant-time identity for a live `Val` in the
@@ -948,9 +971,10 @@ The embedding API also accepts a `Fn` handle in
 separate, verified `Mod` holding compiler definitions; only `target` is edited
 or inspected. This is useful when deriving a compiler function without copying
 it into a model that will later be emitted. It is not a new IR kind: both
-modules have the same representation and editing rules. A handle query runs
-read-only on a snapshot and does not reuse the name-based query cache; a handle
-run uses the same target verification and rollback as a named run. The caller
+modules have the same representation and editing rules. A handle query uses
+the same verified read-only execution boundary and does not reuse the
+name-based query cache; a handle run uses the same target verification and
+rollback as a named run. The caller
 verifies the compiler-definition module after editing it. A copied function
 does not acquire an automatic proof of equivalence to its source.
 When a cloned source function calls private helpers, `Mod::clone` copies its
@@ -970,25 +994,66 @@ The same report is available from the CLI without mixing it into printed IR:
 joggle run edge.prepare model.jog --report run.attr -M modules
 joggle run edge.convert edge.plan edge.prepare model.jog \
   --report run.attr -M modules
+joggle run edge.prepare model.jog --timing run-timing.attr -M modules
 ```
 
 `print(Attr)` and `print(Mod)` are ordinary overloads in the embedding API;
 the CLI writes their corresponding deterministic textual forms. With multiple
 function names, `run` uses the same host-sequence overload described below:
 the report contains one entry per function and any failure rolls the complete
-sequence back.
+sequence back. `--timing` writes the separate `RunTiming` record described
+below; it may be combined with `--report`, and failed runs still write the
+timing trace while leaving the input IR unchanged.
 
-`query(env, name, mod, result, args, cached)` embeds an ordinary function as a
+`query(env, name, mod, result, args, report)` embeds an ordinary function as a
 read-only analysis. Its first parameter is `Mod`; subsequent parameters receive
 the explicit `Attr` arguments, and it returns one value representable as
-`Attr`. The function runs on a verified snapshot. Any attempted IR edit makes
-the call fail without changing the original module. Successful results are
-revision-aware and may be reused; the optional `cached` output reports whether
-that happened.
+`Attr`. A currently verified mod is inspected directly under the evaluator's
+read-only guard; otherwise a private copy is verified first. Mutation
+intrinsics fail before editing, and the monotonic revision remains a backstop,
+so the original mod is unchanged. Successful results are dependency-aware and
+may be reused. During execution Joggle records
+the subject functions observed through `Fn`, `Blk`, `Op`, and `Val` handles.
+Function operation/value enumeration records ordered handle collections;
+operation and value reads record exact typed snapshots. Name lookup and
+dependency enumeration additionally record the mod's structural revision;
+module-wide intrinsics without a narrower read set conservatively record the
+whole `Mod` revision. A local edit therefore preserves an unrelated answer,
+while entity, function, symbol/dependency-structure, and whole-mod reads
+invalidate at their respective boundaries. The `cached` field reports whether
+reuse occurred. `QueryReport` names cold, environment, whole-revision,
+structure-revision, function-generation/content/shape,
+operation-generation/revision, and value-generation/revision misses; reports
+observed function, collection, operation, and value counts and scope; reports
+whether execution reused a successful verification stamp; and
+separates cache lookup from snapshot copying, snapshot verification, evaluator
+execution, result validation, and total miss execution time. These counters are
+measured inside the boundary and exclude caller-side parsing and artifact
+emission. Every public IR edit must advance the monotonic revision.
 The CLI `query` command invokes the same boundary for a function whose only
 argument is `Mod` and prints its canonical `Attr` result. Analyses needing
 explicit arguments continue to use the embedding overload; the command line
 does not invent an argument mini-language.
+
+Embedding code that repeatedly applies an ordered stage set can keep a
+`ReactiveSchedule`. On its first `run`, the schedule executes every named
+stage and records function generation/content, exact operation/value
+collections and entities, structural or whole-mod reads, and changed functions
+observed at each boundary. Later calls compare those exact snapshots and
+generation/revision stamps. A directly stale stage is selected; its
+recorded outputs then invalidate downstream stages whose inputs intersect
+them. All selected stages use the ordinary sequence transaction, so a later
+failure restores earlier edits. `ReactiveRunReport` distinguishes cold,
+environment, argument, revision, and upstream misses and reports selected and
+reused stage counts. This is an embedding facility rather than new `.jog`
+syntax, and the stage list is configured once rather than rediscovered from a
+hard-coded compiler pipeline.
+
+Classified collection and entity dependencies can distinguish unrelated edits
+inside one large `Fn`. A stage can use `ir.affected` or `opt.update` internally
+to restrict its operation-level work; the schedule decides which stage waves
+need to run. Structure-sensitive, whole-mod, and still-unclassified
+observations retain their corresponding conservative invalidation boundaries.
 
 The CLI `emit` command uses that same read-only boundary but requires a `str`
 or `bytes` result and writes its contents verbatim. An emitter is therefore an
@@ -1011,11 +1076,22 @@ the source parser's lexical rules; unresolved duplicate declarations or a loop
 variable that hides a visible binding reject and roll back the complete `run`.
 
 Embedding code may additionally call
-`run(env, names, mod, report, elapsed)`. For one name, `elapsed` is a
-`chrono::nanoseconds`; for a span it is a vector aligned with the supplied
-names. Timing is intentionally absent from `report`, so the same run with or
-without measurement produces equal structural reports. A failed transaction
-clears the timing output.
+`run(env, names, mod, report, timing)`. `RunTiming` separates the transaction
+snapshot and initial verification from per-function resolution, evaluation,
+and commit verification. Metadata-only transactions keep per-object undo
+records and avoid copying the structural store. The `structural_snapshot`
+flag reports whether a later structural intrinsic caused the transaction to
+materialize its full rollback snapshot; `snapshot` includes both the initial
+rollback-state setup and any delayed structural copy. Each step also records
+its function, input/output revisions, verification-stamp reuse, and success.
+Research builds configured with `-DJOGGLE_EVAL_COUNTERS=ON` additionally set
+`counters_enabled` and report evaluated operations, frame lookups/probes/writes,
+and dynamic dispatch hits/misses. Default builds leave those counters disabled
+so measurement hooks do not tax the evaluator hot path. Timing is intentionally
+absent from `report`, so the same run with or without measurement produces
+equal structural reports. A failed transaction keeps its timing trace while
+rolling back the mod, making failed work measurable rather than silently
+discarding it.
 
 ### Open attributes
 
@@ -1061,3 +1137,12 @@ replacement call; an emitter may use `[target: "board-name"]`; a search
 procedure may attach a structural `cost` dictionary. Installing such a module
 does not register a new language keyword or silently execute any of these
 policies.
+
+Metadata edits advance the owning function revision, so cached queries that
+observed that function are invalidated while unrelated function-local answers
+remain reusable. They preserve an existing structural-verification stamp:
+metadata is deliberately outside parser binding, type inference, dominance,
+and IR-shape validity, and the verifier never interprets extension-owned keys.
+Whole-mod queries still observe the new `Mod` revision. Editing metadata does
+not imply that a module policy which consumes it may reuse its own result; that
+policy's recorded function or whole-mod dependency determines invalidation.

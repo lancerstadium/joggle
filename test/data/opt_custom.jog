@@ -1,4 +1,4 @@
-module opt.custom
+mod opt.custom
 use base
 
 fn + (left: i32, right: i32) -> i32 {

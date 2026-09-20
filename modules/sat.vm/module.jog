@@ -1,4 +1,4 @@
-module sat.vm
+mod sat.vm
 use sat
 use vm
 

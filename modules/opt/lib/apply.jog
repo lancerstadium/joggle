@@ -69,8 +69,8 @@ local fn apply_with(
       var bodies: list<Fn> = []
       var redirects: list<Op> = []
       var targets: list<Fn> = []
-      for op in ir.ops(m) {
-        if ir.live(op) && ir.kind(op) == "call" && len(ir.meta(op)) == 0 {
+      for op in ir.ops(m, ["call"]) {
+        if ir.live(op) && len(ir.meta(op)) == 0 {
           let selected = ir.match(
             op, choose(m, op, impls, policies, config, configured)
           )
@@ -106,4 +106,3 @@ local fn apply_with(
   changed = ir.trim(m) || changed
   return changed
 }
-

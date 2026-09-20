@@ -24,6 +24,7 @@ enum class Logic : std::uint8_t { none, and_, or_ };
 
 struct ValData {
   ValKind kind = ValKind::result;
+  std::uint32_t fn = none;
   std::string name;
   Ty type;
   Attr::Dict meta;
@@ -31,6 +32,8 @@ struct ValData {
   std::size_t index = 0;
   std::vector<std::uint32_t> users;
   bool type_annotation = false;
+
+  friend bool operator==(const ValData&, const ValData&) = default;
 };
 
 struct OpData {
@@ -47,6 +50,8 @@ struct OpData {
   Attr::Dict meta;
   Op::Form form = Op::Form::hidden;
   Loc loc;
+
+  friend bool operator==(const OpData&, const OpData&) = default;
 };
 
 struct BlkData {
@@ -58,6 +63,7 @@ struct BlkData {
 
 struct FnData {
   std::string name;
+  std::uint64_t revision = 0;
   std::vector<std::uint32_t> generic_vals;
   std::vector<std::uint32_t> params;
   std::vector<Ty> returns;
@@ -68,18 +74,75 @@ struct FnData {
   Loc loc;
 };
 
+struct QueryFnData {
+  std::uint32_t id = none;
+  std::uint32_t generation = 0;
+  std::uint64_t revision = 0;
+  bool content = true;
+};
+
+struct QueryOpData {
+  std::uint32_t id = none;
+  std::uint32_t generation = 0;
+  OpData data;
+};
+
+struct QueryValData {
+  std::uint32_t id = none;
+  std::uint32_t generation = 0;
+  ValData data;
+};
+
+enum class QueryCollectionKind : std::uint8_t { operations, values };
+
+struct QueryCollectionData {
+  QueryCollectionKind kind = QueryCollectionKind::operations;
+  std::uint32_t function = none;
+  std::uint32_t generation = 0;
+  std::vector<std::pair<std::uint32_t, std::uint32_t>> members;
+};
+
 struct QueryData {
   std::uint64_t env = 0;
   std::uint64_t epoch = 0;
   std::uint64_t revision = 0;
+  std::uint64_t structure_revision = 0;
+  bool whole_revision = false;
+  bool structure = false;
+  bool packages = false;
+  std::vector<std::string> package_dependencies;
+  std::vector<std::string> intrinsics;
+  std::vector<QueryFnData> dependencies;
+  std::vector<QueryCollectionData> collections;
+  std::vector<QueryOpData> operations;
+  std::vector<QueryValData> values;
   std::string function;
   std::vector<Attr> args;
   Attr result;
 };
 
+struct QueryTiming {
+  bool verification_cached = false;
+  std::chrono::nanoseconds snapshot{};
+  std::chrono::nanoseconds verification{};
+  std::chrono::nanoseconds evaluation{};
+  std::chrono::nanoseconds validation{};
+};
+
+struct StageDependencyData {
+  QueryData inputs;
+  std::vector<std::uint32_t> outputs;
+  bool output_structure = false;
+  bool output_packages = false;
+};
+
 struct Store {
   std::string name;
   std::uint64_t revision = 0;
+  std::uint64_t structure_revision = 0;
+  std::uint64_t verified_revision = 0;
+  std::uint64_t verified_env = 0;
+  std::uint64_t verified_epoch = 0;
   std::vector<std::string> uses;
   std::vector<Slot<FnData>> fns;
   std::vector<Slot<BlkData>> blks;
@@ -87,8 +150,15 @@ struct Store {
   std::vector<Slot<ValData>> vals;
   std::vector<Diag> diags;
   std::unordered_map<std::string, std::vector<std::uint32_t>> symbols;
-  mutable std::vector<QueryData> queries;
+  mutable std::unordered_map<std::size_t, std::vector<QueryData>> queries;
+  // Scratch marks for dependency-cone walks. Epochs avoid clearing an
+  // operation-sized bitmap on every edit while keeping the public result
+  // independent of previous queries.
+  mutable std::vector<std::uint32_t> affected_marks;
+  mutable std::uint32_t affected_epoch = 0;
 };
+
+enum class MetadataTarget : std::uint8_t { fn, op, val };
 
 class Dom {
 public:
@@ -122,9 +192,17 @@ bool sized_integer_type(std::string_view name) noexcept;
 bool integer_type(std::string_view name) noexcept;
 bool type_constructor(Fn fn);
 bool literal_matches(const Attr& value, const Ty& type);
-void touch(Store& store);
+void touch(Store& store, std::uint32_t fn = none);
+void touch_verified(Store& store, std::uint32_t fn = none);
+void touch_functions(Store& store, std::span<const std::uint32_t> fns);
+void touch_functions_verified(Store& store,
+                              std::span<const std::uint32_t> fns);
+void journal_metadata(Store& store, MetadataTarget target, std::uint32_t id);
+void prepare_structural_mutation(Store& store);
 void rebuild_uses(Store& store);
 bool dominates(const Store& store, std::uint32_t value, std::uint32_t use);
+std::vector<std::uint32_t> affected(const Store& store,
+                                    std::span<const std::uint32_t> roots);
 Fn resolve_overload(std::span<const Fn> candidates,
                     std::span<const Ty> arguments,
                     std::span<const Ty> explicit_arguments,

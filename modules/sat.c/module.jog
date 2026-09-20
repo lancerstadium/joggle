@@ -1,4 +1,4 @@
-module sat.c
+mod sat.c
 use c
 use sat
 

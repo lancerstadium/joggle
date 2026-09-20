@@ -1,4 +1,4 @@
-module prefix
+mod prefix
 
 fn deep.Num() -> Ty;
 fn deep.pick(x: i32) -> i32 { return x }

@@ -57,8 +57,8 @@ public:
   bool run() {
     store_ = {};
     free_vals_.clear();
-    if (!word("module"))
-      return fail("expected 'module'");
+    if (!word("mod"))
+      return fail("expected 'mod'");
     if (peek().kind != Tk::name)
       return fail("expected module name");
     const Token module = take();
@@ -248,6 +248,7 @@ private:
     data.blk = blk;
     for (std::size_t index = 0; index < results.size(); ++index) {
       detail::ValData value;
+      value.fn = store_.blks[blk].data.fn;
       value.name = std::move(results[index].first);
       value.type = std::move(results[index].second);
       value.def = id;
@@ -486,6 +487,7 @@ private:
     for (Decl& generic : generics) {
       detail::ValData value;
       value.kind = detail::ValKind::generic;
+      value.fn = fn;
       value.name = generic.name;
       value.type = std::move(generic.type);
       value.meta = std::move(generic.meta);
@@ -496,6 +498,7 @@ private:
     for (Decl& param : params) {
       detail::ValData value;
       value.kind = detail::ValKind::param;
+      value.fn = fn;
       value.name = param.name;
       value.type = std::move(param.type);
       value.meta = std::move(param.meta);
@@ -572,6 +575,7 @@ private:
             return fail("multiple bindings require one direct call");
           for (std::size_t index = 1; index < names.size(); ++index) {
             detail::ValData result;
+            result.fn = store_.blks[blk].data.fn;
             result.type = names[index].type;
             result.meta = names[index].meta;
             result.def = def;
@@ -776,6 +780,7 @@ private:
     for (const std::string& iter : store_.ops[op].data.iter_names) {
       detail::ValData value;
       value.kind = detail::ValKind::blk_arg;
+      value.fn = fn;
       value.name = iter;
       value.type = Ty("index");
       const auto id = add_val(std::move(value));
@@ -785,6 +790,7 @@ private:
     for (const auto& [name, binding] : captures) {
       detail::ValData value;
       value.kind = detail::ValKind::blk_arg;
+      value.fn = fn;
       value.name = name;
       value.type = store_.vals[binding.value].data.type;
       value.meta = store_.vals[binding.value].data.meta;
@@ -841,6 +847,7 @@ private:
       for (const auto& [name, binding] : captures) {
         detail::ValData value;
         value.kind = detail::ValKind::blk_arg;
+        value.fn = fn;
         value.name = name;
         value.type = store_.vals[binding.value].data.type;
         value.meta = store_.vals[binding.value].data.meta;
@@ -987,6 +994,7 @@ private:
       store_.ops[op].data.blks.push_back(body);
       detail::ValData carried;
       carried.kind = detail::ValKind::blk_arg;
+      carried.fn = fn;
       carried.type = Ty("bool");
       const auto carried_id = add_val(std::move(carried));
       store_.blks[body].data.args.push_back(carried_id);

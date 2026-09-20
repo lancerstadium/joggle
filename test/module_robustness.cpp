@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
   error.clear();
   CHECK(fs::create_directories(root / "plain", error) && !error);
   CHECK(write(root / "plain" / "module.jog",
-              "module plain\nfn value() -> i32 { return 1 }\n"));
+              "mod plain\nfn value() -> i32 { return 1 }\n"));
 
   joggle::Env plain;
   plain.path(root.string());
@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
   for (int index = 0; index < graph_size; ++index) {
     const std::string name = "graph.m" + std::to_string(index);
     CHECK(fs::create_directories(root / name, error) && !error);
-    std::string source = "module " + name + "\n";
+    std::string source = "mod " + name + "\n";
     if (index == 0) {
       source += "fn identity<T: Ty>(x: T) -> T { return x }\n";
       source += "fn value(x: i32) -> i32 { return x }\n";
@@ -90,7 +90,7 @@ int main(int argc, char** argv) {
   joggle::Mod consumer;
   CHECK(joggle::parse(
       graph,
-      "module graph.consumer\nuse graph.m47\n"
+      "mod graph.consumer\nuse graph.m47\n"
       "fn run(x: i32) -> i32 { return graph.m47.value(identity(x)) }\n",
       consumer, "consumer.jog"));
   CHECK(consumer.verify(graph));
@@ -99,10 +99,10 @@ int main(int argc, char** argv) {
   CHECK(fs::create_directories(root / "graph.fail_leaf", error) && !error);
   CHECK(fs::create_directories(root / "graph.fail_top", error) && !error);
   CHECK(write(root / "graph.fail_leaf" / "module.jog",
-              "module graph.fail_leaf\nuse graph.missing\n"
+              "mod graph.fail_leaf\nuse graph.missing\n"
               "fn leaf(x: i32) -> i32 { return x }\n"));
   CHECK(write(root / "graph.fail_top" / "module.jog",
-              "module graph.fail_top\nuse graph.fail_leaf\n"
+              "mod graph.fail_top\nuse graph.fail_leaf\n"
               "fn top(x: i32) -> i32 { return leaf(x) }\n"));
   joggle::Env retry;
   retry.path(root.string());
@@ -112,7 +112,7 @@ int main(int argc, char** argv) {
   CHECK(!retry.loaded("graph.missing"));
   CHECK(fs::create_directories(root / "graph.missing", error) && !error);
   CHECK(write(root / "graph.missing" / "module.jog",
-              "module graph.missing\n"
+              "mod graph.missing\n"
               "fn missing(x: i32) -> i32 { return x }\n"));
   retry.clear_diags();
   CHECK(retry.load("graph.fail_top"));
@@ -129,14 +129,14 @@ int main(int argc, char** argv) {
 
   CHECK(fs::create_directories(root / "fragments_loop", error) && !error);
   CHECK(write(root / "fragments_loop" / "module.jog",
-              "module fragments_loop\n"));
+              "mod fragments_loop\n"));
   fs::create_directory_symlink("lib", root / "fragments_loop" / "lib",
                                error);
   CHECK(!error);
   CHECK(rejects(root, "fragments_loop", "cannot inspect module fragments"));
 
   CHECK(fs::create_directories(root / "native_loop", error) && !error);
-  CHECK(write(root / "native_loop" / "module.jog", "module native_loop\n"));
+  CHECK(write(root / "native_loop" / "module.jog", "mod native_loop\n"));
   fs::create_directory_symlink("native", root / "native_loop" / "native",
                                error);
   CHECK(!error);

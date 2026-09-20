@@ -1,4 +1,4 @@
-module sample
+mod sample
 
 [role: "test"]
 fn ping(x: i32) -> i32;

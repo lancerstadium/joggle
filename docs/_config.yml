@@ -1,0 +1,12 @@
+title: Joggle
+description: Typed compiler extensions across semantics, transformation, and emission
+theme: minima
+markdown: kramdown
+repository: lancerstadium/joggle
+plugins:
+  - jekyll-relative-links
+relative_links:
+  enabled: true
+  collections: true
+exclude:
+  - measure-prepare.sh

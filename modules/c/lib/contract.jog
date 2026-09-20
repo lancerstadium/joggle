@@ -34,6 +34,24 @@ local fn restrict_spec(fn: Fn, enabled: bool) -> dict {
   return out
 }
 
+local fn binding_spec(fn: Fn, name: str) -> dict {
+  var out: dict = {}
+  if ir.has(fn, "c") {
+    let current = ir.meta(fn, "c")
+    assert(base.kind(current) == "dict",
+           "c: binding must be a dictionary")
+    for key in base.keys(current) {
+      if key != "name" {
+        out[key] = base.get(current, key)
+      }
+    }
+  }
+  if name != "" {
+    out["name"] = name
+  }
+  return out
+}
+
 local fn pointer_count(op: Op) -> int {
   var out = 0
   for value in ir.args(op) {
@@ -57,4 +75,3 @@ local fn fn_index(fns: list<Fn>, target: Fn) -> int {
   }
   return -1
 }
-

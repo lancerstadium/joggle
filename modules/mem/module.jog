@@ -1,4 +1,4 @@
-module mem
+mod mem
 use base
 use bounds
 use ir

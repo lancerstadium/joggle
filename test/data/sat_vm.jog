@@ -1,4 +1,4 @@
-module sat_vm
+mod sat_vm
 use sat
 use tensor
 

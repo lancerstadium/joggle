@@ -100,7 +100,7 @@ local fn expr(
      !tensor.valid(ir.type(value)) &&
      len(ir.users(value)) == 1 {
     var actuals = args(m, inputs, blob, data_fns, config)
-    if blob != "" && owned(m, target) && has_fn(data_fns, target) {
+    if blob != "" && ir.owned(m, target) && has_fn(data_fns, target) {
       if actuals != "" {
         actuals += ", "
       }
@@ -322,4 +322,3 @@ local fn compound_identity(
   }
   return false
 }
-

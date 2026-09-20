@@ -1,4 +1,4 @@
-module stat.use
+mod stat.use
 use nn
 
 fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {

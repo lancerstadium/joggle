@@ -1,4 +1,4 @@
-module bounds.custom
+mod bounds.custom
 use base
 
 fn < (left: i32, right: i32) -> bool {

@@ -1,4 +1,4 @@
-module nonzero_c
+mod nonzero_c
 use nn
 
 fn main(x: tensor<i32, [2, 3]>) -> tensor<i64, [2, _]> {

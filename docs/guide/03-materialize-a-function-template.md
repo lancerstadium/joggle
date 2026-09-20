@@ -1,10 +1,10 @@
 # Materialize a function template
 
-A module may copy a normal function into the program when a transform needs a
+A mod may copy a normal function into the program when a transform needs a
 named helper or a local template boundary:
 
 ```jog
-module localize
+mod localize
 use ir
 use nn
 
@@ -19,7 +19,7 @@ fn apply(m: Mod) -> bool {
 ```
 
 The copied `Fn` retains its generic signature, nested loops, metadata, and
-ordinary calls. Joggle adds the source module to the program's dependency graph
+ordinary calls. Joggle adds the source mod to the program's dependency graph
 in the same transaction. A recursive template calls the new local function;
 only references that would become ambiguous are qualified. A duplicate overload
 or invalid destination name leaves both text and revision unchanged. There is
@@ -72,3 +72,6 @@ assert(ir.erase(m, local), "helper still has callers")
 Erase invalidates the complete function body and rejects helpers that are still
 used elsewhere.
 
+The `workflow` test executes these paths through `script.clone_relu`,
+`script.clone_relu4`, `script.clone_matched`, and the rollback case
+`script.clone_then_fail`.

@@ -1,4 +1,4 @@
-module tile_invalid
+mod tile_invalid
 use tensor
 
 fn shifted(

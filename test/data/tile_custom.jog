@@ -1,4 +1,4 @@
-module tile.custom
+mod tile.custom
 use base
 
 fn + (left: index, right: index) -> index {

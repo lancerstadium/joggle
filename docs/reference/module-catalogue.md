@@ -12,8 +12,12 @@ not acquire neural-network or target knowledge.
 `ir` is the sole program-editing surface for `.jog` modules. Its API exposes:
 
 - collections such as `ir.fns`, `ir.blks`, `ir.ops`, and `ir.vals`;
-- symbol and type queries such as `ir.find`, `ir.resolve`, and `ir.type`;
+- symbol and type queries such as `ir.find`, `ir.resolve`, `ir.owned`, and
+  `ir.type`;
+- stable in-module identities for values and operations through `ir.key`;
 - metadata queries that preserve extension-owned keys;
+- reverse dependency lookup through `ir.users` and the transitive
+  `ir.affected` consumer cone;
 - construction and editing through `ir.call`, `ir.constant`, `ir.loop`,
   `ir.branch`, `ir.clone`, `ir.move`, `ir.replace`, and `ir.args`;
 - body reuse through `ir.expand` and `ir.fold`;
@@ -29,9 +33,43 @@ second symbol table in the IR or exposing implementation helpers to targets.
 only its public functions. The C++ `Mod::fns()` and `Env::fns(name)` forms obey
 the same boundary.
 
+`ir.owned(m, f)` tests handle ownership directly. It is constant-time and is
+preferred to scanning `ir.fns(m)` when a metaprogram only needs to distinguish
+a function defined by `m` from an environment declaration.
+
+`ir.ops(subject, kinds)` returns the stable recursive operation order filtered
+by any of `call`, `constant`, `loop`, `branch`, `return`, or `yield`; an empty
+kind list returns an empty operation list. Filtering happens while native
+handles are collected, so a metaprogram need not interpret one predicate per
+irrelevant operation. The unfiltered overload remains the right choice when
+operation order across every kind is part of the algorithm.
+
+`ir.calls(m, ops, symbols)` selects live calls by their written callee or
+resolved symbol, including the ordinary `base.` spelling equivalence. The
+caller still supplies the allowed-symbol policy; the native primitive only
+performs resolution and filtering.
+
+`ir.path(m, op)` returns the structural identity of an operation as alternating
+operation and child-block indices from its function body. `ir.at(m, fn, path)`
+resolves that identity. Paths survive metadata and value edits and canonical
+print/reparse when structure is unchanged, allowing recursive affected regions
+to be named without relying on process-local handles.
+
+`ir.unused(ordered, removable)` computes a reverse transitive unused closure
+inside one block. The caller supplies the stable operation order and the exact
+set it permits removal from; the primitive contributes no purity or side-effect
+policy. This keeps DCE policy in `.jog` while avoiding interpreted user-walks
+for every candidate result.
+
 All mutations are checked against handle ownership and take part in the caller's
 transaction. A higher-level module should build on these operations instead of
 requiring a new native binding for each transformation.
+
+`ir.affected(values)` follows the maintained def-use index from changed values,
+includes nested bodies once their owning control operation is affected, and
+returns each live consumer operation once in stable identity order. It does not
+run, invalidate, or verify those operations. This separation makes the index a
+testable scheduling primitive rather than a hidden incremental compiler claim.
 
 ## Semantic modules
 
@@ -154,6 +192,18 @@ built-in identities and cleanup recognize `base` scalar functions, not every
 call printed with an operator token. User-defined number formats and operator
 overloads therefore retain their own semantics unless a caller explicitly
 includes them in a `pure` policy passed to `opt.dce`, `opt.cse`, or `opt.fix`.
+`opt.update(m, roots, rule)` is the first explicit affected-cone execution
+boundary. It snapshots `ir.affected(roots)` once and invokes an ordinary
+`fn(Mod, Op) -> bool` rule for each still-live operation. Operations created by
+the rule are deliberately not scheduled in the same wave; a caller chooses
+whether to compute another wave. The complete call remains one transactional
+`run`, so a failed rule rolls the wave back. This is a scheduler primitive, not
+persistent pipeline reuse by itself; embedders can place named stages that use
+it inside `ReactiveSchedule`.
+Within each block, DCE walks in reverse definition order and propagates
+deadness through already-dead pure users. A complete unused SSA chain is
+therefore erased as one checked batch instead of forcing one whole-program
+fixed-point round per link; cross-block users remain conservative.
 `opt.hoist(m, safe)` performs policy-controlled loop-invariant code motion. A
 listed call promises both absence of effects and safety when the loop executes
 zero times; this is deliberately stronger than the `pure` policy used by DCE
@@ -431,6 +481,51 @@ rules to allocate buffers. In particular, a scalar is marked as a pointer when
 it is one member of a multi-result C interface, but remains a direct value when
 it is the function's sole result.
 
+`c.definition(m, name)` returns one function-definition chunk through the same
+signature, naming, storage, and statement emitter used by `c.source`. It is a
+function-granular artifact boundary for dependency-indexed tools: editing one
+function can invalidate its definition without rebuilding unrelated
+definitions. `c.definition(m, index)` selects a defined function by its
+zero-based position, avoiding name ambiguity for overloads. `c.preamble(m)`
+returns the includes and cross-function prototypes for the default no-blob
+configuration. Concatenating that preamble with every indexed definition chunk
+in order is byte-identical to `c.source(m)`.
+`c.declaration(m, name)` returns one definition's declaration exactly as it
+appears in that default preamble. `c.definition_binding(m, name)` returns the
+same declaration together with the definition head from one shared signature
+calculation, so a persistent builder can update both symbol-bearing fragments
+without rescanning unrelated bodies.
+
+For persistent artifacts, `c.definition_head`, `c.definition_storage`,
+`c.definition_body`, and `c.definition_tail` expose the four ordered pieces of
+one named default-configuration definition. Their concatenation is
+byte-identical to `c.definition(m, name)`. ABI-policy edits such as `c.noalias`
+can therefore rebuild the head without reevaluating storage or statements.
+`c.definition_direct`, `c.definition_results`, and
+`c.definition_body_chunk` additionally let a persistent builder emit a range
+of top-level operations with one frozen result-routing context. Concatenating
+all ranges in order is byte-identical to `c.definition_body`. Chunk boundaries
+are implementation identities, not part of the artifact semantics: canonical
+print/reparse may regroup equivalent IR, so correctness compares the complete
+concatenated translation unit. `c.definition_nested_chunk` accepts the owning
+control operation's `ir.path`, child-block index, and local operation range. It
+computes the correct C indentation through nested loops and branches and
+observes that child block rather than the whole module.
+`c.definition_nested_partition` follows the same stable path recursively and
+returns prefix, target, and suffix pieces whose concatenation equals the
+requested top-level body region. A persistent builder can therefore retain
+the structurally derived wrapper pieces and refresh only the nested target;
+duplicate emitted text is not used as identity. These are semantic splits,
+not compatibility aliases.
+The emitter uses the native read-only `ir.bound(fn, name)` predicate for
+binding-collision checks so a large function is not traversed in interpreted
+`.jog` code merely to validate one result name.
+
+Incremental tooling may retain the preamble only when its edit contract proves
+that required headers, signatures, call topology, and payload policy are
+unchanged. External payload configuration remains owned by the complete
+`c.source` overloads; the default preamble API does not guess it.
+
 A tensor with unknown dimensions still uses a flat pointer ABI. Each dynamic
 input axis contributes an adjacent `index` extent argument; each dynamic result
 axis contributes an adjacent `index*` extent result. No descriptor structure or
@@ -457,6 +552,12 @@ unqualified, so the same header remains valid for C++ consumers. `c.api`
 reports the Boolean contract. The compiler does not infer disjointness from NN
 names or calling convention; violating an explicit entry contract at a call
 site is the user's error.
+
+`c.bind(m, fn, name)` assigns one live definition an explicit external C
+symbol while preserving the other fields of its `c` contract. Passing an empty
+name removes only the binding. A binding edit invalidates the preamble and that
+definition's head; it does not require reevaluating storage or statement
+fragments.
 
 `c.restrict(m)` is the proof-driven alternative for private definitions. It
 indexes all calls once and adds `[c: {restrict: true}]` only when every call to
@@ -510,4 +611,3 @@ multiple return paths use the conservative copy form.
 Target-specific support for a user type belongs in a small companion module.
 The `sat.c` and `sat.vm` modules illustrate this rule: `sat` owns the type
 semantics, while each companion owns only its representation at that target.
-

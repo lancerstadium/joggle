@@ -1,4 +1,4 @@
-module quant_kernel
+mod quant_kernel
 use quant
 use tensor
 

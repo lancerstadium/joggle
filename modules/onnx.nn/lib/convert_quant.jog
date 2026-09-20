@@ -81,8 +81,7 @@ local fn convert_qlinear_conv(m: Mod, op: Op) -> bool {
   conv_inputs += config
   let accumulator = shaped(ty("i32"), tensor.dims(result))
   let convolved = ir.call(m, op, "nn.conv2d", conv_inputs, accumulator)
-  let conv_name = local_name(op, "convolved_", 0)
-  if conv_name == "" || !ir.rename(m, convolved, conv_name) {
+  if !ir.rename(m, convolved, "convolved_", 0) {
     return false
   }
   // One scaling at the end: x_scale * w_scale / y_scale, per output channel.
@@ -95,26 +94,23 @@ local fn convert_qlinear_conv(m: Mod, op: Op) -> bool {
   let wide_zero = ir.call(
     m, op, "tensor.broadcast", [inputs[7]], zero_shape
   )
-  if !ir.rename(m, wide_zero, local_name(op, "wide_zero_", 0)) {
+  if !ir.rename(m, wide_zero, "wide_zero_", 0) {
     return false
   }
-  let wide_name = local_name(op, "wide_scale_", 0)
-  if wide_name == "" || !ir.rename(m, wide_x, wide_name) ||
-     !ir.rename(m, wide_y, local_name(op, "wide_scale_", 1)) {
+  if !ir.rename(m, wide_x, "wide_scale_", 0) ||
+     !ir.rename(m, wide_y, "wide_scale_", 1) {
     return false
   }
   let combined = ir.call(
     m, op, "tensor.operator *", [inputs[4], wide_x], scalar_scales
   )
-  let scaled_name = local_name(op, "combined_scale_", 0)
-  if scaled_name == "" || !ir.rename(m, combined, scaled_name) {
+  if !ir.rename(m, combined, "combined_scale_", 0) {
     return false
   }
   let combined_div = ir.call(
     m, op, "tensor.operator /", [combined, wide_y], scalar_scales
   )
-  let divided_name = local_name(op, "combined_scale_", 1)
-  if divided_name == "" || !ir.rename(m, combined_div, divided_name) {
+  if !ir.rename(m, combined_div, "combined_scale_", 1) {
     return false
   }
   let quantized = accumulated(
@@ -377,8 +373,7 @@ local fn convert_qlinear_matmul(m: Mod, op: Op) -> bool {
   let product = ir.call(
     m, op, "tensor.matmul", [offset_left, offset_right], accumulator
   )
-  let product_name = local_name(op, "product_", 0)
-  if product_name == "" || !ir.rename(m, product, product_name) {
+  if !ir.rename(m, product, "product_", 0) {
     return false
   }
   // The weight scale is per output column, so the combined scale shares that
@@ -388,9 +383,9 @@ local fn convert_qlinear_matmul(m: Mod, op: Op) -> bool {
   let wide_y = ir.call(m, op, "tensor.broadcast", [inputs[6]], channel)
   let zero_shape = shaped(tensor.elem(ir.type(inputs[7])), tensor.dims(channel))
   let wide_zero = ir.call(m, op, "tensor.broadcast", [inputs[7]], zero_shape)
-  if !ir.rename(m, wide_x, local_name(op, "wide_scale_", 0)) ||
-     !ir.rename(m, wide_y, local_name(op, "wide_scale_", 1)) ||
-     !ir.rename(m, wide_zero, local_name(op, "wide_zero_", 0)) {
+  if !ir.rename(m, wide_x, "wide_scale_", 0) ||
+     !ir.rename(m, wide_y, "wide_scale_", 1) ||
+     !ir.rename(m, wide_zero, "wide_zero_", 0) {
     return false
   }
   let combined = ir.call(
@@ -399,8 +394,7 @@ local fn convert_qlinear_matmul(m: Mod, op: Op) -> bool {
   let combined_div = ir.call(
     m, op, "tensor.operator /", [combined, wide_y], channel
   )
-  let scaled_name = local_name(op, "combined_scale_", 0)
-  if scaled_name == "" || !ir.rename(m, combined_div, scaled_name) {
+  if !ir.rename(m, combined_div, "combined_scale_", 0) {
     return false
   }
   let bounds = quant_bounds(tensor.elem(result))
@@ -462,9 +456,8 @@ local fn convert_qlinear_add(m: Mod, op: Op) -> bool {
     m, op, "nn.add", [dequant_left, dequant_right],
     shaped(tensor.elem(ir.type(inputs[1])), shape)
   )
-  let sum_name = local_name(op, "sum_", 0)
   if !ir.live(dequant_left) || !ir.live(dequant_right) || !ir.live(sum) ||
-     sum_name == "" || !ir.rename(m, sum, sum_name) {
+     !ir.rename(m, sum, "sum_", 0) {
     return false
   }
   let quantized = requantized(
@@ -532,9 +525,7 @@ local fn convert_qlinear_avg_pool(m: Mod, op: Op) -> bool {
     m, op, "nn.avg_pool2d", [dequant] + config,
     shaped(tensor.elem(ir.type(inputs[1])), tensor.dims(result))
   )
-  let pool_name = local_name(op, "pooled_", 0)
-  if !ir.live(pooled) || pool_name == "" ||
-     !ir.rename(m, pooled, pool_name) {
+  if !ir.live(pooled) || !ir.rename(m, pooled, "pooled_", 0) {
     return false
   }
   let quantized = requantized(

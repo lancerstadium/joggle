@@ -1,4 +1,4 @@
-module edge
+mod edge
 use ir
 use nn
 use opt

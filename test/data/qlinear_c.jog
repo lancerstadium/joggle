@@ -1,4 +1,4 @@
-module qlinear_c
+mod qlinear_c
 use onnx
 
 fn matmul(

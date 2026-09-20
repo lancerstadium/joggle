@@ -10,11 +10,8 @@ option(JOGGLE_BUILD_ONNX "Build the optional ONNX module" OFF)
 option(JOGGLE_BUILD_TFLITE "Build the optional TFLite module" OFF)
 option(JOGGLE_BUILD_SAT "Build the optional saturating-integer module" OFF)
 option(JOGGLE_TEST_ONNX_HEAVY "Enable slow ONNX Model Zoo gates" OFF)
-# The paper/ research workspace is not part of the shipped project, so nothing
-# here may read it by default: a clone must build and test without it. The
-# research targets and record checks are registered only when this is ON.
-option(JOGGLE_RESEARCH
-       "Register tools and checks that read the paper/ research workspace" OFF)
+option(JOGGLE_EVAL_COUNTERS
+       "Instrument evaluator operations and frame probes" OFF)
 set(JOGGLE_TEST_ONNX_ZOO "" CACHE PATH
     "Directory containing any subset of the pinned ONNX Model Zoo test set")
 set(JOGGLE_TEST_ONNX_BACKEND "" CACHE PATH
@@ -144,6 +141,9 @@ set_target_properties(
 
 target_compile_features(joggle PUBLIC cxx_std_20)
 target_link_libraries(joggle PRIVATE ${CMAKE_DL_LIBS})
+if(JOGGLE_EVAL_COUNTERS)
+  target_compile_definitions(joggle PRIVATE JOGGLE_EVAL_COUNTERS=1)
+endif()
 target_include_directories(
   joggle
   PUBLIC
@@ -432,12 +432,6 @@ if(JOGGLE_BUILD_TESTS)
   )
   add_executable(joggle-workflow-test test/workflow.cpp)
   target_link_libraries(joggle-workflow-test PRIVATE Joggle::joggle)
-  if(JOGGLE_RESEARCH)
-    add_executable(joggle-derive-prepare EXCLUDE_FROM_ALL paper/experiments/derive_prepare.cpp)
-    target_link_libraries(joggle-derive-prepare PRIVATE Joggle::joggle)
-    add_executable(joggle-progressive-trace EXCLUDE_FROM_ALL paper/experiments/progressive_trace.cpp)
-    target_link_libraries(joggle-progressive-trace PRIVATE Joggle::joggle)
-  endif()
   add_executable(joggle-network-test test/network.cpp)
   target_link_libraries(joggle-network-test PRIVATE Joggle::joggle)
   add_executable(joggle-lang-robustness-test test/lang_robustness.cpp)
@@ -565,51 +559,11 @@ if(JOGGLE_BUILD_TESTS)
   )
   find_program(JOGGLE_TEST_C_COMPILER NAMES cc clang gcc)
   find_program(JOGGLE_TEST_PYTHON NAMES python3 python)
-  # Every check below reads the paper/ research workspace, so all of them are
-  # gated. They verify recorded evidence and baseline records, which is research
-  # work rather than product coverage.
-  if(JOGGLE_TEST_PYTHON AND JOGGLE_RESEARCH)
+  if(JOGGLE_TEST_PYTHON)
     add_test(
-      NAME paper-fixtures
-      COMMAND
-        ${JOGGLE_TEST_PYTHON}
-        ${CMAKE_CURRENT_SOURCE_DIR}/paper/fixtures/check.py
-    )
-    add_test(
-      NAME onnx-mlir-policy-record
-      COMMAND
-        ${JOGGLE_TEST_PYTHON}
-        ${CMAKE_CURRENT_SOURCE_DIR}/paper/baselines/onnx-mlir/policy/check.py
-    )
-    add_test(
-      NAME onnx-mlir-numeric-format-record
-      COMMAND
-        ${JOGGLE_TEST_PYTHON}
-        ${CMAKE_CURRENT_SOURCE_DIR}/paper/baselines/onnx-mlir/numeric-format/check.py
-    )
-    # The two matched-baseline extension tables are generated from the preserved
-    # per-task records by one collector, so a table can no longer drift from the
-    # records it claims to summarise, and a task a system cannot complete stays a
-    # row rather than becoming a missing row.
-    foreach(system tvm onnx-mlir)
-      add_test(
-        NAME baseline-table-${system}
-        COMMAND
-          ${JOGGLE_TEST_PYTHON}
-          ${CMAKE_CURRENT_SOURCE_DIR}/paper/scripts/collect_baselines.py
-          ${system} --check
-      )
-      set_tests_properties(
-        baseline-table-${system} PROPERTIES LABELS "research"
-      )
-    endforeach()
-    add_test(
-      NAME measure-systems
-      COMMAND
-        ${JOGGLE_TEST_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/test/measure_systems.py
-        --runner ${CMAKE_CURRENT_SOURCE_DIR}/paper/scripts/measure_systems.py
-        --repo ${CMAKE_CURRENT_SOURCE_DIR}
-        --root ${CMAKE_CURRENT_BINARY_DIR}/measure-systems
+      NAME docs
+      COMMAND ${JOGGLE_TEST_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/test/docs.py
+              ${CMAKE_CURRENT_SOURCE_DIR}
     )
   endif()
   # Checks the layout rules stated in README.md. This needs only CMake, so it
@@ -700,22 +654,6 @@ if(JOGGLE_BUILD_TESTS)
         HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem_safety_main.c
         ROOT=${CMAKE_CURRENT_BINARY_DIR}/mem-safety-test
     )
-    if(JOGGLE_RESEARCH)
-      add_test(
-        NAME derive-memory
-        COMMAND
-          ${CMAKE_COMMAND}
-          -DTOOL=$<TARGET_FILE:joggle-tool>
-          -DCC=${JOGGLE_TEST_C_COMPILER}
-          -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem_safety.jog
-          -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem_safety_main.c
-          -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-          -DROOT=${CMAKE_CURRENT_BINARY_DIR}/derive-memory-test
-          -DEXPERIMENTS=${CMAKE_CURRENT_SOURCE_DIR}/paper/experiments
-          -DTEST_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/test/mem_safety.cmake
-          -P ${CMAKE_CURRENT_SOURCE_DIR}/paper/experiments/reuse/check.cmake
-      )
-    endif()
     joggle_script_test(dynamic-c-execution dynamic_c.cmake
       DEFINES
         CC=${JOGGLE_TEST_C_COMPILER}
@@ -794,6 +732,7 @@ if(JOGGLE_BUILD_TESTS)
       SOURCE_MODULES=${CMAKE_CURRENT_SOURCE_DIR}/modules
       BUILD_MODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
       OUT=${CMAKE_CURRENT_BINARY_DIR}/run-report.attr
+      TIMING=${CMAKE_CURRENT_BINARY_DIR}/run-timing.attr
   )
   joggle_script_test(cli-module module.cmake
     DEFINES
@@ -860,7 +799,10 @@ if(JOGGLE_BUILD_TESTS)
           COMMAND joggle-onnx-zoo-test "${model}"
                   "${CMAKE_CURRENT_BINARY_DIR}/modules" ${MODEL_ARGS}
         )
-        set(labels "onnx-zoo;onnx-zoo-record")
+        # Model cases are discovered from the configured corpus, so label them
+        # here rather than maintaining a second, inevitably stale name list.
+        # Keep the ONNX-specific labels as orthogonal selectors.
+        set(labels "model;onnx-zoo;onnx-zoo-record")
         if(MODEL_HEAVY)
           list(APPEND labels heavy)
           set_tests_properties("${MODEL_TEST}" PROPERTIES TIMEOUT 900)
@@ -878,7 +820,7 @@ if(JOGGLE_BUILD_TESTS)
                 ${CMAKE_CURRENT_BINARY_DIR}/modules
       )
       set_tests_properties(
-        onnx-zoo-mobilenet-contract PROPERTIES LABELS "onnx-zoo"
+        onnx-zoo-mobilenet-contract PROPERTIES LABELS "model;onnx-zoo"
       )
     endif()
   endif()
@@ -955,23 +897,6 @@ if(JOGGLE_BUILD_TESTS)
       endif()
     endfunction()
 
-    # The matched-implementation contract and its fixture belong to the paper
-    # workspace, so this check is gated with the rest of the research checks.
-    if(JOGGLE_RESEARCH)
-      set(onnx_matched_case
-          "${CMAKE_CURRENT_SOURCE_DIR}/paper/fixtures/implementation")
-      joggle_check_onnx_case(
-        "${onnx_matched_case}"
-        662fd988387d6e33bce053676711295f8b6f82b83baf171412d4a48f0e6c7284
-        b819079e4e6f60a2b29c5473b2d0e77a56bfc0fc3766ee48d3ef173e7b4854e6
-        0af081f30a3c7f3b58048f7f1642393afbc5a431bae498c4effe6c820c698b03
-        ca2186ef8510389441295b5dc2f952e15f8c645ad44c05c56e7ea69428bd8195
-      )
-      joggle_onnx_execution(
-        onnx-matched-implementation "${onnx_matched_case}"
-        "onnx;execution;paper"
-      )
-    endif()
 
     if(NOT JOGGLE_TEST_ONNX_BACKEND STREQUAL "")
       set(onnx_execute_case "${JOGGLE_TEST_ONNX_BACKEND}/test_matmul_2d")
@@ -1147,16 +1072,8 @@ if(JOGGLE_BUILD_TESTS)
     cost-extension cost-configured-extension
   )
   joggle_label(example onnx-app-mnist onnx-app-mobilenet)
-  joggle_label(model
-    onnx-zoo-mnist onnx-zoo-mobilenet onnx-zoo-squeezenet
-    onnx-zoo-squeezenet-qdq onnx-zoo-resnet onnx-zoo-tinyyolo
-    onnx-zoo-tinyyolov3 onnx-zoo-ultraface onnx-zoo-ssd-mobilenet
-    onnx-zoo-shufflenet onnx-zoo-densenet onnx-zoo-googlenet
-    onnx-zoo-mobilenet-contract
-  )
+  # Pinned model tests receive their kind label at declaration time because the
+  # configured corpus is data-driven; do not duplicate its names here.
   joggle_label(install install-consumer)
-  joggle_label(research
-    paper-fixtures onnx-mlir-policy-record onnx-mlir-numeric-format-record
-    measure-systems derive-memory onnx-matched-implementation
-  )
+  joggle_label(lint docs)
 endif()

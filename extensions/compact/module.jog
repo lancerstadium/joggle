@@ -1,4 +1,4 @@
-module compact
+mod compact
 use base
 use ir
 use nn

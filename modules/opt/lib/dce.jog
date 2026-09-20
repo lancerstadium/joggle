@@ -1,4 +1,5 @@
-local fn dead(m: Mod, ops: list<Op>, pure: list<str>) -> list<Op> {
+local fn dead(m: Mod, block: Blk, pure: list<str>) -> list<Op> {
+  let ops = ir.ops(block)
   var assigned = {}
   for op in ops {
     let form = ir.form(op)
@@ -9,15 +10,11 @@ local fn dead(m: Mod, ops: list<Op>, pure: list<str>) -> list<Op> {
       assigned[ir.name(outputs[0])] = true
     }
   }
-  var dead: list<Op> = []
-  for op in ops {
+  var removable: list<Op> = []
+  for op in ir.ops(block, ["constant"]) +
+            ir.calls(m, ir.ops(block, ["call"]), pure) {
     if ir.live(op) {
-      var allowed = ir.kind(op) == "constant"
-      for callee in pure {
-        if ir.kind(op) == "call" && matches(m, op, callee) {
-          allowed = true
-        }
-      }
+      var allowed = true
       let form = ir.form(op)
       let outputs = ir.outs(op)
       if form == "var" && len(outputs) == 1 &&
@@ -26,19 +23,11 @@ local fn dead(m: Mod, ops: list<Op>, pure: list<str>) -> list<Op> {
       }
       allowed = allowed && form != "index_assign"
       if allowed {
-        var unused = true
-        for value in outputs {
-          if len(ir.users(value)) != 0 {
-            unused = false
-          }
-        }
-        if unused {
-          dead += [op]
-        }
+        removable += [op]
       }
     }
   }
-  return dead
+  return ir.unused(ops, removable)
 }
 
 local fn cse_key(op: Op) -> str {
@@ -108,4 +97,3 @@ local fn cse_block(m: Mod, block: Blk, pure: list<str>) -> bool {
   }
   return changed
 }
-

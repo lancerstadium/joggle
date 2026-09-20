@@ -1,4 +1,4 @@
-module vm_case
+mod vm_case
 use base
 use math
 

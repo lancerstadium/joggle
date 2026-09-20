@@ -145,7 +145,7 @@ local fn call(
 
   let callee = symbol(m, target, config)
   var actuals = args(m, inputs, blob, data_fns, config)
-  if blob != "" && owned(m, target) && has_fn(data_fns, target) {
+  if blob != "" && ir.owned(m, target) && has_fn(data_fns, target) {
     if actuals != "" {
       actuals += ", "
     }
@@ -306,7 +306,16 @@ local fn constant(op: Op, depth: int, config: dict) -> str {
   return ""
 }
 
-local fn loop(
+local fn loop_iterators(op: Op) -> int {
+  let bodies = ir.blks(op)
+  assert(len(bodies) == 1, "c: loop must have one body")
+  let iterators = len(ir.args(bodies[0])) - len(ir.outs(op))
+  assert(iterators > 0 && len(ir.args(op)) >= iterators,
+         "c: loop source structure is invalid")
+  return iterators
+}
+
+local fn loop_prefix(
   m: Mod, op: Op, depth: int, blob: str, data_fns: list<Fn>, config: dict,
   offsets: dict, direct: list<str>, results: list<str>
 ) -> str {
@@ -315,10 +324,7 @@ local fn loop(
   let body = bodies[0]
   let body_args = ir.args(body)
   let sources = ir.args(op)
-  let carried = len(ir.outs(op))
-  let iterators = len(body_args) - carried
-  assert(iterators > 0 && len(sources) >= iterators,
-         "c: loop source structure is invalid")
+  let iterators = loop_iterators(op)
   var out = ""
   for i in 0..iterators {
     let source = ir.def(sources[i])
@@ -353,14 +359,48 @@ local fn loop(
       }
     }
   }
-  out += block(
-    m, body, depth + iterators, blob, data_fns, config, offsets, direct,
-    results
-  )
+  return out
+}
+
+local fn loop_suffix(op: Op, depth: int) -> str {
+  let iterators = loop_iterators(op)
+  var out = ""
   for reverse in 0..iterators {
     out += pad(depth + iterators - reverse - 1) + "}\n"
   }
   return out
+}
+
+local fn loop(
+  m: Mod, op: Op, depth: int, blob: str, data_fns: list<Fn>, config: dict,
+  offsets: dict, direct: list<str>, results: list<str>
+) -> str {
+  let body = ir.blks(op)[0]
+  return loop_prefix(
+           m, op, depth, blob, data_fns, config, offsets, direct, results
+         ) +
+         block(
+           m, body, depth + loop_iterators(op), blob, data_fns, config,
+           offsets, direct, results
+         ) + loop_suffix(op, depth)
+}
+
+local fn branch_condition(
+  m: Mod, op: Op, blob: str, data_fns: list<Fn>, config: dict
+) -> str {
+  let inputs = ir.args(op)
+  assert(len(inputs) >= 1, "c: branch structure is invalid")
+  var condition = expr(m, inputs[0], blob, data_fns, config)
+  let source = ir.def(inputs[0])
+  if ir.name(inputs[0]) == "" && ir.live(source) &&
+     ir.kind(source) == "call" && len(ir.args(source)) == 2 &&
+     binary(call_name(m, source)) != "" {
+    let values = ir.args(source)
+    condition = expr(m, values[0], blob, data_fns, config) + " " +
+                binary(call_name(m, source)) + " " +
+                expr(m, values[1], blob, data_fns, config)
+  }
+  return condition
 }
 
 local fn branch(
@@ -377,17 +417,8 @@ local fn branch(
   let second = block(
     m, bodies[1], depth + 1, blob, data_fns, config, offsets, direct, results
   )
-  var condition = expr(m, inputs[0], blob, data_fns, config)
-  let source = ir.def(inputs[0])
-  if ir.name(inputs[0]) == "" && ir.live(source) &&
-     ir.kind(source) == "call" && len(ir.args(source)) == 2 &&
-     binary(call_name(m, source)) != "" {
-    let values = ir.args(source)
-    condition = expr(m, values[0], blob, data_fns, config) + " " +
-                binary(call_name(m, source)) + " " +
-                expr(m, values[1], blob, data_fns, config)
-  }
-  var out = pad(depth) + "if (" + condition +
+  var out = pad(depth) + "if (" +
+            branch_condition(m, op, blob, data_fns, config) +
             ") {\n" + first
   if second == "" {
     out += pad(depth) + "}\n"
@@ -397,6 +428,45 @@ local fn branch(
   return out
 }
 
+local fn statement(
+  m: Mod, op: Op, depth: int, blob: str,
+  data_fns: list<Fn>, config: dict,
+  offsets: dict, direct: list<str>, results: list<str>
+) -> str {
+  let kind = ir.kind(op)
+  if kind == "call" {
+    return call(m, op, depth, blob, data_fns, config, direct, results)
+  }
+  if kind == "loop" {
+    return loop(
+      m, op, depth, blob, data_fns, config, offsets, direct, results
+    )
+  }
+  if kind == "branch" {
+    let logic = logical(m, op, blob, data_fns, config)
+    let outputs = ir.outs(op)
+    if logic == "" ||
+       (len(outputs) == 1 && ir.name(outputs[0]) != "") {
+      return branch(
+        m, op, depth, blob, data_fns, config, offsets, direct, results
+      )
+    }
+    return ""
+  }
+  if kind == "return" {
+    return ret(m, op, depth, blob, data_fns, config, direct, results)
+  }
+  if kind == "constant" {
+    if payload(op) {
+      return tensor_constant(op, depth, blob, offsets, config)
+    } else {
+      return constant(op, depth, config)
+    }
+  }
+  assert(kind == "yield", "c: unsupported operation kind " + kind)
+  return ""
+}
+
 local fn block(
   m: Mod, body: Blk, depth: int, blob: str,
   data_fns: list<Fn>, config: dict,
@@ -404,42 +474,145 @@ local fn block(
 ) -> str {
   var out = ""
   for op in ir.ops(body) {
-    let kind = ir.kind(op)
-    if kind == "call" {
-      out += call(m, op, depth, blob, data_fns, config, direct, results)
-    } else {
-      if kind == "loop" {
-        out += loop(
-          m, op, depth, blob, data_fns, config, offsets, direct, results
-        )
-      } else {
-        if kind == "branch" {
-          let logic = logical(m, op, blob, data_fns, config)
-          let outputs = ir.outs(op)
-          if logic == "" ||
-             (len(outputs) == 1 && ir.name(outputs[0]) != "") {
-            out += branch(
-              m, op, depth, blob, data_fns, config, offsets, direct, results
-            )
-          }
-        } else {
-          if kind == "return" {
-            out += ret(m, op, depth, blob, data_fns, config, direct, results)
-          } else {
-            if kind == "constant" {
-              if payload(op) {
-                out += tensor_constant(op, depth, blob, offsets, config)
-              } else {
-                out += constant(op, depth, config)
-              }
-            } else {
-              assert(kind == "yield", "c: unsupported operation kind " + kind)
-            }
-          }
-        }
-      }
-    }
+    out += statement(
+      m, op, depth, blob, data_fns, config, offsets, direct, results
+    )
   }
   return out
 }
 
+local fn block_chunk(
+  m: Mod, body: Blk, start: int, count: int, depth: int, blob: str,
+  data_fns: list<Fn>, config: dict,
+  offsets: dict, direct: list<str>, results: list<str>
+) -> str {
+  var out = ""
+  for op in ir.ops(body, start, count) {
+    out += statement(
+      m, op, depth, blob, data_fns, config, offsets, direct, results
+    )
+  }
+  return out
+}
+
+local fn control_partition(
+  m: Mod, op: Op, child: int, before: str, selected: str, after: str,
+  depth: int, blob: str, data_fns: list<Fn>, config: dict,
+  offsets: dict, direct: list<str>, results: list<str>
+) -> list<str> {
+  let kind = ir.kind(op)
+  let bodies = ir.blks(op)
+  if kind == "loop" {
+    assert(len(bodies) == 1 && child == 0,
+           "c: loop partition must select its only body")
+    return [
+      loop_prefix(
+        m, op, depth, blob, data_fns, config, offsets, direct, results
+      ) + before,
+      selected,
+      after + loop_suffix(op, depth)
+    ]
+  }
+  assert(kind == "branch" && len(bodies) == 2 &&
+         child >= 0 && child < 2,
+         "c: partition owner must be a loop or branch")
+  let logic = logical(m, op, blob, data_fns, config)
+  let outputs = ir.outs(op)
+  assert(logic == "" ||
+         (len(outputs) == 1 && ir.name(outputs[0]) != ""),
+         "c: selected branch does not emit a statement")
+  let open = pad(depth) + "if (" +
+             branch_condition(m, op, blob, data_fns, config) + ") {\n"
+  let close = pad(depth) + "}\n"
+  if child == 0 {
+    let second = block(
+      m, bodies[1], depth + 1, blob, data_fns, config, offsets, direct,
+      results
+    )
+    var suffix = after
+    if second == "" {
+      suffix += close
+    } else {
+      suffix += pad(depth) + "} else {\n" + second + close
+    }
+    return [open + before, selected, suffix]
+  }
+  let first = block(
+    m, bodies[0], depth + 1, blob, data_fns, config, offsets, direct, results
+  )
+  return [
+    open + first + pad(depth) + "} else {\n" + before,
+    selected,
+    after + close
+  ]
+}
+
+local fn statement_partition(
+  m: Mod, op: Op, owner_path: list<int>, at: int, child: int,
+  start: int, count: int, depth: int, blob: str,
+  data_fns: list<Fn>, config: dict, offsets: dict,
+  direct: list<str>, results: list<str>
+) -> list<str> {
+  let bodies = ir.blks(op)
+  if at == len(owner_path) {
+    assert(child >= 0 && child < len(bodies),
+           "c: nested partition child is out of range")
+    let body = bodies[child]
+    let operations = ir.ops(body)
+    assert(start >= 0 && count >= 0 && start <= len(operations) &&
+           count <= len(operations) - start,
+           "c: nested partition range is out of bounds")
+    var child_depth = depth + 1
+    if ir.kind(op) == "loop" {
+      child_depth = depth + loop_iterators(op)
+    }
+    return control_partition(
+      m, op, child,
+      block_chunk(
+        m, body, 0, start, child_depth, blob, data_fns, config, offsets,
+        direct, results
+      ),
+      block_chunk(
+        m, body, start, count, child_depth, blob, data_fns, config, offsets,
+        direct, results
+      ),
+      block_chunk(
+        m, body, start + count, len(operations) - start - count,
+        child_depth, blob, data_fns, config, offsets, direct, results
+      ),
+      depth, blob, data_fns, config, offsets, direct, results
+    )
+  }
+  assert(at + 1 < len(owner_path),
+         "c: nested partition path is incomplete")
+  let selected_child = owner_path[at]
+  let selected_index = owner_path[at + 1]
+  assert(selected_child >= 0 && selected_child < len(bodies),
+         "c: nested partition block path is out of range")
+  let body = bodies[selected_child]
+  let operations = ir.ops(body)
+  assert(selected_index >= 0 && selected_index < len(operations),
+         "c: nested partition operation path is out of range")
+  var child_depth = depth + 1
+  if ir.kind(op) == "loop" {
+    child_depth = depth + loop_iterators(op)
+  }
+  let nested = statement_partition(
+    m, operations[selected_index], owner_path, at + 2, child, start, count,
+    child_depth, blob, data_fns, config, offsets, direct, results
+  )
+  return control_partition(
+    m, op, selected_child,
+    block_chunk(
+      m, body, 0, selected_index, child_depth, blob, data_fns, config,
+      offsets, direct, results
+    ) + str(nested[0]),
+    str(nested[1]),
+    str(nested[2]) + block_chunk(
+      m, body, selected_index + 1,
+      len(operations) - selected_index - 1, child_depth, blob, data_fns,
+      config, offsets, direct, results
+    ),
+    depth, blob, data_fns, config, offsets, direct, results
+  )
+}

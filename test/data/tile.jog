@@ -1,4 +1,4 @@
-module tiled
+mod tiled
 
 fn sum(n: int) -> int {
   var total = 0

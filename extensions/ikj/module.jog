@@ -1,4 +1,4 @@
-module ikj
+mod ikj
 use ir
 use opt
 use tensor

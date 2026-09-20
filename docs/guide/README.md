@@ -36,7 +36,7 @@ evidence separately when an experiment needs it:
 
 ```sh
 ./build/joggle run opt.fold_add_zero test/data/matmul.jog \
-  --report run.attr -M modules
+  --report run.attr --timing run-timing.attr -M modules
 ```
 
 For a temporary experiment, place several ordinary functions before the input
@@ -51,8 +51,10 @@ The sequence commits once. If any function fails, none of its edits are
 printed and the report is not written.
 Each step in the report includes deterministic `calls` counts for its source
 functions and `cached` counts for `[memo]` hits. Use them to find repeated
-policy or analysis work; use the embedding API's elapsed-time overload
-separately when wall-clock measurements are needed.
+policy or analysis work. The separate timing file records whether a full
+structural snapshot was materialized, rollback-state preparation, initial
+verification, resolution, evaluation, and commit verification without
+making the structural report nondeterministic.
 
 Use `-` wherever a command expects an input file to compose processes without
 inventing a pipeline object or temporary IR files:
@@ -82,18 +84,18 @@ emitted without manually naming each transitive dependency.
 Inspect the modules available on the same explicit search path:
 
 ```sh
-./build/joggle module list -M modules
-./build/joggle module info nn -M modules
-./build/joggle module check nn -M modules
+./build/joggle mod list -M modules
+./build/joggle mod info nn -M modules
+./build/joggle mod check nn -M modules
 ```
 
 An external module needs only its directory. Install, upgrade, and remove it
 from an explicit local root as follows:
 
 ```sh
-./build/joggle module install path/to/my.module local-modules -M modules
-./build/joggle module upgrade path/to/my.module local-modules -M modules
-./build/joggle module uninstall my.module local-modules
+./build/joggle mod install path/to/my.module local-modules -M modules
+./build/joggle mod upgrade path/to/my.module local-modules -M modules
+./build/joggle mod uninstall my.module local-modules
 ```
 
 Install validates a staged copy before it becomes visible and does not replace
@@ -110,7 +112,7 @@ int main() {
   joggle::Env env;
   joggle::Mod mod;
   constexpr std::string_view source =
-      "module demo\nfn id(x: i32) -> i32 { return x }\n";
+      "mod demo\nfn id(x: i32) -> i32 { return x }\n";
   if (!joggle::parse(env, source, mod, "model.jog"))
     return mod.print_diags(stderr);
   if (!mod.verify(env))
@@ -127,4 +129,3 @@ native module and calls its declared native function.
 
 There is no hidden lowering step in this workflow. Loops, calls, mutable source
 bindings, and function edits all refer to one `Mod`.
-

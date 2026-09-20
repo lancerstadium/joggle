@@ -1,4 +1,4 @@
-module tile
+mod tile
 use base
 use ir
 use opt

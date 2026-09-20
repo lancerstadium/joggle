@@ -1,4 +1,4 @@
-module sat
+mod sat
 use ir
 
 fn sat<W: int>() -> Ty;

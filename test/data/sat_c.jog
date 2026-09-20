@@ -1,4 +1,4 @@
-module sat_kernel
+mod sat_kernel
 use sat
 use tensor
 

@@ -1,4 +1,4 @@
-module range_c
+mod range_c
 use tensor
 
 fn main() -> tensor<i32, [_]> {

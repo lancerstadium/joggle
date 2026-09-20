@@ -1,4 +1,4 @@
-module test.linear
+mod test.linear
 use tensor
 
 fn add_zero(x: i32) -> i32 {

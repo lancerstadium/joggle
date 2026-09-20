@@ -1,4 +1,4 @@
-module base
+mod base
 
 fn copy<T: Ty>(x: T) -> T;
 

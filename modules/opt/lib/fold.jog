@@ -22,8 +22,8 @@ local fn mapped(value: Val, old: list<Val>, next: list<Val>) -> Val {
 
 local fn project(m: Mod) -> bool {
   var changed = false
-  for op in ir.ops(m) {
-    if ir.live(op) && ir.kind(op) == "call" &&
+  for op in ir.ops(m, ["call"]) {
+    if ir.live(op) &&
        matches(m, op, "base.operator []") {
       let args = ir.args(op)
       let outs = ir.outs(op)
@@ -55,10 +55,9 @@ local fn unranked(type: Ty) -> bool {
 
 local fn select(m: Mod) -> bool {
   var changed = false
-  let candidates = ir.ops(m)
+  let candidates = ir.ops(m, ["branch"])
   for branch in candidates {
-    if ir.live(branch) && ir.kind(branch) == "branch" &&
-       len(ir.meta(branch)) == 0 {
+    if ir.live(branch) && len(ir.meta(branch)) == 0 {
       let inputs = ir.args(branch)
       let outputs = ir.outs(branch)
       let bodies = ir.blks(branch)
@@ -136,4 +135,3 @@ local fn select(m: Mod) -> bool {
   }
   return changed
 }
-

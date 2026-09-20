@@ -3,8 +3,8 @@ local fn expand_with(
 ) -> bool {
   var calls: list<Op> = []
   var bodies: list<Fn> = []
-  for op in ir.ops(m) {
-    if ir.live(op) && ir.kind(op) == "call" &&
+  for op in ir.ops(m, ["call"]) {
+    if ir.live(op) &&
        !supports_with(m, op, accept, arg, configured) &&
        len(ir.meta(op)) == 0 {
       let target = ir.resolve(m, op)
@@ -72,4 +72,3 @@ local fn expose_with(
   assert(!exceeded, "opt.expose did not converge within its limit")
   return changed
 }
-

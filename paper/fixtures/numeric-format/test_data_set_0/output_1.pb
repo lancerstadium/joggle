@@ -1,1 +1,0 @@
-Bscalar_1_resultJðÿÿÿÿÿÿÿ

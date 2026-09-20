@@ -1,4 +1,4 @@
-module math
+mod math
 
 [c: {name: "fabsf", include: "math.h"}, vm: "abs"]
 fn abs(x: f32) -> f32;

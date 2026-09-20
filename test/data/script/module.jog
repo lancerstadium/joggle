@@ -1,5 +1,6 @@
-module script
+mod script
 use alternate
+use c
 use opt
 use stat
 use tensor
@@ -14,6 +15,38 @@ local fn hidden_type<T: Ty>() -> Ty;
 
 fn local_probe(m: Mod) -> bool {
   return hidden(m)
+}
+
+fn fn_revision(m: Mod, name: str) -> int {
+  return ir.revision(ir.find(m, name))
+}
+
+fn fn_op_count(m: Mod, name: str) -> int {
+  return len(ir.ops(ir.find(m, name)))
+}
+
+fn package_count(m: Mod) -> int {
+  return len(ir.uses(m))
+}
+
+fn observe_packages(m: Mod) -> bool {
+  return len(ir.uses(m)) >= 0
+}
+
+fn observe_packages_named(m: Mod, name: str) -> bool {
+  return len(ir.uses(m)) >= 0
+}
+
+fn sync_package(m: Mod, name: str) -> bool {
+  let target = ir.find(m, name)
+  if ir.has(target, "package.base") {
+    return ir.use(m, "base")
+  }
+  return ir.use(m, "alternate")
+}
+
+fn bind_c_target(m: Mod, name: str, binding: str) -> bool {
+  return c.bind(m, ir.find(m, name), binding)
 }
 
 local fn recursive_local(x: i32) -> i32 {
@@ -655,6 +688,33 @@ fn memo_handle_probe(m: Mod) -> bool {
   return false
 }
 
+fn fresh_rename_probe(m: Mod) -> bool {
+  for f in ir.fns(m) {
+    for terminator in ir.ops(f) {
+      if ir.kind(terminator) == "return" {
+        let first = ir.constant(m, terminator, 0, ty("i32"))
+        assert(ir.rename(m, first, "scratch_", 0) &&
+               ir.name(first) == "scratch_0",
+               "first fresh binding was not scratch_0")
+        let second = ir.constant(m, terminator, 1, ty("i32"))
+        assert(ir.rename(m, second, "scratch_1"),
+               "explicit binding rename failed")
+        let third = ir.constant(m, terminator, 2, ty("i32"))
+        assert(ir.rename(m, third, "scratch_", 0) &&
+               ir.name(third) == "scratch_2",
+               "fresh binding did not observe an explicit rename")
+        let copy = ir.clone(m, ir.def(first), terminator)
+        assert(ir.live(copy) && ir.name(ir.outs(copy)[0]) == "scratch_0_1",
+               "cloned binding did not receive its expected suffix")
+        let fourth = ir.constant(m, terminator, 3, ty("i32"))
+        return ir.rename(m, fourth, "scratch_0_", 1) &&
+               ir.name(fourth) == "scratch_0_2"
+      }
+    }
+  }
+  return false
+}
+
 fn mark_first_param(m: Mod) -> bool {
   for f in ir.fns(m) {
     let values = ir.params(f)
@@ -965,6 +1025,52 @@ fn clean_pure(m: Mod) -> bool {
   return opt.fix(m, ["pure"], 8)
 }
 
+fn affected_count(m: Mod) -> int {
+  var roots: list<Val> = []
+  for op in ir.ops(m) {
+    if len(roots) == 0 && ir.callee(op) == "pure" {
+      roots = ir.outs(op)
+    }
+  }
+  return len(ir.affected(roots))
+}
+
+fn mark_affected_op(m: Mod, op: Op) -> bool {
+  var changed = false
+  for value in ir.outs(op) {
+    if ir.name(value) != "" {
+      changed = ir.set(m, value, "affected", true) || changed
+    }
+  }
+  return changed
+}
+
+fn reject_affected_op(m: Mod, op: Op) -> bool {
+  return ir.set(m, op, "rejected", true)
+}
+
+fn mark_affected(m: Mod) -> bool {
+  var roots: list<Val> = []
+  for op in ir.ops(m) {
+    let outputs = ir.outs(op)
+    if len(outputs) != 0 && ir.name(outputs[0]) == "a" {
+      roots = outputs
+    }
+  }
+  return opt.update(m, roots, ir.find("script.mark_affected_op"))
+}
+
+fn reject_affected(m: Mod) -> bool {
+  var roots: list<Val> = []
+  for op in ir.ops(m) {
+    let outputs = ir.outs(op)
+    if len(outputs) != 0 && ir.name(outputs[0]) == "a" {
+      roots = outputs
+    }
+  }
+  return opt.update(m, roots, ir.find("script.reject_affected_op"))
+}
+
 fn pure_op(m: Mod, op: Op) -> bool {
   return ir.callee(op) == "pure"
 }
@@ -978,7 +1084,7 @@ fn hoist_named(m: Mod) -> bool {
 }
 
 fn clean_tight(m: Mod) -> bool {
-  return opt.fix(m, ["pure"], 2)
+  return opt.fix(m, ["pure"], 1)
 }
 
 fn fold_controls(m: Mod) -> bool {
@@ -1190,8 +1296,129 @@ fn owner_probe(m: Mod) -> bool {
   return true
 }
 
+fn op_kind_counts(m: Mod) -> list<int> {
+  return [
+    len(ir.ops(m, ["call"])),
+    len(ir.ops(m, ["loop", "branch"])),
+    len(ir.ops(m, []))
+  ]
+}
+
+fn unused_probe(m: Mod, name: str) -> list<int> {
+  let blocks = ir.blks(ir.find(m, name))
+  assert(len(blocks) == 1, "unused probe requires one root block")
+  let operations = ir.ops(blocks[0])
+  var removable: list<Op> = []
+  for op in operations {
+    let kind = ir.kind(op)
+    if kind == "constant" || kind == "call" {
+      removable += [op]
+    }
+  }
+  return [len(operations), len(removable),
+          len(ir.unused(operations, removable))]
+}
+
+fn call_filter_counts(m: Mod, name: str) -> list<int> {
+  let blocks = ir.blks(ir.find(m, name))
+  assert(len(blocks) == 1, "call filter probe requires one root block")
+  let calls = ir.ops(blocks[0], ["call"])
+  return [
+    len(ir.calls(m, calls, ["base.operator +"])),
+    len(ir.calls(m, calls, ["operator +"])),
+    len(ir.calls(m, calls, ["script.missing"]))
+  ]
+}
+
+fn path_roundtrip(m: Mod, name: str) -> bool {
+  let fn = ir.find(m, name)
+  if !ir.live(fn) {
+    return false
+  }
+  for op in ir.ops(fn) {
+    let path = ir.path(m, op)
+    if len(path) == 0 || ir.at(m, fn, path) != op {
+      return false
+    }
+  }
+  return true
+}
+
 fn mutating_cap(m: Mod, op: Op) -> bool {
   return ir.set(m, op, "invalid_capability_side_effect", true)
+}
+
+fn schedule_mark_a(m: Mod, name: str) -> bool {
+  let target = ir.find(m, name)
+  assert(ir.live(target), "schedule target not found: " + name)
+  return ir.set(m, target, "schedule.a", ir.revision(target))
+}
+
+fn schedule_mark_b(m: Mod, name: str) -> bool {
+  let target = ir.find(m, name)
+  assert(ir.live(target), "schedule target not found: " + name)
+  return ir.set(m, target, "schedule.b", ir.revision(target))
+}
+
+local fn schedule_root(m: Mod, owner: str, name: str) -> Val {
+  let values = ir.vals(ir.find(m, owner))
+  assert(len(values) != 0, "schedule function has no values: " + owner)
+  for value in values {
+    if ir.live(value) && ir.name(value) == name {
+      return value
+    }
+  }
+  assert(false, "schedule value not found: " + name)
+  return values[0]
+}
+
+local fn schedule_cone(m: Mod, owner: str, name: str, key: str) -> bool {
+  var changed = false
+  for op in ir.affected([schedule_root(m, owner, name)]) {
+    changed = ir.set(m, op, key, true) || changed
+  }
+  return changed
+}
+
+fn schedule_cone_a(m: Mod, owner: str, name: str) -> bool {
+  return schedule_cone(m, owner, name, "schedule.cone.a")
+}
+
+fn schedule_cone_b(m: Mod, owner: str, name: str) -> bool {
+  return schedule_cone(m, owner, name, "schedule.cone.b")
+}
+
+fn schedule_constant(m: Mod, owner: str, index: int) -> bool {
+  let operations = ir.ops(ir.find(m, owner))
+  assert(index >= 0 && index < len(operations),
+         "schedule constant index is out of range")
+  let op = operations[index]
+  assert(ir.kind(op) == "constant" && len(ir.outs(op)) == 1,
+         "schedule target is not a constant")
+  ir.constant(ir.outs(op)[0])
+  return false
+}
+
+fn schedule_forward(m: Mod, source: str, target: str) -> bool {
+  let input = ir.find(m, source)
+  let output = ir.find(m, target)
+  assert(ir.live(input) && ir.live(output), "schedule endpoint not found")
+  return ir.set(m, output, "schedule.forward", ir.revision(input))
+}
+
+fn schedule_consume(m: Mod, source: str, target: str) -> bool {
+  let unused = source
+  let input = ir.find(m, target)
+  assert(ir.live(input), "schedule target not found: " + target)
+  return ir.set(m, input, "schedule.consume", ir.revision(input))
+}
+
+fn schedule_fail(m: Mod, name: str) -> bool {
+  let target = ir.find(m, name)
+  assert(ir.live(target), "schedule target not found: " + name)
+  ir.set(m, target, "schedule.failed", true)
+  assert(false, "scheduled failure")
+  return false
 }
 
 fn expose_with_mutating_cap(m: Mod) -> bool {

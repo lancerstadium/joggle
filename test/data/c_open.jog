@@ -1,4 +1,4 @@
-module open
+mod open
 use base
 use nn
 use tensor

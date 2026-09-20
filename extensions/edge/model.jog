@@ -1,4 +1,4 @@
-module model
+mod model
 use nn
 use tensor
 

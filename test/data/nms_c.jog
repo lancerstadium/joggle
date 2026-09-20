@@ -1,4 +1,4 @@
-module nms_c
+mod nms_c
 use nn
 
 fn main(

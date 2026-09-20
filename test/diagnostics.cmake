@@ -26,7 +26,7 @@ if(NOT jog_output STREQUAL "")
 endif()
 
 execute_process(
-  COMMAND "${TOOL}" --diagnostics jog module info absent -M "${MODULES}"
+  COMMAND "${TOOL}" --diagnostics jog mod info absent -M "${MODULES}"
   RESULT_VARIABLE module_result
   OUTPUT_VARIABLE module_output
   ERROR_VARIABLE module_error

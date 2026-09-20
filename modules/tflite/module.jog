@@ -1,4 +1,4 @@
-module tflite
+mod tflite
 use tensor
 
 [role: "read"]

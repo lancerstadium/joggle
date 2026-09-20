@@ -4,7 +4,7 @@ The installed `tensor` and `nn` modules are ordinary source libraries. A model
 can stay concise while the referenced implementation remains inspectable:
 
 ```jog
-module network
+mod network
 use nn
 
 fn residual(x: tensor<f32, [4]>, skip: tensor<f32, [4]>)
@@ -19,7 +19,7 @@ a condition. Loading the functions does not expand them. A project chooses
 the level it wants with an ordinary transform:
 
 ```jog
-module expose
+mod expose
 use opt
 
 fn network(m: Mod) -> bool {
@@ -45,7 +45,7 @@ For a larger model, list the calls a consumer can already implement and let
 `opt` expose everything else to that boundary:
 
 ```jog
-module edge
+mod edge
 use opt
 use ir
 use tensor
@@ -111,7 +111,7 @@ If a selected implementation has no body, `opt.apply` retargets the call to
 that declaration instead of expanding it. The source model still calls its
 semantic function; selection transactionally adds the implementation module,
 and a later artifact module derives the external ABI from the selected
-signature. [`extensions/edge`](../../extensions/edge) exercises tensor and
+signature. [`extensions/edge`](https://github.com/lancerstadium/joggle/tree/main/extensions/edge) exercises tensor and
 multiple-result kernels this way. Adding another external implementation does
 not change the model, core, or C emitter.
 
@@ -124,7 +124,7 @@ different scalar or pointer ABIs. The edge matrix adapter passes `M`, `N`, and
 covers multiple static shapes rather than requiring one declaration per shape.
 
 The repository's
-[`extensions/ikj/module.jog`](../../extensions/ikj/module.jog) turns that mechanism
+[`extensions/ikj/module.jog`](https://github.com/lancerstadium/joggle/blob/main/extensions/ikj/module.jog) turns that mechanism
 into an executable kernel customization. Its alternative
 `tensor.matmul` body changes the loop order to `i-k-j`; the generic element
 type and three dimensions are inferred from the real call. Run the extension
@@ -264,7 +264,7 @@ parameter names or reconstructing tensor aliases.
 A project can then choose a rewrite with ordinary reflection:
 
 ```jog
-module my_tile
+mod my_tile
 use tile
 
 fn apply(m: Mod) -> bool {
@@ -346,7 +346,7 @@ the selected loop. Its legality check proves that the carried tensor uses an
 injective affine address and that both the per-address reduction order and the
 state-axis order remain stable. A pass can therefore move reduction axes across
 independent output axes without defining a replacement operator body. See the
-[`locality` extension](../../extensions/locality) for a complete source-only policy.
+[`locality` extension](https://github.com/lancerstadium/joggle/tree/main/extensions/locality) for a complete source-only policy.
 The policy overload accepts a normal function returning `list<int>`:
 
 ```jog
@@ -404,7 +404,7 @@ profitability while reusing the exact same legality and rewrite functions.
 A module can also retain the bundled traversal and supply only profitability:
 
 ```jog
-module my_policy
+mod my_policy
 use tile
 
 fn small(m: Mod, pair: list<Op>, limit: int) -> bool {
@@ -420,4 +420,3 @@ fn apply(m: Mod, limit: int) -> bool {
 `tile` invokes `small` only for structurally legal adjacent pairs and rejects
 a policy that mutates the module. Replacing `small` with a target cost model
 does not change the traversal, rewrite, core IR, or emitter.
-

@@ -34,9 +34,7 @@ local fn shape_value(
   let zero_literal = ir.constant(m, before, 0, ty("int"))
   let zero = ir.call(m, before, "index", [zero_literal], ty("index"))
   var shape = ir.call(m, before, "tensor.tensor", [zero], shape_type)
-  var shape_name = local_name(before, "shape_", 0)
-  assert(ir.live(shape) && shape_name != "" &&
-         ir.rename(m, shape, shape_name),
+  assert(ir.live(shape) && ir.rename(m, shape, "shape_", 0),
          "onnx.nn: could not create runtime shape")
   for axis in 0..len(dims) {
     var extent = leading
@@ -54,9 +52,8 @@ local fn shape_value(
     let updated = ir.call(
       m, before, "tensor.operator []=", [shape, at, extent], shape_type
     )
-    shape_name = local_name(before, "shape_", axis + 1)
-    assert(ir.live(updated) && shape_name != "" &&
-           ir.rename(m, updated, shape_name),
+    assert(ir.live(updated) &&
+           ir.rename(m, updated, "shape_", axis + 1),
            "onnx.nn: could not update runtime shape")
     shape = updated
   }
@@ -153,31 +150,11 @@ local fn zero(m: Mod, before: Op, type: Ty) -> Val {
   return ir.constant(m, before, 0, type)
 }
 
-local fn local_name(before: Op, stem: str, ordinal: int) -> str {
-  let owner = ir.owner(ir.blk(before))
-  var attempt = ordinal
-  for unused in 0..len(ir.vals(owner)) + 2 {
-    let candidate = stem + text(attempt)
-    var taken = false
-    for value in ir.vals(owner) {
-      if ir.name(value) == candidate {
-        taken = true
-      }
-    }
-    if !taken {
-      return candidate
-    }
-    attempt += 1
-  }
-  return ""
-}
-
 local fn local_copy(
   m: Mod, before: Op, value: Val, stem: str, ordinal: int
 ) -> Val {
   let copy = ir.call(m, before, "base.copy", [value], ir.type(value))
-  let name = local_name(before, stem, ordinal)
-  assert(ir.live(copy) && name != "" && ir.rename(m, copy, name),
+  assert(ir.live(copy) && ir.rename(m, copy, stem, ordinal),
          "onnx.nn: could not create loop state")
   return copy
 }
@@ -215,8 +192,7 @@ local fn scalar_tensor(
   let dims: list<int> = []
   let result_type = tensor.type(element, dims)
   let result = ir.call(m, before, "tensor.tensor", [value], result_type)
-  let name = local_name(before, stem, ordinal)
-  assert(ir.live(result) && name != "" && ir.rename(m, result, name),
+  assert(ir.live(result) && ir.rename(m, result, stem, ordinal),
          "onnx.nn: could not create an optional scalar")
   return result
 }
@@ -349,13 +325,20 @@ local fn fill_if_arm(
      ir.kind(source_ops[len(source_ops) - 1]) != "return" {
     return false
   }
+  var roots: list<Op> = []
   for i in 0..len(source_ops) - 1 {
-    let copy = ir.clone(m, source_ops[i], terminator, old, next)
-    if !ir.live(copy) {
+    roots += [source_ops[i]]
+  }
+  var copies: list<Op> = []
+  if len(roots) != 0 {
+    copies = ir.clone(m, roots, terminator, old, next)
+    if len(copies) != len(roots) {
       return false
     }
-    old += ir.outs(source_ops[i])
-    next += ir.outs(copy)
+  }
+  for i in 0..len(roots) {
+    old += ir.outs(roots[i])
+    next += ir.outs(copies[i])
   }
   let returned = ir.args(source_ops[len(source_ops) - 1])
   let carried = ir.args(target)

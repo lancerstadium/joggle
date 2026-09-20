@@ -84,6 +84,22 @@ bool valid_callee(std::string_view text) {
   return detail::valid_qualified_name(applied.name());
 }
 
+std::uint32_t fn_for_op(const detail::Store& store, std::uint32_t op) {
+  if (op >= store.ops.size() || !store.ops[op].live)
+    return detail::none;
+  const std::uint32_t blk = store.ops[op].data.blk;
+  if (blk >= store.blks.size() || !store.blks[blk].live)
+    return detail::none;
+  return store.blks[blk].data.fn;
+}
+
+std::uint32_t fn_for_val(const detail::Store& store, std::uint32_t value) {
+  if (value >= store.vals.size() || !store.vals[value].live)
+    return detail::none;
+  const std::uint32_t fn = store.vals[value].data.fn;
+  return fn < store.fns.size() && store.fns[fn].live ? fn : detail::none;
+}
+
 std::optional<std::size_t>
 generic_index(const std::vector<std::string>& generics, std::string_view name) {
   const auto found = std::find(generics.begin(), generics.end(), name);
@@ -114,6 +130,20 @@ bool carried_arg(const detail::Store& store, std::uint32_t value) {
     return false;
   }
   return false;
+}
+
+void add_user(detail::Store& store, std::uint32_t value,
+              std::uint32_t user) {
+  auto& users = store.vals[value].data.users;
+  users.insert(std::upper_bound(users.begin(), users.end(), user), user);
+}
+
+void remove_user(detail::Store& store, std::uint32_t value,
+                 std::uint32_t user) {
+  auto& users = store.vals[value].data.users;
+  const auto found = std::lower_bound(users.begin(), users.end(), user);
+  if (found != users.end() && *found == user)
+    users.erase(found);
 }
 
 using Bindings = std::unordered_map<std::string, Ty>;
@@ -281,10 +311,100 @@ bool detail::same_type_pattern(
   return true;
 }
 
-void detail::touch(Store& store) {
+void detail::touch(Store& store, std::uint32_t fn) {
   if (store.revision != std::numeric_limits<std::uint64_t>::max())
     ++store.revision;
-  store.queries.clear();
+  const auto bump = [](FnData& data) {
+    if (data.revision != std::numeric_limits<std::uint64_t>::max())
+      ++data.revision;
+  };
+  if (fn != none && fn < store.fns.size() && store.fns[fn].live) {
+    bump(store.fns[fn].data);
+  } else {
+    if (store.structure_revision !=
+        std::numeric_limits<std::uint64_t>::max())
+      ++store.structure_revision;
+    for (auto& entry : store.fns)
+      if (entry.live)
+        bump(entry.data);
+  }
+}
+
+void detail::touch_verified(Store& store, std::uint32_t fn) {
+  const bool verified = store.verified_env != 0 &&
+                        store.verified_revision == store.revision;
+  touch(store, fn);
+  if (verified)
+    store.verified_revision = store.revision;
+}
+
+void detail::touch_functions(Store& store,
+                             std::span<const std::uint32_t> fns) {
+  if (store.revision != std::numeric_limits<std::uint64_t>::max())
+    ++store.revision;
+  std::set<std::uint32_t> unique;
+  for (const std::uint32_t fn : fns)
+    if (fn < store.fns.size() && store.fns[fn].live)
+      unique.insert(fn);
+  for (const std::uint32_t fn : unique) {
+    detail::FnData& data = store.fns[fn].data;
+    if (data.revision != std::numeric_limits<std::uint64_t>::max())
+      ++data.revision;
+  }
+}
+
+void detail::touch_functions_verified(
+    Store& store, std::span<const std::uint32_t> fns) {
+  const bool verified = store.verified_env != 0 &&
+                        store.verified_revision == store.revision;
+  touch_functions(store, fns);
+  if (verified)
+    store.verified_revision = store.revision;
+}
+
+std::vector<std::uint32_t>
+detail::affected(const Store& store, std::span<const std::uint32_t> roots) {
+  for (const std::uint32_t value : roots)
+    if (value >= store.vals.size() || !store.vals[value].live)
+      return {};
+
+  if (store.affected_marks.size() < store.ops.size())
+    store.affected_marks.resize(store.ops.size());
+  if (++store.affected_epoch == 0) {
+    std::fill(store.affected_marks.begin(), store.affected_marks.end(), 0);
+    store.affected_epoch = 1;
+  }
+  const std::uint32_t epoch = store.affected_epoch;
+  std::vector<std::uint32_t> pending;
+  const auto enqueue = [&](std::uint32_t op) {
+    if (op < store.ops.size() && store.ops[op].live &&
+        store.affected_marks[op] != epoch) {
+      store.affected_marks[op] = epoch;
+      pending.push_back(op);
+    }
+  };
+  for (const std::uint32_t value : roots)
+    for (const std::uint32_t user : store.vals[value].data.users)
+      enqueue(user);
+
+  for (std::size_t cursor = 0; cursor < pending.size(); ++cursor) {
+    const std::uint32_t op = pending[cursor];
+    const OpData& data = store.ops[op].data;
+    for (const std::uint32_t block : data.blks) {
+      if (block >= store.blks.size() || !store.blks[block].live)
+        continue;
+      for (const std::uint32_t nested : store.blks[block].data.ops)
+        enqueue(nested);
+    }
+    for (const std::uint32_t output : data.outs) {
+      if (output >= store.vals.size() || !store.vals[output].live)
+        continue;
+      for (const std::uint32_t user : store.vals[output].data.users)
+        enqueue(user);
+    }
+  }
+  std::sort(pending.begin(), pending.end());
+  return pending;
 }
 
 Mod::Mod() : impl_(std::make_unique<Impl>()) {}
@@ -421,6 +541,73 @@ std::vector<Val> Mod::vals() const {
   return out;
 }
 
+std::vector<std::size_t> Mod::path(Op target) const {
+  if (!target.valid() || target.store_ != &impl_->store)
+    return {};
+  const Fn fn = target.blk().fn();
+  if (!fn || fn.store_ != &impl_->store || !fn.body())
+    return {};
+  std::vector<std::size_t> reverse;
+  Op current = target;
+  while (current) {
+    const Blk block = current.blk();
+    const std::vector<Op> operations = block.ops();
+    const auto operation = std::find(operations.begin(), operations.end(),
+                                     current);
+    if (operation == operations.end())
+      return {};
+    reverse.push_back(
+        static_cast<std::size_t>(operation - operations.begin()));
+    if (block == fn.body())
+      break;
+    const Op parent = block.op();
+    if (!parent)
+      return {};
+    const std::vector<Blk> blocks = parent.blks();
+    const auto child = std::find(blocks.begin(), blocks.end(), block);
+    if (child == blocks.end())
+      return {};
+    reverse.push_back(static_cast<std::size_t>(child - blocks.begin()));
+    current = parent;
+  }
+  std::reverse(reverse.begin(), reverse.end());
+  return reverse;
+}
+
+Op Mod::at(Fn fn, std::span<const std::size_t> path) const {
+  if (!fn.valid() || fn.store_ != &impl_->store || !fn.body() ||
+      path.empty() || path.size() % 2 == 0)
+    return {};
+  Blk block = fn.body();
+  for (std::size_t position = 0; position < path.size(); position += 2) {
+    const std::vector<Op> operations = block.ops();
+    if (path[position] >= operations.size())
+      return {};
+    const Op operation = operations[path[position]];
+    if (position + 1 == path.size())
+      return operation;
+    const std::vector<Blk> blocks = operation.blks();
+    if (path[position + 1] >= blocks.size())
+      return {};
+    block = blocks[path[position + 1]];
+  }
+  return {};
+}
+
+std::vector<Op> Mod::affected(std::span<const Val> roots) const {
+  std::vector<std::uint32_t> values;
+  values.reserve(roots.size());
+  for (const Val value : roots) {
+    if (!value.valid() || value.store_ != &impl_->store)
+      return {};
+    values.push_back(value.id_);
+  }
+  std::vector<Op> out;
+  for (const std::uint32_t id : detail::affected(impl_->store, values))
+    out.push_back(Op(&impl_->store, id, impl_->store.ops[id].generation));
+  return out;
+}
+
 std::vector<Fn> Mod::find_fns(std::string_view name) const {
   std::vector<Fn> out;
   const auto found = impl_->store.symbols.find(std::string(name));
@@ -486,6 +673,7 @@ Op Mod::call(Op before, std::string callee, std::span<const Val> args,
   for (std::size_t index = 0; index < types.size(); ++index) {
     const auto value_id = static_cast<std::uint32_t>(store.vals.size());
     detail::ValData value;
+    value.fn = store.blks[blk].data.fn;
     value.type = types[index];
     value.def = op_id;
     value.index = index;
@@ -496,7 +684,7 @@ Op Mod::call(Op before, std::string callee, std::span<const Val> args,
   store.ops.push_back({std::move(op), 1, true});
   order.insert(position, op_id);
   detail::rebuild_uses(store);
-  touch(store);
+  touch(store, store.blks[blk].data.fn);
   return Op(&store, op_id, store.ops[op_id].generation);
 }
 
@@ -545,8 +733,7 @@ Op Mod::call(const Env& env, Op before, Fn target,
     return rollback();
   }
   store.revision = backup.revision;
-  store.queries.clear();
-  touch(store);
+  touch(store, fn_for_op(store, result.id_));
   return result;
 }
 
@@ -586,6 +773,7 @@ Val Mod::constant(Op before, Attr literal, Ty type) {
   const auto op_id = static_cast<std::uint32_t>(store.ops.size());
   const auto value_id = static_cast<std::uint32_t>(store.vals.size());
   detail::ValData value;
+  value.fn = store.blks[blk].data.fn;
   value.type = std::move(type);
   value.def = op_id;
   value.type_annotation = true;
@@ -598,7 +786,7 @@ Val Mod::constant(Op before, Attr literal, Ty type) {
   store.vals.push_back({std::move(value), 1, true});
   store.ops.push_back({std::move(op), 1, true});
   order.insert(position, op_id);
-  touch(store);
+  touch(store, store.blks[blk].data.fn);
   return Val(&store, value_id, store.vals[value_id].generation);
 }
 
@@ -705,6 +893,7 @@ Op Mod::loop(Op before, std::span<const std::string> names,
 
   for (Val value : carried) {
     detail::ValData result;
+    result.fn = store.blks[parent].data.fn;
     result.name = std::string(value.name());
     result.type = value.type();
     result.meta = value.meta();
@@ -725,6 +914,7 @@ Op Mod::loop(Op before, std::span<const std::string> names,
   for (const std::string& name : names) {
     detail::ValData arg;
     arg.kind = detail::ValKind::blk_arg;
+    arg.fn = store.blks[parent].data.fn;
     arg.name = name;
     arg.type = Ty("index");
     const auto id = static_cast<std::uint32_t>(store.vals.size());
@@ -735,6 +925,7 @@ Op Mod::loop(Op before, std::span<const std::string> names,
   for (Val value : carried) {
     detail::ValData arg;
     arg.kind = detail::ValKind::blk_arg;
+    arg.fn = store.blks[parent].data.fn;
     arg.name = std::string(value.name());
     arg.type = value.type();
     arg.meta = value.meta();
@@ -752,7 +943,7 @@ Op Mod::loop(Op before, std::span<const std::string> names,
   store.ops.push_back({std::move(yield), 1, true});
   store.blks[blk_id].data.ops.push_back(yield_id);
   detail::rebuild_uses(store);
-  touch(store);
+  touch(store, store.blks[parent].data.fn);
   return Op(&store, op_id, store.ops[op_id].generation);
 }
 
@@ -806,8 +997,10 @@ Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
   const auto op_id = static_cast<std::uint32_t>(store.ops.size());
   store.ops.push_back({std::move(data), 1, true});
   parent_ops.insert(position, op_id);
+  const std::uint32_t fn = store.blks[parent].data.fn;
   for (Val value : carried) {
     detail::ValData result;
+    result.fn = fn;
     result.name = std::string(value.name());
     result.type = value.type();
     result.meta = value.meta();
@@ -818,7 +1011,6 @@ Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
     store.ops[op_id].data.outs.push_back(id);
   }
 
-  const std::uint32_t fn = store.blks[parent].data.fn;
   for (std::size_t arm = 0; arm < 2; ++arm) {
     detail::BlkData body;
     body.fn = fn;
@@ -831,6 +1023,7 @@ Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
     for (Val value : carried) {
       detail::ValData arg;
       arg.kind = detail::ValKind::blk_arg;
+      arg.fn = fn;
       arg.name = std::string(value.name());
       arg.type = value.type();
       arg.meta = value.meta();
@@ -849,7 +1042,7 @@ Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
     store.blks[blk_id].data.ops.push_back(yield_id);
   }
   detail::rebuild_uses(store);
-  touch(store);
+  touch(store, fn);
   return Op(&store, op_id, store.ops[op_id].generation);
 }
 
@@ -1003,6 +1196,7 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
 
     for (const std::uint32_t old_value : old.outs) {
       detail::ValData value = store.vals[old_value].data;
+      value.fn = fn;
       if (roots.contains(old_id) &&
           (old.form == Op::Form::let || old.form == Op::Form::var))
         value.name = copy_name(value.name);
@@ -1043,6 +1237,7 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
           store.blks[old_blk].data.ops;
       for (const std::uint32_t old_arg : old_args) {
         detail::ValData value = store.vals[old_arg].data;
+        value.fn = fn;
         const auto mapped_name = substituted_names.find(value.name);
         if (mapped_name != substituted_names.end() &&
             !mapped_name->second.empty())
@@ -1070,7 +1265,7 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
     return reject("clone insertion point is not in its Blk", before.loc());
   order.insert(position, cloned_ids.begin(), cloned_ids.end());
   detail::rebuild_uses(store);
-  touch(store);
+  touch(store, store.blks[destination].data.fn);
   std::vector<Op> copies;
   copies.reserve(cloned_ids.size());
   for (const std::uint32_t id : cloned_ids)
@@ -1289,6 +1484,7 @@ Fn Mod::clone_one(const Env& env, Fn source_fn, std::string name,
   std::unordered_map<std::uint32_t, std::uint32_t> values;
   const auto copy_value = [&](std::uint32_t old_id) {
     detail::ValData value = source->vals[old_id].data;
+    value.fn = next_fn_id;
     value.type = substitute(value.type, bindings);
     value.users.clear();
     const auto next_id = static_cast<std::uint32_t>(store.vals.size());
@@ -1321,6 +1517,7 @@ Fn Mod::clone_one(const Env& env, Fn source_fn, std::string name,
     store.ops.push_back({std::move(op), 1, true});
     store.blks[body_id].data.ops.push_back(op_id);
     detail::ValData result;
+    result.fn = next_fn_id;
     result.type = std::move(type);
     result.def = op_id;
     const auto result_id = static_cast<std::uint32_t>(store.vals.size());
@@ -1362,6 +1559,7 @@ Fn Mod::clone_one(const Env& env, Fn source_fn, std::string name,
       store.ops.push_back({std::move(op), 1, true});
       store.blks[body_id].data.ops.push_back(op_id);
       detail::ValData result;
+      result.fn = next_fn_id;
       result.type = type;
       result.def = op_id;
       result.type_annotation = true;
@@ -1459,6 +1657,7 @@ Fn Mod::clone_one(const Env& env, Fn source_fn, std::string name,
     store.blks[blk].data.ops.push_back(next_id);
     for (const std::uint32_t old_value : old.outs) {
       detail::ValData value = source->vals[old_value].data;
+      value.fn = next_fn_id;
       value.type = substitute(value.type, bindings);
       value.def = next_id;
       value.index = store.ops[next_id].data.outs.size();
@@ -1479,6 +1678,7 @@ Fn Mod::clone_one(const Env& env, Fn source_fn, std::string name,
       store.ops[next_id].data.blks.push_back(body_id);
       for (const std::uint32_t old_arg : source->blks[old_blk].data.args) {
         detail::ValData value = source->vals[old_arg].data;
+        value.fn = next_fn_id;
         value.type = substitute(value.type, bindings);
         value.users.clear();
         const auto value_id = static_cast<std::uint32_t>(store.vals.size());
@@ -1616,7 +1816,7 @@ Fn Mod::bind(const Env& env, Op call, Fn source_fn, std::string name,
 }
 
 bool Mod::expand(const Env& env, Op call, Fn callee,
-                 std::string_view semantic) {
+                 std::string_view semantic, std::vector<Op>* created) {
   auto& store = impl_->store;
   if (!call.valid() || call.store_ != &store ||
       call.kind() != Op::Kind::call) {
@@ -1636,6 +1836,7 @@ bool Mod::expand(const Env& env, Op call, Fn callee,
     return false;
   }
 
+  const std::size_t created_begin = store.ops.size();
   const Blk destination_block = call.blk();
   const Op parent = destination_block.op();
   const std::vector<Val> parent_outputs = parent ? parent.outs()
@@ -1817,9 +2018,12 @@ bool Mod::expand(const Env& env, Op call, Fn callee,
     const auto next_id = static_cast<std::uint32_t>(store.ops.size());
     store.ops.push_back({std::move(next), 1, true});
     store.blks[blk].data.ops.push_back(next_id);
+    for (const std::uint32_t argument : store.ops[next_id].data.args)
+      add_user(store, argument, next_id);
 
     for (const std::uint32_t old_value : old.outs) {
       detail::ValData value = source.vals[old_value].data;
+      value.fn = owner;
       value.name = copy_name(value.name);
       value.type = substitute(value.type, bindings);
       value.def = next_id;
@@ -1847,6 +2051,7 @@ bool Mod::expand(const Env& env, Op call, Fn callee,
       for (std::size_t index = 0; index < old_args.size(); ++index) {
         const std::uint32_t old_arg = old_args[index];
         detail::ValData value = source.vals[old_arg].data;
+        value.fn = owner;
         value.name = copy_name(value.name);
         value.type = substitute(value.type, bindings);
         value.users.clear();
@@ -1898,6 +2103,9 @@ bool Mod::expand(const Env& env, Op call, Fn callee,
     replacements.push_back(mapped->second);
   }
 
+  // The copied body consumes the call's inputs, never its outputs. Therefore
+  // every output use is already in the maintained def-use list; update those
+  // users directly instead of rescanning the complete module for each call.
   for (std::size_t index = 0; index < call_outs.size(); ++index) {
     const detail::ValData& boundary_data =
         store.vals[call_outs[index].id_].data;
@@ -1930,16 +2138,23 @@ bool Mod::expand(const Env& env, Op call, Fn callee,
   if (position == order.end())
     return reject("expanded call is not in its Blk", call.loc());
   order.insert(position, roots.begin(), roots.end());
-  for (auto& slot : store.ops) {
-    if (!slot.live)
-      continue;
-    for (std::uint32_t& arg : slot.data.args) {
-      for (std::size_t index = 0; index < call_outs.size(); ++index)
-        if (arg == call_outs[index].id_)
-          arg = replacements[index];
+  for (std::size_t index = 0; index < call_outs.size(); ++index) {
+    const std::uint32_t old_value = call_outs[index].id_;
+    const std::uint32_t new_value = replacements[index];
+    std::vector<std::uint32_t> users = store.vals[old_value].data.users;
+    users.erase(std::unique(users.begin(), users.end()), users.end());
+    for (const std::uint32_t user : users) {
+      if (user >= store.ops.size() || !store.ops[user].live)
+        continue;
+      for (std::uint32_t& arg : store.ops[user].data.args) {
+        if (arg == old_value) {
+          arg = new_value;
+          remove_user(store, old_value, user);
+          add_user(store, new_value, user);
+        }
+      }
     }
   }
-  detail::rebuild_uses(store);
   for (std::size_t index = 0; index < call_outs.size(); ++index) {
     const std::string name = store.vals[call_outs[index].id_].data.name;
     if (name.empty())
@@ -1951,15 +2166,25 @@ bool Mod::expand(const Env& env, Op call, Fn callee,
                     call.loc());
   }
   order.erase(std::remove(order.begin(), order.end(), call.id_), order.end());
+  for (const std::uint32_t argument : store.ops[call.id_].data.args)
+    remove_user(store, argument, call.id_);
   for (Val output : call_outs) {
+    store.vals[output.id_].data.users.clear();
     store.vals[output.id_].live = false;
     ++store.vals[output.id_].generation;
   }
   store.ops[call.id_].live = false;
   ++store.ops[call.id_].generation;
-  detail::rebuild_uses(store);
   store.revision = before;
-  touch(store);
+  touch(store, destination_block.fn().id_);
+  if (created) {
+    created->clear();
+    created->reserve(store.ops.size() - created_begin);
+    for (std::size_t id = created_begin; id < store.ops.size(); ++id)
+      if (store.ops[id].live)
+        created->push_back(Op(&store, static_cast<std::uint32_t>(id),
+                              store.ops[id].generation));
+  }
   return true;
 }
 
@@ -2072,7 +2297,7 @@ bool Mod::move(Op op, Op before) {
       }
     }
   }
-  touch(store);
+  touch(store, store.blks[target].data.fn);
   return true;
 }
 
@@ -2162,7 +2387,7 @@ bool Mod::args(const Env& env, Op op, std::span<const Val> values) {
     return true;
   store.ops[op.id_].data.args = std::move(next);
   detail::rebuild_uses(store);
-  touch(store);
+  touch(store, fn_for_op(store, op.id_));
   return true;
 }
 
@@ -2288,7 +2513,7 @@ bool Mod::fuse(const Env& env, std::span<const Op> ops, std::string callee) {
       return rollback();
   }
   store.revision = backup.revision;
-  touch(store);
+  touch(store, fn_for_val(store, fused.id_));
   return true;
 }
 
@@ -2319,6 +2544,11 @@ bool Mod::replace(Op op, Attr value) {
       data.callee.empty() && data.args.empty())
     return false;
 
+  // The replacement removes this operation's operand edges but neither adds
+  // edges nor changes any other operation. Maintain exactly those reverse
+  // uses instead of rebuilding the complete store for one local edit.
+  for (const std::uint32_t argument : data.args)
+    remove_user(store, argument, op.id_);
   data.kind = Op::Kind::constant;
   data.callee.clear();
   data.args.clear();
@@ -2327,8 +2557,7 @@ bool Mod::replace(Op op, Attr value) {
   data.carried_count = 0;
   data.logic = detail::Logic::none;
   data.literal = std::move(value);
-  detail::rebuild_uses(store);
-  detail::touch(store);
+  detail::touch_verified(store, fn_for_op(store, op.id_));
   return true;
 }
 
@@ -2402,20 +2631,22 @@ bool Mod::replace(std::span<const Val> old_values,
     }
   }
   bool changed = false;
-  for (auto& entry : store.ops) {
+  for (std::uint32_t user = 0; user < store.ops.size(); ++user) {
+    auto& entry = store.ops[user];
     if (!entry.live)
       continue;
     for (std::uint32_t& arg : entry.data.args) {
       const auto found = replacements.find(arg);
       if (found != replacements.end() && arg != found->second) {
+        remove_user(store, arg, user);
         arg = found->second;
+        add_user(store, arg, user);
         changed = true;
       }
     }
   }
-  detail::rebuild_uses(store);
   if (changed)
-    detail::touch(store);
+    detail::touch(store, fn_for_val(store, old_values.front().id_));
   return true;
 }
 
@@ -2448,13 +2679,14 @@ bool Mod::replace(Val old_value, Val new_value, Op user) {
   bool changed = false;
   for (std::uint32_t& arg : store.ops[user.id_].data.args) {
     if (arg == old_value.id_) {
+      remove_user(store, arg, user.id_);
       arg = new_value.id_;
+      add_user(store, arg, user.id_);
       changed = true;
     }
   }
   if (changed) {
-    detail::rebuild_uses(store);
-    detail::touch(store);
+    detail::touch(store, fn_for_op(store, user.id_));
   }
   return true;
 }
@@ -2535,10 +2767,11 @@ bool Mod::erase(std::span<const Op> roots) {
     ++store.vals[value].generation;
   }
   for (const std::uint32_t id : ops) {
+    for (const std::uint32_t argument : store.ops[id].data.args)
+      remove_user(store, argument, id);
     store.ops[id].live = false;
     ++store.ops[id].generation;
   }
-  detail::rebuild_uses(store);
   detail::touch(store);
   return true;
 }
@@ -2899,7 +3132,7 @@ bool Mod::rename(Val value, std::string name) {
     }
   }
   if (changed)
-    touch(store);
+    touch(store, fn_for_val(store, value.id_));
   return true;
 }
 
@@ -2938,7 +3171,7 @@ bool Mod::rename(const Env& env, Op call, std::string callee) {
     }
   }
   store.ops[call.id_].data.callee = std::move(callee);
-  touch(store);
+  touch(store, fn_for_op(store, call.id_));
   return true;
 }
 
@@ -2996,7 +3229,7 @@ bool Mod::retarget(const Env& env, Op call, std::string callee,
   op.args = std::move(values);
   if (changed_args)
     detail::rebuild_uses(store);
-  touch(store);
+  touch(store, fn_for_op(store, call.id_));
   return true;
 }
 

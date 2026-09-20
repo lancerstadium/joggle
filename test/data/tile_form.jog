@@ -1,4 +1,4 @@
-module tile_form
+mod tile_form
 use tensor
 
 fn stencil(

@@ -1,7 +1,0 @@
-module prepared
-use ir
-use c
-
-fn apply(m: Mod) -> bool {
-  return c.prepare(m)
-}

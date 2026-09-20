@@ -1,4 +1,4 @@
-module mem_safety
+mod mem_safety
 use tensor
 
 fn view_reuse(a: f32, b: f32) -> f32 {

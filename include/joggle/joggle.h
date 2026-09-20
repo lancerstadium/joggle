@@ -98,6 +98,157 @@ struct Loc {
   friend bool operator==(const Loc&, const Loc&) = default;
 };
 
+enum class QueryMiss : std::uint8_t {
+  none,
+  cold,
+  environment,
+  whole_revision,
+  structure_revision,
+  package_dependencies,
+  function_generation,
+  function_revision,
+  function_shape,
+  operation_generation,
+  operation_revision,
+  value_generation,
+  value_revision
+};
+
+struct QueryReport {
+  bool cached = false;
+  QueryMiss miss = QueryMiss::cold;
+  std::size_t observed_functions = 0;
+  std::size_t observed_collections = 0;
+  std::size_t observed_operations = 0;
+  std::size_t observed_values = 0;
+  std::size_t observed_packages = 0;
+  std::size_t observed_intrinsics = 0;
+  bool observed_structure = false;
+  bool observed_whole_mod = false;
+  bool verification_cached = false;
+  std::chrono::nanoseconds lookup{};
+  std::chrono::nanoseconds snapshot{};
+  std::chrono::nanoseconds verification{};
+  std::chrono::nanoseconds evaluation{};
+  std::chrono::nanoseconds validation{};
+  std::chrono::nanoseconds execute{};
+};
+
+struct RunFunctionTiming {
+  std::uint64_t invocations = 0;
+  std::uint64_t memo_hits = 0;
+  std::uint64_t plan_evaluated_ops = 0;
+  std::uint64_t plan_loop_iterations = 0;
+};
+
+struct RunStepTiming {
+  std::string function;
+  bool succeeded = false;
+  bool verification_cached = false;
+  bool counters_enabled = false;
+  std::uint64_t before = 0;
+  std::uint64_t after = 0;
+  std::uint64_t evaluated_ops = 0;
+  std::uint64_t frame_lookups = 0;
+  std::uint64_t frame_probes = 0;
+  std::uint64_t frame_writes = 0;
+  std::uint64_t frame_pool_hits = 0;
+  std::uint64_t frame_pool_misses = 0;
+  std::uint64_t frame_growths = 0;
+  std::uint64_t frame_peak_capacity = 0;
+  std::uint64_t plan_compiles = 0;
+  std::uint64_t plan_hits = 0;
+  std::uint64_t plan_fallbacks = 0;
+  std::uint64_t plan_persistent_hits = 0;
+  std::uint64_t plan_cache_resets = 0;
+  std::uint64_t plan_window_hits = 0;
+  std::uint64_t plan_window_misses = 0;
+  std::uint64_t plan_branches = 0;
+  std::uint64_t plan_loops = 0;
+  std::uint64_t plan_loop_iterations = 0;
+  std::uint64_t plan_returns = 0;
+  std::uint64_t plan_yields = 0;
+  std::uint64_t plan_direct_yields = 0;
+  std::uint64_t plan_direct_block_entries = 0;
+  std::uint64_t plan_call_argument_vectors = 0;
+  std::uint64_t plan_call_argument_items = 0;
+  std::uint64_t plan_call_argument_arity_0 = 0;
+  std::uint64_t plan_call_argument_arity_1 = 0;
+  std::uint64_t plan_call_argument_arity_2 = 0;
+  std::uint64_t plan_call_argument_arity_many = 0;
+  std::uint64_t plan_call_argument_materializations = 0;
+  std::uint64_t plan_call_result_vectors = 0;
+  std::uint64_t plan_call_result_items = 0;
+  std::uint64_t plan_call_direct_results = 0;
+  std::uint64_t plan_call_passthroughs = 0;
+  std::uint64_t plan_call_lists = 0;
+  std::uint64_t plan_call_intrinsics = 0;
+  std::uint64_t plan_call_operators = 0;
+  std::uint64_t plan_call_fundamentals = 0;
+  std::uint64_t plan_call_invocations = 0;
+  std::uint64_t plan_direct_operator_links = 0;
+  std::uint64_t dispatch_hits = 0;
+  std::uint64_t dispatch_misses = 0;
+  std::uint64_t plan_dispatch_hits = 0;
+  std::uint64_t plan_dispatch_misses = 0;
+  std::map<std::string, RunFunctionTiming, std::less<>> functions;
+  std::chrono::nanoseconds resolve{};
+  std::chrono::nanoseconds evaluation{};
+  std::chrono::nanoseconds verification{};
+  std::chrono::nanoseconds total{};
+};
+
+struct RunTiming {
+  bool succeeded = false;
+  bool initial_verification_cached = false;
+  bool structural_snapshot = false;
+  std::chrono::nanoseconds snapshot{};
+  std::chrono::nanoseconds initial_verification{};
+  std::vector<RunStepTiming> steps;
+};
+
+enum class ReactiveMiss : std::uint8_t {
+  none,
+  cold,
+  environment,
+  arguments,
+  whole_revision,
+  structure_revision,
+  package_dependencies,
+  function_generation,
+  function_revision,
+  function_shape,
+  operation_generation,
+  operation_revision,
+  value_generation,
+  value_revision,
+  upstream
+};
+
+struct ReactiveStageReport {
+  std::string function;
+  bool executed = false;
+  ReactiveMiss miss = ReactiveMiss::cold;
+  std::size_t observed_functions = 0;
+  std::size_t observed_collections = 0;
+  std::size_t observed_operations = 0;
+  std::size_t observed_values = 0;
+  std::size_t observed_packages = 0;
+  std::size_t observed_intrinsics = 0;
+  bool observed_structure = false;
+  bool observed_whole_mod = false;
+  std::size_t changed_functions = 0;
+};
+
+struct ReactiveRunReport {
+  bool succeeded = false;
+  bool cold = false;
+  std::size_t executed_stages = 0;
+  std::size_t reused_stages = 0;
+  std::vector<ReactiveStageReport> stages;
+  RunTiming execution;
+};
+
 struct Diag {
   Severity severity = Severity::error;
   std::string message;
@@ -241,7 +392,8 @@ public:
   Blk blk() const noexcept;
   const Attr::Dict& meta() const noexcept;
   const Attr* meta(std::string_view key) const noexcept;
-  Loc loc() const;
+  // Borrowed from the owning Mod; do not retain across a mutation.
+  const Loc& loc() const noexcept;
 
   friend bool operator==(const Op&, const Op&) = default;
 
@@ -292,6 +444,7 @@ public:
   explicit operator bool() const noexcept;
   std::string_view name() const noexcept;
   std::string_view module() const noexcept;
+  std::uint64_t revision() const noexcept;
   std::vector<Val> generics() const;
   std::vector<Val> params() const;
   std::vector<Ty> returns() const;
@@ -303,7 +456,8 @@ public:
   std::vector<Blk> blks() const;
   std::vector<Op> ops() const;
   std::vector<Val> vals() const;
-  Loc loc() const;
+  // Borrowed from the owning Mod; do not retain across a mutation.
+  const Loc& loc() const noexcept;
 
   friend bool operator==(const Fn&, const Fn&) = default;
 
@@ -374,6 +528,10 @@ private:
   bool reaches(std::string_view from, std::string_view target) const;
   std::uint64_t cache_id() const noexcept;
   std::uint64_t cache_epoch() const noexcept;
+  bool owns(Fn function) const noexcept;
+  std::shared_ptr<void> evaluator_cache(std::uint64_t& epoch) const noexcept;
+  void evaluator_cache(std::shared_ptr<void> cache,
+                       std::uint64_t epoch) noexcept;
   Fn match(Op call, std::span<const Fn> candidates, bool* ambiguous,
            std::vector<Ty>* generics) const;
   Fn resolve(const Mod& from, Op call, std::string_view callee,
@@ -383,9 +541,10 @@ private:
   friend class Parser;
   friend class Mod;
   friend class detail::Eval;
+  friend class ReactiveSchedule;
   friend bool parse(Env&, std::string_view, Attr&, std::string_view);
   friend bool query(Env&, std::string_view, const Mod&, Attr&,
-                    std::span<const Attr>, bool*);
+                    std::span<const Attr>, QueryReport*);
 };
 
 class Mod {
@@ -404,6 +563,13 @@ public:
   std::vector<Fn> fns() const;
   std::vector<Op> ops() const;
   std::vector<Val> vals() const;
+  /// Return a structural operation path as alternating operation and child-
+  /// block indices, starting at the owning function's body. Empty means that
+  /// the operation is not a live member of this module.
+  std::vector<std::size_t> path(Op op) const;
+  /// Resolve a structural path produced by path() in a live function.
+  Op at(Fn fn, std::span<const std::size_t> path) const;
+  std::vector<Op> affected(std::span<const Val> roots) const;
   std::vector<Fn> find_fns(std::string_view name) const;
   Fn find_fn(std::string_view name) const;
   std::uint64_t revision() const noexcept;
@@ -472,7 +638,8 @@ private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
 
-  bool expand(const Env& env, Op call, Fn callee, std::string_view semantic);
+  bool expand(const Env& env, Op call, Fn callee, std::string_view semantic,
+              std::vector<Op>* created = nullptr);
   Fn clone_one(const Env& env, Fn source, std::string name,
                std::span<const Ty> generics,
                std::span<const std::pair<Fn, std::string>> helpers);
@@ -481,9 +648,29 @@ private:
   friend class Parser;
   friend class Env;
   friend class detail::Eval;
+  friend class ReactiveSchedule;
   friend bool query(Env&, std::string_view, const Mod&, Attr&,
-                    std::span<const Attr>, bool*);
+                    std::span<const Attr>, QueryReport*);
   friend std::string print(const Mod&);
+};
+
+class ReactiveSchedule {
+public:
+  explicit ReactiveSchedule(std::vector<std::string> stages);
+  ~ReactiveSchedule();
+  ReactiveSchedule(ReactiveSchedule&&) noexcept;
+  ReactiveSchedule& operator=(ReactiveSchedule&&) noexcept;
+  ReactiveSchedule(const ReactiveSchedule&) = delete;
+  ReactiveSchedule& operator=(const ReactiveSchedule&) = delete;
+
+  bool run(Env& env, Mod& mod, std::span<const Attr> args = {},
+           ReactiveRunReport* report = nullptr);
+  void reset() noexcept;
+  std::vector<std::string> stages() const;
+
+private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
 };
 
 bool parse(Env& env, std::string_view source, Mod& out,
@@ -503,9 +690,9 @@ bool run(Env& env, std::string_view function, Mod& mod, Attr& report);
 bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
          std::span<const Attr> args);
 bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
-         std::chrono::nanoseconds& elapsed);
+         RunTiming& timing);
 bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
-         std::span<const Attr> args, std::chrono::nanoseconds& elapsed);
+         std::span<const Attr> args, RunTiming& timing);
 bool run(Env& env, Fn function, Mod& mod, Attr& report,
          std::span<const Attr> args = {});
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod);
@@ -516,9 +703,11 @@ bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
          Attr& report, std::span<const Attr> args);
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
-         Attr& report, std::vector<std::chrono::nanoseconds>& elapsed);
+         Attr& report, RunTiming& timing);
+bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
+         Attr& report, std::span<const Attr> args, RunTiming& timing);
 bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
-           std::span<const Attr> args = {}, bool* cached = nullptr);
+           std::span<const Attr> args = {}, QueryReport* report = nullptr);
 bool query(Env& env, Fn function, const Mod& mod, Attr& result,
            std::span<const Attr> args = {});
 

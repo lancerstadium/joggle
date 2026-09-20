@@ -1,4 +1,4 @@
-module chain
+mod chain
 use tensor
 
 fn add3(

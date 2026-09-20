@@ -169,16 +169,14 @@ local fn convert_loop(m: Mod, op: Op) -> bool {
     if !ir.live(storage) {
       return false
     }
-    let storage_name = local_name(op, "loop_scan_", i)
-    if storage_name == "" || !ir.rename(m, storage, storage_name) {
+    if !ir.rename(m, storage, "loop_scan_", i) {
       return false
     }
     state += [storage]
   }
   let count_index = len(state)
   let count = ir.constant(m, op, 0, ty("index"))
-  let count_name = local_name(op, "loop_count_", 0)
-  if count_name == "" || !ir.rename(m, count, count_name) {
+  if !ir.rename(m, count, "loop_count_", 0) {
     return false
   }
   state += [count]
@@ -229,13 +227,20 @@ local fn convert_loop(m: Mod, op: Op) -> bool {
     old += [params[input_count + i]]
     next += [inputs[position]]
   }
+  var roots: list<Op> = []
   for i in 0..len(body_ops) - 1 {
-    let copy = ir.clone(m, body_ops[i], then_yield, old, next)
-    if !ir.live(copy) {
+    roots += [body_ops[i]]
+  }
+  var copies: list<Op> = []
+  if len(roots) != 0 {
+    copies = ir.clone(m, roots, then_yield, old, next)
+    if len(copies) != len(roots) {
       return false
     }
-    old += ir.outs(body_ops[i])
-    next += ir.outs(copy)
+  }
+  for i in 0..len(roots) {
+    old += ir.outs(roots[i])
+    next += ir.outs(copies[i])
   }
 
   var yielded: list<Val> = [mapped(returned[0], old, next)]

@@ -134,7 +134,7 @@ int main(int argc, char** argv) {
   CHECK(!env.resolve(mod, retained));
 
   constexpr std::string_view mul_source =
-      "module float.mul\n"
+      "mod float.mul\n"
       "use tflite\n"
       "fn main(\n"
       "  left: tensor<f32, [1, 3]>, right: tensor<f32, [2, 1]>\n"
@@ -158,7 +158,7 @@ int main(int argc, char** argv) {
   CHECK(mul.verify(env));
 
   constexpr std::string_view max_pool_source =
-      "module max.pool\n"
+      "mod max.pool\n"
       "use tflite\n"
       "fn main(x: tensor<f32, [1, 4, 4, 1]>) "
       "-> tensor<f32, [1, 2, 2, 1]> {\n"

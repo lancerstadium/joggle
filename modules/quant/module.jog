@@ -1,4 +1,4 @@
-module quant
+mod quant
 use tensor
 use math
 

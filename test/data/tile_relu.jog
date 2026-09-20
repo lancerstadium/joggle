@@ -1,4 +1,4 @@
-module tile_relu
+mod tile_relu
 use nn
 use tensor
 

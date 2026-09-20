@@ -422,7 +422,7 @@ std::string print(const Mod& mod) {
   const detail::Store printable = printable_store(mod.impl_->store);
   const detail::Store& store = printable;
   std::ostringstream out;
-  out << "module " << store.name << '\n';
+  out << "mod " << store.name << '\n';
   for (const std::string& use : store.uses)
     out << "use " << use << '\n';
   if (!store.uses.empty() && !store.fns.empty())

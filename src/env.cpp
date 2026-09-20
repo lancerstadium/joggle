@@ -293,6 +293,8 @@ struct Env::Impl {
   std::set<std::string, std::less<>> loading;
   std::map<std::string, Native, std::less<>> natives;
   std::vector<void*> libraries;
+  std::shared_ptr<void> evaluator_cache;
+  std::uint64_t evaluator_cache_epoch = 0;
   mutable std::map<std::vector<std::string>, std::vector<const Mod*>>
       visibility;
 
@@ -305,6 +307,27 @@ struct Env::Impl {
 std::uint64_t Env::cache_id() const noexcept { return impl_->id; }
 
 std::uint64_t Env::cache_epoch() const noexcept { return impl_->epoch; }
+
+bool Env::owns(Fn function) const noexcept {
+  if (!function)
+    return false;
+  return std::any_of(impl_->modules.begin(), impl_->modules.end(),
+                     [&](const auto& entry) {
+                       return &entry.second->impl_->store == function.store_;
+                     });
+}
+
+std::shared_ptr<void>
+Env::evaluator_cache(std::uint64_t& epoch) const noexcept {
+  epoch = impl_->evaluator_cache_epoch;
+  return impl_->evaluator_cache;
+}
+
+void Env::evaluator_cache(std::shared_ptr<void> cache,
+                          std::uint64_t epoch) noexcept {
+  impl_->evaluator_cache = std::move(cache);
+  impl_->evaluator_cache_epoch = epoch;
+}
 
 Env::Env() : impl_(std::make_unique<Impl>()) {}
 Env::~Env() = default;
@@ -974,12 +997,11 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
       return rollback();
 
   mod.impl_->store.revision = backup.revision;
-  mod.impl_->store.queries.clear();
   std::size_t expanded = 0;
+  std::vector<Op> created;
   for (std::size_t index = 0; index < calls.size(); ++index) {
-    const std::vector<Op> before_ops = mod.ops();
     if (!mod.expand(*this, calls[index], implementations[index],
-                    semantics[index])) {
+                    semantics[index], &created)) {
       // Best effort keeps what succeeded so that a caller which would otherwise
       // retry one call at a time does not repeat thousands of expansions and pay
       // the snapshot and the closure clone for each of them.
@@ -987,10 +1009,8 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
         return rollback();
       break;
     }
-    for (Op op : mod.ops()) {
-      if (op.kind() != Op::Kind::call ||
-          std::find(before_ops.begin(), before_ops.end(), op) !=
-              before_ops.end())
+    for (Op op : created) {
+      if (op.kind() != Op::Kind::call)
         continue;
       const Fn target = lexical_target(implementations[index], op);
       if (!target)
@@ -1062,7 +1082,6 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
     }
   }
   mod.impl_->store.revision = backup.revision + expanded;
-  mod.impl_->store.queries.clear();
   const detail::Dom dom(mod.impl_->store);
   for (std::uint32_t id = 0; id < mod.impl_->store.ops.size(); ++id) {
     const detail::OpData& op = mod.impl_->store.ops[id].data;

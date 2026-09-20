@@ -1,4 +1,4 @@
-module locality
+mod locality
 use ir
 use opt
 use tile

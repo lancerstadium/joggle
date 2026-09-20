@@ -1,4 +1,4 @@
-module onnx
+mod onnx
 use tensor
 use ir
 

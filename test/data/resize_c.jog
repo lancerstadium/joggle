@@ -1,4 +1,4 @@
-module resize_c
+mod resize_c
 use nn
 
 fn nearest(

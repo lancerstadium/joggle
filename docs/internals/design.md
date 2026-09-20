@@ -145,10 +145,67 @@ The command-line interface exposes four operations:
 
 Embedding code uses the same resolution and invocation path. A sequence of
 mutations is one transaction: failure restores all IR and metadata changes.
+Before invocation, the evaluator compiles each function's complete structured
+control flow to dense value slots keyed by mod identity, function generation,
+and owner-function revision. Branches, loops, yields, and returns share one
+reusable register window per dynamic call. A value may be moved only by an
+operation in its owning block, preserving the interpreter's parent-scope
+capture semantics. Structurally unsupported functions fall back to the same
+interpreter and transaction boundary; the plan does not introduce a second IR
+or editing model. Plans for compiler functions owned by the `Env` persist
+across invocations and are discarded when its module-loading epoch changes.
+Plans for functions in caller-owned mods remain invocation-local, so the cache
+cannot retain handles past an external store's lifetime.
+
+The transaction saves diagnostics, query state, and revision stamps up front,
+then journals only the metadata objects actually changed. It materializes a
+full structural-store snapshot lazily at the first structural intrinsic. If
+metadata was already edited, the snapshot is reconstructed with the journal so
+it still represents the sequence's original state. This keeps metadata-only
+affected waves proportional to their touched set without weakening rollback.
+Affected-cone walks reuse an epoch-marked slot vector owned by the semantic
+store. Enqueue is constant-time and duplicate-free; the returned handles are
+sorted once so callers do not observe worklist order. The scratch vector grows
+with the operation arena and survives repeated read-only queries, while failed
+transactions restore semantic state independently of the next epoch.
 Handles carry liveness and ownership checks, and successful mutations advance
-a module revision used by analyses and diagnostics. Native calls likewise
+a module revision used by analyses and diagnostics. Each function also carries
+an owner-local revision. Read-only query cache entries distinguish function
+generation/content reads, exact function operation/value collections, and
+exact operation/value snapshots, plus structural or whole-module dependencies
+where required. An unrelated local edit therefore need not evict a precise
+entry. The embedding API's
+`ReactiveSchedule` extends the same observation rules to an ordered set of
+mutating stages. Its first run records each stage's classified inputs and the
+functions or structure it changes. Later runs compare exact snapshots and
+generation/revision stamps, propagate selected outputs to downstream inputs,
+and execute only the invalidated stages in one transaction. A failure
+therefore rolls back every selected stage, while an unrelated function edit
+can reuse the complete stage set. Arguments, environment epochs, or the target
+mod identity changing force a cold training run. This remains
+an observed-access scheduler rather than a general package-level dataflow
+system; unclassified intrinsics retain conservative whole-mod dependencies and
+the CLI remains a stateless single-invocation boundary.
+
+Successful verification is stamped with the
+environment identity, environment epoch, and mod revision. An unchanged mod
+reuses that stamp; edits with a local proof that they preserve validity
+(currently type-checked constant replacement) advance it with the revision.
+Other edits invalidate the stamp and force full verification before the next
+read-only query. A stamped mod is inspected directly: the evaluator rejects
+every mutating IR intrinsic before it can edit the store, while the revision
+check remains a backstop. An unstamped mod still uses a private verified copy.
+Native calls likewise
 publish result attributes only after every declared result has been written
 and type-checked; failure leaves the caller's prior result vector unchanged.
+
+Open-metadata edits are validity-preserving at the core boundary because the
+parser, type system, dominance checks, and shape verifier do not interpret
+extension-owned keys. They therefore advance only the owning function revision
+and carry a current verification stamp forward. Queries and policies that read
+metadata still invalidate through that function revision (or through an
+explicit whole-mod dependency); preserving structural validity is not the same
+as caching an extension's semantic decision.
 
 Primitive edits may temporarily expose both sides of a replacement inside one
 compile-time function. The transaction commits only after the verifier repeats
@@ -223,7 +280,10 @@ cover construction, cloning, movement, replacement, expansion, and fusion. A
 policy can be supplied as a normal function handle and invoked through
 `ir.invoke`; one or two extra typed values carry candidates and configuration
 when needed. This separates mechanism from experiment without inventing a
-scheduler object or callback ABI.
+pass-specific scheduler or callback ABI. Embedders that need persistent
+incremental execution can place these ordinary named transformations in a
+`ReactiveSchedule`; the transform definitions themselves remain unaware of
+that scheduler.
 
 The bundled `tile` module demonstrates structural loop transformation. Its
 operations select explicit loops or producer/consumer pairs and preserve
@@ -331,9 +391,9 @@ Those facilities may be integrated as modules or external tools. Keeping them
 outside the core lets the system remain small enough for a researcher to
 understand and modify.
 
-## Evidence standard
+## Validation levels
 
-Project and paper claims use distinct levels of evidence:
+Capabilities are described using distinct validation levels:
 
 1. **Parse:** source or external data can be decoded.
 2. **Resolve:** calls and types close under the selected module set.
@@ -342,7 +402,6 @@ Project and paper claims use distinct levels of evidence:
 5. **Execute:** an emitted artifact matches a reference within a stated error.
 6. **Improve:** a controlled comparison shows a resource or performance gain.
 
-Passing one level does not imply the next. Negative measurements are retained
-as design evidence, not rewritten as successful optimization claims. The
-evaluation plan and current evidence ledger live in
-[paper/README.md](../../paper/README.md).
+Passing one level does not imply the next. Public documentation names the test
+that establishes an implemented capability; local performance measurements do
+not become project guarantees.

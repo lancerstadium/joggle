@@ -5,7 +5,7 @@ analyses, transformations, codecs, and artifact generation with the same
 `.jog` functions used by application code.
 
 This document explains module boundaries and the bundled module set. The
-public declarations printed by `joggle module info` are the authoritative API
+public declarations printed by `joggle mod info` are the authoritative API
 of an installed package.
 
 ## Package layout
@@ -29,10 +29,10 @@ my_module/
     libmy_module.dylib
 ```
 
-`module.jog` begins with a module name and optional dependencies:
+`module.jog` begins with a `mod` declaration and optional dependencies:
 
 ```jog
-module my_module
+mod my_module
 use ir
 use tensor
 
@@ -77,12 +77,12 @@ module name, and `use` dependencies close transitively. Commands operate on
 the same public surface used by embedding code:
 
 ```sh
-joggle module list -M modules
-joggle module info tensor -M modules
-joggle module check tensor -M modules
-joggle module install path/to/source installed-modules -M modules
-joggle module upgrade path/to/source installed-modules -M modules
-joggle module uninstall my_module installed-modules
+joggle mod list -M modules
+joggle mod info tensor -M modules
+joggle mod check tensor -M modules
+joggle mod install path/to/source installed-modules -M modules
+joggle mod upgrade path/to/source installed-modules -M modules
+joggle mod uninstall my_module installed-modules
 ```
 
 Install and upgrade never treat the candidate's parent directory as an implicit
@@ -175,7 +175,7 @@ A module is ready to share when:
 
 - its name and public functions describe concepts rather than a development
   phase or version;
-- the intended public surface is visible in `joggle module info`, with helpers
+- the intended public surface is visible in `joggle mod info`, with helpers
   marked `local`;
 - dependencies are explicit and minimal;
 - unknown metadata is preserved;

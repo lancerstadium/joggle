@@ -1,4 +1,4 @@
-module tile_multi
+mod tile_multi
 use tensor
 
 fn chain(

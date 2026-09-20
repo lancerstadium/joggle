@@ -1,4 +1,4 @@
-module opt.cse
+mod opt.cse
 use base
 
 fn duplicate(x: i32) -> i32 {

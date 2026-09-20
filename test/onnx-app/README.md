@@ -143,7 +143,7 @@ parameters and returns are rejected because this is a neural-network buffer
 harness, not a generic C FFI generator. The resulting rows contain iteration,
 wall-clock seconds, and an output hash that prevents an unused computation from
 masquerading as a speedup. Report the raw rows, compiler and flags, machine
-state, and a matched baseline; a single mean is not paper evidence. Standard
+state, and a matched baseline; a single mean is not research evidence. Standard
 output is CSV; numerical comparison details and failures use standard error.
 
 The application gate deliberately leaves optional transforms out of its

@@ -1,4 +1,4 @@
-module dynamic_c
+mod dynamic_c
 use tensor
 
 fn prefix() -> tensor<i32, [_, 2]> {

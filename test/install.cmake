@@ -62,18 +62,18 @@ invoke("${CMAKE_COMMAND}" --build "${build}" --target consumer probe
 set(tool "${prefix}/bin/joggle${SUFFIX}")
 set(modules "${TEST_ROOT}/modules")
 set(standard "${prefix}/share/joggle/modules")
-invoke("${tool}" module install "${build}/package" "${modules}"
+invoke("${tool}" mod install "${build}/package" "${modules}"
        -M "${standard}")
-invoke("${tool}" module check probe -M "${modules}")
+invoke("${tool}" mod check probe -M "${modules}")
 invoke("${build}/bin/consumer${SUFFIX}"
        "${modules}" "${standard}")
 file(APPEND "${build}/package/module.jog"
      "\nfn keep<T: Ty>(x: T) -> T {\n  return x\n}\n")
-invoke("${tool}" module upgrade "${build}/package" "${modules}"
+invoke("${tool}" mod upgrade "${build}/package" "${modules}"
        -M "${standard}")
-invoke("${tool}" module check probe -M "${modules}")
+invoke("${tool}" mod check probe -M "${modules}")
 invoke("${build}/bin/consumer${SUFFIX}"
        "${modules}" "${standard}")
-invoke("${tool}" module uninstall probe "${modules}")
+invoke("${tool}" mod uninstall probe "${modules}")
 
 file(REMOVE_RECURSE "${TEST_ROOT}")

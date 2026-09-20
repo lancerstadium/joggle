@@ -1,4 +1,4 @@
-module tile_effect
+mod tile_effect
 use tensor
 
 fn observe() -> ();

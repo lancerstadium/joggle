@@ -1,4 +1,4 @@
-module bounds
+mod bounds
 use base
 use ir
 use tensor

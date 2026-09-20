@@ -1,4 +1,4 @@
-module collision
+mod collision
 
 fn choose(x: i32) -> i32 {
   return x

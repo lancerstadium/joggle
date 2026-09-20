@@ -1,4 +1,4 @@
-module tflite.nn
+mod tflite.nn
 use tflite
 use nn
 use ir

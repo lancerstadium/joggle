@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod typed;
   constexpr std::string_view typed_source =
-      "module typed\n"
+      "mod typed\n"
       "use sat\n"
       "fn inferred(a: sat<8>, b: sat<8>) -> sat<8> {\n"
       "  return sat.add(a, b)\n"
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod wrong_arity;
   CHECK(joggle::parse(env,
-                      "module wrong\nuse sat\n"
+                      "mod wrong\nuse sat\n"
                       "fn f(a: sat<8>) -> sat<8> { return sat.add(a) }\n",
                       wrong_arity, "wrong-arity.jog"));
   CHECK(!wrong_arity.verify(env));
@@ -90,7 +90,7 @@ int main(int argc, char** argv) {
   joggle::Mod wrong_type;
   CHECK(joggle::parse(
       env,
-      "module wrong\nuse sat\n"
+      "mod wrong\nuse sat\n"
       "fn f(a: sat<8>, b: sat<16>) -> sat<8> { return sat.add(a, b) }\n",
       wrong_type, "wrong-type.jog"));
   CHECK(!wrong_type.verify(env));
@@ -101,7 +101,7 @@ int main(int argc, char** argv) {
   joggle::Mod missing_use;
   CHECK(joggle::parse(
       env,
-      "module wrong\n"
+      "mod wrong\n"
       "fn f(a: sat<8>, b: sat<8>) -> sat<8> { return sat.add(a, b) }\n",
       missing_use, "missing-use.jog"));
   CHECK(!missing_use.verify(env));
@@ -111,7 +111,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod wrong_constructor;
   CHECK(joggle::parse(env,
-                      "module wrong\nuse sat\n"
+                      "mod wrong\nuse sat\n"
                       "fn f(x: sat<8, 16>) -> sat<8, 16> { return x }\n",
                       wrong_constructor, "wrong-constructor.jog"));
   CHECK(!wrong_constructor.verify(env));
@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod wrong_kind;
   CHECK(joggle::parse(env,
-                      "module wrong\nuse sat\n"
+                      "mod wrong\nuse sat\n"
                       "fn f(x: sat<f32>) -> sat<f32> { return x }\n",
                       wrong_kind, "wrong-kind.jog"));
   CHECK(!wrong_kind.verify(env));
@@ -185,7 +185,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod collision;
   constexpr std::string_view collision_source =
-      "module collision\n"
+      "mod collision\n"
       "use sat\n"
       "[sat.width: 5]\n"
       "fn sat_add_5(a: i16, b: i16) -> i16 { return a }\n"
@@ -202,7 +202,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod nested_format;
   constexpr std::string_view nested_format_source =
-      "module nested_format\n"
+      "mod nested_format\n"
       "use sat\n"
       "use tensor\n"
       "fn keep(x: tensor<sat<5>, [2]>) -> tensor<sat<5>, [2]> {\n"

@@ -1,4 +1,4 @@
-module tile_keep
+mod tile_keep
 use tensor
 
 fn both(

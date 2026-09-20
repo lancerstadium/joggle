@@ -248,7 +248,7 @@ int main(int argc, char** argv) {
   CHECK(env.load("base"));
 
   constexpr std::string_view source =
-      "module edit_robustness\n"
+      "mod edit_robustness\n"
       "use base\n"
       "fn main(x: i32) -> i32 {\n"
       "  let a: i32 = x + 1\n"

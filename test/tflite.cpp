@@ -222,7 +222,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(semantic_roundtrip, exposed_roundtrip));
 
   constexpr std::string_view broadcast_source =
-      "module broadcast\n"
+      "mod broadcast\n"
       "use tflite\n"
       "fn main(\n"
       "  left: tensor<f32, [1, 3]>, right: tensor<f32, [2, 1]>\n"
@@ -248,7 +248,7 @@ int main(int argc, char** argv) {
   CHECK(broadcast.verify(env));
 
   constexpr std::string_view unsupported_source =
-      "module unsupported\n"
+      "mod unsupported\n"
       "use tflite\n"
       "fn main(x: tensor<f32, [1, 2]>) -> tensor<f32, [1, 2]> {\n"
       "  [tflite: {options: {fused_activation_function: \"TANH\"}}]\n"

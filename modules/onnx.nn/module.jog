@@ -1,4 +1,4 @@
-module onnx.nn
+mod onnx.nn
 use onnx
 use nn
 use quant

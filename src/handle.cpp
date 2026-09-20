@@ -119,7 +119,10 @@ const Attr* Op::meta(std::string_view key) const noexcept {
   const auto found = values.find(key);
   return found == values.end() ? nullptr : &found->second;
 }
-Loc Op::loc() const { return valid() ? store_->ops[id_].data.loc : Loc{}; }
+const Loc& Op::loc() const noexcept {
+  static const Loc empty;
+  return valid() ? store_->ops[id_].data.loc : empty;
+}
 
 Blk::Blk(detail::Store* store, std::uint32_t id,
          std::uint32_t generation) noexcept
@@ -179,6 +182,9 @@ std::string_view Fn::name() const noexcept {
 }
 std::string_view Fn::module() const noexcept {
   return valid() ? std::string_view(store_->name) : std::string_view{};
+}
+std::uint64_t Fn::revision() const noexcept {
+  return valid() ? store_->fns[id_].data.revision : 0;
 }
 std::vector<Val> Fn::generics() const {
   std::vector<Val> out;
@@ -257,6 +263,9 @@ std::vector<Val> Fn::vals() const {
   }
   return out;
 }
-Loc Fn::loc() const { return valid() ? store_->fns[id_].data.loc : Loc{}; }
+const Loc& Fn::loc() const noexcept {
+  static const Loc empty;
+  return valid() ? store_->fns[id_].data.loc : empty;
+}
 
 }  // namespace joggle

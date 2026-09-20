@@ -7,7 +7,7 @@ set(folded "${ROOT}/folded.jog")
 set(queried "${ROOT}/query.txt")
 set(decoded "${ROOT}/decoded.jog")
 set(invalid "${ROOT}/invalid.jog")
-file(WRITE "${invalid}" "module invalid\nfn broken(\n")
+file(WRITE "${invalid}" "mod invalid\nfn broken(\n")
 
 joggle_run("stdin read failed"
   COMMAND "${TOOL}" read sample.read - -M "${MODULES}"

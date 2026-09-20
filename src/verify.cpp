@@ -1174,6 +1174,11 @@ Fn detail::resolve_overload(std::span<const Fn> candidates,
 
 bool Mod::verify(const Env& env) {
   detail::Store& store = impl_->store;
+  if (store.verified_env == env.cache_id() &&
+      store.verified_epoch == env.cache_epoch() &&
+      store.verified_revision == store.revision && store.diags.empty())
+    return true;
+  store.verified_env = 0;
   store.diags.clear();
   detail::rebuild_uses(store);
   std::vector<Ty> original_types;
@@ -1200,6 +1205,35 @@ bool Mod::verify(const Env& env) {
   }
   for (std::uint32_t fn = 0; fn < store.fns.size(); ++fn)
     verify_bindings(store, fn);
+  for (std::uint32_t fn_id = 0; fn_id < store.fns.size(); ++fn_id) {
+    if (!store.fns[fn_id].live)
+      continue;
+    const detail::FnData& fn = store.fns[fn_id].data;
+    for (const std::uint32_t value : fn.generic_vals)
+      if (value < store.vals.size() && store.vals[value].live &&
+          store.vals[value].data.fn != fn_id)
+        detail::add_diag(store.diags,
+                         "generic value has an inconsistent owner", fn.loc);
+    for (const std::uint32_t value : fn.params)
+      if (value < store.vals.size() && store.vals[value].live &&
+          store.vals[value].data.fn != fn_id)
+        detail::add_diag(store.diags,
+                         "parameter value has an inconsistent owner", fn.loc);
+    for (const std::uint32_t blk_id : fn.blks) {
+      if (blk_id >= store.blks.size() || !store.blks[blk_id].live)
+        continue;
+      const detail::BlkData& blk = store.blks[blk_id].data;
+      if (blk.fn != fn_id)
+        detail::add_diag(store.diags, "block has an inconsistent owner",
+                         fn.loc);
+      for (const std::uint32_t value : blk.args)
+        if (value < store.vals.size() && store.vals[value].live &&
+            store.vals[value].data.fn != fn_id)
+          detail::add_diag(store.diags,
+                           "block argument has an inconsistent owner",
+                           fn.loc);
+    }
+  }
   for (const auto& fn_slot : store.fns) {
     if (!fn_slot.live)
       continue;
@@ -1411,6 +1445,11 @@ bool Mod::verify(const Env& env) {
           store.vals[value].data.index != index)
         detail::add_diag(store.diags, "operation result is inconsistent",
                          op.loc);
+      else if (op.blk < store.blks.size() && store.blks[op.blk].live &&
+               store.vals[value].data.fn != store.blks[op.blk].data.fn)
+        detail::add_diag(store.diags,
+                         "operation result has an inconsistent owner",
+                         op.loc);
     }
   }
   if (store.diags.empty()) {
@@ -1419,6 +1458,9 @@ bool Mod::verify(const Env& env) {
       changed = store.vals[index].data.type != original_types[index] || changed;
     if (changed)
       detail::touch(store);
+    store.verified_revision = store.revision;
+    store.verified_env = env.cache_id();
+    store.verified_epoch = env.cache_epoch();
     return true;
   }
 

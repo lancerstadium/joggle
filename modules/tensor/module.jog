@@ -1,4 +1,4 @@
-module tensor
+mod tensor
 use base
 
 fn tensor<E: Ty, S: list<int>>() -> Ty;

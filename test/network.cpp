@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
   CHECK(env.load("c"));
 
   constexpr std::string_view legal_source =
-      "module legal.network\n"
+      "mod legal.network\n"
       "use nn\n"
       "fn main(x: tensor<i8, [4]>) -> tensor<i8, [4]> {\n"
       "  return relu(x)\n"
@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(legal, legal_roundtrip));
 
   constexpr std::string_view typed_source =
-      "module typed.network\n"
+      "mod typed.network\n"
       "use nn\n"
       "fn main(a: tensor<i8, [2, 2]>, b: tensor<f32, [4]>) "
       "-> (tensor<i8, [2, 2]>, tensor<f32, [4]>) {\n"
@@ -124,7 +124,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(typed, typed_roundtrip));
 
   constexpr std::string_view implementation_source =
-      "module implementation.network\n"
+      "mod implementation.network\n"
       "use nn\n"
       "fn main(a: tensor<i8, [4]>, b: tensor<i8, [8]>) "
       "-> (tensor<i8, [4]>, tensor<i8, [8]>) {\n"
@@ -288,7 +288,7 @@ int main(int argc, char** argv) {
   }
 
   constexpr std::string_view instance_source =
-      "module instance.network\n"
+      "mod instance.network\n"
       "use script\n"
       "fn generic<S: list<int>>(x: tensor<i8, S>) -> tensor<i8, S> {\n"
       "  return kernel.scale(x)\n"
@@ -364,7 +364,7 @@ int main(int argc, char** argv) {
   CHECK(selected_instances == 2);
 
   constexpr std::string_view emission_source =
-      "module instance.emit\n"
+      "mod instance.emit\n"
       "use script\n"
       "[entry]\n"
       "fn main(a: tensor<i8, [8]>, b: tensor<i8, [8]>) "
@@ -398,7 +398,7 @@ int main(int argc, char** argv) {
         std::string::npos);
 
   constexpr std::string_view contextual_expand_source =
-      "module contextual_expand\n"
+      "mod contextual_expand\n"
       "use tensor\n"
       "fn source<N: int>(x: i32) -> tensor<f32, [N]>;\n"
       "fn wrap<N: int>(x: i32) -> tensor<f32, [N]> {\n"
@@ -438,7 +438,7 @@ int main(int argc, char** argv) {
                                    contextual_roundtrip));
 
   constexpr std::string_view external_source =
-      "module external_select\n"
+      "mod external_select\n"
       "fn external(x: i32) -> i32;\n"
       "fn main(x: i32) -> i32 {\n"
       "  return external(x)\n"
@@ -511,7 +511,7 @@ int main(int argc, char** argv) {
 
   CHECK(env.load("c"));
   constexpr std::string_view conflicting_external_source =
-      "module conflicting_external\n"
+      "mod conflicting_external\n"
       "use script\n"
       "fn main(a: tensor<f32, [4]>, b: tensor<i32, [8]>) "
       "-> (tensor<f32, [4]>, tensor<i32, [8]>) {\n"
@@ -548,7 +548,7 @@ int main(int argc, char** argv) {
   CHECK(ambiguous_impl.revision() == ambiguous_revision);
 
   constexpr std::string_view cyclic_source =
-      "module cyclic.network\n"
+      "mod cyclic.network\n"
       "use nn\n"
       "fn main(x: tensor<i8, [4]>) -> tensor<i8, [4]> {\n"
       "  return loop.relu(x)\n"
@@ -569,7 +569,7 @@ int main(int argc, char** argv) {
   CHECK(diagnosed_cycle);
 
   constexpr std::string_view annotated_legal_source =
-      "module annotated.legal\n"
+      "mod annotated.legal\n"
       "use nn\n"
       "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
       "  [schedule: {width: 4}]\n"
@@ -589,7 +589,7 @@ int main(int argc, char** argv) {
   CHECK(open_frontier.list()->front().string() == "nn.relu");
 
   constexpr std::string_view dynamic_source =
-      "module dynamic.network\n"
+      "mod dynamic.network\n"
       "use tensor\n"
       "fn keep(x: tensor<f32, [_, 3]>) -> tensor<f32, [_, 3]> {\n"
       "  return x\n"
@@ -604,7 +604,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(dynamic, dynamic_roundtrip));
 
   constexpr std::string_view max_pool_source =
-      "module max.pool\n"
+      "mod max.pool\n"
       "use nn\n"
       "fn main(x: tensor<f32, [1, 1, 4, 4]>) "
       "-> tensor<f32, [1, 1, 2, 2]> {\n"
@@ -631,7 +631,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(max_pool, max_pool_roundtrip));
 
   constexpr std::string_view broadcast_source =
-      "module broadcast.network\n"
+      "mod broadcast.network\n"
       "use nn\n"
       "fn main(\n"
       "  left: tensor<f32, [1, 3, 1]>,\n"
@@ -673,7 +673,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(broadcast, broadcast_roundtrip));
 
   constexpr std::string_view residual_source =
-      "module residual.network\n"
+      "mod residual.network\n"
       "use nn\n"
       "fn main(\n"
       "  left: tensor<f32, [2, 3]>, right: tensor<f32, [2, 3]>\n"
@@ -696,7 +696,7 @@ int main(int argc, char** argv) {
 
   CHECK(env.load("onnx.nn"));
   constexpr std::string_view bridge_source =
-      "module broadcast.bridge\n"
+      "mod broadcast.bridge\n"
       "use onnx\n"
       "fn main(\n"
       "  left: tensor<f32, [1, 3, 1]>,\n"
@@ -742,7 +742,7 @@ int main(int argc, char** argv) {
   CHECK(bridge.verify(env));
 
   constexpr std::string_view binary_bridge_source =
-      "module binary.bridge\n"
+      "mod binary.bridge\n"
       "use onnx\n"
       "fn main(\n"
       "  left: tensor<f32, [1, 3, 1]>,\n"
@@ -781,7 +781,7 @@ int main(int argc, char** argv) {
     CHECK(op.callee() != "nn.mul" && op.callee() != "nn.sub");
 
   constexpr std::string_view scalar_bridge_source =
-      "module scalar.bridge\n"
+      "mod scalar.bridge\n"
       "use onnx\n"
       "fn main(values: tensor<f32, [768]>) -> tensor<f32, [768]> {\n"
       "  let scalar: tensor<f32, []> = source()\n"
@@ -806,7 +806,7 @@ int main(int argc, char** argv) {
   CHECK(scalar_mul.callee() == "nn.mul");
 
   constexpr std::string_view broadcast_relations_source =
-      "module broadcast.relations\n"
+      "mod broadcast.relations\n"
       "use onnx\n"
       "fn main(\n"
       "  scalar: tensor<f32, []>, left: tensor<f32, [1, 3]>,\n"
@@ -891,7 +891,7 @@ int main(int argc, char** argv) {
   CHECK(comparisons >= 3);
 
   constexpr std::string_view clip_source =
-      "module clip.network\n"
+      "mod clip.network\n"
       "use onnx.nn\n"
       "fn main(x: tensor<f32, [2, 3]>, lower: tensor<f32, []>, "
       "upper: tensor<f32, []>) -> tensor<f32, [2, 3]> {\n"
@@ -924,7 +924,7 @@ int main(int argc, char** argv) {
   CHECK(lower_bounds == 1 && upper_bounds == 1);
 
   constexpr std::string_view unary_extrema_source =
-      "module unary.extrema\n"
+      "mod unary.extrema\n"
       "use onnx\n"
       "fn main(x: tensor<f32, [2, 3]>) -> _ {\n"
       "  return onnx.Max(x)\n"
@@ -943,7 +943,7 @@ int main(int argc, char** argv) {
   CHECK(unary_copies == 1);
 
   constexpr std::string_view unary_bridge_source =
-      "module unary.bridge\n"
+      "mod unary.bridge\n"
       "use onnx\n"
       "fn main(x: tensor<f32, [2, 3]>) -> (_, _, _, _, _, _, _) {\n"
       "  let sigmoid = onnx.Sigmoid(x)\n"
@@ -996,7 +996,7 @@ int main(int argc, char** argv) {
   CHECK(count(unary_bridge, "nn.round_even") == 0);
 
   constexpr std::string_view matrix_bridge_source =
-      "module matrix.bridge\n"
+      "mod matrix.bridge\n"
       "use onnx\n"
       "fn main(\n"
       "  x: tensor<f32, [2, 3, 4]>, w: tensor<f32, [4, 5]>\n"
@@ -1030,7 +1030,7 @@ int main(int argc, char** argv) {
   CHECK(matrix_calls == 3 && matrix_bridge.verify(env));
 
   constexpr std::string_view pool_bridge_source =
-      "module pool.bridge\n"
+      "mod pool.bridge\n"
       "use onnx\n"
       "fn main(x: tensor<f32, [1, 1, 4, 4]>) "
       "-> tensor<f32, [1, 1, 2, 2]> {\n"
@@ -1057,7 +1057,7 @@ int main(int argc, char** argv) {
   CHECK(pool_bridge.verify(env));
 
   constexpr std::string_view zoo_slice_source =
-      "module zoo.slice\n"
+      "mod zoo.slice\n"
       "use onnx\n"
       "fn main<N: int>(\n"
       "  x: tensor<f32, [N, 3, 8, 8]>,\n"
@@ -1105,7 +1105,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(zoo_slice, zoo_slice_roundtrip));
 
   constexpr std::string_view symbolic_source =
-      "module symbolic.bridge\n"
+      "mod symbolic.bridge\n"
       "use onnx\n"
       "fn main<N: int>(\n"
       "  left: tensor<f32, [N, 3]>, right: tensor<f32, [1, 3]>\n"
@@ -1138,7 +1138,7 @@ int main(int argc, char** argv) {
   CHECK(symbolic.verify(env));
 
   constexpr std::string_view qdq_source =
-      "module qdq.shape\n"
+      "mod qdq.shape\n"
       "use onnx\n"
       "fn main<N: int>(\n"
       "  x: tensor<f32, [N, 3]>, scale: tensor<f32, [3]>,\n"
@@ -1186,7 +1186,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(qdq, qdq_roundtrip));
 
   constexpr std::string_view dynamic_quant_source =
-      "module dynamic.quant\n"
+      "mod dynamic.quant\n"
       "use onnx\n"
       "fn main(\n"
       "  a: tensor<f32, [2, 3]>, b: tensor<u8, [3, 4]>,\n"
@@ -1239,7 +1239,7 @@ int main(int argc, char** argv) {
                                    dynamic_quant_roundtrip));
 
   constexpr std::string_view qlinear_source =
-      "module qlinear.network\n"
+      "mod qlinear.network\n"
       "use onnx\n"
       "fn matmul(\n"
       "  a: tensor<u8, [2, 3]>, as: tensor<f32, []>,\n"
@@ -1286,7 +1286,8 @@ int main(int argc, char** argv) {
   CHECK(qlinear.verify(env));
   CHECK(joggle::run(env, "onnx.nn.infer", qlinear));
   CHECK(qlinear.verify(env));
-  CHECK(joggle::run(env, "onnx.nn.convert", qlinear));
+  if (!joggle::run(env, "onnx.nn.convert", qlinear))
+    return qlinear.print_diags(stderr);
   CHECK(qlinear.verify(env));
   CHECK(count(qlinear, "onnx.QLinearMatMul") == 0);
   CHECK(count(qlinear, "onnx.QLinearConv") == 0);
@@ -1328,7 +1329,7 @@ int main(int argc, char** argv) {
   CHECK(count(qlinear_roundtrip, "quant.quantize") == 0);
 
   constexpr std::string_view symbolic_conv_source =
-      "module symbolic.conv\n"
+      "mod symbolic.conv\n"
       "use onnx\n"
       "fn main<N: int>(\n"
       "  x: tensor<f32, [N, 3, 8, 8]>,\n"
@@ -1375,7 +1376,7 @@ int main(int argc, char** argv) {
   CHECK(symbolic_conv.verify(env));
 
   constexpr std::string_view partial_conv_source =
-      "module partial.conv\n"
+      "mod partial.conv\n"
       "use onnx\n"
       "fn main<N: int, C: int, H: int, W: int>(\n"
       "  x: tensor<f32, [N, C, H, W]>,\n"
@@ -1399,7 +1400,7 @@ int main(int argc, char** argv) {
                             joggle::Ty("tensor<f32, [N, 4, _, _]>"));
 
   constexpr std::string_view resize_source =
-      "module resize.shape\n"
+      "mod resize.shape\n"
       "use onnx\n"
       "fn main<N: int, H: int, W: int>(\n"
       "  x: tensor<f32, [N, 3, H, W]>\n"
@@ -1441,7 +1442,7 @@ int main(int argc, char** argv) {
   CHECK(resize.verify(env));
 
   constexpr std::string_view shape_relations_source =
-      "module shape.relations\n"
+      "mod shape.relations\n"
       "use onnx\n"
       "fn nonzero(x: tensor<bool, [2, 3]>) -> tensor<i64, [2, _]> {\n"
       "  let out = onnx.NonZero(x)\n"
@@ -1625,7 +1626,7 @@ int main(int argc, char** argv) {
   CHECK(range_converted);
 
   constexpr std::string_view dynamic_broadcast_source =
-      "module dynamic.broadcast\n"
+      "mod dynamic.broadcast\n"
       "use onnx\n"
       "use tensor\n"
       "fn main(x: tensor<f32, []>, shape: tensor<i64, [2]>) "
@@ -1651,7 +1652,7 @@ int main(int argc, char** argv) {
   CHECK(count(dynamic_broadcast, "tensor.broadcast") == 0);
 
   constexpr std::string_view dynamic_slice_source =
-      "module dynamic.slice\n"
+      "mod dynamic.slice\n"
       "use tensor\n"
       "fn main(\n"
       "  x: tensor<i32, [4, 5]>, starts: tensor<i64, [2]>,\n"
@@ -1675,7 +1676,7 @@ int main(int argc, char** argv) {
   CHECK(count(dynamic_slice, "tensor.slice") == 0);
 
   constexpr std::string_view static_shape_source =
-      "module static.shape\n"
+      "mod static.shape\n"
       "use onnx\n"
       "fn cls(x: tensor<f32, [1, 1, 192]>) "
       "-> tensor<f32, [1, 1, 192]> {\n"
@@ -1732,7 +1733,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(static_shape, static_shape_roundtrip));
 
   constexpr std::string_view invalid_conv_source =
-      "module invalid.conv\n"
+      "mod invalid.conv\n"
       "use onnx\n"
       "fn main<N: int>(\n"
       "  x: tensor<f32, [N, 3, 8, 8]>,\n"
@@ -1756,7 +1757,7 @@ int main(int argc, char** argv) {
   CHECK(retained_conv);
 
   constexpr std::string_view symbolic_matrix_source =
-      "module symbolic.matrix\n"
+      "mod symbolic.matrix\n"
       "use onnx\n"
       "fn main<N: int>(\n"
       "  x: tensor<f32, [N, 2, 3]>, w: tensor<f32, [6, 4]>\n"
@@ -1791,7 +1792,7 @@ int main(int argc, char** argv) {
   CHECK(symbolic_matrix_calls == 3 && symbolic_matrix.verify(env));
 
   constexpr std::string_view shape_program_source =
-      "module shape.program\n"
+      "mod shape.program\n"
       "use onnx\n"
       "fn main<N: int>(x: tensor<f32, [N, 3, 4]>) "
       "-> tensor<f32, [N, 12]> {\n"
@@ -1869,7 +1870,7 @@ int main(int argc, char** argv) {
   CHECK(shape_program.verify(env));
 
   constexpr std::string_view transformer_source =
-      "module transformer.shape\n"
+      "mod transformer.shape\n"
       "use onnx\n"
       "fn main<N: int>(\n"
       "  query: tensor<f32, [N, 12, 256, 64]>,\n"
@@ -1919,7 +1920,7 @@ int main(int argc, char** argv) {
   CHECK(transformer.verify(env));
 
   constexpr std::string_view default_fill_source =
-      "module default.fill\n"
+      "mod default.fill\n"
       "use onnx\n"
       "fn main<N: int>(x: tensor<f32, [N, 4]>) "
       "-> tensor<f32, [N, 4]> {\n"
@@ -1943,7 +1944,7 @@ int main(int argc, char** argv) {
   CHECK(default_tensor);
 
   constexpr std::string_view split_source =
-      "module split.shape\n"
+      "mod split.shape\n"
       "use onnx\n"
       "fn main<N: int>(x: tensor<f32, [2, N, 256]>) "
       "-> (tensor<f32, [1, N, 256]>, tensor<f32, [1, N, 256]>) {\n"
@@ -1981,7 +1982,7 @@ int main(int argc, char** argv) {
   CHECK(split.verify(env));
 
   constexpr std::string_view symbolic_split_source =
-      "module symbolic.split\n"
+      "mod symbolic.split\n"
       "use onnx\n"
       "fn main<N: int, K: int>(x: tensor<f32, [N, K]>) "
       "-> tensor<f32, [N]> {\n"
@@ -2012,7 +2013,7 @@ int main(int argc, char** argv) {
                                      joggle::Ty("tensor<f32, [N]>"));
 
   constexpr std::string_view one_hot_source =
-      "module one.hot\n"
+      "mod one.hot\n"
       "use onnx\n"
       "fn main<N: int>(x: tensor<i64, [N]>) "
       "-> tensor<f32, [N, 3]> {\n"
@@ -2041,7 +2042,7 @@ int main(int argc, char** argv) {
   CHECK(one_hot.verify(env));
 
   constexpr std::string_view invalid_reshape_source =
-      "module invalid.reshape\n"
+      "mod invalid.reshape\n"
       "use onnx\n"
       "fn main(x: tensor<f32, [2, 3]>) -> tensor<f32, [5, 5]> {\n"
       "  let shape: tensor<i64, [2]> = onnx.tensor(\n"
@@ -2062,7 +2063,7 @@ int main(int argc, char** argv) {
   CHECK(retained_reshape && invalid_reshape.verify(env));
 
   constexpr std::string_view batched_matmul_source =
-      "module batched.matmul\n"
+      "mod batched.matmul\n"
       "use onnx\n"
       "fn main<N: int>(\n"
       "  left: tensor<f32, [N, 3, 4]>,\n"
@@ -2099,7 +2100,7 @@ int main(int argc, char** argv) {
   CHECK(batched_matmul.verify(env));
 
   constexpr std::string_view mixed_matmul_source =
-      "module mixed.matmul\n"
+      "mod mixed.matmul\n"
       "use onnx\n"
       "fn main<N: int>(\n"
       "  left: tensor<f32, [3, 4]>,\n"
@@ -2122,7 +2123,7 @@ int main(int argc, char** argv) {
                           joggle::Ty("tensor<f32, [N, 3, 5]>"));
 
   constexpr std::string_view softmax_source =
-      "module axis.softmax\n"
+      "mod axis.softmax\n"
       "use onnx\n"
       "fn main<N: int>(x: tensor<f32, [N, 2, 3]>) "
       "-> tensor<f32, [N, 2, 3]> {\n"
@@ -2148,7 +2149,7 @@ int main(int argc, char** argv) {
   CHECK(softmax.verify(env));
 
   constexpr std::string_view legacy_softmax_source =
-      "module legacy.softmax\n"
+      "mod legacy.softmax\n"
       "use onnx\n"
       "fn main<N: int>(x: tensor<f32, [N, 2, 3]>) "
       "-> tensor<f32, [N, 2, 3]> {\n"
@@ -2174,7 +2175,7 @@ int main(int argc, char** argv) {
   CHECK(legacy_softmax.verify(env));
 
   constexpr std::string_view mean_source =
-      "module axis.mean\n"
+      "mod axis.mean\n"
       "use onnx\n"
       "fn main<N: int>(x: tensor<f32, [N, 2, 3, 4]>) "
       "-> tensor<f32, [N, 3]> {\n"
@@ -2201,7 +2202,7 @@ int main(int argc, char** argv) {
   CHECK(mean.verify(env));
 
   constexpr std::string_view invalid_mean_source =
-      "module invalid.mean\n"
+      "mod invalid.mean\n"
       "use onnx\n"
       "fn main(x: tensor<f32, [2, 3]>) -> tensor<f32, [2, 1]> {\n"
       "  [onnx: {axes: [1, 1]}]\n"
@@ -2220,7 +2221,7 @@ int main(int argc, char** argv) {
   CHECK(retained_mean && invalid_mean.verify(env));
 
   constexpr std::string_view norm_source =
-      "module norm.chain\n"
+      "mod norm.chain\n"
       "use onnx\n"
       "fn main<N: int>(\n"
       "  x: tensor<f32, [N, 2, 4]>, epsilon: tensor<f32, [1]>,\n"
@@ -2268,7 +2269,7 @@ int main(int argc, char** argv) {
   CHECK(norm.verify(env));
 
   constexpr std::string_view implicit_softmax_source =
-      "module implicit.softmax\n"
+      "mod implicit.softmax\n"
       "use onnx\n"
       "fn main(x: tensor<f32, [2, 3]>) -> tensor<f32, [2, 3]> {\n"
       "  let out: tensor<f32, [2, 3]> = onnx.Softmax(x)\n"
@@ -2285,7 +2286,7 @@ int main(int argc, char** argv) {
   CHECK(retained_softmax && implicit_softmax.verify(env));
 
   constexpr std::string_view unresolved_shape_source =
-      "module unresolved.shape\n"
+      "mod unresolved.shape\n"
       "use onnx\n"
       "fn main<N: int, M: int>(\n"
       "  x: tensor<f32, [N, M, 3]>\n"
@@ -2307,7 +2308,7 @@ int main(int argc, char** argv) {
   CHECK(retained_flatten);
 
   constexpr std::string_view invalid_source =
-      "module invalid.broadcast\n"
+      "mod invalid.broadcast\n"
       "use onnx\n"
       "fn main(\n"
       "  left: tensor<f32, [2, 3]>, right: tensor<f32, [4, 1]>\n"
@@ -2328,7 +2329,7 @@ int main(int argc, char** argv) {
   CHECK(retained);
 
   constexpr std::string_view nms_source =
-      "module nms.semantic\n"
+      "mod nms.semantic\n"
       "use nn\n"
       "fn main(\n"
       "  boxes: tensor<f32, [1, 4, 4]>,\n"

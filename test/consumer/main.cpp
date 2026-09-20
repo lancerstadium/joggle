@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
     return env.print_diags(stderr);
 
   constexpr std::string_view source =
-      "module consumer\n"
+      "mod consumer\n"
       "use nn\n"
       "fn main(\n"
       "  left: tensor<f32, [1, 3, 1]>,\n"

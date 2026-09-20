@@ -19,8 +19,9 @@ bool Mod::set(Fn fn, std::string key, Attr value) {
   Attr::Dict& meta = store.fns[fn.id_].data.meta;
   const auto found = meta.find(key);
   if (found == meta.end() || found->second != value) {
+    detail::journal_metadata(store, detail::MetadataTarget::fn, fn.id_);
     meta[std::move(key)] = std::move(value);
-    touch(store);
+    detail::touch_verified(store, fn.id_);
   }
   return true;
 }
@@ -46,11 +47,12 @@ bool Mod::set(Val item, std::string key, Attr value) {
     const auto found = meta.find(key);
     if (found != meta.end() && found->second == value)
       continue;
+    detail::journal_metadata(store, detail::MetadataTarget::val, id);
     meta[key] = value;
     changed = true;
   }
   if (changed)
-    touch(store);
+    detail::touch_verified(store, store.vals[item.id_].data.fn);
   return true;
 }
 
@@ -110,12 +112,18 @@ bool Mod::set(std::span<const Val> items, std::string key,
     Attr::Dict& meta = store.vals[id].data.meta;
     const auto found = meta.find(key);
     if (found == meta.end() || found->second != assigned->second) {
+      detail::journal_metadata(store, detail::MetadataTarget::val, id);
       meta[key] = assigned->second;
       changed = true;
     }
   }
-  if (changed)
-    touch(store);
+  if (changed) {
+    std::vector<std::uint32_t> owners;
+    owners.reserve(items.size());
+    for (Val item : items)
+      owners.push_back(store.vals[item.id_].data.fn);
+    detail::touch_functions_verified(store, owners);
+  }
   return true;
 }
 
@@ -138,8 +146,9 @@ bool Mod::set(Op op, std::string key, Attr value) {
   Attr::Dict& meta = store.ops[op.id_].data.meta;
   const auto found = meta.find(key);
   if (found == meta.end() || found->second != value) {
+    detail::journal_metadata(store, detail::MetadataTarget::op, op.id_);
     meta[std::move(key)] = std::move(value);
-    touch(store);
+    detail::touch_verified(store, store.blks[data.blk].data.fn);
   }
   return true;
 }
@@ -152,9 +161,11 @@ bool Mod::unset(Fn fn, std::string_view key) {
                      "unset requires a live function and valid metadata key");
     return false;
   }
-  if (!store.fns[fn.id_].data.meta.erase(std::string(key)))
+  if (!store.fns[fn.id_].data.meta.contains(std::string(key)))
     return false;
-  touch(store);
+  detail::journal_metadata(store, detail::MetadataTarget::fn, fn.id_);
+  store.fns[fn.id_].data.meta.erase(std::string(key));
+  detail::touch_verified(store, fn.id_);
   return true;
 }
 
@@ -174,11 +185,16 @@ bool Mod::unset(Val item, std::string_view key) {
     return false;
   }
   bool changed = false;
-  for (const std::uint32_t id : related)
-    changed = store.vals[id].data.meta.erase(std::string(key)) || changed;
+  for (const std::uint32_t id : related) {
+    if (!store.vals[id].data.meta.contains(std::string(key)))
+      continue;
+    detail::journal_metadata(store, detail::MetadataTarget::val, id);
+    store.vals[id].data.meta.erase(std::string(key));
+    changed = true;
+  }
   if (!changed)
     return false;
-  touch(store);
+  detail::touch_verified(store, store.vals[item.id_].data.fn);
   return true;
 }
 
@@ -190,9 +206,12 @@ bool Mod::unset(Op op, std::string_view key) {
                      "unset requires a live operation and valid metadata key");
     return false;
   }
-  if (!store.ops[op.id_].data.meta.erase(std::string(key)))
+  if (!store.ops[op.id_].data.meta.contains(std::string(key)))
     return false;
-  touch(store);
+  detail::journal_metadata(store, detail::MetadataTarget::op, op.id_);
+  store.ops[op.id_].data.meta.erase(std::string(key));
+  const std::uint32_t blk = store.ops[op.id_].data.blk;
+  detail::touch_verified(store, store.blks[blk].data.fn);
   return true;
 }
 

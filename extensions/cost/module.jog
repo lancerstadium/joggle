@@ -1,4 +1,4 @@
-module cost
+mod cost
 use base
 use ir
 use stat

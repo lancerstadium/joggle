@@ -107,13 +107,13 @@ bool stable_type(std::string_view source) {
 
 int main() {
   constexpr std::array<std::string_view, 5> modules{
-      "module empty\n",
-      "module scalar\nfn add(a: i32, b: i32) -> i32 { return a + b }\n",
-      "module loop\nfn sum(x: tensor<i32, [4]>) -> i32 {\n"
+      "mod empty\n",
+      "mod scalar\nfn add(a: i32, b: i32) -> i32 { return a + b }\n",
+      "mod loop\nfn sum(x: tensor<i32, [4]>) -> i32 {\n"
       "  var y: i32 = 0\n  for i in 0..4 { y += x[i] }\n  return y\n}\n",
-      "module branch\nfn choose(x: i32, flag: bool) -> i32 {\n"
+      "mod branch\nfn choose(x: i32, flag: bool) -> i32 {\n"
       "  var y = x\n  if flag { y += 1 } else { y -= 1 }\n  return y\n}\n",
-      "module generic\nfn id<T: Ty>(x: T) -> T { return x }\n",
+      "mod generic\nfn id<T: Ty>(x: T) -> T { return x }\n",
   };
   constexpr std::array<std::string_view, 6> attributes{
       "null",
@@ -143,13 +143,13 @@ int main() {
     CHECK(stable_type(source));
 
   joggle::Mod visible_constant;
-  CHECK(joggle::parse(env, "module constant\nfn main() -> i32 { 7 return 0 }\n",
+  CHECK(joggle::parse(env, "mod constant\nfn main() -> i32 { 7 return 0 }\n",
                       visible_constant, "constant.jog"));
   CHECK(joggle::print(visible_constant).find("\n  7\n") != std::string::npos);
 
   joggle::Mod repeated_value;
   CHECK(joggle::parse(
-      env, "module repeat\nfn main() -> i32 { var y: i32 = 0 y return y }\n",
+      env, "mod repeat\nfn main() -> i32 { var y: i32 = 0 y return y }\n",
       repeated_value, "repeat.jog"));
   const std::string repeated_text = joggle::print(repeated_value);
   CHECK(repeated_text.find("var y: i32 = 0") != std::string::npos);

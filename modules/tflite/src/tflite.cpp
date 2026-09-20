@@ -48,8 +48,8 @@ std::string atom(std::string_view text) {
   if (std::isdigit(static_cast<unsigned char>(out.front())))
     out.insert(out.begin(), '_');
   static const std::set<std::string, std::less<>> keywords{
-      "else", "false", "fn", "for", "hex", "if", "in",
-      "let",  "module", "nil", "return", "true", "use", "var"};
+      "else", "false", "fn",  "for",    "hex",  "if",  "in",
+      "let",  "mod",   "nil", "return", "true", "use", "var"};
   if (keywords.contains(out))
     out.insert(out.begin(), '_');
   return out;
@@ -273,7 +273,7 @@ std::string emit(const tflite::Model& model) {
 
   std::ostringstream out;
   out.imbue(std::locale::classic());
-  out << "module model\nuse tflite\n\n";
+  out << "mod model\nuse tflite\n\n";
 
   for (flatbuffers::uoffset_t graph_index = 0;
        graph_index < model.subgraphs()->size(); ++graph_index) {

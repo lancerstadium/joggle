@@ -85,6 +85,17 @@ int main(int argc, char** argv) {
   env.path(argv[2]);
   env.path(argv[3]);
 
+  joggle::Mod legacy_keyword;
+  CHECK(!joggle::parse(env, "module legacy\n", legacy_keyword,
+                       "legacy-keyword.jog"));
+  CHECK(std::any_of(legacy_keyword.diags().begin(),
+                    legacy_keyword.diags().end(),
+                    [](const joggle::Diag& diag) {
+                      return diag.loc.line == 1 &&
+                             diag.message.find("expected 'mod'") !=
+                                 std::string::npos;
+                    }));
+
   for (const std::string_view name : {
            std::string_view{}, std::string_view("../tensor"),
            std::string_view("tensor/child"),
@@ -100,7 +111,7 @@ int main(int argc, char** argv) {
   CHECK(env.modules().empty());
 
   joggle::Mod invalid_module_name;
-  CHECK(!joggle::parse(env, "module invalid.\n", invalid_module_name,
+  CHECK(!joggle::parse(env, "mod invalid.\n", invalid_module_name,
                        "invalid-module-name.jog"));
   CHECK(std::any_of(invalid_module_name.diags().begin(),
                     invalid_module_name.diags().end(),
@@ -111,7 +122,7 @@ int main(int argc, char** argv) {
                     }));
 
   joggle::Mod invalid_use_name;
-  CHECK(!joggle::parse(env, "module valid\nuse invalid.\n", invalid_use_name,
+  CHECK(!joggle::parse(env, "mod valid\nuse invalid.\n", invalid_use_name,
                        "invalid-use-name.jog"));
   CHECK(std::any_of(invalid_use_name.diags().begin(),
                     invalid_use_name.diags().end(),
@@ -123,7 +134,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod invalid_fn_name;
   CHECK(!joggle::parse(env,
-                       "module valid\nfn invalid.(x: i32) -> i32;\n",
+                       "mod valid\nfn invalid.(x: i32) -> i32;\n",
                        invalid_fn_name, "invalid-fn-name.jog"));
   CHECK(std::any_of(invalid_fn_name.diags().begin(),
                     invalid_fn_name.diags().end(),
@@ -141,7 +152,7 @@ int main(int argc, char** argv) {
   CHECK(env.load("prefix"));
   joggle::Mod short_prefix;
   CHECK(joggle::parse(env,
-                      "module short.prefix\n"
+                      "mod short.prefix\n"
                       "use prefix\n"
                       "fn id(x: prefix.deep.Num) -> prefix.deep.Num {\n"
                       "  return x\n"
@@ -169,7 +180,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod long_prefix;
   CHECK(joggle::parse(env,
-                      "module long.prefix\n"
+                      "mod long.prefix\n"
                       "use prefix.deep\n"
                       "fn id(x: prefix.deep.Num) -> prefix.deep.Num {\n"
                       "  return x\n"
@@ -187,7 +198,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod parent_prefix;
   CHECK(joggle::parse(env,
-                      "module prefix\n"
+                      "mod prefix\n"
                       "use prefix.deep\n"
                       "fn id(x: prefix.deep.Num) -> prefix.deep.Num {\n"
                       "  return x\n"
@@ -205,7 +216,7 @@ int main(int argc, char** argv) {
 
   const std::array<joggle::Source, 2> split_sources{
       joggle::Source{
-          "module split\n"
+          "mod split\n"
           "fn entry(x: i32) -> i32 { return helper(x) }\n",
           "module.jog"},
       joggle::Source{
@@ -219,7 +230,7 @@ int main(int argc, char** argv) {
   CHECK(split_mod.find_fn("helper").loc().file == "lib/helper.jog");
 
   const std::array<joggle::Source, 2> invalid_split_sources{
-      joggle::Source{"module invalid_split\n", "module.jog"},
+      joggle::Source{"mod invalid_split\n", "module.jog"},
       joggle::Source{
           "fn wrong(x: i32) -> bool { return x }\n",
           "lib/wrong.jog"}};
@@ -237,7 +248,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod dynamic_overload;
   constexpr std::string_view dynamic_overload_source =
-      "module dynamic.overload\n"
+      "mod dynamic.overload\n"
       "use tensor\n"
       "fn equal(a: Attr, b: Attr) -> bool { return a == b }\n";
   CHECK(joggle::parse(env, dynamic_overload_source, dynamic_overload,
@@ -265,7 +276,7 @@ int main(int argc, char** argv) {
   CHECK(env.load("nn"));
   joggle::Mod network;
   constexpr std::string_view network_source =
-      "module network\n"
+      "mod network\n"
       "use nn\n"
       "fn stage(x: tensor<f32, [4]>, skip: tensor<f32, [4]>) "
       "-> tensor<f32, [4]> {\n"
@@ -277,7 +288,7 @@ int main(int argc, char** argv) {
   CHECK(relu_template && !relu_template.external());
   joggle::Mod generated_fn;
   constexpr std::string_view generated_source =
-      "module generated\n"
+      "mod generated\n"
       "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
       "  return generated.relu(x)\n"
       "}\n";
@@ -357,7 +368,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod value_specialization;
   constexpr std::string_view value_specialization_source =
-      "module specialize\n"
+      "mod specialize\n"
       "use base\n"
       "fn repeat<N: int>(x: i32) -> i32 {\n"
       "  var y = x\n"
@@ -421,7 +432,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod alpha_duplicate;
   constexpr std::string_view alpha_source =
-      "module alpha\n"
+      "mod alpha\n"
       "use tensor\n"
       "fn copy<A: Ty, D: list<int>>(\n"
       "  x: tensor<A, D>\n"
@@ -439,7 +450,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod recursive_fn;
   constexpr std::string_view recursive_source =
-      "module recursive\n"
+      "mod recursive\n"
       "fn recur(n: int) -> int { return recur(n) }\n"
       "fn generic<N: int>(n: int) -> int { return generic<N>(n) }\n";
   CHECK(joggle::parse(env, recursive_source, recursive_fn, "recursive.jog"));
@@ -465,7 +476,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod function_edit;
   constexpr std::string_view function_edit_source =
-      "module function_edit\n"
+      "mod function_edit\n"
       "fn helper<T: Ty>(x: T) -> T { return helper<T>(x) }\n"
       "fn renamed(x: i32, y: i32) -> i32 { return x }\n"
       "fn duplicate<U: Ty>(x: U) -> U { return x }\n"
@@ -513,7 +524,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod deferred_caller;
   CHECK(joggle::parse(env,
-                      "module deferred.caller\n"
+                      "mod deferred.caller\n"
                       "fn choose(x: i32) -> i32 { return x }\n"
                       "fn choose(x: f32) -> f32 { return x }\n"
                       "fn apply<T: Ty>(x: T) -> T { return choose(x) }\n"
@@ -548,7 +559,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod nested_return;
   constexpr std::string_view nested_return_source =
-      "module nested_return\n"
+      "mod nested_return\n"
       "fn bad(x: i32) -> i32 {\n"
       "  if true { return true }\n"
       "  return x\n"
@@ -564,7 +575,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod return_edit;
   CHECK(joggle::parse(env,
-                      "module return_edit\n"
+                      "mod return_edit\n"
                       "fn identity(x: i32) -> i32 { return x }\n",
                       return_edit, "return-edit.jog"));
   CHECK(return_edit.verify(env));
@@ -588,7 +599,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod generic_edit;
   constexpr std::string_view generic_edit_source =
-      "module generic_edit\n"
+      "mod generic_edit\n"
       "fn helper<N: int>(x: i32) -> i32 { return x }\n"
       "fn main(x: i32) -> i32 { return helper<4>(x) }\n";
   CHECK(joggle::parse(env, generic_edit_source, generic_edit,
@@ -615,7 +626,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod derived_generic;
   constexpr std::string_view derived_generic_source =
-      "module derived_generic\n"
+      "mod derived_generic\n"
       "fn vec<N: int>() -> Ty;\n"
       "fn vec<N: int>(x: i32) -> vec<N>;\n"
       "fn build<S: list<int>>(x: i32) -> vec<len<S>> {\n"
@@ -680,11 +691,251 @@ int main(int argc, char** argv) {
   CHECK(env.load("script"));
   for (joggle::Fn fn : env.fns("script"))
     CHECK(fn.name() != "hidden" && !fn.local());
+  bool nested_path = false;
+  const joggle::Fn expanded_stage = network_cpp.find_fn("stage");
+  for (const joggle::Op op : expanded_stage.ops()) {
+    const std::vector<std::size_t> path = network_cpp.path(op);
+    CHECK(!path.empty());
+    CHECK(network_cpp.at(expanded_stage, path) == op);
+    nested_path = nested_path || path.size() > 1;
+  }
+  CHECK(nested_path);
+  joggle::Mod path_copy;
+  CHECK(joggle::parse(env, joggle::print(network_cpp), path_copy,
+                      "network-path-copy.jog"));
+  CHECK(path_copy.verify(env));
+  const joggle::Fn copied_stage = path_copy.find_fn("stage");
+  for (const joggle::Op op : expanded_stage.ops()) {
+    const std::vector<std::size_t> path = network_cpp.path(op);
+    const joggle::Op copied = path_copy.at(copied_stage, path);
+    CHECK(copied && copied.kind() == op.kind() && copied.form() == op.form());
+  }
+  const std::array<joggle::Attr, 1> stage_arg{joggle::Attr("stage")};
+  joggle::Attr path_roundtrip;
+  CHECK(joggle::query(env, "script.path_roundtrip", network_cpp,
+                      path_roundtrip, stage_arg));
+  CHECK(path_roundtrip.boolean() && *path_roundtrip.boolean());
+  std::int64_t call_count = 0;
+  std::int64_t control_count = 0;
+  for (joggle::Op op : network_cpp.ops()) {
+    call_count += op.kind() == joggle::Op::Kind::call;
+    control_count += op.kind() == joggle::Op::Kind::loop ||
+                     op.kind() == joggle::Op::Kind::branch;
+  }
+  joggle::Attr kind_counts;
+  CHECK(joggle::query(env, "script.op_kind_counts", network_cpp,
+                      kind_counts));
+  const auto* kind_count_list = kind_counts.list();
+  CHECK(kind_count_list && kind_count_list->size() == 3);
+  CHECK(kind_count_list->at(0).integer() &&
+        *kind_count_list->at(0).integer() == call_count);
+  CHECK(kind_count_list->at(1).integer() &&
+        *kind_count_list->at(1).integer() == control_count);
+  CHECK(kind_count_list->at(2).integer() &&
+        *kind_count_list->at(2).integer() == 0);
+  joggle::Mod unused_subject;
+  CHECK(joggle::parse(
+      env,
+      "mod unused.subject\n"
+      "fn graph(x: int) -> int {\n"
+      "  let one: int = 1\n"
+      "  let used: int = x + one\n"
+      "  let dead: int = 2\n"
+      "  return used\n"
+      "}\n",
+      unused_subject, "unused-subject.jog"));
+  CHECK(unused_subject.verify(env));
+  const std::array<joggle::Attr, 1> unused_args{joggle::Attr("graph")};
+  joggle::Attr unused_counts;
+  CHECK(joggle::query(env, "script.unused_probe", unused_subject,
+                      unused_counts, unused_args));
+  const auto* unused_count_list = unused_counts.list();
+  CHECK(unused_count_list && unused_count_list->size() == 3);
+  CHECK(unused_count_list->at(0).integer() &&
+        *unused_count_list->at(0).integer() == 4);
+  CHECK(unused_count_list->at(1).integer() &&
+        *unused_count_list->at(1).integer() == 3);
+  CHECK(unused_count_list->at(2).integer() &&
+        *unused_count_list->at(2).integer() == 1);
+  joggle::Attr call_filter_counts;
+  CHECK(joggle::query(env, "script.call_filter_counts", unused_subject,
+                      call_filter_counts, unused_args));
+  const auto* call_filter_count_list = call_filter_counts.list();
+  CHECK(call_filter_count_list && call_filter_count_list->size() == 3);
+  CHECK(call_filter_count_list->at(0).integer() &&
+        *call_filter_count_list->at(0).integer() == 1);
+  CHECK(call_filter_count_list->at(1).integer() &&
+        *call_filter_count_list->at(1).integer() == 1);
+  CHECK(call_filter_count_list->at(2).integer() &&
+        *call_filter_count_list->at(2).integer() == 0);
   CHECK(env.declared("script.hidden"));
   CHECK(!env.declared("script.missing"));
   CHECK(!env.find_fn("script.hidden"));
+  constexpr std::string_view reactive_schedule_source =
+      "mod schedule.subject\n"
+      "fn left() -> int {\n"
+      "  let left_value: int = 1\n"
+      "  return left_value\n"
+      "}\n"
+      "fn right() -> int {\n"
+      "  let right_value: int = 2\n"
+      "  return right_value\n"
+      "}\n";
+  joggle::Mod reactive_scheduled;
+  CHECK(joggle::parse(env, reactive_schedule_source, reactive_scheduled,
+                      "schedule.jog"));
+  CHECK(reactive_scheduled.verify(env));
+  joggle::ReactiveSchedule schedule(
+      {"script.schedule_mark_a", "script.schedule_mark_b"});
+  const std::array<joggle::Attr, 1> left_args{joggle::Attr("left")};
+  joggle::ReactiveRunReport schedule_report;
+  CHECK(schedule.run(env, reactive_scheduled, left_args, &schedule_report));
+  CHECK(schedule_report.succeeded && schedule_report.cold &&
+        schedule_report.executed_stages == 2 &&
+        schedule_report.reused_stages == 0 &&
+        schedule_report.execution.steps.size() == 2);
+  CHECK(schedule_report.stages[0].observed_functions == 1 &&
+        schedule_report.stages[1].observed_functions == 1 &&
+        schedule_report.stages[0].observed_structure &&
+        !schedule_report.stages[0].observed_whole_mod);
+  CHECK(schedule.run(env, reactive_scheduled, left_args, &schedule_report));
+  CHECK(schedule_report.succeeded && !schedule_report.cold &&
+        schedule_report.executed_stages == 0 &&
+        schedule_report.reused_stages == 2 &&
+        schedule_report.execution.steps.empty());
+  const auto replace_constant = [&](std::string_view function,
+                                    std::int64_t value) {
+    for (joggle::Op op : reactive_scheduled.find_fn(function).ops())
+      if (op.kind() == joggle::Op::Kind::constant)
+        return reactive_scheduled.replace(op, joggle::Attr(value));
+    return false;
+  };
+  CHECK(replace_constant("right", 20));
+  CHECK(schedule.run(env, reactive_scheduled, left_args, &schedule_report));
+  CHECK(schedule_report.executed_stages == 0 &&
+        schedule_report.reused_stages == 2);
+  CHECK(replace_constant("left", 10));
+  CHECK(schedule.run(env, reactive_scheduled, left_args, &schedule_report));
+  CHECK(schedule_report.executed_stages == 2 &&
+        schedule_report.reused_stages == 0 &&
+        schedule_report.stages[0].miss ==
+            joggle::ReactiveMiss::function_revision &&
+        schedule_report.stages[1].miss ==
+            joggle::ReactiveMiss::function_revision);
+  const std::array<joggle::Attr, 1> right_args{joggle::Attr("right")};
+  CHECK(schedule.run(env, reactive_scheduled, right_args, &schedule_report));
+  CHECK(schedule_report.cold && schedule_report.executed_stages == 2 &&
+        schedule_report.stages[0].miss == joggle::ReactiveMiss::arguments);
+  constexpr std::string_view cone_schedule_source =
+      "mod schedule.cone\n"
+      "fn graph() -> int {\n"
+      "  let left_root: int = 1\n"
+      "  let right_root: int = 2\n"
+      "  let left_result: int = pure(left_root)\n"
+      "  let right_result: int = pure(right_root)\n"
+      "  return left_result\n"
+      "}\n";
+  joggle::Mod cone_scheduled;
+  CHECK(joggle::parse(env, cone_schedule_source, cone_scheduled,
+                      "schedule-cone.jog"));
+  CHECK(cone_scheduled.verify(env));
+  joggle::ReactiveSchedule cone_schedule(
+      {"script.schedule_cone_a", "script.schedule_cone_b"});
+  const std::array<joggle::Attr, 2> cone_args{
+      joggle::Attr("graph"), joggle::Attr("left_root")};
+  CHECK(cone_schedule.run(env, cone_scheduled, cone_args, &schedule_report));
+  CHECK(schedule_report.executed_stages == 2 &&
+        schedule_report.stages[0].observed_functions == 0 &&
+        schedule_report.stages[0].observed_collections == 1 &&
+        schedule_report.stages[0].observed_operations != 0 &&
+        schedule_report.stages[0].observed_values != 0);
+  const auto replace_named_constant = [&](std::string_view name,
+                                           std::int64_t value) {
+    for (joggle::Val candidate : cone_scheduled.find_fn("graph").vals())
+      if (candidate.name() == name && candidate.is_const())
+        return cone_scheduled.replace(candidate.def(), joggle::Attr(value));
+    return false;
+  };
+  CHECK(replace_named_constant("right_root", 20));
+  CHECK(cone_schedule.run(env, cone_scheduled, cone_args, &schedule_report));
+  CHECK(schedule_report.executed_stages == 0 &&
+        schedule_report.reused_stages == 2);
+  CHECK(replace_named_constant("left_root", 10));
+  CHECK(cone_schedule.run(env, cone_scheduled, cone_args, &schedule_report));
+  CHECK(schedule_report.executed_stages == 2 &&
+        schedule_report.stages[0].miss ==
+            joggle::ReactiveMiss::operation_revision &&
+        schedule_report.stages[1].miss ==
+            joggle::ReactiveMiss::operation_revision);
+  joggle::Mod constant_scheduled;
+  CHECK(joggle::parse(env, cone_schedule_source, constant_scheduled,
+                      "schedule-constant.jog"));
+  CHECK(constant_scheduled.verify(env));
+  const std::vector<joggle::Op> constant_operations =
+      constant_scheduled.find_fn("graph").ops();
+  std::size_t left_constant_index = constant_operations.size();
+  joggle::Op scheduled_left_constant;
+  joggle::Op scheduled_right_constant;
+  for (std::size_t index = 0; index < constant_operations.size(); ++index) {
+    const joggle::Op operation = constant_operations[index];
+    if (operation.kind() != joggle::Op::Kind::constant ||
+        operation.outs().size() != 1)
+      continue;
+    if (operation.outs().front().name() == "left_root") {
+      scheduled_left_constant = operation;
+      left_constant_index = index;
+    } else if (operation.outs().front().name() == "right_root") {
+      scheduled_right_constant = operation;
+    }
+  }
+  CHECK(scheduled_left_constant && scheduled_right_constant &&
+        left_constant_index < constant_operations.size());
+  joggle::ReactiveSchedule constant_schedule({"script.schedule_constant"});
+  const std::array<joggle::Attr, 2> constant_args{
+      joggle::Attr("graph"),
+      joggle::Attr(static_cast<std::int64_t>(left_constant_index))};
+  CHECK(constant_schedule.run(env, constant_scheduled, constant_args,
+                              &schedule_report));
+  CHECK(schedule_report.executed_stages == 1 &&
+        schedule_report.stages[0].observed_operations == 1);
+  CHECK(constant_scheduled.replace(scheduled_right_constant,
+                                   joggle::Attr(std::int64_t{20})));
+  CHECK(constant_schedule.run(env, constant_scheduled, constant_args,
+                              &schedule_report));
+  CHECK(schedule_report.executed_stages == 0 &&
+        schedule_report.reused_stages == 1);
+  CHECK(constant_scheduled.replace(scheduled_left_constant,
+                                   joggle::Attr(std::int64_t{10})));
+  CHECK(constant_schedule.run(env, constant_scheduled, constant_args,
+                              &schedule_report));
+  CHECK(schedule_report.executed_stages == 1 &&
+        schedule_report.stages[0].miss ==
+            joggle::ReactiveMiss::operation_revision);
+  joggle::ReactiveSchedule propagated_schedule(
+      {"script.schedule_forward", "script.schedule_consume"});
+  const std::array<joggle::Attr, 2> edge_args{joggle::Attr("left"),
+                                              joggle::Attr("right")};
+  CHECK(propagated_schedule.run(env, reactive_scheduled, edge_args,
+                                &schedule_report));
+  CHECK(schedule_report.executed_stages == 2 &&
+        schedule_report.stages[0].changed_functions == 1 &&
+        schedule_report.stages[1].observed_functions == 1);
+  CHECK(replace_constant("left", 11));
+  CHECK(propagated_schedule.run(env, reactive_scheduled, edge_args,
+                                &schedule_report));
+  CHECK(schedule_report.executed_stages == 2 &&
+        schedule_report.stages[0].miss ==
+            joggle::ReactiveMiss::function_revision &&
+        schedule_report.stages[1].miss == joggle::ReactiveMiss::upstream);
+  const std::string before_failed_schedule = joggle::print(reactive_scheduled);
+  joggle::ReactiveSchedule failing_schedule(
+      {"script.schedule_mark_a", "script.schedule_fail"});
+  CHECK(!failing_schedule.run(env, reactive_scheduled, left_args,
+                              &schedule_report));
+  CHECK(joggle::print(reactive_scheduled) == before_failed_schedule);
+  env.clear_diags();
   constexpr std::string_view local_client_source =
-      "module local.client\n"
+      "mod local.client\n"
       "use script\n"
       "local fn hidden() -> bool {\n"
       "  return true\n"
@@ -706,7 +957,7 @@ int main(int argc, char** argv) {
   CHECK(!env.find_fn("script.hidden_type"));
   CHECK(rejects_type(
       env,
-      "module local.type.client\nuse script\n"
+      "mod local.type.client\nuse script\n"
       "fn bad(x: script.hidden_type<i32>) -> script.hidden_type<i32> { "
       "return x }\n",
       "names a local function in another module"));
@@ -722,7 +973,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod private_call;
   CHECK(joggle::parse(env,
-                      "module private_call\n"
+                      "mod private_call\n"
                       "use script\n"
                       "fn main(m: Mod) -> bool { return script.hidden(m) }\n",
                       private_call, "private-call.jog"));
@@ -737,7 +988,7 @@ int main(int argc, char** argv) {
   joggle::Mod open_transport;
   CHECK(joggle::parse(
       env,
-      "module open_transport\n"
+      "mod open_transport\n"
       "use onnx\n"
       "fn main(x: opaque) -> opaque { return onnx.NotDeclared(x) }\n",
       open_transport, "open-transport.jog"));
@@ -756,10 +1007,14 @@ int main(int argc, char** argv) {
   joggle::Mod matched_fn;
   CHECK(joggle::parse(env, network_source, matched_fn, "matched-fn.jog"));
   joggle::Attr matched_report;
-  std::chrono::nanoseconds matched_elapsed;
+  joggle::RunTiming matched_timing;
   CHECK(joggle::run(env, "script.clone_matched", matched_fn, matched_report,
-                    matched_elapsed));
-  CHECK(matched_elapsed >= std::chrono::nanoseconds::zero());
+                    matched_timing));
+  CHECK(matched_timing.succeeded && matched_timing.steps.size() == 1 &&
+        matched_timing.steps.front().succeeded &&
+        matched_timing.steps.front().function == "script.clone_matched" &&
+        matched_timing.steps.front().after >=
+            matched_timing.steps.front().before);
   CHECK(matched_fn.verify(env));
   const joggle::Fn matched_relu = matched_fn.find_fn("relu_matched");
   CHECK(matched_relu && matched_relu.generics().empty());
@@ -783,7 +1038,7 @@ int main(int argc, char** argv) {
   CHECK(!failed_matched_fn.find_fn("orphan"));
   joggle::Mod scripted_function_edit;
   constexpr std::string_view scripted_function_edit_source =
-      "module scripted_function_edit\n"
+      "mod scripted_function_edit\n"
       "fn helper(x: i32) -> i32 { return x }\n"
       "fn main(x: i32) -> i32 { return helper(x) }\n";
   CHECK(joggle::parse(env, scripted_function_edit_source,
@@ -800,7 +1055,7 @@ int main(int argc, char** argv) {
   CHECK(scripted_function_edit.verify(env));
   joggle::Mod scripted_return_edit;
   CHECK(joggle::parse(env,
-                      "module scripted_return_edit\n"
+                      "mod scripted_return_edit\n"
                       "fn identity(x: i32) -> i32 { return x }\n",
                       scripted_return_edit, "scripted-return-edit.jog"));
   CHECK(joggle::run(env, "script.retype_identity", scripted_return_edit));
@@ -818,7 +1073,7 @@ int main(int argc, char** argv) {
   CHECK(scripted_return_edit.revision() == before_bad_return_revision);
   joggle::Mod scripted_fn;
   constexpr std::string_view scripted_fn_source =
-      "module scripted.generated\n"
+      "mod scripted.generated\n"
       "use tensor\n"
       "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
       "  return scripted.generated.relu(x)\n"
@@ -883,7 +1138,7 @@ int main(int argc, char** argv) {
   CHECK(scripted_fn_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(scripted_fn, scripted_fn_roundtrip));
   constexpr std::string_view relation_source =
-      "module relation\n"
+      "mod relation\n"
       "[mark: [\"fn\", \"entry\"]]\n"
       "fn main([mark: \"param\"] x: i32) -> i32 {\n"
       "  [mark: \"op\"]\n"
@@ -952,7 +1207,7 @@ int main(int argc, char** argv) {
   env.clear_diags();
   CHECK(env.load("tflite.nn"));
   constexpr std::string_view tflite_relation_source =
-      "module tflite.relation\n"
+      "mod tflite.relation\n"
       "use tflite\n"
       "fn main(\n"
       "  left: tensor<f32, [1, 3]>, right: tensor<f32, [2, 1]>\n"
@@ -975,7 +1230,7 @@ int main(int argc, char** argv) {
   }
   CHECK(tflite_adds == 0 && nn_adds == 1);
   constexpr std::string_view custom_onnx_source =
-      "module custom.onnx\n"
+      "mod custom.onnx\n"
       "use onnx\n"
       "fn main(x: i32) -> _ {\n"
       "  [onnx: {}]\n"
@@ -1006,7 +1261,7 @@ int main(int argc, char** argv) {
   {
     joggle::Mod compiler;
     CHECK(joggle::parse(env,
-                        "module compiler.demo\n"
+                        "mod compiler.demo\n"
                         "use script\n"
                         "use opt\n"
                         "fn inert(m: Mod) -> bool { return true }\n",
@@ -1018,7 +1273,7 @@ int main(int argc, char** argv) {
     CHECK(generated && compiler.verify(env));
     joggle::Mod program;
     CHECK(joggle::parse(env,
-                        "module compiler.input\n"
+                        "mod compiler.input\n"
                         "fn main(x: i32) -> i32 { let y = x + 0 return y }\n",
                         program, "compiler-input.jog"));
     CHECK(program.verify(env));
@@ -1065,7 +1320,7 @@ int main(int argc, char** argv) {
     // closure without making the source module's private API public.
     joggle::Mod code;
     CHECK(joggle::parse(env,
-                        "module compiler.boundary\n"
+                        "mod compiler.boundary\n"
                         "use opt\n"
                         "fn inert(m: Mod) -> bool { return true }\n",
                         code, "compiler-boundary.jog"));
@@ -1083,7 +1338,7 @@ int main(int argc, char** argv) {
 
     joggle::Mod c_code;
     CHECK(joggle::parse(env,
-                        "module compiler.c\n"
+                        "mod compiler.c\n"
                         "use c\n"
                         "fn inert(m: Mod) -> bool { return true }\n",
                         c_code, "compiler-c.jog"));
@@ -1100,7 +1355,7 @@ int main(int argc, char** argv) {
 
     joggle::Mod original, target;
     const std::string_view source_model =
-        "module compiler.c_input\n"
+        "mod compiler.c_input\n"
         "fn main(x: i32) -> i32 { let y = x + 0 return y }\n";
     CHECK(joggle::parse(env, source_model, original, "compiler-c-input.jog"));
     CHECK(joggle::parse(env, source_model, target, "compiler-c-target.jog"));
@@ -1145,13 +1400,13 @@ int main(int argc, char** argv) {
     // failing that closure must leave the destination exactly unchanged.
     joggle::Mod source, destination;
     CHECK(joggle::parse(env,
-                        "module compiler.private\n"
+                        "mod compiler.private\n"
                         "local fn helper(m: Mod) -> bool;\n"
                         "fn entry(m: Mod) -> bool { return helper(m) }\n",
                         source, "compiler-private.jog"));
     CHECK(source.verify(env));
     CHECK(joggle::parse(env,
-                        "module compiler.private_target\n"
+                        "mod compiler.private_target\n"
                         "fn inert(m: Mod) -> bool { return true }\n",
                         destination, "compiler-private-target.jog"));
     const std::string before = joggle::print(destination);
@@ -1161,7 +1416,7 @@ int main(int argc, char** argv) {
     CHECK(destination.verify(env));
     joggle::Mod cyclic;
     CHECK(joggle::parse(env,
-                        "module compiler.cyclic\n"
+                        "mod compiler.cyclic\n"
                         "local fn a(m: Mod) -> bool { return b(m) }\n"
                         "local fn b(m: Mod) -> bool { return a(m) }\n"
                         "fn entry(m: Mod) -> bool { return a(m) }\n",
@@ -1174,7 +1429,7 @@ int main(int argc, char** argv) {
   {
     joggle::Mod derived;
     CHECK(joggle::parse(env,
-                        "module derived\n"
+                        "mod derived\n"
                         "fn matmul() -> i32 { return 1 }\n",
                         derived, "derived.jog"));
     CHECK(derived.verify(env));
@@ -1242,7 +1497,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(network, network_cpp));
 
   constexpr std::string_view logical_source =
-      "module logical\n"
+      "mod logical\n"
       "fn choose(a: bool, b: bool, c: bool) -> bool {\n"
       "  let out: bool = a && (b || c)\n"
       "  return out\n"
@@ -1263,7 +1518,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(logical, logical_roundtrip));
   joggle::Mod invalid_logical;
   CHECK(joggle::parse(
-      env, "module invalid.logical\n"
+      env, "mod invalid.logical\n"
            "fn bad(a: bool) -> bool { return a && 1 }\n",
       invalid_logical, "invalid-logical.jog"));
   CHECK(!invalid_logical.verify(env));
@@ -1273,7 +1528,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod generic_matmul;
   constexpr std::string_view generic_matmul_source =
-      "module generic.matmul\n"
+      "mod generic.matmul\n"
       "use tensor\n"
       "fn main(a: tensor<f32, [2, 3]>, b: tensor<f32, [3, 4]>) "
       "-> tensor<f32, [2, 4]> {\n"
@@ -1304,7 +1559,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod conv_network;
   constexpr std::string_view conv_network_source =
-      "module conv.network\n"
+      "mod conv.network\n"
       "use nn\n"
       "fn main(\n"
       "  x: tensor<f32, [1, 3, 5, 5]>,\n"
@@ -1353,7 +1608,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod pool_network;
   constexpr std::string_view pool_network_source =
-      "module pool.network\n"
+      "mod pool.network\n"
       "use nn\n"
       "fn main(x: tensor<f32, [1, 8, 4, 4]>) "
       "-> tensor<f32, [1, 8, 1, 1]> {\n"
@@ -1380,7 +1635,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod norm_network;
   constexpr std::string_view norm_network_source =
-      "module norm.network\n"
+      "mod norm.network\n"
       "use nn\n"
       "fn main(\n"
       "  x: tensor<f32, [1, 8, 4, 4]>,\n"
@@ -1419,7 +1674,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod reshape_network;
   constexpr std::string_view reshape_network_source =
-      "module reshape.network\n"
+      "mod reshape.network\n"
       "use tensor\n"
       "fn main(x: tensor<f32, [1, 2, 3]>) -> tensor<f32, [1, 6]> {\n"
       "  let y: tensor<f32, [1, 6]> = tensor.reshape(x)\n"
@@ -1446,7 +1701,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod linear_network;
   constexpr std::string_view linear_network_source =
-      "module linear.network\n"
+      "mod linear.network\n"
       "use nn\n"
       "fn stage(\n"
       "  x: tensor<f32, [2, 3]>,\n"
@@ -1489,7 +1744,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod local_expand;
   constexpr std::string_view local_expand_source =
-      "module local.expand\n"
+      "mod local.expand\n"
       "fn pair(x: i32) -> (i32, i32) {\n"
       "  return x, x + 1\n}\n"
       "fn main(x: i32) -> i32 {\n"
@@ -1514,7 +1769,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod expression_expand;
   constexpr std::string_view expression_expand_source =
-      "module expression.expand\n"
+      "mod expression.expand\n"
       "fn helper(x: i32) -> bool {\n"
       "  var out = false\n"
       "  if x > 0 { out = true }\n"
@@ -1547,7 +1802,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod imported_expand;
   constexpr std::string_view imported_expand_source =
-      "module imported.expand\n"
+      "mod imported.expand\n"
       "use tensor\n"
       "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
       "  let y: tensor<f32, [4]> = relu(x)\n"
@@ -1568,7 +1823,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod lexical_expand;
   constexpr std::string_view lexical_expand_source =
-      "module lexical.expand\n"
+      "mod lexical.expand\n"
       "use script\n"
       "local fn hidden(m: Mod) -> bool { return false }\n"
       "fn main(m: Mod) -> bool { return script.local_probe(m) }\n";
@@ -1598,7 +1853,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod recursive_closure;
   constexpr std::string_view recursive_closure_source =
-      "module recursive.closure\n"
+      "mod recursive.closure\n"
       "use script\n"
       "fn main(x: i32) -> i32 { return script.recursive_local_probe(x) }\n";
   CHECK(joggle::parse(env, recursive_closure_source, recursive_closure,
@@ -1627,7 +1882,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod batch_expand;
   constexpr std::string_view batch_expand_source =
-      "module batch.expand\n"
+      "mod batch.expand\n"
       "use nn\n"
       "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
       "  let first = nn.relu(x)\n"
@@ -1651,7 +1906,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod batch_rollback;
   constexpr std::string_view batch_rollback_source =
-      "module batch.rollback\n"
+      "mod batch.rollback\n"
       "use nn\n"
       "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
       "  let first = nn.relu(x)\n"
@@ -1682,13 +1937,13 @@ int main(int argc, char** argv) {
 
   joggle::Mod detached_implementation;
   CHECK(joggle::parse(env,
-                      "module detached.impl\n"
+                      "mod detached.impl\n"
                       "fn source(x: i32) -> i32 { return x }\n",
                       detached_implementation, "detached-impl.jog"));
   CHECK(detached_implementation.verify(env));
   joggle::Mod detached_user;
   CHECK(joggle::parse(env,
-                      "module detached.user\n"
+                      "mod detached.user\n"
                       "fn main(x: i32) -> i32 {\n"
                       "  let y: i32 = source(x)\n"
                       "  return y\n"
@@ -1709,7 +1964,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod rejected_expand;
   constexpr std::string_view rejected_expand_source =
-      "module rejected.expand\n"
+      "mod rejected.expand\n"
       "use tensor\n"
       "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
       "  [keep]\n"
@@ -1734,7 +1989,7 @@ int main(int argc, char** argv) {
   CHECK(env.load("onnx"));
   joggle::Mod bridged;
   constexpr std::string_view bridged_source =
-      "module bridged\n"
+      "mod bridged\n"
       "use onnx\n"
       "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
       "  let y: tensor<f32, [4]> = onnx.Relu(x)\n"
@@ -1766,7 +2021,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(bridged, bridged_roundtrip));
 
   joggle::Mod dependencies;
-  CHECK(joggle::parse(env, "module dependencies\nfn main() -> int { "
+  CHECK(joggle::parse(env, "mod dependencies\nfn main() -> int { "
                            "return 0 }\n",
                       dependencies, "dependencies.jog"));
   const std::uint64_t dependencies_revision = dependencies.revision();
@@ -1786,7 +2041,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod indirect_cycle;
   CHECK(joggle::parse(env,
-                      "module opt\n"
+                      "mod opt\n"
                       "fn main() -> int { return 0 }\n",
                       indirect_cycle, "indirect-cycle.jog"));
   const std::string indirect_cycle_text = joggle::print(indirect_cycle);
@@ -1801,7 +2056,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod parsed_indirect_cycle;
   CHECK(joggle::parse(env,
-                      "module opt\n"
+                      "mod opt\n"
                       "use script\n"
                       "fn main() -> int { return 0 }\n",
                       parsed_indirect_cycle, "parsed-indirect-cycle.jog"));
@@ -1815,7 +2070,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod missing_dependency;
   CHECK(joggle::parse(env,
-                      "module missing_dependency\n"
+                      "mod missing_dependency\n"
                       "use missing\n"
                       "fn main() -> int { return 0 }\n",
                       missing_dependency, "missing-dependency.jog"));
@@ -1826,7 +2081,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod self_dependency;
   CHECK(joggle::parse(env,
-                      "module self_dependency\n"
+                      "mod self_dependency\n"
                       "use self_dependency\n"
                       "fn main() -> int { return 0 }\n",
                       self_dependency, "self-dependency.jog"));
@@ -1840,7 +2095,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod duplicate_dependency;
   CHECK(joggle::parse(env,
-                      "module duplicate_dependency\n"
+                      "mod duplicate_dependency\n"
                       "use base\n"
                       "use base\n"
                       "fn main() -> int { return 0 }\n",
@@ -1854,7 +2109,7 @@ int main(int argc, char** argv) {
       }));
 
   constexpr std::string_view inferred_source =
-      "module inferred\n"
+      "mod inferred\n"
       "use tensor\n"
       "fn main(x: i32) -> tensor<f32, [2, 3]> {\n"
       "  var y = opaque(x)\n"
@@ -1899,7 +2154,7 @@ int main(int argc, char** argv) {
   CHECK(inferred_cpp.verify(env));
 
   constexpr std::string_view batch_type_source =
-      "module batch_type\n"
+      "mod batch_type\n"
       "fn main(n: i32) -> i32 {\n"
       "  var x = seed_x(n)\n"
       "  var y = seed_y(n)\n"
@@ -1956,7 +2211,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod explicit_type;
   CHECK(joggle::parse(env,
-                      "module explicit_type\n"
+                      "mod explicit_type\n"
                       "fn f(x: i32) -> i32 {\n"
                       "  let y = x + i32(1)\n"
                       "  return y\n"
@@ -1977,7 +2232,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod precedence;
   constexpr std::string_view precedence_source =
-      "module precedence\n"
+      "mod precedence\n"
       "use base\n"
       "fn logic(a: bool, b: bool, c: bool) -> bool {\n"
       "  return a && (b || c)\n}\n"
@@ -1997,7 +2252,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod types;
   constexpr std::string_view type_source =
-      "module types\n"
+      "mod types\n"
       "use tensor\n"
       "fn id<E: Ty, S: list<int>>(x: tensor<E, S>) -> tensor<E, S>;\n"
       "fn make<T: Ty>(x: i32) -> T;\n"
@@ -2033,7 +2288,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod type_composition;
   constexpr std::string_view type_composition_source =
-      "module type_composition\n"
+      "mod type_composition\n"
       "use tensor\n"
       "fn tensor(x: i32) -> i32;\n"
       "fn scalar(x: i32) -> i32 { return tensor(x) }\n"
@@ -2051,7 +2306,7 @@ int main(int argc, char** argv) {
   joggle::Mod structural_arity;
   CHECK(joggle::parse(
       env,
-      "module structural_arity\n"
+      "mod structural_arity\n"
       "fn keep(x: opaque) -> opaque;\n"
       "fn bad(x: opaque<i32>) -> opaque { return keep(x) }\n",
       structural_arity, "structural-arity.jog"));
@@ -2067,7 +2322,7 @@ int main(int argc, char** argv) {
   joggle::Mod structural_exact;
   CHECK(joggle::parse(
       env,
-      "module structural_exact\n"
+      "mod structural_exact\n"
       "fn keep(x: opaque<i32>) -> opaque<i32>;\n"
       "fn good(x: opaque<i32>) -> opaque<i32> { return keep(x) }\n",
       structural_exact, "structural-exact.jog"));
@@ -2076,7 +2331,7 @@ int main(int argc, char** argv) {
   joggle::Mod wrong_shape;
   CHECK(joggle::parse(
       env,
-      "module wrong_shape\nuse tensor\n"
+      "mod wrong_shape\nuse tensor\n"
       "fn bad(x: tensor<f32, 4>) -> tensor<f32, 4> { return x }\n",
       wrong_shape, "wrong-shape.jog"));
   CHECK(!wrong_shape.verify(env));
@@ -2085,25 +2340,25 @@ int main(int argc, char** argv) {
         std::string::npos);
 
   CHECK(rejects_type(
-      env, "module invalid\nfn bad(x: i32<f32>) -> i32<f32> { return x }\n",
+      env, "mod invalid\nfn bad(x: i32<f32>) -> i32<f32> { return x }\n",
       "does not accept type arguments"));
   CHECK(rejects_type(
       env,
-      "module invalid\nfn bad<T: Ty>(x: T<i32>) -> T<i32> { return x }\n",
+      "mod invalid\nfn bad<T: Ty>(x: T<i32>) -> T<i32> { return x }\n",
       "cannot be used as a type constructor"));
   CHECK(rejects_type(
-      env, "module invalid\nfn bad<N: int>(x: N) -> N { return x }\n",
+      env, "mod invalid\nfn bad<N: int>(x: N) -> N { return x }\n",
       "has type 'int', expected 'Ty'"));
   CHECK(rejects_type(
-      env, "module invalid\nfn bad(x: [i32]) -> [i32] { return x }\n",
+      env, "mod invalid\nfn bad(x: [i32]) -> [i32] { return x }\n",
       "has type 'list<Ty>', expected 'Ty'"));
   CHECK(rejects_type(
-      env, "module invalid\nfn bad(x: list) -> list { return x }\n",
+      env, "mod invalid\nfn bad(x: list) -> list { return x }\n",
       "type 'list' expects 1 argument"));
 
   joggle::Mod multi;
   constexpr std::string_view multi_source =
-      "module multi\n"
+      "mod multi\n"
       "fn split(x: i32) -> (i32, bool);\n"
       "fn first(x: i32) -> i32 {\n"
       "  let value: i32, valid: bool = split(x)\n"
@@ -2125,7 +2380,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod annotated;
   constexpr std::string_view annotated_source =
-      "module annotated\n"
+      "mod annotated\n"
       "fn add(x: i32) -> i32 {\n"
       "  [cost: 3, place: \"edge\"]\n"
       "  let y = x + 1\n"
@@ -2164,7 +2419,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod invalid_meta_name;
   CHECK(!joggle::parse(env,
-                       "module invalid.meta\n[bad.] fn f() -> ();\n",
+                       "mod invalid.meta\n[bad.] fn f() -> ();\n",
                        invalid_meta_name, "invalid-meta-name.jog"));
   CHECK(std::any_of(invalid_meta_name.diags().begin(),
                     invalid_meta_name.diags().end(),
@@ -2176,7 +2431,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod selective;
   constexpr std::string_view selective_source =
-      "module selective\n"
+      "mod selective\n"
       "fn choose(x: i32) -> i32 {\n"
       "  let shared = x + 0\n"
       "  let left = shared + 1\n"
@@ -2199,9 +2454,36 @@ int main(int argc, char** argv) {
   CHECK(selective_text.find("let left = x + 1") != std::string::npos);
   CHECK(selective_text.find("let right = shared + 2") != std::string::npos);
 
+  joggle::Mod duplicate_uses;
+  constexpr std::string_view duplicate_uses_source =
+      "mod duplicate_uses\n"
+      "fn sum(x: i32, y: i32) -> i32 {\n"
+      "  let result = x + x\n"
+      "  return result\n"
+      "}\n";
+  CHECK(joggle::parse(env, duplicate_uses_source, duplicate_uses,
+                      "duplicate-uses.jog"));
+  CHECK(duplicate_uses.verify(env));
+  const joggle::Fn duplicate_sum = duplicate_uses.find_fn("sum");
+  const joggle::Op addition = duplicate_sum.body().ops()[0];
+  const joggle::Op sum_return = duplicate_sum.body().ops()[1];
+  CHECK(duplicate_sum.params()[0].users().size() == 2);
+  CHECK(duplicate_uses.replace(duplicate_sum.params()[0],
+                               duplicate_sum.params()[1]));
+  CHECK(duplicate_sum.params()[0].users().empty());
+  CHECK(duplicate_sum.params()[1].users().size() == 2);
+  CHECK(duplicate_uses.replace(addition.outs()[0],
+                               duplicate_sum.params()[1]));
+  CHECK(duplicate_uses.erase(addition));
+  const std::vector<joggle::Op> remaining_users =
+      duplicate_sum.params()[1].users();
+  CHECK(remaining_users.size() == 1);
+  CHECK(remaining_users.front() == sum_return);
+  CHECK(duplicate_uses.verify(env));
+
   joggle::Mod cloned_loop;
   constexpr std::string_view loop_source =
-      "module looped\n"
+      "mod looped\n"
       "fn sum(n: int) -> int {\n"
       "  var total = 0\n"
       "  for i in 0..n {\n"
@@ -2238,7 +2520,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod cloned_sequence;
   constexpr std::string_view sequence_source =
-      "module sequence\n"
+      "mod sequence\n"
       "fn twice(x: int) -> int {\n"
       "  let next = x + 1\n"
       "  let result = next * 2\n"
@@ -2265,7 +2547,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod remapped_loop;
   constexpr std::string_view remapped_loop_source =
-      "module remapped\n"
+      "mod remapped\n"
       "fn sum(n: int, left: int, right: int) -> int {\n"
       "  var total = 0\n"
       "  for i in 0..n { total += left + i }\n"
@@ -2336,7 +2618,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod sparse_control;
   constexpr std::string_view sparse_control_source =
-      "module sparse.control\n"
+      "mod sparse.control\n"
       "fn run(n: int, flag: bool) -> int {\n"
       "  var acc = 0\n"
       "  var seen = n\n"
@@ -2374,7 +2656,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod cloned_binding;
   constexpr std::string_view binding_source =
-      "module binding\n"
+      "mod binding\n"
       "fn compute(x: i32) -> i32 {\n"
       "  let value = first(x)\n"
       "  return value\n"
@@ -2397,7 +2679,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod scheduled;
   constexpr std::string_view schedule_source =
-      "module scheduled\n"
+      "mod scheduled\n"
       "fn schedule(x: i32) -> i32 {\n"
       "  let a = first(x)\n"
       "  let b = second(x)\n"
@@ -2422,7 +2704,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod loop_motion;
   constexpr std::string_view loop_motion_source =
-      "module loop_motion\n"
+      "mod loop_motion\n"
       "fn compute(x: i32) -> i32 {\n"
       "  var total: i32 = 0\n"
       "  for i in 0..4 {\n"
@@ -2463,7 +2745,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod colliding_motion;
   constexpr std::string_view colliding_motion_source =
-      "module colliding_motion\n"
+      "mod colliding_motion\n"
       "fn compute(x: i32) -> i32 {\n"
       "  let invariant: i32 = pure(x)\n"
       "  var total: i32 = invariant\n"
@@ -2500,7 +2782,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod hoisted_motion;
   constexpr std::string_view hoisted_motion_source =
-      "module hoisted_motion\n"
+      "mod hoisted_motion\n"
       "fn compute(x: i32) -> i32 {\n"
       "  var total: i32 = 0\n"
       "  for i in 0..4 {\n"
@@ -2564,7 +2846,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod cloned_branch;
   constexpr std::string_view branch_source =
-      "module branched\n"
+      "mod branched\n"
       "fn choose(x: i32, flag: bool) -> i32 {\n"
       "  var result = x\n"
       "  if flag {\n"
@@ -2593,7 +2875,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod built_control;
   constexpr std::string_view control_seed =
-      "module control\n"
+      "mod control\n"
       "fn build(n: int, flag: bool) -> int { return n }\n";
   CHECK(joggle::parse(env, control_seed, built_control, "control.jog"));
   CHECK(built_control.verify(env));
@@ -2694,7 +2976,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod failed_structure;
   CHECK(joggle::parse(env,
-                      "module failed.structure\n"
+                      "mod failed.structure\n"
                       "fn seed(x: int) -> int;\n"
                       "fn main(n: int, flag: bool) -> int {\n"
                       "  let total = seed(n)\n"
@@ -2772,7 +3054,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod wrong_result_type;
   CHECK(joggle::parse(env,
-                      "module wrong_result\n"
+                      "mod wrong_result\n"
                       "fn split(x: i32) -> (i32, bool);\n"
                       "fn bad(x: i32) -> str {\n"
                       "  let value: str, ok: bool = split(x)\n"
@@ -2784,7 +3066,7 @@ int main(int argc, char** argv) {
         std::string::npos);
 
   constexpr std::string_view failed_inference_source =
-      "module failed.inference\n"
+      "mod failed.inference\n"
       "use base\n"
       "fn main(x: i32) -> i64 {\n"
       "  let y = base.copy(x)\n"
@@ -2810,7 +3092,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod built_multi;
   CHECK(joggle::parse(env,
-                      "module built\n"
+                      "mod built\n"
                       "fn split(x: i32) -> (i32, bool);\n"
                       "fn observe(x: i32) -> ();\n"
                       "fn first(x: i32) -> i32 { return x }\n",
@@ -2844,7 +3126,7 @@ int main(int argc, char** argv) {
   CHECK(base_add);
   joggle::Mod exact_call;
   CHECK(joggle::parse(env,
-                      "module exact.call\n"
+                      "mod exact.call\n"
                       "use base\n"
                       "fn +(left: i64, right: i64) -> i64 {\n"
                       "  return left - right\n"
@@ -2904,10 +3186,252 @@ int main(int argc, char** argv) {
         exact_c.string()->find(
             "return exact_call_operatorZX20ZX2b(x, y);") !=
             std::string::npos);
+  joggle::Attr exact_definition;
+  joggle::QueryReport exact_definition_report;
+  const std::vector<joggle::Attr> exact_definition_args{
+      joggle::Attr("custom")};
+  CHECK(joggle::query(env, "c.definition", exact_roundtrip,
+                      exact_definition, exact_definition_args,
+                      &exact_definition_report));
+  CHECK(exact_definition.string() &&
+        exact_definition.string()->find("exact_call_custom") !=
+            std::string::npos);
+  CHECK(!exact_definition_report.cached &&
+        exact_definition_report.observed_functions >= 1 &&
+        !exact_definition_report.observed_whole_mod);
+  joggle::Attr exact_definition_cached;
+  CHECK(joggle::query(env, "c.definition", exact_roundtrip,
+                      exact_definition_cached, exact_definition_args,
+                      &exact_definition_report));
+  CHECK(exact_definition_report.cached &&
+        exact_definition_cached == exact_definition);
+  joggle::Attr exact_preamble;
+  CHECK(joggle::query(env, "c.preamble", exact_roundtrip,
+                      exact_preamble));
+  CHECK(exact_preamble.string());
+  std::string exact_fragments(*exact_preamble.string());
+  std::size_t exact_definition_index = 0;
+  for (const joggle::Fn fn : exact_roundtrip.fns()) {
+    if (!fn.body())
+      continue;
+    joggle::Attr fragment;
+    const std::vector<joggle::Attr> args{
+        joggle::Attr(static_cast<std::int64_t>(exact_definition_index++))};
+    CHECK(joggle::query(env, "c.definition", exact_roundtrip,
+                        fragment, args));
+    CHECK(fragment.string());
+    exact_fragments += *fragment.string();
+  }
+  CHECK(exact_fragments == *exact_c.string());
+
+  joggle::Attr exact_head;
+  joggle::Attr exact_storage;
+  joggle::Attr exact_body;
+  joggle::Attr exact_tail;
+  CHECK(joggle::query(env, "c.definition_head", exact_roundtrip,
+                      exact_head, exact_definition_args));
+  CHECK(joggle::query(env, "c.definition_storage", exact_roundtrip,
+                      exact_storage, exact_definition_args));
+  CHECK(joggle::query(env, "c.definition_body", exact_roundtrip,
+                      exact_body, exact_definition_args));
+  CHECK(joggle::query(env, "c.definition_tail", exact_roundtrip,
+                      exact_tail, exact_definition_args));
+  CHECK(exact_head.string() && exact_storage.string() &&
+        exact_body.string() && exact_tail.string());
+  const std::string exact_segmented_definition =
+      std::string(*exact_head.string()) +
+      std::string(*exact_storage.string()) +
+      std::string(*exact_body.string()) + std::string(*exact_tail.string());
+  CHECK(exact_segmented_definition == *exact_definition.string());
+
+  const std::vector<joggle::Attr> exact_binding_args{
+      joggle::Attr("custom"), joggle::Attr("bound_custom")};
+  CHECK(joggle::run(env, "script.bind_c_target", exact_roundtrip,
+                    exact_binding_args));
+  joggle::Attr bound_head;
+  CHECK(joggle::query(env, "c.definition_head", exact_roundtrip,
+                      bound_head, exact_definition_args));
+  CHECK(bound_head.string() &&
+        bound_head.string()->find("bound_custom(") != std::string::npos);
+  joggle::Attr bound_preamble;
+  CHECK(joggle::query(env, "c.preamble", exact_roundtrip, bound_preamble));
+  CHECK(bound_preamble.string() &&
+        bound_preamble.string()->find("bound_custom(") !=
+            std::string::npos);
+  joggle::Attr bound_fragments;
+  CHECK(joggle::query(env, "c.definition_binding", exact_roundtrip,
+                      bound_fragments, exact_definition_args));
+  CHECK(bound_fragments.list() && bound_fragments.list()->size() == 2 &&
+        bound_fragments.list()->at(0).string() &&
+        bound_fragments.list()->at(1).string());
+  const std::string bound_declaration(
+      *bound_fragments.list()->at(0).string());
+  const std::string bound_definition_head(
+      *bound_fragments.list()->at(1).string());
+  CHECK(bound_declaration.ends_with(";\n") &&
+        bound_definition_head.ends_with(" {\n") &&
+        bound_declaration.substr(0, bound_declaration.size() - 2) ==
+            bound_definition_head.substr(0,
+                                         bound_definition_head.size() - 3));
+
+  joggle::Attr exact_direct;
+  joggle::Attr exact_results;
+  CHECK(joggle::query(env, "c.definition_direct", exact_roundtrip,
+                      exact_direct, exact_definition_args));
+  CHECK(joggle::query(env, "c.definition_results", exact_roundtrip,
+                      exact_results, exact_definition_args));
+  CHECK(exact_direct.list() && exact_results.list());
+  std::string exact_chunked_body;
+  const std::size_t exact_body_ops =
+      exact_roundtrip.find_fn("custom").body().ops().size();
+  for (std::size_t index = 0; index < exact_body_ops; ++index) {
+    const std::vector<joggle::Attr> chunk_args{
+        joggle::Attr("custom"),
+        joggle::Attr(static_cast<std::int64_t>(index)),
+        joggle::Attr(std::int64_t{1}), exact_direct, exact_results};
+    joggle::Attr chunk;
+    CHECK(joggle::query(env, "c.definition_body_chunk", exact_roundtrip,
+                        chunk, chunk_args));
+    CHECK(chunk.string());
+    exact_chunked_body += *chunk.string();
+  }
+  CHECK(exact_chunked_body == *exact_body.string());
+
+  joggle::Mod nested_emission;
+  CHECK(joggle::parse(
+      env,
+      "mod nested_emission\n"
+      "use base\n"
+      "fn main() -> i64 {\n"
+      "  var total: i64 = i64(0)\n"
+      "  for i in 0..4 {\n"
+      "    if i >= 2 { total += i64(2) } else { total += i64(1) }\n"
+      "  }\n"
+      "  return total\n"
+      "}\n",
+      nested_emission, "nested-emission.jog"));
+  CHECK(nested_emission.verify(env));
+  const joggle::Fn nested_main = nested_emission.find_fn("main");
+  CHECK(nested_main && nested_main.body());
+  const std::vector<joggle::Attr> nested_name_args{joggle::Attr("main")};
+  joggle::Attr nested_direct;
+  joggle::Attr nested_results;
+  joggle::Attr nested_body;
+  CHECK(joggle::query(env, "c.definition_direct", nested_emission,
+                      nested_direct, nested_name_args));
+  CHECK(joggle::query(env, "c.definition_results", nested_emission,
+                      nested_results, nested_name_args));
+  CHECK(joggle::query(env, "c.definition_body", nested_emission,
+                      nested_body, nested_name_args));
+  CHECK(nested_direct.list() && nested_results.list() && nested_body.string());
+  std::size_t nested_blocks_checked = 0;
+  for (const joggle::Op owner : nested_main.ops()) {
+    if (owner.blks().empty())
+      continue;
+    const std::vector<std::size_t> owner_path = nested_emission.path(owner);
+    CHECK(!owner_path.empty());
+    joggle::Attr::List encoded_path;
+    for (const std::size_t index : owner_path)
+      encoded_path.emplace_back(static_cast<std::int64_t>(index));
+    for (std::size_t child = 0; child < owner.blks().size(); ++child) {
+      const std::size_t count = owner.blks()[child].ops().size();
+      if (count == 0)
+        continue;
+      const std::vector<joggle::Attr> nested_args{
+          joggle::Attr("main"), joggle::Attr(encoded_path),
+          joggle::Attr(static_cast<std::int64_t>(child)),
+          joggle::Attr(std::int64_t{0}),
+          joggle::Attr(static_cast<std::int64_t>(count)), nested_direct,
+          nested_results};
+      joggle::Attr fragment;
+      joggle::QueryReport fragment_report;
+      CHECK(joggle::query(env, "c.definition_nested_chunk", nested_emission,
+                          fragment, nested_args, &fragment_report));
+      CHECK(fragment.string() && !fragment.string()->empty());
+      CHECK(nested_body.string()->find(*fragment.string()) !=
+            std::string_view::npos);
+      CHECK(!fragment_report.observed_whole_mod);
+      const std::vector<joggle::Attr> partition_args{
+          joggle::Attr("main"), joggle::Attr(std::int64_t{0}),
+          joggle::Attr(static_cast<std::int64_t>(
+              nested_main.body().ops().size())),
+          joggle::Attr(encoded_path),
+          joggle::Attr(static_cast<std::int64_t>(child)),
+          joggle::Attr(std::int64_t{0}),
+          joggle::Attr(static_cast<std::int64_t>(count)), nested_direct,
+          nested_results};
+      joggle::Attr partition;
+      joggle::QueryReport partition_report;
+      CHECK(joggle::query(env, "c.definition_nested_partition",
+                          nested_emission, partition, partition_args,
+                          &partition_report));
+      CHECK(partition.list() && partition.list()->size() == 3);
+      std::string partitioned;
+      for (const joggle::Attr& piece : *partition.list()) {
+        CHECK(piece.string());
+        partitioned += *piece.string();
+      }
+      CHECK(partitioned == *nested_body.string());
+      CHECK(!partition_report.observed_whole_mod);
+      ++nested_blocks_checked;
+    }
+  }
+  CHECK(nested_blocks_checked >= 1);
+
+  // Function-granular C definitions must invalidate at the same boundary as
+  // their owning IR function. An unrelated body edit retains the cached
+  // definition; an edit to the observed function rebuilds it.
+  joggle::Mod definition_scope;
+  CHECK(joggle::parse(env,
+                      "mod definition_scope\n"
+                      "fn left() -> int { return 1 }\n"
+                      "fn right() -> int { return 2 }\n",
+                      definition_scope, "definition-scope.jog"));
+  CHECK(definition_scope.verify(env));
+  const std::vector<joggle::Attr> definition_left_args{
+      joggle::Attr("left")};
+  joggle::Attr left_definition;
+  joggle::QueryReport definition_report;
+  CHECK(joggle::query(env, "c.definition", definition_scope,
+                      left_definition, definition_left_args,
+                      &definition_report));
+  CHECK(!definition_report.cached &&
+        definition_report.observed_functions == 1 &&
+        definition_report.observed_structure &&
+        !definition_report.observed_whole_mod);
+  joggle::Op definition_left_constant;
+  joggle::Op definition_right_constant;
+  for (const joggle::Op op : definition_scope.ops()) {
+    if (op.kind() != joggle::Op::Kind::constant)
+      continue;
+    const joggle::Fn owner = op.blk().fn();
+    if (owner.name() == "left")
+      definition_left_constant = op;
+    else if (owner.name() == "right")
+      definition_right_constant = op;
+  }
+  CHECK(definition_left_constant && definition_right_constant);
+  CHECK(definition_scope.replace(definition_right_constant,
+                                 joggle::Attr(std::int64_t{3})));
+  joggle::Attr retained_left_definition;
+  CHECK(joggle::query(env, "c.definition", definition_scope,
+                      retained_left_definition, definition_left_args,
+                      &definition_report));
+  CHECK(definition_report.cached &&
+        retained_left_definition == left_definition);
+  CHECK(definition_scope.replace(definition_left_constant,
+                                 joggle::Attr(std::int64_t{4})));
+  joggle::Attr rebuilt_left_definition;
+  CHECK(joggle::query(env, "c.definition", definition_scope,
+                      rebuilt_left_definition, definition_left_args,
+                      &definition_report));
+  CHECK(!definition_report.cached &&
+        definition_report.miss == joggle::QueryMiss::function_revision &&
+        rebuilt_left_definition != left_definition);
 
   joggle::Mod overloaded;
   constexpr std::string_view overload_source =
-      "module overloads\n"
+      "mod overloads\n"
       "fn choose(x: int) -> str;\n"
       "fn choose(x: str) -> int;\n"
       "fn select<T>(x: T) -> int;\n"
@@ -2943,7 +3467,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod dependent_overload;
   constexpr std::string_view dependent_overload_source =
-      "module dependent.overload\n"
+      "mod dependent.overload\n"
       "fn root(x: f32) -> f32;\n"
       "fn root(x: f64) -> f64;\n"
       "fn apply<E: Ty>(x: E) -> E { return root(x) }\n"
@@ -2976,22 +3500,22 @@ int main(int argc, char** argv) {
   CHECK(env.load("number"));
   CHECK(rejects_type(
       env,
-      "module missing.number\n"
+      "mod missing.number\n"
       "fn bad(x: qreal<8>) -> qreal<8> { return x }\n",
       "requires 'use number'"));
   CHECK(rejects_type(
       env,
-      "module wrong.number\nuse number\n"
+      "mod wrong.number\nuse number\n"
       "fn bad(x: qreal<f32>) -> qreal<f32> { return x }\n",
       "expected 'int'"));
   CHECK(rejects_type(
       env,
-      "module wrong.number\nuse number\n"
+      "mod wrong.number\nuse number\n"
       "fn bad(x: qreal<8, 16>) -> qreal<8, 16> { return x }\n",
       "expects 1 type argument"));
   joggle::Mod trim_number;
   CHECK(joggle::parse(env,
-                      "module trim.number\n"
+                      "mod trim.number\n"
                       "use math\n"
                       "use number\n"
                       "fn keep(x: qreal<8>) -> qreal<8> { return x }\n",
@@ -3004,7 +3528,7 @@ int main(int argc, char** argv) {
   CHECK(trim_number.verify(env));
   joggle::Mod custom_number;
   constexpr std::string_view custom_number_source =
-      "module custom.number\n"
+      "mod custom.number\n"
       "use math\n"
       "use number\n"
       "fn root<E: Ty>(x: E) -> E { return sqrt(x) }\n"
@@ -3026,7 +3550,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod invalid_dependent;
   CHECK(joggle::parse(env,
-                      "module invalid.dependent\n"
+                      "mod invalid.dependent\n"
                       "fn root(x: f32) -> f32;\n"
                       "fn root(x: f64) -> f64;\n"
                       "fn bad(x: i32) -> i32 { return root(x) }\n",
@@ -3038,7 +3562,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod intrinsic_casts;
   constexpr std::string_view intrinsic_cast_source =
-      "module intrinsic.casts\n"
+      "mod intrinsic.casts\n"
       "use tensor\n"
       "fn average(x: tensor<f32, [1]>) -> tensor<f32, [1]> {\n"
       "  var out = tensor<f32, [1]>(f32(0))\n"
@@ -3068,12 +3592,12 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(intrinsic_casts, intrinsic_casts_roundtrip));
 
   constexpr std::string_view result_context_source =
-      "module result_context\n"
+      "mod result_context\n"
       "fn choose<T: Ty>(x: i32) -> T;\n"
       "fn choose(x: i32) -> i32;\n"
       "fn use(x: i32) -> f32 { return choose(x) }\n";
   constexpr std::string_view reversed_result_context_source =
-      "module reversed_result_context\n"
+      "mod reversed_result_context\n"
       "fn choose(x: i32) -> i32;\n"
       "fn choose<T: Ty>(x: i32) -> T;\n"
       "fn use(x: i32) -> f32 { return choose(x) }\n";
@@ -3091,7 +3615,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod ambiguous;
   constexpr std::string_view ambiguous_source =
-      "module ambiguous\n"
+      "mod ambiguous\n"
       "fn pick<A>(x: pair<A, i32>) -> int;\n"
       "fn pick<B>(x: pair<i32, B>) -> int;\n"
       "fn use(x: pair<i32, i32>) -> int { return pick(x) }\n";
@@ -3103,7 +3627,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod duplicate_overload;
   CHECK(!joggle::parse(env,
-                       "module duplicate\n"
+                       "mod duplicate\n"
                        "fn same(x: int) -> int;\n"
                        "fn same(x: int) -> str;\n",
                        duplicate_overload, "duplicate-overload.jog"));
@@ -3111,7 +3635,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod duplicate_generic;
   CHECK(!joggle::parse(env,
-                       "module duplicate\n"
+                       "mod duplicate\n"
                        "fn same<T>(x: T) -> int;\n"
                        "fn same<U>(x: U) -> int;\n",
                        duplicate_generic, "duplicate-generic.jog"));
@@ -3119,7 +3643,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod intrinsic_generic;
   CHECK(!joggle::parse(env,
-                       "module intrinsic.generic\n"
+                       "mod intrinsic.generic\n"
                        "fn bad<i32: Ty>(x: i32) -> i32 { return x }\n",
                        intrinsic_generic, "intrinsic-generic.jog"));
   CHECK(std::any_of(intrinsic_generic.diags().begin(),
@@ -3132,7 +3656,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod qualified_binding;
   CHECK(!joggle::parse(env,
-                       "module invalid.binding\n"
+                       "mod invalid.binding\n"
                        "fn bad(x.y: i32) -> i32 { return x.y }\n",
                        qualified_binding, "qualified-binding.jog"));
   CHECK(std::any_of(qualified_binding.diags().begin(),
@@ -3144,7 +3668,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod reserved_binding;
   CHECK(!joggle::parse(env,
-                       "module invalid.binding\n"
+                       "mod invalid.binding\n"
                        "fn bad(x: i32) -> i32 { let true = x return x }\n",
                        reserved_binding, "reserved-binding.jog"));
   CHECK(std::any_of(reserved_binding.diags().begin(),
@@ -3156,7 +3680,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod stringly_builder;
   CHECK(joggle::parse(env,
-                      "module stringly.builder\n"
+                      "mod stringly.builder\n"
                       "use ir\n"
                       "fn build(m: Mod, before: Op, x: Val) -> Val {\n"
                       "  return ir.call(m, before, \"copy\", [x], \"i32\")\n"
@@ -3169,14 +3693,14 @@ int main(int argc, char** argv) {
 
   joggle::Mod duplicate_parameter;
   CHECK(!joggle::parse(env,
-                       "module duplicate\n"
+                       "mod duplicate\n"
                        "fn same<T, T>(x: int) -> int;\n",
                        duplicate_parameter, "duplicate-parameter.jog"));
   CHECK(!duplicate_parameter.diags().empty());
 
   joggle::Mod wrong_generic_kind;
   CHECK(joggle::parse(env,
-                      "module kinds\n"
+                      "mod kinds\n"
                       "fn width<W: int>(x: int) -> int;\n"
                       "fn bad(x: int) -> int { return width<f32>(x) }\n",
                       wrong_generic_kind, "wrong-generic-kind.jog"));
@@ -3187,7 +3711,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod wrong_result;
   CHECK(joggle::parse(env,
-                      "module wrong_result\n"
+                      "mod wrong_result\n"
                       "fn make<T: Ty>() -> T;\n"
                       "fn bad() -> i32 { return make<f32>() }\n",
                       wrong_result, "wrong-result.jog"));
@@ -3198,7 +3722,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod wrong_result_count;
   CHECK(joggle::parse(env,
-                      "module wrong_result_count\n"
+                      "mod wrong_result_count\n"
                       "fn split() -> (i32, bool);\n"
                       "fn bad() -> i32 { return split() }\n",
                       wrong_result_count, "wrong-result-count.jog"));
@@ -3209,7 +3733,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod statement_calls;
   constexpr std::string_view statement_call_source =
-      "module statement_calls\n"
+      "mod statement_calls\n"
       "fn observe(x: i32) -> ();\n"
       "fn value(x: i32) -> i32;\n"
       "fn run(x: i32) -> () {\n"
@@ -3222,18 +3746,26 @@ int main(int argc, char** argv) {
   const std::uint64_t statement_revision = statement_calls.revision();
   const std::vector<joggle::Attr> value_query{joggle::Attr("value")};
   joggle::Attr statement_count;
-  bool statement_cached = true;
+  joggle::QueryReport statement_query;
   CHECK(joggle::query(env, "opt.count", statement_calls, statement_count,
-                      value_query, &statement_cached));
-  CHECK(!statement_cached && statement_count.integer() == 1);
+                      value_query, &statement_query));
+  CHECK(!statement_query.cached &&
+        statement_query.miss == joggle::QueryMiss::cold &&
+        statement_query.observed_functions == statement_calls.fns().size() &&
+        statement_query.observed_structure &&
+        !statement_query.observed_whole_mod &&
+        statement_query.execute.count() > 0 &&
+        statement_count.integer() == 1);
   CHECK(joggle::query(env, "opt.count", statement_calls, statement_count,
-                      value_query, &statement_cached));
-  CHECK(statement_cached);
+                      value_query, &statement_query));
+  CHECK(statement_query.cached &&
+        statement_query.miss == joggle::QueryMiss::none &&
+        statement_query.execute.count() == 0);
   CHECK(statement_calls.verify(env));
 
   joggle::Mod built_statement;
   CHECK(joggle::parse(env,
-                      "module built.statement\n"
+                      "mod built.statement\n"
                       "fn observe(x: i32) -> ();\n"
                       "fn run(x: i32) -> () { return }\n",
                       built_statement, "built-statement.jog"));
@@ -3249,8 +3781,10 @@ int main(int argc, char** argv) {
   CHECK(built_statement_ops.front().outs().empty());
   CHECK(statement_calls.revision() == statement_revision + 1);
   CHECK(joggle::query(env, "opt.count", statement_calls, statement_count,
-                      value_query, &statement_cached));
-  CHECK(!statement_cached && statement_count.integer() == 1);
+                      value_query, &statement_query));
+  CHECK(!statement_query.cached &&
+        statement_query.miss == joggle::QueryMiss::structure_revision &&
+        statement_count.integer() == 1);
   const std::uint64_t verified_statement_revision =
       statement_calls.revision();
   CHECK(statement_calls.verify(env));
@@ -3271,7 +3805,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod incompatible_result;
   CHECK(joggle::parse(env,
-                      "module incompatible_result\n"
+                      "mod incompatible_result\n"
                       "fn implementation(x: i32) -> f32;\n"
                       "fn apply(x: i32) -> i32 {\n"
                       "  let y: i32 = source(x)\n"
@@ -3296,7 +3830,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod explicit_match;
   CHECK(joggle::parse(env,
-                      "module explicit_match\n"
+                      "mod explicit_match\n"
                       "fn candidate<T: Ty>(x: T) -> T;\n"
                       "fn incompatible(x: i32) -> i32 {\n"
                       "  let y: i32 = source<f32>(x)\n"
@@ -3316,7 +3850,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod rename_safety;
   CHECK(joggle::parse(env,
-                      "module rename_safety\n"
+                      "mod rename_safety\n"
                       "fn incompatible(x: i32) -> f32;\n"
                       "fn compatible(x: i32) -> i32;\n"
                       "fn main(x: i32) -> i32 {\n"
@@ -3340,7 +3874,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod constant_safety;
   CHECK(joggle::parse(env,
-                      "module constant_safety\n"
+                      "mod constant_safety\n"
                       "fn main() -> int { return 0 }\n",
                       constant_safety, "constant-safety.jog"));
   CHECK(constant_safety.verify(env));
@@ -3368,7 +3902,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod replaced_constant;
   CHECK(joggle::parse(env,
-                      "module replaced_constant\n"
+                      "mod replaced_constant\n"
                       "use tensor\n"
                       "fn tensor_source() -> tensor<f32, [2]>;\n"
                       "fn main() -> tensor<f32, [2]> {\n"
@@ -3404,7 +3938,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod args_safety;
   CHECK(joggle::parse(env,
-                      "module args_safety\n"
+                      "mod args_safety\n"
                       "fn take(x: i32) -> i32 { return x }\n"
                       "fn apply(x: i32, other: f32) -> i32 {\n"
                       "  return take(x)\n"
@@ -3438,7 +3972,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod replace_safety;
   CHECK(joggle::parse(env,
-                      "module replace_safety\n"
+                      "mod replace_safety\n"
                       "fn consume(x: i32) -> i32;\n"
                       "fn apply() -> i32 {\n"
                       "  let open = source()\n"
@@ -3462,13 +3996,13 @@ int main(int argc, char** argv) {
 
   joggle::Attr load_count;
   const std::vector<joggle::Attr> choose_query{joggle::Attr("choose")};
-  bool load_cached = true;
+  joggle::QueryReport load_query;
   CHECK(joggle::query(env, "opt.count", overloaded, load_count,
-                      choose_query, &load_cached));
-  CHECK(!load_cached && load_count.integer() == 2);
+                      choose_query, &load_query));
+  CHECK(!load_query.cached && load_count.integer() == 2);
   CHECK(joggle::query(env, "opt.count", overloaded, load_count,
-                      choose_query, &load_cached));
-  CHECK(load_cached);
+                      choose_query, &load_query));
+  CHECK(load_query.cached);
 
   CHECK(!env.loaded("sample"));
   CHECK(!env.load("bad"));
@@ -3478,8 +4012,8 @@ int main(int argc, char** argv) {
   CHECK(!env.diags().empty());
   env.clear_diags();
   CHECK(joggle::query(env, "opt.count", overloaded, load_count,
-                      choose_query, &load_cached));
-  CHECK(load_cached && load_count.integer() == 2);
+                      choose_query, &load_query));
+  CHECK(load_query.cached && load_count.integer() == 2);
 
   CHECK(env.load("sample"));
   CHECK(env.bound("sample.ping"));
@@ -3637,19 +4171,79 @@ int main(int argc, char** argv) {
   constexpr std::string_view sequence[]{"opt.fold_add_zero",
                                         "script.mark_add"};
   joggle::Attr sequence_report;
-  std::vector<std::chrono::nanoseconds> sequence_elapsed;
+  joggle::RunTiming sequence_timing;
   CHECK(joggle::run(env, sequence, embedded_sequence, sequence_report,
-                    sequence_elapsed));
-  CHECK(sequence_elapsed.size() == std::size(sequence));
-  CHECK(std::all_of(sequence_elapsed.begin(), sequence_elapsed.end(),
-                    [](std::chrono::nanoseconds elapsed) {
-                      return elapsed >= std::chrono::nanoseconds::zero();
+                    sequence_timing));
+  CHECK(sequence_timing.succeeded &&
+        sequence_timing.structural_snapshot &&
+        sequence_timing.steps.size() == std::size(sequence));
+  CHECK(std::all_of(sequence_timing.steps.begin(), sequence_timing.steps.end(),
+                    [](const joggle::RunStepTiming& step) {
+                      const bool counters_ok =
+                          !step.counters_enabled ||
+                          (step.evaluated_ops != 0 &&
+                           ((step.plan_compiles + step.plan_hits != 0 &&
+                             step.plan_window_hits +
+                                     step.plan_window_misses !=
+                                 0) ||
+                            (step.frame_lookups != 0 &&
+                             step.frame_probes >= step.frame_lookups &&
+                             step.frame_writes != 0 &&
+                             step.frame_pool_hits + step.frame_pool_misses !=
+                                 0 &&
+                             step.frame_growths != 0 &&
+                             step.frame_peak_capacity != 0)) &&
+                           step.dispatch_hits + step.dispatch_misses +
+                                   step.plan_direct_operator_links !=
+                               0);
+                      return step.succeeded && counters_ok &&
+                             step.total >= std::chrono::nanoseconds::zero();
                     }));
   joggle::Attr untimed_sequence_report;
+  joggle::RunTiming reused_sequence_timing;
   CHECK(joggle::run(env, sequence, untimed_sequence,
-                    untimed_sequence_report));
+                    untimed_sequence_report, reused_sequence_timing));
+  CHECK(reused_sequence_timing.succeeded &&
+        reused_sequence_timing.steps.size() == std::size(sequence));
+  if (reused_sequence_timing.steps.front().counters_enabled) {
+    std::uint64_t persistent_hits = 0;
+    std::uint64_t cache_resets = 0;
+    std::uint64_t plan_compiles = 0;
+    for (const joggle::RunStepTiming& step : reused_sequence_timing.steps) {
+      persistent_hits += step.plan_persistent_hits;
+      cache_resets += step.plan_cache_resets;
+      plan_compiles += step.plan_compiles;
+    }
+    CHECK(persistent_hits != 0);
+    CHECK(cache_resets == 0);
+    CHECK(plan_compiles == 0);
+  }
   CHECK(joggle::print(untimed_sequence) == joggle::print(embedded_sequence));
   CHECK(untimed_sequence_report == sequence_report);
+
+  // Loading a new mod changes the environment epoch. The next evaluator must
+  // discard persistent plans before reuse, then share the rebuilt cache with
+  // later steps in the same sequence.
+  CHECK(!env.loaded("sat"));
+  CHECK(env.load("sat"));
+  joggle::Mod epoch_sequence;
+  CHECK(joggle::parse(env, source.str(), epoch_sequence, argv[1]));
+  joggle::Attr epoch_sequence_report;
+  joggle::RunTiming epoch_sequence_timing;
+  CHECK(joggle::run(env, sequence, epoch_sequence, epoch_sequence_report,
+                    epoch_sequence_timing));
+  CHECK(joggle::print(epoch_sequence) == joggle::print(embedded_sequence));
+  CHECK(epoch_sequence_report == sequence_report);
+  if (epoch_sequence_timing.steps.front().counters_enabled) {
+    std::uint64_t cache_resets = 0;
+    std::uint64_t plan_compiles = 0;
+    for (const joggle::RunStepTiming& step : epoch_sequence_timing.steps) {
+      cache_resets += step.plan_cache_resets;
+      plan_compiles += step.plan_compiles;
+    }
+    CHECK(cache_resets == 1);
+    CHECK(plan_compiles != 0);
+  }
   CHECK(joggle::run(env, "script.prepare", source_sequence));
   CHECK(joggle::print(embedded_sequence) == joggle::print(source_sequence));
   const joggle::Attr::Dict* sequence_summary = sequence_report.dict();
@@ -3686,6 +4280,11 @@ int main(int argc, char** argv) {
       memo_handle_summary->at("cached").dict();
   CHECK(memo_handle_cached &&
         memo_handle_cached->at("script.memo_name").integer() == 1);
+  joggle::Mod fresh_rename_module;
+  CHECK(joggle::parse(env, source.str(), fresh_rename_module, argv[1]));
+  CHECK(joggle::run(env, "script.fresh_rename_probe",
+                    fresh_rename_module));
+  CHECK(fresh_rename_module.verify(env));
   joggle::Mod failed_sequence;
   CHECK(joggle::parse(env, source.str(), failed_sequence, argv[1]));
   const std::string before_sequence = joggle::print(failed_sequence);
@@ -3693,20 +4292,255 @@ int main(int argc, char** argv) {
   constexpr std::string_view invalid_sequence[]{"opt.fold_add_zero",
                                                 "script.bad_entry"};
   joggle::Attr failed_sequence_report;
-  std::vector<std::chrono::nanoseconds> failed_sequence_elapsed{
-      std::chrono::nanoseconds(1)};
+  joggle::RunTiming failed_sequence_timing;
   CHECK(!joggle::run(env, invalid_sequence, failed_sequence,
-                     failed_sequence_report, failed_sequence_elapsed));
+                     failed_sequence_report, failed_sequence_timing));
   CHECK(failed_sequence_report.empty());
-  CHECK(failed_sequence_elapsed.empty());
+  CHECK(!failed_sequence_timing.succeeded &&
+        failed_sequence_timing.structural_snapshot &&
+        failed_sequence_timing.steps.size() == 2 &&
+        failed_sequence_timing.steps.front().succeeded &&
+        !failed_sequence_timing.steps.back().succeeded);
   CHECK(joggle::print(failed_sequence) == before_sequence);
   CHECK(failed_sequence.revision() == before_sequence_revision);
   CHECK(!env.diags().empty());
   env.clear_diags();
 
+  // A transaction may start with metadata-only edits and discover a
+  // structural edit later. The delayed full snapshot must still represent
+  // the state before the first step, not the partially edited state.
+  joggle::Mod mixed_rollback;
+  CHECK(joggle::parse(env, source.str(), mixed_rollback, argv[1]));
+  const std::string mixed_before = joggle::print(mixed_rollback);
+  const std::uint64_t mixed_revision = mixed_rollback.revision();
+  constexpr std::string_view mixed_sequence[]{"script.mark_add",
+                                               "opt.fold_add_zero",
+                                               "script.bad_entry"};
+  joggle::Attr mixed_report;
+  joggle::RunTiming mixed_timing;
+  CHECK(!joggle::run(env, mixed_sequence, mixed_rollback, mixed_report,
+                     mixed_timing));
+  CHECK(mixed_timing.structural_snapshot &&
+        joggle::print(mixed_rollback) == mixed_before &&
+        mixed_rollback.revision() == mixed_revision);
+  CHECK(!env.diags().empty());
+  env.clear_diags();
+
+  // Function revisions are the cache key for executable bodies. A local IR
+  // edit advances only its owner; a dependency-set edit is conservatively
+  // visible to every function because it can change overload resolution.
+  joggle::Mod revision_scope;
+  constexpr std::string_view revision_scope_source =
+      "mod revision_scope\n"
+      "fn left() -> int { return 1 }\n"
+      "fn right() -> int { return 2 }\n";
+  CHECK(joggle::parse(env, revision_scope_source, revision_scope,
+                      "revision-scope.jog"));
+  CHECK(revision_scope.verify(env));
+  joggle::Fn left = revision_scope.find_fn("left");
+  joggle::Fn right = revision_scope.find_fn("right");
+  CHECK(left && right);
+  const std::uint64_t left_before = left.revision();
+  const std::uint64_t right_before = right.revision();
+  const std::uint64_t mod_before = revision_scope.revision();
+  joggle::Op left_constant;
+  for (joggle::Op op : left.ops())
+    if (op.kind() == joggle::Op::Kind::constant)
+      left_constant = op;
+  CHECK(left_constant);
+  CHECK(revision_scope.replace(left_constant, joggle::Attr(std::int64_t{3})));
+  CHECK(revision_scope.revision() == mod_before + 1);
+  CHECK(left.revision() == left_before + 1);
+  CHECK(right.revision() == right_before);
+  const std::vector<joggle::Attr> left_name{joggle::Attr("left")};
+  joggle::Attr observed_fn_revision;
+  CHECK(joggle::query(env, "script.fn_revision", revision_scope,
+                      observed_fn_revision, left_name));
+  CHECK(observed_fn_revision.integer() ==
+        static_cast<std::int64_t>(left.revision()));
+
+  // Replacing one expression with a constant removes exactly its operand
+  // edges, including duplicate uses, without rebuilding unrelated use lists.
+  joggle::Mod constant_replacement;
+  CHECK(joggle::parse(
+      env,
+      "mod constant_replacement\n"
+      "fn duplicate(x: int) -> int {\n"
+      "  let y: int = pure(x, x)\n"
+      "  return y\n"
+      "}\n",
+      constant_replacement, "constant-replacement.jog"));
+  CHECK(constant_replacement.verify(env));
+  const joggle::Fn duplicate = constant_replacement.find_fn("duplicate");
+  CHECK(duplicate && duplicate.params().size() == 1);
+  const joggle::Val duplicate_param = duplicate.params().front();
+  joggle::Op duplicate_call;
+  for (joggle::Op op : duplicate.ops())
+    if (op.kind() == joggle::Op::Kind::call)
+      duplicate_call = op;
+  CHECK(duplicate_call && duplicate_call.args().size() == 2 &&
+        duplicate_param.users().size() == 2);
+  CHECK(constant_replacement.replace(
+      duplicate_call, joggle::Attr(std::int64_t{7})));
+  CHECK(duplicate_call.args().empty() && duplicate_param.users().empty());
+  CHECK(constant_replacement.verify(env));
+
+  // A query that only enumerates a function's operations records the exact
+  // collection shape. Literal edits in either the same or another function
+  // preserve the cached count; a module-wide dependency boundary invalidates
+  // the lookup through ir.find.
+  joggle::Attr left_op_count;
+  joggle::QueryReport dependency_query;
+  CHECK(joggle::query(env, "script.fn_op_count", revision_scope,
+                      left_op_count, left_name, &dependency_query));
+  CHECK(!dependency_query.cached &&
+        dependency_query.miss == joggle::QueryMiss::cold &&
+        dependency_query.observed_functions == 0 &&
+        dependency_query.observed_collections == 1 &&
+        dependency_query.observed_structure &&
+        !dependency_query.observed_whole_mod &&
+        left_op_count.integer() ==
+            static_cast<std::int64_t>(left.ops().size()));
+  CHECK(joggle::query(env, "script.fn_op_count", revision_scope,
+                      left_op_count, left_name, &dependency_query));
+  CHECK(dependency_query.cached);
+
+  joggle::Attr whole_result;
+  joggle::QueryReport whole_query;
+  CHECK(joggle::query(env, "script.local_probe", revision_scope,
+                      whole_result, {}, &whole_query));
+  CHECK(!whole_query.cached && whole_query.observed_whole_mod &&
+        !whole_query.observed_structure &&
+        whole_query.observed_functions == 0);
+  CHECK(joggle::query(env, "script.local_probe", revision_scope,
+                      whole_result, {}, &whole_query));
+  CHECK(whole_query.cached);
+  joggle::Op right_constant;
+  for (joggle::Op op : right.ops())
+    if (op.kind() == joggle::Op::Kind::constant)
+      right_constant = op;
+  CHECK(right_constant);
+  const std::uint64_t left_before_meta = left.revision();
+  const std::uint64_t right_before_meta = right.revision();
+  CHECK(revision_scope.set(right, "test.mark", joggle::Attr(true)));
+  CHECK(left.revision() == left_before_meta &&
+        right.revision() == right_before_meta + 1);
+  CHECK(joggle::query(env, "script.fn_op_count", revision_scope,
+                      left_op_count, left_name, &dependency_query));
+  CHECK(dependency_query.cached);
+  CHECK(joggle::query(env, "script.local_probe", revision_scope,
+                      whole_result, {}, &whole_query));
+  CHECK(!whole_query.cached && whole_query.verification_cached &&
+        whole_query.miss == joggle::QueryMiss::whole_revision);
+  CHECK(joggle::query(env, "script.local_probe", revision_scope,
+                      whole_result, {}, &whole_query));
+  CHECK(whole_query.cached);
+  CHECK(revision_scope.replace(right_constant,
+                               joggle::Attr(std::int64_t{5})));
+  CHECK(joggle::query(env, "script.fn_op_count", revision_scope,
+                      left_op_count, left_name, &dependency_query));
+  CHECK(dependency_query.cached);
+  CHECK(joggle::query(env, "script.local_probe", revision_scope,
+                      whole_result, {}, &whole_query));
+  CHECK(!whole_query.cached &&
+        whole_query.miss == joggle::QueryMiss::whole_revision);
+  CHECK(revision_scope.replace(left_constant, joggle::Attr(std::int64_t{4})));
+  CHECK(joggle::query(env, "script.fn_op_count", revision_scope,
+                      left_op_count, left_name, &dependency_query));
+  CHECK(dependency_query.cached &&
+        dependency_query.miss == joggle::QueryMiss::none);
+
+  // Package enumeration is its own dependency class: it neither observes the
+  // whole mod nor aliases every structural edit, and a dependency-set change
+  // reports the exact invalidation reason.
+  joggle::Attr package_count;
+  joggle::QueryReport package_query;
+  CHECK(joggle::query(env, "script.package_count", revision_scope,
+                      package_count, {}, &package_query));
+  CHECK(!package_query.cached && package_count.integer() == 0 &&
+        package_query.observed_packages == 1 &&
+        package_query.observed_intrinsics >= 1 &&
+        !package_query.observed_structure &&
+        !package_query.observed_whole_mod);
+  CHECK(joggle::query(env, "script.package_count", revision_scope,
+                      package_count, {}, &package_query));
+  CHECK(package_query.cached);
+  joggle::ReactiveSchedule package_schedule({"script.observe_packages"});
+  joggle::ReactiveRunReport package_schedule_report;
+  CHECK(package_schedule.run(env, revision_scope, {},
+                             &package_schedule_report));
+  CHECK(package_schedule_report.executed_stages == 1 &&
+        package_schedule_report.stages.size() == 1 &&
+        package_schedule_report.stages[0].observed_packages == 1 &&
+        package_schedule_report.stages[0].observed_intrinsics >= 1 &&
+        !package_schedule_report.stages[0].observed_structure &&
+        !package_schedule_report.stages[0].observed_whole_mod);
+  CHECK(package_schedule.run(env, revision_scope, {},
+                             &package_schedule_report));
+  CHECK(package_schedule_report.executed_stages == 0 &&
+        package_schedule_report.reused_stages == 1);
+  const std::uint64_t left_local = left.revision();
+  const std::uint64_t right_local = right.revision();
+  CHECK(revision_scope.use(env, "base"));
+  CHECK(left.revision() == left_local + 1);
+  CHECK(right.revision() == right_local + 1);
+  CHECK(revision_scope.verify(env));
+  CHECK(joggle::query(env, "script.fn_op_count", revision_scope,
+                      left_op_count, left_name, &dependency_query));
+  CHECK(!dependency_query.cached &&
+        dependency_query.miss == joggle::QueryMiss::structure_revision);
+  CHECK(joggle::query(env, "script.package_count", revision_scope,
+                      package_count, {}, &package_query));
+  CHECK(!package_query.cached && package_count.integer() == 1 &&
+        package_query.miss == joggle::QueryMiss::package_dependencies &&
+        package_query.observed_packages == 1 &&
+        !package_query.observed_structure &&
+        !package_query.observed_whole_mod);
+  CHECK(package_schedule.run(env, revision_scope, {},
+                             &package_schedule_report));
+  CHECK(package_schedule_report.executed_stages == 1 &&
+        package_schedule_report.stages[0].miss ==
+            joggle::ReactiveMiss::package_dependencies);
+
+  // Package outputs also propagate within one schedule run. The first stage
+  // is selected by target metadata, adds a different dependency, and causes a
+  // package-only downstream reader to execute as an upstream invalidation.
+  joggle::Mod package_pipeline;
+  CHECK(joggle::parse(env, revision_scope_source, package_pipeline,
+                      "package-pipeline.jog"));
+  CHECK(package_pipeline.verify(env));
+  joggle::ReactiveSchedule package_pipeline_schedule(
+      {"script.sync_package", "script.observe_packages_named"});
+  const std::array<joggle::Attr, 1> package_args{joggle::Attr("left")};
+  CHECK(package_pipeline_schedule.run(env, package_pipeline, package_args,
+                                      &package_schedule_report));
+  CHECK(package_pipeline.uses() == std::vector<std::string>{"alternate"} &&
+        package_schedule_report.executed_stages == 2);
+  CHECK(package_pipeline.set(package_pipeline.find_fn("left"),
+                             "package.base", joggle::Attr(true)));
+  CHECK(package_pipeline_schedule.run(env, package_pipeline, package_args,
+                                      &package_schedule_report));
+  CHECK(package_pipeline.uses() ==
+            (std::vector<std::string>{"alternate", "base"}) &&
+        package_schedule_report.executed_stages == 2 &&
+        package_schedule_report.stages[0].miss ==
+            joggle::ReactiveMiss::function_revision &&
+        package_schedule_report.stages[1].miss ==
+            joggle::ReactiveMiss::upstream);
+
+  joggle::Env second_env;
+  second_env.path(argv[2]);
+  second_env.path(argv[3]);
+  CHECK(second_env.load("script"));
+  joggle::QueryReport environment_query;
+  CHECK(joggle::query(second_env, "script.fn_op_count", revision_scope,
+                      left_op_count, left_name, &environment_query));
+  CHECK(!environment_query.cached &&
+        environment_query.miss == joggle::QueryMiss::environment);
+
   joggle::Mod cleaned;
   constexpr std::string_view clean_source =
-      "module clean\n"
+      "mod clean\n"
       "fn work(x: i32) -> i32 {\n"
       "  let unused: int = 7\n"
       "  let first: i32 = pure(x)\n"
@@ -3717,15 +4551,17 @@ int main(int argc, char** argv) {
   CHECK(cleaned.verify(env));
   const std::vector<joggle::Attr> pure_query{joggle::Attr("pure")};
   joggle::Attr count;
-  bool cached = true;
-  CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query, &cached));
-  CHECK(!cached && count.integer() == 3);
-  CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query, &cached));
-  CHECK(cached && count.integer() == 3);
+  joggle::QueryReport query_report;
+  CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query,
+                      &query_report));
+  CHECK(!query_report.cached && count.integer() == 3);
+  CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query,
+                      &query_report));
+  CHECK(query_report.cached && count.integer() == 3);
   const std::string before_bad_query = joggle::print(cleaned);
   const std::uint64_t before_bad_query_revision = cleaned.revision();
   CHECK(!joggle::query(env, "script.mutating_query", cleaned, count,
-                       pure_query, &cached));
+                       pure_query, &query_report));
   CHECK(joggle::print(cleaned) == before_bad_query);
   CHECK(cleaned.revision() == before_bad_query_revision);
   CHECK(!env.diags().empty());
@@ -3768,8 +4604,122 @@ int main(int argc, char** argv) {
   CHECK(joggle::query(env, "script.attr_query", cleaned, count,
                        missing_attr));
   CHECK(count.integer() == -1);
+  constexpr std::string_view affected_source =
+      "mod affected\n"
+      "fn work(x: i32) -> i32 {\n"
+      "  let a: i32 = pure(x)\n"
+      "  let b: i32 = pure(a)\n"
+      "  let side: i32 = pure(x)\n"
+      "  return join(b, side)\n"
+      "}\n";
+  joggle::Mod affected;
+  CHECK(joggle::parse(env, affected_source, affected, "affected.jog"));
+  CHECK(affected.verify(env));
+  joggle::Val affected_root;
+  joggle::Op unrelated;
+  for (joggle::Op op : affected.ops()) {
+    const std::vector<joggle::Val> outputs = op.outs();
+    if (!outputs.empty() && outputs.front().name() == "a")
+      affected_root = outputs.front();
+    if (!outputs.empty() && outputs.front().name() == "side")
+      unrelated = op;
+  }
+  CHECK(affected_root && unrelated);
+  const std::vector<joggle::Op> affected_ops =
+      affected.affected(std::span<const joggle::Val>(&affected_root, 1));
+  CHECK(affected_ops.size() == 3 &&
+        std::find(affected_ops.begin(), affected_ops.end(), unrelated) ==
+            affected_ops.end());
+  CHECK(affected.affected(std::span<const joggle::Val>(&affected_root, 1)) ==
+        affected_ops);
+  CHECK(affected.affected({}).empty());
+  const joggle::Val invalid_affected_root;
+  CHECK(affected
+            .affected(std::span<const joggle::Val>(&invalid_affected_root, 1))
+            .empty());
+  joggle::Mod foreign_affected;
+  CHECK(joggle::parse(env, affected_source, foreign_affected,
+                      "foreign-affected.jog"));
+  const joggle::Val foreign_affected_root =
+      foreign_affected.find_fn("work").params().front();
+  CHECK(affected
+            .affected(std::span<const joggle::Val>(&foreign_affected_root, 1))
+            .empty());
+  CHECK(joggle::query(env, "script.affected_count", affected, count));
+  CHECK(count.integer() == 3);
+  joggle::Attr affected_report;
+  joggle::RunTiming affected_timing;
+  CHECK(joggle::run(env, "script.mark_affected", affected, affected_report,
+                    affected_timing));
+  CHECK(affected_timing.succeeded && affected_timing.steps.size() == 1 &&
+        !affected_timing.structural_snapshot &&
+        affected_timing.steps.front().verification_cached);
+  std::size_t affected_marked = 0;
+  for (joggle::Val value : affected.vals())
+    affected_marked += value.meta("affected") &&
+                       value.meta("affected")->boolean() == true;
+  const joggle::Attr::Dict* affected_summary = affected_report.dict();
+  const joggle::Attr::Dict* affected_calls =
+      affected_summary ? affected_summary->at("calls").dict() : nullptr;
+  CHECK(affected_marked == 1 && !unrelated.outs().front().meta("affected") &&
+        affected_calls &&
+        affected_calls->at("script.mark_affected_op").integer() == 3);
+  const std::string affected_before_reject = joggle::print(affected);
+  const std::uint64_t affected_revision = affected.revision();
+  joggle::RunTiming rejected_affected_timing;
+  joggle::Attr rejected_affected_report;
+  CHECK(!joggle::run(env, "script.reject_affected", affected,
+                     rejected_affected_report, rejected_affected_timing));
+  CHECK(joggle::print(affected) == affected_before_reject &&
+        affected.revision() == affected_revision &&
+        !rejected_affected_timing.structural_snapshot &&
+        !env.diags().empty());
+  CHECK(affected.affected(std::span<const joggle::Val>(&affected_root, 1)) ==
+        affected_ops);
+  env.clear_diags();
+  constexpr std::string_view nested_affected_source =
+      "mod nested_affected\n"
+      "fn work(n: int) -> int {\n"
+      "  var total = 0\n"
+      "  for i in 0..n { total += i }\n"
+      "  return total\n"
+      "}\n";
+  joggle::Mod nested_affected;
+  CHECK(joggle::parse(env, nested_affected_source, nested_affected,
+                      "nested-affected.jog"));
+  CHECK(nested_affected.verify(env));
+  const joggle::Fn nested_work = nested_affected.find_fn("work");
+  const joggle::Val nested_root = nested_work.params().front();
+  joggle::Op affected_loop;
+  joggle::Op affected_return;
+  for (joggle::Op op : nested_work.ops()) {
+    if (op.kind() == joggle::Op::Kind::loop)
+      affected_loop = op;
+    if (op.kind() == joggle::Op::Kind::ret)
+      affected_return = op;
+  }
+  CHECK(affected_loop && affected_return);
+  const std::vector<joggle::Op> nested_affected_ops =
+      nested_affected.affected(std::span<const joggle::Val>(&nested_root, 1));
+  CHECK(std::find(nested_affected_ops.begin(), nested_affected_ops.end(),
+                  affected_loop) != nested_affected_ops.end());
+  for (joggle::Op nested : affected_loop.blks().front().ops())
+    CHECK(std::find(nested_affected_ops.begin(), nested_affected_ops.end(),
+                    nested) != nested_affected_ops.end());
+  CHECK(std::find(nested_affected_ops.begin(), nested_affected_ops.end(),
+                  affected_return) != nested_affected_ops.end());
+  const joggle::Val grown_root = nested_affected.constant(
+      affected_return, joggle::Attr(std::int64_t{7}), joggle::Ty("int"));
+  CHECK(grown_root);
+  CHECK(nested_affected.replace(affected_return.args().front(), grown_root,
+                                affected_return));
+  CHECK(nested_affected.verify(env));
+  const std::vector<joggle::Op> grown_affected_ops =
+      nested_affected.affected(std::span<const joggle::Val>(&grown_root, 1));
+  CHECK(grown_affected_ops.size() == 1 &&
+        grown_affected_ops.front() == affected_return);
   constexpr std::string_view deep_dead_source =
-      "module deep.dead\n"
+      "mod deep.dead\n"
       "fn work(x: i32) -> i32 {\n"
       "  let a: i32 = pure(x)\n"
       "  let b: i32 = pure(a)\n"
@@ -3795,7 +4745,7 @@ int main(int argc, char** argv) {
   CHECK(count.integer() == 0);
 
   constexpr std::string_view partial_source =
-      "module partial\n"
+      "mod partial\n"
       "use base\n"
       "fn work(x: int) -> int {\n"
       "  let first: int = base.copy(x)\n"
@@ -3820,7 +4770,7 @@ int main(int argc, char** argv) {
   CHECK(partial_text.find("return x + extent") != std::string::npos);
 
   constexpr std::string_view redundant_use_source =
-      "module redundant.use\n"
+      "mod redundant.use\n"
       "use tensor\n"
       "use nn\n"
       "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> { return x }\n";
@@ -3836,7 +4786,7 @@ int main(int argc, char** argv) {
   CHECK(redundant_use.revision() == trimmed_revision);
 
   constexpr std::string_view folded_assignment_source =
-      "module folded_assignment\n"
+      "mod folded_assignment\n"
       "use base\n"
       "fn work() -> int {\n"
       "  var value: int = 1\n"
@@ -3873,7 +4823,7 @@ int main(int argc, char** argv) {
                                    folded_assignment_roundtrip));
 
   constexpr std::string_view folded_controls_source =
-      "module folded_controls\n"
+      "mod folded_controls\n"
       "use base\n"
       "fn work() -> int {\n"
       "  var total: int = 0\n"
@@ -3908,7 +4858,7 @@ int main(int argc, char** argv) {
   env.clear_diags();
 
   constexpr std::string_view specialized_source =
-      "module specialized\n"
+      "mod specialized\n"
       "fn work(x: int, y: int) -> int {\n"
       "  var out = 0\n"
       "  [stage: \"shape\"]\n"
@@ -3944,7 +4894,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(specialized, specialized_roundtrip));
 
   constexpr std::string_view generic_entry_source =
-      "module generic_entry\n"
+      "mod generic_entry\n"
       "use tensor\n"
       "[entry]\n"
       "fn main<N: int>(x: tensor<f32, [N, 2]>) -> "
@@ -3991,13 +4941,16 @@ int main(int argc, char** argv) {
       unused_constants += op.outs().front().name() == "unused" ? 1 : 0;
   CHECK(pure_calls == 1);
   CHECK(unused_constants == 0);
-  CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query, &cached));
-  CHECK(!cached && count.integer() == 1);
-  CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query, &cached));
-  CHECK(cached && count.integer() == 1);
+  CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query,
+                      &query_report));
+  CHECK(!query_report.cached && count.integer() == 1);
+  CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query,
+                      &query_report));
+  CHECK(query_report.cached && count.integer() == 1);
   const std::vector<joggle::Attr> join_query{joggle::Attr("join")};
-  CHECK(joggle::query(env, "opt.count", cleaned, count, join_query, &cached));
-  CHECK(!cached && count.integer() == 0);
+  CHECK(joggle::query(env, "opt.count", cleaned, count, join_query,
+                      &query_report));
+  CHECK(!query_report.cached && count.integer() == 0);
   const std::uint64_t clean_revision = cleaned.revision();
   joggle::Attr stable_report;
   CHECK(joggle::run(env, "script.clean_pure", cleaned, stable_report));
@@ -4013,7 +4966,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod distinct_meta;
   constexpr std::string_view distinct_meta_source =
-      "module distinct\n"
+      "mod distinct\n"
       "fn work(x: i32) -> i32 {\n"
       "  [variant: 0]\n"
       "  let first: i32 = pure(x)\n"
@@ -4115,7 +5068,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(tiled_loop, tiled_roundtrip));
   joggle::Mod returned_constant;
   CHECK(joggle::parse(env,
-                      "module returned\n"
+                      "mod returned\n"
                       "fn value(x: i32) -> i32 { return x }\n",
                       returned_constant, "returned.jog"));
   CHECK(joggle::run(env, "script.return_three", returned_constant));
@@ -4168,7 +5121,7 @@ int main(int argc, char** argv) {
   env.clear_diags();
   joggle::Mod invalid_run;
   CHECK(joggle::parse(env,
-                      "module invalid.run\n"
+                      "mod invalid.run\n"
                       "fn main(x: i32) -> i32 {\n"
                       "  let y: i32 = pure(x)\n"
                       "  return y\n"
@@ -4189,7 +5142,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod duplicate_edit;
   CHECK(joggle::parse(env,
-                      "module duplicate.edit\n"
+                      "mod duplicate.edit\n"
                       "fn main(x: i32) -> i32 {\n"
                       "  let left = x + 1\n"
                       "  let right = left + 1\n"
@@ -4213,7 +5166,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod nested_shadow;
   CHECK(joggle::parse(env,
-                      "module nested.shadow\n"
+                      "mod nested.shadow\n"
                       "fn main(x: i32, flag: bool) -> i32 {\n"
                       "  let value = x + 1\n"
                       "  if flag {\n"
@@ -4233,7 +5186,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod immutable;
   CHECK(!joggle::parse(env,
-                       "module bad\nfn f(x: i32) -> i32 {\n"
+                       "mod bad\nfn f(x: i32) -> i32 {\n"
                        "  let y = x\n  y = 1\n  return y\n}\n",
                        immutable, "immutable.jog"));
   CHECK(!immutable.diags().empty());
@@ -4241,19 +5194,19 @@ int main(int argc, char** argv) {
 
   joggle::Mod invalid_number;
   CHECK(!joggle::parse(
-      env, "module bad\nfn f() -> int { return 999999999999999999999999 }\n",
+      env, "mod bad\nfn f() -> int { return 999999999999999999999999 }\n",
       invalid_number, "number.jog"));
   CHECK(!invalid_number.diags().empty());
 
   joggle::Mod invalid_type;
   CHECK(!joggle::parse(
-      env, "module bad\nfn f(x: tensor<i32,>) -> i32 { return 0 }\n",
+      env, "mod bad\nfn f(x: tensor<i32,>) -> i32 { return 0 }\n",
       invalid_type, "type.jog"));
   CHECK(!invalid_type.diags().empty());
 
   joggle::Mod attrs;
   constexpr std::string_view attr_source =
-      "module attrs\n"
+      "mod attrs\n"
       "[entry]\n"
       "[policy: {name: \"roundtrip\", levels: [1, 2]}]\n"
       "fn payload() -> dict {\n"
@@ -4284,7 +5237,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod value_attrs;
   constexpr std::string_view value_attr_source =
-      "module value_attrs\n"
+      "mod value_attrs\n"
       "use base\n"
       "fn carry<[role: \"extent\"] N: int>(\n"
       "  [range: {min: 0}] seed: i32\n"
@@ -4372,7 +5325,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod tagged;
   constexpr std::string_view tagged_source =
-      "module tagged\n"
+      "mod tagged\n"
       "[entry, rename: \"custom.add\"]\n"
       "fn add(x: i32, y: i32) -> i32 { return x + y }\n"
       "fn plain(x: i32, y: i32) -> i32 { return x + y }\n";
@@ -4388,7 +5341,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod unsafe_fusion;
   constexpr std::string_view unsafe_source =
-      "module unsafe\n"
+      "mod unsafe\n"
       "fn main(x: i32) -> i32 {\n"
       "  let first = test.first(x)\n"
       "  let unrelated = test.unrelated(x)\n"
@@ -4409,7 +5362,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod typed_fusion;
   constexpr std::string_view typed_fusion_source =
-      "module typed_fusion\n"
+      "mod typed_fusion\n"
       "fn incompatible(x: i32) -> f32;\n"
       "fn compatible(x: i32) -> i32;\n"
       "fn main(x: i32) -> i32 {\n"
@@ -4441,14 +5394,14 @@ int main(int argc, char** argv) {
 
   joggle::Mod duplicate_meta;
   CHECK(!joggle::parse(env,
-                       "module bad\n[a, a: 1]\n"
+                       "mod bad\n[a, a: 1]\n"
                        "fn f() -> int { return 0 }\n",
                        duplicate_meta, "duplicate-meta.jog"));
   CHECK(!duplicate_meta.diags().empty());
 
   joggle::Mod duplicate_binding;
   CHECK(!joggle::parse(env,
-                       "module bad\nfn f(x: i64) -> i64 {\n"
+                       "mod bad\nfn f(x: i64) -> i64 {\n"
                        "  let y = x + i64(1)\n"
                        "  let y = y + i64(1)\n"
                        "  return y\n}\n",
@@ -4457,7 +5410,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod shadowed_iterator;
   CHECK(!joggle::parse(env,
-                       "module bad\nfn f(i: i64) -> i64 {\n"
+                       "mod bad\nfn f(i: i64) -> i64 {\n"
                        "  for i in 0..2 {}\n"
                        "  return i\n}\n",
                        shadowed_iterator, "shadowed-iterator.jog"));
@@ -4465,7 +5418,7 @@ int main(int argc, char** argv) {
 
   joggle::Mod scoped_bindings;
   CHECK(joggle::parse(env,
-                      "module scoped\nfn f(x: i64, flag: bool) -> i64 {\n"
+                      "mod scoped\nfn f(x: i64, flag: bool) -> i64 {\n"
                       "  if flag { let x = x + i64(1) }\n"
                       "  for i in 0..2 {}\n"
                       "  for i in 0..2 {}\n"
@@ -4474,7 +5427,7 @@ int main(int argc, char** argv) {
   CHECK(scoped_bindings.verify(env));
 
   joggle::Mod missing_return;
-  CHECK(joggle::parse(env, "module bad\nfn f(x: i32) -> i32 { x + 1 }\n",
+  CHECK(joggle::parse(env, "mod bad\nfn f(x: i32) -> i32 { x + 1 }\n",
                       missing_return, "return.jog"));
   CHECK(!missing_return.verify(env));
   CHECK(!missing_return.diags().empty());

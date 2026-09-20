@@ -1,4 +1,4 @@
-module bounded
+mod bounded
 use base
 
 fn kernel() -> int {

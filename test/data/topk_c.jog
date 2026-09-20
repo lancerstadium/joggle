@@ -1,4 +1,4 @@
-module topk_c
+mod topk_c
 use tensor
 
 local fn input() -> tensor<f32, [2, 4]> {

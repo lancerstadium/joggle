@@ -317,7 +317,7 @@ int main(int argc, char** argv) {
   CHECK(weight_steps > 0);
 
   constexpr std::string_view bad_literal_source =
-      "module bad.literal\n"
+      "mod bad.literal\n"
       "use tensor\n"
       "fn main() -> tensor<f32, [2]> {\n"
       "  let x: tensor<f32, [2]> = hex\"00\"\n"
@@ -359,12 +359,14 @@ int main(int argc, char** argv) {
                     numel_args));
   CHECK(expand_report.dict() &&
         expand_report.dict()->at("changed").boolean() == true);
-  std::chrono::nanoseconds expand_time;
+  joggle::RunTiming expand_timing;
   CHECK(joggle::run(env, "opt.expand", open_model, expand_report, numel_args,
-                    expand_time));
+                    expand_timing));
   CHECK(expand_report.dict() && expand_report.dict()->contains("args") &&
         expand_report.dict()->at("changed").boolean() == false &&
-        expand_time >= std::chrono::nanoseconds::zero());
+        expand_timing.succeeded && expand_timing.steps.size() == 1 &&
+        expand_timing.steps.front().total >=
+            std::chrono::nanoseconds::zero());
   const std::vector<joggle::Attr> add_selection{joggle::Attr("add")};
   joggle::Attr add_image;
   if (!joggle::query(env, "vm.image", open_model, add_image, add_selection)) {

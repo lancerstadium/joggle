@@ -1,3 +1,0 @@
-[1/3] Mon Sep 14 16:10:20 2026 (0s) Importing ONNX Model to MLIR Module from "model.onnx"
-[2/3] Mon Sep 14 16:10:20 2026 (0s) Compiling and Optimizing MLIR Module
-[3/3] Mon Sep 14 16:10:20 2026 (0s) Compilation completed. Generated "/Users/lancer/Documents/Item/joggle-study/onnx-mlir/results/external-audit/matmul.onnx.mlir"

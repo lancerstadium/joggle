@@ -1,4 +1,4 @@
-module c
+mod c
 use base
 use ir
 use mem
@@ -85,6 +85,16 @@ fn noalias(m: Mod) -> bool {
   return noalias(m, true)
 }
 
+fn bind(m: Mod, fn: Fn, name: str) -> bool {
+  assert(ir.live(fn) && len(ir.blks(fn)) != 0,
+         "c.bind expects a live function definition")
+  let spec = binding_spec(fn, name)
+  if len(spec) == 0 {
+    return ir.unset(m, fn, "c")
+  }
+  return ir.set(m, fn, "c", spec)
+}
+
 fn restrict(m: Mod) -> bool {
   let data_fns = data_functions(m)
   var called: list<Fn> = []
@@ -163,6 +173,143 @@ fn data(m: Mod) -> bytes {
 
 fn data(m: Mod, config: dict) -> bytes {
   return data_with(m, config)
+}
+
+fn definition(m: Mod, name: str) -> str {
+  let f = ir.find(m, name)
+  assert(ir.live(f) && len(ir.blks(f)) != 0,
+         "c: function definition not found: " + name)
+  var data_fns: list<Fn> = []
+  var offsets: dict = {}
+  return definition(m, f, "", data_fns, {}, offsets) + "\n"
+}
+
+fn definition(m: Mod, index: int) -> str {
+  let fns = functions(m)
+  assert(index >= 0 && index < len(fns),
+         "c: function definition index is out of range")
+  var data_fns: list<Fn> = []
+  var offsets: dict = {}
+  return definition(m, fns[index], "", data_fns, {}, offsets) + "\n"
+}
+
+fn declaration(m: Mod, name: str) -> str {
+  let f = ir.find(m, name)
+  assert(ir.live(f) && len(ir.blks(f)) != 0,
+         "c: function definition not found: " + name)
+  var data_fns: list<Fn> = []
+  return linkage(m, f) +
+         signature(m, f, "", data_fns, {}, ir.local(f)) + ";\n"
+}
+
+fn definition_binding(m: Mod, name: str) -> list<str> {
+  let f = ir.find(m, name)
+  assert(ir.live(f) && len(ir.blks(f)) != 0,
+         "c: function definition not found: " + name)
+  var data_fns: list<Fn> = []
+  let prefix = linkage(m, f) +
+               signature(m, f, "", data_fns, {}, ir.local(f))
+  return [prefix + ";\n", prefix + " {\n"]
+}
+
+fn definition_head(m: Mod, name: str) -> str {
+  let f = ir.find(m, name)
+  assert(ir.live(f) && len(ir.blks(f)) != 0,
+         "c: function definition not found: " + name)
+  var data_fns: list<Fn> = []
+  var offsets: dict = {}
+  return definition_prefix(m, f, "", data_fns, {}, offsets)
+}
+
+fn definition_body(m: Mod, name: str) -> str {
+  let f = ir.find(m, name)
+  assert(ir.live(f) && len(ir.blks(f)) != 0,
+         "c: function definition not found: " + name)
+  var data_fns: list<Fn> = []
+  var offsets: dict = {}
+  return definition_contents(m, f, "", data_fns, {}, offsets)
+}
+
+fn definition_direct(m: Mod, name: str) -> list<str> {
+  let f = ir.find(m, name)
+  assert(ir.live(f) && len(ir.blks(f)) != 0,
+         "c: function definition not found: " + name)
+  return direct_labels(m, f)
+}
+
+fn definition_results(m: Mod, name: str) -> list<str> {
+  let f = ir.find(m, name)
+  assert(ir.live(f) && len(ir.blks(f)) != 0,
+         "c: function definition not found: " + name)
+  return result_names(f, "")
+}
+
+fn definition_body_chunk(
+  m: Mod, name: str, start: int, count: int,
+  direct: list<str>, results: list<str>
+) -> str {
+  let f = ir.find(m, name)
+  assert(ir.live(f) && len(ir.blks(f)) != 0,
+         "c: function definition not found: " + name)
+  var data_fns: list<Fn> = []
+  var offsets: dict = {}
+  return definition_chunk(
+    m, f, start, count, direct, results, "", data_fns, {}, offsets
+  )
+}
+
+fn definition_nested_chunk(
+  m: Mod, name: str, owner_path: list<int>, child: int,
+  start: int, count: int, direct: list<str>, results: list<str>
+) -> str {
+  let f = ir.find(m, name)
+  assert(ir.live(f) && len(ir.blks(f)) != 0,
+         "c: function definition not found: " + name)
+  var data_fns: list<Fn> = []
+  var offsets: dict = {}
+  return definition_nested_chunk(
+    m, f, owner_path, child, start, count, direct, results,
+    "", data_fns, {}, offsets
+  )
+}
+
+fn definition_nested_partition(
+  m: Mod, name: str, root_start: int, root_count: int,
+  owner_path: list<int>, child: int, start: int, count: int,
+  direct: list<str>, results: list<str>
+) -> list<str> {
+  let f = ir.find(m, name)
+  assert(ir.live(f) && len(ir.blks(f)) != 0,
+         "c: function definition not found: " + name)
+  var data_fns: list<Fn> = []
+  var offsets: dict = {}
+  return definition_nested_partition(
+    m, f, root_start, root_count, owner_path, child, start, count,
+    direct, results, "", data_fns, {}, offsets
+  )
+}
+
+fn definition_storage(m: Mod, name: str) -> str {
+  let f = ir.find(m, name)
+  assert(ir.live(f) && len(ir.blks(f)) != 0,
+         "c: function definition not found: " + name)
+  var data_fns: list<Fn> = []
+  var offsets: dict = {}
+  return definition_storage(m, f, "", data_fns, {}, offsets)
+}
+
+fn definition_tail(m: Mod, name: str) -> str {
+  let f = ir.find(m, name)
+  assert(ir.live(f) && len(ir.blks(f)) != 0,
+         "c: function definition not found: " + name)
+  return definition_suffix() + "\n"
+}
+
+fn preamble(m: Mod) -> str {
+  let fns = functions(m)
+  assert(len(fns) != 0, "c: module has no function definitions")
+  var data_fns: list<Fn> = []
+  return preamble(m, fns, "", data_fns, {})
 }
 
 fn source(m: Mod) -> str {

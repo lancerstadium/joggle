@@ -420,7 +420,7 @@ int info(std::string_view name, const std::vector<fs::path>& roots,
   if (!read(directory, mod, files, format))
     return 1;
 
-  std::cout << "module " << mod.name() << '\n';
+  std::cout << "mod " << mod.name() << '\n';
   std::cout << "path " << fs::absolute(directory).lexically_normal().string()
             << '\n';
   for (const std::string& dependency : mod.uses())

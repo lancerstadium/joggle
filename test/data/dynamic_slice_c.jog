@@ -1,4 +1,4 @@
-module dynamic_slice_c
+mod dynamic_slice_c
 use tensor
 
 fn main(

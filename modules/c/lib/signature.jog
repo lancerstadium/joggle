@@ -1,4 +1,14 @@
 local fn result_values(fn: Fn) -> list<Val> {
+  let bodies = ir.blks(fn)
+  if len(bodies) == 1 {
+    let operations = ir.ops(bodies[0])
+    if len(operations) != 0 {
+      let last = operations[len(operations) - 1]
+      if ir.kind(last) == "return" {
+        return ir.args(last)
+      }
+    }
+  }
   var out: list<Val> = []
   var count = 0
   for op in ir.ops(fn) {
@@ -43,10 +53,8 @@ local fn result_taken(
   if name == blob && blob != "" {
     return true
   }
-  for value in ir.vals(fn) {
-    if label(value) == name {
-      return true
-    }
+  if ir.bound(fn, name) {
+    return true
   }
   for existing in prior {
     if existing == name {
@@ -58,27 +66,37 @@ local fn result_taken(
 
 local fn result_names(fn: Fn, blob: str) -> list<str> {
   let types = ir.returns(fn)
+  let single = result_values(fn)
   var out: list<str> = []
   for i in 0..len(types) {
     var name = ""
     var consistent = true
     var found = false
-    for op in ir.ops(fn) {
-      if ir.kind(op) == "return" {
-        let values = ir.args(op)
-        assert(len(values) == len(types), "c: return arity is inconsistent")
-        let source = ir.name(values[i])
-        if source == "" {
-          consistent = false
-        } else {
-          let candidate = c_name(source)
-          if found && candidate != name {
+    if len(single) == len(types) {
+      let source = ir.name(single[i])
+      found = true
+      consistent = source != ""
+      if consistent {
+        name = c_name(source)
+      }
+    } else {
+      for op in ir.ops(fn) {
+        if ir.kind(op) == "return" {
+          let values = ir.args(op)
+          assert(len(values) == len(types), "c: return arity is inconsistent")
+          let source = ir.name(values[i])
+          if source == "" {
             consistent = false
           } else {
-            name = candidate
+            let candidate = c_name(source)
+            if found && candidate != name {
+              consistent = false
+            } else {
+              name = candidate
+            }
           }
+          found = true
         }
-        found = true
       }
     }
     if found && consistent {
@@ -235,7 +253,7 @@ local fn signature(
     names += [val(param)]
   }
   var data = ""
-  if owned(m, fn) && has_fn(data_fns, fn) {
+  if ir.owned(m, fn) && has_fn(data_fns, fn) {
     data = blob
   }
   return signature_text(
@@ -342,7 +360,7 @@ local fn external_abi(m: Mod, op: Op, config: dict) -> str {
 }
 
 local fn linkage(m: Mod, fn: Fn) -> str {
-  if owned(m, fn) && ir.local(fn) {
+  if ir.owned(m, fn) && ir.local(fn) {
     return "static "
   }
   return ""
@@ -433,11 +451,18 @@ local fn runtime_storage(m: Mod, value: Val) -> bool {
   return false
 }
 
-local fn definition(
+local fn definition_prefix(
   m: Mod, fn: Fn, blob: str, data_fns: list<Fn>, config: dict, offsets: dict
 ) -> str {
   let bodies = ir.blks(fn)
   assert(len(bodies) >= 1, "c: function has no body")
+  return linkage(m, fn) +
+         signature(m, fn, blob, data_fns, config, true) + " {\n"
+}
+
+local fn definition_storage(
+  m: Mod, fn: Fn, blob: str, data_fns: list<Fn>, config: dict, offsets: dict
+) -> str {
   var memory = ""
   var storage = ""
   if ir.has(fn, "c.place") {
@@ -453,19 +478,146 @@ local fn definition(
                 text(mem.count(fn, slot)) + "];\n"
     }
   }
+  return memory
+}
+
+local fn definition_contents(
+  m: Mod, fn: Fn, blob: str, data_fns: list<Fn>, config: dict, offsets: dict
+) -> str {
+  let bodies = ir.blks(fn)
+  assert(len(bodies) >= 1, "c: function has no body")
   var data_name = ""
   if blob != "" && has_fn(data_fns, fn) {
     data_name = blob
   }
   let direct = direct_labels(m, fn)
   let results = result_names(fn, data_name)
-  return linkage(m, fn) +
-         signature(m, fn, blob, data_fns, config, true) + " {\n" +
-         memory +
-         block(
-           m, bodies[0], 1, data_name, data_fns, config, offsets, direct,
-           results
-         ) + "}\n"
+  return block(
+    m, bodies[0], 1, data_name, data_fns, config, offsets, direct, results
+  )
+}
+
+local fn definition_chunk(
+  m: Mod, fn: Fn, start: int, count: int, direct: list<str>,
+  results: list<str>, blob: str, data_fns: list<Fn>, config: dict,
+  offsets: dict
+) -> str {
+  let bodies = ir.blks(fn)
+  assert(len(bodies) >= 1, "c: function has no body")
+  var data_name = ""
+  if blob != "" && has_fn(data_fns, fn) {
+    data_name = blob
+  }
+  return block_chunk(
+    m, bodies[0], start, count, 1, data_name, data_fns, config, offsets,
+    direct, results
+  )
+}
+
+local fn nested_depth(
+  m: Mod, fn: Fn, owner_path: list<int>, child: int
+) -> int {
+  assert(len(owner_path) != 0 && len(owner_path) % 2 == 1,
+         "c: nested owner path must identify an operation")
+  var depth = 1
+  var prefix: list<int> = []
+  for i in 0..len(owner_path) {
+    prefix += [owner_path[i]]
+    if i % 2 == 0 && i + 1 < len(owner_path) {
+      let owner = ir.at(m, fn, prefix)
+      let blocks = ir.blks(owner)
+      let selected = owner_path[i + 1]
+      assert(selected >= 0 && selected < len(blocks),
+             "c: nested block path is out of range")
+      if ir.kind(owner) == "loop" {
+        depth += len(ir.args(blocks[selected])) - len(ir.outs(owner))
+      } else {
+        assert(ir.kind(owner) == "branch",
+               "c: nested path crosses a non-control operation")
+        depth += 1
+      }
+    }
+  }
+  let owner = ir.at(m, fn, owner_path)
+  let blocks = ir.blks(owner)
+  assert(child >= 0 && child < len(blocks),
+         "c: nested child block is out of range")
+  if ir.kind(owner) == "loop" {
+    return depth + len(ir.args(blocks[child])) - len(ir.outs(owner))
+  }
+  assert(ir.kind(owner) == "branch",
+         "c: nested owner must be a loop or branch")
+  return depth + 1
+}
+
+local fn definition_nested_chunk(
+  m: Mod, fn: Fn, owner_path: list<int>, child: int,
+  start: int, count: int, direct: list<str>, results: list<str>,
+  blob: str, data_fns: list<Fn>, config: dict, offsets: dict
+) -> str {
+  let owner = ir.at(m, fn, owner_path)
+  assert(ir.live(owner), "c: nested owner operation not found")
+  let blocks = ir.blks(owner)
+  assert(child >= 0 && child < len(blocks),
+         "c: nested child block is out of range")
+  var data_name = ""
+  if blob != "" && has_fn(data_fns, fn) {
+    data_name = blob
+  }
+  return block_chunk(
+    m, blocks[child], start, count,
+    nested_depth(m, fn, owner_path, child), data_name, data_fns, config,
+    offsets, direct, results
+  )
+}
+
+local fn definition_nested_partition(
+  m: Mod, fn: Fn, root_start: int, root_count: int,
+  owner_path: list<int>, child: int, start: int, count: int,
+  direct: list<str>, results: list<str>, blob: str,
+  data_fns: list<Fn>, config: dict, offsets: dict
+) -> list<str> {
+  assert(len(owner_path) != 0 && len(owner_path) % 2 == 1,
+         "c: nested owner path must identify an operation")
+  let body = ir.blks(fn)[0]
+  let operations = ir.ops(body)
+  let root = owner_path[0]
+  assert(root_start >= 0 && root_count > 0 &&
+         root >= root_start && root < root_start + root_count &&
+         root_start + root_count <= len(operations),
+         "c: nested root partition is out of range")
+  var data_name = ""
+  if blob != "" && has_fn(data_fns, fn) {
+    data_name = blob
+  }
+  let nested = statement_partition(
+    m, operations[root], owner_path, 1, child, start, count, 1,
+    data_name, data_fns, config, offsets, direct, results
+  )
+  return [
+    block_chunk(
+      m, body, root_start, root - root_start, 1, data_name, data_fns,
+      config, offsets, direct, results
+    ) + str(nested[0]),
+    str(nested[1]),
+    str(nested[2]) + block_chunk(
+      m, body, root + 1, root_start + root_count - root - 1, 1,
+      data_name, data_fns, config, offsets, direct, results
+    )
+  ]
+}
+
+local fn definition_suffix() -> str {
+  return "}\n"
+}
+
+local fn definition(
+  m: Mod, fn: Fn, blob: str, data_fns: list<Fn>, config: dict, offsets: dict
+) -> str {
+  return definition_prefix(m, fn, blob, data_fns, config, offsets) +
+         definition_storage(m, fn, blob, data_fns, config, offsets) +
+         definition_contents(m, fn, blob, data_fns, config, offsets) +
+         definition_suffix()
 }
 
 local fn functions(m: Mod) -> list<Fn> {
@@ -491,4 +643,3 @@ local fn exports(m: Mod) -> list<Fn> {
   }
   return visible
 }
-

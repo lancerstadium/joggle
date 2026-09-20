@@ -1,4 +1,4 @@
-module separation
+mod separation
 use tensor
 
 local fn distinct(

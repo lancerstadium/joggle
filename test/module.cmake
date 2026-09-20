@@ -22,6 +22,10 @@ endfunction()
 
 joggle_workspace("${TEST_ROOT}")
 
+# The CLI rename is breaking just like the declaration rename: the old command
+# must fail instead of becoming a compatibility alias.
+invoke(fail "${TOOL}" module list -M "${SOURCE_ROOT}")
+
 set(fragment_root "${TEST_ROOT}.fragment-source")
 file(REMOVE_RECURSE "${fragment_root}")
 
@@ -33,30 +37,30 @@ file(REMOVE_RECURSE "${closure_root}")
 file(MAKE_DIRECTORY "${closure_root}/closure_dep"
                     "${closure_root}/closure_user")
 file(WRITE "${closure_root}/closure_dep/module.jog"
-     "module closure_dep\nfn value() -> i32 { return 7 }\n")
+     "mod closure_dep\nfn value() -> i32 { return 7 }\n")
 file(WRITE "${closure_root}/closure_user/module.jog"
-     "module closure_user\nuse closure_dep\n"
+     "mod closure_user\nuse closure_dep\n"
      "fn value() -> i32 { return closure_dep.value() }\n")
-invoke(fail "${TOOL}" module install
+invoke(fail "${TOOL}" mod install
        "${closure_root}/closure_user" "${TEST_ROOT}")
 if(EXISTS "${TEST_ROOT}/closure_user")
   message(FATAL_ERROR "module with an implicit sibling dependency was installed")
 endif()
-invoke(ok "${TOOL}" module install
+invoke(ok "${TOOL}" mod install
        "${closure_root}/closure_dep" "${TEST_ROOT}")
-invoke(ok "${TOOL}" module install
+invoke(ok "${TOOL}" mod install
        "${closure_root}/closure_user" "${TEST_ROOT}")
-invoke(ok "${TOOL}" module check closure_user -M "${TEST_ROOT}")
-invoke(ok "${TOOL}" module uninstall closure_user "${TEST_ROOT}")
-invoke(ok "${TOOL}" module uninstall closure_dep "${TEST_ROOT}")
+invoke(ok "${TOOL}" mod check closure_user -M "${TEST_ROOT}")
+invoke(ok "${TOOL}" mod uninstall closure_user "${TEST_ROOT}")
+invoke(ok "${TOOL}" mod uninstall closure_dep "${TEST_ROOT}")
 file(REMOVE_RECURSE "${closure_root}")
 file(MAKE_DIRECTORY "${fragment_root}/fragment_error/lib")
 file(WRITE "${fragment_root}/fragment_error/module.jog"
-     "module fragment_error\nfn declared(x: i32) -> i32;\n")
+     "mod fragment_error\nfn declared(x: i32) -> i32;\n")
 file(WRITE "${fragment_root}/fragment_error/lib/broken.jog"
      "local fn valid(x: i32) -> i32 { return x }\n"
      "local fn broken( -> i32 { return 0 }\n")
-invoke(fail "${TOOL}" module check fragment_error -M "${fragment_root}")
+invoke(fail "${TOOL}" mod check fragment_error -M "${fragment_root}")
 set(fragment_diagnostics "${COMMAND_OUTPUT}${COMMAND_ERROR}")
 if(NOT fragment_diagnostics MATCHES "broken.jog:2:")
   message(FATAL_ERROR
@@ -66,7 +70,7 @@ if(fragment_diagnostics MATCHES "module.jog:[3-9][0-9]*:")
   message(FATAL_ERROR
           "fragment diagnostic was attributed to the entry source:\n${fragment_diagnostics}")
 endif()
-invoke(fail "${TOOL}" module install
+invoke(fail "${TOOL}" mod install
        "${fragment_root}/fragment_error" "${TEST_ROOT}"
        -M "${fragment_root}")
 set(fragment_diagnostics "${COMMAND_OUTPUT}${COMMAND_ERROR}")
@@ -80,7 +84,7 @@ endif()
 file(REMOVE_RECURSE "${fragment_root}")
 
 foreach(action IN ITEMS check info)
-  invoke(fail "${TOOL}" module "${action}" "../base" -M "${SOURCE_ROOT}")
+  invoke(fail "${TOOL}" mod "${action}" "../base" -M "${SOURCE_ROOT}")
   set(name_diagnostics "${COMMAND_OUTPUT}${COMMAND_ERROR}")
   if(NOT name_diagnostics MATCHES "invalid module name")
     message(FATAL_ERROR
@@ -96,45 +100,45 @@ foreach(module IN ITEMS graph.leaf graph.left graph.right graph.top
   file(MAKE_DIRECTORY "${graph_root}/${module}")
 endforeach()
 file(WRITE "${graph_root}/graph.leaf/module.jog"
-     "module graph.leaf\n"
+     "mod graph.leaf\n"
      "fn identity<T: Ty>(x: T) -> T { return x }\n")
 file(WRITE "${graph_root}/graph.left/module.jog"
-     "module graph.left\nuse graph.leaf\n"
+     "mod graph.left\nuse graph.leaf\n"
      "fn left(x: i32) -> i32 { return identity(x) }\n")
 file(WRITE "${graph_root}/graph.right/module.jog"
-     "module graph.right\nuse graph.leaf\n"
+     "mod graph.right\nuse graph.leaf\n"
      "fn right(x: i32) -> i32 { return identity(x) }\n")
 file(WRITE "${graph_root}/graph.top/module.jog"
-     "module graph.top\nuse graph.left\nuse graph.right\n"
+     "mod graph.top\nuse graph.left\nuse graph.right\n"
      "fn main(x: i32) -> i32 {\n"
      "  return identity(graph.left.left(graph.right.right(x)))\n}\n")
-invoke(ok "${TOOL}" module check graph.top -M "${graph_root}")
+invoke(ok "${TOOL}" mod check graph.top -M "${graph_root}")
 
 file(WRITE "${graph_root}/graph.first/module.jog"
-     "module graph.first\n"
+     "mod graph.first\n"
      "fn choose(x: i32) -> i32 { return x }\n")
 file(WRITE "${graph_root}/graph.second/module.jog"
-     "module graph.second\n"
+     "mod graph.second\n"
      "fn choose(x: i32) -> i32 { return x + 1 }\n")
 file(WRITE "${graph_root}/graph.ambiguous/module.jog"
-     "module graph.ambiguous\nuse graph.first\nuse graph.second\n"
+     "mod graph.ambiguous\nuse graph.first\nuse graph.second\n"
      "fn main(x: i32) -> i32 { return choose(x) }\n")
-invoke(fail "${TOOL}" module check graph.ambiguous -M "${graph_root}")
+invoke(fail "${TOOL}" mod check graph.ambiguous -M "${graph_root}")
 set(graph_diagnostics "${COMMAND_OUTPUT}${COMMAND_ERROR}")
 if(NOT graph_diagnostics MATCHES "call to 'choose' is ambiguous")
   message(FATAL_ERROR
           "module ambiguity was not diagnosed:\n${graph_diagnostics}")
 endif()
 file(WRITE "${graph_root}/graph.qualified/module.jog"
-     "module graph.qualified\nuse graph.first\nuse graph.second\n"
+     "mod graph.qualified\nuse graph.first\nuse graph.second\n"
      "fn main(x: i32) -> i32 { return graph.second.choose(x) }\n")
-invoke(ok "${TOOL}" module check graph.qualified -M "${graph_root}")
+invoke(ok "${TOOL}" mod check graph.qualified -M "${graph_root}")
 
 file(WRITE "${graph_root}/graph.cycle_a/module.jog"
-     "module graph.cycle_a\nuse graph.cycle_b\nfn a() -> i32 { return 1 }\n")
+     "mod graph.cycle_a\nuse graph.cycle_b\nfn a() -> i32 { return 1 }\n")
 file(WRITE "${graph_root}/graph.cycle_b/module.jog"
-     "module graph.cycle_b\nuse graph.cycle_a\nfn b() -> i32 { return 2 }\n")
-invoke(fail "${TOOL}" module check graph.cycle_a -M "${graph_root}")
+     "mod graph.cycle_b\nuse graph.cycle_a\nfn b() -> i32 { return 2 }\n")
+invoke(fail "${TOOL}" mod check graph.cycle_a -M "${graph_root}")
 set(graph_diagnostics "${COMMAND_OUTPUT}${COMMAND_ERROR}")
 if(NOT graph_diagnostics MATCHES "module dependency cycle")
   message(FATAL_ERROR
@@ -142,32 +146,32 @@ if(NOT graph_diagnostics MATCHES "module dependency cycle")
 endif()
 file(REMOVE_RECURSE "${graph_root}")
 
-invoke(ok "${TOOL}" module list -M "${SOURCE_ROOT}")
+invoke(ok "${TOOL}" mod list -M "${SOURCE_ROOT}")
 set(expected
     "base\nbounds\nc\nir\nmath\nmem\nnn\nonnx\nonnx.nn\nopt\nquant\nsat\nsat.c\nsat.vm\nstat\ntensor\ntflite\ntflite.nn\ntile\nvm\n")
 if(NOT COMMAND_OUTPUT STREQUAL expected)
-  message(FATAL_ERROR "module list is not canonical:\n${COMMAND_OUTPUT}")
+  message(FATAL_ERROR "mod list is not canonical:\n${COMMAND_OUTPUT}")
 endif()
 
-invoke(ok "${TOOL}" module check nn -M "${SOURCE_ROOT}")
-invoke(ok "${TOOL}" module info tensor -M "${SOURCE_ROOT}")
+invoke(ok "${TOOL}" mod check nn -M "${SOURCE_ROOT}")
+invoke(ok "${TOOL}" mod info tensor -M "${SOURCE_ROOT}")
 # A module may be split across lib/ fragments. module.jog is always reported
 # first and the fragments follow in sorted order, so the listing stays
 # deterministic as the split changes.
 if(NOT COMMAND_OUTPUT MATCHES
-   "^module tensor\npath .+\nuse base\nsource module.jog\n(source lib/[a-z_]+\\.jog\n)+fn tensor<E: Ty, S: list<int>>\\(\\) -> Ty;\n")
-  message(FATAL_ERROR "unexpected module info:\n${COMMAND_OUTPUT}")
+   "^mod tensor\npath .+\nuse base\nsource module.jog\n(source lib/[a-z_]+\\.jog\n)+fn tensor<E: Ty, S: list<int>>\\(\\) -> Ty;\n")
+  message(FATAL_ERROR "unexpected mod info:\n${COMMAND_OUTPUT}")
 endif()
 
-invoke(ok "${TOOL}" module info c -M "${SOURCE_ROOT}")
+invoke(ok "${TOOL}" mod info c -M "${SOURCE_ROOT}")
 if(NOT COMMAND_OUTPUT MATCHES "fn source\\(m: Mod\\) -> str;\n" OR
    NOT COMMAND_OUTPUT MATCHES "fn header\\(m: Mod\\) -> str;\n" OR
    COMMAND_OUTPUT MATCHES "fn (label|expr|block)\\(")
   message(FATAL_ERROR
-          "module info did not isolate the C module API:\n${COMMAND_OUTPUT}")
+          "mod info did not isolate the C module API:\n${COMMAND_OUTPUT}")
 endif()
 
-invoke(ok "${TOOL}" module info bounds -M "${SOURCE_ROOT}")
+invoke(ok "${TOOL}" mod info bounds -M "${SOURCE_ROOT}")
 if(NOT COMMAND_OUTPUT MATCHES "fn infer\\(m: Mod\\) -> dict;\n" OR
    NOT COMMAND_OUTPUT MATCHES
        "fn get\\(known: dict, value: Val\\) -> list<int>;\n" OR
@@ -176,33 +180,33 @@ if(NOT COMMAND_OUTPUT MATCHES "fn infer\\(m: Mod\\) -> dict;\n" OR
    NOT COMMAND_OUTPUT MATCHES "fn report\\(m: Mod\\) -> dict;\n" OR
    COMMAND_OUTPUT MATCHES "fn (limits|mul_value|result)\\(")
   message(FATAL_ERROR
-          "module info did not isolate the bounds API:\n${COMMAND_OUTPUT}")
+          "mod info did not isolate the bounds API:\n${COMMAND_OUTPUT}")
 endif()
 
-invoke(ok "${TOOL}" module info onnx.nn -M "${SOURCE_ROOT}")
+invoke(ok "${TOOL}" mod info onnx.nn -M "${SOURCE_ROOT}")
 if(NOT COMMAND_OUTPUT MATCHES "fn infer\\(m: Mod\\) -> bool;\n" OR
    NOT COMMAND_OUTPUT MATCHES "fn convert\\(m: Mod\\) -> bool;\n" OR
    COMMAND_OUTPUT MATCHES "fn (conv_type|convert_conv|infer_once)\\(")
   message(FATAL_ERROR
-          "module info exposed ONNX bridge implementation:\n${COMMAND_OUTPUT}")
+          "mod info exposed ONNX bridge implementation:\n${COMMAND_OUTPUT}")
 endif()
 
-invoke(ok "${TOOL}" module info tflite.nn -M "${SOURCE_ROOT}")
+invoke(ok "${TOOL}" mod info tflite.nn -M "${SOURCE_ROOT}")
 if(NOT COMMAND_OUTPUT MATCHES "fn convert\\(m: Mod\\) -> bool;\n" OR
    COMMAND_OUTPUT MATCHES "fn (convert_conv|convert_binary|convert_tensor)\\(")
   message(FATAL_ERROR
-          "module info exposed TFLite bridge implementation:\n${COMMAND_OUTPUT}")
+          "mod info exposed TFLite bridge implementation:\n${COMMAND_OUTPUT}")
 endif()
 
-invoke(ok "${TOOL}" module install "${BUILD_ROOT}/sample" "${TEST_ROOT}"
+invoke(ok "${TOOL}" mod install "${BUILD_ROOT}/sample" "${TEST_ROOT}"
        -M "${BUILD_ROOT}")
 if(NOT EXISTS "${TEST_ROOT}/sample/module.jog")
   message(FATAL_ERROR "installed module is missing")
 endif()
-invoke(fail "${TOOL}" module install "${BUILD_ROOT}/sample" "${TEST_ROOT}"
+invoke(fail "${TOOL}" mod install "${BUILD_ROOT}/sample" "${TEST_ROOT}"
        -M "${BUILD_ROOT}")
-invoke(ok "${TOOL}" module check sample -M "${TEST_ROOT}")
-invoke(ok "${TOOL}" module info sample -M "${TEST_ROOT}")
+invoke(ok "${TOOL}" mod check sample -M "${TEST_ROOT}")
+invoke(ok "${TOOL}" mod info sample -M "${TEST_ROOT}")
 if(NOT COMMAND_OUTPUT MATCHES "native joggle_sample\\.(so|dylib|dll)\n")
   message(FATAL_ERROR "native library is not reported:\n${COMMAND_OUTPUT}")
 endif()
@@ -239,9 +243,9 @@ string(REPLACE "fn keep<T: Ty>(x: T) -> T;"
                upgrade_module "${upgrade_module}")
 file(WRITE "${upgrade_source}/module.jog"
      "${upgrade_module}\nfn added(x: i32) -> i32;\n")
-invoke(ok "${TOOL}" module upgrade "${upgrade_source}" "${TEST_ROOT}"
+invoke(ok "${TOOL}" mod upgrade "${upgrade_source}" "${TEST_ROOT}"
        -M "${BUILD_ROOT}")
-invoke(ok "${TOOL}" module check sample -M "${TEST_ROOT}")
+invoke(ok "${TOOL}" mod check sample -M "${TEST_ROOT}")
 file(READ "${TEST_ROOT}/sample/module.jog" upgraded_source)
 if(NOT upgraded_source MATCHES "fn added\\(x: i32\\) -> i32;")
   message(FATAL_ERROR "compatible upgrade was not committed")
@@ -253,7 +257,7 @@ string(REPLACE "fn ping(x: i32) -> i32;"
                "fn ping(x: i64) -> i64;"
                incompatible_module "${incompatible_module}")
 file(WRITE "${incompatible_source}/module.jog" "${incompatible_module}")
-invoke(fail "${TOOL}" module upgrade "${incompatible_source}" "${TEST_ROOT}"
+invoke(fail "${TOOL}" mod upgrade "${incompatible_source}" "${TEST_ROOT}"
        -M "${BUILD_ROOT}")
 file(READ "${TEST_ROOT}/sample/module.jog" retained_source)
 if(NOT retained_source STREQUAL upgraded_source)
@@ -262,10 +266,10 @@ endif()
 
 file(COPY "${upgrade_source}/" DESTINATION "${invalid_source}")
 file(READ "${invalid_source}/module.jog" invalid_module)
-string(REPLACE "module sample\n" "module sample\nuse absent\n"
+string(REPLACE "mod sample\n" "mod sample\nuse absent\n"
                invalid_module "${invalid_module}")
 file(WRITE "${invalid_source}/module.jog" "${invalid_module}")
-invoke(fail "${TOOL}" module upgrade "${invalid_source}" "${TEST_ROOT}"
+invoke(fail "${TOOL}" mod upgrade "${invalid_source}" "${TEST_ROOT}"
        -M "${BUILD_ROOT}")
 file(READ "${TEST_ROOT}/sample/module.jog" retained_source)
 if(NOT retained_source STREQUAL upgraded_source)
@@ -276,51 +280,51 @@ endif()
 # beside the candidate to prove that its parent directory is not searched
 # implicitly.
 file(WRITE "${hidden_dependency_source}/module.jog"
-     "module hidden_dependency\nfn value() -> i32 { return 1 }\n")
+     "mod hidden_dependency\nfn value() -> i32 { return 1 }\n")
 file(COPY "${upgrade_source}/" DESTINATION "${hidden_upgrade_source}")
 file(READ "${hidden_upgrade_source}/module.jog" hidden_upgrade)
-string(REPLACE "module sample\n"
-               "module sample\nuse hidden_dependency\n"
+string(REPLACE "mod sample\n"
+               "mod sample\nuse hidden_dependency\n"
                hidden_upgrade "${hidden_upgrade}")
 file(WRITE "${hidden_upgrade_source}/module.jog" "${hidden_upgrade}")
-invoke(fail "${TOOL}" module upgrade "${hidden_upgrade_source}" "${TEST_ROOT}"
+invoke(fail "${TOOL}" mod upgrade "${hidden_upgrade_source}" "${TEST_ROOT}"
        -M "${BUILD_ROOT}")
 file(READ "${TEST_ROOT}/sample/module.jog" retained_source)
 if(NOT retained_source STREQUAL upgraded_source)
   message(FATAL_ERROR "hidden-dependency upgrade changed the installed module")
 endif()
 
-invoke(fail "${TOOL}" module install "${BUILD_ROOT}/bad" "${TEST_ROOT}"
+invoke(fail "${TOOL}" mod install "${BUILD_ROOT}/bad" "${TEST_ROOT}"
        -M "${BUILD_ROOT}")
 if(EXISTS "${TEST_ROOT}/bad")
   message(FATAL_ERROR "invalid module was committed")
 endif()
 
 file(WRITE "${dependent_source}/module.jog"
-     "module dependent\nuse sample\nfn call(x: i32) -> i32 { return sample.ping(x) }\n")
-invoke(ok "${TOOL}" module install "${dependent_source}" "${TEST_ROOT}"
+     "mod dependent\nuse sample\nfn call(x: i32) -> i32 { return sample.ping(x) }\n")
+invoke(ok "${TOOL}" mod install "${dependent_source}" "${TEST_ROOT}"
        -M "${TEST_ROOT}")
 
 # Preserving every old declaration is not sufficient when a new overload
 # silently retargets an installed dependent. Validate the reverse-dependency
 # closure against the staged candidate before committing it.
 file(WRITE "${provider_source}/module.jog"
-     "module provider\nfn choose<T: Ty>(x: T) -> T { return x }\n")
+     "mod provider\nfn choose<T: Ty>(x: T) -> T { return x }\n")
 file(WRITE "${facade_source}/module.jog"
-     "module facade\nuse provider\nfn keep(x: i32) -> i32 { return x }\n")
+     "mod facade\nuse provider\nfn keep(x: i32) -> i32 { return x }\n")
 file(WRITE "${facade_upgrade_source}/module.jog"
-     "module facade\nuse provider\n"
+     "mod facade\nuse provider\n"
      "fn keep(x: i32) -> i32 { return x }\n"
      "fn choose(x: i32) -> i32 { return x + 1 }\n")
 file(WRITE "${client_source}/module.jog"
-     "module client\nuse facade\n"
+     "mod client\nuse facade\n"
      "fn call(x: i32) -> i32 { return choose(x) }\n")
-invoke(ok "${TOOL}" module install "${provider_source}" "${TEST_ROOT}")
-invoke(ok "${TOOL}" module install "${facade_source}" "${TEST_ROOT}"
+invoke(ok "${TOOL}" mod install "${provider_source}" "${TEST_ROOT}")
+invoke(ok "${TOOL}" mod install "${facade_source}" "${TEST_ROOT}"
        -M "${TEST_ROOT}")
-invoke(ok "${TOOL}" module install "${client_source}" "${TEST_ROOT}"
+invoke(ok "${TOOL}" mod install "${client_source}" "${TEST_ROOT}"
        -M "${TEST_ROOT}")
-invoke(fail "${TOOL}" module upgrade "${facade_upgrade_source}"
+invoke(fail "${TOOL}" mod upgrade "${facade_upgrade_source}"
        "${TEST_ROOT}" -M "${TEST_ROOT}")
 if(NOT COMMAND_ERROR MATCHES
    "upgrade would break installed module 'client'")
@@ -332,21 +336,21 @@ file(READ "${facade_source}/module.jog" expected_facade)
 if(NOT retained_facade STREQUAL expected_facade)
   message(FATAL_ERROR "dependent-breaking upgrade changed the installed facade")
 endif()
-invoke(ok "${TOOL}" module uninstall client "${TEST_ROOT}")
-invoke(ok "${TOOL}" module uninstall facade "${TEST_ROOT}")
-invoke(ok "${TOOL}" module uninstall provider "${TEST_ROOT}")
+invoke(ok "${TOOL}" mod uninstall client "${TEST_ROOT}")
+invoke(ok "${TOOL}" mod uninstall facade "${TEST_ROOT}")
+invoke(ok "${TOOL}" mod uninstall provider "${TEST_ROOT}")
 
-invoke(fail "${TOOL}" module uninstall sample "${TEST_ROOT}")
+invoke(fail "${TOOL}" mod uninstall sample "${TEST_ROOT}")
 if(NOT EXISTS "${TEST_ROOT}/sample/module.jog" OR
    NOT EXISTS "${TEST_ROOT}/dependent/module.jog")
   message(FATAL_ERROR "blocked uninstall changed the installed modules")
 endif()
-invoke(ok "${TOOL}" module uninstall dependent "${TEST_ROOT}")
-invoke(ok "${TOOL}" module uninstall sample "${TEST_ROOT}")
+invoke(ok "${TOOL}" mod uninstall dependent "${TEST_ROOT}")
+invoke(ok "${TOOL}" mod uninstall sample "${TEST_ROOT}")
 if(EXISTS "${TEST_ROOT}/sample")
   message(FATAL_ERROR "uninstalled module remains")
 endif()
-invoke(fail "${TOOL}" module uninstall sample "${TEST_ROOT}")
+invoke(fail "${TOOL}" mod uninstall sample "${TEST_ROOT}")
 
 file(REMOVE_RECURSE "${upgrade_source}" "${incompatible_source}"
                     "${invalid_source}" "${dependent_source}"

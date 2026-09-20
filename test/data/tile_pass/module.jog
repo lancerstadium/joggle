@@ -1,4 +1,4 @@
-module tile_pass
+mod tile_pass
 use base
 use ir
 use tile

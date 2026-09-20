@@ -67,7 +67,7 @@ local fn api_with(m: Mod, blob: str, config: dict) -> list<dict> {
       )]
     }
     var data = ""
-    if blob != "" && owned(m, fn) && has_fn(data_fns, fn) {
+    if blob != "" && ir.owned(m, fn) && has_fn(data_fns, fn) {
       data = blob
     }
     let types = ir.returns(fn)
@@ -116,10 +116,18 @@ local fn data_with(m: Mod, config: dict) -> bytes {
   return out
 }
 
+local fn preamble(
+  m: Mod, fns: list<Fn>, blob: str, data_fns: list<Fn>, config: dict
+) -> str {
+  let calls = dependencies(m, config)
+  let declarations = prototypes(m, fns, calls, blob, data_fns, config, true)
+  return includes(source_headers(m, fns, blob, config)) + "\n" +
+         declarations + "\n"
+}
+
 local fn emit(m: Mod, blob: str, config: dict) -> str {
   let fns = functions(m)
   assert(len(fns) != 0, "c: module has no function definitions")
-  let calls = dependencies(m, config)
   var data_fns: list<Fn> = []
   if blob != "" {
     data_fns = data_functions(m)
@@ -128,12 +136,9 @@ local fn emit(m: Mod, blob: str, config: dict) -> str {
   if blob != "" {
     offsets = payload_offsets(m, config)
   }
-  let declarations = prototypes(m, fns, calls, blob, data_fns, config, true)
   var definitions = ""
   for fn in fns {
     definitions += definition(m, fn, blob, data_fns, config, offsets) + "\n"
   }
-  return includes(source_headers(m, fns, blob, config)) + "\n" +
-         declarations + "\n" + definitions
+  return preamble(m, fns, blob, data_fns, config) + definitions
 }
-

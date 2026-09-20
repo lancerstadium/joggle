@@ -1,4 +1,4 @@
-module tile_merge_case
+mod tile_merge_case
 use tensor
 
 fn checksum(x: tensor<i32, [24]>) -> i32 {
