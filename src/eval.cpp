@@ -4909,6 +4909,207 @@ private:
 
 namespace joggle {
 
+namespace {
+
+Attr ns(std::chrono::nanoseconds value) {
+  return Attr(static_cast<std::int64_t>(value.count()));
+}
+
+Attr query_profile(const detail::QueryReport& report) {
+  const auto miss = [](detail::QueryMiss value) -> std::string_view {
+    switch (value) {
+      case detail::QueryMiss::none: return "none";
+      case detail::QueryMiss::cold: return "cold";
+      case detail::QueryMiss::environment: return "environment";
+      case detail::QueryMiss::whole_revision: return "whole_revision";
+      case detail::QueryMiss::structure_revision: return "structure_revision";
+      case detail::QueryMiss::package_dependencies: return "package_dependencies";
+      case detail::QueryMiss::function_generation: return "function_generation";
+      case detail::QueryMiss::function_revision: return "function_revision";
+      case detail::QueryMiss::function_shape: return "function_shape";
+      case detail::QueryMiss::operation_generation: return "operation_generation";
+      case detail::QueryMiss::operation_revision: return "operation_revision";
+      case detail::QueryMiss::value_generation: return "value_generation";
+      case detail::QueryMiss::value_revision: return "value_revision";
+    }
+    return "unknown";
+  };
+  Attr::Dict out;
+  out["cached"] = Attr(report.cached);
+  out["miss"] = Attr(std::string(miss(report.miss)));
+  out["observed_functions"] =
+      Attr(static_cast<std::int64_t>(report.observed_functions));
+  out["observed_collections"] =
+      Attr(static_cast<std::int64_t>(report.observed_collections));
+  out["observed_operations"] =
+      Attr(static_cast<std::int64_t>(report.observed_operations));
+  out["observed_values"] =
+      Attr(static_cast<std::int64_t>(report.observed_values));
+  out["observed_packages"] =
+      Attr(static_cast<std::int64_t>(report.observed_packages));
+  out["observed_intrinsics"] =
+      Attr(static_cast<std::int64_t>(report.observed_intrinsics));
+  out["observed_structure"] = Attr(report.observed_structure);
+  out["observed_whole_mod"] = Attr(report.observed_whole_mod);
+  out["verification_cached"] = Attr(report.verification_cached);
+  out["lookup_ns"] = ns(report.lookup);
+  out["snapshot_ns"] = ns(report.snapshot);
+  out["verification_ns"] = ns(report.verification);
+  out["evaluation_ns"] = ns(report.evaluation);
+  out["validation_ns"] = ns(report.validation);
+  out["execute_ns"] = ns(report.execute);
+  return Attr(std::move(out));
+}
+
+Attr run_profile(const detail::RunTiming& timing) {
+  Attr::List steps;
+  steps.reserve(timing.steps.size());
+  for (const detail::RunStepTiming& step : timing.steps) {
+    Attr::Dict fields;
+    fields["function"] = Attr(step.function);
+    fields["succeeded"] = Attr(step.succeeded);
+    fields["verification_cached"] = Attr(step.verification_cached);
+    fields["counters_enabled"] = Attr(step.counters_enabled);
+    const auto counter = [&](std::string key, std::uint64_t value) {
+      fields[std::move(key)] = Attr(static_cast<std::int64_t>(value));
+    };
+    counter("before", step.before);
+    counter("after", step.after);
+    counter("evaluated_ops", step.evaluated_ops);
+    counter("frame_lookups", step.frame_lookups);
+    counter("frame_probes", step.frame_probes);
+    counter("frame_writes", step.frame_writes);
+    counter("frame_pool_hits", step.frame_pool_hits);
+    counter("frame_pool_misses", step.frame_pool_misses);
+    counter("frame_growths", step.frame_growths);
+    counter("frame_peak_capacity", step.frame_peak_capacity);
+    counter("plan_compiles", step.plan_compiles);
+    counter("plan_hits", step.plan_hits);
+    counter("plan_fallbacks", step.plan_fallbacks);
+    counter("plan_persistent_hits", step.plan_persistent_hits);
+    counter("plan_cache_resets", step.plan_cache_resets);
+    counter("plan_window_hits", step.plan_window_hits);
+    counter("plan_window_misses", step.plan_window_misses);
+    counter("plan_branches", step.plan_branches);
+    counter("plan_loops", step.plan_loops);
+    counter("plan_loop_iterations", step.plan_loop_iterations);
+    counter("plan_returns", step.plan_returns);
+    counter("plan_yields", step.plan_yields);
+    counter("plan_direct_yields", step.plan_direct_yields);
+    counter("plan_direct_block_entries", step.plan_direct_block_entries);
+    counter("plan_call_argument_vectors", step.plan_call_argument_vectors);
+    counter("plan_call_argument_items", step.plan_call_argument_items);
+    counter("plan_call_argument_arity_0", step.plan_call_argument_arity_0);
+    counter("plan_call_argument_arity_1", step.plan_call_argument_arity_1);
+    counter("plan_call_argument_arity_2", step.plan_call_argument_arity_2);
+    counter("plan_call_argument_arity_many", step.plan_call_argument_arity_many);
+    counter("plan_call_argument_materializations",
+            step.plan_call_argument_materializations);
+    counter("plan_call_result_vectors", step.plan_call_result_vectors);
+    counter("plan_call_result_items", step.plan_call_result_items);
+    counter("plan_call_direct_results", step.plan_call_direct_results);
+    counter("plan_call_passthroughs", step.plan_call_passthroughs);
+    counter("plan_call_lists", step.plan_call_lists);
+    counter("plan_call_intrinsics", step.plan_call_intrinsics);
+    counter("plan_call_operators", step.plan_call_operators);
+    counter("plan_call_fundamentals", step.plan_call_fundamentals);
+    counter("plan_call_invocations", step.plan_call_invocations);
+    counter("plan_direct_operator_links", step.plan_direct_operator_links);
+    counter("dispatch_hits", step.dispatch_hits);
+    counter("dispatch_misses", step.dispatch_misses);
+    counter("plan_dispatch_hits", step.plan_dispatch_hits);
+    counter("plan_dispatch_misses", step.plan_dispatch_misses);
+    Attr::Dict functions;
+    for (const auto& [name, function] : step.functions) {
+      Attr::Dict values;
+      values["invocations"] =
+          Attr(static_cast<std::int64_t>(function.invocations));
+      values["memo_hits"] =
+          Attr(static_cast<std::int64_t>(function.memo_hits));
+      values["plan_evaluated_ops"] =
+          Attr(static_cast<std::int64_t>(function.plan_evaluated_ops));
+      values["plan_loop_iterations"] =
+          Attr(static_cast<std::int64_t>(function.plan_loop_iterations));
+      functions.emplace(name, Attr(std::move(values)));
+    }
+    fields["functions"] = Attr(std::move(functions));
+    fields["resolve_ns"] = ns(step.resolve);
+    fields["evaluation_ns"] = ns(step.evaluation);
+    fields["verification_ns"] = ns(step.verification);
+    fields["total_ns"] = ns(step.total);
+    steps.emplace_back(std::move(fields));
+  }
+  Attr::Dict fields;
+  fields["succeeded"] = Attr(timing.succeeded);
+  fields["initial_verification_cached"] =
+      Attr(timing.initial_verification_cached);
+  fields["structural_snapshot"] = Attr(timing.structural_snapshot);
+  fields["snapshot_ns"] = ns(timing.snapshot);
+  fields["initial_verification_ns"] = ns(timing.initial_verification);
+  fields["steps"] = Attr(std::move(steps));
+  return Attr(std::move(fields));
+}
+
+Attr reactive_profile(const detail::ReactiveRunReport& report) {
+  const auto miss = [](detail::ReactiveMiss value) -> std::string_view {
+    switch (value) {
+      case detail::ReactiveMiss::none: return "none";
+      case detail::ReactiveMiss::cold: return "cold";
+      case detail::ReactiveMiss::environment: return "environment";
+      case detail::ReactiveMiss::arguments: return "arguments";
+      case detail::ReactiveMiss::whole_revision: return "whole_revision";
+      case detail::ReactiveMiss::structure_revision: return "structure_revision";
+      case detail::ReactiveMiss::package_dependencies: return "package_dependencies";
+      case detail::ReactiveMiss::function_generation: return "function_generation";
+      case detail::ReactiveMiss::function_revision: return "function_revision";
+      case detail::ReactiveMiss::function_shape: return "function_shape";
+      case detail::ReactiveMiss::operation_generation: return "operation_generation";
+      case detail::ReactiveMiss::operation_revision: return "operation_revision";
+      case detail::ReactiveMiss::value_generation: return "value_generation";
+      case detail::ReactiveMiss::value_revision: return "value_revision";
+      case detail::ReactiveMiss::upstream: return "upstream";
+    }
+    return "unknown";
+  };
+  Attr::List stages;
+  stages.reserve(report.stages.size());
+  for (const detail::ReactiveStageReport& stage : report.stages) {
+    Attr::Dict values;
+    values["function"] = Attr(stage.function);
+    values["executed"] = Attr(stage.executed);
+    values["miss"] = Attr(std::string(miss(stage.miss)));
+    values["observed_functions"] =
+        Attr(static_cast<std::int64_t>(stage.observed_functions));
+    values["observed_collections"] =
+        Attr(static_cast<std::int64_t>(stage.observed_collections));
+    values["observed_operations"] =
+        Attr(static_cast<std::int64_t>(stage.observed_operations));
+    values["observed_values"] =
+        Attr(static_cast<std::int64_t>(stage.observed_values));
+    values["observed_packages"] =
+        Attr(static_cast<std::int64_t>(stage.observed_packages));
+    values["observed_intrinsics"] =
+        Attr(static_cast<std::int64_t>(stage.observed_intrinsics));
+    values["observed_structure"] = Attr(stage.observed_structure);
+    values["observed_whole_mod"] = Attr(stage.observed_whole_mod);
+    values["changed_functions"] =
+        Attr(static_cast<std::int64_t>(stage.changed_functions));
+    stages.emplace_back(std::move(values));
+  }
+  Attr::Dict out;
+  out["succeeded"] = Attr(report.succeeded);
+  out["cold"] = Attr(report.cold);
+  out["executed_stages"] =
+      Attr(static_cast<std::int64_t>(report.executed_stages));
+  out["reused_stages"] =
+      Attr(static_cast<std::int64_t>(report.reused_stages));
+  out["stages"] = Attr(std::move(stages));
+  out["execution"] = run_profile(report.execution);
+  return Attr(std::move(out));
+}
+
+}  // namespace
+
 bool detail::Eval::read(Env& env, Fn fn, const Mod& mod, Attr& result,
                         std::span<const Attr> args,
                         QueryData* dependencies, QueryTiming* timing) {
@@ -5039,79 +5240,87 @@ bool query(Env& env, Fn function, const Mod& mod, Attr& result,
 }
 
 bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
-           std::span<const Attr> args, QueryReport* report) {
+           std::span<const Attr> args, Attr* profile) {
   env.clear_diags();
   result = Attr{};
-  if (report)
-    *report = QueryReport{};
+  detail::QueryReport storage;
+  detail::QueryReport* report = profile ? &storage : nullptr;
+  struct Publish {
+    Attr* target;
+    detail::QueryReport* source;
+    ~Publish() {
+      if (target)
+        *target = query_profile(*source);
+    }
+  } publish{profile, report};
 
   auto& entries = mod.impl_->store.queries;
   const std::size_t key = detail::query_key(function, args);
   const auto invalidation = [&](const detail::QueryData& entry) {
     if (entry.whole_revision && entry.revision != mod.revision())
-      return QueryMiss::whole_revision;
+      return detail::QueryMiss::whole_revision;
     if (entry.structure && entry.structure_revision !=
                                mod.impl_->store.structure_revision)
-      return QueryMiss::structure_revision;
+      return detail::QueryMiss::structure_revision;
     if (entry.packages &&
         entry.package_dependencies != mod.impl_->store.uses)
-      return QueryMiss::package_dependencies;
+      return detail::QueryMiss::package_dependencies;
     for (const detail::QueryFnData& dependency : entry.dependencies) {
       if (!detail::live(mod.impl_->store.fns, dependency.id,
                         dependency.generation))
-        return QueryMiss::function_generation;
+        return detail::QueryMiss::function_generation;
       if (dependency.content &&
           mod.impl_->store.fns[dependency.id].data.revision !=
               dependency.revision)
-        return QueryMiss::function_revision;
+        return detail::QueryMiss::function_revision;
     }
     for (const detail::QueryCollectionData& dependency : entry.collections) {
       if (!detail::live(mod.impl_->store.fns, dependency.function,
                         dependency.generation))
-        return QueryMiss::function_generation;
+        return detail::QueryMiss::function_generation;
       if (detail::collection_members(mod.impl_->store, dependency.function,
                                      dependency.kind) != dependency.members)
-        return QueryMiss::function_shape;
+        return detail::QueryMiss::function_shape;
     }
     for (const detail::QueryOpData& dependency : entry.operations) {
       if (!detail::live(mod.impl_->store.ops, dependency.id,
                         dependency.generation))
-        return QueryMiss::operation_generation;
+        return detail::QueryMiss::operation_generation;
       if (mod.impl_->store.ops[dependency.id].data != dependency.data)
-        return QueryMiss::operation_revision;
+        return detail::QueryMiss::operation_revision;
     }
     for (const detail::QueryValData& dependency : entry.values) {
       if (!detail::live(mod.impl_->store.vals, dependency.id,
                         dependency.generation))
-        return QueryMiss::value_generation;
+        return detail::QueryMiss::value_generation;
       if (mod.impl_->store.vals[dependency.id].data != dependency.data)
-        return QueryMiss::value_revision;
+        return detail::QueryMiss::value_revision;
     }
-    return QueryMiss::none;
+    return detail::QueryMiss::none;
   };
   const auto same_key = [&](const detail::QueryData& entry) {
     return entry.function == function && entry.args.size() == args.size() &&
            std::equal(entry.args.begin(), entry.args.end(), args.begin());
   };
   const auto lookup_begin = std::chrono::steady_clock::now();
-  QueryMiss miss = QueryMiss::cold;
+  detail::QueryMiss miss = detail::QueryMiss::cold;
   const auto bucket = entries.find(key);
   if (bucket != entries.end()) {
     for (const detail::QueryData& entry : bucket->second) {
       if (!same_key(entry))
         continue;
       if (entry.env != env.cache_id() || entry.epoch != env.cache_epoch()) {
-        if (miss == QueryMiss::cold)
-          miss = QueryMiss::environment;
+        if (miss == detail::QueryMiss::cold)
+          miss = detail::QueryMiss::environment;
         continue;
       }
       miss = invalidation(entry);
-      if (miss != QueryMiss::none)
+      if (miss != detail::QueryMiss::none)
         continue;
       result = entry.result;
       if (report) {
         report->cached = true;
-        report->miss = QueryMiss::none;
+        report->miss = detail::QueryMiss::none;
         report->observed_functions = entry.dependencies.size();
         report->observed_collections = entry.collections.size();
         report->observed_operations = entry.operations.size();
@@ -5204,13 +5413,13 @@ bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
 bool detail::Eval::sequence(
     Env& env, std::span<const std::string_view> functions, Mod& mod,
     Attr* report, std::span<const Attr> args,
-    RunTiming* timing, Fn direct,
+    detail::RunTiming* timing, Fn direct,
     std::vector<StageDependencyData>* dependencies) {
   env.clear_diags();
   if (report)
     *report = Attr{};
   if (timing)
-    *timing = RunTiming{};
+    *timing = detail::RunTiming{};
   if (dependencies) {
     dependencies->clear();
     dependencies->reserve(functions.size());
@@ -5240,7 +5449,7 @@ bool detail::Eval::sequence(
         std::chrono::steady_clock::now() - initial_verification_begin;
 
   const auto one = [&](std::string_view function, Attr* step,
-                       RunStepTiming* step_timing,
+                       detail::RunStepTiming* step_timing,
                        StageDependencyData* stage_dependencies) {
     const auto total_begin = std::chrono::steady_clock::now();
     if (step_timing)
@@ -5426,7 +5635,7 @@ bool detail::Eval::sequence(
   bool reported = false;
   for (const std::string_view function : functions) {
     Attr step;
-    RunStepTiming step_timing;
+    detail::RunStepTiming step_timing;
     StageDependencyData stage_dependencies;
     const auto step_begin = std::chrono::steady_clock::now();
     if (!one(function, report ? &step : nullptr,
@@ -5472,12 +5681,32 @@ bool detail::Eval::sequence(
 }
 
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
-         Attr& report) {
-  return detail::Eval::sequence(env, functions, mod, &report, {}, nullptr);
+         std::span<const Attr> args, Attr* report, Attr* profile) {
+  detail::RunTiming timing;
+  const bool ok = detail::Eval::sequence(
+      env, functions, mod, report, args, profile ? &timing : nullptr);
+  if (profile)
+    *profile = run_profile(timing);
+  return ok;
 }
 
-bool run(Env& env, Fn function, Mod& mod, Attr& report,
-         std::span<const Attr> args) {
+bool run(Env& env, std::string_view function, Mod& mod,
+         std::span<const Attr> args, Attr* report, Attr* profile) {
+  const std::span<const std::string_view> functions(&function, 1);
+  Attr sequence;
+  detail::RunTiming timing;
+  const bool ok = detail::Eval::sequence(
+      env, functions, mod, report ? &sequence : nullptr, args,
+      profile ? &timing : nullptr);
+  if (profile)
+    *profile = run_profile(timing);
+  if (ok && report)
+    *report = sequence.dict()->at("steps").list()->front();
+  return ok;
+}
+
+bool run(Env& env, Fn function, Mod& mod, std::span<const Attr> args,
+         Attr* report, Attr* profile) {
   const std::string symbol =
       function ? std::string(function.module()) + "." +
                      std::string(function.name())
@@ -5485,75 +5714,15 @@ bool run(Env& env, Fn function, Mod& mod, Attr& report,
   const std::string_view entry = symbol;
   const std::span<const std::string_view> functions(&entry, 1);
   Attr sequence;
-  if (!detail::Eval::sequence(env, functions, mod, &sequence, args, nullptr,
-                              function))
-    return false;
-  report = sequence.dict()->at("steps").list()->front();
-  return true;
-}
-
-bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
-         Attr& report, std::span<const Attr> args) {
-  return detail::Eval::sequence(env, functions, mod, &report, args, nullptr);
-}
-
-bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
-         std::span<const Attr> args) {
-  return detail::Eval::sequence(env, functions, mod, nullptr, args, nullptr);
-}
-
-bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
-         Attr& report, RunTiming& timing) {
-  return run(env, functions, mod, report, {}, timing);
-}
-
-bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
-         Attr& report, std::span<const Attr> args, RunTiming& timing) {
-  return detail::Eval::sequence(env, functions, mod, &report, args, &timing);
-}
-
-bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
-         RunTiming& timing) {
-  return run(env, function, mod, report, {}, timing);
-}
-
-bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
-         std::span<const Attr> args, RunTiming& timing) {
-  const std::span<const std::string_view> functions(&function, 1);
-  Attr sequence;
-  if (!detail::Eval::sequence(env, functions, mod, &sequence, args, &timing))
-    return false;
-  report = sequence.dict()->at("steps").list()->front();
-  return true;
-}
-
-bool run(Env& env, std::string_view function, Mod& mod, Attr& report) {
-  return run(env, function, mod, report, {});
-}
-
-bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
-         std::span<const Attr> args) {
-  const std::span<const std::string_view> functions(&function, 1);
-  Attr sequence;
-  if (!detail::Eval::sequence(env, functions, mod, &sequence, args, nullptr))
-    return false;
-  report = sequence.dict()->at("steps").list()->front();
-  return true;
-}
-
-bool run(Env& env, std::string_view function, Mod& mod) {
-  const std::span<const std::string_view> functions(&function, 1);
-  return detail::Eval::sequence(env, functions, mod, nullptr, {}, nullptr);
-}
-
-bool run(Env& env, std::string_view function, Mod& mod,
-         std::span<const Attr> args) {
-  const std::span<const std::string_view> functions(&function, 1);
-  return detail::Eval::sequence(env, functions, mod, nullptr, args, nullptr);
-}
-
-bool run(Env& env, std::span<const std::string_view> functions, Mod& mod) {
-  return detail::Eval::sequence(env, functions, mod, nullptr, {}, nullptr);
+  detail::RunTiming timing;
+  const bool ok = detail::Eval::sequence(
+      env, functions, mod, report ? &sequence : nullptr, args,
+      profile ? &timing : nullptr, function);
+  if (profile)
+    *profile = run_profile(timing);
+  if (ok && report)
+    *report = sequence.dict()->at("steps").list()->front();
+  return ok;
 }
 
 struct ReactiveSchedule::Impl {
@@ -5602,10 +5771,19 @@ std::vector<std::string> ReactiveSchedule::stages() const {
 
 bool ReactiveSchedule::run(Env& env, Mod& mod,
                            std::span<const Attr> args,
-                           ReactiveRunReport* report) {
+                           Attr* output) {
   env.clear_diags();
+  detail::ReactiveRunReport storage;
+  detail::ReactiveRunReport* report = output ? &storage : nullptr;
+  struct Publish {
+    Attr* target;
+    detail::ReactiveRunReport* source;
+    ~Publish() {
+      if (target)
+        *target = reactive_profile(*source);
+    }
+  } publish{output, report};
   if (report) {
-    *report = ReactiveRunReport{};
     report->stages.reserve(impl_->stages.size());
     for (const Impl::Stage& stage : impl_->stages)
       report->stages.push_back({stage.function});
@@ -5616,69 +5794,70 @@ bool ReactiveSchedule::run(Env& env, Mod& mod,
     return false;
   }
 
-  ReactiveMiss cold_miss = ReactiveMiss::none;
+  detail::ReactiveMiss cold_miss = detail::ReactiveMiss::none;
   if (!impl_->bound || impl_->store != &mod.impl_->store)
-    cold_miss = ReactiveMiss::cold;
+    cold_miss = detail::ReactiveMiss::cold;
   else if (impl_->environment != env.cache_id() ||
            impl_->epoch != env.cache_epoch())
-    cold_miss = ReactiveMiss::environment;
+    cold_miss = detail::ReactiveMiss::environment;
   else if (impl_->args.size() != args.size() ||
            !std::equal(impl_->args.begin(), impl_->args.end(), args.begin()))
-    cold_miss = ReactiveMiss::arguments;
+    cold_miss = detail::ReactiveMiss::arguments;
 
   const auto invalidation = [&](const Impl::Stage& stage) {
     const detail::QueryData& input = stage.dependencies.inputs;
     const detail::Store& store = mod.impl_->store;
     if (input.whole_revision && input.revision != store.revision)
-      return ReactiveMiss::whole_revision;
+      return detail::ReactiveMiss::whole_revision;
     if (input.structure &&
         input.structure_revision != store.structure_revision)
-      return ReactiveMiss::structure_revision;
+      return detail::ReactiveMiss::structure_revision;
     if (input.packages && input.package_dependencies != store.uses)
-      return ReactiveMiss::package_dependencies;
+      return detail::ReactiveMiss::package_dependencies;
     for (const detail::QueryFnData& dependency : input.dependencies) {
       if (dependency.id >= store.fns.size() ||
           !store.fns[dependency.id].live ||
           store.fns[dependency.id].generation != dependency.generation)
-        return ReactiveMiss::function_generation;
+        return detail::ReactiveMiss::function_generation;
       if (dependency.content &&
           store.fns[dependency.id].data.revision != dependency.revision)
-        return ReactiveMiss::function_revision;
+        return detail::ReactiveMiss::function_revision;
     }
     for (const detail::QueryCollectionData& dependency : input.collections) {
       if (!detail::live(store.fns, dependency.function,
                         dependency.generation))
-        return ReactiveMiss::function_generation;
+        return detail::ReactiveMiss::function_generation;
       if (detail::collection_members(store, dependency.function,
                                      dependency.kind) != dependency.members)
-        return ReactiveMiss::function_shape;
+        return detail::ReactiveMiss::function_shape;
     }
     for (const detail::QueryOpData& dependency : input.operations) {
       if (!detail::live(store.ops, dependency.id, dependency.generation))
-        return ReactiveMiss::operation_generation;
+        return detail::ReactiveMiss::operation_generation;
       if (store.ops[dependency.id].data != dependency.data)
-        return ReactiveMiss::operation_revision;
+        return detail::ReactiveMiss::operation_revision;
     }
     for (const detail::QueryValData& dependency : input.values) {
       if (!detail::live(store.vals, dependency.id, dependency.generation))
-        return ReactiveMiss::value_generation;
+        return detail::ReactiveMiss::value_generation;
       if (store.vals[dependency.id].data != dependency.data)
-        return ReactiveMiss::value_revision;
+        return detail::ReactiveMiss::value_revision;
     }
-    return ReactiveMiss::none;
+    return detail::ReactiveMiss::none;
   };
 
   std::vector<bool> selected(impl_->stages.size(), false);
-  std::vector<ReactiveMiss> misses(impl_->stages.size(), ReactiveMiss::none);
+  std::vector<detail::ReactiveMiss> misses(
+      impl_->stages.size(), detail::ReactiveMiss::none);
   std::unordered_set<std::uint32_t> dirty_functions;
   bool dirty_structure = false;
   bool dirty_packages = false;
   for (std::size_t index = 0; index < impl_->stages.size(); ++index) {
     const Impl::Stage& stage = impl_->stages[index];
-    ReactiveMiss miss = cold_miss == ReactiveMiss::none
+    detail::ReactiveMiss miss = cold_miss == detail::ReactiveMiss::none
                             ? invalidation(stage)
                             : cold_miss;
-    if (miss == ReactiveMiss::none) {
+    if (miss == detail::ReactiveMiss::none) {
       const detail::QueryData& input = stage.dependencies.inputs;
       bool upstream = input.whole_revision &&
                       (!dirty_functions.empty() || dirty_structure ||
@@ -5699,10 +5878,10 @@ bool ReactiveSchedule::run(Env& env, Mod& mod,
       for (const detail::QueryValData& dependency : input.values)
         upstream = upstream || dirty_functions.contains(dependency.data.fn);
       if (upstream)
-        miss = ReactiveMiss::upstream;
+        miss = detail::ReactiveMiss::upstream;
     }
     misses[index] = miss;
-    selected[index] = miss != ReactiveMiss::none;
+    selected[index] = miss != detail::ReactiveMiss::none;
     if (!selected[index])
       continue;
     for (const std::uint32_t output : stage.dependencies.outputs)
@@ -5721,7 +5900,7 @@ bool ReactiveSchedule::run(Env& env, Mod& mod,
     selected_functions.push_back(impl_->stages[index].function);
   }
   if (report) {
-    report->cold = cold_miss != ReactiveMiss::none;
+    report->cold = cold_miss != detail::ReactiveMiss::none;
     report->executed_stages = selected_indices.size();
     report->reused_stages = impl_->stages.size() - selected_indices.size();
     for (std::size_t index = 0; index < selected.size(); ++index) {
@@ -5731,7 +5910,7 @@ bool ReactiveSchedule::run(Env& env, Mod& mod,
   }
 
   std::vector<detail::StageDependencyData> captured;
-  RunTiming timing;
+  detail::RunTiming timing;
   if (selected_functions.empty())
     timing.succeeded = true;
   if (!selected_functions.empty() &&

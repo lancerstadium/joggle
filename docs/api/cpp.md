@@ -102,10 +102,10 @@ selection instead of comparing signature strings.
 
 ```cpp
 joggle::Attr result;
-joggle::QueryReport report;
+joggle::Attr profile;
 std::array<joggle::Attr, 1> args{joggle::Attr("nn.relu")};
 
-if (!joggle::query(env, "opt.count", mod, result, args, &report)) {
+if (!joggle::query(env, "opt.count", mod, result, args, &profile)) {
   env.print_diags(stderr);
   return 1;
 }
@@ -114,35 +114,45 @@ auto count = result.integer();
 if (!count) return 1;
 ```
 
-`QueryReport` tells whether the answer was cached, why a lookup missed, what it
-observed, and how long lookup/snapshot/verification/evaluation took.
+The profile is an `Attr` dictionary. It tells whether the answer was cached,
+why a lookup missed, what it observed, and how long lookup, snapshot,
+verification, evaluation, and validation took. Because it is `Attr`, the same
+schema can be printed, persisted, or sent across a tool boundary.
+
+```cpp
+const auto* fields = profile.dict();
+if (!fields) return 1;
+const bool cached = fields->at("cached").boolean().value_or(false);
+const auto miss = fields->at("miss").string().value_or("unknown");
+```
 
 ## Run one or several functions
 
 ```cpp
 joggle::Attr report;
-joggle::RunTiming timing;
+joggle::Attr profile;
 std::array<std::string_view, 2> stages{
     "opt.fold_add_zero", "opt.basic"};
 
-if (!joggle::run(env, stages, mod, report, {}, timing)) {
+if (!joggle::run(env, stages, mod, {}, &report, &profile)) {
   env.print_diags(stderr);
   return 1;
 }
 ```
 
-The sequence is one transaction. `RunTiming.steps` records per-stage revisions,
-verification reuse, evaluator counters when enabled, and phase durations.
+The sequence is one transaction. `profile["steps"]` records per-stage
+revisions, verification reuse, evaluator counters when enabled, and phase
+durations. Omit either pointer when the corresponding data is not needed.
 
 ## Inspect graph handles
 
 ```cpp
 for (joggle::Fn fn : mod.fns()) {
-  if (!fn.live() || fn.local()) continue;
+  if (!fn.valid() || fn.local()) continue;
   for (joggle::Blk block : fn.blks()) {
     for (joggle::Op op : block.ops()) {
       for (joggle::Val value : op.outs()) {
-        if (!value.live()) continue;
+        if (!value.valid()) continue;
         std::cout << value.type().text() << "\n";
       }
     }
@@ -212,15 +222,16 @@ Preserve `Loc`; do not replace compiler diagnostics with a generic host error.
 
 ```cpp
 joggle::ReactiveSchedule schedule({"opt.basic", "mem.plan"});
-joggle::ReactiveRunReport first;
-joggle::ReactiveRunReport next;
+joggle::Attr first;
+joggle::Attr next;
 
 if (!schedule.run(env, mod, {}, &first)) return 1;
 // Apply an authorized edit to mod.
 if (!schedule.run(env, mod, {}, &next)) return 1;
 
-std::cout << next.executed_stages << " executed, "
-          << next.reused_stages << " reused\n";
+const auto& fields = *next.dict();
+std::cout << *fields.at("executed_stages").integer() << " executed, "
+          << *fields.at("reused_stages").integer() << " reused\n";
 ```
 
 Keep the schedule when the stage list is stable and the graph evolves. Call
@@ -231,3 +242,11 @@ Keep the schedule when the stage list is stable and the graph evolves. Call
 `version_major/minor/patch` describe the C++ release. The native ABI has a
 separate `abi_version`. Joggle is pre-1.0, so compile host and library against a
 matching documented release rather than relying on compatibility shims.
+
+## Why reports are `Attr`
+
+Graph objects use typed handles because they carry store identity, liveness,
+and mutation invariants. Reports are different: they are open, optional,
+serializable observations. Keeping query, run, and reactive telemetry in
+`Attr` avoids exposing evaluator-internal counter structures as permanent C++
+API types while preserving typed records inside the implementation.

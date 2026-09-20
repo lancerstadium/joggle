@@ -61,6 +61,21 @@
           url: /metaprogramming/policies/
         - title: Converters and emitters
           url: /metaprogramming/artifacts/
+    - folder: Performance internals
+      prefix: /performance/
+      children:
+        - title: Performance map
+          url: /performance/
+        - title: Graph storage and edits
+          url: /performance/graph-storage/
+        - title: Evaluator fast path
+          url: /performance/evaluator/
+        - title: Incremental invalidation
+          url: /performance/incremental/
+        - title: Profiling and measurement
+          url: /performance/profiling/
+        - title: API shape and cost
+          url: /performance/api-design/
     - folder: Guides
       prefix: /guides/
       children:

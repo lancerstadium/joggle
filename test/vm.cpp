@@ -359,14 +359,17 @@ int main(int argc, char** argv) {
                     numel_args));
   CHECK(expand_report.dict() &&
         expand_report.dict()->at("changed").boolean() == true);
-  joggle::RunTiming expand_timing;
-  CHECK(joggle::run(env, "opt.expand", open_model, expand_report, numel_args,
-                    expand_timing));
+  joggle::Attr expand_timing;
+  CHECK(joggle::run(env, "opt.expand", open_model, numel_args,
+                    &expand_report, &expand_timing));
+  const auto* expand_profile = expand_timing.dict();
+  const auto* expand_steps =
+      expand_profile ? expand_profile->at("steps").list() : nullptr;
   CHECK(expand_report.dict() && expand_report.dict()->contains("args") &&
         expand_report.dict()->at("changed").boolean() == false &&
-        expand_timing.succeeded && expand_timing.steps.size() == 1 &&
-        expand_timing.steps.front().total >=
-            std::chrono::nanoseconds::zero());
+        expand_profile && expand_profile->at("succeeded").boolean() == true &&
+        expand_steps && expand_steps->size() == 1 &&
+        expand_steps->front().dict()->at("total_ns").integer() >= 0);
   const std::vector<joggle::Attr> add_selection{joggle::Attr("add")};
   joggle::Attr add_image;
   if (!joggle::query(env, "vm.image", open_model, add_image, add_selection)) {

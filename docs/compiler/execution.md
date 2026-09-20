@@ -35,8 +35,8 @@ copy. It records mutation state and reports whether a structural snapshot was
 needed. Metadata-only changes can use narrower undo information; structural
 edits preserve the state required for complete rollback.
 
-`RunTiming.structural_snapshot` and `snapshot` make that cost visible to C++
-tools without changing execution semantics.
+The public profile's `structural_snapshot` and `snapshot_ns` fields make that
+cost visible without changing execution semantics.
 
 ## Revisions and observations
 
@@ -67,17 +67,17 @@ covering calls, branches, loops, returns, and yields. Plans preserve language
 semantics and fall back when a supported fast path is not valid. They are an
 execution implementation, not a new IR exposed to mods.
 
-`RunStepTiming` reports plan compiles/hits/fallbacks, dispatch hits/misses,
-branch and loop counts, argument/result materialization, frame reuse, and
-per-function invocation/memo statistics. Use these counters to locate evaluator
-overhead before changing the core.
+Each entry in the profile's `steps` list reports plan compiles/hits/fallbacks,
+dispatch hits/misses, branch and loop counts, argument/result materialization,
+frame reuse, and per-function invocation/memo statistics. Use these counters
+to locate evaluator overhead before changing the core.
 
 ## Reactive schedule
 
 ```cpp
 joggle::ReactiveSchedule schedule({
     "source.infer", "source.convert", "opt.basic", "mem.plan"});
-joggle::ReactiveRunReport report;
+joggle::Attr report;
 if (!schedule.run(env, mod, {}, &report)) return false;
 ```
 
@@ -122,31 +122,33 @@ flowchart TD
 ## C++ report interpretation
 
 ```cpp
-joggle::ReactiveRunReport report;
+joggle::Attr report;
 if (!schedule.run(env, mod, {}, &report)) {
   env.print_diags(stderr);
   return false;
 }
-for (const auto& stage : report.stages) {
-  std::cout << stage.function << ": "
-            << (stage.executed ? "executed" : "reused") << '\n';
+for (const auto& stage : *report.dict()->at("stages").list()) {
+  const auto& fields = *stage.dict();
+  std::cout << *fields.at("function").string() << ": "
+            << (fields.at("executed").boolean() == true
+                    ? "executed" : "reused") << '\n';
 }
 ```
 
 `changed_functions` counts functions the stage actually affected. Observed
-counts describe dependency breadth, not execution cost. Consult
-`report.execution.steps` for evaluator counters and timings.
+counts describe dependency breadth, not execution cost. Consult the nested
+`execution.steps` list for evaluator counters and timings.
 
 ## Query reuse
 
-Read-only C++ queries can receive `QueryReport`. Its miss taxonomy mirrors the
+Read-only C++ queries can receive an `Attr` profile. Its miss taxonomy mirrors the
 fine-grained graph dependencies and separately reports lookup, snapshot,
 verification, evaluation, validation, and total execute time.
 
 ```cpp
 joggle::Attr result;
-joggle::QueryReport report;
-if (!joggle::query(env, "stat.summary", mod, result, {}, &report)) {
+joggle::Attr profile;
+if (!joggle::query(env, "stat.summary", mod, result, {}, &profile)) {
   env.print_diags(stderr);
 }
 ```

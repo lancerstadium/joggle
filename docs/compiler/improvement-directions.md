@@ -110,7 +110,7 @@ whole function, collection, or structure.
 
 ### Method
 
-1. use `ReactiveStageReport` observed counts and miss reasons;
+1. use the reactive `Attr` report's observed counts and miss reasons;
 2. identify stages repeatedly invalidated by broad observations;
 3. locate the API call that records the broad dependency;
 4. add a narrower safe query only if its semantic contract is clear;

@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -51,6 +50,34 @@ bool rejects_type(joggle::Env& env, std::string_view source,
                      [&](const joggle::Diag& diag) {
                        return diag.message.find(message) != std::string::npos;
                      });
+}
+
+const joggle::Attr& field(const joggle::Attr& value, std::string_view key) {
+  static const joggle::Attr missing;
+  const auto* fields = value.dict();
+  if (!fields)
+    return missing;
+  const auto found = fields->find(key);
+  return found == fields->end() ? missing : found->second;
+}
+
+bool flag(const joggle::Attr& value, std::string_view key) {
+  return field(value, key).boolean() == true;
+}
+
+std::int64_t number(const joggle::Attr& value, std::string_view key) {
+  return field(value, key).integer().value_or(0);
+}
+
+std::string_view string_field(const joggle::Attr& value, std::string_view key) {
+  return field(value, key).string().value_or(std::string_view{});
+}
+
+const joggle::Attr& item(const joggle::Attr& value, std::string_view key,
+                         std::size_t index) {
+  static const joggle::Attr missing;
+  const auto* values = field(value, key).list();
+  return values && index < values->size() ? values->at(index) : missing;
 }
 
 }  // namespace
@@ -788,21 +815,21 @@ int main(int argc, char** argv) {
   joggle::ReactiveSchedule schedule(
       {"script.schedule_mark_a", "script.schedule_mark_b"});
   const std::array<joggle::Attr, 1> left_args{joggle::Attr("left")};
-  joggle::ReactiveRunReport schedule_report;
+  joggle::Attr schedule_report;
   CHECK(schedule.run(env, reactive_scheduled, left_args, &schedule_report));
-  CHECK(schedule_report.succeeded && schedule_report.cold &&
-        schedule_report.executed_stages == 2 &&
-        schedule_report.reused_stages == 0 &&
-        schedule_report.execution.steps.size() == 2);
-  CHECK(schedule_report.stages[0].observed_functions == 1 &&
-        schedule_report.stages[1].observed_functions == 1 &&
-        schedule_report.stages[0].observed_structure &&
-        !schedule_report.stages[0].observed_whole_mod);
+  CHECK(flag(schedule_report, "succeeded") && flag(schedule_report, "cold") &&
+        number(schedule_report, "executed_stages") == 2 &&
+        number(schedule_report, "reused_stages") == 0 &&
+        field(field(schedule_report, "execution"), "steps").list()->size() == 2);
+  CHECK(number(item(schedule_report, "stages", 0), "observed_functions") == 1 &&
+        number(item(schedule_report, "stages", 1), "observed_functions") == 1 &&
+        flag(item(schedule_report, "stages", 0), "observed_structure") &&
+        !flag(item(schedule_report, "stages", 0), "observed_whole_mod"));
   CHECK(schedule.run(env, reactive_scheduled, left_args, &schedule_report));
-  CHECK(schedule_report.succeeded && !schedule_report.cold &&
-        schedule_report.executed_stages == 0 &&
-        schedule_report.reused_stages == 2 &&
-        schedule_report.execution.steps.empty());
+  CHECK(flag(schedule_report, "succeeded") && !flag(schedule_report, "cold") &&
+        number(schedule_report, "executed_stages") == 0 &&
+        number(schedule_report, "reused_stages") == 2 &&
+        field(field(schedule_report, "execution"), "steps").list()->empty());
   const auto replace_constant = [&](std::string_view function,
                                     std::int64_t value) {
     for (joggle::Op op : reactive_scheduled.find_fn(function).ops())
@@ -812,20 +839,21 @@ int main(int argc, char** argv) {
   };
   CHECK(replace_constant("right", 20));
   CHECK(schedule.run(env, reactive_scheduled, left_args, &schedule_report));
-  CHECK(schedule_report.executed_stages == 0 &&
-        schedule_report.reused_stages == 2);
+  CHECK(number(schedule_report, "executed_stages") == 0 &&
+        number(schedule_report, "reused_stages") == 2);
   CHECK(replace_constant("left", 10));
   CHECK(schedule.run(env, reactive_scheduled, left_args, &schedule_report));
-  CHECK(schedule_report.executed_stages == 2 &&
-        schedule_report.reused_stages == 0 &&
-        schedule_report.stages[0].miss ==
-            joggle::ReactiveMiss::function_revision &&
-        schedule_report.stages[1].miss ==
-            joggle::ReactiveMiss::function_revision);
+  CHECK(number(schedule_report, "executed_stages") == 2 &&
+        number(schedule_report, "reused_stages") == 0 &&
+        string_field(item(schedule_report, "stages", 0), "miss") ==
+            "function_revision" &&
+        string_field(item(schedule_report, "stages", 1), "miss") ==
+            "function_revision");
   const std::array<joggle::Attr, 1> right_args{joggle::Attr("right")};
   CHECK(schedule.run(env, reactive_scheduled, right_args, &schedule_report));
-  CHECK(schedule_report.cold && schedule_report.executed_stages == 2 &&
-        schedule_report.stages[0].miss == joggle::ReactiveMiss::arguments);
+  CHECK(flag(schedule_report, "cold") &&
+        number(schedule_report, "executed_stages") == 2 &&
+        string_field(item(schedule_report, "stages", 0), "miss") == "arguments");
   constexpr std::string_view cone_schedule_source =
       "mod schedule.cone\n"
       "fn graph() -> int {\n"
@@ -844,11 +872,11 @@ int main(int argc, char** argv) {
   const std::array<joggle::Attr, 2> cone_args{
       joggle::Attr("graph"), joggle::Attr("left_root")};
   CHECK(cone_schedule.run(env, cone_scheduled, cone_args, &schedule_report));
-  CHECK(schedule_report.executed_stages == 2 &&
-        schedule_report.stages[0].observed_functions == 0 &&
-        schedule_report.stages[0].observed_collections == 1 &&
-        schedule_report.stages[0].observed_operations != 0 &&
-        schedule_report.stages[0].observed_values != 0);
+  CHECK(number(schedule_report, "executed_stages") == 2 &&
+        number(item(schedule_report, "stages", 0), "observed_functions") == 0 &&
+        number(item(schedule_report, "stages", 0), "observed_collections") == 1 &&
+        number(item(schedule_report, "stages", 0), "observed_operations") != 0 &&
+        number(item(schedule_report, "stages", 0), "observed_values") != 0);
   const auto replace_named_constant = [&](std::string_view name,
                                            std::int64_t value) {
     for (joggle::Val candidate : cone_scheduled.find_fn("graph").vals())
@@ -858,15 +886,15 @@ int main(int argc, char** argv) {
   };
   CHECK(replace_named_constant("right_root", 20));
   CHECK(cone_schedule.run(env, cone_scheduled, cone_args, &schedule_report));
-  CHECK(schedule_report.executed_stages == 0 &&
-        schedule_report.reused_stages == 2);
+  CHECK(number(schedule_report, "executed_stages") == 0 &&
+        number(schedule_report, "reused_stages") == 2);
   CHECK(replace_named_constant("left_root", 10));
   CHECK(cone_schedule.run(env, cone_scheduled, cone_args, &schedule_report));
-  CHECK(schedule_report.executed_stages == 2 &&
-        schedule_report.stages[0].miss ==
-            joggle::ReactiveMiss::operation_revision &&
-        schedule_report.stages[1].miss ==
-            joggle::ReactiveMiss::operation_revision);
+  CHECK(number(schedule_report, "executed_stages") == 2 &&
+        string_field(item(schedule_report, "stages", 0), "miss") ==
+            "operation_revision" &&
+        string_field(item(schedule_report, "stages", 1), "miss") ==
+            "operation_revision");
   joggle::Mod constant_scheduled;
   CHECK(joggle::parse(env, cone_schedule_source, constant_scheduled,
                       "schedule-constant.jog"));
@@ -896,37 +924,37 @@ int main(int argc, char** argv) {
       joggle::Attr(static_cast<std::int64_t>(left_constant_index))};
   CHECK(constant_schedule.run(env, constant_scheduled, constant_args,
                               &schedule_report));
-  CHECK(schedule_report.executed_stages == 1 &&
-        schedule_report.stages[0].observed_operations == 1);
+  CHECK(number(schedule_report, "executed_stages") == 1 &&
+        number(item(schedule_report, "stages", 0), "observed_operations") == 1);
   CHECK(constant_scheduled.replace(scheduled_right_constant,
                                    joggle::Attr(std::int64_t{20})));
   CHECK(constant_schedule.run(env, constant_scheduled, constant_args,
                               &schedule_report));
-  CHECK(schedule_report.executed_stages == 0 &&
-        schedule_report.reused_stages == 1);
+  CHECK(number(schedule_report, "executed_stages") == 0 &&
+        number(schedule_report, "reused_stages") == 1);
   CHECK(constant_scheduled.replace(scheduled_left_constant,
                                    joggle::Attr(std::int64_t{10})));
   CHECK(constant_schedule.run(env, constant_scheduled, constant_args,
                               &schedule_report));
-  CHECK(schedule_report.executed_stages == 1 &&
-        schedule_report.stages[0].miss ==
-            joggle::ReactiveMiss::operation_revision);
+  CHECK(number(schedule_report, "executed_stages") == 1 &&
+        string_field(item(schedule_report, "stages", 0), "miss") ==
+            "operation_revision");
   joggle::ReactiveSchedule propagated_schedule(
       {"script.schedule_forward", "script.schedule_consume"});
   const std::array<joggle::Attr, 2> edge_args{joggle::Attr("left"),
                                               joggle::Attr("right")};
   CHECK(propagated_schedule.run(env, reactive_scheduled, edge_args,
                                 &schedule_report));
-  CHECK(schedule_report.executed_stages == 2 &&
-        schedule_report.stages[0].changed_functions == 1 &&
-        schedule_report.stages[1].observed_functions == 1);
+  CHECK(number(schedule_report, "executed_stages") == 2 &&
+        number(item(schedule_report, "stages", 0), "changed_functions") == 1 &&
+        number(item(schedule_report, "stages", 1), "observed_functions") == 1);
   CHECK(replace_constant("left", 11));
   CHECK(propagated_schedule.run(env, reactive_scheduled, edge_args,
                                 &schedule_report));
-  CHECK(schedule_report.executed_stages == 2 &&
-        schedule_report.stages[0].miss ==
-            joggle::ReactiveMiss::function_revision &&
-        schedule_report.stages[1].miss == joggle::ReactiveMiss::upstream);
+  CHECK(number(schedule_report, "executed_stages") == 2 &&
+        string_field(item(schedule_report, "stages", 0), "miss") ==
+            "function_revision" &&
+        string_field(item(schedule_report, "stages", 1), "miss") == "upstream");
   const std::string before_failed_schedule = joggle::print(reactive_scheduled);
   joggle::ReactiveSchedule failing_schedule(
       {"script.schedule_mark_a", "script.schedule_fail"});
@@ -1007,14 +1035,16 @@ int main(int argc, char** argv) {
   joggle::Mod matched_fn;
   CHECK(joggle::parse(env, network_source, matched_fn, "matched-fn.jog"));
   joggle::Attr matched_report;
-  joggle::RunTiming matched_timing;
-  CHECK(joggle::run(env, "script.clone_matched", matched_fn, matched_report,
-                    matched_timing));
-  CHECK(matched_timing.succeeded && matched_timing.steps.size() == 1 &&
-        matched_timing.steps.front().succeeded &&
-        matched_timing.steps.front().function == "script.clone_matched" &&
-        matched_timing.steps.front().after >=
-            matched_timing.steps.front().before);
+  joggle::Attr matched_timing;
+  CHECK(joggle::run(env, "script.clone_matched", matched_fn, {},
+                    &matched_report, &matched_timing));
+  CHECK(flag(matched_timing, "succeeded") &&
+        field(matched_timing, "steps").list()->size() == 1 &&
+        flag(item(matched_timing, "steps", 0), "succeeded") &&
+        string_field(item(matched_timing, "steps", 0), "function") ==
+            "script.clone_matched" &&
+        number(item(matched_timing, "steps", 0), "after") >=
+            number(item(matched_timing, "steps", 0), "before"));
   CHECK(matched_fn.verify(env));
   const joggle::Fn matched_relu = matched_fn.find_fn("relu_matched");
   CHECK(matched_relu && matched_relu.generics().empty());
@@ -3187,7 +3217,7 @@ int main(int argc, char** argv) {
             "return exact_call_operatorZX20ZX2b(x, y);") !=
             std::string::npos);
   joggle::Attr exact_definition;
-  joggle::QueryReport exact_definition_report;
+  joggle::Attr exact_definition_report;
   const std::vector<joggle::Attr> exact_definition_args{
       joggle::Attr("custom")};
   CHECK(joggle::query(env, "c.definition", exact_roundtrip,
@@ -3196,14 +3226,14 @@ int main(int argc, char** argv) {
   CHECK(exact_definition.string() &&
         exact_definition.string()->find("exact_call_custom") !=
             std::string::npos);
-  CHECK(!exact_definition_report.cached &&
-        exact_definition_report.observed_functions >= 1 &&
-        !exact_definition_report.observed_whole_mod);
+  CHECK(!flag(exact_definition_report, "cached") &&
+        number(exact_definition_report, "observed_functions") >= 1 &&
+        !flag(exact_definition_report, "observed_whole_mod"));
   joggle::Attr exact_definition_cached;
   CHECK(joggle::query(env, "c.definition", exact_roundtrip,
                       exact_definition_cached, exact_definition_args,
                       &exact_definition_report));
-  CHECK(exact_definition_report.cached &&
+  CHECK(flag(exact_definition_report, "cached") &&
         exact_definition_cached == exact_definition);
   joggle::Attr exact_preamble;
   CHECK(joggle::query(env, "c.preamble", exact_roundtrip,
@@ -3344,13 +3374,13 @@ int main(int argc, char** argv) {
           joggle::Attr(static_cast<std::int64_t>(count)), nested_direct,
           nested_results};
       joggle::Attr fragment;
-      joggle::QueryReport fragment_report;
+      joggle::Attr fragment_report;
       CHECK(joggle::query(env, "c.definition_nested_chunk", nested_emission,
                           fragment, nested_args, &fragment_report));
       CHECK(fragment.string() && !fragment.string()->empty());
       CHECK(nested_body.string()->find(*fragment.string()) !=
             std::string_view::npos);
-      CHECK(!fragment_report.observed_whole_mod);
+      CHECK(!flag(fragment_report, "observed_whole_mod"));
       const std::vector<joggle::Attr> partition_args{
           joggle::Attr("main"), joggle::Attr(std::int64_t{0}),
           joggle::Attr(static_cast<std::int64_t>(
@@ -3361,7 +3391,7 @@ int main(int argc, char** argv) {
           joggle::Attr(static_cast<std::int64_t>(count)), nested_direct,
           nested_results};
       joggle::Attr partition;
-      joggle::QueryReport partition_report;
+      joggle::Attr partition_report;
       CHECK(joggle::query(env, "c.definition_nested_partition",
                           nested_emission, partition, partition_args,
                           &partition_report));
@@ -3372,7 +3402,7 @@ int main(int argc, char** argv) {
         partitioned += *piece.string();
       }
       CHECK(partitioned == *nested_body.string());
-      CHECK(!partition_report.observed_whole_mod);
+      CHECK(!flag(partition_report, "observed_whole_mod"));
       ++nested_blocks_checked;
     }
   }
@@ -3391,14 +3421,14 @@ int main(int argc, char** argv) {
   const std::vector<joggle::Attr> definition_left_args{
       joggle::Attr("left")};
   joggle::Attr left_definition;
-  joggle::QueryReport definition_report;
+  joggle::Attr definition_report;
   CHECK(joggle::query(env, "c.definition", definition_scope,
                       left_definition, definition_left_args,
                       &definition_report));
-  CHECK(!definition_report.cached &&
-        definition_report.observed_functions == 1 &&
-        definition_report.observed_structure &&
-        !definition_report.observed_whole_mod);
+  CHECK(!flag(definition_report, "cached") &&
+        number(definition_report, "observed_functions") == 1 &&
+        flag(definition_report, "observed_structure") &&
+        !flag(definition_report, "observed_whole_mod"));
   joggle::Op definition_left_constant;
   joggle::Op definition_right_constant;
   for (const joggle::Op op : definition_scope.ops()) {
@@ -3417,7 +3447,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::query(env, "c.definition", definition_scope,
                       retained_left_definition, definition_left_args,
                       &definition_report));
-  CHECK(definition_report.cached &&
+  CHECK(flag(definition_report, "cached") &&
         retained_left_definition == left_definition);
   CHECK(definition_scope.replace(definition_left_constant,
                                  joggle::Attr(std::int64_t{4})));
@@ -3425,8 +3455,8 @@ int main(int argc, char** argv) {
   CHECK(joggle::query(env, "c.definition", definition_scope,
                       rebuilt_left_definition, definition_left_args,
                       &definition_report));
-  CHECK(!definition_report.cached &&
-        definition_report.miss == joggle::QueryMiss::function_revision &&
+  CHECK(!flag(definition_report, "cached") &&
+        string_field(definition_report, "miss") == "function_revision" &&
         rebuilt_left_definition != left_definition);
 
   joggle::Mod overloaded;
@@ -3746,21 +3776,21 @@ int main(int argc, char** argv) {
   const std::uint64_t statement_revision = statement_calls.revision();
   const std::vector<joggle::Attr> value_query{joggle::Attr("value")};
   joggle::Attr statement_count;
-  joggle::QueryReport statement_query;
+  joggle::Attr statement_query;
   CHECK(joggle::query(env, "opt.count", statement_calls, statement_count,
                       value_query, &statement_query));
-  CHECK(!statement_query.cached &&
-        statement_query.miss == joggle::QueryMiss::cold &&
-        statement_query.observed_functions == statement_calls.fns().size() &&
-        statement_query.observed_structure &&
-        !statement_query.observed_whole_mod &&
-        statement_query.execute.count() > 0 &&
+  CHECK(!flag(statement_query, "cached") &&
+        string_field(statement_query, "miss") == "cold" &&
+        number(statement_query, "observed_functions") == statement_calls.fns().size() &&
+        flag(statement_query, "observed_structure") &&
+        !flag(statement_query, "observed_whole_mod") &&
+        number(statement_query, "execute_ns") > 0 &&
         statement_count.integer() == 1);
   CHECK(joggle::query(env, "opt.count", statement_calls, statement_count,
                       value_query, &statement_query));
-  CHECK(statement_query.cached &&
-        statement_query.miss == joggle::QueryMiss::none &&
-        statement_query.execute.count() == 0);
+  CHECK(flag(statement_query, "cached") &&
+        string_field(statement_query, "miss") == "none" &&
+        number(statement_query, "execute_ns") == 0);
   CHECK(statement_calls.verify(env));
 
   joggle::Mod built_statement;
@@ -3782,8 +3812,8 @@ int main(int argc, char** argv) {
   CHECK(statement_calls.revision() == statement_revision + 1);
   CHECK(joggle::query(env, "opt.count", statement_calls, statement_count,
                       value_query, &statement_query));
-  CHECK(!statement_query.cached &&
-        statement_query.miss == joggle::QueryMiss::structure_revision &&
+  CHECK(!flag(statement_query, "cached") &&
+        string_field(statement_query, "miss") == "structure_revision" &&
         statement_count.integer() == 1);
   const std::uint64_t verified_statement_revision =
       statement_calls.revision();
@@ -3996,13 +4026,13 @@ int main(int argc, char** argv) {
 
   joggle::Attr load_count;
   const std::vector<joggle::Attr> choose_query{joggle::Attr("choose")};
-  joggle::QueryReport load_query;
+  joggle::Attr load_query;
   CHECK(joggle::query(env, "opt.count", overloaded, load_count,
                       choose_query, &load_query));
-  CHECK(!load_query.cached && load_count.integer() == 2);
+  CHECK(!flag(load_query, "cached") && load_count.integer() == 2);
   CHECK(joggle::query(env, "opt.count", overloaded, load_count,
                       choose_query, &load_query));
-  CHECK(load_query.cached);
+  CHECK(flag(load_query, "cached"));
 
   CHECK(!env.loaded("sample"));
   CHECK(!env.load("bad"));
@@ -4013,7 +4043,7 @@ int main(int argc, char** argv) {
   env.clear_diags();
   CHECK(joggle::query(env, "opt.count", overloaded, load_count,
                       choose_query, &load_query));
-  CHECK(load_query.cached && load_count.integer() == 2);
+  CHECK(flag(load_query, "cached") && load_count.integer() == 2);
 
   CHECK(env.load("sample"));
   CHECK(env.bound("sample.ping"));
@@ -4171,48 +4201,54 @@ int main(int argc, char** argv) {
   constexpr std::string_view sequence[]{"opt.fold_add_zero",
                                         "script.mark_add"};
   joggle::Attr sequence_report;
-  joggle::RunTiming sequence_timing;
-  CHECK(joggle::run(env, sequence, embedded_sequence, sequence_report,
-                    sequence_timing));
-  CHECK(sequence_timing.succeeded &&
-        sequence_timing.structural_snapshot &&
-        sequence_timing.steps.size() == std::size(sequence));
-  CHECK(std::all_of(sequence_timing.steps.begin(), sequence_timing.steps.end(),
-                    [](const joggle::RunStepTiming& step) {
+  joggle::Attr sequence_timing;
+  CHECK(joggle::run(env, sequence, embedded_sequence, {}, &sequence_report,
+                    &sequence_timing));
+  const auto* timed_steps = field(sequence_timing, "steps").list();
+  CHECK(flag(sequence_timing, "succeeded") &&
+        flag(sequence_timing, "structural_snapshot") && timed_steps &&
+        timed_steps->size() == std::size(sequence));
+  CHECK(std::all_of(timed_steps->begin(), timed_steps->end(),
+                    [](const joggle::Attr& step) {
                       const bool counters_ok =
-                          !step.counters_enabled ||
-                          (step.evaluated_ops != 0 &&
-                           ((step.plan_compiles + step.plan_hits != 0 &&
-                             step.plan_window_hits +
-                                     step.plan_window_misses !=
+                          !flag(step, "counters_enabled") ||
+                          (number(step, "evaluated_ops") != 0 &&
+                           ((number(step, "plan_compiles") +
+                                     number(step, "plan_hits") != 0 &&
+                             number(step, "plan_window_hits") +
+                                     number(step, "plan_window_misses") !=
                                  0) ||
-                            (step.frame_lookups != 0 &&
-                             step.frame_probes >= step.frame_lookups &&
-                             step.frame_writes != 0 &&
-                             step.frame_pool_hits + step.frame_pool_misses !=
+                            (number(step, "frame_lookups") != 0 &&
+                             number(step, "frame_probes") >=
+                                 number(step, "frame_lookups") &&
+                             number(step, "frame_writes") != 0 &&
+                             number(step, "frame_pool_hits") +
+                                     number(step, "frame_pool_misses") !=
                                  0 &&
-                             step.frame_growths != 0 &&
-                             step.frame_peak_capacity != 0)) &&
-                           step.dispatch_hits + step.dispatch_misses +
-                                   step.plan_direct_operator_links !=
+                             number(step, "frame_growths") != 0 &&
+                             number(step, "frame_peak_capacity") != 0)) &&
+                           number(step, "dispatch_hits") +
+                                   number(step, "dispatch_misses") +
+                                   number(step, "plan_direct_operator_links") !=
                                0);
-                      return step.succeeded && counters_ok &&
-                             step.total >= std::chrono::nanoseconds::zero();
+                      return flag(step, "succeeded") && counters_ok &&
+                             number(step, "total_ns") >= 0;
                     }));
   joggle::Attr untimed_sequence_report;
-  joggle::RunTiming reused_sequence_timing;
-  CHECK(joggle::run(env, sequence, untimed_sequence,
-                    untimed_sequence_report, reused_sequence_timing));
-  CHECK(reused_sequence_timing.succeeded &&
-        reused_sequence_timing.steps.size() == std::size(sequence));
-  if (reused_sequence_timing.steps.front().counters_enabled) {
+  joggle::Attr reused_sequence_timing;
+  CHECK(joggle::run(env, sequence, untimed_sequence, {},
+                    &untimed_sequence_report, &reused_sequence_timing));
+  const auto* reused_steps = field(reused_sequence_timing, "steps").list();
+  CHECK(flag(reused_sequence_timing, "succeeded") && reused_steps &&
+        reused_steps->size() == std::size(sequence));
+  if (flag(reused_steps->front(), "counters_enabled")) {
     std::uint64_t persistent_hits = 0;
     std::uint64_t cache_resets = 0;
     std::uint64_t plan_compiles = 0;
-    for (const joggle::RunStepTiming& step : reused_sequence_timing.steps) {
-      persistent_hits += step.plan_persistent_hits;
-      cache_resets += step.plan_cache_resets;
-      plan_compiles += step.plan_compiles;
+    for (const joggle::Attr& step : *reused_steps) {
+      persistent_hits += number(step, "plan_persistent_hits");
+      cache_resets += number(step, "plan_cache_resets");
+      plan_compiles += number(step, "plan_compiles");
     }
     CHECK(persistent_hits != 0);
     CHECK(cache_resets == 0);
@@ -4229,17 +4265,19 @@ int main(int argc, char** argv) {
   joggle::Mod epoch_sequence;
   CHECK(joggle::parse(env, source.str(), epoch_sequence, argv[1]));
   joggle::Attr epoch_sequence_report;
-  joggle::RunTiming epoch_sequence_timing;
-  CHECK(joggle::run(env, sequence, epoch_sequence, epoch_sequence_report,
-                    epoch_sequence_timing));
+  joggle::Attr epoch_sequence_timing;
+  CHECK(joggle::run(env, sequence, epoch_sequence, {},
+                    &epoch_sequence_report, &epoch_sequence_timing));
   CHECK(joggle::print(epoch_sequence) == joggle::print(embedded_sequence));
   CHECK(epoch_sequence_report == sequence_report);
-  if (epoch_sequence_timing.steps.front().counters_enabled) {
+  const auto* epoch_steps = field(epoch_sequence_timing, "steps").list();
+  CHECK(epoch_steps && epoch_steps->size() == std::size(sequence));
+  if (flag(epoch_steps->front(), "counters_enabled")) {
     std::uint64_t cache_resets = 0;
     std::uint64_t plan_compiles = 0;
-    for (const joggle::RunStepTiming& step : epoch_sequence_timing.steps) {
-      cache_resets += step.plan_cache_resets;
-      plan_compiles += step.plan_compiles;
+    for (const joggle::Attr& step : *epoch_steps) {
+      cache_resets += number(step, "plan_cache_resets");
+      plan_compiles += number(step, "plan_compiles");
     }
     CHECK(cache_resets == 1);
     CHECK(plan_compiles != 0);
@@ -4292,15 +4330,15 @@ int main(int argc, char** argv) {
   constexpr std::string_view invalid_sequence[]{"opt.fold_add_zero",
                                                 "script.bad_entry"};
   joggle::Attr failed_sequence_report;
-  joggle::RunTiming failed_sequence_timing;
-  CHECK(!joggle::run(env, invalid_sequence, failed_sequence,
-                     failed_sequence_report, failed_sequence_timing));
+  joggle::Attr failed_sequence_timing;
+  CHECK(!joggle::run(env, invalid_sequence, failed_sequence, {},
+                     &failed_sequence_report, &failed_sequence_timing));
   CHECK(failed_sequence_report.empty());
-  CHECK(!failed_sequence_timing.succeeded &&
-        failed_sequence_timing.structural_snapshot &&
-        failed_sequence_timing.steps.size() == 2 &&
-        failed_sequence_timing.steps.front().succeeded &&
-        !failed_sequence_timing.steps.back().succeeded);
+  CHECK(!flag(failed_sequence_timing, "succeeded") &&
+        flag(failed_sequence_timing, "structural_snapshot") &&
+        field(failed_sequence_timing, "steps").list()->size() == 2 &&
+        flag(item(failed_sequence_timing, "steps", 0), "succeeded") &&
+        !flag(item(failed_sequence_timing, "steps", 1), "succeeded"));
   CHECK(joggle::print(failed_sequence) == before_sequence);
   CHECK(failed_sequence.revision() == before_sequence_revision);
   CHECK(!env.diags().empty());
@@ -4317,10 +4355,10 @@ int main(int argc, char** argv) {
                                                "opt.fold_add_zero",
                                                "script.bad_entry"};
   joggle::Attr mixed_report;
-  joggle::RunTiming mixed_timing;
-  CHECK(!joggle::run(env, mixed_sequence, mixed_rollback, mixed_report,
-                     mixed_timing));
-  CHECK(mixed_timing.structural_snapshot &&
+  joggle::Attr mixed_timing;
+  CHECK(!joggle::run(env, mixed_sequence, mixed_rollback, {}, &mixed_report,
+                     &mixed_timing));
+  CHECK(flag(mixed_timing, "structural_snapshot") &&
         joggle::print(mixed_rollback) == mixed_before &&
         mixed_rollback.revision() == mixed_revision);
   CHECK(!env.diags().empty());
@@ -4390,31 +4428,31 @@ int main(int argc, char** argv) {
   // preserve the cached count; a module-wide dependency boundary invalidates
   // the lookup through ir.find.
   joggle::Attr left_op_count;
-  joggle::QueryReport dependency_query;
+  joggle::Attr dependency_query;
   CHECK(joggle::query(env, "script.fn_op_count", revision_scope,
                       left_op_count, left_name, &dependency_query));
-  CHECK(!dependency_query.cached &&
-        dependency_query.miss == joggle::QueryMiss::cold &&
-        dependency_query.observed_functions == 0 &&
-        dependency_query.observed_collections == 1 &&
-        dependency_query.observed_structure &&
-        !dependency_query.observed_whole_mod &&
+  CHECK(!flag(dependency_query, "cached") &&
+        string_field(dependency_query, "miss") == "cold" &&
+        number(dependency_query, "observed_functions") == 0 &&
+        number(dependency_query, "observed_collections") == 1 &&
+        flag(dependency_query, "observed_structure") &&
+        !flag(dependency_query, "observed_whole_mod") &&
         left_op_count.integer() ==
             static_cast<std::int64_t>(left.ops().size()));
   CHECK(joggle::query(env, "script.fn_op_count", revision_scope,
                       left_op_count, left_name, &dependency_query));
-  CHECK(dependency_query.cached);
+  CHECK(flag(dependency_query, "cached"));
 
   joggle::Attr whole_result;
-  joggle::QueryReport whole_query;
+  joggle::Attr whole_query;
   CHECK(joggle::query(env, "script.local_probe", revision_scope,
                       whole_result, {}, &whole_query));
-  CHECK(!whole_query.cached && whole_query.observed_whole_mod &&
-        !whole_query.observed_structure &&
-        whole_query.observed_functions == 0);
+  CHECK(!flag(whole_query, "cached") && flag(whole_query, "observed_whole_mod") &&
+        !flag(whole_query, "observed_structure") &&
+        number(whole_query, "observed_functions") == 0);
   CHECK(joggle::query(env, "script.local_probe", revision_scope,
                       whole_result, {}, &whole_query));
-  CHECK(whole_query.cached);
+  CHECK(flag(whole_query, "cached"));
   joggle::Op right_constant;
   for (joggle::Op op : right.ops())
     if (op.kind() == joggle::Op::Kind::constant)
@@ -4427,58 +4465,62 @@ int main(int argc, char** argv) {
         right.revision() == right_before_meta + 1);
   CHECK(joggle::query(env, "script.fn_op_count", revision_scope,
                       left_op_count, left_name, &dependency_query));
-  CHECK(dependency_query.cached);
+  CHECK(flag(dependency_query, "cached"));
   CHECK(joggle::query(env, "script.local_probe", revision_scope,
                       whole_result, {}, &whole_query));
-  CHECK(!whole_query.cached && whole_query.verification_cached &&
-        whole_query.miss == joggle::QueryMiss::whole_revision);
+  CHECK(!flag(whole_query, "cached") && flag(whole_query, "verification_cached") &&
+        string_field(whole_query, "miss") == "whole_revision");
   CHECK(joggle::query(env, "script.local_probe", revision_scope,
                       whole_result, {}, &whole_query));
-  CHECK(whole_query.cached);
+  CHECK(flag(whole_query, "cached"));
   CHECK(revision_scope.replace(right_constant,
                                joggle::Attr(std::int64_t{5})));
   CHECK(joggle::query(env, "script.fn_op_count", revision_scope,
                       left_op_count, left_name, &dependency_query));
-  CHECK(dependency_query.cached);
+  CHECK(flag(dependency_query, "cached"));
   CHECK(joggle::query(env, "script.local_probe", revision_scope,
                       whole_result, {}, &whole_query));
-  CHECK(!whole_query.cached &&
-        whole_query.miss == joggle::QueryMiss::whole_revision);
+  CHECK(!flag(whole_query, "cached") &&
+        string_field(whole_query, "miss") == "whole_revision");
   CHECK(revision_scope.replace(left_constant, joggle::Attr(std::int64_t{4})));
   CHECK(joggle::query(env, "script.fn_op_count", revision_scope,
                       left_op_count, left_name, &dependency_query));
-  CHECK(dependency_query.cached &&
-        dependency_query.miss == joggle::QueryMiss::none);
+  CHECK(flag(dependency_query, "cached") &&
+        string_field(dependency_query, "miss") == "none");
 
   // Package enumeration is its own dependency class: it neither observes the
   // whole mod nor aliases every structural edit, and a dependency-set change
   // reports the exact invalidation reason.
   joggle::Attr package_count;
-  joggle::QueryReport package_query;
+  joggle::Attr package_query;
   CHECK(joggle::query(env, "script.package_count", revision_scope,
                       package_count, {}, &package_query));
-  CHECK(!package_query.cached && package_count.integer() == 0 &&
-        package_query.observed_packages == 1 &&
-        package_query.observed_intrinsics >= 1 &&
-        !package_query.observed_structure &&
-        !package_query.observed_whole_mod);
+  CHECK(!flag(package_query, "cached") && package_count.integer() == 0 &&
+        number(package_query, "observed_packages") == 1 &&
+        number(package_query, "observed_intrinsics") >= 1 &&
+        !flag(package_query, "observed_structure") &&
+        !flag(package_query, "observed_whole_mod"));
   CHECK(joggle::query(env, "script.package_count", revision_scope,
                       package_count, {}, &package_query));
-  CHECK(package_query.cached);
+  CHECK(flag(package_query, "cached"));
   joggle::ReactiveSchedule package_schedule({"script.observe_packages"});
-  joggle::ReactiveRunReport package_schedule_report;
+  joggle::Attr package_schedule_report;
   CHECK(package_schedule.run(env, revision_scope, {},
                              &package_schedule_report));
-  CHECK(package_schedule_report.executed_stages == 1 &&
-        package_schedule_report.stages.size() == 1 &&
-        package_schedule_report.stages[0].observed_packages == 1 &&
-        package_schedule_report.stages[0].observed_intrinsics >= 1 &&
-        !package_schedule_report.stages[0].observed_structure &&
-        !package_schedule_report.stages[0].observed_whole_mod);
+  CHECK(number(package_schedule_report, "executed_stages") == 1 &&
+        field(package_schedule_report, "stages").list()->size() == 1 &&
+        number(item(package_schedule_report, "stages", 0),
+               "observed_packages") == 1 &&
+        number(item(package_schedule_report, "stages", 0),
+               "observed_intrinsics") >= 1 &&
+        !flag(item(package_schedule_report, "stages", 0),
+              "observed_structure") &&
+        !flag(item(package_schedule_report, "stages", 0),
+              "observed_whole_mod"));
   CHECK(package_schedule.run(env, revision_scope, {},
                              &package_schedule_report));
-  CHECK(package_schedule_report.executed_stages == 0 &&
-        package_schedule_report.reused_stages == 1);
+  CHECK(number(package_schedule_report, "executed_stages") == 0 &&
+        number(package_schedule_report, "reused_stages") == 1);
   const std::uint64_t left_local = left.revision();
   const std::uint64_t right_local = right.revision();
   CHECK(revision_scope.use(env, "base"));
@@ -4487,20 +4529,20 @@ int main(int argc, char** argv) {
   CHECK(revision_scope.verify(env));
   CHECK(joggle::query(env, "script.fn_op_count", revision_scope,
                       left_op_count, left_name, &dependency_query));
-  CHECK(!dependency_query.cached &&
-        dependency_query.miss == joggle::QueryMiss::structure_revision);
+  CHECK(!flag(dependency_query, "cached") &&
+        string_field(dependency_query, "miss") == "structure_revision");
   CHECK(joggle::query(env, "script.package_count", revision_scope,
                       package_count, {}, &package_query));
-  CHECK(!package_query.cached && package_count.integer() == 1 &&
-        package_query.miss == joggle::QueryMiss::package_dependencies &&
-        package_query.observed_packages == 1 &&
-        !package_query.observed_structure &&
-        !package_query.observed_whole_mod);
+  CHECK(!flag(package_query, "cached") && package_count.integer() == 1 &&
+        string_field(package_query, "miss") == "package_dependencies" &&
+        number(package_query, "observed_packages") == 1 &&
+        !flag(package_query, "observed_structure") &&
+        !flag(package_query, "observed_whole_mod"));
   CHECK(package_schedule.run(env, revision_scope, {},
                              &package_schedule_report));
-  CHECK(package_schedule_report.executed_stages == 1 &&
-        package_schedule_report.stages[0].miss ==
-            joggle::ReactiveMiss::package_dependencies);
+  CHECK(number(package_schedule_report, "executed_stages") == 1 &&
+        string_field(item(package_schedule_report, "stages", 0), "miss") ==
+            "package_dependencies");
 
   // Package outputs also propagate within one schedule run. The first stage
   // is selected by target metadata, adds a different dependency, and causes a
@@ -4515,28 +4557,28 @@ int main(int argc, char** argv) {
   CHECK(package_pipeline_schedule.run(env, package_pipeline, package_args,
                                       &package_schedule_report));
   CHECK(package_pipeline.uses() == std::vector<std::string>{"alternate"} &&
-        package_schedule_report.executed_stages == 2);
+        number(package_schedule_report, "executed_stages") == 2);
   CHECK(package_pipeline.set(package_pipeline.find_fn("left"),
                              "package.base", joggle::Attr(true)));
   CHECK(package_pipeline_schedule.run(env, package_pipeline, package_args,
                                       &package_schedule_report));
   CHECK(package_pipeline.uses() ==
             (std::vector<std::string>{"alternate", "base"}) &&
-        package_schedule_report.executed_stages == 2 &&
-        package_schedule_report.stages[0].miss ==
-            joggle::ReactiveMiss::function_revision &&
-        package_schedule_report.stages[1].miss ==
-            joggle::ReactiveMiss::upstream);
+        number(package_schedule_report, "executed_stages") == 2 &&
+        string_field(item(package_schedule_report, "stages", 0), "miss") ==
+            "function_revision" &&
+        string_field(item(package_schedule_report, "stages", 1), "miss") ==
+            "upstream");
 
   joggle::Env second_env;
   second_env.path(argv[2]);
   second_env.path(argv[3]);
   CHECK(second_env.load("script"));
-  joggle::QueryReport environment_query;
+  joggle::Attr environment_query;
   CHECK(joggle::query(second_env, "script.fn_op_count", revision_scope,
                       left_op_count, left_name, &environment_query));
-  CHECK(!environment_query.cached &&
-        environment_query.miss == joggle::QueryMiss::environment);
+  CHECK(!flag(environment_query, "cached") &&
+        string_field(environment_query, "miss") == "environment");
 
   joggle::Mod cleaned;
   constexpr std::string_view clean_source =
@@ -4551,13 +4593,13 @@ int main(int argc, char** argv) {
   CHECK(cleaned.verify(env));
   const std::vector<joggle::Attr> pure_query{joggle::Attr("pure")};
   joggle::Attr count;
-  joggle::QueryReport query_report;
+  joggle::Attr query_report;
   CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query,
                       &query_report));
-  CHECK(!query_report.cached && count.integer() == 3);
+  CHECK(!flag(query_report, "cached") && count.integer() == 3);
   CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query,
                       &query_report));
-  CHECK(query_report.cached && count.integer() == 3);
+  CHECK(flag(query_report, "cached") && count.integer() == 3);
   const std::string before_bad_query = joggle::print(cleaned);
   const std::uint64_t before_bad_query_revision = cleaned.revision();
   CHECK(!joggle::query(env, "script.mutating_query", cleaned, count,
@@ -4648,12 +4690,13 @@ int main(int argc, char** argv) {
   CHECK(joggle::query(env, "script.affected_count", affected, count));
   CHECK(count.integer() == 3);
   joggle::Attr affected_report;
-  joggle::RunTiming affected_timing;
-  CHECK(joggle::run(env, "script.mark_affected", affected, affected_report,
-                    affected_timing));
-  CHECK(affected_timing.succeeded && affected_timing.steps.size() == 1 &&
-        !affected_timing.structural_snapshot &&
-        affected_timing.steps.front().verification_cached);
+  joggle::Attr affected_timing;
+  CHECK(joggle::run(env, "script.mark_affected", affected, {},
+                    &affected_report, &affected_timing));
+  CHECK(flag(affected_timing, "succeeded") &&
+        field(affected_timing, "steps").list()->size() == 1 &&
+        !flag(affected_timing, "structural_snapshot") &&
+        flag(item(affected_timing, "steps", 0), "verification_cached"));
   std::size_t affected_marked = 0;
   for (joggle::Val value : affected.vals())
     affected_marked += value.meta("affected") &&
@@ -4666,13 +4709,13 @@ int main(int argc, char** argv) {
         affected_calls->at("script.mark_affected_op").integer() == 3);
   const std::string affected_before_reject = joggle::print(affected);
   const std::uint64_t affected_revision = affected.revision();
-  joggle::RunTiming rejected_affected_timing;
+  joggle::Attr rejected_affected_timing;
   joggle::Attr rejected_affected_report;
-  CHECK(!joggle::run(env, "script.reject_affected", affected,
-                     rejected_affected_report, rejected_affected_timing));
+  CHECK(!joggle::run(env, "script.reject_affected", affected, {},
+                     &rejected_affected_report, &rejected_affected_timing));
   CHECK(joggle::print(affected) == affected_before_reject &&
         affected.revision() == affected_revision &&
-        !rejected_affected_timing.structural_snapshot &&
+        !flag(rejected_affected_timing, "structural_snapshot") &&
         !env.diags().empty());
   CHECK(affected.affected(std::span<const joggle::Val>(&affected_root, 1)) ==
         affected_ops);
@@ -4943,14 +4986,14 @@ int main(int argc, char** argv) {
   CHECK(unused_constants == 0);
   CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query,
                       &query_report));
-  CHECK(!query_report.cached && count.integer() == 1);
+  CHECK(!flag(query_report, "cached") && count.integer() == 1);
   CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query,
                       &query_report));
-  CHECK(query_report.cached && count.integer() == 1);
+  CHECK(flag(query_report, "cached") && count.integer() == 1);
   const std::vector<joggle::Attr> join_query{joggle::Attr("join")};
   CHECK(joggle::query(env, "opt.count", cleaned, count, join_query,
                       &query_report));
-  CHECK(!query_report.cached && count.integer() == 0);
+  CHECK(!flag(query_report, "cached") && count.integer() == 0);
   const std::uint64_t clean_revision = cleaned.revision();
   joggle::Attr stable_report;
   CHECK(joggle::run(env, "script.clean_pure", cleaned, stable_report));

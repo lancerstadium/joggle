@@ -34,6 +34,14 @@ flowchart LR
 #include <string>
 #include <vector>
 
+std::int64_t integer(const joggle::Attr& value, std::string_view key) {
+  const auto* fields = value.dict();
+  if (!fields) return 0;
+  const auto found = fields->find(key);
+  return found == fields->end()
+             ? 0 : found->second.integer().value_or(0);
+}
+
 int main() {
   joggle::Env env;
   env.path("build/modules");
@@ -52,17 +60,19 @@ int main() {
   joggle::ReactiveSchedule schedule({"opt.fold_add_zero", "opt.basic"});
 
   for (int iteration = 0; iteration != 2; ++iteration) {
-    joggle::ReactiveRunReport report;
+    joggle::Attr report;
     if (!schedule.run(env, mod, {}, &report)) {
       env.print_diags(stderr);
       return 2;
     }
     std::cout << "run " << iteration
-              << ": executed=" << report.executed_stages
-              << " reused=" << report.reused_stages << '\n';
-    for (const auto& stage : report.stages) {
-      std::cout << "  " << stage.function << " "
-                << (stage.executed ? "executed" : "reused") << '\n';
+              << ": executed=" << integer(report, "executed_stages")
+              << " reused=" << integer(report, "reused_stages") << '\n';
+    for (const auto& stage : *report.dict()->at("stages").list()) {
+      const auto& fields = *stage.dict();
+      std::cout << "  " << *fields.at("function").string() << " "
+                << (fields.at("executed").boolean() == true
+                        ? "executed" : "reused") << '\n';
     }
   }
 }

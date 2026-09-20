@@ -155,7 +155,7 @@ $ joggle query meta_demo.inventory meta_model.jog \
 ```
 
 Query evaluation records observed objects and refuses to publish graph edits.
-The C++ API can request a `QueryReport` to see whether a cached result was used
+The C++ API can request an `Attr` query profile to see whether a cached result was used
 and which dependency category caused a miss.
 
 ## Reflection anti-patterns
