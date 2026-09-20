@@ -1,32 +1,156 @@
-- label: Overview
+- label: Start
   items:
-    - title: Get started
-      url: /getting-started/
-- label: Design
+    - title: Overview
+      url: /
+    - title: Start here
+      url: /start/
+- label: Learn
   items:
-    - title: System design
-      url: /design/
-    - title: Module organization
-      url: /design/modules/
-    - title: Execution and updates
-      url: /design/execution/
-- label: Tutorials
+    - folder: Language
+      prefix: /language/
+      children:
+        - title: Language map
+          url: /language/
+        - title: Packages
+          url: /language/packages/
+        - title: Functions
+          url: /language/functions/
+        - title: Types
+          url: /language/types/
+        - title: Values and collections
+          url: /language/values/
+        - title: Control flow
+          url: /language/control-flow/
+        - title: Metadata
+          url: /language/metadata/
+    - folder: Compiler model
+      prefix: /compiler/
+      children:
+        - title: Compiler map
+          url: /compiler/
+        - title: Program lifecycle
+          url: /compiler/lifecycle/
+        - title: Graph
+          url: /compiler/graph/
+        - title: Resolution and typing
+          url: /compiler/resolution/
+        - title: Store, handles, and edits
+          url: /compiler/storage/
+        - title: Compiler functions
+          url: /compiler/functions/
+        - title: Mod system
+          url: /compiler/mods/
+        - title: Execution and updates
+          url: /compiler/execution/
+        - title: Subsystems
+          url: /compiler/subsystems/
+    - folder: Guides
+      prefix: /guides/
+      children:
+        - title: Guide map
+          url: /guides/
+        - title: Transform a program
+          url: /guides/transform/
+        - title: Create a mod
+          url: /guides/create-mod/
+        - title: Import ONNX
+          url: /guides/import-onnx/
+        - title: Emit C
+          url: /guides/emit-c/
+- label: API
   items:
-    - title: Tutorial index
-      url: /tutorials/
-    - title: Transform a model
-      url: /tutorials/transform/
-    - title: Write a mod
-      url: /tutorials/write-mod/
-    - title: Import ONNX
-      url: /tutorials/import-onnx/
-    - title: Emit C
-      url: /tutorials/emit-c/
-- label: Reference
+    - title: API map
+      url: /api/
+    - title: CLI
+      url: /api/cli/
+    - title: C++ API
+      url: /api/cpp/
+    - title: Native mod ABI
+      url: /api/native/
+    - title: Built-in mod map
+      url: /api/mods/
+    - folder: Core mods
+      prefix: /api/mods/core/
+      children:
+        - title: base
+          url: /api/mods/core/base/
+        - title: ir
+          url: /api/mods/core/ir/
+    - folder: Semantic mods
+      prefix: /api/mods/semantics/
+      children:
+        - title: tensor
+          url: /api/mods/semantics/tensor/
+        - title: nn
+          url: /api/mods/semantics/nn/
+        - title: math
+          url: /api/mods/semantics/math/
+        - title: quant
+          url: /api/mods/semantics/quant/
+    - folder: Analysis mods
+      prefix: /api/mods/analysis/
+      children:
+        - title: stat
+          url: /api/mods/analysis/stat/
+        - title: bounds
+          url: /api/mods/analysis/bounds/
+    - folder: Transform mods
+      prefix: /api/mods/transforms/
+      children:
+        - title: opt
+          url: /api/mods/transforms/opt/
+        - title: mem
+          url: /api/mods/transforms/mem/
+        - title: tile
+          url: /api/mods/transforms/tile/
+    - folder: Frontend mods
+      prefix: /api/mods/frontends/
+      children:
+        - title: onnx
+          url: /api/mods/frontends/onnx/
+        - title: onnx.nn
+          url: /api/mods/frontends/onnx-nn/
+        - title: tflite
+          url: /api/mods/frontends/tflite/
+        - title: tflite.nn
+          url: /api/mods/frontends/tflite-nn/
+    - folder: Target mods
+      prefix: /api/mods/targets/
+      children:
+        - title: c
+          url: /api/mods/targets/c/
+        - title: vm
+          url: /api/mods/targets/vm/
+    - folder: Numeric mods
+      prefix: /api/mods/numeric/
+      children:
+        - title: sat
+          url: /api/mods/numeric/sat/
+        - title: sat.c
+          url: /api/mods/numeric/sat-c/
+        - title: sat.vm
+          url: /api/mods/numeric/sat-vm/
+- label: Build on Joggle
   items:
-    - title: Reference index
-      url: /reference/
-    - title: Language
-      url: /reference/language/
-    - title: Mod catalogue
-      url: /reference/module-catalogue/
+    - folder: External examples
+      prefix: /examples/
+      children:
+        - title: Example map
+          url: /examples/
+        - title: Cost policy
+          url: /examples/cost/
+        - title: IKJ MatMul
+          url: /examples/ikj/
+        - title: Compact Conv
+          url: /examples/compact/
+        - title: Locality policy
+          url: /examples/locality/
+        - title: External kernels
+          url: /examples/edge/
+    - folder: Contributing
+      prefix: /contributing/
+      children:
+        - title: Contributor map
+          url: /contributing/
+        - title: Testing
+          url: /contributing/testing/

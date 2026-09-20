@@ -1,0 +1,12 @@
+mod choose_lut
+use ir
+
+fn apply(m: Mod) -> bool {
+  var changed = false
+  for op in ir.ops(m) {
+    if ir.callee(op) == "nn.relu" {
+      changed = ir.set(m, op, "implementation", "lut") || changed
+    }
+  }
+  return changed
+}

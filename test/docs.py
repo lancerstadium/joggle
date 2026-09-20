@@ -31,14 +31,13 @@ def main() -> int:
                     f"{document.relative_to(root)}: unpublished local target {target}"
                 )
 
-    tutorial_index = (docs / "tutorials" / "index.md").read_text(encoding="utf-8")
-    for guide in sorted((docs / "tutorials").glob("*.md")):
+    guide_index = (docs / "guides" / "index.md").read_text(encoding="utf-8")
+    for guide in sorted((docs / "guides").glob("*.md")):
         if guide.name == "index.md":
             continue
-        relative = guide.relative_to(docs).as_posix()
-        if guide.name not in tutorial_index:
+        if guide.name not in guide_index:
             failures.append(
-                f"docs/tutorials/index.md: tutorial is not indexed: {relative}"
+                f"docs/guides/index.md: guide is not indexed: {guide.name}"
             )
 
     for required in (
@@ -46,11 +45,33 @@ def main() -> int:
         docs / "_data" / "navigation.yml",
         docs / "assets" / "css" / "style.css",
         docs / "assets" / "js" / "docs.js",
+        docs / "assets" / "logo" / "joggle-light.svg",
+        docs / "assets" / "logo" / "joggle-dark.svg",
     ):
         if not required.exists():
             failures.append(
                 f"docs: missing site asset: {required.relative_to(docs)}"
             )
+
+    layout = (docs / "_layouts" / "default.html").read_text(encoding="utf-8")
+    script = (docs / "assets" / "js" / "docs.js").read_text(encoding="utf-8")
+    stylesheet = (docs / "assets" / "css" / "style.css").read_text(
+        encoding="utf-8"
+    )
+    for contract, text in (
+        ("theme-toggle", layout),
+        ("nav-folder", layout),
+        ("nav-filter", layout),
+        ("joggle-theme", script),
+        ("language-mermaid", script),
+        ("navigator.clipboard", script),
+        ("copy-code", script),
+        ("navFilter", script),
+        ('data-theme="dark"', stylesheet),
+        ("code-toolbar", stylesheet),
+    ):
+        if contract not in text:
+            failures.append(f"docs: missing site contract: {contract}")
 
     config = (docs / "_config.yml").read_text(encoding="utf-8")
     if "jekyll-relative-links" not in config or "relative_links:" not in config:

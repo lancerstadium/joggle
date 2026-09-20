@@ -6,13 +6,18 @@ endif()
 
 set(failures "")
 
-# The project no longer carries the old research workspace. The separate paper
-# directory currently contains only the outline manuscript.
+# The project no longer carries the old research workspace. The manuscript is
+# separate and remains an empty writing surface until the author adds prose.
 if(EXISTS "${SOURCE}/research")
   list(APPEND failures "retired research workspace exists: research/")
 endif()
 if(NOT EXISTS "${SOURCE}/paper/README.md")
   list(APPEND failures "missing paper outline: paper/README.md")
+else()
+  file(READ "${SOURCE}/paper/README.md" paper)
+  if(NOT paper STREQUAL "# Joggle\n\n## Abstract\n")
+    list(APPEND failures "paper/README.md is not the empty manuscript skeleton")
+  endif()
 endif()
 
 execute_process(

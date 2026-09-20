@@ -6,17 +6,28 @@
     <meta name="theme-color" content="#f7f7f5">
     <meta name="description" content="{{ page.description | default: site.description | escape }}">
     <title>{% if page.url == "/" %}Joggle{% else %}{{ page.title | default: "Joggle" | escape }}{% endif %}</title>
+    <link id="site-icon" rel="icon" href="{{ '/assets/logo/joggle-light.svg' | relative_url }}" type="image/svg+xml">
+    <script>
+      try {
+        const saved = localStorage.getItem("joggle-theme");
+        if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+      } catch (_) {}
+    </script>
     <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
   </head>
   <body class="{% if page.home %}home{% else %}docs{% endif %}">
     <header class="topbar">
       <a class="brand" href="{{ '/' | relative_url }}" aria-label="Joggle home">
-        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-assets" aria-hidden="true">
+          <img class="brand-logo logo-light" src="{{ '/assets/logo/joggle-light.svg' | relative_url }}" alt="">
+          <img class="brand-logo logo-dark" src="{{ '/assets/logo/joggle-dark.svg' | relative_url }}" alt="">
+        </span>
         <span>Joggle</span>
       </a>
       <nav class="topnav" aria-label="Global navigation">
-        <a href="{{ '/getting-started/' | relative_url }}">Docs</a>
+        <a href="{{ '/start/' | relative_url }}">Docs</a>
         <a href="https://github.com/{{ site.repository }}">GitHub <span aria-hidden="true">↗</span></a>
+        <button class="theme-toggle" type="button" aria-label="Use dark theme" title="Toggle color theme"><span aria-hidden="true">◐</span></button>
       </nav>
     </header>
 
@@ -25,12 +36,29 @@
     {% else %}
       <div class="docs-shell">
         <aside class="sidebar" aria-label="Documentation navigation">
+          <label class="nav-search">
+            <span class="sr-only">Filter documentation</span>
+            <input id="nav-filter" type="search" placeholder="Filter docs…" autocomplete="off">
+            <kbd>/</kbd>
+          </label>
           {% for group in site.data.navigation %}
             <section class="nav-group">
               <div class="nav-label">{{ group.label }}</div>
               {% for item in group.items %}
-                {% assign item_url = item.url | relative_url %}
-                <a href="{{ item_url }}"{% if page.url == item.url %} class="active" aria-current="page"{% endif %}>{{ item.title }}</a>
+                {% if item.folder %}
+                  <details class="nav-folder"{% if page.url contains item.prefix %} open{% endif %}>
+                    <summary>{{ item.folder }}</summary>
+                    <div class="nav-children">
+                      {% for child in item.children %}
+                        {% assign child_url = child.url | relative_url %}
+                        <a href="{{ child_url }}"{% if page.url == child.url %} class="active" aria-current="page"{% endif %}>{{ child.title }}</a>
+                      {% endfor %}
+                    </div>
+                  </details>
+                {% else %}
+                  {% assign item_url = item.url | relative_url %}
+                  <a href="{{ item_url }}"{% if page.url == item.url %} class="active" aria-current="page"{% endif %}>{{ item.title }}</a>
+                {% endif %}
               {% endfor %}
             </section>
           {% endfor %}

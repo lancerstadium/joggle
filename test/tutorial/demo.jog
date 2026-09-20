@@ -1,0 +1,7 @@
+mod demo
+use nn
+
+fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {
+  let y = nn.relu(x)
+  return y
+}

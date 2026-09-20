@@ -1,0 +1,7 @@
+mod scalar_model
+use base
+
+[entry: true]
+fn main(x: f32, y: f32) -> f32 {
+  return x + y
+}

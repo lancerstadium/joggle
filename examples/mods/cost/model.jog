@@ -1,0 +1,7 @@
+// Input for the cost-policy example.
+mod model
+
+fn main(x: i32) -> i32 {
+  let y: i32 = opaque(x)
+  return y
+}

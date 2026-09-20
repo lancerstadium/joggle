@@ -1,36 +1,68 @@
-# Joggle
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo/joggle-dark.svg">
+    <img src="docs/assets/logo/joggle-light.svg" width="84" height="84" alt="Joggle logo">
+  </picture>
+</p>
 
-Joggle is a C++20 compiler infrastructure for extending model semantics,
-transformations, conversions, and artifact generation in one typed language.
-Its current implementation focuses on neural-network inference and emits
-inspectable C or deterministic VM artifacts.
+<h1 align="center">Joggle</h1>
 
-Joggle is pre-1.0 software. The documented surface is the implemented and
-tested project API.
+<p align="center">
+  A typed compiler infrastructure for model semantics, IR transformation,
+  representation conversion, and inspectable artifact generation.
+</p>
 
-## What is implemented
+<p align="center">
+  <img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-171717">
+  <a href="https://lancerstadium.github.io/joggle/"><img alt="Documentation" src="https://img.shields.io/badge/docs-online-6c5ce7"></a>
+  <a href="https://github.com/lancerstadium/joggle/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/lancerstadium/joggle/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="C++20" src="https://img.shields.io/badge/C%2B%2B-20-00599C">
+  <img alt="arXiv forthcoming" src="https://img.shields.io/badge/arXiv-forthcoming-b31b1b">
+</p>
 
-- one `.jog` language for readable IR and compiler metaprograms;
-- one `Mod/Fn/Blk/Op/Val/Ty/Attr` object model;
-- structural types, generics, and operator overloading;
-- ordinary typed functions for analysis, rewriting, conversion, and emission;
-- graph-scoped `mod` discovery and composition through explicit search paths;
-- transactional editing, verification, and deterministic output;
-- revision-indexed query and stage dependencies;
-- invalidation by observed functions, collections, operations, values,
-  packages, and intrinsics;
-- reusable evaluator plans and artifact regions;
-- selected ONNX and TFLite import paths;
-- generated C and deterministic VM execution paths.
+Joggle uses the same `.jog` language for readable model IR and compiler
+functions. Queries inspect a program, transformations edit it transactionally,
+frontends convert external formats explicitly, and emitters produce C or VM
+artifacts without hiding intermediate stages.
 
-Joggle does not currently claim a general JIT compiler, incremental native-code
-compiler, production inference runtime, or automatic optimization of arbitrary
-compiler functions.
+> [!IMPORTANT]
+> Joggle is pre-1.0 research software. The documented API describes implemented
+> and tested project behavior; compatibility may change before 1.0.
 
-## Build and test
+## At a glance
 
-The default build requires CMake 3.20 or newer and a C++20 compiler. It
-downloads no dependencies.
+| Area | Implemented surface |
+| --- | --- |
+| Language | structural types, generics, overloads, loops, branches, metadata |
+| Program model | `Mod / Fn / Blk / Op / Val / Ty / Attr` |
+| Compiler functions | typed query, transformation, conversion, and emission functions |
+| Packages | graph-scoped `mod` packages with explicit `use` dependencies and `-M` roots |
+| Updates | verified transactions, observed dependencies, revision-indexed reuse |
+| Frontends | selected ONNX and TFLite import and semantic conversion paths |
+| Artifacts | inspectable C11 and deterministic VM images |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A[Model or frontend bytes] --> B[Typed Joggle Mod]
+    B --> Q[query<br/>inspect]
+    B --> R[run<br/>transform]
+    R --> B
+    B --> E[emit<br/>materialize]
+    E --> C[C11]
+    E --> V[VM image]
+```
+
+Import, inference, conversion, optimization, storage planning, and emission are
+explicit functions. Users can inspect or persist the graph between any two
+steps. See the [compiler model](docs/compiler/index.md) for the object model and
+component boundaries.
+
+## Quick start
+
+The default build needs CMake 3.20 or newer and a C++20 compiler. It downloads
+no dependencies.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -38,43 +70,34 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Optional components are additive:
-
-```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-  -DJOGGLE_BUILD_ONNX=ON \
-  -DJOGGLE_BUILD_TFLITE=ON \
-  -DJOGGLE_BUILD_SAT=ON
-cmake --build build
-ctest --test-dir build --output-on-failure
-```
-
-`JOGGLE_BUILD_ONNX` requires Protobuf. `JOGGLE_BUILD_TFLITE` requires
-FlatBuffers. Set `CMAKE_PREFIX_PATH` when either dependency is installed outside
-the default search path.
-
-Useful test groups are:
-
-```sh
-ctest --test-dir build -L unit
-ctest --test-dir build -L cli
-ctest --test-dir build -L c
-ctest --test-dir build -L extension
-ctest --test-dir build -L example
-ctest --test-dir build -L model
-```
-
-## Five-minute workflow
-
-Check a program and apply a transformation:
+Check a fixture, run a transformation, and query the result:
 
 ```sh
 ./build/joggle check test/data/matmul.jog -M build/modules
+
 ./build/joggle run opt.fold_add_zero test/data/matmul.jog \
   -M build/modules > transformed.jog
+
+./build/joggle query opt.untyped transformed.jog -M build/modules
 ```
 
-Enable the ONNX codec and emit C:
+Expected query result:
+
+```text
+[]
+```
+
+> [!NOTE]
+> Every file command accepts `-` as input, so commands can form a shell
+> pipeline. Named intermediate files are preferable when a stage must remain
+> inspectable or reproducible.
+
+Continue with [Start here](docs/start/index.md) and the ordered
+[guides](docs/guides/index.md).
+
+## From ONNX to C
+
+Enable the optional ONNX frontend, then keep every stage visible:
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DJOGGLE_BUILD_ONNX=ON
@@ -82,54 +105,24 @@ cmake --build build
 
 ./build/joggle read onnx.read model.onnx \
   -M build/modules > source.jog
-./build/joggle run onnx.nn.convert opt.basic source.jog \
+
+./build/joggle run onnx.nn.infer onnx.nn.convert opt.basic source.jog \
   -M build/modules > semantic.jog
+
 ./build/joggle run c.prepare bounds.fold opt.fold opt.basic \
-  tile.canon mem.plan c.noalias semantic.jog \
+  tile.canon mem.plan semantic.jog \
   -M build/modules > prepared.jog
-./build/joggle emit c.source prepared.jog \
-  -M build/modules > model.c
+
+./build/joggle query c.frontier prepared.jog -M build/modules
+./build/joggle emit c.source prepared.jog -M build/modules > model.c
 ```
 
-Every command accepts `-` as its input, so these stages can also be composed as
-a shell pipeline. Named intermediate files remain useful when a workflow needs
-to inspect or preserve each state.
-
-## Language sketch
-
-```jog
-mod example
-use tensor
-
-fn matmul<T: Ty, M: int, N: int, K: int>(
-  a: tensor<T, [M, K]>,
-  b: tensor<T, [K, N]>
-) -> tensor<T, [M, N]> {
-  var c = tensor<T, [M, N]>(T(0))
-  for i in 0..M, j in 0..N {
-    var sum = T(0)
-    for k in 0..K {
-      sum += a[i, k] * b[k, j]
-    }
-    c[i, j] = sum
-  }
-  return c
-}
-```
-
-Calls, constants, loops, conditions, returns, and block yields are the
-structural operation kinds. Concrete computation is expressed as ordinary
-function calls. A graph is the calls and values in a function; exposing a
-semantic body adds loops and scalar calls to that same representation.
-
-See the [language reference](docs/reference/language.md) for the complete
-grammar and semantics.
+An empty `c.frontier` means the remaining operations are representable by the
+C emitter. Numerical correctness still belongs to an executable oracle.
 
 ## Write a `mod`
 
-A source package is a directory containing `module.jog`. The file begins with
-the `mod` keyword. Public functions form the package API; helpers use
-`local fn`.
+A source package is a directory containing `module.jog`:
 
 ```jog
 mod choose_lut
@@ -146,69 +139,100 @@ fn apply(m: Mod) -> bool {
 }
 ```
 
-Add its parent directory to the search path:
+Load it through an explicit search root:
 
 ```sh
+./build/joggle mod check choose_lut \
+  -M build/modules -M local-mods
+
 ./build/joggle run choose_lut.apply model.jog \
-  -M build/modules -M path/to/mods
+  -M build/modules -M local-mods > selected.jog
 ```
 
-The [`ikj`](extensions/ikj/module.jog), [`edge`](extensions/edge/module.jog),
-[`locality`](extensions/locality/module.jog), and
-[`compact`](extensions/compact/module.jog) extensions are executable examples.
-The [bundled `mod` catalogue](docs/reference/module-catalogue.md) describes the
-installed packages and their responsibilities.
+The [`ikj`](examples/mods/ikj/module.jog), [`edge`](examples/mods/edge/module.jog),
+[`locality`](examples/mods/locality/module.jog), and
+[`compact`](examples/mods/compact/module.jog) directories are executable
+out-of-tree examples.
 
-## Design
+## Build options
 
-Joggle uses one typed object model for programs and compiler functions. Import,
-transformation, planning, and emission are explicit operations. `mod` packages
-load from explicit search roots, and a `run` sequence commits as one verified
-transaction.
+| Option | Adds | External requirement |
+| --- | --- | --- |
+| `JOGGLE_BUILD_ONNX=ON` | ONNX reader, conversion, and codec tests | Protobuf |
+| `JOGGLE_BUILD_TFLITE=ON` | TFLite reader and value tests | FlatBuffers |
+| `JOGGLE_BUILD_SAT=ON` | parametric saturating-type example | none |
+| `JOGGLE_BUILD_TESTS=OFF` | omits project tests | none |
 
-The [system design](docs/design/index.md) documents the representation and
-component boundaries. [Module organization](docs/design/modules.md) covers
-package discovery and lifecycle; [execution and updates](docs/design/execution.md)
-covers transactions, dependency tracking, and fallback behavior.
+Set `CMAKE_PREFIX_PATH` when Protobuf or FlatBuffers is outside the default
+search path.
 
-## Repository layout
+## Test gates
 
-```text
-include/joggle/  public C++ API
-src/             parser, IR, verifier, resolver, and evaluator
-tool/            the `joggle` command-line tool
-modules/         bundled source `mod` packages
-extensions/      out-of-tree examples loaded with `-M extensions`
-test/            unit, integration, CLI, backend, and documentation tests
-docs/            design, tutorials, and reference material
+The main workflow requires every selected test to pass; the merge threshold is
+therefore 100% for each platform gate.
+
+| Gate | Platform | Coverage | Required pass rate |
+| --- | --- | --- | ---: |
+| Core | Ubuntu | default build, CLI, library, C backend, docs | 100% |
+| Core | macOS | default build, CLI, library, C backend, docs | 100% |
+| Optional modules | Ubuntu | ONNX, TFLite, SAT, generated C | 100% |
+| Sanitizers | Ubuntu | AddressSanitizer and UndefinedBehaviorSanitizer | 100% |
+
+The live [CI badge](https://github.com/lancerstadium/joggle/actions/workflows/ci.yml)
+is authoritative. Run a focused local loop with labels:
+
+```sh
+ctest --test-dir build -L unit
+ctest --test-dir build -L cli
+ctest --test-dir build -L analysis
+ctest --test-dir build -L example-mod
+ctest --test-dir build -L c
+ctest --test-dir build -L tutorial
+ctest --test-dir build -L lint
 ```
+
+See [test/README.md](test/README.md) for the test taxonomy, fixture rules, and
+the mapping from tutorials to executable gates.
+
+## Repository map
+
+| Path | Responsibility |
+| --- | --- |
+| `include/joggle/` | public C++ API |
+| `src/` | parser, IR, verifier, resolver, evaluator |
+| `tool/` | `joggle` command-line tool |
+| `modules/` | bundled source and optional native mods |
+| `examples/mods/` | runnable external mod examples |
+| `test/` | unit, CLI, integration, backend, and documentation gates |
+| `docs/` | design, tutorials, and reference |
+| `paper/` | separate manuscript workspace |
 
 Generated content belongs in a configured `build*` directory and is not
 tracked.
 
 ## Documentation
 
-- [Documentation site](https://lancerstadium.github.io/joggle/)
-- [Documentation source](docs/index.md)
-- [Getting started](docs/getting-started/index.md)
-- [Task-oriented tutorials](docs/tutorials/index.md)
-- [System design](docs/design/index.md)
-- [Language reference](docs/reference/language.md)
-- [Bundled `mod` catalogue](docs/reference/module-catalogue.md)
+- [Online documentation](https://lancerstadium.github.io/joggle/)
+- [Start here](docs/start/index.md)
+- [Language guide](docs/language/index.md)
+- [Compiler model](docs/compiler/index.md)
+- [Mod organization](docs/compiler/mods.md)
+- [Execution and updates](docs/compiler/execution.md)
+- [Task-oriented guides](docs/guides/index.md)
+- [Developer API](docs/api/index.md)
+- [External mod examples](docs/examples/index.md)
+- [Built-in mod catalogue](docs/api/mods/index.md)
+- [Contributing](docs/contributing/index.md)
 
-The documentation tree is validated by `test/docs.py` and deployed from
-`docs/` by the GitHub Pages workflow. Code examples in the tutorials should map to
-named tests rather than forming a second, unverified implementation.
+## Boundaries
 
-## Project boundaries
-
-- Unknown source-format operations remain visible; importers do not guess.
-- Emission performs no hidden conversion, scheduling, or storage planning.
+- Unknown frontend operations stay visible; importers do not guess.
+- Emitters do not hide conversion, scheduling, or storage planning.
 - External kernels are explicit ABI boundaries.
-- Dynamic shapes require proved finite capacities for bounded static storage.
+- Dynamic tensors require proved finite capacities for bounded static storage.
 - Reactive reuse is conditional on observed dependencies and verification.
-- Experimental ideas do not become documented capabilities before their tests
-  and public interfaces exist.
+- Joggle does not currently claim a general native-code JIT, an incremental
+  object linker, or a production inference runtime.
 
 ## License
 

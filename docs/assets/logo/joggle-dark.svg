@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Joggle</title>
+  <desc id="desc">A light ring connected to a purple node.</desc>
+  <path fill="#f4f4f1" fill-rule="evenodd" d="M27 10a17 17 0 1 1 0 34 17 17 0 0 1 0-34zm0 10a7 7 0 1 0 0 14 7 7 0 0 0 0-14z"/>
+  <circle fill="#a99df5" cx="45" cy="27" r="7"/>
+</svg>

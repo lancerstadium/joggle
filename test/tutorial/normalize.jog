@@ -1,0 +1,10 @@
+mod normalize
+use tensor
+
+fn center<T: Ty, M: int, N: int>(
+  x: tensor<T, [M, N]>,
+  mean: tensor<T, [N]>
+) -> tensor<T, [M, N]> {
+  let expanded: tensor<T, [M, N]> = tensor.broadcast(mean)
+  return x - expanded
+}

@@ -514,25 +514,25 @@ if(JOGGLE_BUILD_TESTS)
       MODEL=${CMAKE_CURRENT_BINARY_DIR}/modules/bad/module.jog
   )
   add_test(
-    NAME cost-extension
+    NAME example-cost
     COMMAND $<TARGET_FILE:joggle-tool> query cost.total
-            ${CMAKE_CURRENT_SOURCE_DIR}/extensions/cost/model.jog
-            -M ${CMAKE_CURRENT_SOURCE_DIR}/extensions
+            ${CMAKE_CURRENT_SOURCE_DIR}/examples/mods/cost/model.jog
+            -M ${CMAKE_CURRENT_SOURCE_DIR}/examples/mods
             -M ${CMAKE_CURRENT_BINARY_DIR}/modules
   )
   set_tests_properties(
-    cost-extension PROPERTIES PASS_REGULAR_EXPRESSION "5"
+    example-cost PROPERTIES PASS_REGULAR_EXPRESSION "5"
   )
   add_test(
-    NAME cost-configured-extension
+    NAME example-cost-configured
     COMMAND $<TARGET_FILE:joggle-tool> query cost.total
-            ${CMAKE_CURRENT_SOURCE_DIR}/extensions/cost/model.jog
+            ${CMAKE_CURRENT_SOURCE_DIR}/examples/mods/cost/model.jog
             --arg 7 --arg 2
-            -M ${CMAKE_CURRENT_SOURCE_DIR}/extensions
+            -M ${CMAKE_CURRENT_SOURCE_DIR}/examples/mods
             -M ${CMAKE_CURRENT_BINARY_DIR}/modules
   )
   set_tests_properties(
-    cost-configured-extension PROPERTIES PASS_REGULAR_EXPRESSION "9"
+    example-cost-configured PROPERTIES PASS_REGULAR_EXPRESSION "9"
   )
   joggle_script_test(stat-summary stat.cmake
     DEFINES
@@ -573,41 +573,46 @@ if(JOGGLE_BUILD_TESTS)
   joggle_script_test(layout layout.cmake
     DEFINES
       SOURCE=${CMAKE_CURRENT_SOURCE_DIR}
-    LABELS lint
   )
   if(JOGGLE_TEST_C_COMPILER)
-    joggle_script_test(ikj-extension ikj.cmake
+    joggle_script_test(tutorial-smoke tutorials.cmake
       DEFINES
         CC=${JOGGLE_TEST_C_COMPILER}
-        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/extensions/ikj/model.jog
-        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/extensions/ikj/main.c
-        EXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/extensions
-        ROOT=${CMAKE_CURRENT_BINARY_DIR}/ikj-extension
+        SOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/tutorial-smoke
     )
-    joggle_script_test(edge-extension edge.cmake
+    joggle_script_test(example-ikj ikj.cmake
       DEFINES
         CC=${JOGGLE_TEST_C_COMPILER}
-        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/extensions/edge/model.jog
-        KERNEL=${CMAKE_CURRENT_SOURCE_DIR}/extensions/edge/kernel.c
-        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/extensions/edge/main.c
-        EXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/extensions
-        ROOT=${CMAKE_CURRENT_BINARY_DIR}/edge-extension
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/examples/mods/ikj/model.jog
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/examples/mods/ikj/main.c
+        EXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/examples/mods
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/example-ikj
     )
-    joggle_script_test(locality-extension locality.cmake
+    joggle_script_test(example-edge edge.cmake
+      DEFINES
+        CC=${JOGGLE_TEST_C_COMPILER}
+        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/examples/mods/edge/model.jog
+        KERNEL=${CMAKE_CURRENT_SOURCE_DIR}/examples/mods/edge/kernel.c
+        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/examples/mods/edge/main.c
+        EXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/examples/mods
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/example-edge
+    )
+    joggle_script_test(example-locality locality.cmake
       DEFINES
         CC=${JOGGLE_TEST_C_COMPILER}
         MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/spatial.jog
         HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/spatial_main.c
-        EXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/extensions
-        ROOT=${CMAKE_CURRENT_BINARY_DIR}/locality-extension
+        EXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/examples/mods
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/example-locality
     )
-    joggle_script_test(compact-extension compact.cmake
+    joggle_script_test(example-compact compact.cmake
       DEFINES
         CC=${JOGGLE_TEST_C_COMPILER}
         MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/spatial.jog
         HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/spatial_main.c
-        EXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/extensions
-        ROOT=${CMAKE_CURRENT_BINARY_DIR}/compact-extension
+        EXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/examples/mods
+        ROOT=${CMAKE_CURRENT_BINARY_DIR}/example-compact
     )
     joggle_script_test(c-execution c.cmake
       DEFINES
@@ -722,7 +727,7 @@ if(JOGGLE_BUILD_TESTS)
         MULTI_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_multi_main.c
         MERGE_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_merge.jog
         MERGE_HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/tile_merge_main.c
-        EXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/extensions
+        EXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/examples/mods
         ROOT=${CMAKE_CURRENT_BINARY_DIR}/tile-test
     )
   endif()
@@ -880,7 +885,7 @@ if(JOGGLE_BUILD_TESTS)
           -DCC=${JOGGLE_TEST_C_COMPILER}
           -DCASE=${case}
           -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
-          -DEXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/extensions
+          -DEXTENSIONS=${CMAKE_CURRENT_SOURCE_DIR}/examples/mods
           -DROOT=${CMAKE_CURRENT_BINARY_DIR}/${name}
           -P ${CMAKE_CURRENT_SOURCE_DIR}/test/onnx_execute.cmake
       )
@@ -1046,12 +1051,13 @@ if(JOGGLE_BUILD_TESTS)
   #   ctest -LE model      the everyday loop: everything except pinned models
   #   ctest -L unit        native C++ tests
   #   ctest -L c           generated-C emission, compilation, and execution
-  #   ctest -L extension   out-of-tree module packages under extensions/
+  #   ctest -L example-mod runnable external mods under examples/mods/
+  #   ctest -L tutorial    commands and outputs published in the tutorials
   #   ctest -L example     example applications; the suite does not need them
   #   ctest -L model       pinned ONNX and TFLite gates; minutes, not seconds
   #
-  # Existing labels such as onnx-zoo are preserved, because docs/guide/
-  # documents `ctest -L onnx-zoo`.
+  # Feature labels such as onnx-zoo remain orthogonal selectors; the primary
+  # taxonomy and tutorial mapping are documented in test/README.md.
   joggle_label(unit
     workflow network lang-robustness edit-robustness module-robustness vm
     onnx-codec tflite tflite-value sat
@@ -1067,13 +1073,14 @@ if(JOGGLE_BUILD_TESTS)
     tile-execution sat-c-execution
   )
   joggle_label(analysis stat-summary bounds-report opt-overloads)
-  joggle_label(extension
-    ikj-extension edge-extension locality-extension compact-extension
-    cost-extension cost-configured-extension
+  joggle_label(example-mod
+    example-ikj example-edge example-locality example-compact
+    example-cost example-cost-configured
   )
+  joggle_label(tutorial tutorial-smoke)
   joggle_label(example onnx-app-mnist onnx-app-mobilenet)
   # Pinned model tests receive their kind label at declaration time because the
   # configured corpus is data-driven; do not duplicate its names here.
   joggle_label(install install-consumer)
-  joggle_label(lint docs)
+  joggle_label(lint docs layout)
 endif()

@@ -38,7 +38,7 @@ scalar reference VM:
 
 ```sh
 cmake -DOUT=.cache/onnx-zoo -DMODELS=mnist-8 -DAPP=ON \
-  -P test/zoo.cmake
+  -P test/tools/fetch_onnx_zoo.cmake
 cmake -S . -B build-onnx-app -DCMAKE_BUILD_TYPE=Release \
   -DJOGGLE_BUILD_ONNX=ON \
   -DJOGGLE_EXAMPLE_MNIST=.cache/onnx-zoo/app/mnist-8
@@ -52,7 +52,7 @@ MobileNetV2 exercises the identical driver and pipeline at application scale:
 
 ```sh
 cmake -DOUT=.cache/onnx-zoo -DMODELS=mobilenetv2-7 -DAPP=ON \
-  -P test/zoo.cmake
+  -P test/tools/fetch_onnx_zoo.cmake
 cmake -S . -B build-onnx-app -DCMAKE_BUILD_TYPE=Release \
   -DJOGGLE_BUILD_ONNX=ON \
   -DJOGGLE_EXAMPLE_MOBILENET=.cache/onnx-zoo/app/mobilenetv2-7

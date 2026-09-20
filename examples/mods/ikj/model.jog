@@ -1,0 +1,10 @@
+// Input for the IKJ implementation example.
+mod demo
+use tensor
+
+[entry]
+fn main(
+  a: tensor<f32, [2, 3]>, b: tensor<f32, [3, 2]>
+) -> tensor<f32, [2, 2]> {
+  return tensor.matmul(a, b)
+}
