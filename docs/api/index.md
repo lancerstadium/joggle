@@ -63,6 +63,8 @@ C++ embedding:
 joggle::Env env;
 env.path("build/modules");
 env.path("project-mods");
+if (!env.load("project"))
+  return env.print_diags(stderr);
 joggle::Mod mod;
 joggle::Attr result;
 if (!joggle::parse(env, source, mod, "model.jog") ||
