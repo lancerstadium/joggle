@@ -182,7 +182,7 @@ operations remain visible or produce diagnostics at the responsible boundary.
 |---|---|---:|
 | Core build and tests | Ubuntu, macOS | 100% |
 | Optional ONNX/TFLite/SAT mods | Ubuntu | 100% |
-| Address/undefined behavior sanitizers | Ubuntu | 100% |
+| Core ASan/UBSan (`unit`, `cli`, `analysis`) | Ubuntu | 100% |
 | Docs graph, layout, and tutorial smoke tests | CI | 100% |
 
 The live [CI badge](https://github.com/lancerstadium/joggle/actions/workflows/ci.yml)

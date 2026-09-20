@@ -131,7 +131,7 @@ jobs:
   sanitize:
     name: Linux sanitizers
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - name: Configure
@@ -150,8 +150,9 @@ jobs:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: >-
           ctest --test-dir build --output-on-failure
+          --label-regex '^(unit|cli|analysis)$'
           --parallel 2
-          --timeout 300
+          --timeout 180
           --output-junit ctest.xml
       - name: Preserve CTest failure
         if: ${{ failure() && steps.test.outcome == 'failure' }}

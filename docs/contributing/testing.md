@@ -113,6 +113,12 @@ Use a sanitizer/debug build for ownership, lifetime, and undefined-behavior
 checks. Use Release or RelWithDebInfo for performance investigation. A
 sanitizer number is not comparable with a release benchmark.
 
+The CI sanitizer lane selects the `unit`, `cli`, and `analysis` labels. These
+labels instrument the language, graph, evaluator, loader, VM, query, transform,
+and emitter paths. The normal Ubuntu lane owns generated-artifact compilation
+and execution because compiling a harness from an instrumented CLI does not
+instrument the generated program.
+
 ## Failure triage
 
 | Failure class | First action |

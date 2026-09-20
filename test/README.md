@@ -22,6 +22,20 @@ Each maintained test has one primary kind label. Feature labels such as
 `onnx`, `onnx-zoo`, `execution`, and `heavy` are orthogonal filters for optional
 corpora.
 
+## CI lanes
+
+| Lane | Labels or configuration | Responsibility |
+| --- | --- | --- |
+| Ubuntu and macOS | default suite | complete core, CLI, documentation, example-mod, and generated-artifact behavior |
+| optional mods | ONNX, TFLite, and SAT enabled | codecs, semantic conversion, pinned model contracts, and optional executors |
+| ASan/UBSan | `unit`, `cli`, `analysis` | instrumented language, graph, evaluator, loader, VM, query, transform, and emitter paths |
+
+The sanitizer lane includes `cli-emit`, so artifact construction crosses the
+instrumented compiler boundary. Generated C harnesses are compiled and checked
+by the Ubuntu lane; repeating every harness inside an instrumented Joggle CLI
+does not instrument the generated C program and duplicates the same compiler
+startup work.
+
 ## Layers
 
 ```mermaid
