@@ -12,10 +12,11 @@
 
 namespace joggle::detail {
 
-enum class QueryMiss : std::uint8_t {
+enum class CacheMiss : std::uint8_t {
   none,
   cold,
   environment,
+  arguments,
   whole_revision,
   structure_revision,
   package_dependencies,
@@ -25,20 +26,25 @@ enum class QueryMiss : std::uint8_t {
   operation_generation,
   operation_revision,
   value_generation,
-  value_revision
+  value_revision,
+  upstream
+};
+
+struct DependencySummary {
+  std::size_t functions = 0;
+  std::size_t collections = 0;
+  std::size_t operations = 0;
+  std::size_t values = 0;
+  std::size_t packages = 0;
+  std::size_t intrinsics = 0;
+  bool structure = false;
+  bool whole_mod = false;
 };
 
 struct QueryReport {
   bool cached = false;
-  QueryMiss miss = QueryMiss::cold;
-  std::size_t observed_functions = 0;
-  std::size_t observed_collections = 0;
-  std::size_t observed_operations = 0;
-  std::size_t observed_values = 0;
-  std::size_t observed_packages = 0;
-  std::size_t observed_intrinsics = 0;
-  bool observed_structure = false;
-  bool observed_whole_mod = false;
+  CacheMiss miss = CacheMiss::cold;
+  DependencySummary observed;
   bool verification_cached = false;
   std::chrono::nanoseconds lookup{};
   std::chrono::nanoseconds snapshot{};
@@ -121,36 +127,11 @@ struct RunTiming {
   std::vector<RunStepTiming> steps;
 };
 
-enum class ReactiveMiss : std::uint8_t {
-  none,
-  cold,
-  environment,
-  arguments,
-  whole_revision,
-  structure_revision,
-  package_dependencies,
-  function_generation,
-  function_revision,
-  function_shape,
-  operation_generation,
-  operation_revision,
-  value_generation,
-  value_revision,
-  upstream
-};
-
 struct ReactiveStageReport {
   std::string function;
   bool executed = false;
-  ReactiveMiss miss = ReactiveMiss::cold;
-  std::size_t observed_functions = 0;
-  std::size_t observed_collections = 0;
-  std::size_t observed_operations = 0;
-  std::size_t observed_values = 0;
-  std::size_t observed_packages = 0;
-  std::size_t observed_intrinsics = 0;
-  bool observed_structure = false;
-  bool observed_whole_mod = false;
+  CacheMiss miss = CacheMiss::cold;
+  DependencySummary observed;
   std::size_t changed_functions = 0;
 };
 

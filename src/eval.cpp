@@ -2350,8 +2350,8 @@ private:
         auto call_args = values(frame, operands, op, loc);
         if (!call_args)
           return {FlowKind::fail, {}};
-        const auto result = call(blk.fn(), op, op.callee(),
-                                 CallArgs(*call_args), operands, loc);
+        auto result = call(blk.fn(), op, op.callee(),
+                           CallArgs(*call_args), operands, loc);
         if (!result)
           return {FlowKind::fail, {}};
         const std::vector<Val>& outs = op_outs(op);
@@ -4915,42 +4915,58 @@ Attr ns(std::chrono::nanoseconds value) {
   return Attr(static_cast<std::int64_t>(value.count()));
 }
 
+std::string_view miss_name(detail::CacheMiss value) {
+  switch (value) {
+    case detail::CacheMiss::none: return "none";
+    case detail::CacheMiss::cold: return "cold";
+    case detail::CacheMiss::environment: return "environment";
+    case detail::CacheMiss::arguments: return "arguments";
+    case detail::CacheMiss::whole_revision: return "whole_revision";
+    case detail::CacheMiss::structure_revision: return "structure_revision";
+    case detail::CacheMiss::package_dependencies: return "package_dependencies";
+    case detail::CacheMiss::function_generation: return "function_generation";
+    case detail::CacheMiss::function_revision: return "function_revision";
+    case detail::CacheMiss::function_shape: return "function_shape";
+    case detail::CacheMiss::operation_generation: return "operation_generation";
+    case detail::CacheMiss::operation_revision: return "operation_revision";
+    case detail::CacheMiss::value_generation: return "value_generation";
+    case detail::CacheMiss::value_revision: return "value_revision";
+    case detail::CacheMiss::upstream: return "upstream";
+  }
+  return "unknown";
+}
+
+detail::DependencySummary dependency_summary(const detail::QueryData& data) {
+  detail::DependencySummary out;
+  out.functions = data.dependencies.size();
+  out.collections = data.collections.size();
+  out.operations = data.operations.size();
+  out.values = data.values.size();
+  out.packages = data.packages ? 1 : 0;
+  out.intrinsics = data.intrinsics.size();
+  out.structure = data.structure;
+  out.whole_mod = data.whole_revision;
+  return out;
+}
+
 Attr query_profile(const detail::QueryReport& report) {
-  const auto miss = [](detail::QueryMiss value) -> std::string_view {
-    switch (value) {
-      case detail::QueryMiss::none: return "none";
-      case detail::QueryMiss::cold: return "cold";
-      case detail::QueryMiss::environment: return "environment";
-      case detail::QueryMiss::whole_revision: return "whole_revision";
-      case detail::QueryMiss::structure_revision: return "structure_revision";
-      case detail::QueryMiss::package_dependencies: return "package_dependencies";
-      case detail::QueryMiss::function_generation: return "function_generation";
-      case detail::QueryMiss::function_revision: return "function_revision";
-      case detail::QueryMiss::function_shape: return "function_shape";
-      case detail::QueryMiss::operation_generation: return "operation_generation";
-      case detail::QueryMiss::operation_revision: return "operation_revision";
-      case detail::QueryMiss::value_generation: return "value_generation";
-      case detail::QueryMiss::value_revision: return "value_revision";
-    }
-    return "unknown";
-  };
   Attr::Dict out;
   out["cached"] = Attr(report.cached);
-  out["miss"] = Attr(std::string(miss(report.miss)));
+  out["miss"] = Attr(std::string(miss_name(report.miss)));
   out["observed_functions"] =
-      Attr(static_cast<std::int64_t>(report.observed_functions));
+      Attr(static_cast<std::int64_t>(report.observed.functions));
   out["observed_collections"] =
-      Attr(static_cast<std::int64_t>(report.observed_collections));
+      Attr(static_cast<std::int64_t>(report.observed.collections));
   out["observed_operations"] =
-      Attr(static_cast<std::int64_t>(report.observed_operations));
+      Attr(static_cast<std::int64_t>(report.observed.operations));
   out["observed_values"] =
-      Attr(static_cast<std::int64_t>(report.observed_values));
+      Attr(static_cast<std::int64_t>(report.observed.values));
   out["observed_packages"] =
-      Attr(static_cast<std::int64_t>(report.observed_packages));
+      Attr(static_cast<std::int64_t>(report.observed.packages));
   out["observed_intrinsics"] =
-      Attr(static_cast<std::int64_t>(report.observed_intrinsics));
-  out["observed_structure"] = Attr(report.observed_structure);
-  out["observed_whole_mod"] = Attr(report.observed_whole_mod);
+      Attr(static_cast<std::int64_t>(report.observed.intrinsics));
+  out["observed_structure"] = Attr(report.observed.structure);
+  out["observed_whole_mod"] = Attr(report.observed.whole_mod);
   out["verification_cached"] = Attr(report.verification_cached);
   out["lookup_ns"] = ns(report.lookup);
   out["snapshot_ns"] = ns(report.snapshot);
@@ -5051,47 +5067,27 @@ Attr run_profile(const detail::RunTiming& timing) {
 }
 
 Attr reactive_profile(const detail::ReactiveRunReport& report) {
-  const auto miss = [](detail::ReactiveMiss value) -> std::string_view {
-    switch (value) {
-      case detail::ReactiveMiss::none: return "none";
-      case detail::ReactiveMiss::cold: return "cold";
-      case detail::ReactiveMiss::environment: return "environment";
-      case detail::ReactiveMiss::arguments: return "arguments";
-      case detail::ReactiveMiss::whole_revision: return "whole_revision";
-      case detail::ReactiveMiss::structure_revision: return "structure_revision";
-      case detail::ReactiveMiss::package_dependencies: return "package_dependencies";
-      case detail::ReactiveMiss::function_generation: return "function_generation";
-      case detail::ReactiveMiss::function_revision: return "function_revision";
-      case detail::ReactiveMiss::function_shape: return "function_shape";
-      case detail::ReactiveMiss::operation_generation: return "operation_generation";
-      case detail::ReactiveMiss::operation_revision: return "operation_revision";
-      case detail::ReactiveMiss::value_generation: return "value_generation";
-      case detail::ReactiveMiss::value_revision: return "value_revision";
-      case detail::ReactiveMiss::upstream: return "upstream";
-    }
-    return "unknown";
-  };
   Attr::List stages;
   stages.reserve(report.stages.size());
   for (const detail::ReactiveStageReport& stage : report.stages) {
     Attr::Dict values;
     values["function"] = Attr(stage.function);
     values["executed"] = Attr(stage.executed);
-    values["miss"] = Attr(std::string(miss(stage.miss)));
+    values["miss"] = Attr(std::string(miss_name(stage.miss)));
     values["observed_functions"] =
-        Attr(static_cast<std::int64_t>(stage.observed_functions));
+        Attr(static_cast<std::int64_t>(stage.observed.functions));
     values["observed_collections"] =
-        Attr(static_cast<std::int64_t>(stage.observed_collections));
+        Attr(static_cast<std::int64_t>(stage.observed.collections));
     values["observed_operations"] =
-        Attr(static_cast<std::int64_t>(stage.observed_operations));
+        Attr(static_cast<std::int64_t>(stage.observed.operations));
     values["observed_values"] =
-        Attr(static_cast<std::int64_t>(stage.observed_values));
+        Attr(static_cast<std::int64_t>(stage.observed.values));
     values["observed_packages"] =
-        Attr(static_cast<std::int64_t>(stage.observed_packages));
+        Attr(static_cast<std::int64_t>(stage.observed.packages));
     values["observed_intrinsics"] =
-        Attr(static_cast<std::int64_t>(stage.observed_intrinsics));
-    values["observed_structure"] = Attr(stage.observed_structure);
-    values["observed_whole_mod"] = Attr(stage.observed_whole_mod);
+        Attr(static_cast<std::int64_t>(stage.observed.intrinsics));
+    values["observed_structure"] = Attr(stage.observed.structure);
+    values["observed_whole_mod"] = Attr(stage.observed.whole_mod);
     values["changed_functions"] =
         Attr(static_cast<std::int64_t>(stage.changed_functions));
     stages.emplace_back(std::move(values));
@@ -5258,77 +5254,70 @@ bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
   const std::size_t key = detail::query_key(function, args);
   const auto invalidation = [&](const detail::QueryData& entry) {
     if (entry.whole_revision && entry.revision != mod.revision())
-      return detail::QueryMiss::whole_revision;
+      return detail::CacheMiss::whole_revision;
     if (entry.structure && entry.structure_revision !=
                                mod.impl_->store.structure_revision)
-      return detail::QueryMiss::structure_revision;
+      return detail::CacheMiss::structure_revision;
     if (entry.packages &&
         entry.package_dependencies != mod.impl_->store.uses)
-      return detail::QueryMiss::package_dependencies;
+      return detail::CacheMiss::package_dependencies;
     for (const detail::QueryFnData& dependency : entry.dependencies) {
       if (!detail::live(mod.impl_->store.fns, dependency.id,
                         dependency.generation))
-        return detail::QueryMiss::function_generation;
+        return detail::CacheMiss::function_generation;
       if (dependency.content &&
           mod.impl_->store.fns[dependency.id].data.revision !=
               dependency.revision)
-        return detail::QueryMiss::function_revision;
+        return detail::CacheMiss::function_revision;
     }
     for (const detail::QueryCollectionData& dependency : entry.collections) {
       if (!detail::live(mod.impl_->store.fns, dependency.function,
                         dependency.generation))
-        return detail::QueryMiss::function_generation;
+        return detail::CacheMiss::function_generation;
       if (detail::collection_members(mod.impl_->store, dependency.function,
                                      dependency.kind) != dependency.members)
-        return detail::QueryMiss::function_shape;
+        return detail::CacheMiss::function_shape;
     }
     for (const detail::QueryOpData& dependency : entry.operations) {
       if (!detail::live(mod.impl_->store.ops, dependency.id,
                         dependency.generation))
-        return detail::QueryMiss::operation_generation;
+        return detail::CacheMiss::operation_generation;
       if (mod.impl_->store.ops[dependency.id].data != dependency.data)
-        return detail::QueryMiss::operation_revision;
+        return detail::CacheMiss::operation_revision;
     }
     for (const detail::QueryValData& dependency : entry.values) {
       if (!detail::live(mod.impl_->store.vals, dependency.id,
                         dependency.generation))
-        return detail::QueryMiss::value_generation;
+        return detail::CacheMiss::value_generation;
       if (mod.impl_->store.vals[dependency.id].data != dependency.data)
-        return detail::QueryMiss::value_revision;
+        return detail::CacheMiss::value_revision;
     }
-    return detail::QueryMiss::none;
+    return detail::CacheMiss::none;
   };
   const auto same_key = [&](const detail::QueryData& entry) {
     return entry.function == function && entry.args.size() == args.size() &&
            std::equal(entry.args.begin(), entry.args.end(), args.begin());
   };
   const auto lookup_begin = std::chrono::steady_clock::now();
-  detail::QueryMiss miss = detail::QueryMiss::cold;
+  detail::CacheMiss miss = detail::CacheMiss::cold;
   const auto bucket = entries.find(key);
   if (bucket != entries.end()) {
     for (const detail::QueryData& entry : bucket->second) {
       if (!same_key(entry))
         continue;
       if (entry.env != env.cache_id() || entry.epoch != env.cache_epoch()) {
-        if (miss == detail::QueryMiss::cold)
-          miss = detail::QueryMiss::environment;
+        if (miss == detail::CacheMiss::cold)
+          miss = detail::CacheMiss::environment;
         continue;
       }
       miss = invalidation(entry);
-      if (miss != detail::QueryMiss::none)
+      if (miss != detail::CacheMiss::none)
         continue;
       result = entry.result;
       if (report) {
         report->cached = true;
-        report->miss = detail::QueryMiss::none;
-        report->observed_functions = entry.dependencies.size();
-        report->observed_collections = entry.collections.size();
-        report->observed_operations = entry.operations.size();
-        report->observed_values = entry.values.size();
-        report->observed_packages = entry.packages ? 1 : 0;
-        report->observed_intrinsics = entry.intrinsics.size();
-        report->observed_structure = entry.structure;
-        report->observed_whole_mod = entry.whole_revision;
+        report->miss = detail::CacheMiss::none;
+        report->observed = dependency_summary(entry);
         report->lookup = std::chrono::steady_clock::now() - lookup_begin;
       }
       return true;
@@ -5391,14 +5380,7 @@ bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
   entry.args.assign(args.begin(), args.end());
   entry.result = result;
   if (report) {
-    report->observed_functions = entry.dependencies.size();
-    report->observed_collections = entry.collections.size();
-    report->observed_operations = entry.operations.size();
-    report->observed_values = entry.values.size();
-    report->observed_packages = entry.packages ? 1 : 0;
-    report->observed_intrinsics = entry.intrinsics.size();
-    report->observed_structure = entry.structure;
-    report->observed_whole_mod = entry.whole_revision;
+    report->observed = dependency_summary(entry);
     report->verification_cached = timing.verification_cached;
     report->snapshot = timing.snapshot;
     report->verification = timing.verification;
@@ -5785,8 +5767,11 @@ bool ReactiveSchedule::run(Env& env, Mod& mod,
   } publish{output, report};
   if (report) {
     report->stages.reserve(impl_->stages.size());
-    for (const Impl::Stage& stage : impl_->stages)
-      report->stages.push_back({stage.function});
+    for (const Impl::Stage& stage : impl_->stages) {
+      detail::ReactiveStageReport item;
+      item.function = stage.function;
+      report->stages.push_back(std::move(item));
+    }
   }
   if (impl_->stages.empty()) {
     env.clear_diags();
@@ -5794,70 +5779,70 @@ bool ReactiveSchedule::run(Env& env, Mod& mod,
     return false;
   }
 
-  detail::ReactiveMiss cold_miss = detail::ReactiveMiss::none;
+  detail::CacheMiss cold_miss = detail::CacheMiss::none;
   if (!impl_->bound || impl_->store != &mod.impl_->store)
-    cold_miss = detail::ReactiveMiss::cold;
+    cold_miss = detail::CacheMiss::cold;
   else if (impl_->environment != env.cache_id() ||
            impl_->epoch != env.cache_epoch())
-    cold_miss = detail::ReactiveMiss::environment;
+    cold_miss = detail::CacheMiss::environment;
   else if (impl_->args.size() != args.size() ||
            !std::equal(impl_->args.begin(), impl_->args.end(), args.begin()))
-    cold_miss = detail::ReactiveMiss::arguments;
+    cold_miss = detail::CacheMiss::arguments;
 
   const auto invalidation = [&](const Impl::Stage& stage) {
     const detail::QueryData& input = stage.dependencies.inputs;
     const detail::Store& store = mod.impl_->store;
     if (input.whole_revision && input.revision != store.revision)
-      return detail::ReactiveMiss::whole_revision;
+      return detail::CacheMiss::whole_revision;
     if (input.structure &&
         input.structure_revision != store.structure_revision)
-      return detail::ReactiveMiss::structure_revision;
+      return detail::CacheMiss::structure_revision;
     if (input.packages && input.package_dependencies != store.uses)
-      return detail::ReactiveMiss::package_dependencies;
+      return detail::CacheMiss::package_dependencies;
     for (const detail::QueryFnData& dependency : input.dependencies) {
       if (dependency.id >= store.fns.size() ||
           !store.fns[dependency.id].live ||
           store.fns[dependency.id].generation != dependency.generation)
-        return detail::ReactiveMiss::function_generation;
+        return detail::CacheMiss::function_generation;
       if (dependency.content &&
           store.fns[dependency.id].data.revision != dependency.revision)
-        return detail::ReactiveMiss::function_revision;
+        return detail::CacheMiss::function_revision;
     }
     for (const detail::QueryCollectionData& dependency : input.collections) {
       if (!detail::live(store.fns, dependency.function,
                         dependency.generation))
-        return detail::ReactiveMiss::function_generation;
+        return detail::CacheMiss::function_generation;
       if (detail::collection_members(store, dependency.function,
                                      dependency.kind) != dependency.members)
-        return detail::ReactiveMiss::function_shape;
+        return detail::CacheMiss::function_shape;
     }
     for (const detail::QueryOpData& dependency : input.operations) {
       if (!detail::live(store.ops, dependency.id, dependency.generation))
-        return detail::ReactiveMiss::operation_generation;
+        return detail::CacheMiss::operation_generation;
       if (store.ops[dependency.id].data != dependency.data)
-        return detail::ReactiveMiss::operation_revision;
+        return detail::CacheMiss::operation_revision;
     }
     for (const detail::QueryValData& dependency : input.values) {
       if (!detail::live(store.vals, dependency.id, dependency.generation))
-        return detail::ReactiveMiss::value_generation;
+        return detail::CacheMiss::value_generation;
       if (store.vals[dependency.id].data != dependency.data)
-        return detail::ReactiveMiss::value_revision;
+        return detail::CacheMiss::value_revision;
     }
-    return detail::ReactiveMiss::none;
+    return detail::CacheMiss::none;
   };
 
   std::vector<bool> selected(impl_->stages.size(), false);
-  std::vector<detail::ReactiveMiss> misses(
-      impl_->stages.size(), detail::ReactiveMiss::none);
+  std::vector<detail::CacheMiss> misses(
+      impl_->stages.size(), detail::CacheMiss::none);
   std::unordered_set<std::uint32_t> dirty_functions;
   bool dirty_structure = false;
   bool dirty_packages = false;
   for (std::size_t index = 0; index < impl_->stages.size(); ++index) {
     const Impl::Stage& stage = impl_->stages[index];
-    detail::ReactiveMiss miss = cold_miss == detail::ReactiveMiss::none
+    detail::CacheMiss miss = cold_miss == detail::CacheMiss::none
                             ? invalidation(stage)
                             : cold_miss;
-    if (miss == detail::ReactiveMiss::none) {
+    if (miss == detail::CacheMiss::none) {
       const detail::QueryData& input = stage.dependencies.inputs;
       bool upstream = input.whole_revision &&
                       (!dirty_functions.empty() || dirty_structure ||
@@ -5878,10 +5863,10 @@ bool ReactiveSchedule::run(Env& env, Mod& mod,
       for (const detail::QueryValData& dependency : input.values)
         upstream = upstream || dirty_functions.contains(dependency.data.fn);
       if (upstream)
-        miss = detail::ReactiveMiss::upstream;
+        miss = detail::CacheMiss::upstream;
     }
     misses[index] = miss;
-    selected[index] = miss != detail::ReactiveMiss::none;
+    selected[index] = miss != detail::CacheMiss::none;
     if (!selected[index])
       continue;
     for (const std::uint32_t output : stage.dependencies.outputs)
@@ -5900,7 +5885,7 @@ bool ReactiveSchedule::run(Env& env, Mod& mod,
     selected_functions.push_back(impl_->stages[index].function);
   }
   if (report) {
-    report->cold = cold_miss != detail::ReactiveMiss::none;
+    report->cold = cold_miss != detail::CacheMiss::none;
     report->executed_stages = selected_indices.size();
     report->reused_stages = impl_->stages.size() - selected_indices.size();
     for (std::size_t index = 0; index < selected.size(); ++index) {
@@ -5979,22 +5964,8 @@ bool ReactiveSchedule::run(Env& env, Mod& mod,
     for (std::size_t index = 0; index < impl_->stages.size(); ++index) {
       const detail::StageDependencyData& dependencies =
           impl_->stages[index].dependencies;
-      report->stages[index].observed_functions =
-          dependencies.inputs.dependencies.size();
-      report->stages[index].observed_collections =
-          dependencies.inputs.collections.size();
-      report->stages[index].observed_operations =
-          dependencies.inputs.operations.size();
-      report->stages[index].observed_values =
-          dependencies.inputs.values.size();
-      report->stages[index].observed_packages =
-          dependencies.inputs.packages ? 1 : 0;
-      report->stages[index].observed_intrinsics =
-          dependencies.inputs.intrinsics.size();
-      report->stages[index].observed_structure =
-          dependencies.inputs.structure;
-      report->stages[index].observed_whole_mod =
-          dependencies.inputs.whole_revision;
+      report->stages[index].observed =
+          dependency_summary(dependencies.inputs);
       report->stages[index].changed_functions =
           selected[index] ? dependencies.outputs.size() : 0;
     }
