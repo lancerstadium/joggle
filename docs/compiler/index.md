@@ -28,6 +28,7 @@ flowchart LR
 | [Mod system](mods.md) | installed capabilities and external composition |
 | [Execution](execution.md) | transactions, revisions, caching, reactive stages |
 | [Subsystems](subsystems.md) | C++ source ownership and extension seams |
+| [Improvement directions](improvement-directions.md) | measured optimization opportunities and non-claims |
 
 There is one graph and one function language. Joggle does not require a fixed
 ladder of IR dialects or a separate pass-registration system.

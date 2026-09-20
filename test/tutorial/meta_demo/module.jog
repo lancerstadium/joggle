@@ -1,0 +1,29 @@
+mod meta_demo
+use base
+use ir
+
+fn inventory(m: Mod) -> dict {
+  let functions = len(ir.fns(m))
+  let operations = len(ir.ops(m))
+  let calls = len(ir.ops(m, ["call"]))
+  var out: dict = {}
+  out["functions"] = functions
+  out["operations"] = operations
+  out["calls"] = calls
+  return out
+}
+
+fn mark(m: Mod, callee: str) -> bool {
+  var changed = false
+  for op in ir.ops(m, ["call"]) {
+    if ir.callee(op) == callee {
+      changed = ir.set(m, op, "meta_demo.selected", true) || changed
+    }
+  }
+  return changed
+}
+
+fn manifest(m: Mod) -> str {
+  return "functions=" + text(len(ir.fns(m))) +
+         ",calls=" + text(len(ir.ops(m, ["call"]))) + "\n"
+}

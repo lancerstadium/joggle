@@ -47,6 +47,11 @@ several unrelated frameworks.
     <p><a href="language/">Open the language guide →</a></p>
   </section>
   <section class="card">
+    <h3>Build with metaprogramming</h3>
+    <p>Use one typed function model for reflection, graph generation, rewrites, policies, converters, and emitters.</p>
+    <p><a href="metaprogramming/">Open metaprogramming →</a></p>
+  </section>
+  <section class="card">
     <h3>Understand the compiler</h3>
     <p>Trace source text into graph objects, resolution, reactive execution, transactions, and diagnostics.</p>
     <p><a href="compiler/">Open the compiler model →</a></p>

@@ -44,6 +44,23 @@
           url: /compiler/execution/
         - title: Subsystems
           url: /compiler/subsystems/
+        - title: Improvement directions
+          url: /compiler/improvement-directions/
+    - folder: Metaprogramming
+      prefix: /metaprogramming/
+      children:
+        - title: Unified metaprogramming
+          url: /metaprogramming/
+        - title: Reflection
+          url: /metaprogramming/reflection/
+        - title: Graph generation
+          url: /metaprogramming/generation/
+        - title: Transactional rewrites
+          url: /metaprogramming/rewrites/
+        - title: Policies and implementations
+          url: /metaprogramming/policies/
+        - title: Converters and emitters
+          url: /metaprogramming/artifacts/
     - folder: Guides
       prefix: /guides/
       children:
@@ -57,6 +74,12 @@
           url: /guides/import-onnx/
         - title: Emit C
           url: /guides/emit-c/
+        - title: Quantized inference in C
+          url: /guides/quantized-c/
+        - title: Custom analysis and policy
+          url: /guides/custom-analysis/
+        - title: Reactive embedding
+          url: /guides/reactive-embedding/
 - label: API
   items:
     - title: API map

@@ -37,6 +37,38 @@ if(NOT scalar_frontier STREQUAL "[]\n")
     "scalar C documentation example has a frontier:\n${scalar_frontier}")
 endif()
 
+# Metaprogramming documentation: one source mod must support reflection,
+# transactional metadata edits, and string artifact generation.
+joggle_run("metaprogramming documentation mod did not check"
+  COMMAND "${TOOL}" mod check meta_demo
+          -M "${MODULES}" -M "${tutorial_root}")
+joggle_run("metaprogramming inventory query failed"
+  COMMAND "${TOOL}" query meta_demo.inventory
+          "${tutorial_root}/meta_model.jog"
+          -M "${MODULES}" -M "${tutorial_root}"
+  OUTPUT_VARIABLE meta_inventory)
+if(NOT meta_inventory MATCHES
+   "\\{\"calls\": 1, \"functions\": 1, \"operations\": 2\\}")
+  message(FATAL_ERROR
+    "metaprogramming inventory output changed:\n${meta_inventory}")
+endif()
+joggle_run("metaprogramming metadata transform failed"
+  COMMAND "${TOOL}" run meta_demo.mark
+          "${tutorial_root}/meta_model.jog" --arg "\"nn.relu\""
+          -M "${MODULES}" -M "${tutorial_root}"
+  OUTPUT_FILE "${ROOT}/meta-marked.jog")
+joggle_expect("metaprogramming metadata transform did not mark the call"
+  FILE "${ROOT}/meta-marked.jog" MATCHES "\\[meta_demo.selected\\]")
+joggle_run("metaprogramming manifest emission failed"
+  COMMAND "${TOOL}" emit meta_demo.manifest
+          "${tutorial_root}/meta_model.jog"
+          -M "${MODULES}" -M "${tutorial_root}"
+  OUTPUT_VARIABLE meta_manifest)
+if(NOT meta_manifest STREQUAL "functions=1,calls=1\n")
+  message(FATAL_ERROR
+    "metaprogramming manifest output changed:\n${meta_manifest}")
+endif()
+
 # Getting started and transform tutorial: validate, transform, and inspect the
 # exact fixture named by the documentation.
 joggle_run("tutorial input did not check"
