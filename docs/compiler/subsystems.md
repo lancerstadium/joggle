@@ -119,7 +119,7 @@ The core understands structural `Ty`; mods give constructors semantic meaning.
 
 ```jog
 // A mod-defined structural type term; no core enum member is required.
-type packet<Bits: int>
+fn packet<Bits: int>() -> Ty;
 
 fn width<Bits: int>(value: packet<Bits>) -> int {
   return Bits

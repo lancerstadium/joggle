@@ -142,8 +142,8 @@ Relevant output:
 let y = x + 0
 ```
 
-The metadata key is open: the core preserves it without assigning target or
-domain meaning. A later policy can query it through `ir.get`.
+The metadata key is open: the core preserves it without assigning artifact or
+domain meaning. A later policy can query it through `ir.meta`.
 
 ## Fixed points and changed flags
 

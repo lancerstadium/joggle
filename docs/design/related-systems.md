@@ -38,6 +38,10 @@ metaprogramming, graph-scoped organization, and dependency-aware updates.
 | ONNX Runtime | ONNX graph plus execution providers | graph transformers and provider partitioning | production inference sessions | runtime optimization and hardware delegation |
 | Halide | functional imaging algorithm plus separate schedule | scheduling directives and autoschedulers | compiled image/tensor pipelines | algorithm/schedule separation |
 | egg | e-graph and rewrite system | equality saturation, analyses, extraction cost | library rather than deployment stack | extensible rewrite search |
+| OpenXLA/XLA | StableHLO/HLO computations and backend pipelines | built-in analysis/optimization passes and backend code generation | native executable paths for supported architectures | closed linear-algebra operation set and end-to-end optimization |
+| Glow | high-level graph IR lowered to a low-level instruction IR | graph lowering and backend-specific compilation | object code for accelerator backends | typed two-phase neural-network lowering |
+| Triton | blocked programs for GPU kernels | Python kernel language plus compiler analysis | GPU kernels | productive custom-kernel authoring |
+| Tensor Comprehensions | mathematical tensor comprehension DSL | polyhedral JIT compilation and autotuning | specialized CUDA kernels | concise operator definition plus search |
 | Joggle | typed graph handles and graph-scoped `mod` packages | ordinary typed `.jog` functions for query, transform, conversion, and emission | artifact production is supplied by replaceable mods | one extension language across compiler roles |
 
 ## MLIR
@@ -182,6 +186,83 @@ implementation selection. It does not maintain a saturation e-graph or claim
 egg-style global equality search. An e-graph could become a native or external
 analysis/selection component, but that integration must preserve explicit
 ownership and verification boundaries.
+
+## OpenXLA and XLA
+
+The official [XLA architecture](https://openxla.org/xla/architecture) describes
+a compiler that accepts StableHLO, performs target-independent HLO optimization
+and memory analysis, then delegates target-specific optimization and code
+generation to backends. StableHLO supplies a versioned portability layer and HLO
+uses a deliberately selected linear-algebra operation set.
+
+### Relationship to Joggle
+
+XLA is important for generated-code and backend-pipeline comparisons, but it is
+not the closest authoring-model comparison. Its objective is high-performance
+compilation of supported linear algebra to machine instructions. Joggle's core
+objective is a uniform way to author and organize compiler functionality.
+
+- A fair performance study can compare end-to-end compilation or generated
+  execution only where both systems support the same graph and hardware.
+- A fair extension study should distinguish adding an HLO/backend feature from
+  writing a project `mod`; those are different tasks.
+- Joggle does not currently provide XLA-equivalent native code generation,
+  device runtimes, or backend maturity.
+
+## Glow
+
+[Glow](https://arxiv.org/abs/1805.00907) presents graph-lowering compiler
+techniques for neural networks and lowers a high-level dataflow graph into a
+two-phase strongly typed intermediate representation. Its architecture is a
+useful historical comparison for separating high-level neural-network meaning
+from lower-level instruction-oriented compilation.
+
+### Relationship to Joggle
+
+Glow motivates explicit lowering and strong typing, while Joggle asks whether
+representation changes can remain functions and mods inside one extensible
+language. Do not reduce the comparison to “one IR versus two IRs”: Joggle graphs
+can contain different structural vocabularies, and Glow's two levels carry
+deliberate optimization responsibilities. Compare where a new operation,
+lowering, backend rule, and diagnostic must be implemented.
+
+## Triton
+
+[Triton](https://triton-lang.org/) is a language and compiler for parallel
+programming aimed at productive custom DNN kernels on modern GPUs. Its
+programming model represents blocked programs and relies on compiler data-flow
+analysis to schedule work; see the official
+[programming-model introduction](https://triton-lang.org/main/programming-guide/chapter-1/introduction.html).
+
+### Relationship to Joggle
+
+Triton and Joggle operate at different layers. Triton is a candidate kernel
+implementation technology; Joggle is a compiler-extension and organization
+mechanism. A future Joggle mod could select or emit calls to Triton-generated
+kernels without making Triton part of the core. Kernel throughput comparisons
+would evaluate the chosen implementation, not the `mod` system itself.
+
+## Tensor Comprehensions
+
+[Tensor Comprehensions](https://arxiv.org/abs/1802.04730) combines a concise
+mathematical tensor DSL with polyhedral JIT compilation, specialization, a
+compilation cache, and autotuning for CUDA kernels.
+
+### Relationship to Joggle
+
+It is relevant to the “easy operator extension” side of Joggle's motivation and
+to any future JIT discussion. The boundary is explicit:
+
+- Tensor Comprehensions focuses on synthesizing and tuning a kernel from a
+  tensor expression.
+- Joggle's current evaluator executes compiler functions and caches evaluation
+  plans; that is not a machine-code JIT.
+- Calling Joggle “JIT-based” would therefore be inaccurate until a mod or core
+  facility actually generates, links, invalidates, and measures native code.
+
+Any future comparison should separate authoring effort, compiler-function
+update latency, kernel compilation latency, tuning budget, and generated-kernel
+runtime instead of collapsing them into one number.
 
 ## What is actually distinctive in Joggle
 

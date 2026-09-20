@@ -179,8 +179,8 @@ std::span<const joggle::Ty> arguments = parsed.args();
 ```
 
 Use the structured constructor when child terms already exist; do not print and
-reparse them. Target representation does not belong in the semantic tree:
-`sat` owns meaning, while `sat.c` and `sat.vm` own target preparation.
+reparse them. Artifact representation does not belong in a semantic type tree;
+a separate companion mod can own representation preparation.
 
 Continue with [Values and collections](values.md), or see the
 [`sat` mod API](../api/mods/numeric/sat.md).
