@@ -1,5 +1,6 @@
 #include "joggle/joggle.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <set>

@@ -76,6 +76,13 @@
           url: /performance/profiling/
         - title: API shape and cost
           url: /performance/api-design/
+    - folder: Design context
+      prefix: /design/
+      children:
+        - title: Design context
+          url: /design/
+        - title: Related systems
+          url: /design/related-systems/
     - folder: Guides
       prefix: /guides/
       children:
