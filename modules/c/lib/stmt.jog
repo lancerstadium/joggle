@@ -80,9 +80,13 @@ local fn call(
     for i in 1..len(inputs) - 1 {
       access += [inputs[i]]
     }
-    return indent +
-           index(m, inputs[0], access, blob, data_fns, config) + " = " +
-           expr(m, inputs[len(inputs) - 1], blob, data_fns, config) + ";\n"
+    var out = indent +
+              index(m, inputs[0], access, blob, data_fns, config) + " = " +
+              expr(m, inputs[len(inputs) - 1], blob, data_fns, config) + ";\n"
+    if shape_operand(m, outputs[0]) {
+      out += indent + "(void)" + val(outputs[0]) + ";\n"
+    }
+    return out
   }
 
   let target = ir.resolve(m, op)

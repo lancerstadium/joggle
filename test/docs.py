@@ -31,11 +31,24 @@ def main() -> int:
                     f"{document.relative_to(root)}: unpublished local target {target}"
                 )
 
-    guide_index = (docs / "README.md").read_text(encoding="utf-8")
-    for guide in sorted((docs / "guide").glob("[0-9][0-9]-*.md")):
+    guide_index = (docs / "guide" / "index.md").read_text(encoding="utf-8")
+    for guide in sorted((docs / "guide").glob("*.md")):
+        if guide.name == "index.md":
+            continue
         relative = guide.relative_to(docs).as_posix()
-        if relative not in guide_index:
-            failures.append(f"docs/README.md: guide is not indexed: {relative}")
+        if guide.name not in guide_index:
+            failures.append(
+                f"docs/guide/index.md: guide is not indexed: {relative}"
+            )
+
+    for required in (
+        docs / "_layouts" / "default.html",
+        docs / "assets" / "css" / "style.css",
+    ):
+        if not required.exists():
+            failures.append(
+                f"docs: missing site asset: {required.relative_to(docs)}"
+            )
 
     config = (docs / "_config.yml").read_text(encoding="utf-8")
     if "jekyll-relative-links" not in config or "relative_links:" not in config:

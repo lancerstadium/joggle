@@ -1,4 +1,9 @@
-# Modules
+---
+title: Mod system
+description: Package layout, discovery, lifecycle, composition, and extension boundaries.
+---
+
+# Mod system
 
 Modules are Joggle's only extension unit. They define types, semantics,
 analyses, transformations, codecs, and artifact generation with the same
@@ -186,5 +191,5 @@ A module is ready to share when:
 - claims about numerical correctness or speed are backed by stored inputs,
   reference outputs, commands, and measurements.
 
-See [the guide](../guide/README.md) for guided examples and
+See [Write a mod](../guide/write-mod.md) for a guided example and
 [design.md](design.md) for the invariants behind these rules.

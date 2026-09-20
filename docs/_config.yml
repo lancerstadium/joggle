@@ -1,12 +1,15 @@
 title: Joggle
-description: Typed compiler extensions across semantics, transformation, and emission
-theme: minima
+description: One typed language for model semantics, compiler transformations, and artifact emission.
 markdown: kramdown
 repository: lancerstadium/joggle
+permalink: pretty
 plugins:
   - jekyll-relative-links
 relative_links:
   enabled: true
   collections: true
-exclude:
-  - measure-prepare.sh
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default

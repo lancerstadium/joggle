@@ -69,6 +69,22 @@ local fn dimension(
   return out
 }
 
+local fn shape_operand(m: Mod, value: Val) -> bool {
+  for user in ir.users(value) {
+    if ir.kind(user) == "call" {
+      let target = ir.target(m, user)
+      let name = ir.callee(user)
+      let inputs = ir.args(user)
+      if (target == "tensor.make" || target == "tensor.view" ||
+          name == "tensor.make" || name == "tensor.view") &&
+         len(inputs) == 2 && inputs[1] == value {
+        return true
+      }
+    }
+  }
+  return false
+}
+
 local fn tensor_new(
   m: Mod, op: Op, depth: int, blob: str, data_fns: list<Fn>, config: dict,
   direct: list<str>, results: list<str>
@@ -100,6 +116,11 @@ local fn tensor_new(
            " i = 0; i < " + text(n) +
            "; ++i) " + val(output) + "[i] = " +
            expr(m, inputs[0], blob, data_fns, config) + ";\n"
+  }
+  // Shape tensors are IR operands even when storage planning folds their
+  // capacity into metadata. Make the intentional ABI erasure visible to C.
+  if shape_operand(m, output) {
+    out += indent + "(void)" + val(output) + ";\n"
   }
   return out
 }
@@ -233,4 +254,3 @@ local fn tensor_constant(
          label(output) + ", " + text(bytes) + ");\n"
   return out
 }
-

@@ -84,7 +84,7 @@ endif()
 
 joggle_run("${NAME} C did not compile"
   COMMAND "${CC}" -std=c11 -O2 -Wall -Wextra -Werror -pedantic-errors
-          "${source}" "${HARNESS}" -o "${program}")
+          "${source}" "${HARNESS}" -o "${program}" ${LINK_LIBRARIES})
 
 joggle_run("${NAME} C returned the wrong result"
   COMMAND "${program}")

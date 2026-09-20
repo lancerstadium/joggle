@@ -1,6 +1,7 @@
 /build*/
 /.cache/
 /.venv-fixtures/
+/.research/
 /tmp/
 .DS_Store
 __pycache__/

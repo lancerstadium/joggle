@@ -212,17 +212,17 @@ docs/            guides, reference material, and implementation internals
 ```
 
 Generated content belongs in a configured `build*` directory and is not
-tracked. Project code, project documentation, and paper-planning material have
-separate entry points.
+tracked. Project code, public documentation, and the paper manuscript remain
+separate.
 
 ## Documentation
 
-- [Documentation home](docs/README.md)
-- [Task-oriented guides](docs/guide/README.md)
+- [Documentation site](https://lancerstadium.github.io/joggle/)
+- [Documentation source](docs/index.md)
+- [Task-oriented guides](docs/guide/index.md)
 - [Language reference](docs/reference/language.md)
 - [Bundled `mod` catalogue](docs/reference/module-catalogue.md)
 - [Internal design](docs/internals/design.md)
-- [Contributor roadmap](docs/internals/roadmap.md)
 
 The documentation tree is validated by `test/docs.py` and deployed from
 `docs/` by the GitHub Pages workflow. Code examples in the guides should map to

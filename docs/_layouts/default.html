@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#087f8c">
+    <meta name="description" content="{{ page.description | default: site.description | escape }}">
+    <title>{% if page.url == "/" %}Joggle{% else %}{{ page.title | default: "Joggle" | escape }}{% endif %}</title>
+    <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="{{ '/' | relative_url }}" aria-label="Joggle documentation home">
+        <span class="brand-mark" aria-hidden="true">J</span>
+        <span>Joggle</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="{{ '/guide/' | relative_url }}">Get started</a>
+        <a href="{{ '/internals/design/' | relative_url }}">Concepts</a>
+        <a href="{{ '/reference/language/' | relative_url }}">Reference</a>
+        <a href="https://github.com/{{ site.repository }}">GitHub</a>
+      </nav>
+    </header>
+
+    <main class="page-shell">
+      <article class="content">
+        {{ content }}
+      </article>
+    </main>
+
+    <footer>
+      <span>Joggle documentation</span>
+      <span>Implemented behavior, checked examples, explicit boundaries.</span>
+    </footer>
+  </body>
+</html>

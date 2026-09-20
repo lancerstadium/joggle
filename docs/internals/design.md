@@ -1,4 +1,13 @@
-# Design
+---
+title: Architecture
+description: Joggle's object model, execution boundaries, dependency tracking, and invariants.
+---
+
+# Architecture
+
+This page is for readers who have completed [Get started](../guide/index.md)
+and need to change the compiler or reason about its guarantees. For package
+authoring, read [Write a mod](../guide/write-mod.md) first.
 
 ## Purpose
 
@@ -14,8 +23,8 @@ tensor body, a loop transform, a storage decision, and target preparation are
 different levels of detail in one program, not separate dialects joined by a
 mandatory pipeline.
 
-Joggle is pre-1.0 research software. This document defines the stable design;
-current coverage and unfinished work are in [roadmap.md](roadmap.md).
+Joggle is pre-1.0 research software. This document defines the implemented
+design and its explicit boundaries.
 
 ## System model
 

@@ -1,4 +1,13 @@
-# Bundled module catalogue
+---
+title: Mod catalogue
+description: Responsibilities and public surfaces of Joggle's bundled packages.
+---
+
+# Bundled mod catalogue
+
+This page groups installed packages by responsibility. Use
+`joggle mod info NAME -M build/modules` as the authoritative declaration list
+for the exact build on disk.
 
 ### `base`
 
