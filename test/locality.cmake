@@ -160,7 +160,7 @@ joggle_run("scalar promotion is not idempotent"
           "${scalarized}" "${scalarized_stable}")
 file(READ "${scalarized}" scalarized_text)
 if(NOT scalarized_text MATCHES "var acc =" OR
-   scalarized_text MATCHES "spatial\.nn\.conv2d|edge\.nn\.conv2d")
+   scalarized_text MATCHES "spatial[.]nn[.]conv2d|edge[.]nn[.]conv2d")
   message(FATAL_ERROR
           "scalar promotion did not remain a structural pass:\n${scalarized_text}")
 endif()
