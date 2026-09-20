@@ -71,8 +71,8 @@ several unrelated frameworks.
 | write or read `.jog` | [Language map](language/index.md) | [Functions](language/functions.md), [types](language/types.md), and [values](language/values.md) |
 | change an existing graph | [Transform a program](guides/transform.md) | [`ir`](api/mods/core/ir.md) and [`opt`](api/mods/transforms/opt.md) |
 | build an out-of-tree package | [Create a mod](guides/create-mod.md) | [Mod organization](compiler/mods.md) and [external examples](examples/index.md) |
-| use a bundled format example | [Import ONNX](guides/import-onnx.md) | [`onnx`](api/mods/frontends/onnx.md) and [`onnx.nn`](api/mods/frontends/onnx-nn.md) |
-| study an artifact-producing mod | [Emit C](guides/emit-c.md) | [`c`](api/mods/targets/c.md) as one replaceable example |
+| add a representation converter | [Converters and emitters](metaprogramming/artifacts.md) | [Mod organization](compiler/mods.md) |
+| add an artifact-producing mod | [Converters and emitters](metaprogramming/artifacts.md) | [Built-in mod case studies](api/mods/index.md) |
 | embed Joggle in a tool | [C++ API](api/cpp.md) | [Native mod ABI](api/native.md) |
 | contribute to the implementation | [Subsystems](compiler/subsystems.md) | [Contributing](contributing/index.md) and [testing](contributing/testing.md) |
 
@@ -80,8 +80,8 @@ several unrelated frameworks.
 
 The core parses and prints the language, stores and verifies the graph, resolves
 typed functions, loads mods, evaluates compiler functions, and tracks edits and
-dependencies. Names such as `tensor`, `onnx`, `c`, or `vm` are not privileged
-branches in that core. They are installed packages that exercise the same
+dependencies. Domain, format, and artifact names are not privileged branches in
+that core. They are installed packages that exercise the same
 loading, typing, calling, and value-return mechanisms as an external project
 mod.
 

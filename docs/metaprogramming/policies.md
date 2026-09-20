@@ -173,7 +173,7 @@ Each layer has a distinct failure:
 ## Why policy lives outside official mechanisms
 
 Different projects/devices may prefer different tile sizes, kernel libraries,
-memory tradeoffs, or costs. Encoding one choice in `tile`, `opt`, or `c` makes
+memory tradeoffs, or costs. Encoding one choice in a mechanism mod makes
 the correctness mechanism hard to reuse and compare.
 
 Keep policy in an external mod when it is:

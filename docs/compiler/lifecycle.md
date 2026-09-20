@@ -164,7 +164,8 @@ sequenceDiagram
 
 `print(mod)` reconstructs canonical `.jog` from the graph. This is how commands
 make intermediate state visible. An emitter is different: it calls a selected
-artifact function such as `c.source` or `vm.image` and returns its string/bytes.
+artifact function such as `project.source` or `project.image` and returns its
+string/bytes.
 
 Canonical graph printing must round-trip. Target artifacts follow the target
 mod's contract and may require explicit preparation first.

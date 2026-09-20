@@ -121,12 +121,12 @@ whole function, collection, or structure.
 Missing one dependency creates stale compiler output—a correctness failure. A
 conservative rerun is preferable to unsound reuse.
 
-## 4. Incremental C artifacts
+## 4. Incremental artifacts
 
 ### Implemented foundation
 
-`c` exposes preamble, declaration, definition, body chunk, nested partition,
-storage, and tail functions.
+Artifact mods can expose preamble, declaration, definition, body chunk, nested
+partition, storage, and tail functions as independent read-only calls.
 
 ### Candidate integration
 

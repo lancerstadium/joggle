@@ -100,27 +100,38 @@ rather than being guessed.
 
 ## Representation conversion
 
-For ONNX:
-
-```console
-$ joggle run onnx.nn.infer decoded.jog -M build/modules > inferred.jog
-$ joggle run onnx.nn.convert inferred.jog -M build/modules > semantic.jog
-```
-
-Input call:
+A project converter can replace a source-owned operation with a shared semantic
+operation while preserving its type:
 
 ```jog
-let y: tensor<f32, [1, 4]> = onnx.Relu(x)
+mod project_convert
+use ir
+
+fn apply(m: Mod) -> bool {
+  var changed = false
+  for op in ir.ops(m, ["call"]) {
+    if ir.callee(op) == "source.absolute" {
+      changed = ir.rename(m, op, "semantic.absolute") || changed
+    }
+  }
+  return changed
+}
 ```
 
-Output call:
+Input:
 
 ```jog
-let y = nn.relu(x)
+let y: i32 = source.absolute(x)
 ```
 
-The converter changes representation ownership while preserving semantics and
-type/shape information.
+Output:
+
+```jog
+let y: i32 = semantic.absolute(x)
+```
+
+The converter changes representation ownership explicitly. A complete rule
+also checks source attributes and the destination signature before retargeting.
 
 ## Capability before emission
 
@@ -135,45 +146,36 @@ fn source(m: Mod) -> str;
 The consumer can require an empty frontier before producing an artifact.
 
 ```console
-$ joggle query c.frontier planned.jog -M build/modules
+$ joggle query project_artifact.frontier prepared.jog \
+    -M build/modules -M project-mods
 []
-$ joggle emit c.source planned.jog -M build/modules > model.c
+$ joggle emit project_artifact.source prepared.jog \
+    -M build/modules -M project-mods > artifact.txt
 ```
 
-## C artifact family
+## Design an artifact family
 
-The `c` mod illustrates meta-emission at several granularities:
+Expose structured and textual views at useful granularities:
 
 | Function | Output |
 | --- | --- |
-| `c.api` | structured ABI descriptors |
-| `c.header` | public C header |
-| `c.source` | complete translation unit |
-| `c.data` | constant payload bytes |
-| `c.preamble` | includes and shared declarations |
-| `c.declaration` | one public declaration |
-| `c.definition` | one complete function definition |
+| `project_artifact.api` | structured interface descriptors |
+| `project_artifact.source` | complete text artifact |
+| `project_artifact.data` | constant payload bytes |
+| `project_artifact.preamble` | shared declarations |
+| `project_artifact.declaration` | one public declaration |
+| `project_artifact.definition` | one complete function definition |
 | chunk/partition functions | function/nested structural pieces |
 
-All are ordinary functions implemented largely in `.jog` fragments. The core
-does not contain a C operator switch.
-
-## VM artifact family
-
-```console
-$ joggle run vm.prepare model.jog -M build/modules > prepared.jog
-$ joggle emit vm.image prepared.jog -M build/modules > model.vm
-```
-
-`vm.image` creates a deterministic text image. Native `vm.run` accepts image,
-entry, and input bytes and returns output bytes plus a deterministic step count.
+All are ordinary functions. The core does not contain branches for a particular
+artifact name or format.
 
 ## Byte artifacts and external data
 
 Use `bytes` for payloads that should not be represented as source strings.
-`c.data` can separate large constants from generated source. The same blob name
-must be supplied consistently to API/header/source calls when an overload
-requires external data.
+`project_artifact.data` can separate large constants from generated text. The
+same blob identifier must be supplied consistently to interface/source calls
+when an overload uses external data.
 
 ## Read-only emission
 
@@ -181,8 +183,8 @@ Preparation may mutate; emission should not. This gives a clean boundary:
 
 ```mermaid
 flowchart LR
-  G[semantic graph] --> P[target prepare: mutating]
-  P --> M[memory plan: mutating]
+  G[input graph] --> P[artifact prepare: mutating]
+  P --> M[representation plan: mutating]
   M --> F[frontier: query]
   F --> E[artifact functions: read-only]
 ```
@@ -207,11 +209,10 @@ changed object file.”
 | nonempty frontier | graph not representable | prepare/expand/add implementation |
 | emitter mutates graph | hidden stage boundary | move edit into preparation |
 | artifact ABI mismatch | different graph/config used | derive all artifacts together |
-| byte payload mismatch | offset/layout/blob policy disagreement | inspect `c.api` and data config |
+| byte payload mismatch | offset/layout/blob policy disagreement | inspect structured API and data config |
 
-## End-to-end examples
+## Bundled mod case studies
 
-- [Import ONNX](../guides/import-onnx.md)
-- [Emit C](../guides/emit-c.md)
-- [Quantized inference in C](../guides/quantized-c.md)
-- [External C kernels](../examples/edge.md)
+Concrete format and artifact implementations live in the
+[built-in mod catalogue](../api/mods/index.md). They demonstrate this protocol;
+they do not add special artifact behavior to the core.

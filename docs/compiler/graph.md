@@ -123,7 +123,7 @@ renaming a value does not change its def-use relation.
 
 Functions, operations, and values carry open key/value dictionaries. The core
 stores metadata and tracks its revisions; mods define meanings such as
-`entry`, `role`, `c`, `mem.slot`, or project-specific policy annotations.
+`entry`, `role`, `artifact`, `storage.slot`, or project-specific annotations.
 
 Use namespaced keys for external policy to avoid collisions:
 

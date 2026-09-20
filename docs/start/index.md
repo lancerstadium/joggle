@@ -22,7 +22,7 @@ mods are copied to `build/modules`.
 
 | Goal | Configure option | Notes |
 | --- | --- | --- |
-| core, source mods, C target | default | offline, smallest dependency set |
+| core and bundled source mods | default | offline, smallest dependency set |
 | ONNX decoding | `-DJOGGLE_BUILD_ONNX=ON` | requires Protobuf |
 | TFLite decoding | `-DJOGGLE_BUILD_TFLITE=ON` | requires FlatBuffers |
 | evaluator counters | `-DJOGGLE_EVAL_COUNTERS=ON` | profiling build; adds instrumentation |
@@ -36,9 +36,9 @@ cmake -S . -B build \
 cmake --build build -j
 ```
 
-Do not enable optional frontends merely to use their semantic counterparts.
-The `tensor`, `nn`, `opt`, `mem`, `c`, and VM source APIs are independent of a
-particular model file decoder.
+Do not enable an optional format decoder merely to use unrelated source mods.
+Format, semantics, analysis, transformation, and artifact packages load through
+independent dependency edges.
 
 ## Read the program
 

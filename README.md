@@ -155,8 +155,8 @@ The current distribution groups them as follows:
 | Semantics | `tensor`, `nn`, `math`, `quant` | typed operator contracts |
 | Analysis | `stat`, `bounds` | reusable evidence without hidden mutation |
 | Transformation | `opt`, `tile`, `mem` | selection, loop edits, storage planning |
-| Frontend | `onnx`, `onnx.nn`, `tflite`, `tflite.nn` | explicit import and semantic conversion |
-| Artifact examples | `c`, `vm` | replaceable preparation and serialization examples |
+| Format examples | bundled decoder and semantic-bridge mods | explicit import and semantic conversion |
+| Artifact examples | bundled serializer and executor mods | replaceable preparation and serialization |
 
 External source mods use the same language and search mechanism. The executable
 examples cover [cost policy](docs/examples/cost.md),
