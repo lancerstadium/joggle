@@ -38,7 +38,7 @@ metaprogramming, graph-scoped organization, and dependency-aware updates.
 | ONNX Runtime | ONNX graph plus execution providers | graph transformers and provider partitioning | production inference sessions | runtime optimization and hardware delegation |
 | Halide | functional imaging algorithm plus separate schedule | scheduling directives and autoschedulers | compiled image/tensor pipelines | algorithm/schedule separation |
 | egg | e-graph and rewrite system | equality saturation, analyses, extraction cost | library rather than deployment stack | extensible rewrite search |
-| Joggle | typed graph handles and graph-scoped `mod` packages | ordinary typed `.jog` functions for query, transform, conversion, and emission | explicit C/VM preparation and emission | one extension language across compiler roles |
+| Joggle | typed graph handles and graph-scoped `mod` packages | ordinary typed `.jog` functions for query, transform, conversion, and emission | artifact production is supplied by replaceable mods | one extension language across compiler roles |
 
 ## MLIR
 
@@ -120,8 +120,9 @@ The useful comparison is developer control:
 - IREE exposes a production-oriented staged compiler built on MLIR.
 - Joggle keeps preparation functions explicitly named in the user-selected
   sequence and makes the resulting mod printable between stages.
-- Joggle's C and VM paths are evidence that emitters share the same function/mod
-  mechanism; they are not evidence of IREE-equivalent target coverage.
+- Joggle's bundled artifact mods demonstrate that emitters share the same
+  function/mod mechanism; they are not part of the core and are not evidence of
+  IREE-equivalent target coverage.
 
 ## ONNX Runtime
 

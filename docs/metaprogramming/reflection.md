@@ -173,7 +173,7 @@ and which dependency category caused a miss.
 - produce stage health reports (`unresolved`, `untyped`, counts);
 - collect candidates for a transform;
 - inspect source-format metadata during conversion;
-- derive C/VM artifacts;
+- derive project-defined reports or artifacts;
 - compute costs with caller-provided policies;
 - record fine-grained dependencies for reactive execution.
 

@@ -47,9 +47,9 @@ Internal records should remain typed and private because they are hot,
 mutation-heavy implementation state. Public observations should be `Attr`
 with a documented schema because they are optional, open, and serialized.
 
-## Public shape
+## Current public shape
 
-The target should have one overload family per operation, not a Cartesian
+The implemented API has one overload family per operation, not a Cartesian
 product of report/args/timing combinations:
 
 ```cpp
@@ -67,6 +67,26 @@ bool ReactiveSchedule::run(Env&, Mod&,
 
 Convenience overloads are justified only when they preserve one obvious
 parameter order and do not duplicate implementation.
+
+## Why three small records remain
+
+The C++ surface still has `Loc`, `Diag`, and `Source`. They are not new compiler
+entities parallel to `Attr` or graph handles:
+
+| Record | Why it remains typed | Why it is not a general extension point |
+|---|---|---|
+| `Loc` | diagnostics need a compact file/line/column contract | no graph identity or evaluator state |
+| `Diag` | callers need severity, message, and location without parsing text | fixed error transport only |
+| `Source` | multi-file parsing needs text paired with a stable filename view | parse input only |
+
+Turning these into dictionaries would weaken the basic embedding API and add
+string-key lookup to every parse/diagnostic consumer. Conversely, adding a
+public struct for each cache miss, stage timer, backend option, or mod-specific
+concept would recreate the inconsistency this boundary removes.
+
+The rule is therefore semantic, not cosmetic: retain a type when it is a small,
+stable core contract; use `Attr` for open serializable data; use graph handles
+for live identity; keep hot implementation records private.
 
 ## Schema principles
 

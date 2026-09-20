@@ -26,7 +26,7 @@ flowchart LR
   B --> C[Analyze]
   C --> D[Transform]
   D --> E[Convert]
-  E --> F[Emit or execute]
+  E --> F[Produce a typed result]
   M[.jog mods] -. define and extend .-> B
   M -. define and extend .-> C
   M -. define and extend .-> D
@@ -71,24 +71,27 @@ several unrelated frameworks.
 | write or read `.jog` | [Language map](language/index.md) | [Functions](language/functions.md), [types](language/types.md), and [values](language/values.md) |
 | change an existing graph | [Transform a program](guides/transform.md) | [`ir`](api/mods/core/ir.md) and [`opt`](api/mods/transforms/opt.md) |
 | build an out-of-tree package | [Create a mod](guides/create-mod.md) | [Mod organization](compiler/mods.md) and [external examples](examples/index.md) |
-| import a model | [Import ONNX](guides/import-onnx.md) | [`onnx`](api/mods/frontends/onnx.md) and [`onnx.nn`](api/mods/frontends/onnx-nn.md) |
-| generate deployable source | [Emit C](guides/emit-c.md) | [`c`](api/mods/targets/c.md) and [`mem`](api/mods/transforms/mem.md) |
+| use a bundled format example | [Import ONNX](guides/import-onnx.md) | [`onnx`](api/mods/frontends/onnx.md) and [`onnx.nn`](api/mods/frontends/onnx-nn.md) |
+| study an artifact-producing mod | [Emit C](guides/emit-c.md) | [`c`](api/mods/targets/c.md) as one replaceable example |
 | embed Joggle in a tool | [C++ API](api/cpp.md) | [Native mod ABI](api/native.md) |
 | contribute to the implementation | [Subsystems](compiler/subsystems.md) | [Contributing](contributing/index.md) and [testing](contributing/testing.md) |
 
-## A complete command is explicit
+## The core is smaller than the installed catalogue
 
-```console
-$ joggle check model.jog -M modules
-$ joggle run opt.fold model.jog -M modules > folded.jog
-$ joggle emit c.source folded.jog -M modules > model.c
-```
+The core parses and prints the language, stores and verifies the graph, resolves
+typed functions, loads mods, evaluates compiler functions, and tracks edits and
+dependencies. Names such as `tensor`, `onnx`, `c`, or `vm` are not privileged
+branches in that core. They are installed packages that exercise the same
+loading, typing, calling, and value-return mechanisms as an external project
+mod.
 
-The three commands answer three different questions:
-
-1. `check` asks whether source, names, types, calls, and graph structure are valid.
-2. `run` invokes a compiler function and writes the resulting graph.
-3. `emit` invokes an artifact-producing function and writes its return value.
+| Core capability | A mod may supply |
+|---|---|
+| typed functions and calls | semantics, analysis, policy, conversion, emission |
+| graph handles and verified edits | a project-specific transform |
+| `Attr` values | configuration, reports, or artifact bytes/text |
+| dependency observation | reusable query or reactive stage |
+| package loading | a bundled or out-of-tree capability |
 
 The guides never require reading the test suite to discover missing steps. Tests
 mirror the published paths for maintainers; the documentation itself contains

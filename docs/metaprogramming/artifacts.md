@@ -1,6 +1,6 @@
 ---
 title: Converters and emitters
-description: Use typed meta-functions to cross representation boundaries and produce inspectable reports, source, headers, data blobs, and VM images.
+description: Use typed meta-functions to cross representation boundaries and produce inspectable project-defined reports or artifacts.
 ---
 
 # Converters and emitters

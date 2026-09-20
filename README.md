@@ -8,7 +8,7 @@
 <h1 align="center">Joggle</h1>
 
 <p align="center">
-  A typed, inspectable compiler workbench for model optimization and deployment.
+  A typed, inspectable workbench for building programmable compilers.
 </p>
 
 <p align="center">
@@ -95,8 +95,8 @@ flowchart LR
   T --> B
   B --> C[Convert representation]
   C --> B
-  B --> E[Emit inspectable artifact]
-  E --> O[C11 or VM image]
+  B --> E[Call an artifact-producing function]
+  E --> O[Serializable Attr result]
 ```
 
 ## Try it
@@ -134,16 +134,20 @@ source, command, output, and state change at every step.
 | Compiler functions | query, transformation, conversion, emission | a mandatory fixed pipeline |
 | Mods | API and dependency boundaries | process-global registration |
 | Evaluator | typed execution and memoized plans | mutation outside transactions |
-| Artifact mods | preparation and serialization | implicit lowering during output |
+| Optional artifact mods | project-defined preparation and serialization | implicit lowering during output |
 
 The public C++ vocabulary is deliberately small. `Mod`, `Fn`, `Blk`, `Op`,
 `Val`, and `Ty` are stable graph identities; `Attr` carries serializable values,
 configuration, reports, and profiles. Internal evaluator counters and cache
 records do not leak into the public API.
 
-## Built-in and external mods
+## Core mechanism versus installed mods
 
-Bundled mods form explicit layers rather than one monolithic optimizer:
+Joggle is not a C compiler, VM, ONNX compiler, or neural-network operator set.
+Those capabilities are mods installed on the core mechanism. Bundled mods make
+the extension model executable and testable, but none defines the architecture.
+
+The current distribution groups them as follows:
 
 | Group | Examples | Role |
 |---|---|---|
@@ -152,7 +156,7 @@ Bundled mods form explicit layers rather than one monolithic optimizer:
 | Analysis | `stat`, `bounds` | reusable evidence without hidden mutation |
 | Transformation | `opt`, `tile`, `mem` | selection, loop edits, storage planning |
 | Frontend | `onnx`, `onnx.nn`, `tflite`, `tflite.nn` | explicit import and semantic conversion |
-| Target | `c`, `vm` | explicit preparation and artifact emission |
+| Artifact examples | `c`, `vm` | replaceable preparation and serialization examples |
 
 External source mods use the same language and search mechanism. The executable
 examples cover [cost policy](docs/examples/cost.md),

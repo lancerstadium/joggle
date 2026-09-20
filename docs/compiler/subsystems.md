@@ -41,6 +41,30 @@ flowchart TD
 Arrows mean “uses,” not ownership. The public header is the stable embedding
 surface; `src/detail.h`, syntax nodes, and evaluator internals are not public.
 
+## Core mechanism versus mod knowledge
+
+The quickest placement test is whether the behavior can be expressed as a
+typed compiler function over the existing graph API:
+
+```jog
+mod project_policy
+use ir
+
+fn apply(m: Mod) -> bool {
+  var changed = false
+  for op in ir.ops(m, ["call"]) {
+    if ir.callee(op) == "project.special" {
+      changed = ir.set(m, op, "project.selected", true) || changed
+    }
+  }
+  return changed
+}
+```
+
+This belongs in a mod: its name, rule, and metadata are project knowledge. The
+core becomes involved only if the function needs a graph edit that cannot be
+composed safely from existing primitives.
+
 ## Lexer and parser
 
 `lex.cpp` converts source bytes to location-carrying tokens. `syntax.h` and the
@@ -66,6 +90,25 @@ structured block invariants, revision tracking, and transaction rollback.
 
 Read [Store, handles, and edits](storage.md) before adding an edit primitive.
 
+A C++ client must treat handles as checked identities, not owning pointers:
+
+```cpp
+std::vector<joggle::Op> candidates;
+for (joggle::Op op : mod.ops()) {
+  if (op.kind() == joggle::Op::Kind::call)
+    candidates.push_back(op);
+}
+
+for (joggle::Op op : candidates) {
+  if (!op.valid())
+    continue;  // an earlier edit may have erased or replaced it
+  mod.set(op, "project.candidate", true);
+}
+```
+
+`valid()` checks store identity, generation, and liveness. A mutation may make a
+previous handle stale even when another object later reuses its numeric slot.
+
 ## Types and verification
 
 `type.cpp` performs structural type matching, generic binding, specificity, and
@@ -73,6 +116,18 @@ related resolution work. `verify.cpp` validates complete graph invariants.
 
 Do not add a C++ type enum for a mod-defined type such as `tensor` or `sat`.
 The core understands structural `Ty`; mods give constructors semantic meaning.
+
+```jog
+// A mod-defined structural type term; no core enum member is required.
+type packet<Bits: int>
+
+fn width<Bits: int>(value: packet<Bits>) -> int {
+  return Bits
+}
+```
+
+`packet<...>` enters through ordinary type syntax and resolution, not a new C++
+switch branch.
 
 Read [Resolution and typing](resolution.md) for the public behavior.
 
@@ -85,6 +140,18 @@ coordinates mutation transactions, and implements reactive schedules.
 It must not encode a preferred compiler pipeline. A new optimization belongs in
 a mod unless it improves execution of all compiler functions without changing
 their semantics.
+
+The public execution boundary stays compact:
+
+```cpp
+joggle::Attr report;
+joggle::Attr profile;
+bool ok = joggle::run(env, "project.apply", mod, {}, &report, &profile);
+```
+
+Typed evaluator counters remain in `src/detail.h`; only their serializable
+projection crosses into `Attr`. This avoids one public struct per internal
+profiling feature.
 
 Read [Execution and updates](execution.md) before changing caching or plans.
 
@@ -130,7 +197,7 @@ only inside `tool/`, embedded users cannot reproduce it.
 | write an analysis or policy | source mod |
 | add a reusable structural edit | `Mod` API + `ir` binding + tests |
 | decode binary data | optional native mod plus source declarations |
-| represent a target ABI | target mod |
+| represent an artifact format or ABI | artifact mod |
 | add syntax | lexer/parser/printer/verifier and round-trip tests together |
 
 ## Adding a native mod
@@ -147,6 +214,21 @@ primitive whose implementation cannot be expressed in `.jog`. It consists of:
 Do not give native code untracked access to internal store data. Use only the
 published ABI and report errors through its diagnostic path.
 
+The source declaration remains the typed contract even when implementation is
+native:
+
+```jog
+[native]
+fn decode(data: bytes) -> str;
+
+fn read(data: bytes) -> str {
+  return decode(data)
+}
+```
+
+Policy around `decode` can stay in `.jog`; the shared library should implement
+only the host primitive.
+
 ## Adding a graph primitive
 
 Use this stricter checklist before editing the core:
@@ -158,6 +240,21 @@ Use this stricter checklist before editing the core:
 5. cover success, foreign handles, stale handles, malformed structure, and
    rollback;
 6. document before/after semantics and batch behavior.
+
+The full vertical slice is:
+
+```text
+public Mod method
+  → store validation and mutation
+  → transaction journal and revision update
+  → ir native binding
+  → typed ir declaration
+  → source-level example
+  → unit + rollback + tutorial coverage
+```
+
+Missing any link creates an API that is either unsafe, unreachable to mod
+authors, or undocumented.
 
 ## Reviewing a subsystem change
 

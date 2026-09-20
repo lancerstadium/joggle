@@ -15,7 +15,7 @@ flowchart LR
     P --> G[Mod graph]
     G --> Q[query → Attr]
     G --> R[run → revised Mod]
-    G --> E[emit → text or bytes]
+    G --> E[compiler function → Attr value]
 ```
 
 | Topic | Boundary |
@@ -42,7 +42,7 @@ ladder of IR dialects or a separate pass-registration system.
 | core developer | lifecycle → graph → resolution → store → execution → subsystems |
 | embedding developer | lifecycle → C++ API → execution → diagnostics |
 | frontend developer | mod system → resolution → frontend/bridge API pages |
-| target developer | compiler functions → execution → target API → native ABI |
+| artifact-mod developer | compiler functions → execution → relevant mod API → native ABI when needed |
 
 ## Architectural rules
 
@@ -70,8 +70,8 @@ flowchart TB
     S[semantics]
     A[analysis]
     X[transform]
-    F[frontend bridge]
-    R[target representation]
+    F[format bridge]
+    R[artifact policy]
   end
   L --> F
   P --> G
