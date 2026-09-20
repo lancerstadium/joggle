@@ -86,7 +86,7 @@ fn nonzero<E: Ty, S: list<int>, R: int>(
 ) -> tensor<i64, [R, _]>;
 ```
 
-The dynamic axis is honest semantic information; bounded allocation requires a
+The dynamic axis is explicit semantic information; bounded allocation requires a
 later proof/capacity, not a guessed fixed shape.
 
 ## Implementation boundary
@@ -123,8 +123,8 @@ $ joggle query opt.untyped checked.jog -M build/modules
 
 The `linear` result has shape `[1, 3]`: `1` comes from the batch axis of `x`,
 and `3` from the output axis of `weight`. `softmax(..., 1, 1.0)` normalizes the
-last axis with unit beta and preserves shape. The empty query confirms closed types; it does
-not claim target support or numerical accuracy.
+last axis with unit beta and preserves shape. The empty query confirms closed
+types; artifact-mod coverage and numerical accuracy are separate checks.
 
 ## Choosing between `nn` and `tensor`
 

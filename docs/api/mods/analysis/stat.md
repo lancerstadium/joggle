@@ -94,7 +94,7 @@ does not estimate runtime.
 ## Mechanism and limits
 
 The measure callback is invoked read-only for each structurally visited
-operation. It must not mutate the graph. `stat` adds integers; it does not claim
+operation. It must not mutate the graph. `stat` adds integers; it does not assign
 the unit predicts latency. Calibration and validation belong to the caller.
 
 ```mermaid
@@ -140,7 +140,7 @@ tensor shapes and storage behavior rather than count every value equally.
 | callback does not resolve | signature is incompatible | accept `Op` and optional `Attr` |
 | transaction/mutation diagnostic | callback edited the graph | keep measurement read-only |
 | total overflows intended unit | scale or unit too large | select a safer unit/model |
-| plausible but inaccurate total | proxy lacks calibration | validate and report its boundary |
+| plausible but inaccurate total | proxy lacks calibration | calibrate against the named unit |
 
 See the complete [cost-policy example](../../../examples/cost.md), including
 its package source, model input, commands, and output interpretation.

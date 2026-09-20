@@ -10,8 +10,8 @@ and activation are expressed as one visible body, then selected only when an
 explicit resource policy permits it.
 
 > [!NOTE]
-> “Compact” describes the intended intermediate-storage tradeoff. It is not a
-> universal performance claim. Validate latency and memory on the target.
+> “Compact” names an intermediate-storage policy. Measure latency and memory on
+> the selected target separately.
 
 ## The semantic boundary
 

@@ -10,10 +10,9 @@ scope. This page separates compiler infrastructure, model compilation, runtime
 deployment, scheduling, and rewriting so that similarities do not become false
 equivalences.
 
-> [!WARNING]
-> This is an architectural comparison, not an experimental result. It does not
-> establish that Joggle is faster, easier, or more scalable. Those statements
-> require controlled measurements with matched tasks and versions.
+> [!NOTE]
+> This page compares architecture and extension boundaries. Quantitative results
+> belong to matched tasks, versions, targets, and workloads.
 
 ## Comparison dimensions
 
@@ -68,11 +67,11 @@ program entities. The important boundary is authoring uniformity:
 - Joggle attempts to make operator bodies, analyses, selection policies,
   converters, and emitters ordinary typed functions in one source language.
 - MLIR dialect nesting and symbol structure provide broad multi-level IR
-  organization. Joggle's `mod` graph is a package/dependency unit rather than a
-  claim to replace MLIR's representational depth.
+  organization. Joggle's `mod` graph is a package/dependency unit with a
+  different responsibility.
 
-An honest evaluation should compare the code and files needed for the same
-extension task, not count framework concepts in isolation.
+Extension-cost measurements use the same task and count the code, files, build
+steps, and affected components in each system.
 
 ## TVM
 
@@ -90,8 +89,7 @@ TVM is the closest comparison for model/tensor compilation breadth. Joggle's
 distinct design question is whether one typed metaprogramming surface can cover
 more compiler roles while keeping each intermediate mod printable.
 
-Do not imply that TVM transformations are limited to operators. A defensible
-comparison instead measures:
+TVM transformations extend beyond operators. The relevant comparison axes are:
 
 - how a new operator implementation and its selection policy are registered;
 - how a project-specific analysis is packaged and passed into a transform;
@@ -99,9 +97,8 @@ comparison instead measures:
 - whether the same source-level abstraction also defines a converter/emitter;
 - update cost when only a small part of the model or policy changes.
 
-Performance comparisons must match generated code, target, tuning budget, and
-operator coverage. TVM is a mature optimizing compiler; Joggle's organizational
-claims do not imply generated-code superiority.
+Generated-code comparisons match the target, tuning budget, operator coverage,
+input shapes, and measurement protocol.
 
 ## IREE
 
@@ -115,18 +112,17 @@ sources, and outputs.
 
 ### Relationship to Joggle
 
-IREE demonstrates the value of a complete compiler/runtime boundary and broad
-hardware deployment. Joggle currently has a smaller target surface and should
-not present itself as a substitute for IREE's runtime ecosystem.
+IREE provides a complete compiler/runtime boundary and broad hardware
+deployment. Joggle's core instead concentrates on compiler authoring and
+organization; artifact support comes from installed mods.
 
 The useful comparison is developer control:
 
 - IREE exposes a production-oriented staged compiler built on MLIR.
 - Joggle keeps preparation functions explicitly named in the user-selected
   sequence and makes the resulting mod printable between stages.
-- Joggle's bundled artifact mods demonstrate that emitters share the same
-  function/mod mechanism; they are not part of the core and are not evidence of
-  IREE-equivalent target coverage.
+- Joggle's bundled artifact mods use the same function/mod mechanism and remain
+  outside the core.
 
 ## ONNX Runtime
 
@@ -146,9 +142,9 @@ hardware-provider boundary. Joggle is principally a compiler workbench whose
 intermediate representation and compiler functions are meant to stay visible.
 
 The external-kernel `edge` example resembles provider capability matching only
-at a high level. It is a typed source-mod adapter followed by explicit C
-emission, not an ONNX Runtime execution provider. Compare the two only on a
-carefully scoped task such as adding one custom kernel binding.
+at a high level. It is a typed source-mod adapter followed by an artifact mod,
+not an ONNX Runtime execution provider. The common scoped task is adding one
+custom kernel binding.
 
 ## Halide
 
@@ -180,11 +176,10 @@ before extraction chooses one.
 
 ### Relationship to Joggle
 
-Both systems value programmable analysis and rewrite policy, but their execution
-models differ. Joggle currently performs verified graph edits and typed
-implementation selection. It does not maintain a saturation e-graph or claim
-egg-style global equality search. An e-graph could become a native or external
-analysis/selection component, but that integration must preserve explicit
+Both systems expose programmable analysis and rewrite policy, but their
+execution models differ. Joggle performs verified graph edits and typed
+implementation selection; it does not maintain a saturation e-graph. An e-graph
+integration belongs in a native or external analysis/selection mod with explicit
 ownership and verification boundaries.
 
 ## OpenXLA and XLA
@@ -202,12 +197,11 @@ not the closest authoring-model comparison. Its objective is high-performance
 compilation of supported linear algebra to machine instructions. Joggle's core
 objective is a uniform way to author and organize compiler functionality.
 
-- A fair performance study can compare end-to-end compilation or generated
-  execution only where both systems support the same graph and hardware.
-- A fair extension study should distinguish adding an HLO/backend feature from
-  writing a project `mod`; those are different tasks.
-- Joggle does not currently provide XLA-equivalent native code generation,
-  device runtimes, or backend maturity.
+- End-to-end measurements use graphs and hardware supported by both systems.
+- Extension measurements distinguish an HLO/backend feature from a project
+  `mod`; these change different layers.
+- XLA includes native code generation and device runtimes; Joggle's current core
+  does not.
 
 ## Glow
 
@@ -219,12 +213,11 @@ from lower-level instruction-oriented compilation.
 
 ### Relationship to Joggle
 
-Glow motivates explicit lowering and strong typing, while Joggle asks whether
-representation changes can remain functions and mods inside one extensible
-language. Do not reduce the comparison to “one IR versus two IRs”: Joggle graphs
-can contain different structural vocabularies, and Glow's two levels carry
-deliberate optimization responsibilities. Compare where a new operation,
-lowering, backend rule, and diagnostic must be implemented.
+Glow uses explicit lowering and strong typing. Joggle expresses representation
+changes as functions and mods inside one extensible language. Joggle graphs can
+contain different structural vocabularies, while Glow's two levels carry
+deliberate optimization responsibilities. The concrete comparison traces where
+a new operation, lowering, backend rule, and diagnostic are implemented.
 
 ## Triton
 
@@ -238,9 +231,9 @@ analysis to schedule work; see the official
 
 Triton and Joggle operate at different layers. Triton is a candidate kernel
 implementation technology; Joggle is a compiler-extension and organization
-mechanism. A future Joggle mod could select or emit calls to Triton-generated
-kernels without making Triton part of the core. Kernel throughput comparisons
-would evaluate the chosen implementation, not the `mod` system itself.
+mechanism. A Joggle mod can select or emit calls to Triton-generated kernels
+without making Triton part of the core. Kernel throughput measures the selected
+implementation; extension cost measures the `mod` integration.
 
 ## Tensor Comprehensions
 
@@ -250,23 +243,22 @@ compilation cache, and autotuning for CUDA kernels.
 
 ### Relationship to Joggle
 
-It is relevant to the “easy operator extension” side of Joggle's motivation and
-to any future JIT discussion. The boundary is explicit:
+It covers concise operator definition and JIT specialization. The boundary with
+Joggle is explicit:
 
 - Tensor Comprehensions focuses on synthesizing and tuning a kernel from a
   tensor expression.
 - Joggle's current evaluator executes compiler functions and caches evaluation
   plans; that is not a machine-code JIT.
-- Calling Joggle “JIT-based” would therefore be inaccurate until a mod or core
-  facility actually generates, links, invalidates, and measures native code.
+- Joggle's evaluator is not a machine-code JIT because it does not generate and
+  link native code.
 
-Any future comparison should separate authoring effort, compiler-function
-update latency, kernel compilation latency, tuning budget, and generated-kernel
-runtime instead of collapsing them into one number.
+The measurement dimensions are authoring effort, compiler-function update
+latency, kernel compilation latency, tuning budget, and generated-kernel runtime.
 
-## What is actually distinctive in Joggle
+## Joggle's three defining properties
 
-Joggle should make three narrow claims, each tied to implemented mechanisms:
+Joggle combines three implemented properties:
 
 1. **Uniform authoring surface.** Ordinary typed `.jog` functions can define and
    compose operator bodies, graph queries, rewrite policies, converters, and
@@ -277,27 +269,22 @@ Joggle should make three narrow claims, each tied to implemented mechanisms:
    reuse against revisions and dependencies rather than assuming an unchanged
    whole pipeline.
 
-These statements describe design. Claims such as “easier,” “more controllable,”
-or “faster to update” need the experiments below.
+## Quantitative comparison matrix
 
-## Evidence needed for stronger claims
-
-| Intended claim | Suitable evidence | Invalid shortcut |
+| Dimension | Measurement | Controls |
 |---|---|---|
-| easier to extend | matched extension tasks, files/tokens touched, completion and error analysis | counting only API names |
-| smaller change scope | repository-level change sets across multiple representative tasks | one hand-picked patch |
-| faster incremental update | whole-model suite, controlled edits, cold/warm breakdown, correctness checks | timing three tiny graphs |
-| competitive generated code | operator and model suites, identical inputs/targets, tuning-budget disclosure | comparing unmatched backends |
-| suitable for small coding models | frozen prompts/tasks, syntax-valid and semantics-valid rates, perplexity only as secondary evidence | perplexity alone |
+| extension effort | completion, errors, files, tokens, and components changed across matched tasks | same specification and acceptance tests |
+| change scope | repository-level touched regions across representative extensions | normalized generated/vendor files |
+| incremental update | cold and warm latency across whole-model suites and localized edits | identical machine, cache state, and correctness checks |
+| generated program | operator and model runtime plus memory | identical inputs, target, compiler flags, and tuning budget |
+| small-model assistance | syntax-valid, type-valid, semantics-valid, and task-complete rates | frozen prompts, models, sampling settings, and test oracle |
 
 ## How to use this page
 
 - If implementing a feature, use the comparisons to locate the correct Joggle
   ownership boundary.
-- If designing experiments, use the evidence table to avoid overclaiming.
-- If writing a paper later, re-check every external-system statement against a
-  pinned version and primary source; do not copy this page as a related-work
-  section without that audit.
+- For quantitative evaluation, pin every system version and apply the controls
+  in the comparison matrix.
 
 The project architecture remains documented independently in
 [Compiler internals](../compiler/index.md), [Unified metaprogramming](../metaprogramming/index.md),

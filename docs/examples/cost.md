@@ -148,5 +148,5 @@ or reject candidates for which evidence is missing. Preserve these rules:
 5. Validate performance after emission; a policy score is only a prediction.
 
 > [!WARNING]
-> The value `5` above is a deterministic tutorial result. It is not latency,
-> instruction count, or a performance claim.
+> The value `5` above is a deterministic tutorial score, not latency or
+> instruction count.

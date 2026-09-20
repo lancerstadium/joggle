@@ -71,7 +71,7 @@ visible for later conversion/capability reporting.
 - source names where they can be represented safely;
 - unsupported operators as explicit `onnx.*` calls.
 
-It does not claim semantic support merely because bytes were decoded. This is
+Decoded bytes remain source-format structure until semantic conversion. This is
 why the result is useful for diagnostics even when conversion is incomplete.
 
 ## Inspect before conversion

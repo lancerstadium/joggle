@@ -6,7 +6,7 @@ description: Transactional runs, revisions, memoization, and reactive stage reus
 # Execution and updates
 
 Joggle has three different reuse mechanisms. Keeping them distinct avoids
-incorrect performance claims and stale results:
+misleading measurements and stale results:
 
 | Mechanism | Scope | Reuses | Invalidated by |
 | --- | --- | --- | --- |

@@ -177,8 +177,8 @@ and effects allow one shared iteration structure.
 
 ### `canon`
 
-Normalizes private affine index expressions deterministically without claiming
-a target-specific profitability improvement.
+Normalizes private affine index expressions deterministically. It does not
+select a target-specific profitability policy.
 
 ## Internal organization
 

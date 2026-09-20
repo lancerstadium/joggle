@@ -6,8 +6,8 @@ description: Understand Joggle's design choices in relation to adjacent compiler
 # Design context
 
 This section explains why Joggle chooses one typed language, graph-scoped mods,
-and dependency-aware execution. It is project documentation, not a paper claim
-or benchmark result.
+and dependency-aware execution. It describes implemented architecture and
+separates it from quantitative comparison.
 
 ## Read this section when
 
@@ -21,6 +21,6 @@ or benchmark result.
 Start with [Related systems and design boundaries](related-systems.md).
 
 > [!IMPORTANT]
-> The comparison uses public papers and official documentation. A blank or
-> different mechanism is not a claim that another system cannot implement a
-> feature. It identifies the documented abstraction a developer meets first.
+> The comparison uses public papers and official documentation. It records the
+> documented abstraction a developer meets first, not every mechanism a system
+> could support.

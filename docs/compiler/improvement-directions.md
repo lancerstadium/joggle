@@ -136,7 +136,7 @@ external incremental compiler/object linker.
 
 ### Boundary
 
-Joggle does not currently claim an incremental object linker. ABI, headers,
+Joggle does not currently include an incremental object linker. ABI, headers,
 cross-function declarations, payload layout, or call-graph changes can require
 broader regeneration than the changed function body.
 

@@ -222,8 +222,8 @@ The full, dark-mode-aware site is available at
 - External kernels are explicit typed ABI boundaries.
 - Dynamic tensors require proved finite capacities for bounded static storage.
 - Reactive reuse is conditional on observed dependencies and verification.
-- Joggle does not currently claim a general native-code JIT, an incremental
-  object linker, or a production inference runtime.
+- The current core does not include a native-code JIT, incremental object
+  linker, or production inference runtime.
 
 ## License
 

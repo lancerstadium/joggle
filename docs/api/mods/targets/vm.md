@@ -96,4 +96,4 @@ or `Val` handles.
 
 > [!NOTE]
 > Use the VM as a deterministic execution oracle and debugging backend. Use a
-> hardware target and a controlled benchmark for deployment performance claims.
+> hardware target and a controlled benchmark for deployment performance.

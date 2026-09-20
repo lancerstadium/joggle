@@ -144,5 +144,4 @@ already the extension protocol.
 - A mismatched shape signature yields no compatible candidate; it is not forced.
 - Multiple equally valid candidates require a policy instead of implicit order.
 - A body that fails verification is rejected before the source mod is changed.
-- Selecting a loop order is not evidence of speedup; benchmark the emitted code
-  on the intended shape and target.
+- Benchmark each loop order on the intended shape and target.

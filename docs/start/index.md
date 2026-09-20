@@ -104,8 +104,8 @@ Expected output:
 []
 ```
 
-This means no call result retains the open `_` type. It does not claim
-numerical correctness.
+This confirms that no call result retains the open `_` type. Numerical
+correctness uses a separate input/output oracle.
 
 ## Understand the three command roles
 
@@ -145,17 +145,17 @@ and bug reports much clearer.
 
 ## What success proves
 
-| Check | Proves | Does not prove |
+| Check | Validates | Separate validation |
 | --- | --- | --- |
-| `check` succeeds | syntax, resolution, typing, graph invariants | target support or numerical accuracy |
+| `check` succeeds | syntax, resolution, typing, graph invariants | artifact-mod coverage or numerical accuracy |
 | `opt.untyped == []` | no open result types reported | every semantic call is supported |
-| target frontier is empty | selected target can represent the graph | generated result matches a reference |
-| generated C compiles | derived ABI/source is accepted by that compiler | model output is correct |
+| artifact frontier is empty | selected artifact mod can represent the graph | generated result matches a reference |
+| artifact consumer accepts output | representation and consumer contract agree | model output is correct |
 | harness passes | covered inputs match its oracle | all shapes/values/platforms are covered |
 
 > [!IMPORTANT]
-> Treat every stage as a separate evidence boundary. Do not turn “the command
-> returned zero” into a stronger claim than its contract supports.
+> Each stage has a precise validation scope. Combine structural, capability,
+> consumer, and numerical checks for an end-to-end result.
 
 ## Common first-run problems
 

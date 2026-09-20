@@ -28,7 +28,7 @@ flowchart LR
 | [Mod system](mods.md) | installed capabilities and external composition |
 | [Execution](execution.md) | transactions, revisions, caching, reactive stages |
 | [Subsystems](subsystems.md) | C++ source ownership and extension seams |
-| [Improvement directions](improvement-directions.md) | measured optimization opportunities and non-claims |
+| [Improvement directions](improvement-directions.md) | scoped optimization roadmap and measurement gates |
 | [Performance internals](../performance/index.md) | storage cost, evaluator plans, invalidation, profiling, and API boundaries |
 
 There is one graph and one function language. Joggle does not require a fixed

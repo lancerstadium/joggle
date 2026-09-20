@@ -76,4 +76,4 @@ hide a missing semantic conversion.
 ## Evidence boundary
 
 Resolved and typed IR proves structural closure. Numerical support additionally
-requires a pinned model, inputs, and reference outputs appropriate to the claim.
+uses a pinned model, inputs, and reference outputs.

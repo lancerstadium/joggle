@@ -8,7 +8,7 @@ description: Understand where compiler time and memory go before changing Joggle
 This section explains the performance of Joggle itself: loading mods, storing
 and editing graphs, resolving calls, evaluating compiler functions, verifying
 results, caching read-only queries, and reusing reactive stages. It does not
-claim generated-model speedups; target artifact performance is a separate
+measure generated-model speedups; artifact performance is a separate
 measurement problem.
 
 ```mermaid
@@ -51,7 +51,7 @@ The following mechanisms are implemented now:
 
 > [!IMPORTANT]
 > Evaluation plans are not native machine code. Joggle currently avoids repeated
-> decoding and dispatch work, but does not claim an LLVM-style machine-code JIT.
+> decoding and dispatch work. It is not an LLVM-style machine-code JIT.
 
 ## Cost model
 

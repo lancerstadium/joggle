@@ -1,6 +1,6 @@
 ---
 title: Profiling and measurement
-description: Build counters, read timing schemas, design repeatable benchmarks, and avoid misleading speedup claims.
+description: Build counters, read timing schemas, and design repeatable performance measurements.
 ---
 
 # Profiling and measurement
