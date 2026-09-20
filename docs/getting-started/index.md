@@ -66,13 +66,13 @@ These commands use the same module discovery and verification rules as
 
 ## Continue in order
 
-1. [Transform a model](transform.md) explains transactions, composition, and
+1. [Transform a model](../tutorials/transform.md) explains transactions, composition, and
    structured reports.
-2. [Write a mod](write-mod.md) creates an out-of-tree extension with one
+2. [Write a mod](../tutorials/write-mod.md) creates an out-of-tree extension with one
    responsibility.
-3. [Import ONNX](import-onnx.md) makes frontend decoding and semantic
+3. [Import ONNX](../tutorials/import-onnx.md) makes frontend decoding and semantic
    conversion explicit.
-4. [Emit C](emit-c.md) prepares an artifact, plans storage, and compiles it.
+4. [Emit C](../tutorials/emit-c.md) prepares an artifact, plans storage, and compiles it.
 
 For lookup rather than a walkthrough, use the
 [language reference](../reference/language.md) or

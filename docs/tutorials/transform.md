@@ -5,7 +5,7 @@ description: Compose checked Joggle transformations and inspect deterministic ex
 
 # Transform a model
 
-Complete [Get started](index.md) first. This guide explains the execution
+Complete [Get started](../getting-started/index.md) first. This guide explains the execution
 contract behind the `run` and `query` commands; it does not introduce a second
 pipeline abstraction.
 

@@ -239,7 +239,7 @@ core registry. A configured overload appends a normal `dict` parameter to
 either callback. The caller supplies that dictionary to `opt.apply` or
 `opt.instantiate`; its keys and units remain module-owned.
 `opt.candidates(m, op, impls)` returns that same symbol and type-compatible set
-without applying a policy or editing the module, so experiments can inspect
+without applying a policy or editing the module, so callers can inspect
 and report their choice space directly. Duplicate handles are removed; two
 distinct implementations with equal signatures remain distinct candidates.
 `opt.basic` performs target-independent cleanup. `opt.specialize(m, key,

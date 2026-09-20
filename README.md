@@ -5,21 +5,8 @@ transformations, conversions, and artifact generation in one typed language.
 Its current implementation focuses on neural-network inference and emits
 inspectable C or deterministic VM artifacts.
 
-Joggle is pre-1.0 software. The project README and public documentation describe
-implemented behavior rather than experimental results.
-
-## Why Joggle
-
-Cross-stage compiler extensions are difficult for three recurring reasons:
-
-| Challenge | Joggle mechanism | Intended property |
-| --- | --- | --- |
-| Operator, pass, conversion, and emission logic use different extension interfaces | one typed metaprogramming language | convenient extension |
-| Extension ownership follows compiler layers | graph-scoped `mod` packages | controllable change |
-| A local edit can replay an entire transformation pipeline | dependency-indexed reactive execution | efficient update |
-
-These three rows organize the design documentation. They are not shorthand for
-unmeasured performance claims.
+Joggle is pre-1.0 software. The documented surface is the implemented and
+tested project API.
 
 ## What is implemented
 
@@ -172,32 +159,17 @@ The [`ikj`](extensions/ikj/module.jog), [`edge`](extensions/edge/module.jog),
 The [bundled `mod` catalogue](docs/reference/module-catalogue.md) describes the
 installed packages and their responsibilities.
 
-## Design narrative
+## Design
 
-The design is documented in the same order as the three motivating problems.
+Joggle uses one typed object model for programs and compiler functions. Import,
+transformation, planning, and emission are explicit operations. `mod` packages
+load from explicit search roots, and a `run` sequence commits as one verified
+transaction.
 
-### 1. Unified metaprogramming
-
-The same typed language expresses operator semantics, graph inspection,
-rewriting, conversion, target policy, and artifact emission. The important
-property is shared syntax, types, values, control flow, composition, and
-diagnostics—not merely similarly named APIs.
-
-### 2. Graph-scoped `mod` packages
-
-A `mod` can own the logic of one extension across conventional compiler
-layers. Dependencies are explicit, resolution follows configured search paths,
-and no global registration hierarchy is required.
-
-### 3. Dependency-indexed reactive execution
-
-Queries and stages observe their exact inputs. Revisions invalidate dependent
-work, and unaffected results may be reused. Local value, policy, binding, and
-package changes can therefore follow an affected cone. Structural edits retain
-a conservative verification path.
-
-The [internal design](docs/internals/design.md) specifies the object model,
-invariants, dependency tracking, and fallback boundaries.
+The [system design](docs/design/index.md) documents the representation and
+component boundaries. [Module organization](docs/design/modules.md) covers
+package discovery and lifecycle; [execution and updates](docs/design/execution.md)
+covers transactions, dependency tracking, and fallback behavior.
 
 ## Repository layout
 
@@ -208,24 +180,24 @@ tool/            the `joggle` command-line tool
 modules/         bundled source `mod` packages
 extensions/      out-of-tree examples loaded with `-M extensions`
 test/            unit, integration, CLI, backend, and documentation tests
-docs/            guides, reference material, and implementation internals
+docs/            design, tutorials, and reference material
 ```
 
 Generated content belongs in a configured `build*` directory and is not
-tracked. Project code, public documentation, and the paper manuscript remain
-separate.
+tracked.
 
 ## Documentation
 
 - [Documentation site](https://lancerstadium.github.io/joggle/)
 - [Documentation source](docs/index.md)
-- [Task-oriented guides](docs/guide/index.md)
+- [Getting started](docs/getting-started/index.md)
+- [Task-oriented tutorials](docs/tutorials/index.md)
+- [System design](docs/design/index.md)
 - [Language reference](docs/reference/language.md)
 - [Bundled `mod` catalogue](docs/reference/module-catalogue.md)
-- [Internal design](docs/internals/design.md)
 
 The documentation tree is validated by `test/docs.py` and deployed from
-`docs/` by the GitHub Pages workflow. Code examples in the guides should map to
+`docs/` by the GitHub Pages workflow. Code examples in the tutorials should map to
 named tests rather than forming a second, unverified implementation.
 
 ## Project boundaries

@@ -1,0 +1,32 @@
+- label: Overview
+  items:
+    - title: Get started
+      url: /getting-started/
+- label: Design
+  items:
+    - title: System design
+      url: /design/
+    - title: Module organization
+      url: /design/modules/
+    - title: Execution and updates
+      url: /design/execution/
+- label: Tutorials
+  items:
+    - title: Tutorial index
+      url: /tutorials/
+    - title: Transform a model
+      url: /tutorials/transform/
+    - title: Write a mod
+      url: /tutorials/write-mod/
+    - title: Import ONNX
+      url: /tutorials/import-onnx/
+    - title: Emit C
+      url: /tutorials/emit-c/
+- label: Reference
+  items:
+    - title: Reference index
+      url: /reference/
+    - title: Language
+      url: /reference/language/
+    - title: Mod catalogue
+      url: /reference/module-catalogue/

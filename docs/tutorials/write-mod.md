@@ -64,4 +64,4 @@ and `extensions/compact` directories are executable examples. Run their gates
 with `ctest --test-dir build -L extension --output-on-failure`.
 
 For package installation and compatibility checks, continue with the
-[mod system](../internals/modules.md). Next tutorial: [Import ONNX](import-onnx.md).
+[module organization](../design/modules.md). Next tutorial: [Import ONNX](import-onnx.md).

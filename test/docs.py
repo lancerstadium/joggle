@@ -31,19 +31,21 @@ def main() -> int:
                     f"{document.relative_to(root)}: unpublished local target {target}"
                 )
 
-    guide_index = (docs / "guide" / "index.md").read_text(encoding="utf-8")
-    for guide in sorted((docs / "guide").glob("*.md")):
+    tutorial_index = (docs / "tutorials" / "index.md").read_text(encoding="utf-8")
+    for guide in sorted((docs / "tutorials").glob("*.md")):
         if guide.name == "index.md":
             continue
         relative = guide.relative_to(docs).as_posix()
-        if guide.name not in guide_index:
+        if guide.name not in tutorial_index:
             failures.append(
-                f"docs/guide/index.md: guide is not indexed: {relative}"
+                f"docs/tutorials/index.md: tutorial is not indexed: {relative}"
             )
 
     for required in (
         docs / "_layouts" / "default.html",
+        docs / "_data" / "navigation.yml",
         docs / "assets" / "css" / "style.css",
+        docs / "assets" / "js" / "docs.js",
     ):
         if not required.exists():
             failures.append(

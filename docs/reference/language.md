@@ -6,7 +6,7 @@ description: Complete syntax and semantics of the Joggle language.
 # Language reference
 
 This is lookup material, not a tutorial. Start with
-[Get started](../guide/index.md) if you have not yet checked and transformed a
+[Get started](../getting-started/index.md) if you have not yet checked and transformed a
 program.
 
 `.jog` is Joggle's only source and readable IR format. It describes reusable
