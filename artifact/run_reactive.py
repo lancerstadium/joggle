@@ -36,6 +36,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stages", type=int, nargs="+", default=[5])
     parser.add_argument("--models", type=Path, nargs="+")
     parser.add_argument(
+        "--edit-classes",
+        choices=("no_op", "operation_metadata"),
+        nargs="+",
+        default=["no_op", "operation_metadata"],
+    )
+    parser.add_argument(
         "--scopes",
         choices=("affected", "unrelated"),
         nargs="+",
@@ -190,54 +196,64 @@ def main() -> int:
                 if site:
                     label += f"-{site}"
                 runs = ((persistent, "all"), (no_plans, "no-plan-cache"))
-                for binary, policy in runs:
-                    partial = build_root / f"{label}-{stage_count}-{policy}.csv"
-                    invocation = [
-                        str(binary),
-                        "--modules",
-                        str(binary.parents[1] / "modules"),
-                        "--output",
-                        str(partial),
-                        "--revision",
-                        revision,
-                        "--policy",
-                        policy,
-                        "--stages",
-                        str(stage_count),
-                        "--warmups",
-                        str(args.warmups),
-                        "--iterations",
-                        str(args.iterations),
-                        "--seed",
-                        str(args.seed),
-                    ]
-                    if len(args.scopes) == 1:
-                        invocation.extend(["--scope", args.scopes[0]])
-                    if models:
-                        invocation.extend(
-                            [
-                                "--input",
-                                str(subject["path"]),
-                                "--subject-hash",
-                                subject["sha256"],
-                                "--site",
-                                site,
-                            ]
+                for edit_class in args.edit_classes:
+                    for binary, policy in runs:
+                        partial = build_root / (
+                            f"{label}-{stage_count}-{edit_class}-{policy}.csv"
                         )
-                    else:
-                        invocation.extend(
-                            [
-                                "--total-nodes",
-                                str(subject["nodes"]),
-                                "--affected-nodes",
-                                str(subject["affected"]),
-                                "--fanout",
-                                str(subject["fanout"]),
-                            ]
+                        invocation = [
+                            str(binary),
+                            "--modules",
+                            str(binary.parents[1] / "modules"),
+                            "--output",
+                            str(partial),
+                            "--revision",
+                            revision,
+                            "--policy",
+                            policy,
+                            "--edit-class",
+                            edit_class,
+                            "--stages",
+                            str(stage_count),
+                            "--warmups",
+                            str(args.warmups),
+                            "--iterations",
+                            str(args.iterations),
+                            "--seed",
+                            str(args.seed),
+                        ]
+                        if (
+                            edit_class == "operation_metadata"
+                            and len(args.scopes) == 1
+                        ):
+                            invocation.extend(["--scope", args.scopes[0]])
+                        if models:
+                            invocation.extend(
+                                [
+                                    "--input",
+                                    str(subject["path"]),
+                                    "--subject-hash",
+                                    subject["sha256"],
+                                    "--site",
+                                    site,
+                                ]
+                            )
+                        else:
+                            invocation.extend(
+                                [
+                                    "--total-nodes",
+                                    str(subject["nodes"]),
+                                    "--affected-nodes",
+                                    str(subject["affected"]),
+                                    "--fanout",
+                                    str(subject["fanout"]),
+                                ]
+                            )
+                        command(invocation, repo)
+                        commands.append(invocation)
+                        write_header = append_csv(
+                            partial, args.output, write_header
                         )
-                    command(invocation, repo)
-                    commands.append(invocation)
-                    write_header = append_csv(partial, args.output, write_header)
 
     command(
         [
@@ -264,6 +280,7 @@ def main() -> int:
             for model in models
         ],
         "sites": args.sites if models else [],
+        "edit_classes": args.edit_classes,
         "scopes": args.scopes,
         "warmups": args.warmups,
         "iterations": args.iterations,
