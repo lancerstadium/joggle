@@ -153,8 +153,8 @@ Appendix~\ref{app:update} fixes adapter contracts and counter semantics.
 \subsection{End-to-End Performance}
 \label{sec:eval-artifacts}
 
-The final experiment asks whether the programmable infrastructure still emits
-competitive code. One matrix contains 24 fixed operator graphs---four each for
+The final experiment quantifies the performance and coverage of code emitted
+through the programmable infrastructure. One matrix contains 24 fixed operator graphs---four each for
 elementwise chains, reductions, matrix multiplication, convolution,
 quantization, and fusion---and the same 15 model subjects. We compare Joggle's
 required lowering path, the same path plus its frozen optimization pack, and a
@@ -166,6 +166,13 @@ measurements. Unsupported pairs remain as coverage outcomes instead of
 disappearing from the accepted set. Operator and model results share one figure
 and one CSV, with up to 11,700 timed rows. Appendix~\ref{app:performance}
 specifies inputs, timing boundaries, and numerical tolerances.
+
+Across subjects supported by both Joggle paths, the frozen optimization pack
+improves geometric-mean latency by $2.09\times$ for operators and $3.06\times$
+for models. The optimized path supports 21 of 24 operators and 8 of 15 models.
+Over those supported sets, its artifacts take $5.14\times$ and $12.58\times$
+the latency of ONNX Runtime, respectively. The current end-to-end limits are
+generated CPU code quality and incomplete lowering coverage.
 
 Together, generation characterizes the extension surface, patch footprint its
 ownership boundary, the cross-system update study its responsiveness, and the
