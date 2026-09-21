@@ -38,13 +38,13 @@ and the runtime either commits a verified update or returns a read-only result.
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\columnwidth]{figures/figure-02-system-model.png}
-  \caption{Joggle expresses compiler behavior as typed functions, organizes
-    them in mods, and executes them over a transactional graph runtime.}
-  \Description{An extension mod and typed function enter an evaluator. The
-    evaluator accesses a subject store, records reads and effects, verifies
-    mutations in a transaction, and returns a result or artifact. Reusable
-    dependency records feed back to the evaluator.}
+  \includegraphics[width=.80\columnwidth]{figures/figure-02-system-model.png}
+  \caption{A typed compiler call executes transactionally and records reads
+    and effects for reuse.}
+  \Description{A typed function enters an evaluator that reads and writes a
+    subject graph under a transaction. A compact record stores the call key,
+    result, observed reads, and effects; current records return to the
+    evaluator as cache hits.}
   \label{fig:system-model}
 \end{figure}
 
@@ -294,12 +294,12 @@ recorded inputs overlap its effects.
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\columnwidth]{figures/figure-03-dependencies.png}
-  \caption{Static \texttt{use} edges define available compiler capabilities,
-    whereas dynamic observations determine the work selected after an edit.}
-  \Description{The upper panel shows the static use graph of seven mods. The
-    lower panel shows a value-type edit directly selecting one stage,
-    propagating to one downstream stage, and preserving two reusable stages.}
+  \includegraphics[width=.80\columnwidth]{figures/figure-03-dependencies.png}
+  \caption{Static \texttt{use} edges bound calls; dynamic read/effect records
+    select work after an edit.}
+  \Description{The upper region shows the static use graph of seven mods. The
+    lower ledger shows each stage's observed reads, effects, and selection
+    decision after a value-type edit.}
   \label{fig:dependencies}
 \end{figure}
 

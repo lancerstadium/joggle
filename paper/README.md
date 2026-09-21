@@ -52,26 +52,20 @@ Figure 2 follows this call from definition to publication. A mod supplies the
 typed function, the evaluator observes its graph access, and the runtime either
 commits a verified update or returns a read-only result.
 
-<!-- FIGURE 2 PROMPT — Original single-column Joggle mechanism diagram, portrait
-aspect ratio about 4:5, designed for a 3.3-inch ACM column. White background,
-thin dark strokes, square or lightly rounded compiler-paper boxes, compact
-spacing, restrained blue/teal/purple/coral semantic accents, small monospace
-signatures, no icons, no gradients, no shadows, and no wide stacked workflow.
-Use an original hub-and-ledger composition. At the top, place two compact cards:
-Extension Mod on the left with `use ir` and `fn select`, and Typed Function on
-the right with `select(Mod) -> bool` plus four tiny role tags analyze, transform,
-convert, emit. Both feed a small central Evaluator box containing resolve,
-execute, observe. Below it, place a compact Subject Store box containing a tiny
-Fn→Blk→Op→Val graph. Attach a narrow transaction strip on its right with journal
-and verify. At the lower left, draw a dependency ledger with `D: reads` and
-`W: effects`; connect store reads to D with dashed arrows and committed writes
-to W with solid arrows. A curved arrow labeled reuse returns from the ledger to
-the evaluator. A small result/artifact tab exits at lower right. Emphasize the
-closed call-observe-commit loop rather than architectural layers. Keep every
-label readable at single-column print size. -->
+<!-- FIGURE 2 PROMPT — Compact square Joggle call mechanism for 0.80 of one ACM
+column. Use a white background, thin dark strokes, restrained blue/teal/purple/
+coral fills, short arrows, tight boxes, and monospace code labels. The top strip
+contains `mod sat`, `use ir`, `fn select`, `[stage: select]`, and
+`select(Mod) -> bool`, with analyze/transform/convert/emit chips. A compact
+Evaluator performs resolve→execute→observe over a Subject graph
+Fn→Blk→Op17→Val9 and a journal/verify transaction. Dashed arrows mark reads;
+solid coral arrows mark writes and commit. The bottom is a four-column record:
+key `E, fn, args`, result `r`, reads `Val9 type + Op17 callee`, and effects
+`Op17`, followed by `reuse = same(key) ∧ current(D)`. Eliminate title banners,
+large containers, long connectors, and decorative whitespace. -->
 
-*Figure 2: Joggle expresses compiler behavior as typed functions, organizes
-them in mods, and executes them over a transactional graph runtime.*
+*Figure 2: A typed compiler call executes transactionally and records reads and
+effects for reuse.*
 
 The remainder of this section develops the model in execution order. Section
 3.2 defines compiler functions. Section 3.3 explains how mods own and compose
@@ -317,27 +311,19 @@ functions may be called; a compact observation ledger records which entities a
 particular run read. An edit invalidates the stage that observed it and only
 the later stages whose recorded inputs overlap its effects.
 
-<!-- FIGURE 3 PROMPT — Original single-column two-panel dependency diagram,
-portrait aspect ratio about 4:5, designed for a 3.3-inch ACM column. Match
-Figure 2's thin dark strokes, compact square compiler-paper boxes, restrained
-blue/teal/purple/coral/green accents, white background, small monospace entity
-labels, no icons, gradients, shadows, or wide left-to-right pipeline. Stack two
-dense panels vertically. Panel (a), `static capability graph`, occupies the top
-third: Project has `use` arrows to sat and nn; sat to ir; nn to tensor and math;
-ir and tensor to base. Use file-tab node shapes and label one representative
-edge `use`; place `may call` in the panel corner. Panel (b), `observed update`,
-occupies the lower two-thirds as a compact three-column ledger headed stage,
-observes, decision. Rows are Select | Op17, Val9 | DIRECT; Plan | Fn3 | UPSTREAM;
-Analyze | Fn8 | REUSE; Emit | structure | REUSE. Put a small `type edit: Val9`
-card above the ledger. Draw one solid arrow to the DIRECT row, one solid curved
-propagation arrow from Select effects to Plan, and dashed gray observation
-links to the entity chips. Use an orange badge for DIRECT, purple for UPSTREAM,
-green for REUSE, and a tiny legend for solid update versus dashed observation.
-The composition must be compact and information-dense but readable at
-single-column print size; do not reuse the layout of any reference figure. -->
+<!-- FIGURE 3 PROMPT — Compact square dependency diagram for 0.80 of one ACM
+column, using Figure 2's thin strokes and restrained semantic colors. The top
+quarter is a tight `use` graph: Project→sat,nn; sat→ir; nn→tensor,math; and
+ir,tensor→base. The lower region is a four-column ledger headed stage, D: reads,
+W: effects, decision. Its rows are Select | Val9 type | Op17 | DIRECT; Plan |
+Op17 | Fn3 | UPSTREAM; Analyze | Fn8 | — | REUSE; Emit | structure | bytes |
+REUSE. A small `edit Δ = Val9 type` chip points to DIRECT; a dashed link marks
+the observation; a purple arrow connects Select's Op17 effect to Plan's Op17
+read and is labeled overlap. Use tight cells and short arrows, with no large
+panels or decorative whitespace. -->
 
-*Figure 3: Static `use` edges define available compiler capabilities, whereas
-dynamic observations determine the work selected after an edit.*
+*Figure 3: Static `use` edges bound calls; dynamic read/effect records select
+work after an edit.*
 
 Fine-grained observations reduce re-execution but add capture and validation
 work. For $K$ stages, incremental latency is approximately
