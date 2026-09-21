@@ -8,6 +8,9 @@ configure_file(
 add_executable(joggle-artifact-reactive reactive.cpp)
 target_link_libraries(joggle-artifact-reactive PRIVATE Joggle::joggle)
 target_compile_features(joggle-artifact-reactive PRIVATE cxx_std_20)
+if(JOGGLE_BUILD_ONNX)
+  add_dependencies(joggle-artifact-reactive joggle-onnx)
+endif()
 target_compile_definitions(
   joggle-artifact-reactive
   PRIVATE

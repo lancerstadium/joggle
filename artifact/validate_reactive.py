@@ -81,9 +81,12 @@ def main() -> int:
         if row["correct"] != "true":
             raise SystemExit(f"line {line}: correctness gate failed")
         identity = (
+            row["system"],
             row["system_revision"],
+            row["subject"],
             row["subject_hash"],
             row["edit_class"],
+            row["edit_site"],
             row["stages"],
             row["policy"],
             row["cache_state"],
@@ -94,9 +97,12 @@ def main() -> int:
             raise SystemExit(f"line {line}: duplicate primary key")
         seen.add(identity)
         comparison = (
+            row["system"],
             row["system_revision"],
+            row["subject"],
             row["subject_hash"],
             row["edit_class"],
+            row["edit_site"],
             row["stages"],
             row["cache_state"],
             row["iteration"],

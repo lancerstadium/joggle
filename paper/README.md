@@ -763,7 +763,9 @@ The fixed pipeline performs analysis, canonicalization, target selection or
 legalization, memory planning, and artifact preparation. Its six edit classes
 are no-op, value metadata, value type, operation operands or callee,
 function-local topology, and mod dependency or environment. Sites are chosen
-before timing and blocked by early, middle, and late pipeline relevance.
+before timing at early, middle, and late topological positions among editable
+entry-block computations. Each case records the selected operation and its
+measured affected scope.
 
 Five policies isolate the mechanisms. **Full** reruns every stage; **Suffix**
 reruns from the first possibly affected stage; **Reactive** validates recorded
@@ -789,17 +791,17 @@ warm measurements retain each system's public graph and pass infrastructure.
 speedup for every one of the 16 models by edit class; annotate executed/total
 stages in each cell. Right-top: ECDF of edit-to-result latency for Full, Suffix,
 Reactive. Right-bottom: stacked selection/evaluation/verification time for
-p50 and p95. CSV schema: system,system_revision,model,model_hash,edit_class,
-edit_site,policy,cache_state,iteration,wall_ns,select_ns,evaluate_ns,verify_ns,
-executed_stages,reused_stages,observed_ops,observed_values,changed_functions,
-plan_hits,miss_reason,output_digest,correct. -->
+p50 and p95. CSV schema: system,system_revision,subject,subject_hash,total_ops,
+affected_ops,fanout,stages,edit_class,edit_site,policy,cache_state,iteration,
+wall_ns,select_ns,evaluate_ns,verify_ns,executed_stages,reused_stages,
+observed_ops,observed_values,changed_functions,evaluated_ops,plan_compiles,
+plan_hits,miss_reason,output_digest,correct,seed. -->
 
 <!-- FIGURE 8 PLAN — Single-column scaling figure. Log-scaled x-axis is total
 operations; y-axis is update latency. Separate lines for affected cones of
 1/8/64/512 operations and Full. A lower inset plots observed entities. Do not
-connect unsupported or missing cases. CSV schema: total_ops,affected_ops,
-fanout,stages,policy,iteration,wall_ns,observed_entities,executed_stages,
-output_digest,correct. -->
+connect unsupported or missing cases. Use the same reactive-update CSV schema
+as Figure 7, filtered to generated subjects. -->
 
 ### 4.5 Artifact Quality and System Costs
 

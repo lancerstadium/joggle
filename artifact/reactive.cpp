@@ -1,12 +1,15 @@
 #include "joggle/joggle.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <optional>
@@ -38,8 +41,11 @@ struct Config {
   std::string modules;
   std::string output;
   std::string revision;
+  std::string input;
+  std::string subject_hash;
   std::string policy = "all";
   std::string edit = "all";
+  std::string site = "late";
   std::size_t total_nodes = 1000;
   std::size_t affected_nodes = 8;
   std::size_t fanout = 1;
@@ -126,6 +132,8 @@ int usage() {
       << "usage: joggle-artifact-reactive --modules DIR --output FILE "
          "--revision GIT [--policy all|full|suffix|reactive|whole-mod|"
          "no-plan-cache] [--edit all|affected|unrelated] "
+         "[--site early|middle|late] "
+         "[--input MODEL.onnx --subject-hash SHA256] "
          "[--total-nodes N] [--affected-nodes N] [--warmups N] "
          "[--fanout N] [--stages N] [--iterations N] [--seed N]\n";
   return 2;
@@ -143,10 +151,16 @@ bool parse_args(int argc, char** argv, Config& config) {
       config.output = value;
     else if (key == "--revision")
       config.revision = value;
+    else if (key == "--input")
+      config.input = value;
+    else if (key == "--subject-hash")
+      config.subject_hash = value;
     else if (key == "--policy")
       config.policy = value;
     else if (key == "--edit")
       config.edit = value;
+    else if (key == "--site")
+      config.site = value;
     else if (key == "--total-nodes") {
       const auto parsed = size_value(value);
       if (!parsed)
@@ -192,12 +206,17 @@ bool parse_args(int argc, char** argv, Config& config) {
       config.policy == "whole-mod" || config.policy == "no-plan-cache";
   const bool edit_ok = config.edit == "all" || config.edit == "affected" ||
                        config.edit == "unrelated";
+  const bool site_ok = config.site == "early" || config.site == "middle" ||
+                       config.site == "late";
+  const bool generated = config.input.empty() && config.subject_hash.empty() &&
+                         config.affected_nodes > 0 &&
+                         config.total_nodes > config.affected_nodes &&
+                         config.fanout > 0;
+  const bool model = !config.input.empty() && !config.subject_hash.empty();
   return !config.modules.empty() && !config.output.empty() &&
-         !config.revision.empty() && policy_ok && edit_ok &&
-         config.affected_nodes > 0 &&
-         config.total_nodes > config.affected_nodes && config.fanout > 0 &&
-         config.stage_count > 0 && config.stage_count <= stages.size() &&
-         config.iterations > 0;
+         !config.revision.empty() && policy_ok && edit_ok && site_ok &&
+         (generated || model) && config.stage_count > 0 &&
+         config.stage_count <= stages.size() && config.iterations > 0;
 }
 
 std::string subject_source(std::size_t total, std::size_t affected,
@@ -279,14 +298,104 @@ struct Subject {
   std::size_t hot_index = 0;
   std::size_t total_ops = 0;
   std::size_t affected_ops = 0;
+  std::size_t fanout = 0;
   std::string source_hash;
+  std::string name = "generated-chain";
+  std::string owner = "graph";
+  std::string hot_site = "synthetic:hot_0";
+  std::string cold_site = "synthetic:cold_0";
+  bool generated = true;
 };
+
+bool parse_model(const Config& config, Subject& subject) {
+  std::ifstream input(config.input, std::ios::binary);
+  if (!input)
+    return false;
+  const std::vector<unsigned char> raw{std::istreambuf_iterator<char>(input),
+                                       std::istreambuf_iterator<char>()};
+  if (!subject.env.load("onnx"))
+    return false;
+  const std::array<joggle::Attr, 1> args{
+      joggle::Attr(joggle::Attr::Bytes(raw.begin(), raw.end()))};
+  std::vector<joggle::Attr> returns;
+  if (!subject.env.call("onnx.read", args, returns) || returns.size() != 1 ||
+      !returns.front().string())
+    return false;
+  subject.source_hash = config.subject_hash;
+  subject.name = std::filesystem::path(config.input).stem().string();
+  subject.owner = "main";
+  subject.generated = false;
+  return joggle::parse(subject.env, *returns.front().string(), subject.mod,
+                       config.input) &&
+         subject.mod.verify(subject.env);
+}
+
+bool select_model_sites(Subject& subject, std::string_view site) {
+  const joggle::Fn graph = subject.mod.find_fn("main");
+  if (!graph)
+    return false;
+  const std::vector<joggle::Op> operations = graph.body().ops();
+  for (const joggle::Op operation : subject.mod.ops())
+    for (const joggle::Val output : operation.outs())
+      subject.fanout = std::max(subject.fanout, output.users().size());
+  std::vector<std::size_t> candidates;
+  for (std::size_t index = 0; index < operations.size(); ++index) {
+    const joggle::Op op = operations[index];
+    if (op.kind() != joggle::Op::Kind::call || op.outs().size() != 1 ||
+        op.form() == joggle::Op::Form::hidden ||
+        op.callee() == "onnx.tensor" || op.callee() == "onnx.model")
+      continue;
+    candidates.push_back(index);
+  }
+  if (candidates.empty())
+    return false;
+  const std::size_t position = site == "early"    ? 0
+                               : site == "middle" ? candidates.size() / 2
+                                                  : candidates.size() - 1;
+  const std::size_t index = candidates[position];
+  const joggle::Op op = operations[index];
+  const std::array<joggle::Val, 1> roots{op.outs().front()};
+  const std::vector<joggle::Op> affected = subject.mod.affected(roots);
+  for (std::size_t candidate = 0; candidate < operations.size(); ++candidate) {
+    const joggle::Op unrelated = operations[candidate];
+    if (unrelated == op || unrelated.form() == joggle::Op::Form::hidden ||
+        std::find(affected.begin(), affected.end(), unrelated) !=
+            affected.end())
+      continue;
+    subject.hot = op;
+    subject.cold = unrelated;
+    subject.hot_value = roots.front();
+    subject.hot_index = index;
+    subject.affected_ops = affected.size();
+    const std::string prefix = std::string(site) + ":";
+    subject.hot_site =
+        prefix + std::string(op.callee()) + "@" + std::to_string(index);
+    subject.cold_site =
+        prefix +
+        (unrelated.kind() == joggle::Op::Kind::call
+             ? std::string(unrelated.callee()) + "@" +
+                   std::to_string(candidate)
+             : "op@" + std::to_string(candidate));
+    return true;
+  }
+  return false;
+}
 
 bool prepare(const Config& config, Subject& subject) {
   subject.env.path(config.modules);
   if (!subject.env.load("artifact.reactive")) {
     subject.env.print_diags(stderr);
     return false;
+  }
+  if (!config.input.empty()) {
+    if (!parse_model(config, subject) ||
+        !select_model_sites(subject, config.site)) {
+      subject.env.print_diags(stderr);
+      subject.mod.print_diags(stderr);
+      return false;
+    }
+    subject.total_ops = subject.mod.ops().size();
+    return true;
   }
   const std::string source =
       subject_source(config.total_nodes, config.affected_nodes, config.fanout);
@@ -314,14 +423,26 @@ bool prepare(const Config& config, Subject& subject) {
   if (!subject.hot || !subject.cold || !subject.hot_value)
     return false;
   subject.total_ops = subject.mod.ops().size();
+  for (const joggle::Op operation : subject.mod.ops())
+    for (const joggle::Val output : operation.outs())
+      subject.fanout = std::max(subject.fanout, output.users().size());
   const std::array<joggle::Val, 1> roots{subject.hot_value};
   subject.affected_ops = subject.mod.affected(roots).size();
   return true;
 }
 
+bool edit_subject(Subject& subject, std::string_view edit,
+                  std::int64_t value) {
+  const joggle::Op operation = edit == "affected" ? subject.hot : subject.cold;
+  if (subject.generated)
+    return subject.mod.replace(operation, joggle::Attr(value));
+  return subject.mod.set(operation, "artifact.input_revision",
+                         joggle::Attr(value));
+}
+
 bool run_direct(Subject& subject, std::span<const std::string_view> selected,
                 joggle::Attr& profile) {
-  const std::array<joggle::Attr, 2> args{joggle::Attr("graph"),
+  const std::array<joggle::Attr, 2> args{joggle::Attr(subject.owner),
                                          joggle::Attr(static_cast<std::int64_t>(
                                              subject.hot_index))};
   return joggle::run(subject.env, selected, subject.mod, args, nullptr,
@@ -372,7 +493,7 @@ bool benchmark(const Config& config, std::ofstream& output,
   if (reactive)
     schedule = std::make_unique<joggle::ReactiveSchedule>(
         stage_names(selected_names));
-  const std::array<joggle::Attr, 2> args{joggle::Attr("graph"),
+  const std::array<joggle::Attr, 2> args{joggle::Attr(subject.owner),
                                          joggle::Attr(static_cast<std::int64_t>(
                                              subject.hot_index))};
 
@@ -393,13 +514,11 @@ bool benchmark(const Config& config, std::ofstream& output,
     return false;
   }
 
-  joggle::Op edited = edit == "affected" ? subject.hot : subject.cold;
   const std::uint64_t offset = edit == "affected" ? UINT64_C(1000000)
                                                    : UINT64_C(2000000);
   for (std::size_t index = 0; index < config.warmups; ++index) {
     const auto value = static_cast<std::int64_t>(offset + config.seed + index);
-    if (!subject.mod.replace(edited, joggle::Attr(value)) ||
-        !execute(report, profile)) {
+    if (!edit_subject(subject, edit, value) || !execute(report, profile)) {
       subject.env.print_diags(stderr);
       return false;
     }
@@ -408,7 +527,7 @@ bool benchmark(const Config& config, std::ofstream& output,
   for (std::size_t index = 0; index < config.iterations; ++index) {
     const auto value = static_cast<std::int64_t>(
         offset + config.seed + config.warmups + index);
-    if (!subject.mod.replace(edited, joggle::Attr(value)))
+    if (!edit_subject(subject, edit, value))
       return false;
     report = {};
     profile = {};
@@ -428,11 +547,12 @@ bool benchmark(const Config& config, std::ofstream& output,
                          (inserted || position->second == output_digest);
     const Metrics measured =
         metrics(report, profile, reactive, config.stage_count);
-    output << "joggle," << csv(config.revision) << ",generated-chain,"
+    output << "joggle," << csv(config.revision) << ',' << csv(subject.name) << ','
            << subject.source_hash << ',' << subject.total_ops << ','
-           << subject.affected_ops << ',' << config.fanout << ','
-           << config.stage_count << ',' << edit
-           << ',' << (edit == "affected" ? "hot_0" : "cold_0") << ','
+           << subject.affected_ops << ',' << subject.fanout << ','
+           << config.stage_count << ',' << edit << ','
+           << csv(edit == "affected" ? subject.hot_site : subject.cold_site)
+           << ','
            << policy << ",warm," << index << ',' << wall.count() << ','
            << measured.select_ns << ',' << measured.evaluate_ns << ','
            << measured.verify_ns << ',' << measured.executed_stages << ','

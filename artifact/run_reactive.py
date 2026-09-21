@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import platform
 import subprocess
@@ -33,6 +34,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--affected", type=int, nargs="+", default=[1, 8, 64])
     parser.add_argument("--fanout", type=int, nargs="+", default=[1])
     parser.add_argument("--stages", type=int, nargs="+", default=[5])
+    parser.add_argument("--models", type=Path, nargs="+")
+    parser.add_argument(
+        "--sites",
+        choices=("early", "middle", "late"),
+        nargs="+",
+        default=["late"],
+    )
     parser.add_argument("--warmups", type=int, default=10)
     parser.add_argument("--iterations", type=int, default=100)
     parser.add_argument("--seed", type=int, default=1)
@@ -41,7 +49,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def configure(repo: Path, build: Path, persistent: bool) -> Path:
+def configure(repo: Path, build: Path, persistent: bool, onnx: bool) -> Path:
     command(
         [
             "cmake",
@@ -53,6 +61,7 @@ def configure(repo: Path, build: Path, persistent: bool) -> Path:
             "-DJOGGLE_BUILD_TESTS=OFF",
             "-DJOGGLE_BUILD_ARTIFACT=ON",
             "-DJOGGLE_EVAL_COUNTERS=ON",
+            f"-DJOGGLE_BUILD_ONNX={'ON' if onnx else 'OFF'}",
             f"-DJOGGLE_EVALUATOR_PERSISTENT_PLANS={'ON' if persistent else 'OFF'}",
         ],
         repo,
@@ -79,6 +88,11 @@ def append_csv(source: Path, output: Path, write_header: bool) -> bool:
     return False
 
 
+def sha256(path: Path) -> str:
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
 def main() -> int:
     args = parse_args()
     repo = Path(__file__).resolve().parents[1]
@@ -88,13 +102,19 @@ def main() -> int:
     revision = command(["git", "rev-parse", "HEAD"], repo, capture=True)
     if status:
         revision += "-dirty"
-    if (
+    invalid_generator = not args.models and (
         any(node <= 1 for node in args.nodes)
         or any(value <= 0 for value in args.affected)
         or any(value <= 0 for value in args.fanout)
+    )
+    if (
+        invalid_generator
         or any(value < 1 or value > 5 for value in args.stages)
+        or args.warmups < 0
+        or args.iterations <= 0
+        or args.seed < 0
     ):
-        raise SystemExit("nodes, affected sizes, fan-outs, and stages are out of range")
+        raise SystemExit("benchmark arguments are out of range")
 
     owned_temp = None
     if args.build_root:
@@ -104,52 +124,112 @@ def main() -> int:
         owned_temp = tempfile.TemporaryDirectory(prefix="joggle-artifact-")
         build_root = Path(owned_temp.name)
 
-    persistent = configure(repo, build_root / "persistent", True)
-    no_plans = configure(repo, build_root / "no-plans", False)
+    persistent = configure(repo, build_root / "persistent", True, bool(args.models))
+    no_plans = configure(repo, build_root / "no-plans", False, bool(args.models))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.unlink(missing_ok=True)
     write_header = True
     commands: list[list[str]] = []
 
-    for nodes in args.nodes:
-        for affected in args.affected:
-            for fanout in args.fanout:
-                for stage_count in args.stages:
-                    if affected >= nodes:
+    models = []
+    seen_models: set[tuple[str, str]] = set()
+    if args.models:
+        for path in args.models:
+            resolved = path.resolve()
+            if not resolved.is_file():
+                raise SystemExit(f"model does not exist: {path}")
+            digest = sha256(resolved)
+            identity = (resolved.stem, digest)
+            if identity in seen_models:
+                continue
+            seen_models.add(identity)
+            models.append(
+                {
+                    "path": resolved,
+                    "name": resolved.stem,
+                    "sha256": digest,
+                }
+            )
+    subjects = models
+    if not subjects:
+        subjects = []
+        generated: set[tuple[int, int, int]] = set()
+        for nodes in args.nodes:
+            for affected in args.affected:
+                if affected >= nodes:
+                    continue
+                for fanout in args.fanout:
+                    effective = min(fanout, max(1, affected - 1))
+                    key = (nodes, affected, effective)
+                    if key in generated:
                         continue
-                    runs = ((persistent, "all"), (no_plans, "no-plan-cache"))
-                    for binary, policy in runs:
-                        partial = build_root / (
-                            f"{nodes}-{affected}-{fanout}-{stage_count}-{policy}.csv"
+                    generated.add(key)
+                    subjects.append(
+                        {"nodes": nodes, "affected": affected, "fanout": effective}
+                    )
+    if not subjects:
+        raise SystemExit("the requested matrix contains no valid subjects")
+
+    for subject in subjects:
+        for stage_count in args.stages:
+            sites = args.sites if models else [None]
+            for site in sites:
+                if models:
+                    label = f"{subject['name']}-{subject['sha256'][:12]}"
+                else:
+                    label = (
+                        f"{subject['nodes']}-{subject['affected']}-"
+                        f"{subject['fanout']}"
+                    )
+                if site:
+                    label += f"-{site}"
+                runs = ((persistent, "all"), (no_plans, "no-plan-cache"))
+                for binary, policy in runs:
+                    partial = build_root / f"{label}-{stage_count}-{policy}.csv"
+                    invocation = [
+                        str(binary),
+                        "--modules",
+                        str(binary.parents[1] / "modules"),
+                        "--output",
+                        str(partial),
+                        "--revision",
+                        revision,
+                        "--policy",
+                        policy,
+                        "--stages",
+                        str(stage_count),
+                        "--warmups",
+                        str(args.warmups),
+                        "--iterations",
+                        str(args.iterations),
+                        "--seed",
+                        str(args.seed),
+                    ]
+                    if models:
+                        invocation.extend(
+                            [
+                                "--input",
+                                str(subject["path"]),
+                                "--subject-hash",
+                                subject["sha256"],
+                                "--site",
+                                site,
+                            ]
                         )
-                        invocation = [
-                            str(binary),
-                            "--modules",
-                            str(binary.parents[1] / "modules"),
-                            "--output",
-                            str(partial),
-                            "--revision",
-                            revision,
-                            "--policy",
-                            policy,
-                            "--total-nodes",
-                            str(nodes),
-                            "--affected-nodes",
-                            str(affected),
-                            "--fanout",
-                            str(fanout),
-                            "--stages",
-                            str(stage_count),
-                            "--warmups",
-                            str(args.warmups),
-                            "--iterations",
-                            str(args.iterations),
-                            "--seed",
-                            str(args.seed),
-                        ]
-                        command(invocation, repo)
-                        commands.append(invocation)
-                        write_header = append_csv(partial, args.output, write_header)
+                    else:
+                        invocation.extend(
+                            [
+                                "--total-nodes",
+                                str(subject["nodes"]),
+                                "--affected-nodes",
+                                str(subject["affected"]),
+                                "--fanout",
+                                str(subject["fanout"]),
+                            ]
+                        )
+                    command(invocation, repo)
+                    commands.append(invocation)
+                    write_header = append_csv(partial, args.output, write_header)
 
     command(
         [
@@ -171,6 +251,11 @@ def main() -> int:
         "affected": args.affected,
         "fanout": args.fanout,
         "stages": args.stages,
+        "models": [
+            {"name": model["name"], "sha256": model["sha256"]}
+            for model in models
+        ],
+        "sites": args.sites if models else [],
         "warmups": args.warmups,
         "iterations": args.iterations,
         "seed": args.seed,

@@ -3,7 +3,7 @@ use ir
 
 local fn root(m: Mod, owner: str, index: int) -> Val {
   let blocks = ir.blks(ir.find(m, owner))
-  assert(len(blocks) == 1, "subject must have one root block")
+  assert(len(blocks) >= 1, "subject must have an entry block")
   let operations = ir.ops(blocks[0], index, 1)
   assert(len(operations) == 1, "operation index is out of range")
   let op = operations[0]

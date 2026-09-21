@@ -2,9 +2,12 @@
   "name": "reactive-update",
   "version": 1,
   "primary_key": [
+    "system",
     "system_revision",
+    "subject",
     "subject_hash",
     "edit_class",
+    "edit_site",
     "stages",
     "policy",
     "cache_state",

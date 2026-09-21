@@ -102,7 +102,7 @@ function(joggle_onnx_model)
   file(REMOVE "${archive}")
 endfunction()
 
-include("${CMAKE_CURRENT_LIST_DIR}/models.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../models.cmake")
 if(pending)
   list(JOIN pending ", " unknown)
   message(FATAL_ERROR "unknown model: ${unknown}")

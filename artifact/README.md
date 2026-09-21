@@ -25,6 +25,22 @@ executing a stage. The CSV records actual IR operation counts rather than the
 requested generator size. Total nodes, affected nodes, fan-out, and stage count
 are separate generator parameters.
 
+The same executable also accepts pinned ONNX files. It decodes the complete
+model, selects pre-registered early, middle, or late single-output computations,
+and chooses a same-function operation outside each computation's affected cone.
+The two edit classes then change metadata on the selected or unrelated
+operation. Every row records the model SHA-256 supplied by the runner and the
+exact selected sites.
+
+Fetch the 15 standard cases and the separately gated heavy case. The download
+script checks every file against the shared pinned manifest:
+
+```sh
+cmake -DOUT=.cache/onnx-zoo -P test/tools/fetch_onnx_zoo.cmake
+cmake -DOUT=.cache/onnx-zoo -DMODELS=bidaf-9 \
+  -P test/tools/fetch_onnx_zoo.cmake
+```
+
 Run a short end-to-end check:
 
 ```sh
@@ -33,6 +49,16 @@ python3 artifact/run_reactive.py \
   --nodes 1000 --affected 1 8 64 \
   --fanout 1 --stages 5 \
   --warmups 1 --iterations 3 --allow-dirty
+```
+
+Run the model-backed track over an already downloaded pinned corpus:
+
+```sh
+python3 artifact/run_reactive.py \
+  --output .cache/artifact/reactive-models.csv \
+  --models .cache/onnx-zoo/*.onnx \
+  --sites early middle late \
+  --stages 5 --warmups 10 --iterations 100
 ```
 
 Run the planned scaling matrix from a clean revision:
