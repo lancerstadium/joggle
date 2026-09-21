@@ -6,12 +6,12 @@ increase the number of independent tasks, patches, or models.
 
 | Figure | Claim | Compared systems | Independent unit | Primary endpoint |
 | --- | --- | --- | --- | --- |
-| 4 | Convenient extension | Joggle, MLIR, xDSL | 24 extension tasks | executable pass@1 |
+| 4 | Convenient extension | Joggle, MLIR, xDSL | 24 extension tasks | agent success within budget |
 | 5 | Controllable change | Joggle, MLIR, xDSL | 12 matched patches | files, lines, zones, declarations |
 | 6 | Efficient update | Joggle, MLIR, xDSL | 15 model graphs | Update/Full time and visited work |
 | 7 | End-to-end performance | Joggle base/opt, ONNX Runtime | 24 operators and 15 models | steady-state latency and correct coverage |
 
-The complete release contains 29,376 Figure 4 rows, 36 Figure 5 patch rows,
+The complete release contains 2,880 Figure 4 trajectories, 36 Figure 5 patch rows,
 108,000 Figure 6 timing rows, and up to 11,700 Figure 7 timing rows. Repeated
 rows estimate each independent task, patch, operator, or model; they are never
 treated as additional independent subjects.
@@ -24,17 +24,21 @@ unsupported cases as coverage observations; exclude them from latency ratios.
 Every timed output must pass its semantic or numerical oracle. Form ratios
 within a subject before aggregating across subjects.
 
-## Figure 4 · extension completion
+## Figure 4 · agent extension completion
 
 The suite has four tasks in each of six extension families: definition,
 analysis, rewrite, conversion, emission, and vertical extension. Two pinned
-1--3B code models receive an equivalent semantic specification and a compact,
-system-specific API card. Each model/system/task condition uses 0, 1, 2, and 4
-demonstrations and produces 50 samples.
+small code models drive the same deterministic coding-agent harness. For each
+system, the agent receives the same semantic specification, a compact native
+API card, an isolated workspace, and inspect/edit/build/test tools. Each
+model/system/task condition uses zero or two disjoint demonstrations and ten
+seeded runs under a 30-action and 32k-token budget, yielding 2,880 trajectories.
 
-Executable pass@1 is primary. pass@5 and pass@10 show sample-budget
-sensitivity; reference-solution log-perplexity is secondary. The oracle reports
-the first failed phase: parse, type, build, or semantic test.
+Executable success within budget is primary. Successful trajectories report
+completion tokens, tool calls, edit attempts, and wall time. Unsuccessful runs
+report the first terminal phase: parse, type, build, semantic test, or budget.
+Reference-solution log-perplexity is a supplementary interface-predictability
+diagnostic, not a separate experiment.
 
 - Contract: `manifests/extension-specs.json`
 - Task index: `manifests/extension-tasks.csv`

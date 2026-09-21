@@ -35,47 +35,26 @@ The generators validate hashes and numerical fixtures before collection.
 
 ## Figure 4
 
-Validate the task contract, materialize paired requests, run the pinned local
-models, evaluate outputs with system adapters, and assemble one CSV:
+Validate the task contract, run the frozen coding-agent harness for every
+model/system provider, and assemble one CSV:
 
 ```sh
 python3 artifact/validate_extension_specs.py
-python3 artifact/prepare_extension_requests.py \
-  --config "$CONFIG" \
-  --output .cache/artifact/extension-requests.jsonl \
-  --references-output .cache/artifact/extension-references.jsonl
-
-python3 artifact/run_extension_transformers.py generate \
-  --config "$CONFIG" \
-  --requests .cache/artifact/extension-requests.jsonl \
-  --model "$MODEL" \
-  --output .cache/artifact/extension-generations.jsonl
-
-python3 artifact/run_extension_transformers.py score \
-  --config "$CONFIG" \
-  --requests .cache/artifact/extension-requests.jsonl \
-  --references .cache/artifact/extension-references.jsonl \
-  --model "$MODEL" \
-  --output .cache/artifact/extension-scores.jsonl
-
-python3 artifact/evaluate_extension_outputs.py \
-  --config "$CONFIG" \
-  --requests .cache/artifact/extension-requests.jsonl \
-  --references .cache/artifact/extension-references.jsonl \
-  --responses .cache/artifact/extension-generations.jsonl \
-  --output .cache/artifact/extension-oracles.jsonl
-
-python3 artifact/assemble_extension_rows.py \
-  --requests .cache/artifact/extension-requests.jsonl \
-  --responses .cache/artifact/extension-generations.jsonl \
-  --scores .cache/artifact/extension-scores.jsonl \
-  --evaluations .cache/artifact/extension-oracles.jsonl \
+python3 artifact/merge_agent_rows.py \
+  .cache/artifact/agent-model-a-joggle.csv \
+  .cache/artifact/agent-model-a-mlir.csv \
+  .cache/artifact/agent-model-a-xdsl.csv \
+  .cache/artifact/agent-model-b-joggle.csv \
+  .cache/artifact/agent-model-b-mlir.csv \
+  .cache/artifact/agent-model-b-xdsl.csv \
   --output .cache/artifact/figure-04-extension.csv
 ```
 
-`$CONFIG` pins both models, all system revisions, API cards, demonstration
-sources, reference sources, and oracle commands. Run generation and scoring
-once for each configured `$MODEL`; use `--resume` for the shared JSONL files.
+Each provider CSV contains all 24 tasks, zero- and two-demonstration contexts,
+and ten seeded trajectories. Its adjacent `agent-provider/v1` record pins the
+model, system revision, API card, demonstrations, action/token budgets,
+workspace image, oracle commands, and complete trajectory hashes. The release
+matrix contains 2,880 rows and rejects a missing task, seed, or provider.
 
 ## Figure 5
 

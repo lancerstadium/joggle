@@ -20,7 +20,7 @@ FIGURES = {
     6: ("figure-06-update.csv", "figure_06_update.py"),
     7: ("figure-07-performance.csv", "figure_07_performance.py"),
 }
-SCHEMAS = {4: "extension-assembly/v1", 5: "figure-05-footprint/v1",
+SCHEMAS = {4: "extension-agent-assembly/v1", 5: "figure-05-footprint/v1",
            6: "update-assembly/v1", 7: "performance-merge/v1"}
 
 

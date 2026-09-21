@@ -20,7 +20,7 @@ relevant correctness oracle enter an aggregate.
     \toprule
     Property & Comparison & Primary evidence \\
     \midrule
-    Convenient & Joggle/MLIR/xDSL; 24 extensions & executable pass@1 \\
+    Convenient & Joggle/MLIR/xDSL; 24 extensions & agent success within budget \\
     Controllable & same systems; 12 matched patches & files, lines, zones, declarations \\
     Efficient & same systems; 15 model DAGs & normalized latency and revisited work \\
     End-to-end & Joggle base/optimized; ONNX Runtime & correctness and latency \\
@@ -50,45 +50,30 @@ timings. Ratios are formed within a subject before geometric aggregation. CSV
 rows record subject identity, seed, and correctness; hash-bound run records pin
 revisions, build flags, host and CPU policy, and cache configuration.
 
-\subsection{Extension Predictability and Completion}
+\subsection{Agent Extension Completion}
 \label{sec:eval-convenient}
 
 The extension suite contains 24 held-out tasks, four in each of six families:
 type or operation definition, analysis, rewrite, conversion, artifact
 generation, and a vertical feature combining these roles. Every task has one
-semantic specification with fixed positive and negative fixtures, a
-system-specific harness, and an idiomatic reference solution that passes the
-common oracle. Generated extensions enter the harness without manual repair.
+semantic specification, fixed positive and negative fixtures, a
+system-specific harness, and an idiomatic passing reference patch.
 
-Two frozen open-weight code models in the 1--3B range receive the specification
-and a compact API card. Demonstration counts are $0,1,2,$ and $4$; examples
-come from a disjoint bank under equal token ceilings. Each condition draws 50
-samples with paired sampling controls, producing 29,376 scored rows including
-the reference solutions. Appendix~\ref{app:extension} specifies isolation,
-hashing, and oracle phases.
+Two frozen small code models drive the same deterministic coding-agent
+harness. For each system, the agent receives the semantic specification, a
+compact native API card, an isolated workspace, and the same inspect, edit,
+build, and test tools. It may take at most 30 actions and emit at most 32k
+tokens. Each model--system--task condition runs ten paired seeds with zero or
+two disjoint demonstrations, yielding 2,880 complete trajectories.
 
-For reference tokens $x_{1:N}$ and context $c$,
-\[
-  \operatorname{PPL}(x\mid c) =
-  \exp\left(-\frac{1}{N}\sum_{t=1}^{N}
-  \log p_\theta(x_t\mid x_{<t},c)\right).
-\]
-Log-perplexity is a secondary measure. We compare semantically corresponding
-reference solutions under the same model and tokenizer, and report both the
-value at each demonstration count and the paired change from zero to four
-demonstrations. Executable completion is primary: a sample
-must parse, type-check, compile where required, and pass the oracle. From $n$
-samples with $c$ successes, pass@$k$ is~\cite{chen2021codex}
-\[
-  \widehat{\operatorname{pass@}k}
-    = 1 - \frac{\binom{n-c}{k}}{\binom{n}{k}}.
-\]
-We compute pass@1, pass@5, and pass@10 for each task, macro-average across
-tasks, and obtain intervals by resampling tasks within each family. Token counts
-and parse, type, build, and oracle failures explain completion gaps without
-replacing the executable result. Pairing fixes task semantics; the
-demonstration sweep distinguishes prior familiarity from learnability from
-local examples.
+The primary endpoint is executable success within budget: the final workspace
+must parse, type-check, build, and pass the semantic oracle without manual
+repair. We macro-average success over tasks and resample tasks within each
+family. For successful trajectories, secondary measures are completion tokens,
+tool calls, edit attempts, and wall time. Failed trajectories retain their
+first terminal phase---parse, type, build, semantic oracle, or budget. A
+reference-solution log-perplexity sweep appears only as a supplementary
+interface-predictability diagnostic.
 
 \subsection{Change Footprint and Ownership}
 \label{sec:eval-controllable}
@@ -114,8 +99,7 @@ fan-out, and crossed ownership edges; in Joggle, these are declared
 zero registry or build edits, absolute paired counts are primary. We summarize
 the paired difference with a task-level bootstrap interval and report a ratio
 only when both counts are nonzero. Small rewrites and vertical features remain
-separate. Appendix~\ref{app:patch} defines patch reduction, exclusions, and
-zone counting.
+separate.
 
 \subsection{Reactive Update Cost}
 \label{sec:eval-efficient}
@@ -148,7 +132,6 @@ language and runtime differences out of the headline comparison. Absolute
 edit-to-result latency remains visible as a secondary measure. All paths begin
 from the same logical graph state, apply the same edit, and must produce the
 same final digest.
-Appendix~\ref{app:update} fixes adapter contracts and counter semantics.
 
 \subsection{End-to-End Performance}
 \label{sec:eval-artifacts}
@@ -164,8 +147,7 @@ byte-identical inputs and pass dtype-specific numerical oracles.
 The main measure is steady-state execution latency after ten warm-ups and 100
 measurements. Unsupported pairs remain as coverage outcomes instead of
 disappearing from the accepted set. Operator and model results share one figure
-and one CSV, with up to 11,700 timed rows. Appendix~\ref{app:performance}
-specifies inputs, timing boundaries, and numerical tolerances.
+and one CSV, with up to 11,700 timed rows.
 
 Across subjects supported by both Joggle paths, the frozen optimization pack
 improves geometric-mean latency by $2.09\times$ for operators and $3.06\times$

@@ -196,6 +196,13 @@ fn sqrt<E: Ty, S: list<int>>(
   return out
 }
 
+fn reduce_l2<E: Ty, S: list<int>, Y: list<int>>(
+  x: tensor<E, S>, axes: list<int>
+) -> tensor<E, Y> {
+  let reduced: tensor<E, Y> = tensor.sum(x * x, axes)
+  return sqrt(reduced)
+}
+
 fn cos<E: Ty, S: list<int>>(
   x: tensor<E, S>
 ) -> tensor<E, S> {
@@ -320,4 +327,3 @@ fn round_even<E: Ty, S: list<int>>(
   }
   return out
 }
-

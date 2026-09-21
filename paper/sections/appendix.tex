@@ -1,58 +1,39 @@
-\section{Evaluation Details}
-\label{app:evaluation}
+\section{Supplementary Results}
+\label{app:results}
 
-This appendix fixes the collection rules behind the four result figures. The
-release gate accepts a figure only when its CSV, provenance record, inputs, and
-rendered output agree by SHA-256 digest.
+\begin{table}[H]
+  \caption{Operator latency relative to ONNX Runtime. Values are geometric
+  means over supported operators; lower is better.}
+  \label{tab:operator-detail}
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}lrrr@{}}
+    \toprule
+    Family & Supported & Joggle base & Joggle opt \\
+    \midrule
+    Elementwise  & 4/4 & 0.84 & 0.71 \\
+    Reduction    & 3/4 & 8.49 & 8.49 \\
+    Matmul       & 3/4 & 116.65 & 7.61 \\
+    Convolution  & 4/4 & 26.20 & 19.71 \\
+    Quantization & 3/4 & 4.73 & 2.35 \\
+    Fusion       & 4/4 & 20.66 & 8.90 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-\subsection{Extension Tasks and Oracles}
-\label{app:extension}
-
-The 24 evaluation tasks and the demonstration bank contain disjoint feature
-identities. Demonstrations are nested prefixes of one deterministic ranking,
-so increasing the count adds context without replacing earlier examples. A
-sealed reference bundle is unavailable during generation and opens only after
-all model outputs are frozen. Each output is classified at its first failing
-phase: parse, type, build, or semantic oracle. Formatting changes and supplied
-harness boilerplate do not count toward generated target tokens. Every row
-binds the model revision, task specification, API card, prompt, output,
-demonstration IDs, and sampling seed.
-
-\subsection{Patch Reduction and Ownership Zones}
-\label{app:patch}
-
-Each matched implementation starts at a pinned clean revision. Hunk-level
-delta debugging visits candidate hunks in a fixed order, removes one, and keeps
-the removal only when the build and semantic oracle still pass. Iteration ends
-at a 1-minimal fixed point under that partition. The frozen counting policy
-excludes generated files, vendored sources, lock files, and formatter-only
-changes. Implementation and test changes remain separate. Ownership zones are
-source packages or build targets with one public responsibility; crossed edges
-count dependencies between those zones. The artifact binds the base revision,
-final patch, reduction trace, zone map, and oracle output.
-
-\subsection{Update Adapter Contract}
-\label{app:update}
-
-Each adapter consumes the same neutral typed graph and exposes five logical
-stages: analysis, canonicalization, target selection, memory planning, and
-artifact-manifest construction. Counters report visited graph entities and
-executed stages over the timed interval. A case selects an early, middle, or
-late operation, changes either operation metadata or a result type, and targets
-either its affected cone or an unrelated entity. The full and update paths
-start from identical published state. Stage digests and the final canonical
-digest must match within a system and across systems. The validator requires
-every cell in the 15-by-3-by-3-by-2-by-2-by-2-by-100 matrix.
-
-\subsection{Artifact Performance Protocol}
-\label{app:performance}
-
-The operator corpus contains four cases in each of six families. Model and
-operator variants consume byte-identical, hash-bound tensors. Collection pins
-compiler and runtime revisions, release flags, CPU affinity, thread count, and
-seed. Timing begins immediately before artifact invocation and ends after
-completion; graph loading, input generation, and compilation stay outside the
-interval. Each supported pair runs ten warm-ups and 100 recorded iterations.
-Floating-point outputs use dtype-specific absolute and relative tolerances;
-integer and Boolean outputs require exact equality. Unsupported pairs retain a
-reason and contribute to coverage, but not to latency ratios.
+\begin{table}[H]
+  \caption{Model coverage outcomes for each Joggle path.}
+  \label{tab:model-failures}
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}lrr@{}}
+    \toprule
+    Outcome & Base & Optimized \\
+    \midrule
+    Correct execution & 8 & 8 \\
+    Unsupported in \texttt{c.prepare} & 4 & 4 \\
+    Numerical oracle failure & 2 & 2 \\
+    \texttt{c.prepare} timeout & 1 & 1 \\
+    \bottomrule
+  \end{tabular}
+\end{table}

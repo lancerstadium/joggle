@@ -61,9 +61,12 @@ local fn expose_with(
       fold(m)
       copy(m)
       dce(m, [])
-      expand_with(m, accept, arg, configured)
-      again = ir.revision(m) != before
-      changed = again || changed
+      // fold/copy/dce each process the current graph in one invocation. Only
+      // successful inlining can expose a new call layer that needs another
+      // round; using the aggregate revision here can loop on canonicalization
+      // churn even when no further call is expandable.
+      again = expand_with(m, accept, arg, configured)
+      changed = ir.revision(m) != before || changed
       if round == limit && again {
         exceeded = true
       }

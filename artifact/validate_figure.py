@@ -14,7 +14,7 @@ from pathlib import Path
 
 FAMILIES = {"definition", "analysis", "rewrite", "conversion", "emission", "vertical"}
 SYSTEMS = {"Joggle", "MLIR", "xDSL"}
-DEMOS = {0, 1, 2, 4}
+DEMOS = {0, 2}
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -72,13 +72,11 @@ def require_unique(rows: list[dict[str, str]], fields: tuple[str, ...]) -> None:
 
 
 def extension(rows: list[dict[str, str]], partial: bool, tasks: dict[str, str], spec_hash: str) -> None:
-    require_unique(rows, ("record_kind", "model", "system", "task", "demo_count", "seed", "sample_index"))
+    require_unique(rows, ("model", "system", "task", "demo_count", "run", "seed"))
     groups: dict[tuple[str, str, str, int], list[dict[str, str]]] = defaultdict(list)
     condition_systems: dict[tuple[str, str, int], set[str]] = defaultdict(set)
-    controls: dict[tuple[str, str, int, str, str], tuple[str, ...]] = {}
+    controls: dict[tuple[str, str, int, int], tuple[str, ...]] = {}
     for line, row in enumerate(rows, start=2):
-        if row["record_kind"] not in {"sample", "reference"}:
-            raise SystemExit(f"line {line}: invalid record kind")
         if row["system"] not in SYSTEMS or tasks.get(row["task"]) != row["family"]:
             raise SystemExit(f"line {line}: system or task differs from the frozen contract")
         if not row["model"] or not row["model_revision"] or not row["system_revision"]:
@@ -87,36 +85,38 @@ def extension(rows: list[dict[str, str]], partial: bool, tasks: dict[str, str], 
         demo_ids = row["demo_ids"].split(";") if row["demo_ids"] else []
         if demos not in DEMOS or len(demo_ids) != demos or len(set(demo_ids)) != demos:
             raise SystemExit(f"line {line}: invalid demonstrations")
-        unsigned(row, "seed", line); unsigned(row, "target_tokens", line)
-        unsigned(row, "context_tokens", line)
-        card_tokens = unsigned(row, "api_card_tokens", line)
-        card_budget = unsigned(row, "api_card_budget_tokens", line)
-        if card_budget == 0 or card_tokens > card_budget:
-            raise SystemExit(f"line {line}: API card exceeds its budget")
-        if not 0 < real(row, "top_p", line) <= 1 or not 0 < real(row, "temperature", line) <= 2:
-            raise SystemExit(f"line {line}: invalid sampling controls")
+        run = unsigned(row, "run", line)
+        if run >= 10:
+            raise SystemExit(f"line {line}: run must be in [0, 9]")
+        unsigned(row, "seed", line)
+        for field in ("wall_ms", "prompt_tokens", "completion_tokens", "tool_calls",
+                      "edit_attempts", "files_touched"):
+            unsigned(row, field, line)
+        if unsigned(row, "budget_actions", line) != 30:
+            raise SystemExit(f"line {line}: action budget differs from the contract")
+        if unsigned(row, "budget_tokens", line) != 32000:
+            raise SystemExit(f"line {line}: token budget differs from the contract")
         if row["task_spec_sha256"] != spec_hash:
             raise SystemExit(f"line {line}: contract hash differs")
-        for field in ("api_card_sha256", "prompt_sha256", "output_sha256"):
+        for field in ("api_card_sha256", "trajectory_sha256", "patch_sha256"):
             digest(row[field], line, field)
-        if row["record_kind"] == "sample":
-            sample_index = unsigned(row, "sample_index", line)
-            if sample_index >= 50 or row["nll"]:
-                raise SystemExit(f"line {line}: invalid sample index or NLL")
-            phases = [boolean(row, field, line) for field in ("parsed", "typed", "built", "passed")]
-            if phases != sorted(phases, reverse=True):
-                raise SystemExit(f"line {line}: inconsistent oracle phases")
-        else:
-            real(row, "nll", line)
-            sample_index = -1
-            if row["sample_index"] or any(row[field] for field in ("parsed", "typed", "built", "passed")):
-                raise SystemExit(f"line {line}: reference row contains sample outcomes")
+        reference_tokens = unsigned(row, "reference_tokens", line)
+        if reference_tokens == 0:
+            raise SystemExit(f"line {line}: reference token count is zero")
+        real(row, "reference_nll", line)
+        phases = [boolean(row, field, line) for field in ("parsed", "typed", "built", "passed")]
+        if phases != sorted(phases, reverse=True):
+            raise SystemExit(f"line {line}: inconsistent oracle phases")
+        allowed_stops = {"success", "parse", "type", "build", "semantic", "budget", "agent_error"}
+        if row["stop_reason"] not in allowed_stops:
+            raise SystemExit(f"line {line}: invalid stop reason")
+        if phases[-1] != (row["stop_reason"] == "success"):
+            raise SystemExit(f"line {line}: success and stop reason disagree")
         groups[(row["model"], row["system"], row["task"], demos)].append(row)
         condition = (row["model"], row["task"], demos)
         condition_systems[condition].add(row["system"])
-        control_key = (*condition, row["record_kind"], str(sample_index))
-        control = (row["demo_ids"], row["seed"], row["temperature"], row["top_p"],
-                   row["max_new_tokens"], row["api_card_budget_tokens"])
+        control_key = (*condition, run)
+        control = (row["demo_ids"], row["seed"], row["budget_actions"], row["budget_tokens"])
         if control_key in controls and controls[control_key] != control:
             raise SystemExit(f"line {line}: paired systems use different sampling controls")
         controls[control_key] = control
@@ -126,14 +126,15 @@ def extension(rows: list[dict[str, str]], partial: bool, tasks: dict[str, str], 
         raise SystemExit("Figure 4 task population is incomplete")
     if len({row["model"] for row in rows}) != 2:
         raise SystemExit("Figure 4 requires two models")
-    if len(condition_systems) != 2 * 24 * 4 or any(
+    if len(condition_systems) != 2 * 24 * 2 or any(
         systems != SYSTEMS for systems in condition_systems.values()
     ):
         raise SystemExit("Figure 4 system pairing is incomplete")
     for key, group in groups.items():
-        kinds = Counter(row["record_kind"] for row in group)
-        if kinds != {"sample": 50, "reference": 1}:
-            raise SystemExit(f"{key}: expected 50 samples and one reference")
+        if len(group) != 10 or {int(row["run"]) for row in group} != set(range(10)):
+            raise SystemExit(f"{key}: expected ten complete agent trajectories")
+    if len(rows) != 2880:
+        raise SystemExit(f"Figure 4 requires 2880 trajectories, found {len(rows)}")
 
 
 def footprint(rows: list[dict[str, str]], partial: bool, tasks: dict[str, str]) -> None:

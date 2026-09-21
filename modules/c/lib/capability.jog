@@ -222,15 +222,17 @@ local fn accepts_with(m: Mod, op: Op, config: dict) -> bool {
 }
 
 local fn prepare_with(m: Mod, config: dict) -> bool {
-  let limit = len(ir.ops(m)) + 1
   let accept = ir.find(
     "c.accepts", [ty("Mod"), ty("Op"), ty("dict")]
   )
-  var changed = opt.expose(m, accept, config, limit)
+  // Exposure can inline a body into many call sites, so the operation count
+  // after the first fixed point can be much larger than the input count. Size
+  // each convergence budget from the graph consumed by that invocation.
+  var changed = opt.expose(m, accept, config, len(ir.ops(m)) + 1)
   if ir.type(m) {
     changed = true
   }
-  if opt.expose(m, accept, config, limit) {
+  if opt.expose(m, accept, config, len(ir.ops(m)) + 1) {
     changed = true
   }
   if opt.specialize(m, "stage", "shape") {

@@ -59,7 +59,8 @@ local fn reduce_result(op: Op) -> Ty {
 }
 
 [phase: "infer", on: [
-  "onnx.ReduceMean", "onnx.ReduceSum", "onnx.ReduceMin", "onnx.ReduceMax"
+  "onnx.ReduceMean", "onnx.ReduceSum", "onnx.ReduceMin", "onnx.ReduceMax",
+  "onnx.ReduceL2"
 ]]
 local fn reduce_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
@@ -124,4 +125,3 @@ local fn loop_type(m: Mod, op: Op) -> bool {
   }
   return changed
 }
-

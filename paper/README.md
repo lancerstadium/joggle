@@ -66,7 +66,7 @@ JOGGLE DESIGN, and OUTCOME. Each column reads top to bottom with no cross-column
 arrows. Programmability: fragmented Semantics/Analysis/Transform/Convert/Emit
 mechanisms → Unified metaprogramming using `fn optimize(m: Mod)`, one language,
 one call model, one value model, and `Ty Attr Mod Fn Op Val` → CONVENIENT with
-`PPL ↓` and `pass@k ↑`. Organization: one feature scattered across hierarchical
+`agent success ↑` and `tokens/tool calls ↓`. Organization: one feature scattered across hierarchical
 IR, pass registry, build target, conversion, and backend → Graph-level mod
 boundary with `mod quant`, `use tensor`, own/publish/version/change tabs, and an
 app→quant→tensor use graph → CONTROLLABLE with `files Δ ↓` and `LoC Δ ↓`.
@@ -588,7 +588,7 @@ Only outputs that pass the relevant correctness oracle enter an aggregate.
 
 | Property | Comparison | Primary evidence |
 | --- | --- | --- |
-| Convenient | Joggle, MLIR, and xDSL on 24 matched extensions | executable pass@1 |
+| Convenient | Joggle, MLIR, and xDSL on 24 matched extensions | agent success within budget |
 | Controllable | The same systems on 12 matched patches | files, lines, zones, declarations |
 | Efficient | The same systems on 15 model-derived DAGs | normalized update latency and revisited work |
 | End-to-end | Joggle base/optimized and ONNX Runtime on 24 operators and 15 models | correctness coverage and steady-state latency |
@@ -618,57 +618,41 @@ geometric aggregation. CSV rows record subject identity, seed, and correctness;
 hash-bound run records pin revisions, build flags, host and CPU policy, and
 cache configuration.
 
-### 4.2 Extension Predictability and Completion
+### 4.2 Agent Extension Completion
 
 The extension suite contains 24 held-out tasks, four in each of six families:
 type or operation definition, analysis, rewrite, conversion, artifact
 generation, and a vertical feature combining these roles. Every task has one
-semantic specification with fixed positive and negative fixtures, a
-system-specific harness, and an idiomatic reference solution that passes the
-common oracle. Generated extensions enter the harness without manual repair.
+semantic specification, fixed positive and negative fixtures, a
+system-specific harness, and an idiomatic passing reference patch.
 
-Two frozen open-weight code models in the 1--3B range receive the specification
-and a compact API card. Demonstration counts are $0,1,2,$ and $4$; examples
-come from a disjoint bank under equal token ceilings. Each condition draws 50
-samples with paired sampling controls, producing 29,376 scored rows including
-the reference solutions. Appendix A.1 specifies isolation, hashing, and oracle
-phases.
+Two frozen small code models drive the same deterministic coding-agent
+harness. For each system, the agent receives the semantic specification, a
+compact native API card, an isolated workspace, and the same inspect, edit,
+build, and test tools. It may take at most 30 actions and emit at most 32k
+tokens. Each model--system--task condition runs ten paired seeds with zero or
+two disjoint demonstrations, yielding 2,880 complete trajectories.
 
-For reference tokens $x_{1:N}$ and context $c$,
-
-$$
-PPL(x\mid c)=\exp\left(-\frac{1}{N}
-  \sum_{t=1}^{N}\log p_\theta(x_t\mid x_{<t},c)\right).
-$$
-
-Log-perplexity is a secondary measure. We compare semantically corresponding
-reference solutions under the same model and tokenizer, and report both the
-value at each demonstration count and the paired change from zero to four
-demonstrations. Executable completion is primary: a sample
-must parse, type-check, compile where required, and pass the oracle. From $n$
-samples with $c$ successes, pass@$k$ is [@chen2021codex]
-
-$$
-\widehat{pass@k}=1-\frac{\binom{n-c}{k}}{\binom{n}{k}}.
-$$
-
-We compute pass@1, pass@5, and pass@10 for each task, macro-average across
-tasks, and obtain intervals by resampling tasks within each family. Token counts
-and parse, type, build, and oracle failures explain completion gaps without
-replacing the executable result. Pairing fixes task semantics; the
-demonstration sweep distinguishes prior familiarity from learnability from
-local examples.
+The primary endpoint is executable success within budget: the final workspace
+must parse, type-check, build, and pass the semantic oracle without manual
+repair. We macro-average success over tasks and resample tasks within each
+family. For successful trajectories, secondary measures are completion tokens,
+tool calls, edit attempts, and wall time. Failed trajectories retain their
+first terminal phase---parse, type, build, semantic oracle, or budget. A
+reference-solution log-perplexity sweep appears only as a supplementary
+interface-predictability diagnostic.
 
 <!-- FIGURE 4 PLAN — Full-width, three compact panels fed by one CSV and one
-plotting script. (a) task-level pass@1 at four demonstrations, grouped by
-family; (b) pass@1 response to 0/1/2/4 demonstrations; (c) parse/type/build/
-semantic failure composition. Keep the two models in separate compact rows.
-Report paired log-perplexity as a secondary numeric table so syntax length
-cannot dominate the headline. CSV: figure-04-extension.csv. Raw columns: model,
-model_revision,system,system_revision,task,family,demo_count,demo_ids,seed,
-sample_index,temperature,top_p,max_new_tokens,target_tokens,context_tokens,
-api_card_tokens,api_card_budget_tokens,nll,task_spec_sha256,api_card_sha256,
-prompt_sha256,output_sha256,parsed,typed,built,passed. -->
+plotting script. (a) task-macro agent success at two demonstrations, grouped by
+family; (b) paired success change from zero to two demonstrations; (c) tokens
+and tool calls among successful trajectories. Keep the two models in separate
+compact rows. Failure composition and reference-solution log-perplexity belong
+in supplementary figures. CSV: figure-04-extension.csv. Raw columns: model,
+model_revision,system,system_revision,task,family,demo_count,demo_ids,run,seed,
+budget_actions,budget_tokens,wall_ms,prompt_tokens,completion_tokens,tool_calls,
+edit_attempts,files_touched,parsed,typed,built,passed,stop_reason,
+task_spec_sha256,api_card_sha256,trajectory_sha256,patch_sha256,reference_nll,
+reference_tokens. -->
 
 ### 4.3 Change Footprint and Ownership
 
@@ -695,7 +679,6 @@ edges. Because a baseline may require zero registry or
 build edits, absolute paired counts are primary. We summarize the paired
 difference with a task-level bootstrap interval and report a ratio only when
 both counts are nonzero. Small rewrites and vertical features remain separate.
-Appendix A.2 defines patch reduction, exclusions, and zone counting.
 
 <!-- FIGURE 5 PLAN — One-column dense paired-dot plot fed by one CSV and one
 plotting script. Rows are the 12 feature changes grouped by family; four narrow
@@ -737,7 +720,6 @@ language and runtime differences out of the headline comparison. Absolute
 edit-to-result latency remains visible as a secondary measure. All paths begin
 from the same logical graph state, apply the same edit, and must produce the
 same final digest.
-Appendix A.3 fixes adapter contracts and counter semantics.
 
 <!-- FIGURE 6 PLAN — Full-width external comparison fed by one CSV and one
 plotting script. (a) Fifteen model rows show per-system UpdateRatio for Joggle,
@@ -762,8 +744,7 @@ byte-identical inputs and pass dtype-specific numerical oracles.
 The main measure is steady-state execution latency after ten warm-ups and 100
 measurements. Unsupported pairs remain as coverage outcomes instead of
 disappearing from the accepted set. Operator and model results share one figure
-and one CSV, with up to 11,700 timed rows. Appendix A.4 specifies inputs,
-timing boundaries, and numerical tolerances.
+and one CSV, with up to 11,700 timed rows.
 
 Across subjects supported by both Joggle paths, the frozen optimization pack
 improves geometric-mean latency by $2.09\times$ for operators and $3.06\times$
@@ -941,56 +922,25 @@ evaluation tests these properties through executable extension completion,
 paired patch footprint, and reactive update cost while measuring generated
 artifacts independently.
 
-## Appendix A. Evaluation Details
+## Appendix A. Supplementary Results
 
-This appendix fixes the collection rules behind the four result figures. The
-release gate accepts a figure only when its CSV, provenance record, inputs, and
-rendered output agree by SHA-256 digest.
+| Operator family | Supported | Joggle base / ORT | Joggle opt / ORT |
+| --- | ---: | ---: | ---: |
+| Elementwise | 4/4 | 0.84 | 0.71 |
+| Reduction | 3/4 | 8.49 | 8.49 |
+| Matmul | 3/4 | 116.65 | 7.61 |
+| Convolution | 4/4 | 26.20 | 19.71 |
+| Quantization | 3/4 | 4.73 | 2.35 |
+| Fusion | 4/4 | 20.66 | 8.90 |
 
-### A.1 Extension Tasks and Oracles
+*Table A1: Operator latency relative to ONNX Runtime. Values are geometric
+means over supported operators; lower is better.*
 
-The 24 evaluation tasks and the demonstration bank contain disjoint feature
-identities. Demonstrations are nested prefixes of one deterministic ranking,
-so increasing the count adds context without replacing earlier examples. A
-sealed reference bundle is unavailable during generation and opens only after
-all model outputs are frozen. Each output is classified at its first failing
-phase: parse, type, build, or semantic oracle. Formatting changes and supplied
-harness boilerplate do not count toward generated target tokens. Every row
-binds the model revision, task specification, API card, prompt, output,
-demonstration IDs, and sampling seed.
+| Model outcome | Base | Optimized |
+| --- | ---: | ---: |
+| Correct execution | 8 | 8 |
+| Unsupported in `c.prepare` | 4 | 4 |
+| Numerical oracle failure | 2 | 2 |
+| `c.prepare` timeout | 1 | 1 |
 
-### A.2 Patch Reduction and Ownership Zones
-
-Each matched implementation starts at a pinned clean revision. Hunk-level
-delta debugging visits candidate hunks in a fixed order, removes one, and keeps
-the removal only when the build and semantic oracle still pass. Iteration ends
-at a 1-minimal fixed point under that partition. The frozen counting policy
-excludes generated files, vendored sources, lock files, and formatter-only
-changes. Implementation and test changes remain separate. Ownership zones are
-source packages or build targets with one public responsibility; crossed edges
-count dependencies between those zones. The artifact binds the base revision,
-final patch, reduction trace, zone map, and oracle output.
-
-### A.3 Update Adapter Contract
-
-Each adapter consumes the same neutral typed graph and exposes five logical
-stages: analysis, canonicalization, target selection, memory planning, and
-artifact-manifest construction. Counters report visited graph entities and
-executed stages over the timed interval. A case selects an early, middle, or
-late operation, changes either operation metadata or a result type, and targets
-either its affected cone or an unrelated entity. The full and update paths
-start from identical published state. Stage digests and the final canonical
-digest must match within a system and across systems. The validator requires
-every cell in the 15-by-3-by-3-by-2-by-2-by-2-by-100 matrix.
-
-### A.4 Artifact Performance Protocol
-
-The operator corpus contains four cases in each of six families. Model and
-operator variants consume byte-identical, hash-bound tensors. Collection pins
-compiler and runtime revisions, release flags, CPU affinity, thread count, and
-seed. Timing begins immediately before artifact invocation and ends after
-completion; graph loading, input generation, and compilation stay outside the
-interval. Each supported pair runs ten warm-ups and 100 recorded iterations.
-Floating-point outputs use dtype-specific absolute and relative tolerances;
-integer and Boolean outputs require exact equality. Unsupported pairs retain a
-reason and contribute to coverage, but not to latency ratios.
+*Table A2: Model coverage outcomes for each Joggle path.*
