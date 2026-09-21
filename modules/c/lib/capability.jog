@@ -221,14 +221,117 @@ local fn accepts_with(m: Mod, op: Op, config: dict) -> bool {
   return callable(m, target, config) || external_call(m, op, config)
 }
 
+local fn outline_constant(value: Val) -> bool {
+  if ir.is_const(value) {
+    let kind = base.kind(ir.constant(value))
+    return kind == "bool" || kind == "int" || kind == "f64" ||
+           kind == "str"
+  }
+  let source = ir.def(value)
+  if !ir.live(source) || ir.kind(source) != "call" ||
+     ir.callee(source) != "base.list" {
+    return false
+  }
+  for item in ir.args(source) {
+    if !outline_constant(item) {
+      return false
+    }
+  }
+  return true
+}
+
+// opt.instantiate removes structural constants from the instance signature.
+// Everything that remains must cross an ordinary C call boundary.
+fn outlineable(
+  m: Mod, op: Op, impl: Fn, config: dict
+) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  for value in ir.args(op) {
+    if !outline_constant(value) && !supported(ir.type(value), config) {
+      return false
+    }
+    if tensor.valid(ir.type(value)) && !tensor.static(ir.type(value)) {
+      return false
+    }
+  }
+  for value in outputs {
+    if !supported(ir.type(value), config) {
+      return false
+    }
+    if tensor.valid(ir.type(value)) && !tensor.static(ir.type(value)) {
+      return false
+    }
+  }
+  return ir.live(impl) && len(ir.blks(impl)) != 0
+}
+
+local fn frequent_impls(
+  m: Mod, impls: list<Fn>, min_uses: int
+) -> list<Fn> {
+  var out: list<Fn> = []
+  let calls = ir.ops(m, ["call"])
+  for impl in impls {
+    var uses = 0
+    for op in calls {
+      if ir.live(op) && ir.resolve(m, op) == impl {
+        uses += 1
+      }
+    }
+    if uses >= min_uses {
+      out += [impl]
+    }
+  }
+  return out
+}
+
+local fn prune_templates(m: Mod) -> bool {
+  var changed = false
+  let functions = ir.fns(m)
+  for fn in functions {
+    if ir.live(fn) && ir.local(fn) && len(ir.generics(fn)) != 0 {
+      var used = false
+      for op in ir.ops(m, ["call"]) {
+        if ir.live(op) && ir.resolve(m, op) == fn {
+          used = true
+        }
+      }
+      if !used {
+        changed = ir.erase(m, fn) || changed
+      }
+    }
+  }
+  return changed
+}
+
 local fn prepare_with(m: Mod, config: dict) -> bool {
   let accept = ir.find(
     "c.accepts", [ty("Mod"), ty("Op"), ty("dict")]
   )
+  // Materialize each concrete tensor/NN implementation once inside the
+  // program.  Calls with the same signature then share a callable body instead
+  // of cloning that body at every call site during exposure.  The bodies are
+  // still checked below, so this changes representation rather than legality.
+  let outline = ir.find(
+    "c.outlineable", [ty("Mod"), ty("Op"), ty("Fn"), ty("dict")]
+  )
+  let outline_uses = base.get(config, "outline_uses", 4)
+  assert(base.kind(outline_uses) == "int" && outline_uses >= 1,
+         "c: outline_uses must be a positive integer")
+  let tensor_impls = frequent_impls(m, ir.fns("tensor"), outline_uses)
+  let nn_impls = frequent_impls(m, ir.fns("nn"), outline_uses)
+  var changed = opt.instantiate(m, tensor_impls, outline, config)
+  changed = opt.instantiate(m, nn_impls, outline, config) || changed
+  // A public implementation may call generic private helpers captured with its
+  // lexical closure.  Specialize those owned helpers after their callers have
+  // been materialized so no symbolic tensor type crosses into C lowering.
+  changed = opt.instantiate(m, ir.fns(m), outline, config) || changed
   // Exposure can inline a body into many call sites, so the operation count
   // after the first fixed point can be much larger than the input count. Size
   // each convergence budget from the graph consumed by that invocation.
-  var changed = opt.expose(m, accept, config, len(ir.ops(m)) + 1)
+  changed = opt.expose(m, accept, config, len(ir.ops(m)) + 1) || changed
   if ir.type(m) {
     changed = true
   }
@@ -247,6 +350,15 @@ local fn prepare_with(m: Mod, config: dict) -> bool {
   if opt.basic(m) {
     changed = true
   }
+  // Outlined bodies expose assignment chains that become constant only after
+  // canonicalization (for example, shape strides).  Fold that final form now
+  // so a repeated prepare is byte-for-byte stable.
+  if opt.fold(m) {
+    changed = true
+  }
+  if prune_templates(m) {
+    changed = true
+  }
   if ir.trim(m) {
     changed = true
   }
@@ -255,6 +367,10 @@ local fn prepare_with(m: Mod, config: dict) -> bool {
       if !accepts_with(m, op, config) {
         var detail = "c: unsupported call remains: " + ir.callee(op) +
                      " (target " + ir.target(m, op) + ")"
+        let owner: Fn = ir.owner(ir.blk(op))
+        if ir.live(owner) {
+          detail += ", owner " + ir.name(owner)
+        }
         let inputs = ir.args(op)
         let outputs = ir.outs(op)
         if len(outputs) > 0 {

@@ -78,7 +78,7 @@ joggle_run("restricted C emission failed"
   ERROR_VARIABLE error)
 file(READ "${restricted_source}" restricted_text)
 if(NOT restricted_text MATCHES
-   "static void separation_distinct\\(const float left\\[restrict static 4\\], const float right\\[restrict static 4\\], float out_out\\[restrict static 4\\]\\);")
+   "static void separation_distinct\\(const float left\\[restrict static 4\\], const float right\\[restrict static 4\\], float [A-Za-z0-9_]+\\[restrict static 4\\]\\);")
   message(FATAL_ERROR
           "source prototype does not match its bounded definition:\n"
           "${restricted_text}")
