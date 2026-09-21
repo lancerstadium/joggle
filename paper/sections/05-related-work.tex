@@ -62,9 +62,9 @@ meaning~\cite{ragankelley2012halide}. TVM combines graph-level optimization, ten
 programs, schedule search, and target code generation~\cite{chen2018tvm}.
 Multi-level tensor compilers similarly use progressively lower representations
 to expose decisions at the operator, loop, memory, and target levels. Joggle
-packages these optimization spaces, their analyses, their conversions, and
-their artifact boundaries in a common programmable and organizational
-substrate.
+does not replace these optimization algorithms. It provides one programmable
+and organizational substrate for declaring, composing, converting, and
+executing them.
 
 This distinction separates two performance dimensions. Tensor compilers
 primarily optimize generated code. Joggle also reduces the compiler
@@ -89,9 +89,9 @@ Joggle extends the programmable unit beyond transformation control. A compiler
 function may define semantics, query types, traverse control flow, invoke a
 native solver, rewrite a graph, convert a representation, or return an
 artifact. Typed calls compose these roles; mods own and publish them; observed
-reads and effects connect them to reactive execution. Nanopasses, transform
-dialects, and equality saturation can therefore enter through the same typed
-boundary without determining the rest of the compiler's organization.
+reads and effects connect them to reactive execution. This boundary complements
+specialized transformation languages and rewrite engines by organizing the
+compiler work that surrounds them.
 
 \subsection{Incremental Computation}
 

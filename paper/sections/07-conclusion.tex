@@ -5,10 +5,11 @@ Joggle treats compiler extension as typed computation over a shared graph.
 Compiler functions provide one surface for semantics, analysis,
 transformation, conversion, and artifact generation. Mods make capabilities
 explicit units of ownership and composition alongside hierarchical program IR.
-Revisions, observed dependencies, effect propagation,
-transactions, and cached execution plans make repeated compilation
-change-proportional. This organization connects the way an extension is
-written, the boundary in which it evolves, and the work required after it
-changes. The evaluation provides separate evidence from extension completion,
-patch footprint, reactive update latency, artifact performance, and system
-overhead.
+Revisions, observed dependencies, effect propagation, transactions, and cached
+execution plans make repeated compilation change-proportional. Together, these
+mechanisms connect three properties that compiler infrastructures usually
+expose separately: a predictable way to write an extension, a controlled
+boundary in which it evolves, and selective work after it changes. The
+evaluation tests these properties through executable extension completion,
+paired patch footprint, and reactive update cost while measuring generated
+artifacts independently.

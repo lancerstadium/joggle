@@ -898,9 +898,9 @@ target-specific choices without changing functional meaning
 programs, schedule search, and target code generation
 [@chen2018tvm]. Multi-level tensor compilers similarly use progressively lower
 representations to expose decisions at the operator, loop, memory, and target
-levels. Joggle packages these optimization spaces, their analyses, their
-conversions, and their artifact boundaries in a common programmable and
-organizational substrate.
+levels. Joggle does not replace these optimization algorithms. It provides one
+programmable and organizational substrate for declaring, composing,
+converting, and executing them.
 
 This distinction separates two performance dimensions. Tensor compilers
 primarily optimize generated code. Joggle also reduces the compiler
@@ -923,9 +923,9 @@ Joggle extends the programmable unit beyond transformation control. A compiler
 function may define semantics, query types, traverse control flow, invoke a
 native solver, rewrite a graph, convert a representation, or return an
 artifact. Typed calls compose these roles; mods own and publish them; observed
-reads and effects connect them to reactive execution. Nanopasses, transform
-dialects, and equality saturation can therefore enter through the same typed
-boundary without determining the rest of the compiler's organization.
+reads and effects connect them to reactive execution. This boundary complements
+specialized transformation languages and rewrite engines by organizing the
+compiler work that surrounds them.
 
 ### 5.4 Incremental Computation
 
@@ -946,12 +946,12 @@ fine-grained graph invalidation with an ordered, effectful compiler pipeline.
 
 ## 6. Discussion
 
-**Hierarchical structure.** Joggle programs contain
-functions, blocks, operations, values, and def-use relations. These structures
-express program semantics and permit conventional local reasoning. Compiler
-functions refine this graph independently of a global ladder of public IR
-classes. A pipeline may retain high-level operations beside lower-level helpers
-when that is the most useful verified state.
+**Progressive does not mean flat.** Joggle programs retain functions, blocks,
+operations, values, and def-use relations. These structures express program
+semantics and support conventional local reasoning. Progression changes how
+stages relate: compiler functions refine a verified graph without requiring a
+global ladder of public IR classes. High-level operations and lower-level
+helpers may therefore coexist when a stage needs both.
 
 **A mod is a capability boundary.** Directories split files, and hierarchical
 IR splits programs; neither necessarily identifies the owner of a compiler
@@ -966,19 +966,19 @@ and artifact calls return owned values. Native implementations use the same
 signatures and ownership boundary. Declarations, resolution, calls, and
 composition are uniform; effect checks remain explicit.
 
-**Incrementality follows observable state.** A compiler function gains reuse by
-reading the narrowest state needed for its result. Whole-graph traversal
-correctly creates a broad dependency; range and single-entity access create
-narrow ones. State outside the graph enters through typed arguments or the
-environment. These rules make the reuse boundary inspectable: miss reasons and
-observation counts show why a stage ran.
+**Precision has a cost.** A compiler function gains reuse by reading the
+narrowest state needed for its result. Whole-graph traversal correctly creates
+a broad dependency; range and single-entity access create narrow ones. Narrow
+records add capture and validation work, so they help only when avoided
+execution is more expensive. Miss reasons, observation counts, and executed
+stage counts expose this trade-off directly.
 
-**Atomic publication.** Dependency records are useful
-only for the graph that produced them. Joggle therefore commits mutations,
-revisions, and new records after final verification, or restores the previous
-state and discards tentative records. This property is stronger than caching a
-pass result beside a mutable graph: it prevents a later run from reusing an
-observation of an unpublished intermediate.
+**Publication bounds reuse.** Dependency records are valid only for the graph
+that produced them. Joggle therefore commits mutations, revisions, and new
+records after final verification, or restores the previous state and discards
+tentative records. State outside the graph must enter through typed arguments
+or an environment revision. A later run can then reuse only observations tied
+to a published graph and environment.
 
 **Plans remain interpreted.** Predecoded plans cache checked
 interpreter work: dense value slots, control-flow targets, operand indices, and
@@ -986,24 +986,17 @@ call-site information. They remove repeated setup while preserving interpreted
 execution. Native acceleration remains a typed mod binding, and native plan
 compilation is an independent design point.
 
-The design admits three direct extensions. Dependency records can be persisted
-with serialized mods to reuse work across processes. Independent selected
-stages can be scheduled in parallel once their effect contracts establish
-noninterference. Finally, effect scopes can move below functions to named graph
-regions when workloads justify the additional capture and validation cost.
-Each extension preserves the same publication rule: reusable state belongs to
-a verified graph version.
-
 ## 7. Conclusion
 
 Joggle treats compiler extension as typed computation over a shared graph.
 Compiler functions provide one surface for semantics, analysis,
 transformation, conversion, and artifact generation. Mods make capabilities
 explicit units of ownership and composition alongside hierarchical program IR.
-Revisions, observed dependencies, effect propagation,
-transactions, and cached execution plans make repeated compilation
-change-proportional. This organization connects the way an extension is
-written, the boundary in which it evolves, and the work required after it
-changes. The evaluation provides separate evidence from extension completion,
-patch footprint, reactive update latency, artifact performance, and system
-overhead.
+Revisions, observed dependencies, effect propagation, transactions, and cached
+execution plans make repeated compilation change-proportional. Together, these
+mechanisms connect three properties that compiler infrastructures usually
+expose separately: a predictable way to write an extension, a controlled
+boundary in which it evolves, and selective work after it changes. The
+evaluation tests these properties through executable extension completion,
+paired patch footprint, and reactive update cost while measuring generated
+artifacts independently.
