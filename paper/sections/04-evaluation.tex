@@ -188,7 +188,11 @@ quantization, and fusion. Model measurements cover all 15 pinned subjects and
 retain unsupported model/variant pairs as coverage rows. We compare Joggle with
 and without its optional optimization passes against a pinned, single-thread
 ONNX Runtime CPU Execution Provider with full graph optimization. All three
-variants consume byte-identical deterministic inputs.
+variants consume byte-identical deterministic inputs. The frozen Joggle
+optimization pack adds dead-code elimination, floating-point
+matrix-multiplication implementation selection, range and constant folding,
+affine canonicalization, locality-guided loop order, and scalar promotion to
+the required path.
 
 Preparation, execution, and memory are separate records. Each supported pair
 has 30 fresh-process preparation measurements, ten fresh-process memory
@@ -201,7 +205,9 @@ runtime libraries do not have a per-model size boundary. Speedups are formed
 within a subject before geometric aggregation, and case-specific tolerances
 establish numerical equivalence. Preparation spans model bytes to callable
 state; execution times one backend call over resident buffers; memory is peak
-resident-set growth above an idle backend worker.
+resident-set growth above an idle backend worker. The manifest fixes calls per
+timing sample: short operators use a shared batch whose elapsed time is divided
+by its call count, whereas each model sample contains one call.
 
 Together, generation characterizes the extension surface, patch footprint its
 ownership boundary, reactive execution its update cost, and artifact and

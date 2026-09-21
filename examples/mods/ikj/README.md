@@ -29,7 +29,9 @@ build/ikj
 
 The first command sequence performs two explicit ordinary transforms:
 
-1. `ikj.apply` selects and exposes the alternative function body.
+1. `ikj.apply` selects and exposes the alternative function body for `f32`
+   matrix multiplication; integer and quantized calls remain on their own
+   implementation path.
 2. `c.prepare` exposes only the remaining computation that C cannot emit
    directly.
 

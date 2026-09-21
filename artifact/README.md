@@ -101,6 +101,41 @@ Omit `--smoke` for the frozen counts. Use `--group models` with
 the Git revision, runtime configuration, model hashes, host, thread controls,
 counts, and command. Release runs reject dirty trees.
 
+Collect each Joggle variant through the executable stage list in the manifest:
+
+```sh
+python3 artifact/run_joggle_benchmarks.py \
+  --group operators \
+  --variant joggle-optimized \
+  --inputs .cache/artifact/benchmark-inputs \
+  --operator-models .cache/artifact/operator-models \
+  --joggle build/joggle \
+  --builtin-mods build/modules \
+  --extension-mods examples/mods \
+  --output .cache/artifact/figure-08-joggle-opt.csv
+```
+
+The collector generates C, compiles the model-specific object with the frozen
+flags, builds a measurement harness outside the preparation boundary, checks
+every output against ONNX Runtime, and records unsupported frontiers as
+coverage rows. Fixed per-case batch counts make sub-microsecond operators
+measurable; CSV latency is per call and `calls_per_sample` preserves the
+division factor. `--stage-timeout` defaults to 600 seconds and is written into
+the run record; a timeout remains a coverage row with its failing stage.
+
+Merge the three backend files only through the validator-backed merger:
+
+```sh
+python3 artifact/merge_benchmark_rows.py 8 \
+  .cache/artifact/figure-08-joggle-base.csv \
+  .cache/artifact/figure-08-joggle-opt.csv \
+  .cache/artifact/figure-08-ort.csv \
+  --output .cache/artifact/figure-08-operators.csv
+```
+
+Without `--allow-partial`, the merger requires the complete population and all
+frozen repetition counts before publishing the combined CSV.
+
 The two Joggle variants differ only in optional optimization passes. ONNX
 Runtime CPU EP provides the single-thread reference. The CSV separates fresh
 preparation, steady-state execution, and fresh-process memory records and

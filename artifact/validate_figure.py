@@ -247,11 +247,11 @@ def benchmark_rows(
     audit: dict[tuple[str, str, int], tuple[int, str]] = {}
     revisions: dict[str, tuple[str, str]] = {}
     preparation_fields = (
-        "latency_ns", "peak_bytes", "max_abs_error", "max_rel_error",
+        "calls_per_sample", "latency_ns", "peak_bytes", "max_abs_error", "max_rel_error",
         "output_digest", "correct",
     )
     execution_fields = ("prepare_ns", "peak_bytes", "artifact_bytes")
-    memory_fields = ("prepare_ns", "latency_ns", "artifact_bytes")
+    memory_fields = ("calls_per_sample", "prepare_ns", "latency_ns", "artifact_bytes")
     unsupported_fields = tuple(sorted(set(preparation_fields + execution_fields)))
 
     for line, row in enumerate(rows, start=2):
@@ -320,6 +320,9 @@ def benchmark_rows(
             blank(row, preparation_fields, line)
             preparations[(subject, variant)].append(iteration)
         elif kind == "execute":
+            calls = unsigned(row, "calls_per_sample", line)
+            if calls != expected_subject["calls_per_sample"]:
+                raise SystemExit(f"line {line}: calls_per_sample differs from benchmark manifest")
             latency_ns = unsigned(row, "latency_ns", line)
             if latency_ns == 0:
                 raise SystemExit(f"line {line}: latency_ns must be positive")
@@ -327,20 +330,18 @@ def benchmark_rows(
             real(row, "max_rel_error", line)
             digest(row, "output_digest", line)
             passed = boolean(row, "correct", line)
-            if not passed and not partial:
-                raise SystemExit(f"line {line}: incorrect execution enters release data")
+            if not passed:
+                raise SystemExit(f"line {line}: incorrect execution enters benchmark data")
             blank(row, execution_fields, line)
             executions[(subject, variant)].append(iteration)
         else:
             peak_bytes = unsigned(row, "peak_bytes", line)
-            if peak_bytes == 0:
-                raise SystemExit(f"line {line}: peak_bytes must be positive")
             real(row, "max_abs_error", line)
             real(row, "max_rel_error", line)
             digest(row, "output_digest", line)
             passed = boolean(row, "correct", line)
-            if not passed and not partial:
-                raise SystemExit(f"line {line}: incorrect memory run enters release data")
+            if not passed:
+                raise SystemExit(f"line {line}: incorrect memory run enters benchmark data")
             blank(row, memory_fields, line)
             memories[(subject, variant)].append(iteration)
 
@@ -424,11 +425,17 @@ def main() -> int:
         for row in benchmark["variants"]
     }
     operator_subjects = {
-        row["id"]: {"family": row["family"]}
+        row["id"]: {
+            "family": row["family"],
+            "calls_per_sample": measurement["execution_batches"][row["id"]],
+        }
         for row in benchmark["operator_cases"]
     }
     model_subjects = {
-        row["id"]: {"sha256": row["sha256"]}
+        row["id"]: {
+            "sha256": row["sha256"],
+            "calls_per_sample": measurement["execution_batches"][row["id"]],
+        }
         for row in benchmark["model_cases"]
     }
     footprint_tasks = {

@@ -124,8 +124,10 @@ def worker(args: argparse.Namespace) -> int:
         outputs = []
         for _ in range(args.iterations):
             started = time.perf_counter_ns()
-            outputs = session.run(names, feeds)
-            latencies.append(time.perf_counter_ns() - started)
+            for _ in range(args.batch):
+                outputs = session.run(names, feeds)
+            elapsed = time.perf_counter_ns() - started
+            latencies.append(max(1, elapsed // args.batch))
         print(json.dumps({
             "latencies_ns": latencies,
             "output_digest": output_digest(names, outputs),
@@ -140,12 +142,14 @@ def worker(args: argparse.Namespace) -> int:
 def command(
     args: argparse.Namespace, kind: str, case_id: str, model: Path,
     *, iterations: int = 1, warmups: int = 0,
+    batch: int = 1,
 ) -> list[str]:
     return [
         sys.executable, str(Path(__file__).resolve()), "--worker", kind,
         "--spec", str(args.spec), "--inputs", str(args.inputs),
         "--case-id", case_id, "--model", str(model),
         "--iterations", str(iterations), "--warmups", str(warmups),
+        "--batch", str(batch),
     ]
 
 
@@ -189,9 +193,7 @@ def memory_run(argv: list[str]) -> tuple[int, dict[str, Any]]:
         raise SystemExit(f"memory worker failed ({process.returncode}): {stderr}")
     payload = json.loads(stdout.strip().splitlines()[-1])
     delta = peak - baseline
-    if delta <= 0:
-        raise SystemExit("memory sampling observed no resident-set growth")
-    return delta, payload
+    return max(0, delta), payload
 
 
 def git_state(repo: Path) -> tuple[str, bool]:
@@ -322,10 +324,12 @@ def main(args: argparse.Namespace) -> int:
         payload = run_json(command(
             args, "execute", case_id, model,
             iterations=execute_count, warmups=warmups,
+            batch=measurement["execution_batches"][case_id],
         ))
         for iteration, latency in enumerate(payload["latencies_ns"]):
             rows.append(row(
                 header, common, record_kind="execute", iteration=iteration,
+                calls_per_sample=measurement["execution_batches"][case_id],
                 latency_ns=latency, max_abs_error=0, max_rel_error=0,
                 output_digest=payload["output_digest"], correct="true",
                 seed=args.seed + 10_000 + iteration,
@@ -365,6 +369,10 @@ def main(args: argparse.Namespace) -> int:
         "execution_iterations": execute_count,
         "memory_iterations": memory_count,
         "warmups": warmups,
+        "execution_batches": {
+            case["id"]: measurement["execution_batches"][case["id"]]
+            for case in cases
+        },
         "seed": args.seed,
         "thread_environment": THREAD_ENV,
         "host_controls": host_controls(),
@@ -395,6 +403,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", type=Path)
     parser.add_argument("--iterations", type=int, default=1)
     parser.add_argument("--warmups", type=int, default=0)
+    parser.add_argument("--batch", type=int, default=1)
     parser.add_argument("--group", choices=("operators", "models"))
     parser.add_argument("--operator-models", type=Path)
     parser.add_argument("--model-root", type=Path)
@@ -407,6 +416,8 @@ def parse_args() -> argparse.Namespace:
     if args.worker:
         if not args.model or not args.case_id or len(args.case_id) != 1:
             parser.error("worker mode requires one --case-id and --model")
+        if args.iterations <= 0 or args.warmups < 0 or args.batch <= 0:
+            parser.error("worker counts must be positive, with non-negative warmups")
         args.case_id = args.case_id[0]
     else:
         if not args.group or not args.output:

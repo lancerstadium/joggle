@@ -138,6 +138,10 @@ with the frozen optimization pipeline, and a pinned single-thread ONNX Runtime
 CPU Execution Provider with full graph optimization. All variants consume
 byte-identical inputs. Required conversion, legalization, memory planning, and
 emission remain in both Joggle paths; only optional optimization passes differ.
+The optimized path freezes dead-code elimination, implementation selection for
+floating-point matrix multiplication, range and constant folding, affine
+canonicalization, locality-guided loop order, and scalar promotion as an exact
+stage list in the case manifest.
 
 Each supported pair has 30 fresh-process preparation observations, ten
 fresh-process memory observations, and, after ten warm-ups, 100 steady-state
@@ -152,6 +156,11 @@ load. Generated artifact size covers model-specific object code and constants
 and is compared only between the two Joggle variants; shared runtime libraries
 have no equivalent per-model boundary and remain blank for the reference.
 Dtype- and case-specific tolerances define numerical equivalence.
+The manifest also fixes calls per timing sample. Short operators execute a
+shared fixed batch and report elapsed time divided by its call count; model
+samples contain one call. The batch count is retained in every execution row.
+A collector records its stage timeout and preserves a timeout as an explicit
+coverage outcome.
 
 - Operator CSV: `templates/figure-08-operators.csv`
 - Operator plot: `figures/figure_08_operators.py`
@@ -161,6 +170,8 @@ Dtype- and case-specific tolerances define numerical equivalence.
 - Input generator: `generate_benchmark_inputs.py`
 - Operator-model generator: `generate_operator_models.py`
 - Reference collector: `run_onnxruntime_benchmarks.py`
+- Joggle collector: `run_joggle_benchmarks.py`
+- Validating merger: `merge_benchmark_rows.py`
 - Required pairing: frozen case ID, input digest, iteration, and seed across variants
 
 ## Release gate

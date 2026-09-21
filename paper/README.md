@@ -791,7 +791,10 @@ fusion. Model measurements cover all 15 pinned subjects and retain unsupported
 model/variant pairs as coverage rows. We compare Joggle with and without its
 optional optimization passes against a pinned, single-thread ONNX Runtime CPU
 Execution Provider with full graph optimization. All three variants consume
-byte-identical deterministic inputs.
+byte-identical deterministic inputs. The frozen Joggle optimization pack adds
+dead-code elimination, floating-point matrix-multiplication implementation
+selection, range and constant folding, affine canonicalization,
+locality-guided loop order, and scalar promotion to the required path.
 
 Preparation, execution, and memory are separate records. Each supported pair
 has 30 fresh-process preparation measurements, ten fresh-process memory
@@ -804,7 +807,9 @@ runtime libraries do not have a per-model size boundary. Speedups are formed
 within a subject before geometric aggregation, and case-specific tolerances
 establish numerical equivalence. Preparation spans model bytes to callable
 state; execution times one backend call over resident buffers; memory is peak
-resident-set growth above an idle backend worker.
+resident-set growth above an idle backend worker. The manifest fixes calls per
+timing sample: short operators use a shared batch whose elapsed time is divided
+by its call count, whereas each model sample contains one call.
 
 <!-- FIGURE 8 PLAN — Full-width operator figure fed by one CSV and one
 plotting script. Use log-scale paired points for unoptimized Joggle, optimized
@@ -813,7 +818,7 @@ preparation time, steady-state latency, and comparable Joggle artifact bytes;
 use dots for medians and thin segments to 95th percentiles; show unsupported
 pairs as crosses. CSV: figure-08-operators.csv. Columns:
 case_id,case_spec_sha256,family,system,system_revision,variant,record_kind,
-supported,reason,iteration,prepare_ns,latency_ns,peak_bytes,artifact_bytes,
+supported,reason,iteration,calls_per_sample,prepare_ns,latency_ns,peak_bytes,artifact_bytes,
 max_abs_error,max_rel_error,input_digest,output_digest,correct,seed. -->
 
 <!-- FIGURE 9 PLAN — Full-width model figure fed by one CSV and one plotting
@@ -823,7 +828,7 @@ common supported set, use dots for medians and thin segments to 95th
 percentiles, and retain unsupported models as coverage crosses rather than
 dropping them. CSV: figure-09-models.csv. Columns: model,model_hash,
 case_spec_sha256,system,system_revision,variant,record_kind,supported,reason,
-iteration,prepare_ns,latency_ns,peak_bytes,artifact_bytes,max_abs_error,
+iteration,calls_per_sample,prepare_ns,latency_ns,peak_bytes,artifact_bytes,max_abs_error,
 max_rel_error,input_digest,output_digest,correct,seed. -->
 
 Together, generation characterizes the extension surface, patch footprint its

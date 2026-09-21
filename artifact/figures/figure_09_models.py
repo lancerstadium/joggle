@@ -78,7 +78,9 @@ def main() -> int:
             axis.hlines(ys, xs, tails, color=COLORS.get(variant, None), lw=0.65)
             axis.scatter(xs, ys, s=15, label=VARIANT_LABELS.get(variant, variant),
                          color=COLORS.get(variant, None))
-        if metric != "latency_ratio":
+        if metric == "peak_bytes":
+            axis.set_xscale("symlog", linthresh=1024)
+        elif metric != "latency_ratio":
             axis.set_xscale("log")
             axis.xaxis.set_major_locator(LogLocator(base=10, numticks=4))
             axis.xaxis.set_minor_formatter(NullFormatter())

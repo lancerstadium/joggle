@@ -81,14 +81,25 @@ fn impls() -> list<Fn> {
   return ir.where(ir.fns("ikj"), "impl", "ikj")
 }
 
+fn supported(m: Mod, op: Op, impl: Fn) -> bool {
+  let inputs = ir.args(op)
+  return len(inputs) == 2 &&
+         tensor.valid(ir.type(inputs[0])) &&
+         tensor.valid(ir.type(inputs[1])) &&
+         tensor.elem(ir.type(inputs[0])) == ty("f32") &&
+         tensor.elem(ir.type(inputs[1])) == ty("f32")
+}
+
 fn apply(m: Mod) -> bool {
-  return opt.apply(m, impls())
+  return opt.apply(m, impls(), ir.find("ikj.supported"))
 }
 ```
 
 `ir.fns("ikj")` limits discovery to this mod. `ir.where` filters by metadata.
-`opt.apply` performs overload matching, clones the selected body, substitutes
-generic values, and commits the rewrite only when the resulting graph verifies.
+The policy keeps this loop order on `f32` calls; integer and quantized matrix
+multiplication retain their dedicated implementation. `opt.apply` performs
+overload matching, clones the selected body, substitutes generic values, and
+commits the rewrite only when the resulting graph verifies.
 
 ```mermaid
 flowchart LR

@@ -134,6 +134,8 @@ def validate(spec: Any, model_manifest: list[dict[str, str]]) -> None:
         "warmups", "execution_iterations", "preparation_iterations",
         "memory_iterations", "threads", "operator_opset", "random_generator", "input_policy",
         "reference_provider", "reference_graph_optimization", "reference_execution_mode",
+        "host_compile_flags",
+        "execution_batches",
         "preparation_boundary", "execution_boundary", "memory_boundary",
         "artifact_boundary",
     }
@@ -154,6 +156,13 @@ def validate(spec: Any, model_manifest: list[dict[str, str]]) -> None:
     ):
         if not isinstance(measurement[name], str) or not measurement[name].strip():
             fail(f"measurement.{name}", "must be non-empty")
+    flags = measurement["host_compile_flags"]
+    if (not isinstance(flags, list) or not flags
+            or any(not isinstance(flag, str) or not flag for flag in flags)):
+        fail("measurement.host_compile_flags", "must contain non-empty flags")
+    batches = measurement["execution_batches"]
+    if not isinstance(batches, dict):
+        fail("measurement.execution_batches", "must be an object")
 
     variants = spec["variants"]
     if not isinstance(variants, list) or len(variants) != 3:
@@ -174,9 +183,39 @@ def validate(spec: Any, model_manifest: list[dict[str, str]]) -> None:
         reference_count += variant["role"] == "reference"
         if not isinstance(variant["artifact_size"], bool):
             fail(f"{where}.artifact_size", "must be boolean")
-        for name in ("system", "pipeline"):
-            if not isinstance(variant[name], str) or not variant[name].strip():
-                fail(f"{where}.{name}", "must be non-empty")
+        if not isinstance(variant["system"], str) or not variant["system"].strip():
+            fail(f"{where}.system", "must be non-empty")
+        pipeline = variant["pipeline"]
+        if variant["role"] == "candidate":
+            if not isinstance(pipeline, list) or not pipeline:
+                fail(f"{where}.pipeline", "candidate pipeline must contain stages")
+            for stage_index, stage in enumerate(pipeline):
+                stage_where = f"{where}.pipeline[{stage_index}]"
+                if not isinstance(stage, dict):
+                    fail(stage_where, "must be an object")
+                stage_fields = {"functions", "args", "mod_roots"}
+                fields(stage, stage_fields, stage_fields, stage_where)
+                for name in ("functions", "mod_roots"):
+                    values = stage[name]
+                    if (not isinstance(values, list) or not values
+                            or any(not isinstance(value, str) or not value for value in values)):
+                        fail(f"{stage_where}.{name}", "must contain non-empty strings")
+                if (not isinstance(stage["args"], list)
+                        or any(not isinstance(value, str) or not value
+                               for value in stage["args"])):
+                    fail(f"{stage_where}.args", "must contain strings")
+                if any(root not in {"builtin", "extensions"}
+                       for root in stage["mod_roots"]):
+                    fail(f"{stage_where}.mod_roots", "unknown symbolic mod root")
+        else:
+            expected = {
+                "provider": measurement["reference_provider"],
+                "graph_optimization": measurement["reference_graph_optimization"],
+                "execution_mode": measurement["reference_execution_mode"],
+                "threads": measurement["threads"],
+            }
+            if pipeline != expected:
+                fail(f"{where}.pipeline", "differs from reference measurement settings")
     if seen_variants != VARIANTS or reference_count != 1:
         fail("variants", "IDs or reference role differ from the frozen design")
     reference = next(variant for variant in variants if variant["role"] == "reference")
@@ -300,6 +339,12 @@ def validate(spec: Any, model_manifest: list[dict[str, str]]) -> None:
         tolerance(case, where)
     if seen_models != set(frozen_models):
         fail("model_cases", "model identities differ from reactive manifest")
+    expected_batches = operator_ids | seen_models
+    if set(batches) != expected_batches:
+        fail("measurement.execution_batches", "must cover every operator and model")
+    for name, value in batches.items():
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            fail(f"measurement.execution_batches.{name}", "must be a positive integer")
 
 
 def validate_model_signatures(spec: dict[str, Any], root: Path) -> None:
