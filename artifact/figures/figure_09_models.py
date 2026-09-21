@@ -85,6 +85,9 @@ def main() -> int:
             axis.xaxis.set_major_locator(LogLocator(base=10, numticks=4))
             axis.xaxis.set_minor_formatter(NullFormatter())
         else:
+            axis.set_xscale("log")
+            axis.xaxis.set_major_locator(LogLocator(base=10, numticks=5))
+            axis.xaxis.set_minor_formatter(NullFormatter())
             axis.axvline(1.0, color="#9AA0A6", lw=0.7)
         axis.set_title(title)
         axis.grid(axis="x", color="#E7E9EC", lw=0.5)

@@ -269,6 +269,10 @@ python3 artifact/minimize_patch.py \
   -- ./task-oracle
 ```
 
+The default oracle timeout is 1,800 seconds per trial. A timeout aborts the
+case instead of being classified as evidence that a hunk is necessary; set a
+different positive bound with `--oracle-timeout` before the release run.
+
 Apply the emitted patch to the pinned base and commit that exact tree as the
 case `head`. The collector verifies that the resulting Git diff equals the
 final patch hash in the minimization log and that its final oracle-output hash
@@ -351,7 +355,8 @@ python3 artifact/run_reactive.py \
   --model-manifest artifact/manifests/reactive-models.csv \
   --model-root .cache/onnx-zoo \
   --sites early middle late \
-  --stages 5 --warmups 10 --iterations 100
+  --stages 5 --warmups 10 --iterations 100 \
+  --build-root .cache/artifact/reactive-model-build
 ```
 
 Run the planned scaling matrix from a clean revision:
@@ -363,8 +368,16 @@ python3 artifact/run_reactive.py \
   --affected 1 8 64 512 \
   --edit-classes operation_metadata --scopes affected \
   --fanout 1 --stages 5 \
-  --warmups 10 --iterations 100
+  --warmups 10 --iterations 100 \
+  --build-root .cache/artifact/reactive-scaling-build
 ```
+
+Each invocation writes one validated CSV and `*.job.json` sidecar per shuffled
+job under the persistent build root. After an interruption, repeat the exact
+command with `--resume`. A cached job is reused only when its revision, argv,
+and content hash match; the final CSV is reconstructed from the complete job
+set, validated across all four policies, and atomically published. A completed
+run record is never overwritten.
 
 Validate an existing result independently:
 

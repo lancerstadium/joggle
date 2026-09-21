@@ -7,6 +7,7 @@ import argparse
 import csv
 import hashlib
 import json
+import os
 import platform
 import random
 import subprocess
@@ -61,6 +62,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--iterations", type=int, default=100)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--build-root", type=Path)
+    parser.add_argument("--resume", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
     return parser.parse_args()
 
@@ -107,6 +109,16 @@ def append_csv(source: Path, output: Path, write_header: bool) -> bool:
 def sha256(path: Path) -> str:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def write_json(path: Path, value: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    with temporary.open("w", encoding="utf-8") as stream:
+        stream.write(json.dumps(value, indent=2, sort_keys=True) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary.replace(path)
 
 
 def resolve_models(args: argparse.Namespace) -> list[dict[str, object]]:
@@ -157,6 +169,13 @@ def main() -> int:
     revision = command(["git", "rev-parse", "HEAD"], repo, capture=True)
     if status:
         revision += "-dirty"
+    if args.resume and not args.build_root:
+        raise SystemExit("--resume requires a persistent --build-root")
+    if args.output.exists() and not args.resume:
+        raise SystemExit(f"refusing to replace {args.output}; pass --resume")
+    metadata_path = args.output.with_suffix(".json")
+    if metadata_path.exists():
+        raise SystemExit(f"refusing to replace completed run record {metadata_path}")
     invalid_generator = not (args.models or args.model_manifest) and (
         any(node <= 1 for node in args.nodes)
         or any(value <= 0 for value in args.affected)
@@ -184,8 +203,8 @@ def main() -> int:
     persistent = configure(repo, build_root / "persistent", True, onnx)
     no_plans = configure(repo, build_root / "no-plans", False, onnx)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.unlink(missing_ok=True)
     commands: list[list[str]] = []
+    job_records: list[dict[str, object]] = []
     jobs: list[tuple[Path, list[str]]] = []
 
     subjects = models
@@ -221,7 +240,12 @@ def main() -> int:
                     )
                 if site:
                     label += f"-{site}"
-                runs = ((persistent, "all"), (no_plans, "no-plan-cache"))
+                runs = (
+                    (persistent, "full"),
+                    (persistent, "reactive"),
+                    (persistent, "whole-mod"),
+                    (no_plans, "no-plan-cache"),
+                )
                 for edit_class in args.edit_classes:
                     for binary, policy in runs:
                         partial = build_root / (
@@ -278,20 +302,63 @@ def main() -> int:
                         jobs.append((partial, invocation))
 
     random.Random(args.seed).shuffle(jobs)
-    write_header = True
     for partial, invocation in jobs:
-        command(invocation, repo)
+        sidecar = partial.with_suffix(".job.json")
+        expected_job = {
+            "schema": "reactive-job/v1",
+            "revision": revision,
+            "command": invocation,
+        }
+        reused = False
+        if args.resume and (partial.exists() or sidecar.exists()):
+            if not partial.is_file() or not sidecar.is_file():
+                raise SystemExit(f"incomplete cached job pair: {partial}")
+            observed = json.loads(sidecar.read_text(encoding="utf-8"))
+            if {key: observed.get(key) for key in expected_job} != expected_job:
+                raise SystemExit(f"cached job command differs: {partial}")
+            if observed.get("output_sha256") != sha256(partial):
+                raise SystemExit(f"cached job hash differs: {partial}")
+            command(
+                [sys.executable, str(repo / "artifact" / "validate_reactive.py"),
+                 str(partial), "--allow-partial"],
+                repo,
+            )
+            reused = True
+        if not reused:
+            if partial.exists() or sidecar.exists():
+                raise SystemExit(
+                    f"refusing to replace cached job {partial}; use a fresh build root"
+                )
+            command(invocation, repo)
+            command(
+                [sys.executable, str(repo / "artifact" / "validate_reactive.py"),
+                 str(partial), "--allow-partial"],
+                repo,
+            )
+            write_json(sidecar, {**expected_job, "output_sha256": sha256(partial)})
         commands.append(invocation)
-        write_header = append_csv(partial, args.output, write_header)
+        job_records.append({
+            "path": str(partial),
+            "sha256": sha256(partial),
+            "reused": reused,
+        })
+
+    merged = args.output.with_name(f".{args.output.name}.tmp")
+    with merged.open("w", encoding="utf-8"):
+        pass
+    write_header = True
+    for partial, _invocation in jobs:
+        write_header = append_csv(partial, merged, write_header)
 
     command(
         [
             sys.executable,
             str(repo / "artifact" / "validate_reactive.py"),
-            str(args.output),
+            str(merged),
         ],
         repo,
     )
+    merged.replace(args.output)
     metadata = {
         "schema": "reactive-update/v2",
         "created_utc": datetime.now(timezone.utc).isoformat(),
@@ -322,11 +389,12 @@ def main() -> int:
         "warmups": args.warmups,
         "iterations": args.iterations,
         "seed": args.seed,
+        "csv_sha256": sha256(args.output),
+        "expected_jobs": len(jobs),
         "commands": commands,
+        "jobs": job_records,
     }
-    args.output.with_suffix(".json").write_text(
-        json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
-    )
+    write_json(metadata_path, metadata)
     if owned_temp is not None:
         owned_temp.cleanup()
     return 0

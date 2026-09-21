@@ -81,10 +81,14 @@ def main() -> int:
     top.set_ylabel("Update latency (ms)")
     bottom.set_ylabel("Observed entities")
     bottom.set_xlabel("Graph operations")
-    edit_label = args.edit_class.replace("_", " ")
-    scope_label = "changed cone" if args.edit_scope == "affected" else args.edit_scope
+    edit_label = {
+        "operation_metadata": "metadata",
+        "value_type": "value-type",
+        "no_op": "no-op",
+    }.get(args.edit_class, args.edit_class.replace("_", "-"))
+    scope_label = "affected" if args.edit_scope == "affected" else args.edit_scope
     top.legend(frameon=False, ncol=2, loc="upper left",
-               title=f"{scope_label} {edit_label} edit")
+               title=f"{scope_label.capitalize()} {edit_label} edit")
     fig.tight_layout()
     save(fig, args.output)
     return 0

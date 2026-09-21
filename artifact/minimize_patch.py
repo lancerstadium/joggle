@@ -64,15 +64,21 @@ def apply(worktree: Path, patch: str, *, reverse: bool = False) -> None:
     git(worktree, args, input_text=patch)
 
 
-def oracle(worktree: Path, argv: list[str]) -> tuple[int, float, str]:
+def oracle(worktree: Path, argv: list[str], timeout: float) -> tuple[int, float, str]:
     begin = time.monotonic_ns()
-    result = subprocess.run(
-        argv,
-        cwd=worktree,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
+    try:
+        result = subprocess.run(
+            argv,
+            cwd=worktree,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise SystemExit(
+            f"oracle exceeded the {timeout:g}-second timeout; minimization aborted"
+        ) from error
     elapsed = (time.monotonic_ns() - begin) / 1e9
     return result.returncode, elapsed, result.stdout
 
@@ -85,12 +91,15 @@ def main() -> int:
     parser.add_argument("--output-patch", type=Path, required=True)
     parser.add_argument("--oracle-log", type=Path, required=True)
     parser.add_argument("--log", type=Path, required=True)
+    parser.add_argument("--oracle-timeout", type=float, default=1800.0)
     parser.add_argument("oracle", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.oracle[:1] == ["--"]:
         args.oracle = args.oracle[1:]
     if not args.oracle:
         raise SystemExit("provide the oracle command after --")
+    if args.oracle_timeout <= 0:
+        raise SystemExit("--oracle-timeout must be positive")
     repo = args.repo.resolve()
     base = git(repo, ["rev-parse", f"{args.base}^{{commit}}"] ).strip()
     head = git(repo, ["rev-parse", f"{args.head}^{{commit}}"] ).strip()
@@ -107,7 +116,7 @@ def main() -> int:
         git(repo, ["worktree", "add", "--detach", str(worktree), base])
         try:
             apply(worktree, original)
-            code, elapsed, output = oracle(worktree, args.oracle)
+            code, elapsed, output = oracle(worktree, args.oracle, args.oracle_timeout)
             trials.append({"phase": "initial", "returncode": code,
                            "seconds": elapsed,
                            "output_sha256": hashlib.sha256(output.encode()).hexdigest()})
@@ -122,7 +131,9 @@ def main() -> int:
                 sweep += 1
                 for identity, value in list(retained):
                     apply(worktree, value, reverse=True)
-                    code, elapsed, output = oracle(worktree, args.oracle)
+                    code, elapsed, output = oracle(
+                        worktree, args.oracle, args.oracle_timeout
+                    )
                     removed = code == 0
                     trials.append(
                         {
@@ -148,7 +159,9 @@ def main() -> int:
             )
             if not final_patch:
                 raise SystemExit("oracle permits an empty patch; task is not discriminating")
-            code, elapsed, final_output = oracle(worktree, args.oracle)
+            code, elapsed, final_output = oracle(
+                worktree, args.oracle, args.oracle_timeout
+            )
             if code != 0:
                 raise SystemExit("final minimized patch failed the oracle")
             trials.append({"phase": "final", "returncode": code,
@@ -168,6 +181,7 @@ def main() -> int:
         "base": base,
         "head": head,
         "oracle": args.oracle,
+        "oracle_timeout_seconds": args.oracle_timeout,
         "original_patch_sha256": hashlib.sha256(original.encode()).hexdigest(),
         "final_patch_sha256": hashlib.sha256(final_patch.encode()).hexdigest(),
         "original_hunks": [identity for identity, _value in hunks],

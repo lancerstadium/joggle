@@ -710,7 +710,8 @@ inclusion decision.
 <!-- FIGURE 5 PLAN — One-column dense paired-dot plot fed by one CSV and one
 plotting script. Rows are the 12 feature changes grouped by family; four narrow
 columns show touched source files, changed source lines, ownership zones, and
-registry/build edits on aligned log1p axes. Connect systems implementing the
+registry/build edits in a single-column 2-by-2 layout. Symmetric-log axes retain
+true zero while labeling raw counts. Connect systems implementing the
 same task and retain true zeros. CSV: figure-05-footprint.csv. Raw columns:
 system,system_revision,task,family,patch_hash,source_files,source_added,
 source_deleted,test_files,test_added,test_deleted,zones,registrations,fanout,
