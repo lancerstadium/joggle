@@ -651,9 +651,9 @@ Only outputs that pass the relevant correctness oracle enter an aggregate.
 
 | Mechanism | Subjects, controls, and measurements |
 | --- | --- |
-| Unified language | 36 paired Joggle/MLIR/xDSL tasks; log-PPL and pass@$k$ |
-| Mods | 12 paired patches; files, lines, zones, and fan-out |
-| Reactive execution | 16 models, generated graphs, five policies; latency, work, and reuse |
+| Unified language | 24 Joggle/MLIR/xDSL tasks; pass@$k$ and log-PPL |
+| Mods | 12 reused tasks; files, lines, zones, and fan-out |
+| Reactive execution | 15 models, generated graphs, five policies; latency, work, and reuse |
 | Artifact path | operators, accepted models, three variants; latency, memory, and size |
 
 *Table 1: Evaluation matrix. All systems use pinned revisions and a shared
@@ -662,11 +662,11 @@ semantic oracle.*
 **Subjects and controls.** MLIR provides a mature multi-level compiler
 baseline; xDSL provides a Python-native SSA framework. Each task follows the
 system's documented extension path from a pinned revision. The model corpus
-contains 16 SHA-256-pinned ONNX models spanning classification, detection,
-machine comprehension, quantized networks, and vision transformers. Results
-retain every compatibility outcome; cross-system aggregates use the accepted
-intersection. Generated graphs at $10^3$--$10^6$ operations vary total size,
-affected scope, fan-out, and stage count independently.
+contains 15 SHA-256-pinned ONNX models spanning classification, detection,
+quantized networks, and vision transformers. Results retain every compatibility
+outcome; aggregates over model execution use the accepted intersection.
+Generated graphs at $10^3$--$10^6$ operations vary total size, affected scope,
+fan-out, and stage count independently.
 
 **Correctness and measurement.** Compiler-extension tasks use build-and-test
 oracles; graph transformations use verification and canonical structural
@@ -679,19 +679,21 @@ seed, cache state, and correctness outcome.
 
 ### 4.2 Extension Predictability and Completion
 
-The extension suite contains 36 paired tasks in six families: type or operation
-definition, analysis, rewrite, conversion, artifact generation, and a vertical
-feature combining these roles. Each task has one semantic specification, a
-system-specific harness, and the shortest idiomatic reference solution that
-passes the common oracle. The split is by feature, so no definition, rewrite,
-or emitter from a held-out feature enters its prompt. Formatting is normalized;
-generated code and harness boilerplate are not scored.
+The extension suite contains 24 held-out tasks, four in each of six families:
+type or operation definition, analysis, rewrite, conversion, artifact
+generation, and a vertical feature combining these roles. Every task has one
+semantic specification, a system-specific harness, and an idiomatic reference
+solution that passes the common oracle. A separate demonstration bank uses
+disjoint features, so no definition, rewrite, converter, or emitter from an
+evaluation feature enters its prompt. Formatting is normalized; generated code
+and harness boilerplate are not scored.
 
 Two frozen open-weight code models in the 1--3B range receive the specification
 and a compact API card. Demonstration counts are $0,1,2,$ and $4$; examples
-come only from the training partition through one deterministic retrieval rule
-and an equal token budget. Sampling parameters, seeds, stopping rules, and
-maximum continuation length are fixed per model.
+come only from the demonstration bank through one deterministic retrieval rule
+and an equal token budget. Each condition draws 50 samples. Sampling
+parameters, seeds, stopping rules, and maximum continuation length are fixed
+per model.
 
 For reference tokens $x_{1:N}$ and context $c$,
 
@@ -723,11 +725,12 @@ sample_index. -->
 
 ### 4.3 Change Footprint and Ownership
 
-Twelve paired tasks add or revise complete features across the same six
-families. Each implementation begins from a clean pinned snapshot and ends
-after the common oracle passes. A deterministic pass attempts to remove every
-changed hunk, retaining a removal only when the oracle still passes; the
-resulting patches are locally minimal and auditable.
+The footprint study reuses 12 tasks from the extension suite, two from each
+family. Selection is fixed from the semantic specifications before any patch
+metric is collected. Each implementation begins from a clean pinned snapshot
+and ends after the common oracle passes. A deterministic pass attempts to
+remove every changed hunk, retaining a removal only when the oracle still
+passes; the resulting patches are locally minimal and auditable.
 
 For patch $p$, the footprint is
 
@@ -761,12 +764,13 @@ test_deleted,zones,registrations,fanout,oracle_passed. -->
 An update case begins with a verified optimized graph, applies one controlled
 edit, restores the required compiler result, and checks its semantic digest.
 The fixed pipeline performs analysis, canonicalization, target selection or
-legalization, memory planning, and artifact preparation. Its six edit classes
-are no-op, operation or value metadata, value type, operation operands or
-callee, function-local topology, and mod dependency or environment. Sites are
-chosen before timing at early, middle, and late topological positions among
-editable entry-block computations. Each case records the selected operation and
-its measured affected scope.
+legalization, memory planning, and artifact preparation. Three edit classes
+exercise distinct invalidation paths: no-op isolates scheduling overhead,
+operation metadata changes operation state, and value-type changes value state.
+Metadata and type edits target either the affected cone or an unrelated
+same-function entity. Sites are chosen before timing at early, middle, and late
+topological positions among editable entry-block computations. Each case
+records the selected operation and its measured affected scope.
 
 Five policies isolate the mechanisms. **Full** reruns every stage; **Suffix**
 reruns from the first possibly affected stage; **Reactive** validates recorded
@@ -781,15 +785,18 @@ entities; compiler-function operations; plan hits; miss reasons; and peak
 memory. For policy $p$, speedup is $T_{Full}/T_p$ and work reuse is
 $1-E_p/E_{Full}$, where $E$ is executed compiler-function operations.
 
-The model corpus supplies realistic graphs. Generated graphs separate $|G|$
-from affected scope $|\Delta G|$: one sweep fixes a one-operation edit while
-scaling $|G|$; another fixes $|G|$ while increasing $|\Delta G|$. A
-cross-system track applies the same analysis and rewrite semantics in Joggle,
-MLIR, and xDSL. Cold measurements include process startup, parsing, and setup;
-warm measurements retain each system's public graph and pass infrastructure.
+The model corpus supplies realistic graph structures for the within-Joggle
+mechanism study. Generated graphs separate $|G|$ from affected scope
+$|\Delta G|$: one sweep fixes a one-operation edit while scaling $|G|$;
+another fixes $|G|$ while increasing $|\Delta G|$. The cross-system track uses
+the same neutral generated DAG, analysis, rewrite, edit, and output digest in
+Joggle, MLIR, and xDSL. It therefore compares update policies without making
+frontend coverage part of the result. Cold measurements include process
+startup, parsing, and setup; warm measurements retain each system's public
+graph and pass infrastructure.
 
 <!-- FIGURE 7 PLAN — Main full-width data figure. Left: heatmap of Reactive/Full
-speedup for every one of the 16 models by edit class; annotate executed/total
+speedup for every one of the 15 models by edit class; annotate executed/total
 stages in each cell. Right-top: ECDF of edit-to-result latency for Full, Suffix,
 Reactive. Right-bottom: stacked selection/evaluation/verification time for
 p50 and p95. CSV schema: system,system_revision,subject,subject_hash,total_ops,
