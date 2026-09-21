@@ -131,7 +131,7 @@ std::optional<std::size_t> size_value(std::string_view text) {
 int usage() {
   std::cerr
       << "usage: joggle-artifact-reactive --modules DIR --output FILE "
-         "--revision GIT [--policy all|full|suffix|reactive|whole-mod|"
+         "--revision GIT [--policy all|full|reactive|whole-mod|"
          "no-plan-cache] [--edit-class no_op|operation_metadata|value_type] "
          "[--scope all|affected|unrelated] "
          "[--site early|middle|late] "
@@ -206,7 +206,7 @@ bool parse_args(int argc, char** argv, Config& config) {
   }
   const bool policy_ok =
       config.policy == "all" || config.policy == "full" ||
-      config.policy == "suffix" || config.policy == "reactive" ||
+      config.policy == "reactive" ||
       config.policy == "whole-mod" || config.policy == "no-plan-cache";
   const bool edit_class_ok =
       config.edit_class == "no_op" ||
@@ -488,7 +488,7 @@ std::vector<std::string> policies(const Config& config) {
   if (config.policy != "all")
     return {config.policy};
 #if JOGGLE_ARTIFACT_PERSISTENT_PLANS
-  return {"full", "suffix", "reactive", "whole-mod"};
+  return {"full", "reactive", "whole-mod"};
 #else
   return {"no-plan-cache"};
 #endif
@@ -537,11 +537,10 @@ bool benchmark(const Config& config, std::ofstream& output,
   const auto execute = [&](joggle::Attr& report, joggle::Attr& profile) {
     if (reactive)
       return schedule->run(subject.env, subject.mod, args, &report);
-    std::span<const std::string_view> selected =
-        std::span<const std::string_view>(stages).first(config.stage_count);
-    if (policy == "suffix")
-      selected = selected.subspan(0);
-    return run_direct(subject, selected, profile);
+    return run_direct(
+        subject, std::span<const std::string_view>(stages).first(
+                     config.stage_count),
+        profile);
   };
 
   joggle::Attr report;

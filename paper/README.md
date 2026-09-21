@@ -587,8 +587,8 @@ Only outputs that pass the relevant correctness oracle enter an aggregate.
 | --- | --- |
 | Unified language | 24 Joggle/MLIR/xDSL tasks; pass@$k$ and log-PPL |
 | Mods | 12 reused tasks; files, lines, zones, and fan-out |
-| Reactive execution | 15 models, generated graphs, five policies; latency, work, and reuse |
-| Artifact path | operators, accepted models, three variants; latency, memory, and size |
+| Reactive execution | 15 models, generated graphs, four policies; latency, work, and reuse |
+| Artifact path | operator and accepted-model suites; latency, memory, and size |
 
 *Table 1: Evaluation matrix. All systems use pinned revisions and a shared
 semantic oracle.*
@@ -604,12 +604,14 @@ fan-out, and stage count independently.
 
 **Correctness and measurement.** Compiler-extension tasks use build-and-test
 oracles; graph transformations use verification and canonical structural
-digests; artifacts use reference tensors with dtype-specific tolerances. We
-separate cold process, warm process, and warm cache. Latency cases run ten
-warm-ups and 100 randomized measurements. We report median, 95th percentile,
-and task- or model-level bootstrap 95% confidence intervals; ratios use the
-geometric mean. Raw rows record system and model revisions, flags, CPU policy,
-seed, cache state, and correctness outcome.
+digests; artifacts use reference tensors with dtype-specific tolerances. A
+failed oracle remains visible in coverage results but never contributes a
+latency or speedup. Latency cases run ten warm-ups followed by 100 measurements
+in a seeded random order. We report medians and 95th percentiles per subject;
+confidence intervals resample the independent unit---task, graph, operator, or
+model---rather than repeated timings. Ratios are formed within a subject before
+geometric aggregation. Every raw row records revisions, build flags, host and
+CPU policy, seed, cache state, and correctness outcome.
 
 ### 4.2 Extension Predictability and Completion
 
@@ -636,8 +638,10 @@ PPL(x\mid c)=\exp\left(-\frac{1}{N}
   \sum_{t=1}^{N}\log p_\theta(x_t\mid x_{<t},c)\right).
 $$
 
-We compare paired log-perplexity within each tokenizer and report the change
-from zero to four demonstrations. Executable completion is primary: a sample
+Log-perplexity is a secondary measure. We compare semantically corresponding
+reference solutions under the same model and tokenizer, and report both the
+value at each demonstration count and the paired change from zero to four
+demonstrations. Executable completion is primary: a sample
 must parse, type-check, compile where required, and pass the oracle. From $n$
 samples with $c$ successes, pass@$k$ is [@chen2021codex]
 
@@ -645,26 +649,31 @@ $$
 \widehat{pass@k}=1-\frac{\binom{n-c}{k}}{\binom{n}{k}}.
 $$
 
-We report pass@1, pass@5, pass@10, repair-free success, token counts, and
-parse/type/oracle failures. Pairing fixes task semantics; the demonstration
-sweep distinguishes prior familiarity from learnability from local examples.
+We compute pass@1, pass@5, and pass@10 for each task, macro-average across
+tasks, and obtain intervals by resampling tasks within each family. Token counts
+and parse, type, build, and oracle failures explain completion gaps without
+replacing the executable result. Pairing fixes task semantics; the
+demonstration sweep distinguishes prior familiarity from learnability from
+local examples.
 
-<!-- FIGURE 4 PLAN — Full-width, three compact panels. (a) paired task
-log-perplexity with one thin line per task; (b) pass@1/5/10 with bootstrap 95%
-CI; (c) failure composition: parse/type/oracle. Facet by task family, keep the
-two small models separate, and use the same system colors in every panel. CSV
-schema: model,model_revision,system,system_revision,task,family,split,
-demo_count,seed,target_tokens,context_tokens,nll,parsed,typed,passed,
-sample_index. -->
+<!-- FIGURE 4 PLAN — Full-width, three compact panels fed by one CSV and one
+plotting script. (a) task-level pass@1 at four demonstrations, grouped by
+family; (b) pass@k response to 0/1/2/4 demonstrations; (c) parse/type/build/
+oracle failure composition. Keep the two models in separate rows. Show paired
+log-perplexity only as a small secondary inset so syntax length cannot dominate
+the headline. CSV: figure-04-extension.csv. Raw columns: model,
+model_revision,system,system_revision,task,family,demo_count,seed,sample_index,
+target_tokens,context_tokens,nll,parsed,typed,built,passed. -->
 
 ### 4.3 Change Footprint and Ownership
 
 The footprint study reuses 12 tasks from the extension suite, two from each
 family. Selection is fixed from the semantic specifications before any patch
 metric is collected. Each implementation begins from a clean pinned snapshot
-and ends after the common oracle passes. A deterministic pass attempts to
-remove every changed hunk, retaining a removal only when the oracle still
-passes; the resulting patches are locally minimal and auditable.
+and ends after the common oracle passes. A deterministic delta-debugging pass
+visits hunks in a fixed order and removes a hunk whenever the oracle continues
+to pass. It repeats to a fixed point, yielding an auditable 1-minimal patch
+under that hunk partition.
 
 For patch $p$, the footprint is
 
@@ -681,17 +690,21 @@ responsibility.
 
 Every task reports all four coordinates, build and oracle status, and dependency
 fan-out. Joggle additionally records whether the patch stays inside one mod or
-crosses declared `use` edges. We show individual paired ratios and their
-geometric mean with a task-level bootstrap interval, grouping small rewrites
-separately from vertical features. The artifact includes patches, zone maps,
-counting scripts, and every inclusion decision.
+crosses declared `use` edges. Because a baseline may require zero registry or
+build edits, absolute paired counts are primary. We summarize the paired
+difference with a task-level bootstrap interval and report a ratio only when
+both counts are nonzero. Small rewrites and vertical features remain separate.
+The artifact includes patches, frozen zone maps, counting scripts, and every
+inclusion decision.
 
-<!-- FIGURE 5 PLAN — One-column dense paired-dot plot. Rows are the 12 feature
-changes grouped by role; columns are touched source files, changed source lines,
-ownership zones, and registry/build edits. Plot normalized paired ratios, not
-paragraphs inside a table. CSV schema: system,system_revision,task,family,
-patch_hash,source_files,source_added,source_deleted,test_files,test_added,
-test_deleted,zones,registrations,fanout,oracle_passed. -->
+<!-- FIGURE 5 PLAN — One-column dense paired-dot plot fed by one CSV and one
+plotting script. Rows are the 12 feature changes grouped by family; four narrow
+columns show touched source files, changed source lines, ownership zones, and
+registry/build edits on aligned log1p axes. Connect systems implementing the
+same task and retain true zeros. CSV: figure-05-footprint.csv. Raw columns:
+system,system_revision,task,family,patch_hash,source_files,source_added,
+source_deleted,test_files,test_added,test_deleted,zones,registrations,fanout,
+cross_mod_edges,oracle_passed. -->
 
 ### 4.4 Reactive Update Cost
 
@@ -706,17 +719,17 @@ same-function entity. Sites are chosen before timing at early, middle, and late
 topological positions among editable entry-block computations. Each case
 records the selected operation and its measured affected scope.
 
-Five policies isolate the mechanisms. **Full** reruns every stage; **Suffix**
-reruns from the first possibly affected stage; **Reactive** validates recorded
-inputs and propagates overlapping effects; **Whole-mod** replaces entity
+Four policies isolate the mechanisms. **Full** reruns every stage;
+**Reactive** validates recorded inputs and propagates overlapping effects;
+**Whole-mod** replaces entity
 observations with one mod revision; and **No-plan-cache** retains reactive
 selection but decodes functions again. All policies must produce the same
 verified digest.
 
 The primary measure is edit-to-result latency. We also record selection,
 evaluation, and verification time; executed and reused stages; observed
-entities; compiler-function operations; plan hits; miss reasons; and peak
-memory. For policy $p$, speedup is $T_{Full}/T_p$ and work reuse is
+entities; compiler-function operations; plan hits; and miss reasons. For
+policy $p$, speedup is $T_{Full}/T_p$ and work reuse is
 $1-E_p/E_{Full}$, where $E$ is executed compiler-function operations.
 
 The model corpus supplies realistic graph structures for the within-Joggle
@@ -729,21 +742,23 @@ frontend coverage part of the result. Cold measurements include process
 startup, parsing, and setup; warm measurements retain each system's public
 graph and pass infrastructure.
 
-<!-- FIGURE 6 PLAN — Main full-width data figure. Left: heatmap of Reactive/Full
-speedup for every one of the 15 models by edit class; annotate executed/total
-stages in each cell. Right-top: ECDF of edit-to-result latency for Full, Suffix,
-Reactive. Right-bottom: stacked selection/evaluation/verification time for
-p50 and p95. CSV schema: system,system_revision,subject,subject_hash,total_ops,
+<!-- FIGURE 6 PLAN — Main full-width data figure fed by one CSV and one plotting
+script. Left: heatmap of Full/Reactive speedup for every one of the 15 models by
+edit class and scope; annotate executed/total stages in each cell. Right-top:
+ECDF of edit-to-result latency for Full and Reactive. Right-bottom:
+selection/evaluation/verification composition for p50 and p95. CSV:
+figure-06-model-update.csv. Raw columns: system,system_revision,subject,
+subject_hash,total_ops,
 affected_ops,fanout,stages,edit_class,edit_scope,edit_site,policy,cache_state,
 iteration,wall_ns,select_ns,evaluate_ns,verify_ns,executed_stages,reused_stages,
 observed_ops,observed_values,changed_functions,evaluated_ops,plan_compiles,
 plan_hits,miss_reason,output_digest,correct,seed. -->
 
-<!-- FIGURE 7 PLAN — Single-column scaling figure. Log-scaled x-axis is total
-operations; y-axis is update latency. Separate lines for affected cones of
-1/8/64/512 operations and Full. A lower inset plots observed entities. Do not
-connect unsupported or missing cases. Use the same reactive-update CSV schema
-as Figure 6, filtered to generated subjects. -->
+<!-- FIGURE 7 PLAN — Single-column scaling figure fed by one CSV and one plotting
+script. Log-scaled x-axis is total operations; y-axis is update latency.
+Separate lines for affected cones of 1/8/64/512 operations and Full. A lower
+inset plots observed entities. Do not connect unsupported or missing cases.
+CSV: figure-07-scaling.csv, using the Figure 6 columns on generated subjects. -->
 
 ### 4.5 Artifact Quality and System Costs
 
@@ -757,22 +772,27 @@ code size; model records contain inference latency, peak memory, and artifact
 size. Speedups are computed per subject before geometric aggregation, and fixed
 inputs establish numerical equivalence.
 
-<!-- FIGURE 8 PLAN — Two compact data figures rather than one overloaded plot.
-Operator figure: log-scale paired points for unoptimized Joggle, optimized
-Joggle, and reference, faceted by operator family. Model figure: per-model
-latency ratio plus peak memory, with the common supported set visibly marked.
-Operator CSV: operator,shape,dtype,system,variant,iteration,latency_ns,
-compile_ns,code_bytes,max_abs_error,correct. Model CSV: model,model_hash,system,
-variant,iteration,latency_ns,peak_bytes,artifact_bytes,max_abs_error,correct. -->
+<!-- FIGURE 8 PLAN — Single-column operator figure fed by one CSV and one
+plotting script. Use log-scale paired points for unoptimized Joggle, optimized
+Joggle, and the pinned CPU reference, faceted by operator family. Separate
+preparation time from steady-state latency. CSV: figure-08-operators.csv.
+Columns: operator,family,shape,dtype,system,system_revision,variant,iteration,
+prepare_ns,latency_ns,code_bytes,max_abs_error,correct,seed. -->
+
+<!-- FIGURE 9 PLAN — Full-width model figure fed by one CSV and one plotting
+script. Left: per-model latency relative to the pinned CPU reference. Right:
+peak memory and artifact size as aligned dot plots. Mark the common supported
+set and retain unsupported models as coverage marks rather than dropping them.
+CSV: figure-09-models.csv. Columns: model,model_hash,system,system_revision,
+variant,supported,reason,iteration,prepare_ns,latency_ns,peak_bytes,
+artifact_bytes,max_abs_error,correct,seed. -->
 
 Finally, cold-path accounting separates loading, parsing, verification, plan
-construction, and first execution; warm accounting separates capture,
-validation, transaction, verification, and commit. Memory is sampled after
-load, first schedule, and repeated edits. One-at-a-time ablations remove
-fine-grained observation, persistent plans, dispatch caching, register-window
-reuse, or lazy structural snapshots. A precision study implements the same
-analysis with whole-graph traversal, function traversal, and range lookup,
-linking API scope to observation size, validation cost, and reuse.
+construction, and first execution; warm accounting separates selection,
+evaluation, verification, and commit. The Whole-mod and No-plan-cache policies
+provide the two mechanism ablations: observation precision and persistent
+execution plans. Their counters connect latency changes to observed entities,
+executed compiler-function operations, and plan compilation.
 
 Together, generation characterizes the extension surface, patch footprint its
 ownership boundary, reactive execution its update cost, and artifact and

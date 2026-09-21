@@ -27,7 +27,7 @@
     "edit_class": "enum:no_op|operation_metadata|value_type",
     "edit_scope": "enum:none|affected|unrelated",
     "edit_site": "string",
-    "policy": "enum:full|suffix|reactive|whole-mod|no-plan-cache",
+    "policy": "enum:full|reactive|whole-mod|no-plan-cache",
     "cache_state": "enum:warm",
     "iteration": "uint64",
     "wall_ns": "uint64",

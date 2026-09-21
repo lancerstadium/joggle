@@ -22,8 +22,8 @@ relevant correctness oracle enter an aggregate.
     \midrule
     Language & 24 Joggle/MLIR/xDSL tasks; pass@$k$ and log-PPL \\
     Mods & 12 reused tasks; files, lines, zones, and fan-out \\
-    Reactive & 15 models, generated graphs, five policies; latency, work, and reuse \\
-    Artifacts & operators, accepted models, three variants; latency, memory, and size \\
+    Reactive & 15 models, generated graphs, four policies; latency, work, and reuse \\
+    Artifacts & operator and accepted-model suites; latency, memory, and size \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -41,11 +41,14 @@ stage count independently.
 \paragraph{Correctness and measurement.}
 Compiler-extension tasks use build-and-test oracles; graph transformations use
 verification and canonical structural digests; artifacts use reference tensors
-with dtype-specific tolerances. We separate cold process, warm process, and
-warm cache. Latency cases run ten warm-ups and 100 randomized measurements. We
-report median, 95th percentile, and task- or model-level bootstrap 95\%
-confidence intervals; ratios use the geometric mean. Raw rows record system and
-model revisions, flags, CPU policy, seed, cache state, and correctness outcome.
+with dtype-specific tolerances. A failed oracle remains visible in coverage
+results but never contributes a latency or speedup. Latency cases run ten
+warm-ups followed by 100 measurements in a seeded random order. We report
+medians and 95th percentiles per subject; confidence intervals resample the
+independent unit---task, graph, operator, or model---rather than repeated
+timings. Ratios are formed within a subject before geometric aggregation. Every
+raw row records revisions, build flags, host and CPU policy, seed, cache state,
+and correctness outcome.
 
 \subsection{Extension Predictability and Completion}
 \label{sec:eval-convenient}
@@ -72,17 +75,22 @@ For reference tokens $x_{1:N}$ and context $c$,
   \exp\left(-\frac{1}{N}\sum_{t=1}^{N}
   \log p_\theta(x_t\mid x_{<t},c)\right).
 \]
-We compare paired log-perplexity within each tokenizer and report the change
-from zero to four demonstrations. Executable completion is primary: a sample
+Log-perplexity is a secondary measure. We compare semantically corresponding
+reference solutions under the same model and tokenizer, and report both the
+value at each demonstration count and the paired change from zero to four
+demonstrations. Executable completion is primary: a sample
 must parse, type-check, compile where required, and pass the oracle. From $n$
 samples with $c$ successes, pass@$k$ is~\cite{chen2021codex}
 \[
   \widehat{\operatorname{pass@}k}
     = 1 - \frac{\binom{n-c}{k}}{\binom{n}{k}}.
 \]
-We report pass@1, pass@5, pass@10, repair-free success, token counts, and
-parse/type/oracle failures. Pairing fixes task semantics; the demonstration
-sweep distinguishes prior familiarity from learnability from local examples.
+We compute pass@1, pass@5, and pass@10 for each task, macro-average across
+tasks, and obtain intervals by resampling tasks within each family. Token counts
+and parse, type, build, and oracle failures explain completion gaps without
+replacing the executable result. Pairing fixes task semantics; the
+demonstration sweep distinguishes prior familiarity from learnability from
+local examples.
 
 \subsection{Change Footprint and Ownership}
 \label{sec:eval-controllable}
@@ -90,9 +98,10 @@ sweep distinguishes prior familiarity from learnability from local examples.
 The footprint study reuses 12 tasks from the extension suite, two from each
 family. Selection is fixed from the semantic specifications before any patch
 metric is collected. Each implementation begins from a clean pinned snapshot
-and ends after the common oracle passes. A deterministic pass attempts to
-remove every changed hunk, retaining a removal only when the oracle still
-passes; the resulting patches are locally minimal and auditable.
+and ends after the common oracle passes. A deterministic delta-debugging pass
+visits hunks in a fixed order and removes a hunk whenever the oracle continues
+to pass. It repeats to a fixed point, yielding an auditable 1-minimal patch
+under that hunk partition.
 
 For patch $p$, the footprint is
 \[
@@ -107,10 +116,12 @@ responsibility.
 
 Every task reports all four coordinates, build and oracle status, and
 dependency fan-out. Joggle additionally records whether the patch stays inside
-one mod or crosses declared \texttt{use} edges. We show individual paired
-ratios and their geometric mean with a task-level bootstrap interval, grouping
-small rewrites separately from vertical features. The artifact includes
-patches, zone maps, counting scripts, and every inclusion decision.
+one mod or crosses declared \texttt{use} edges. Because a baseline may require
+zero registry or build edits, absolute paired counts are primary. We summarize
+the paired difference with a task-level bootstrap interval and report a ratio
+only when both counts are nonzero. Small rewrites and vertical features remain
+separate. The artifact includes patches, frozen zone maps, counting scripts,
+and every inclusion decision.
 
 \subsection{Reactive Update Cost}
 \label{sec:eval-efficient}
@@ -126,8 +137,7 @@ same-function entity. Sites are chosen before timing at early, middle, and late
 topological positions among editable entry-block computations. Each case
 records the selected operation and its measured affected scope.
 
-Five policies isolate the mechanisms. \textbf{Full} reruns every stage;
-\textbf{Suffix} reruns from the first possibly affected stage;
+Four policies isolate the mechanisms. \textbf{Full} reruns every stage;
 \textbf{Reactive} validates recorded inputs and propagates overlapping effects;
 \textbf{Whole-mod} replaces entity observations with one mod revision; and
 \textbf{No-plan-cache} retains reactive selection but decodes functions again.
@@ -135,8 +145,8 @@ All policies must produce the same verified digest.
 
 The primary measure is edit-to-result latency. We also record selection,
 evaluation, and verification time; executed and reused stages; observed
-entities; compiler-function operations; plan hits; miss reasons; and peak
-memory. For policy $p$, speedup is $T_{\mathrm{Full}}/T_p$ and work reuse is
+entities; compiler-function operations; plan hits; and miss reasons. For
+policy $p$, speedup is $T_{\mathrm{Full}}/T_p$ and work reuse is
 $1-E_p/E_{\mathrm{Full}}$, where $E$ is executed compiler-function operations.
 
 The model corpus supplies realistic graph structures for the within-Joggle
@@ -163,13 +173,11 @@ size. Speedups are computed per subject before geometric aggregation, and fixed
 inputs establish numerical equivalence.
 
 Finally, cold-path accounting separates loading, parsing, verification, plan
-construction, and first execution; warm accounting separates capture,
-validation, transaction, verification, and commit. Memory is sampled after
-load, first schedule, and repeated edits. One-at-a-time ablations remove
-fine-grained observation, persistent plans, dispatch caching, register-window
-reuse, or lazy structural snapshots. A precision study implements the same
-analysis with whole-graph traversal, function traversal, and range lookup,
-linking API scope to observation size, validation cost, and reuse.
+construction, and first execution; warm accounting separates selection,
+evaluation, verification, and commit. The Whole-mod and No-plan-cache policies
+provide the two mechanism ablations: observation precision and persistent
+execution plans. Their counters connect latency changes to observed entities,
+executed compiler-function operations, and plan compilation.
 
 Together, generation characterizes the extension surface, patch footprint its
 ownership boundary, reactive execution its update cost, and artifact and

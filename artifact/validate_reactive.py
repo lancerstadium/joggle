@@ -9,7 +9,7 @@ from collections import defaultdict
 from pathlib import Path
 
 
-POLICIES = {"full", "suffix", "reactive", "whole-mod", "no-plan-cache"}
+POLICIES = {"full", "reactive", "whole-mod", "no-plan-cache"}
 EDIT_CLASSES = {"no_op", "operation_metadata", "value_type"}
 EDIT_SCOPES = {"none", "affected", "unrelated"}
 UNSIGNED = {
@@ -40,7 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--allow-partial",
         action="store_true",
-        help="accept a subset of the five policies",
+        help="accept a subset of the four policies",
     )
     return parser.parse_args()
 

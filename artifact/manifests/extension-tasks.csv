@@ -1,0 +1,25 @@
+task_id,family,title,footprint,oracle_kind,required_roles
+def-parametric-type,definition,Parametric numeric type,true,build+roundtrip,definition
+def-quantized-op,definition,Quantized arithmetic operation,true,build+invalid-case,definition
+def-layout-attribute,definition,Layout-carrying operation,false,build+roundtrip,definition
+def-target-intrinsic,definition,Target intrinsic operation,false,build+invalid-case,definition
+ana-broadcast-shape,analysis,Broadcast shape legality,true,positive+negative,analysis
+ana-numeric-range,analysis,Interval propagation,true,reference-result,analysis
+ana-fusion-match,analysis,Conv Bias ReLU opportunity,false,positive+negative,analysis
+ana-storage-cost,analysis,Tensor storage cost,false,reference-result,analysis
+rew-add-zero,rewrite,Add-zero simplification,true,structural+numerical,rewrite
+rew-redundant-cast,rewrite,Redundant conversion elimination,true,structural+numerical,rewrite
+rew-conv-bias-relu,rewrite,Conv Bias ReLU fusion,false,structural+numerical,rewrite
+rew-transpose-pair,rewrite,Inverse transpose cancellation,false,structural+numerical,rewrite
+con-gelu-expand,conversion,GELU decomposition,true,structural+numerical,conversion
+con-quant-expand,conversion,Quantized arithmetic expansion,true,structural+numerical,conversion
+con-layout-legalize,conversion,Layout legalization,false,structural+numerical,conversion
+con-instruction-select,conversion,Matrix instruction selection,false,structural+numerical,conversion
+emit-graph-manifest,emission,Graph manifest artifact,true,schema+golden,emission
+emit-kernel-wrapper,emission,Kernel wrapper artifact,true,compile+execute,emission
+emit-storage-plan,emission,Storage plan report,false,schema+reference-result,emission
+emit-target-capability,emission,Target capability manifest,false,schema+golden,emission
+vert-int4,vertical,Four-bit numeric format,true,build+structural+numerical,definition+analysis+conversion+emission
+vert-fused-op,vertical,Fused quantized convolution,true,build+structural+numerical,definition+analysis+rewrite+emission
+vert-vector-backend,vertical,Vector backend slice,false,build+structural+execute,definition+conversion+emission
+vert-input-format,vertical,Graph input format,false,parse+roundtrip+structural,definition+conversion

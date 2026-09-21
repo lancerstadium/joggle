@@ -4,16 +4,29 @@ This directory contains measurement programs for the paper. It is independent
 of `test/`: tests reject implementation regressions, whereas artifact programs
 produce versioned observations for statistical analysis.
 
+`PROTOCOL.md` is the frozen claim-to-measurement contract. Figure-ready CSV
+headers live under `templates/`, and `figures/` contains one plotting script per
+data figure. A plotting script reads only its named CSV and writes both vector
+PDF and review PNG; it never invokes Joggle or changes measurements.
+
+| Figure | Evidence | CSV | Plotting entry |
+| --- | --- | --- | --- |
+| 4 | extension completion | `figure-04-extension.csv` | `figure_04_extension.py` |
+| 5 | paired patch footprint | `figure-05-footprint.csv` | `figure_05_footprint.py` |
+| 6 | model-backed reactive updates | `figure-06-model-update.csv` | `figure_06_model_update.py` |
+| 7 | generated-graph scaling | `figure-07-scaling.csv` | `figure_07_scaling.py` |
+| 8 | operator artifact quality | `figure-08-operators.csv` | `figure_08_operators.py` |
+| 9 | model artifact quality | `figure-09-models.csv` | `figure_09_models.py` |
+
 ## Reactive-update experiment
 
-`run_reactive.py` builds two Release configurations, runs the five policies
+`run_reactive.py` builds two Release configurations, runs the four policies
 from Section 4.4, merges their rows, checks graph equivalence, and writes a JSON
 run record beside the CSV.
 
 | Policy | Execution rule |
 | --- | --- |
 | `full` | execute all five compiler stages |
-| `suffix` | execute the conservative affected suffix |
 | `reactive` | validate recorded entity dependencies |
 | `whole-mod` | use the same stages with one mod-wide observation |
 | `no-plan-cache` | use reactive selection but decode plans again |
@@ -46,7 +59,7 @@ Run a short end-to-end check:
 
 ```sh
 python3 artifact/run_reactive.py \
-  --output .cache/artifact/reactive-smoke.csv \
+  --output .cache/artifact/figure-07-scaling-smoke.csv \
   --nodes 1000 --affected 1 8 64 \
   --fanout 1 --stages 5 \
   --warmups 1 --iterations 3 --allow-dirty
@@ -56,7 +69,7 @@ Run the model-backed track over an already downloaded pinned corpus:
 
 ```sh
 python3 artifact/run_reactive.py \
-  --output .cache/artifact/reactive-models.csv \
+  --output .cache/artifact/figure-06-model-update.csv \
   --models .cache/onnx-zoo/*.onnx \
   --sites early middle late \
   --stages 5 --warmups 10 --iterations 100
@@ -66,7 +79,7 @@ Run the planned scaling matrix from a clean revision:
 
 ```sh
 python3 artifact/run_reactive.py \
-  --output .cache/artifact/reactive.csv \
+  --output .cache/artifact/figure-07-scaling.csv \
   --nodes 1000 10000 100000 1000000 \
   --affected 1 8 64 512 \
   --fanout 1 --stages 5 \
@@ -76,7 +89,19 @@ python3 artifact/run_reactive.py \
 Validate an existing result independently:
 
 ```sh
-python3 artifact/validate_reactive.py .cache/artifact/reactive.csv
+python3 artifact/validate_reactive.py .cache/artifact/figure-07-scaling.csv
+```
+
+Render a validated result without modifying it:
+
+```sh
+python3 artifact/figures/figure_06_model_update.py \
+  .cache/artifact/figure-06-model-update.csv \
+  --output .cache/artifact/figure-06-model-update.pdf
+
+python3 artifact/figures/figure_07_scaling.py \
+  .cache/artifact/figure-07-scaling.csv \
+  --output .cache/artifact/figure-07-scaling.pdf
 ```
 
 The committed schema is `schemas/reactive.schema.json`. Raw CSV and JSON run
