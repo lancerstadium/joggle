@@ -24,7 +24,7 @@
     "affected_ops": "uint64",
     "fanout": "uint64",
     "stages": "uint64",
-    "edit_class": "enum:no_op|operation_metadata",
+    "edit_class": "enum:no_op|operation_metadata|value_type",
     "edit_scope": "enum:none|affected|unrelated",
     "edit_site": "string",
     "policy": "enum:full|suffix|reactive|whole-mod|no-plan-cache",

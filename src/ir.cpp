@@ -2898,6 +2898,7 @@ bool Mod::type(std::span<const Val> values, std::span<const Ty> types) {
   }
 
   bool changed = false;
+  std::vector<std::uint32_t> owners;
   for (std::uint32_t id = 0; id < store.vals.size(); ++id) {
     if (!store.vals[id].live)
       continue;
@@ -2905,15 +2906,18 @@ bool Mod::type(std::span<const Val> values, std::span<const Ty> types) {
     if (assigned == assignments.end())
       continue;
     detail::ValData& data = store.vals[id].data;
-    changed = data.type != assigned->second || changed;
+    const bool value_changed = data.type != assigned->second ||
+                               (data.kind == detail::ValKind::result &&
+                                !data.type_annotation);
+    if (value_changed)
+      owners.push_back(data.fn);
+    changed = value_changed || changed;
     data.type = assigned->second;
-    if (data.kind == detail::ValKind::result) {
-      changed = !data.type_annotation || changed;
+    if (data.kind == detail::ValKind::result)
       data.type_annotation = true;
-    }
   }
   if (changed)
-    touch(store);
+    detail::touch_functions(store, owners);
   return true;
 }
 

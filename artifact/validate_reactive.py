@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 POLICIES = {"full", "suffix", "reactive", "whole-mod", "no-plan-cache"}
-EDIT_CLASSES = {"no_op", "operation_metadata"}
+EDIT_CLASSES = {"no_op", "operation_metadata", "value_type"}
 EDIT_SCOPES = {"none", "affected", "unrelated"}
 UNSIGNED = {
     "total_ops",
@@ -88,11 +88,10 @@ def main() -> int:
             raise SystemExit(f"line {line}: unknown edit scope {row['edit_scope']}")
         if row["edit_class"] == "no_op" and row["edit_scope"] != "none":
             raise SystemExit(f"line {line}: no_op requires scope none")
-        if (
-            row["edit_class"] == "operation_metadata"
-            and row["edit_scope"] == "none"
-        ):
-            raise SystemExit(f"line {line}: operation_metadata requires an edit scope")
+        if row["edit_class"] != "no_op" and row["edit_scope"] == "none":
+            raise SystemExit(
+                f"line {line}: {row['edit_class']} requires an edit scope"
+            )
         if row["correct"] != "true":
             raise SystemExit(f"line {line}: correctness gate failed")
         identity = (

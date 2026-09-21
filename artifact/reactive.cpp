@@ -132,7 +132,7 @@ int usage() {
   std::cerr
       << "usage: joggle-artifact-reactive --modules DIR --output FILE "
          "--revision GIT [--policy all|full|suffix|reactive|whole-mod|"
-         "no-plan-cache] [--edit-class no_op|operation_metadata] "
+         "no-plan-cache] [--edit-class no_op|operation_metadata|value_type] "
          "[--scope all|affected|unrelated] "
          "[--site early|middle|late] "
          "[--input MODEL.onnx --subject-hash SHA256] "
@@ -208,8 +208,10 @@ bool parse_args(int argc, char** argv, Config& config) {
       config.policy == "all" || config.policy == "full" ||
       config.policy == "suffix" || config.policy == "reactive" ||
       config.policy == "whole-mod" || config.policy == "no-plan-cache";
-  const bool edit_class_ok = config.edit_class == "no_op" ||
-                             config.edit_class == "operation_metadata";
+  const bool edit_class_ok =
+      config.edit_class == "no_op" ||
+      config.edit_class == "operation_metadata" ||
+      config.edit_class == "value_type";
   const bool scope_ok = config.scope == "all" || config.scope == "affected" ||
                         config.scope == "unrelated";
   const bool site_ok = config.site == "early" || config.site == "middle" ||
@@ -301,6 +303,9 @@ struct Subject {
   joggle::Op hot;
   joggle::Op cold;
   joggle::Val hot_value;
+  joggle::Val cold_value;
+  joggle::Ty hot_type;
+  joggle::Ty cold_type;
   std::size_t hot_index = 0;
   std::size_t total_ops = 0;
   std::size_t affected_ops = 0;
@@ -348,6 +353,8 @@ bool select_model_sites(Subject& subject, std::string_view site) {
   for (std::size_t index = 0; index < operations.size(); ++index) {
     const joggle::Op op = operations[index];
     if (op.kind() != joggle::Op::Kind::call || op.outs().size() != 1 ||
+        !op.outs().front().type().valid() ||
+        op.outs().front().type().text() == "_" ||
         op.form() == joggle::Op::Form::hidden ||
         op.callee() == "onnx.tensor" || op.callee() == "onnx.model")
       continue;
@@ -364,13 +371,19 @@ bool select_model_sites(Subject& subject, std::string_view site) {
   const std::vector<joggle::Op> affected = subject.mod.affected(roots);
   for (std::size_t candidate = 0; candidate < operations.size(); ++candidate) {
     const joggle::Op unrelated = operations[candidate];
-    if (unrelated == op || unrelated.form() == joggle::Op::Form::hidden ||
+    if (unrelated == op || unrelated.outs().size() != 1 ||
+        !unrelated.outs().front().type().valid() ||
+        unrelated.outs().front().type().text() == "_" ||
+        unrelated.form() == joggle::Op::Form::hidden ||
         std::find(affected.begin(), affected.end(), unrelated) !=
             affected.end())
       continue;
     subject.hot = op;
     subject.cold = unrelated;
     subject.hot_value = roots.front();
+    subject.cold_value = unrelated.outs().front();
+    subject.hot_type = subject.hot_value.type();
+    subject.cold_type = subject.cold_value.type();
     subject.hot_index = index;
     subject.affected_ops = affected.size();
     const std::string prefix = std::string(site) + ":";
@@ -424,10 +437,14 @@ bool prepare(const Config& config, Subject& subject) {
       subject.hot_index = index;
     } else if (value.name() == "cold_0") {
       subject.cold = op;
+      subject.cold_value = value;
     }
   }
-  if (!subject.hot || !subject.cold || !subject.hot_value)
+  if (!subject.hot || !subject.cold || !subject.hot_value ||
+      !subject.cold_value)
     return false;
+  subject.hot_type = subject.hot_value.type();
+  subject.cold_type = subject.cold_value.type();
   subject.total_ops = subject.mod.ops().size();
   for (const joggle::Op operation : subject.mod.ops())
     for (const joggle::Val output : operation.outs())
@@ -441,6 +458,15 @@ bool edit_subject(Subject& subject, std::string_view edit_class,
                   std::string_view scope, std::int64_t value) {
   if (edit_class == "no_op")
     return true;
+  if (edit_class == "value_type") {
+    (void)value;
+    const bool affected = scope == "affected";
+    const joggle::Val target = affected ? subject.hot_value : subject.cold_value;
+    const joggle::Ty original = affected ? subject.hot_type : subject.cold_type;
+    const joggle::Ty next =
+        target.type().text() == "_" ? original : joggle::Ty("_");
+    return subject.mod.type(target, next);
+  }
   const joggle::Op operation =
       scope == "affected" ? subject.hot : subject.cold;
   if (subject.generated)

@@ -986,6 +986,17 @@ int main(int argc, char** argv) {
   CHECK(number(schedule_report, "executed_stages") == 1 &&
         string_field(item(schedule_report, "stages", 0), "miss") ==
             "operation_revision");
+  CHECK(range_scheduled.type(range_right.outs().front(), joggle::Ty("_")));
+  CHECK(range_schedule.run(env, range_scheduled, range_schedule_args,
+                           &schedule_report));
+  CHECK(number(schedule_report, "executed_stages") == 0 &&
+        number(schedule_report, "reused_stages") == 1);
+  CHECK(range_scheduled.type(range_left.outs().front(), joggle::Ty("_")));
+  CHECK(range_schedule.run(env, range_scheduled, range_schedule_args,
+                           &schedule_report));
+  CHECK(number(schedule_report, "executed_stages") == 1 &&
+        string_field(item(schedule_report, "stages", 0), "miss") ==
+            "value_revision");
   joggle::ReactiveSchedule propagated_schedule(
       {"script.schedule_forward", "script.schedule_consume"});
   const std::array<joggle::Attr, 2> edge_args{joggle::Attr("left"),

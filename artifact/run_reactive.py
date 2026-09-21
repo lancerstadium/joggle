@@ -37,9 +37,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--models", type=Path, nargs="+")
     parser.add_argument(
         "--edit-classes",
-        choices=("no_op", "operation_metadata"),
+        choices=("no_op", "operation_metadata", "value_type"),
         nargs="+",
-        default=["no_op", "operation_metadata"],
+        default=["no_op", "operation_metadata", "value_type"],
     )
     parser.add_argument(
         "--scopes",
@@ -223,7 +223,7 @@ def main() -> int:
                             str(args.seed),
                         ]
                         if (
-                            edit_class == "operation_metadata"
+                            edit_class != "no_op"
                             and len(args.scopes) == 1
                         ):
                             invocation.extend(["--scope", args.scopes[0]])
