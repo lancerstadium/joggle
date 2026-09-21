@@ -15,7 +15,7 @@ Tests are organized by observable behavior, not by implementation source file.
 | `example-mod` | runnable packages in `examples/mods/` |
 | `c` | prepare, emit, strict compile, execute |
 | `tutorial` | exact public guide path |
-| `lint` | documentation graph and repository layout |
+| `lint` | documentation graph |
 | `model` | configured pinned external model corpus |
 
 ```sh

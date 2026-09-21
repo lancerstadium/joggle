@@ -15,7 +15,7 @@ are useful when diagnosing one failure.
 | external mod examples | `ctest --test-dir build -L example-mod` | packages loaded from `examples/mods/` |
 | generated C | `ctest --test-dir build -L c` | prepare, emit, compile, and execute |
 | documented path | `ctest --test-dir build -L tutorial` | exact tutorial inputs, commands, outputs, and C oracle |
-| repository checks | `ctest --test-dir build -L lint` | documentation graph and layout |
+| documentation checks | `ctest --test-dir build -L lint` | documentation graph |
 | pinned models | `ctest --test-dir build -L model` | configured ONNX/TFLite corpora |
 
 Each maintained test has one primary kind label. Feature labels such as

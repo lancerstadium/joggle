@@ -23,17 +23,11 @@ fn emit(width: int) -> str;
 [stage: "select"]
 fn select(m: Mod) -> bool {
   var changed = false
-  for f in ir.fns(m) {
-    for b in ir.blks(f) {
-      for op in ir.ops(b) {
-        if ir.callee(op) == "operator +" {
-          let outs = ir.outs(op)
-          if len(outs) == 1 {
-            if sat.supports(ir.type(outs[0])) {
-              changed = ir.rename(m, op, "sat.add")
-            }
-          }
-        }
+  for op in ir.ops(m) {
+    if ir.callee(op) == "operator +" {
+      let outs = ir.outs(op)
+      if len(outs) == 1 && sat.supports(ir.type(outs[0])) {
+        changed = ir.rename(m, op, "sat.add") || changed
       }
     }
   }

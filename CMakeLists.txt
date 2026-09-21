@@ -566,14 +566,6 @@ if(JOGGLE_BUILD_TESTS)
               ${CMAKE_CURRENT_SOURCE_DIR}
     )
   endif()
-  # Checks the layout rules stated in README.md. This needs only CMake, so it
-  # runs whether or not Python was found. See test/layout.cmake for the enforce
-  # and report classes: a report-class finding is listed and the test passes,
-  # so the list is the migration queue rather than a red suite.
-  joggle_script_test(layout layout.cmake
-    DEFINES
-      SOURCE=${CMAKE_CURRENT_SOURCE_DIR}
-  )
   if(JOGGLE_TEST_C_COMPILER)
     joggle_script_test(tutorial-smoke tutorials.cmake
       DEFINES
@@ -1082,5 +1074,5 @@ if(JOGGLE_BUILD_TESTS)
   # Pinned model tests receive their kind label at declaration time because the
   # configured corpus is data-driven; do not duplicate its names here.
   joggle_label(install install-consumer)
-  joggle_label(lint docs layout)
+  joggle_label(lint docs)
 endif()

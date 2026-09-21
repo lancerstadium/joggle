@@ -1,0 +1,55 @@
+\documentclass[sigconf,anonymous,review]{acmart}
+
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\setcopyright{none}
+\settopmatter{printacmref=false,printccs=false}
+\renewcommand\footnotetextcopyrightpermission[1]{}
+
+\definecolor{jogblue}{HTML}{0B6FB8}
+\definecolor{joggreen}{HTML}{147D64}
+\definecolor{joggray}{HTML}{F4F6F8}
+\definecolor{jogcomment}{HTML}{667085}
+
+\lstdefinelanguage{jog}{
+  sensitive=true,
+  morekeywords={mod,use,fn,local,let,var,if,else,for,in,return,true,false},
+  morecomment=[l]{//},
+  morestring=[b]"
+}
+
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  keywordstyle=\color{jogblue}\bfseries,
+  commentstyle=\color{jogcomment},
+  stringstyle=\color{joggreen},
+  backgroundcolor=\color{joggray},
+  frame=single,
+  rulecolor=\color{black!12},
+  framesep=4pt,
+  xleftmargin=3pt,
+  xrightmargin=3pt,
+  breaklines=true,
+  breakatwhitespace=false,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  captionpos=b
+}
+
+\title{Joggle}
+\acmYear{2027}
+\acmConference[EuroSys '27]{EuroSys 2027}{April 19--23, 2027}{Rabat, Morocco}
+
+\begin{document}
+\maketitle
+
+\setcounter{section}{2}
+\setcounter{figure}{1}
+\input{sections/03-design}
+
+\end{document}
