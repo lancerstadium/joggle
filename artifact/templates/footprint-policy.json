@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "source_paths": ["src/**", "include/**", "modules/**", "CMakeLists.txt"],
+  "test_paths": ["test/**", "tests/**"],
+  "exclude_paths": ["vendor/**", "third_party/**", "**/*.lock"],
+  "registration_paths": ["CMakeLists.txt", "**/CMakeLists.txt"],
+  "registration_patterns": ["register", "pipeline"],
+  "zones": [
+    {"name": "core", "paths": ["src/**", "include/**", "CMakeLists.txt"]},
+    {"name": "packages", "paths": ["modules/**"]}
+  ],
+  "dependents": {
+    "core": ["packages"],
+    "packages": []
+  }
+}

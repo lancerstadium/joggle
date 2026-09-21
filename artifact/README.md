@@ -18,6 +18,51 @@ PDF and review PNG; it never invokes Joggle or changes measurements.
 | 8 | operator artifact quality | `figure-08-operators.csv` | `figure_08_operators.py` |
 | 9 | model artifact quality | `figure-09-models.csv` | `figure_09_models.py` |
 
+## Change-footprint experiment
+
+`collect_footprint.py` derives Figure 5 rows from pinned Git revisions. The case
+manifest names the repository, base and head commits, frozen counting policy,
+and SHA-256-pinned oracle and minimization logs. The collector rejects binary
+patches, unclassified paths, source files outside exactly one ownership zone,
+and a `system_revision` that differs from the resolved base commit.
+
+First reduce a passing candidate patch. The minimizer works in a temporary
+detached worktree, visits textual hunks in a stable order until a fixed point,
+and records every oracle decision:
+
+```sh
+python3 artifact/minimize_patch.py \
+  --repo /path/to/system --base BASE --head CANDIDATE \
+  --output-patch .cache/artifact/task.patch \
+  --oracle-log .cache/artifact/task-oracle.log \
+  --log .cache/artifact/task-minimization.json \
+  -- ./task-oracle
+```
+
+Apply the emitted patch to the pinned base and commit that exact tree as the
+case `head`. The collector verifies that the resulting Git diff equals the
+final patch hash in the minimization log and that its final oracle-output hash
+equals the supplied oracle log.
+
+Each system policy defines source, test, and excluded paths; registry/build
+markers; ownership zones; and the dependent-zone graph. Consequently files,
+lines, zones, registry edits, fan-out, and crossed zone edges are derived from
+the patch rather than copied from an implementation log. Start from
+`templates/footprint-cases.csv` and `templates/footprint-policy.json`, then run:
+
+```sh
+python3 artifact/collect_footprint.py \
+  --cases .cache/artifact/footprint-cases.csv \
+  --output .cache/artifact/figure-05-footprint.csv
+
+python3 artifact/validate_figure.py 5 \
+  .cache/artifact/figure-05-footprint.csv
+
+python3 artifact/figures/figure_05_footprint.py \
+  .cache/artifact/figure-05-footprint.csv \
+  --output .cache/artifact/figure-05-footprint.pdf
+```
+
 ## Reactive-update experiment
 
 `run_reactive.py` builds two Release configurations, runs the four policies

@@ -63,8 +63,14 @@ frozen before counts are collected.
 
 Absolute paired counts are primary because a system can require zero registry
 or build edits. The four coordinates are implementation files, changed
-implementation lines, ownership zones, and registry/build declarations. Test
-changes and dependency fan-out remain visible but separate.
+implementation lines, ownership zones, and changed registry/build declaration
+lines. Test changes and dependency fan-out remain visible but separate.
+
+The collector derives every count from `git diff` and a frozen per-system
+policy. Cross-zone edges use the policy dependency graph; for Joggle these
+edges correspond to declared `use` relationships. The counted diff must equal
+the final patch hash from `minimize_patch.py`; the case also pins the final
+oracle output and the fixed-point hunk-deletion log by SHA-256.
 
 - CSV: `templates/figure-05-footprint.csv`
 - Plot: `figures/figure_05_footprint.py`

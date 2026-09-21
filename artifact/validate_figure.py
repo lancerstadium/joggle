@@ -70,7 +70,9 @@ def unique(rows: list[dict[str, str]], fields: tuple[str, ...]) -> None:
         seen.add(key)
 
 
-def extension(rows: list[dict[str, str]], partial: bool) -> None:
+def extension(
+    rows: list[dict[str, str]], partial: bool, expected_tasks: dict[str, str]
+) -> None:
     unique(rows, ("record_kind", "model", "system", "task", "demo_count", "seed", "sample_index"))
     samples: dict[tuple[str, str, str, int], list[int]] = defaultdict(list)
     references: Counter[tuple[str, str, str, int]] = Counter()
@@ -80,6 +82,8 @@ def extension(rows: list[dict[str, str]], partial: bool) -> None:
             raise SystemExit(f"line {line}: unknown record_kind")
         if row["family"] not in FAMILIES:
             raise SystemExit(f"line {line}: unknown family {row['family']}")
+        if expected_tasks.get(row["task"]) != row["family"]:
+            raise SystemExit(f"line {line}: task is not in the frozen manifest")
         if row["task"] in task_family and task_family[row["task"]] != row["family"]:
             raise SystemExit(f"line {line}: task changes family")
         task_family[row["task"]] = row["family"]
@@ -107,12 +111,17 @@ def extension(rows: list[dict[str, str]], partial: bool) -> None:
     if partial:
         return
     families = Counter(task_family.values())
-    if len(task_family) != 24 or families != Counter({family: 4 for family in FAMILIES}):
+    if set(task_family) != set(expected_tasks) or families != Counter(
+        {family: 4 for family in FAMILIES}
+    ):
         raise SystemExit(f"expected 24 tasks, four per family; found {dict(families)}")
     if set(samples) != set(references):
         missing = sorted(set(samples) - set(references))
         extra = sorted(set(references) - set(samples))
-        raise SystemExit(f"sample/reference conditions differ; missing={missing[:2]} extra={extra[:2]}")
+        raise SystemExit(
+            "sample/reference conditions differ; "
+            f"missing={missing[:2]} extra={extra[:2]}"
+        )
     for key, indexes in samples.items():
         if sorted(indexes) != list(range(50)):
             raise SystemExit(f"condition {key}: expected sample indexes 0..49")
@@ -120,16 +129,20 @@ def extension(rows: list[dict[str, str]], partial: bool) -> None:
             raise SystemExit(f"condition {key}: expected one reference row")
 
 
-def footprint(rows: list[dict[str, str]], partial: bool) -> None:
+def footprint(
+    rows: list[dict[str, str]], partial: bool, expected_tasks: dict[str, str]
+) -> None:
     unique(rows, ("system", "system_revision", "task"))
     counts = ("source_files", "source_added", "source_deleted", "test_files",
               "test_added", "test_deleted", "zones", "registrations", "fanout",
-              "cross_mod_edges")
+              "cross_zone_edges")
     task_family: dict[str, str] = {}
     task_systems: dict[str, set[str]] = defaultdict(set)
     for line, row in enumerate(rows, start=2):
         if row["family"] not in FAMILIES:
             raise SystemExit(f"line {line}: unknown family {row['family']}")
+        if expected_tasks.get(row["task"]) != row["family"]:
+            raise SystemExit(f"line {line}: task is not in the footprint manifest")
         task_family[row["task"]] = row["family"]
         task_systems[row["task"]].add(row["system"])
         for field in counts:
@@ -140,7 +153,9 @@ def footprint(rows: list[dict[str, str]], partial: bool) -> None:
     if partial:
         return
     families = Counter(task_family.values())
-    if len(task_family) != 12 or families != Counter({family: 2 for family in FAMILIES}):
+    if set(task_family) != set(expected_tasks) or families != Counter(
+        {family: 2 for family in FAMILIES}
+    ):
         raise SystemExit(f"expected 12 tasks, two per family; found {dict(families)}")
     systems = {row["system"] for row in rows}
     for task, observed in task_systems.items():
@@ -180,13 +195,23 @@ def main() -> int:
     parser.add_argument("--allow-partial", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent
+    with (root / "manifests" / "extension-tasks.csv").open(
+        newline="", encoding="utf-8"
+    ) as stream:
+        manifest = list(csv.DictReader(stream))
+    all_tasks = {row["task_id"]: row["family"] for row in manifest}
+    footprint_tasks = {
+        row["task_id"]: row["family"]
+        for row in manifest
+        if row["footprint"] == "true"
+    }
     names = {"4": "figure-04-extension.csv", "5": "figure-05-footprint.csv",
              "8": "figure-08-operators.csv", "9": "figure-09-models.csv"}
     rows = load(args.csv, root / "templates" / names[args.figure])
     if args.figure == "4":
-        extension(rows, args.allow_partial)
+        extension(rows, args.allow_partial, all_tasks)
     elif args.figure == "5":
-        footprint(rows, args.allow_partial)
+        footprint(rows, args.allow_partial, footprint_tasks)
     elif args.figure == "8":
         operators(rows)
     else:

@@ -47,8 +47,8 @@ def main() -> int:
                 sample = grouped.get((model, variant), [])
                 if not sample:
                     continue
-                value = float(np.median([number(row, "latency_ns" if metric == "latency_ratio" else metric)
-                                         for row in sample]))
+                field = "latency_ns" if metric == "latency_ratio" else metric
+                value = float(np.median([number(row, field) for row in sample]))
                 if metric == "latency_ratio":
                     if model not in reference:
                         continue
@@ -78,4 +78,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

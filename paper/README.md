@@ -683,14 +683,15 @@ $$
 
 where $F_p$ counts touched implementation files, $L_p$ counts added plus
 deleted implementation lines, $Z_p$ counts ownership zones, and $R_p$ counts
-build, registry, or pipeline declarations. Test changes are reported in
+changed build, registry, or pipeline declaration lines under a frozen policy.
+Test changes are reported in
 parallel. Frozen rules exclude generated, vendored, lock, and formatter-only
 changes; a zone is a source package or build target with one public
 responsibility.
 
-Every task reports all four coordinates, build and oracle status, and dependency
-fan-out. Joggle additionally records whether the patch stays inside one mod or
-crosses declared `use` edges. Because a baseline may require zero registry or
+Every task reports all four coordinates, build and oracle status, dependency
+fan-out, and crossed ownership edges; in Joggle, these are declared `use`
+edges. Because a baseline may require zero registry or
 build edits, absolute paired counts are primary. We summarize the paired
 difference with a task-level bootstrap interval and report a ratio only when
 both counts are nonzero. Small rewrites and vertical features remain separate.
@@ -704,7 +705,7 @@ registry/build edits on aligned log1p axes. Connect systems implementing the
 same task and retain true zeros. CSV: figure-05-footprint.csv. Raw columns:
 system,system_revision,task,family,patch_hash,source_files,source_added,
 source_deleted,test_files,test_added,test_deleted,zones,registrations,fanout,
-cross_mod_edges,oracle_passed. -->
+cross_zone_edges,oracle_passed. -->
 
 ### 4.4 Reactive Update Cost
 
