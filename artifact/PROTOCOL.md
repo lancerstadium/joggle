@@ -183,4 +183,5 @@ coverage outcome.
 A paper figure is ready only when its CSV has passed schema validation, every
 expected pairing is complete, every aggregated timing row passed its oracle,
 the plotting script reproduces both PDF and PNG outputs, and the caption names
-the independent unit and interval construction.
+the independent unit and interval construction. `check_release.py` enforces
+this gate for Figures 4--9 and writes one hash-bound release manifest.

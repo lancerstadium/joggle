@@ -565,6 +565,7 @@ def main(args: argparse.Namespace) -> int:
               "release_eligible": not args.smoke and not dirty, "group": args.group,
               "variant": args.variant, "cases": [case["id"] for case in cases],
               "model_files": model_files,
+              "output_sha256": sha256(args.output.read_bytes()),
               "unsupported": failures, "benchmark_spec_sha256": spec_hash,
               "failure_log": ({"path": str(failure_path),
                                "sha256": sha256(failure_path.read_bytes())}

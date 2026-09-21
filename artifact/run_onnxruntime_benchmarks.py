@@ -356,6 +356,7 @@ def main(args: argparse.Namespace) -> int:
         "group": args.group,
         "cases": [case["id"] for case in cases],
         "model_files": model_files,
+        "output_sha256": sha256(args.output.read_bytes()),
         "benchmark_spec_sha256": spec_hash,
         "input_index_sha256": sha256((args.inputs / "index.json").read_bytes()),
         "git_revision": revision,

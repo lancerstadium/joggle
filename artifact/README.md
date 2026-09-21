@@ -9,6 +9,22 @@ headers live under `templates/`, and `figures/` contains one plotting script per
 data figure. A plotting script reads only its named CSV and writes both vector
 PDF and review PNG; it never invokes Joggle or changes measurements.
 
+Collectors and assemblers publish a JSON sidecar that binds the final CSV to
+its raw inputs by SHA-256. After all six release CSVs are present in one
+directory, one gate revalidates their complete populations and provenance,
+then renders every PDF and PNG into a new directory:
+
+```sh
+python3 artifact/check_release.py \
+  --data-dir .cache/artifact/release-data \
+  --output-dir .cache/artifact/release-figures
+```
+
+The gate rejects dirty or smoke run records, missing backend logs, stale hashes,
+partial policy matrices, and an existing output directory. Its
+`release-manifest.json` binds the six input CSVs, six provenance records, and
+twelve rendered files.
+
 | Figure | Evidence | CSV | Plotting entry |
 | --- | --- | --- | --- |
 | 4 | extension completion | `figure-04-extension.csv` | `figure_04_extension.py` |

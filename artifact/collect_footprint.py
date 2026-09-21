@@ -8,8 +8,10 @@ import csv
 import fnmatch
 import hashlib
 import json
+import os
 import re
 import subprocess
+import tempfile
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -333,10 +335,21 @@ def main() -> int:
         audits.append(audit)
     results.sort(key=lambda row: (row["task"], row["system"]))
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    with args.output.open("w", newline="", encoding="utf-8") as stream:
+    record_path = args.output.with_suffix(".json")
+    if args.output.exists() or record_path.exists():
+        raise SystemExit("refusing to replace an existing footprint result")
+    handle, temporary = tempfile.mkstemp(
+        prefix=f".{args.output.name}.", suffix=".tmp", dir=args.output.parent
+    )
+    os.close(handle)
+    temporary_path = Path(temporary)
+    with temporary_path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=OUTPUT_COLUMNS, lineterminator="\n")
         writer.writeheader()
         writer.writerows(results)
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary_path.replace(args.output)
     metadata = {
         "schema": "figure-05-footprint/v1",
         "created_utc": datetime.now(timezone.utc).isoformat(),
@@ -344,11 +357,15 @@ def main() -> int:
         "case_manifest_sha256": sha256_file(args.cases.resolve()),
         "task_manifest": str(args.task_manifest.resolve()),
         "task_manifest_sha256": sha256_file(args.task_manifest.resolve()),
+        "output_sha256": sha256_file(args.output),
         "cases": audits,
     }
-    args.output.with_suffix(".json").write_text(
-        json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
-    )
+    record_temporary = record_path.with_name(f".{record_path.name}.tmp")
+    with record_temporary.open("w", encoding="utf-8") as stream:
+        stream.write(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    record_temporary.replace(record_path)
     print(f"collected {len(results)} footprint rows")
     return 0
 

@@ -9,6 +9,7 @@ import hashlib
 import json
 import math
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,11 @@ def fail(message: str) -> None:
 
 def digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def file_digest(path: Path) -> str:
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -72,6 +78,9 @@ def main() -> int:
     args = parser.parse_args()
     if args.output.exists():
         fail(f"refusing to replace {args.output}")
+    record_path = args.output.with_suffix(".json")
+    if record_path.exists():
+        fail(f"refusing to replace {record_path}")
 
     requests = keyed(read_jsonl(args.requests), ("request_id",), "requests")
     responses = keyed(
@@ -193,7 +202,29 @@ def main() -> int:
         stream.flush()
         os.fsync(stream.fileno())
     temporary.replace(args.output)
-    print(f"wrote {len(rows)} Figure 4 rows to {args.output}")
+    record = {
+        "schema": "extension-assembly/v1",
+        "created_utc": datetime.now(timezone.utc).isoformat(),
+        "inputs": {
+            label: {"path": str(path.resolve()), "sha256": file_digest(path)}
+            for label, path in (
+                ("requests", args.requests),
+                ("responses", args.responses),
+                ("scores", args.scores),
+                ("evaluations", args.evaluations),
+            )
+        },
+        "output": {"path": str(args.output.resolve()),
+                   "sha256": file_digest(args.output)},
+        "rows": len(rows),
+    }
+    record_temporary = record_path.with_name(f".{record_path.name}.tmp")
+    with record_temporary.open("w", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, indent=2, sort_keys=True) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    record_temporary.replace(record_path)
+    print(f"wrote {len(rows)} Figure 4 rows to {args.output}; record={record_path}")
     return 0
 
 

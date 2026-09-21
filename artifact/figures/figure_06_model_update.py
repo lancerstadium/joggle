@@ -10,6 +10,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import TwoSlopeNorm
+from matplotlib.ticker import LogLocator, NullFormatter
 
 from common import COLORS, configure, number, read_rows, save, truth
 
@@ -20,7 +21,7 @@ def condition(row: dict[str, str]) -> str:
     name = {"operation_metadata": "metadata", "value_type": "value type"}[
         row["edit_class"]
     ]
-    scope = {"affected": "changed cone", "unrelated": "unrelated"}[
+    scope = {"affected": "affected cone", "unrelated": "unrelated"}[
         row["edit_scope"]
     ]
     return f"{name}\n{scope}"
@@ -57,9 +58,9 @@ def main() -> int:
     subjects = sorted({row["subject"] for row in rows})
     condition_order = [
         "no-op",
-        "metadata\nchanged cone",
+        "metadata\naffected cone",
         "metadata\nunrelated",
-        "value type\nchanged cone",
+        "value type\naffected cone",
         "value type\nunrelated",
     ]
     present = {condition(row) for row in rows}
@@ -129,6 +130,8 @@ def main() -> int:
         ecdf.step(ordered, np.arange(1, len(ordered) + 1) / len(ordered), where="post",
                   color=COLORS[policy], label=policy)
     ecdf.set_xscale("log")
+    ecdf.xaxis.set_major_locator(LogLocator(base=10, numticks=4))
+    ecdf.xaxis.set_minor_formatter(NullFormatter())
     ecdf.set_xlabel("Edit-to-result latency (ms)")
     ecdf.set_ylabel("ECDF")
     ecdf.legend(frameon=False)
@@ -150,7 +153,12 @@ def main() -> int:
     bottom = np.zeros(2)
     for index, (_field, label, color) in enumerate(fields):
         breakdown.bar(("p50", "p95"), shares[index], bottom=bottom,
-                      color=color, label=label)
+                      color=color)
+        if shares[index, 0] >= 0.12:
+            breakdown.text(
+                0, bottom[0] + shares[index, 0] / 2, label,
+                ha="center", va="center", fontsize=5.5,
+            )
         bottom += shares[index]
     for index, total in enumerate(totals):
         breakdown.text(index, 1.02, f"{total:.2g} ms", ha="center", va="bottom",
@@ -158,7 +166,6 @@ def main() -> int:
     breakdown.set_ylim(0, 1.12)
     breakdown.set_ylabel("Component share")
     breakdown.set_title("Reactive time composition")
-    breakdown.legend(frameon=False)
     breakdown.grid(axis="y", color="#E7E9EC", lw=0.5)
 
     save(fig, args.output)
