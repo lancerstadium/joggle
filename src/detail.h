@@ -140,6 +140,8 @@ struct ReactiveRunReport {
   bool cold = false;
   std::size_t executed_stages = 0;
   std::size_t reused_stages = 0;
+  std::chrono::nanoseconds selection{};
+  std::chrono::nanoseconds total{};
   std::vector<ReactiveStageReport> stages;
   RunTiming execution;
 };

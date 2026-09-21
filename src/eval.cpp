@@ -1050,6 +1050,9 @@ private:
     std::shared_ptr<void> stored = env_.evaluator_cache(epoch);
     if (stored && epoch == env_.cache_epoch()) {
       shared_cache_ = std::static_pointer_cast<SharedCache>(std::move(stored));
+#if !JOGGLE_EVALUATOR_PERSISTENT_PLANS
+      shared_cache_->plans.clear();
+#endif
       return;
     }
     shared_cache_ = std::make_shared<SharedCache>();
@@ -1140,6 +1143,38 @@ private:
           observed_fn_ops_.insert(fn->id_);
         else
           observed_fn_vals_.insert(fn->id_);
+        return;
+      }
+    }
+    if (name == "blks" && args.size() == 1) {
+      if (const auto* fn = as<Fn>(args.front());
+          fn && fn->store_ == observed_ && fn->valid()) {
+        observed_structure_ = true;
+        observed_fn_generations_.insert(fn->id_);
+        return;
+      }
+    }
+    if (name == "ops" && args.size() == 3) {
+      const auto* block = as<Blk>(args.front());
+      const auto start = integer(args[1]);
+      const auto count = integer(args[2]);
+      if (block && block->store_ == observed_ && block->valid() && start &&
+          count && *start >= 0 && *count >= 0) {
+        observed_structure_ = true;
+        const auto first = static_cast<std::size_t>(*start);
+        const auto length = static_cast<std::size_t>(*count);
+        std::size_t live = 0;
+        std::size_t selected = 0;
+        for (const std::uint32_t id :
+             observed_->blks[block->id_].data.ops) {
+          if (id >= observed_->ops.size() || !observed_->ops[id].live)
+            continue;
+          if (live++ < first)
+            continue;
+          if (selected++ == length)
+            break;
+          observed_ops_.insert(id);
+        }
         return;
       }
     }
@@ -3830,17 +3865,29 @@ private:
       const auto start = integer(args[1]);
       const auto count = integer(args[2]);
       if (blk && *blk && start && count && *start >= 0 && *count >= 0) {
-        const std::vector<Op> operations = blk->ops();
         const auto first = static_cast<std::size_t>(*start);
         const auto length = static_cast<std::size_t>(*count);
-        if (first <= operations.size() &&
-            length <= operations.size() - first) {
-          Items out;
-          out.reserve(length);
-          for (std::size_t index = first; index < first + length; ++index)
-            out.emplace_back(operations[index]);
-          return single(Item(std::move(out)), single_result);
+        Items out;
+        out.reserve(length);
+        std::size_t live = 0;
+        bool start_reached = first == 0;
+        for (const std::uint32_t id : blk->store_->blks[blk->id_].data.ops) {
+          if (id >= blk->store_->ops.size() || !blk->store_->ops[id].live)
+            continue;
+          if (live < first) {
+            ++live;
+            continue;
+          }
+          start_reached = true;
+          if (out.size() == length)
+            break;
+          out.emplace_back(
+              Op(blk->store_, id, blk->store_->ops[id].generation));
+          ++live;
         }
+        start_reached = start_reached || live == first;
+        if (start_reached && out.size() == length)
+          return single(Item(std::move(out)), single_result);
       }
     } else if (name == "calls" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
@@ -5099,6 +5146,8 @@ Attr reactive_profile(const detail::ReactiveRunReport& report) {
       Attr(static_cast<std::int64_t>(report.executed_stages));
   out["reused_stages"] =
       Attr(static_cast<std::int64_t>(report.reused_stages));
+  out["select_ns"] = ns(report.selection);
+  out["total_ns"] = ns(report.total);
   out["stages"] = Attr(std::move(stages));
   out["execution"] = run_profile(report.execution);
   return Attr(std::move(out));
@@ -5754,6 +5803,7 @@ std::vector<std::string> ReactiveSchedule::stages() const {
 bool ReactiveSchedule::run(Env& env, Mod& mod,
                            std::span<const Attr> args,
                            Attr* output) {
+  const auto total_begin = std::chrono::steady_clock::now();
   env.clear_diags();
   detail::ReactiveRunReport storage;
   detail::ReactiveRunReport* report = output ? &storage : nullptr;
@@ -5832,6 +5882,7 @@ bool ReactiveSchedule::run(Env& env, Mod& mod,
   };
 
   std::vector<bool> selected(impl_->stages.size(), false);
+  const auto selection_begin = std::chrono::steady_clock::now();
   std::vector<detail::CacheMiss> misses(
       impl_->stages.size(), detail::CacheMiss::none);
   std::unordered_set<std::uint32_t> dirty_functions;
@@ -5885,6 +5936,7 @@ bool ReactiveSchedule::run(Env& env, Mod& mod,
     selected_functions.push_back(impl_->stages[index].function);
   }
   if (report) {
+    report->selection = std::chrono::steady_clock::now() - selection_begin;
     report->cold = cold_miss != detail::CacheMiss::none;
     report->executed_stages = selected_indices.size();
     report->reused_stages = impl_->stages.size() - selected_indices.size();
@@ -5969,6 +6021,7 @@ bool ReactiveSchedule::run(Env& env, Mod& mod,
       report->stages[index].changed_functions =
           selected[index] ? dependencies.outputs.size() : 0;
     }
+    report->total = std::chrono::steady_clock::now() - total_begin;
   }
   return true;
 }

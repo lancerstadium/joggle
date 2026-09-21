@@ -820,6 +820,10 @@ int main(int argc, char** argv) {
   CHECK(flag(schedule_report, "succeeded") && flag(schedule_report, "cold") &&
         number(schedule_report, "executed_stages") == 2 &&
         number(schedule_report, "reused_stages") == 0 &&
+        field(schedule_report, "select_ns").integer().has_value() &&
+        field(schedule_report, "total_ns").integer().has_value() &&
+        number(schedule_report, "total_ns") >=
+            number(schedule_report, "select_ns") &&
         field(field(schedule_report, "execution"), "steps").list()->size() == 2);
   CHECK(number(item(schedule_report, "stages", 0), "observed_functions") == 1 &&
         number(item(schedule_report, "stages", 1), "observed_functions") == 1 &&
@@ -936,6 +940,49 @@ int main(int argc, char** argv) {
                                    joggle::Attr(std::int64_t{10})));
   CHECK(constant_schedule.run(env, constant_scheduled, constant_args,
                               &schedule_report));
+  CHECK(number(schedule_report, "executed_stages") == 1 &&
+        string_field(item(schedule_report, "stages", 0), "miss") ==
+            "operation_revision");
+  joggle::Mod range_scheduled;
+  CHECK(joggle::parse(env, cone_schedule_source, range_scheduled,
+                      "schedule-range.jog"));
+  CHECK(range_scheduled.verify(env));
+  const std::vector<joggle::Op> range_operations =
+      range_scheduled.find_fn("graph").body().ops();
+  std::size_t range_left_index = range_operations.size();
+  joggle::Op range_left;
+  joggle::Op range_right;
+  for (std::size_t index = 0; index < range_operations.size(); ++index) {
+    const joggle::Op operation = range_operations[index];
+    if (operation.kind() != joggle::Op::Kind::constant ||
+        operation.outs().size() != 1)
+      continue;
+    if (operation.outs().front().name() == "left_root") {
+      range_left = operation;
+      range_left_index = index;
+    } else if (operation.outs().front().name() == "right_root") {
+      range_right = operation;
+    }
+  }
+  CHECK(range_left && range_right && range_left_index < range_operations.size());
+  joggle::ReactiveSchedule range_schedule({"script.schedule_range"});
+  const std::array<joggle::Attr, 2> range_schedule_args{
+      joggle::Attr("graph"),
+      joggle::Attr(static_cast<std::int64_t>(range_left_index))};
+  CHECK(range_schedule.run(env, range_scheduled, range_schedule_args,
+                           &schedule_report));
+  CHECK(number(schedule_report, "executed_stages") == 1 &&
+        number(item(schedule_report, "stages", 0), "observed_functions") == 1 &&
+        number(item(schedule_report, "stages", 0), "observed_collections") == 0 &&
+        number(item(schedule_report, "stages", 0), "observed_operations") == 1);
+  CHECK(range_scheduled.replace(range_right, joggle::Attr(std::int64_t{20})));
+  CHECK(range_schedule.run(env, range_scheduled, range_schedule_args,
+                           &schedule_report));
+  CHECK(number(schedule_report, "executed_stages") == 0 &&
+        number(schedule_report, "reused_stages") == 1);
+  CHECK(range_scheduled.replace(range_left, joggle::Attr(std::int64_t{10})));
+  CHECK(range_schedule.run(env, range_scheduled, range_schedule_args,
+                           &schedule_report));
   CHECK(number(schedule_report, "executed_stages") == 1 &&
         string_field(item(schedule_report, "stages", 0), "miss") ==
             "operation_revision");

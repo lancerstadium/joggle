@@ -25,10 +25,10 @@ remain explicit.
 
 \paragraph{Incrementality follows observable state.}
 A compiler function gains reuse by reading the narrowest state needed for its
-result. Whole-graph traversal correctly creates a broad dependency; direct
-lookup creates a narrow one. State outside the graph enters through typed
-arguments or the environment. These rules make the reuse boundary inspectable:
-miss reasons and observation counts show why a stage ran.
+result. Whole-graph traversal correctly creates a broad dependency; range and
+single-entity access create narrow ones. State outside the graph enters through
+typed arguments or the environment. These rules make the reuse boundary
+inspectable: miss reasons and observation counts show why a stage ran.
 
 \paragraph{Atomic publication.}
 Dependency records are useful only for the graph that produced them. Joggle

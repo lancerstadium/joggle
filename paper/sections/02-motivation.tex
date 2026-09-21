@@ -13,9 +13,9 @@ communication. The runtime then supplies execution and platform support before
 deployment to a target. These levels cooperate, but they are commonly exposed
 through different APIs and maintained by different developers.
 
-\begin{figure*}[t]
+\begin{figure}[t]
   \centering
-  \includegraphics[width=.64\textwidth]{figures/figure-02-workflow.png}
+  \includegraphics[width=\columnwidth]{figures/figure-02-workflow.png}
   \caption{A compiler extension can span semantic definition, optimization,
     runtime support, and target deployment.}
   \Description{A workflow from model structure and model formats through
@@ -23,7 +23,7 @@ through different APIs and maintained by different developers.
     target devices. The sides show customization artifacts and the algorithm,
     system, and hardware developers who create them.}
   \label{fig:workflow}
-\end{figure*}
+\end{figure}
 
 As a running example, consider introducing saturating arithmetic for a
 low-precision model. The feature begins with a parametric type and arithmetic

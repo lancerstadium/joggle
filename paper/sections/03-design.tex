@@ -235,6 +235,10 @@ the mod structure, or the \texttt{use} set records progressively broader state.
 The evaluator therefore captures the narrowest observation that preserves the
 semantics of each graph operation.
 
+Range access records the structural revision together with only the returned
+operations. A content edit outside the range therefore preserves the record,
+whereas insertion, removal, or reordering invalidates its structural premise.
+
 A cached query is reusable when its call key and every recorded observation
 remain current:
 \[

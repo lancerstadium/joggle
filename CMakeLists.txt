@@ -9,9 +9,12 @@ option(JOGGLE_BUILD_TESTS "Build Joggle tests" ON)
 option(JOGGLE_BUILD_ONNX "Build the optional ONNX module" OFF)
 option(JOGGLE_BUILD_TFLITE "Build the optional TFLite module" OFF)
 option(JOGGLE_BUILD_SAT "Build the optional saturating-integer module" OFF)
+option(JOGGLE_BUILD_ARTIFACT "Build EuroSys artifact executables" OFF)
 option(JOGGLE_TEST_ONNX_HEAVY "Enable slow ONNX Model Zoo gates" OFF)
 option(JOGGLE_EVAL_COUNTERS
        "Instrument evaluator operations and frame probes" OFF)
+option(JOGGLE_EVALUATOR_PERSISTENT_PLANS
+       "Reuse decoded evaluator plans across top-level executions" ON)
 set(JOGGLE_TEST_ONNX_ZOO "" CACHE PATH
     "Directory containing any subset of the pinned ONNX Model Zoo test set")
 set(JOGGLE_TEST_ONNX_BACKEND "" CACHE PATH
@@ -144,6 +147,11 @@ target_link_libraries(joggle PRIVATE ${CMAKE_DL_LIBS})
 if(JOGGLE_EVAL_COUNTERS)
   target_compile_definitions(joggle PRIVATE JOGGLE_EVAL_COUNTERS=1)
 endif()
+if(JOGGLE_EVALUATOR_PERSISTENT_PLANS)
+  target_compile_definitions(joggle PRIVATE JOGGLE_EVALUATOR_PERSISTENT_PLANS=1)
+else()
+  target_compile_definitions(joggle PRIVATE JOGGLE_EVALUATOR_PERSISTENT_PLANS=0)
+endif()
 target_include_directories(
   joggle
   PUBLIC
@@ -156,6 +164,10 @@ if(MSVC)
   target_compile_options(joggle PRIVATE /W4)
 else()
   target_compile_options(joggle PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+if(JOGGLE_BUILD_ARTIFACT)
+  add_subdirectory(artifact)
 endif()
 
 if(JOGGLE_BUILD_TFLITE)

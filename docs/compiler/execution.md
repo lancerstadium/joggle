@@ -137,7 +137,9 @@ for (const auto& stage : *report.dict()->at("stages").list()) {
 
 `changed_functions` counts functions the stage actually affected. Observed
 counts describe dependency breadth, not execution cost. Consult the nested
-`execution.steps` list for evaluator counters and timings.
+`execution.steps` list for evaluator counters and timings. Top-level
+`select_ns` measures dependency validation and stage selection; `total_ns`
+measures the complete schedule call represented by the report.
 
 ## Query reuse
 
@@ -177,6 +179,11 @@ regression comparison.
 - Retain structural reports and evaluator counters with timing samples.
 - Do not call plan-cache reuse a machine-code JIT.
 - Verify output equivalence after every optimization of the evaluator.
+
+The build option `JOGGLE_EVALUATOR_PERSISTENT_PLANS=OFF` disables plan reuse
+across top-level executions while retaining the same evaluator and language
+semantics. It is intended for controlled mechanism ablations; the default is
+`ON`.
 
 ## Common implementation mistakes
 

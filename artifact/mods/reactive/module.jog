@@ -1,0 +1,70 @@
+mod artifact.reactive
+use ir
+
+local fn root(m: Mod, owner: str, index: int) -> Val {
+  let blocks = ir.blks(ir.find(m, owner))
+  assert(len(blocks) == 1, "subject must have one root block")
+  let operations = ir.ops(blocks[0], index, 1)
+  assert(len(operations) == 1, "operation index is out of range")
+  let op = operations[0]
+  let values = ir.outs(op)
+  assert(len(values) == 1, "root operation must produce one value")
+  return values[0]
+}
+
+local fn annotate(
+  m: Mod, owner: str, index: int, key: str
+) -> bool {
+  var changed = false
+  for op in ir.affected([root(m, owner, index)]) {
+    changed = ir.set(m, op, key, true) || changed
+  }
+  return changed
+}
+
+fn analyze(m: Mod, owner: str, index: int) -> bool {
+  return annotate(m, owner, index, "artifact.analysis")
+}
+
+fn canonicalize(m: Mod, owner: str, index: int) -> bool {
+  return annotate(m, owner, index, "artifact.canonical")
+}
+
+fn select(m: Mod, owner: str, index: int) -> bool {
+  return annotate(m, owner, index, "artifact.target")
+}
+
+fn plan(m: Mod, owner: str, index: int) -> bool {
+  return annotate(m, owner, index, "artifact.plan")
+}
+
+fn prepare(m: Mod, owner: str, index: int) -> bool {
+  return annotate(m, owner, index, "artifact.artifact")
+}
+
+// These wrappers produce the same graph while deliberately observing the
+// complete mod revision. They isolate dependency precision from stage logic.
+fn whole_analyze(m: Mod, owner: str, index: int) -> bool {
+  let revision = ir.revision(m)
+  return analyze(m, owner, index) || revision < 0
+}
+
+fn whole_canonicalize(m: Mod, owner: str, index: int) -> bool {
+  let revision = ir.revision(m)
+  return canonicalize(m, owner, index) || revision < 0
+}
+
+fn whole_select(m: Mod, owner: str, index: int) -> bool {
+  let revision = ir.revision(m)
+  return select(m, owner, index) || revision < 0
+}
+
+fn whole_plan(m: Mod, owner: str, index: int) -> bool {
+  let revision = ir.revision(m)
+  return plan(m, owner, index) || revision < 0
+}
+
+fn whole_prepare(m: Mod, owner: str, index: int) -> bool {
+  let revision = ir.revision(m)
+  return prepare(m, owner, index) || revision < 0
+}

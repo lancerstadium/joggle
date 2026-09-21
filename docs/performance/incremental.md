@@ -26,6 +26,13 @@ The evaluator records the narrowest observation supported by the API call.
 Calling a broad convenience such as `ir.ops(m)` naturally observes more than
 querying one already-known operation.
 
+`ir.ops(block, start, count)` records the structural revision and the payloads
+of only the returned operations. A content edit outside that range therefore
+remains reusable, while insertion, removal, or reordering invalidates the
+structural contract. `ir.blks(fn)` likewise records the function handle and
+structural revision rather than treating every body edit as a function-content
+observation.
+
 ## Read-only query cache
 
 ```mermaid

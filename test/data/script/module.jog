@@ -1399,6 +1399,18 @@ fn schedule_constant(m: Mod, owner: str, index: int) -> bool {
   return false
 }
 
+fn schedule_range(m: Mod, owner: str, index: int) -> bool {
+  let blocks = ir.blks(ir.find(m, owner))
+  assert(len(blocks) == 1, "schedule function must have one root block")
+  let operations = ir.ops(blocks[0], index, 1)
+  assert(len(operations) == 1, "schedule operation index is out of range")
+  let op = operations[0]
+  assert(ir.kind(op) == "constant" && len(ir.outs(op)) == 1,
+         "schedule target is not a constant")
+  ir.constant(ir.outs(op)[0])
+  return false
+}
+
 fn schedule_forward(m: Mod, source: str, target: str) -> bool {
   let input = ir.find(m, source)
   let output = ir.find(m, target)

@@ -129,12 +129,12 @@ runtime then supplies execution and platform support before deployment to a
 target. These levels cooperate, but they are commonly exposed through different
 APIs and maintained by different developers.
 
-<!-- FIGURE 2 PROMPT — Preserve the supplied overview artwork and its existing
-layout. It shows model structure and formats above offline operator-, graph-,
-and system-level compilation; an online runtime and target devices below; model,
-pass, operator/type, and hardware customization on the left; and design,
-optimization, and deployment roles on the right. Do not regenerate or alter
-the figure. -->
+<!-- FIGURE 2 PLAN — Single-column figure. Preserve the supplied overview
+artwork and its existing layout. It shows model structure and formats above
+offline operator-, graph-, and system-level compilation; an online runtime and
+target devices below; model, pass, operator/type, and hardware customization on
+the left; and design, optimization, and deployment roles on the right. Do not
+regenerate or alter the figure. -->
 
 *Figure 2: A compiler extension can span semantic definition, optimization,
 runtime support, and target deployment.*
@@ -451,6 +451,10 @@ relevant function revision or collection membership. Reading all operations,
 the mod structure, or the `use` set records progressively broader state. The
 evaluator therefore captures the narrowest observation that preserves the
 semantics of each graph operation.
+
+Range access records the structural revision together with only the returned
+operations. A content edit outside the range therefore preserves the record,
+whereas insertion, removal, or reordering invalidates its structural premise.
 
 A cached query is reusable when its call key and every recorded observation
 remain current:
@@ -823,7 +827,7 @@ validation, transaction, verification, and commit. Memory is sampled after
 load, first schedule, and repeated edits. One-at-a-time ablations remove
 fine-grained observation, persistent plans, dispatch caching, register-window
 reuse, or lazy structural snapshots. A precision study implements the same
-analysis with whole-graph traversal, function traversal, and direct lookup,
+analysis with whole-graph traversal, function traversal, and range lookup,
 linking API scope to observation size, validation cost, and reuse.
 
 Together, generation characterizes the extension surface, patch footprint its
@@ -954,10 +958,10 @@ composition are uniform; effect checks remain explicit.
 
 **Incrementality follows observable state.** A compiler function gains reuse by
 reading the narrowest state needed for its result. Whole-graph traversal
-correctly creates a broad dependency; direct lookup creates a narrow one. State
-outside the graph enters through typed arguments or the environment. These
-rules make the reuse boundary inspectable: miss reasons and observation counts
-show why a stage ran.
+correctly creates a broad dependency; range and single-entity access create
+narrow ones. State outside the graph enters through typed arguments or the
+environment. These rules make the reuse boundary inspectable: miss reasons and
+observation counts show why a stage ran.
 
 **Atomic publication.** Dependency records are useful
 only for the graph that produced them. Joggle therefore commits mutations,
