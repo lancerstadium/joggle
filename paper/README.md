@@ -633,7 +633,10 @@ and equal API-card and continuation token ceilings. Each condition draws 50 samp
 parameters, seeds, stopping rules, and maximum continuation length are fixed
 per model. Every observation pins the task specification, API card, prompt,
 and output by hash; paired conditions use identical demonstration IDs and
-sampling controls across systems.
+sampling controls across systems. Demonstration sets are nested prefixes of a
+single deterministic ranking. Reference implementations remain in a separate
+bundle that is unavailable during generation. The bundle is opened only after
+all samples are frozen, for reference scoring and oracle execution.
 
 For reference tokens $x_{1:N}$ and context $c$,
 

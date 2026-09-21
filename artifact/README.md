@@ -39,6 +39,103 @@ compiled execution result. Figure 5 reuses the twelve entries marked
 `footprint`; this keeps completion and change-footprint tasks semantically
 paired.
 
+The Figure 4 workflow keeps model inference separate from system evaluation.
+Create a release configuration outside the repository with exactly two model
+revisions; Joggle, MLIR, and xDSL revisions; one API card, reference directory,
+demonstration directory, and oracle argv per system; and a disjoint
+demonstration bank. An oracle argv may use the exact placeholders
+`{candidate}`, `{task}`, `{spec}`, and `{work}` and must print one JSON object:
+
+```json
+{"parsed": true, "typed": true, "built": true, "passed": true}
+```
+
+Materialize the complete matrix before starting a model server:
+
+```sh
+python3 artifact/prepare_extension_requests.py \
+  --config .cache/artifact/extension-run.json \
+  --output .cache/artifact/extension-requests.jsonl \
+  --references-output .cache/artifact/extension-references.private.jsonl
+```
+
+The request file has 576 conditions: two models, three systems, 24 tasks, and
+four demonstration counts. Demonstrations are selected by a stable hash of the
+held-out task and demonstration ID; the 1-, 2-, and 4-example prompts are
+nested prefixes. Each condition carries 50 deterministic sample seeds. The
+private file contains reference code and must never be passed to the inference
+backend; the public request contains only its hash.
+
+Run each pinned Hugging Face revision in `generate` mode. The second model
+appends to the same durable sample log with `--resume`; this command does not
+open the private reference bundle:
+
+```sh
+python3 artifact/run_extension_transformers.py generate \
+  --config .cache/artifact/extension-run.json \
+  --requests .cache/artifact/extension-requests.jsonl \
+  --model MODEL_ID \
+  --output .cache/artifact/extension-samples.jsonl \
+  --resume
+```
+
+After both 14,400-sample model matrices are frozen, expose the private bundle
+in a separate scoring invocation. `score` first checks that all 50 generated
+outputs exist for every condition of that model, then computes continuation
+NLL without regenerating a sample:
+
+```sh
+python3 artifact/run_extension_transformers.py score \
+  --config .cache/artifact/extension-run.json \
+  --requests .cache/artifact/extension-requests.jsonl \
+  --references .cache/artifact/extension-references.private.jsonl \
+  --samples .cache/artifact/extension-samples.jsonl \
+  --model MODEL_ID \
+  --output .cache/artifact/extension-reference-scores.jsonl \
+  --resume
+```
+
+These commands write two provider-neutral JSONL files. Each sample row contains
+`request_id`, `sample_index`, `seed`, `output`, `output_sha256`,
+`context_tokens`, and `api_card_tokens`. Each reference-score row contains
+`request_id`, total `nll`, `target_tokens`, `context_tokens`, and
+`api_card_tokens`. Total NLL and
+the positive target-token count are retained separately so the analysis can
+compute log-perplexity without confusing sequence length with predictability.
+
+Run the build-and-test oracles over all model outputs. The evaluator verifies
+the 72 unique system/task references before accepting a generated sample and
+appends each completed result durably, so an interrupted run can resume:
+
+```sh
+python3 artifact/evaluate_extension_outputs.py \
+  --config .cache/artifact/extension-run.json \
+  --requests .cache/artifact/extension-requests.jsonl \
+  --references .cache/artifact/extension-references.private.jsonl \
+  --responses .cache/artifact/extension-samples.jsonl \
+  --output .cache/artifact/extension-evaluations.jsonl \
+  --resume
+```
+
+Finally, join the hashed inference and oracle records, validate the full paired
+matrix, and render Figure 4:
+
+```sh
+python3 artifact/assemble_extension_rows.py \
+  --requests .cache/artifact/extension-requests.jsonl \
+  --responses .cache/artifact/extension-samples.jsonl \
+  --scores .cache/artifact/extension-reference-scores.jsonl \
+  --evaluations .cache/artifact/extension-evaluations.jsonl \
+  --output .cache/artifact/figure-04-extension.csv
+
+python3 artifact/validate_figure.py 4 \
+  .cache/artifact/figure-04-extension.csv
+
+python3 artifact/figures/figure_04_extension.py \
+  .cache/artifact/figure-04-extension.csv \
+  --output .cache/artifact/figure-04-extension.pdf
+```
+
 ## Generated-artifact benchmarks
 
 `manifests/benchmark-cases.json` freezes the 24 operator graphs, inputs,
@@ -121,7 +218,15 @@ every output against ONNX Runtime, and records unsupported frontiers as
 coverage rows. Fixed per-case batch counts make sub-microsecond operators
 measurable; CSV latency is per call and `calls_per_sample` preserves the
 division factor. `--stage-timeout` defaults to 600 seconds and is written into
-the run record; a timeout remains a coverage row with its failing stage.
+the run record; a timeout remains a coverage row with its failing stage. The
+CSV is replaced atomically after each complete case. If a long run is
+interrupted before its run record is published, repeat the identical command
+with `--resume`; the collector verifies the header, backend, Git revision, and
+expected row counts before skipping a case. It rejects partial case data rather
+than mixing an interrupted measurement into the release CSV. Unsupported-case
+stderr is durably retained in the adjacent `*.failures.jsonl`; the final run
+record binds that log by SHA-256, so resuming does not erase the failure
+frontier that produced a coverage row.
 
 Merge the three backend files only through the validator-backed merger:
 

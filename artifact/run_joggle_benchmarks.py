@@ -324,16 +324,79 @@ def csv_row(header: list[str], common: dict[str, Any], **values: Any) -> dict[st
     return result
 
 
+def write_rows(path: Path, header: list[str], rows: list[dict[str, Any]]) -> None:
+    """Atomically publish complete per-case checkpoints."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    with temporary.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=header)
+        writer.writeheader()
+        writer.writerows(rows)
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary.replace(path)
+
+
+def append_jsonl(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def load_checkpoint(
+    path: Path, header: list[str], *, group: str, variant: str, revision: str,
+    prepare_count: int, execute_count: int, memory_count: int,
+) -> tuple[list[dict[str, str]], set[str]]:
+    """Load only checkpoints containing whole, internally consistent cases."""
+    subject = "case_id" if group == "operators" else "model"
+    with path.open(newline="", encoding="utf-8") as stream:
+        reader = csv.DictReader(stream)
+        if reader.fieldnames != header:
+            raise SystemExit("checkpoint columns differ from the current template")
+        rows = list(reader)
+    grouped: dict[str, list[dict[str, str]]] = {}
+    for line, row in enumerate(rows, start=2):
+        case_id = row[subject]
+        if not case_id:
+            raise SystemExit(f"checkpoint line {line}: empty {subject}")
+        if row["system"] != "Joggle" or row["variant"] != variant:
+            raise SystemExit(f"checkpoint line {line}: backend or variant differs")
+        if row["system_revision"] != revision:
+            raise SystemExit(f"checkpoint line {line}: Git revision differs")
+        grouped.setdefault(case_id, []).append(row)
+    complete: set[str] = set()
+    for case_id, case_rows in grouped.items():
+        counts: dict[str, int] = {}
+        for row in case_rows:
+            counts[row["record_kind"]] = counts.get(row["record_kind"], 0) + 1
+        coverage = counts.get("coverage", 0)
+        expected = {"prepare": prepare_count, "execute": execute_count,
+                    "memory": memory_count}
+        if coverage == 1 and len(case_rows) == 1:
+            complete.add(case_id)
+        elif coverage == 0 and counts == expected:
+            complete.add(case_id)
+        else:
+            raise SystemExit(
+                f"checkpoint {case_id}: incomplete case rows {counts}; "
+                "remove it or restore a complete per-case snapshot"
+            )
+    return rows, complete
+
+
 def main(args: argparse.Namespace) -> int:
     repo = Path(__file__).resolve().parent.parent
     revision, dirty = git_state(repo)
     if dirty and not args.allow_dirty:
         raise SystemExit("refusing to benchmark a dirty tree; commit or pass --allow-dirty")
-    if args.output.exists():
-        raise SystemExit(f"refusing to replace {args.output}")
     record_path = args.run_record or args.output.with_suffix(".run.json")
     if record_path.exists():
         raise SystemExit(f"refusing to replace {record_path}")
+    failure_path = args.output.with_suffix(".failures.jsonl")
+    if failure_path.exists() and not args.resume:
+        raise SystemExit(f"refusing to replace {failure_path}; pass --resume")
     spec_bytes = args.spec.read_bytes(); spec = json.loads(spec_bytes); spec_hash = sha256(spec_bytes)
     index = json.loads((args.inputs / "index.json").read_text())
     if index.get("spec_sha256") != spec_hash:
@@ -364,7 +427,40 @@ def main(args: argparse.Namespace) -> int:
     template = "figure-08-operators.csv" if args.group == "operators" else "figure-09-models.csv"
     with (repo / "artifact/templates" / template).open(newline="") as stream:
         header = next(csv.reader(stream))
-    rows = []; failures = []; model_files = []
+    if args.output.exists() and not args.resume:
+        raise SystemExit(f"refusing to replace {args.output}; pass --resume for a checkpoint")
+    rows: list[dict[str, Any]] = []
+    completed: set[str] = set()
+    if args.output.exists():
+        rows, completed = load_checkpoint(
+            args.output, header, group=args.group, variant=args.variant,
+            revision=revision, prepare_count=prepare_count,
+            execute_count=execute_count, memory_count=memory_count,
+        )
+        unknown = completed - {case["id"] for case in cases}
+        if unknown:
+            raise SystemExit(f"checkpoint contains cases outside this run: {sorted(unknown)}")
+        print(f"resuming after {len(completed)} complete cases from {args.output}")
+    failures = []
+    if failure_path.exists():
+        for line_number, line in enumerate(failure_path.read_text().splitlines(), start=1):
+            try:
+                failure = json.loads(line)
+            except json.JSONDecodeError as error:
+                raise SystemExit(
+                    f"{failure_path}:{line_number}: invalid JSON: {error}"
+                ) from error
+            if (not isinstance(failure, dict)
+                    or set(failure) != {"id", "stage", "stderr"}):
+                raise SystemExit(f"{failure_path}:{line_number}: invalid failure record")
+            failures.append(failure)
+    coverage_ids = {
+        row["case_id"] if args.group == "operators" else row["model"]
+        for row in rows if row["record_kind"] == "coverage"
+    }
+    if coverage_ids != {failure["id"] for failure in failures}:
+        raise SystemExit("failure log differs from checkpoint coverage rows")
+    model_files = []
     with tempfile.TemporaryDirectory(prefix="joggle-generated-") as temporary:
         root = Path(temporary)
         for case in cases:
@@ -376,6 +472,8 @@ def main(args: argparse.Namespace) -> int:
             if not model.is_file() or sha256(model.read_bytes()) != expected_hash:
                 raise SystemExit(f"missing or mismatched model {model}")
             model_files.append({"id": case_id, "sha256": expected_hash})
+            if case_id in completed:
+                continue
             measurement_spec, input_record, feeds = load_case(args.spec, args.inputs, case_id)
             expected = oracle(model, measurement_spec, feeds)
             common = {"case_spec_sha256": spec_hash, "system": "Joggle",
@@ -389,13 +487,17 @@ def main(args: argparse.Namespace) -> int:
             except Unsupported as error:
                 common.update(supported="false", reason=f"unsupported:{error.stage}")
                 rows.append(csv_row(header, common, record_kind="coverage", seed=args.seed))
-                failures.append({"id": case_id, "stage": error.stage,
-                                 "stderr": error.stderr[-4000:]})
+                failure = {"id": case_id, "stage": error.stage,
+                           "stderr": error.stderr[-4000:]}
+                append_jsonl(failure_path, failure)
+                failures.append(failure)
+                write_rows(args.output, header, rows)
                 continue
             prepare_ns, artifact_bytes, artifact, header_file, _ = first
-            rows.append(csv_row(header, common, record_kind="prepare", iteration=0,
-                                prepare_ns=prepare_ns, artifact_bytes=artifact_bytes,
-                                seed=args.seed))
+            case_rows = [csv_row(
+                header, common, record_kind="prepare", iteration=0,
+                prepare_ns=prepare_ns, artifact_bytes=artifact_bytes, seed=args.seed,
+            )]
             harness = root / f"{case_id}-harness.c"
             tensor_records = {item["name"]: item for item in input_record["tensors"]}
             batch = measurement["execution_batches"][case_id]
@@ -429,35 +531,44 @@ def main(args: argparse.Namespace) -> int:
             max_abs, max_rel = compare(actual, expected, case["rtol"], case["atol"])
             digest = output_digest([name for name, _ in expected], actual)
             for iteration, latency in enumerate(latencies):
-                rows.append(csv_row(header, common, record_kind="execute", iteration=iteration,
-                                    calls_per_sample=batch, latency_ns=latency, max_abs_error=max_abs,
-                                    max_rel_error=max_rel, output_digest=digest,
-                                    correct="true", seed=args.seed + 10_000 + iteration))
+                case_rows.append(csv_row(
+                    header, common, record_kind="execute", iteration=iteration,
+                    calls_per_sample=batch, latency_ns=latency, max_abs_error=max_abs,
+                    max_rel_error=max_rel, output_digest=digest,
+                    correct="true", seed=args.seed + 10_000 + iteration,
+                ))
             for iteration in range(memory_count):
                 memory_out = root / f"{case_id}-memory-{iteration}"; memory_out.mkdir()
                 peak = memory_run(executable, warmups, memory_out, args.stage_timeout)
                 memory_actual = read_outputs(memory_out, expected)
                 mem_abs, mem_rel = compare(memory_actual, expected, case["rtol"], case["atol"])
-                rows.append(csv_row(header, common, record_kind="memory", iteration=iteration,
-                                    peak_bytes=peak, max_abs_error=mem_abs,
-                                    max_rel_error=mem_rel,
-                                    output_digest=output_digest([name for name, _ in expected], memory_actual),
-                                    correct="true", seed=args.seed + 20_000 + iteration))
+                case_rows.append(csv_row(
+                    header, common, record_kind="memory", iteration=iteration,
+                    peak_bytes=peak, max_abs_error=mem_abs, max_rel_error=mem_rel,
+                    output_digest=output_digest(
+                        [name for name, _ in expected], memory_actual
+                    ),
+                    correct="true", seed=args.seed + 20_000 + iteration,
+                ))
             for iteration in range(1, prepare_count):
                 with tempfile.TemporaryDirectory(prefix=f"{case_id}-prepare-", dir=root) as work:
                     elapsed, size, *_ = prepare(args, model, variant, Path(work), flags)
-                rows.append(csv_row(header, common, record_kind="prepare", iteration=iteration,
-                                    prepare_ns=elapsed, artifact_bytes=size,
-                                    seed=args.seed + iteration))
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    with args.output.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=header); writer.writeheader(); writer.writerows(rows)
+                case_rows.append(csv_row(
+                    header, common, record_kind="prepare", iteration=iteration,
+                    prepare_ns=elapsed, artifact_bytes=size, seed=args.seed + iteration,
+                ))
+            rows.extend(case_rows)
+            write_rows(args.output, header, rows)
+    write_rows(args.output, header, rows)
     compiler = subprocess.run([args.cc, "--version"], capture_output=True, text=True)
     record = {"schema_version": 1, "created_utc": datetime.now(timezone.utc).isoformat(),
               "release_eligible": not args.smoke and not dirty, "group": args.group,
               "variant": args.variant, "cases": [case["id"] for case in cases],
               "model_files": model_files,
               "unsupported": failures, "benchmark_spec_sha256": spec_hash,
+              "failure_log": ({"path": str(failure_path),
+                               "sha256": sha256(failure_path.read_bytes())}
+                              if failure_path.exists() else None),
               "input_index_sha256": sha256((args.inputs / "index.json").read_bytes()),
               "git_revision": revision, "git_dirty": dirty,
               "joggle_sha256": sha256(args.joggle.read_bytes()),
@@ -495,6 +606,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=20260921)
     parser.add_argument("--stage-timeout", type=float, default=600.0)
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument(
+        "--resume", action="store_true",
+        help="resume an output CSV containing complete per-case checkpoints",
+    )
     parser.add_argument("--allow-dirty", action="store_true")
     args = parser.parse_args()
     if args.group == "operators" and not args.operator_models:

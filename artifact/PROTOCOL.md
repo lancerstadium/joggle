@@ -71,6 +71,10 @@ the semantic oracle for the paired Figure 5 patches.
 - Task index: `manifests/extension-tasks.csv`
 - Semantic contract: `manifests/extension-specs.json`
 - Contract schema: `schemas/extension-specs.schema.json`
+- Request materializer: `prepare_extension_requests.py`
+- Pinned local inference and scoring: `run_extension_transformers.py`
+- Oracle evaluator: `evaluate_extension_outputs.py`
+- Validating assembler: `assemble_extension_rows.py`
 - Plot: `figures/figure_04_extension.py`
 - Required pairing: model, task, and demonstration count across systems
 
