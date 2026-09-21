@@ -13,8 +13,14 @@
 %TC:envir math 0 word
 %TC:envir comment 0 0
 %%
-%% Anonymous two-column submission layout without review line numbers.
-\documentclass[sigconf,anonymous]{acmart}
+%% Anonymous two-column submission layout at the EuroSys minimum type size.
+\documentclass[sigconf,anonymous,10pt]{acmart}
+
+%% Balance the reference columns explicitly; acmart's end hook runs too late
+%% once the bibliography has already entered the second column.
+\makeatletter
+\@ACM@balancefalse
+\makeatother
 
 \AtBeginDocument{%
   \providecommand\BibTeX{{%
@@ -23,6 +29,7 @@
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 \usepackage{amsmath}
+\usepackage{balance}
 \usepackage{listings}
 \usepackage{xcolor}
 
@@ -31,6 +38,8 @@
 \copyrightyear{2027}
 \acmYear{2027}
 \acmConference[EuroSys '27]{EuroSys 2027}{April 19--23, 2027}{Rabat, Morocco}
+\acmISBN{}
+\acmDOI{}
 
 \definecolor{jogblue}{HTML}{0B6FB8}
 \definecolor{joggreen}{HTML}{147D64}
@@ -68,16 +77,42 @@
 \title[Joggle]{Joggle: Malleable Compilation with a Progressive Intermediate Representation}
 
 \begin{abstract}
+Extending a heterogeneous compiler is a cross-cutting task. One feature can
+require a semantic definition, an analysis, a graph transformation, a
+conversion, and an artifact generator, yet established infrastructures expose
+these roles through different extension and invalidation mechanisms. Joggle
+makes compiler behavior part of the program model. Programs and compiler
+extensions share one typed graph, one function language, and one value model;
+graph-level \emph{mods} define ownership and dependency boundaries across
+stages; and an evaluator records graph observations and effects while
+publishing updates transactionally. The resulting intermediate representation
+is progressive: typed compiler functions refine verified mods without
+requiring a fixed sequence of public IR classes. Joggle combines stable graph
+handles, hierarchical revisions, dependency indices, and cached execution
+plans to re-execute only stages whose recorded inputs may have changed. We
+evaluate the design through held-out compiler-extension tasks, matched
+cross-system feature patches, controlled edits over a pinned full-model corpus,
+and operator- and model-level artifact measurements. The evidence tests whether
+extensions are predictable to generate, whether changes remain within their
+ownership boundary, and whether update cost follows the affected graph rather
+than the complete pipeline.
 \end{abstract}
 
-\keywords{}
+\keywords{compilers, extensibility, metaprogramming, incremental compilation}
+
+\ccsdesc[500]{Software and its engineering~Compilers}
 
 \maketitle
 
 \input{sections/01-introduction}
 \input{sections/02-motivation}
 \input{sections/03-design}
+\input{sections/04-evaluation}
+\input{sections/05-related-work}
+\input{sections/06-discussion}
+\input{sections/07-conclusion}
 
+\balance
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{references}
 

@@ -18,8 +18,8 @@ The graph owned by a mod is
 where $F$, $B$, $O$, and $V$ are functions, blocks, operations, and values, and
 $A$ denotes attributes attached to these entities. Blocks order operations,
 operations consume and produce values, and maintained def--use edges connect
-each value to its users. This structure does not privilege an operator set,
-input format, or artifact. Such semantics enter through extension mods.
+each value to its users. Operator sets, input formats, and artifacts enter
+through extension mods.
 
 An environment $E$ loads the mods named by a program, resolves typed calls,
 binds source or native implementations, and owns evaluator state. One
@@ -138,8 +138,8 @@ implementations behind the same typed call boundary.
 
 Joggle resolves a call from its qualified name, visible mods, explicit generic
 arguments, parameter types, and result context. The selected implementation may
-be a source body, an intrinsic, or a native binding. This choice does not change
-the caller's syntax or the evaluator's result boundary.
+be a source body, an intrinsic, or a native binding. Caller syntax and the
+evaluator's result boundary remain identical across these implementations.
 
 Uniform calls retain distinct effect contracts. A query evaluates against a
 read-only mod and returns an \texttt{Attr}. A run applies one or more mutating
@@ -153,8 +153,8 @@ Compiler functions also compose through ordinary calls. In
 Listing~\ref{lst:sat}, \texttt{select} invokes \texttt{sat.supports}; larger
 policies can call analyses, converters, selectors, and planners from their
 declared dependencies. The call graph is therefore available to type checking,
-diagnostics, and dependency capture. It does not need a second, global pipeline
-registry.
+diagnostics, and dependency capture. The typed call graph also defines
+composition, replacing a second global pipeline registry.
 
 This function model unifies how compiler behavior is declared, resolved, and
 invoked. Mods then supply the namespace, visibility, and dependency boundaries
@@ -354,9 +354,9 @@ cannot refer to a later entity that reuses the same slot.
 The store maintains whole-mod, structural, and function revisions. Any
 observable edit advances the whole revision. Membership, order, and topology
 changes also advance the structural revision, while function-local changes
-advance the owning function's revision. These counters are freshness tokens,
-not semantic versions. Their granularity lets a function-level observation
-survive an unrelated edit elsewhere in the mod.
+advance the owning function's revision. These counters are freshness tokens
+rather than semantic versions. Their granularity lets a function-level
+observation survive an unrelated edit elsewhere in the mod.
 
 Graph relations are updated with the store. In particular, each value records
 its users. Replacing a value can therefore walk the affected uses, update both
@@ -373,16 +373,17 @@ The publication rule is
   \operatorname{Publish}(f,G) =
   \begin{cases}
     (G', \mathrm{ok}) &
-      \text{if } \operatorname{Eval}(f,G) \Downarrow G'
+      \text{if } f:G \Downarrow G'
       \land \operatorname{Verify}(G'), \\
     (G, \mathrm{fail}) & \text{otherwise.}
   \end{cases}
 \]
-Thus, locally valid edits cannot expose a globally invalid graph. Successful
-verification commits the graph and its revisions; failure restores both.
+Verification therefore prevents a locally valid edit from exposing a globally
+invalid graph. Success commits the graph and its revisions; failure restores
+both.
 
-The evaluator executes checked compiler functions through predecoded plans. A
-plan maps parameters, block arguments, and operation results to dense slots; it
+The evaluator uses predecoded plans for checked compiler functions. A plan maps
+parameters, block arguments, and operation results to dense slots; it
 also records block targets, operation kinds, operand indices, and call-site
 information. Its cache key is
 \[
@@ -395,11 +396,11 @@ reuse decoding and slot layout. Stable call sites additionally cache overload
 resolution under the current environment epoch and argument types. Reusable
 register windows reduce per-call allocation.
 
-These plans are an internal execution form, not another public IR and not
-native machine code. They remove repeated interpretation setup while preserving
-the language's control flow, failure propagation, and dynamic calls. A native
-implementation may accelerate a specific typed function, but it enters through
-the same mod-scoped binding and graph API.
+These plans are an internal interpreted execution form. They remove repeated
+decoding and slot-allocation setup while preserving the language's control
+flow, failure propagation, and dynamic calls. A native implementation may
+accelerate a specific typed function through the same mod-scoped binding and
+graph API.
 
 At the extension boundary, typed handles represent live graph identity and
 \texttt{Attr} represents owned, serializable values. Dependency records,

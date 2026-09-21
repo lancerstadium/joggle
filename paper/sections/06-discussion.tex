@@ -1,0 +1,54 @@
+\section{Discussion}
+\label{sec:discussion}
+
+\paragraph{Hierarchical structure.}
+Joggle programs contain functions, blocks, operations, values, and def--use
+relations. These structures express program semantics and permit conventional
+local reasoning. Compiler functions refine this graph independently of a
+global ladder of public IR classes. A pipeline may retain high-level operations
+beside lower-level helpers when that is the most useful verified state.
+
+\paragraph{A mod is a capability boundary.}
+Directories split files, and hierarchical IR splits programs; neither
+necessarily identifies the owner of a compiler feature. A mod binds a public
+typed surface to dependencies, source fragments, native bindings, and lifecycle
+operations. Small implementations may remain in one source file. Separate mods
+become useful when capabilities require distinct owners, dependency closures,
+or release cycles.
+
+\paragraph{Uniform calls preserve effects.}
+Uniform syntax coexists with explicit effect contracts. Query execution is
+read-only, runs publish a verified graph, and artifact calls return owned
+values. Native implementations use the same signatures and ownership boundary.
+Declarations, resolution, calls, and composition are uniform; effect checks
+remain explicit.
+
+\paragraph{Incrementality follows observable state.}
+A compiler function gains reuse by reading the narrowest state needed for its
+result. Whole-graph traversal correctly creates a broad dependency; direct
+lookup creates a narrow one. State outside the graph enters through typed
+arguments or the environment. These rules make the reuse boundary inspectable:
+miss reasons and observation counts show why a stage ran.
+
+\paragraph{Atomic publication.}
+Dependency records are useful only for the graph that produced them. Joggle
+therefore commits mutations, revisions, and new records after final
+verification, or restores the previous state and discards tentative records.
+This property is stronger than caching a pass result beside a mutable graph: it
+prevents a later run from reusing an observation of an unpublished
+intermediate.
+
+\paragraph{Plans remain interpreted.}
+Predecoded plans cache checked interpreter work: dense value slots,
+control-flow targets, operand indices, and call-site information. They remove
+repeated setup while preserving interpreted execution. Native acceleration
+remains a typed mod binding, and native plan compilation is an independent
+design point.
+
+The design admits three direct extensions. Dependency records can be persisted
+with serialized mods to reuse work across processes. Independent selected
+stages can be scheduled in parallel once their effect contracts establish
+noninterference. Finally, effect scopes can move below functions to named graph
+regions when workloads justify the additional capture and validation cost.
+Each extension preserves the same publication rule: reusable state belongs to
+a verified graph version.

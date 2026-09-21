@@ -1,0 +1,79 @@
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Extensible Compiler Infrastructures}
+
+LLVM established a reusable typed SSA infrastructure with shared analyses and
+passes~\cite{lattner2004llvm}. MLIR extends this model with dialects, nested
+operations, declarative operation definitions, conversions, and pass pipelines
+across abstraction levels~\cite{lattner2021mlir}. Its pass manager caches
+analyses at operation anchors and uses explicitly preserved analyses to control
+invalidation~\cite{mlirpass}. xDSL retains compatibility with MLIR's SSA
+structure while moving compiler construction and rapid prototyping into
+Python~\cite{fehr2025xdsl}. These systems demonstrate the value of common IR
+infrastructure and extensible operation sets.
+
+Joggle addresses a different boundary. Its central unit is not another
+hierarchical operation container; it is the typed compiler function together
+with the graph-level mod that owns and publishes it. Semantics, analysis,
+mutation, conversion, and artifact generation retain their distinct effects
+but share one declaration, resolution, and invocation model. The mod graph is
+orthogonal to blocks and operations, so capability ownership does not have to
+follow program containment.
+
+\subsection{Tensor Compilers}
+
+Halide separates an image-processing algorithm from its schedule, allowing
+target-specific choices without changing functional
+meaning~\cite{ragankelley2012halide}. TVM combines graph-level optimization, tensor
+programs, schedule search, and target code generation~\cite{chen2018tvm}.
+Multi-level tensor compilers similarly use progressively lower representations
+to expose decisions at the operator, loop, memory, and target levels. Joggle
+packages these optimization spaces, their analyses, their conversions, and
+their artifact boundaries in a common programmable and organizational
+substrate.
+
+This distinction separates two performance dimensions. Tensor compilers
+primarily optimize generated code. Joggle also reduces the compiler
+work repeated after a transformation, policy, or input changes.
+Section~\ref{sec:evaluation} measures generated artifacts and edit-to-result
+latency independently.
+
+\subsection{Programmable Transformations}
+
+The Nanopass framework derives representation checks and traversal support from
+explicit source and target languages, encouraging many small
+passes~\cite{keep2013nanopass}. MLIR's Transform dialect represents fine-grained
+transformation schedules as IR, maps handles into a separate payload IR, and
+uses effect interfaces to constrain transform
+execution~\cite{lucke2025transform}. Rewrite systems make local rules concise
+and composable; \texttt{egg} combines equality saturation, rebuilding, and
+e-class analyses to manage many equivalent programs
+efficiently~\cite{willsey2021egg}. These systems make transformation intent
+programmable at complementary granularities.
+
+Joggle extends the programmable unit beyond transformation control. A compiler
+function may define semantics, query types, traverse control flow, invoke a
+native solver, rewrite a graph, convert a representation, or return an
+artifact. Typed calls compose these roles; mods own and publish them; observed
+reads and effects connect them to reactive execution. Nanopasses, transform
+dialects, and equality saturation can therefore enter through the same typed
+boundary without determining the rest of the compiler's organization.
+
+\subsection{Incremental Computation}
+
+Self-adjusting systems record dependencies and repair demanded computation
+after an input changes. Adapton formalizes this model with a demanded
+computation graph~\cite{hammer2014adapton}. Build
+systems apply related ideas to tasks and artifacts; Build Systems {\`a} la Carte
+separates dependency discovery, scheduling, and rebuilding
+policies~\cite{mokhov2018build}. Compiler pass managers also cache analyses and
+preserve them across transformations when their contracts allow
+it~\cite{mlirpass}.
+
+Joggle specializes dependency tracking to mutable compiler graphs. A cached
+call records typed graph observations, while a mutating stage also records the
+scope it changed. Revisions and generations validate identity and state;
+upstream effect overlap selects later stages; and a transaction publishes the
+graph and fresh dependency records together. This combination connects
+fine-grained graph invalidation with an ordered, effectful compiler pipeline.

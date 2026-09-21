@@ -85,10 +85,9 @@ Revisions, dependency indices, and cached execution plans restrict responsive
 re-execution to affected graph regions and stages under transactional
 publication.
 
-The evaluation matches one question to each contribution. It measures
-small-model perplexity and task success on held-out extensions, the repository
-footprint of representative changes, and update latency after controlled edits
-across complete models. Operator- and model-level measurements separately
-evaluate the performance of artifacts produced by those extensions. This
-separation distinguishes compiler malleability from generated-code quality
-while testing both.
+The evaluation assigns one evidence stream to each contribution. Held-out
+extensions measure small-model uncertainty and executable task success. Matched
+feature patches measure repository footprint. Controlled edits over complete
+models measure latency and executed work. Artifact quality and mechanism costs
+complete the evidence chain without conflating compiler responsiveness with
+generated-code quality.

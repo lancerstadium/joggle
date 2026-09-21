@@ -33,13 +33,12 @@ change is conceptually one feature, but its pieces occupy several stages in
 Figure~\ref{fig:workflow}. Later revisions---such as admitting another width or
 changing target selection---must preserve the same cross-stage agreement.
 
-The difficulty is not that existing infrastructures lack extension points.
-LLVM exposes analyses and passes, MLIR adds dialects and conversions, Halide
-exposes schedules, and TVM exposes graph and tensor-program
+Existing infrastructures offer rich extension points. LLVM exposes analyses
+and passes, MLIR adds dialects and conversions, Halide exposes schedules, and
+TVM exposes graph and tensor-program
 optimization~\cite{lattner2004llvm,lattner2021mlir,ragankelley2012halide,chen2018tvm}.
-The difficulty is that a complete feature combines several of these roles,
-while their declarations, composition boundaries, and invalidation rules
-remain separate.
+A complete feature combines several of these roles, while their declarations,
+composition boundaries, and invalidation rules remain separate.
 
 \subsection{Development Friction}
 \label{sec:friction}
