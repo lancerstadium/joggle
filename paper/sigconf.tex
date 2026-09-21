@@ -29,8 +29,6 @@
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 \usepackage{amsmath}
-\usepackage{listings}
-\usepackage{xcolor}
 
 %% Rights information is replaced by the ACM rights-form block for publication.
 \setcopyright{none}
@@ -39,37 +37,6 @@
 \acmConference[EuroSys '27]{EuroSys 2027}{April 19--23, 2027}{Rabat, Morocco}
 \acmISBN{}
 \acmDOI{}
-
-\definecolor{jogblue}{HTML}{0B6FB8}
-\definecolor{joggreen}{HTML}{147D64}
-\definecolor{joggray}{HTML}{F4F6F8}
-\definecolor{jogcomment}{HTML}{667085}
-
-\lstdefinelanguage{jog}{
-  sensitive=true,
-  morekeywords={mod,use,fn,local,let,var,if,else,for,in,return,true,false},
-  morecomment=[l]{//},
-  morestring=[b]"
-}
-
-\lstset{
-  basicstyle=\ttfamily\scriptsize,
-  keywordstyle=\color{jogblue}\bfseries,
-  commentstyle=\color{jogcomment},
-  stringstyle=\color{joggreen},
-  backgroundcolor=\color{joggray},
-  frame=single,
-  rulecolor=\color{black!12},
-  framesep=4pt,
-  xleftmargin=3pt,
-  xrightmargin=3pt,
-  breaklines=true,
-  breakatwhitespace=false,
-  columns=fullflexible,
-  keepspaces=true,
-  showstringspaces=false,
-  captionpos=t
-}
 
 \begin{document}
 
@@ -84,8 +51,8 @@ functions give these roles one language, call model, and value model;
 graph-level \emph{mods} define ownership and dependency boundaries; and an
 evaluator records graph observations and effects before publishing updates
 transactionally. This arrangement forms a progressive intermediate
-representation: compiler functions refine verified mods without crossing a
-fixed sequence of public IR classes. Stable handles, hierarchical revisions,
+representation: compiler functions refine verified mods inside a common graph
+model. Stable handles, hierarchical revisions,
 dependency indices, and cached execution plans then restrict re-execution to
 stages whose recorded inputs may have changed. We evaluate this design with
 held-out extension tasks, matched cross-system feature patches, controlled

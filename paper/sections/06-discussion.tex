@@ -1,7 +1,7 @@
 \section{Discussion}
 \label{sec:discussion}
 
-\paragraph{Progressive does not mean flat.}
+\paragraph{Progressive structure.}
 Joggle programs retain functions, blocks, operations, values, and def--use
 relations. These structures express program semantics and support conventional
 local reasoning. Progression changes how stages relate: compiler functions
@@ -40,9 +40,9 @@ State outside the graph must enter through typed arguments or an environment
 revision. A later run can then reuse only observations tied to a published
 graph and environment.
 
-\paragraph{Plans remain interpreted.}
+\paragraph{Interpreted plans.}
 Predecoded plans cache checked interpreter work: dense value slots,
 control-flow targets, operand indices, and call-site information. They remove
-repeated setup while preserving interpreted execution. Native acceleration
-remains a typed mod binding, and native plan compilation is an independent
-design point.
+repeated setup while preserving interpreted execution. Typed mod bindings
+provide native acceleration for selected functions through the same call
+boundary.

@@ -32,27 +32,11 @@ returns $r$, records the observed graph state $D$, and publishes graph effects
 $W$. Read-only calls have $W=\varnothing$. Mutating calls produce $W$ only
 after the resulting graph passes verification.
 
-Figure~\ref{fig:system-model} follows this call from definition to publication.
-A mod supplies the typed function, the evaluator observes its graph access,
-and the runtime either commits a verified update or returns a read-only result.
-
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=.80\columnwidth]{figures/figure-03-call-model.png}
-  \caption{A typed compiler call executes transactionally and records reads
-    and effects for reuse.}
-  \Description{A typed function enters an evaluator that reads and writes a
-    subject graph under a transaction. A compact record stores the call key,
-    result, observed reads, and effects; current records return to the
-    evaluator as cache hits.}
-  \label{fig:system-model}
-\end{figure}
-
 Joggle calls this representation progressive because each successful compiler
 function publishes another verified mod over the same entity model. A stage may
 retain semantic operations while introducing lower-level helpers, and a later
-stage may replace only the definitions it owns. Progress therefore does not
-require a public transition from one IR class to another.
+stage may replace definitions it owns. Typed refinements express progress
+within one graph model, and every published state remains inspectable.
 
 The rest of the design follows the three requirements from
 Section~\ref{sec:requirements}. Section~\ref{sec:compiler-functions} realizes
@@ -66,8 +50,7 @@ graph runtime that validates them.
 
 Joggle's metaprogramming interface is the typed compiler function. Operator
 semantics, analyses, transformations, representation conversion, and artifact
-generation use this single programmable surface rather than separate
-definition and invocation mechanisms.
+generation use this single programmable surface for definition and invocation.
 
 A compiler function accepts graph handles and ordinary values:
 \[
@@ -80,62 +63,12 @@ itself be a handle, an ordinary value, structured data, text, or bytes. Handles
 retain graph ownership and lifetime; ordinary values remain independent of
 graph storage.
 
-Listing~\ref{lst:sat} shows these roles in the bundled \texttt{sat} mod. The
-same syntax declares a parametric type, a capability query, native simulation
-and artifact functions, and a mutating selection stage.
-
-\begin{lstlisting}[language=jog,float=t,caption={The \texttt{sat} mod defines semantics,
-analysis, native boundaries, and transformation with one function syntax.},
-label={lst:sat}]
-mod sat
-use ir
-
-// Semantic type and operations.
-fn sat<W: int>() -> Ty;
-fn +<W: int>(a: sat<W>, b: sat<W>) -> sat<W>;
-fn add<W: int>(a: sat<W>, b: sat<W>) -> sat<W>;
-
-// A read-only capability query.
-[role: "match"]
-fn supports(type: Ty) -> bool {
-  if name(type) != "sat" || len(args(type)) != 1 {
-    return false
-  }
-  let width = args(type)[0]
-  return kind(width) == "int" &&
-         int(width) >= 2 && int(width) <= 63
-}
-
-// Native simulation and artifact boundaries.
-[role: "sim"]
-fn sim(width: int, a: int, b: int) -> int;
-
-[role: "emit", format: "sv"]
-fn emit(width: int) -> str;
-
-// A graph transformation.
-[stage: "select"]
-fn select(m: Mod) -> bool {
-  var changed = false
-  for op in ir.ops(m) {
-    if ir.callee(op) == "operator +" {
-      let outs = ir.outs(op)
-      if len(outs) == 1 &&
-         sat.supports(ir.type(outs[0])) {
-        changed = ir.rename(m, op, "sat.add") || changed
-      }
-    }
-  }
-  return changed
-}
-\end{lstlisting}
-
-Given a \texttt{sat<W>} result, \texttt{select} calls \texttt{supports},
-retargets the addition to \texttt{sat.add}, and reports whether the subject
-changed. The \texttt{Mod} argument gives \texttt{select} access to the subject
-under a mutating run, whereas \texttt{supports} only inspects an owned
-\texttt{Ty} value. Body-less \texttt{sim} and \texttt{emit} declarations bind
-native implementations behind the same typed call boundary.
+A common operator extension illustrates these roles. A convolution, bias
+addition, and activation form a fusible subgraph. One mod owns the fused
+operator's semantic contract together with typed functions for legality
+analysis, fusion, target conversion, and artifact generation. The functions
+exchange graph handles and owned values through the interface above; each role
+retains its own effect contract.
 
 Joggle resolves a call from its qualified name, visible mods, explicit generic
 arguments, parameter types, and result context. The selected implementation may
@@ -150,12 +83,11 @@ and \texttt{emit} share resolution and evaluation while preserving different
 publication rules. Read-only execution rejects mutation, and a run publishes
 only a verified graph.
 
-Compiler functions also compose through ordinary calls. In
-Listing~\ref{lst:sat}, \texttt{select} invokes \texttt{sat.supports}; larger
-policies can call analyses, converters, selectors, and planners from their
-declared dependencies. The call graph is therefore available to type checking,
-diagnostics, and dependency capture. The typed call graph also defines
-composition, replacing a second global pipeline registry.
+Compiler functions also compose through ordinary calls. A fusion function can
+invoke its legality analysis, and a conversion can query the fused operator's
+semantic contract. These calls remain visible to type checking, diagnostics,
+and dependency capture. The typed call graph therefore defines composition
+directly.
 
 This function model unifies how compiler behavior is declared, resolved, and
 invoked. Mods then supply the namespace, visibility, and dependency boundaries
@@ -171,8 +103,8 @@ A mod is Joggle's unit of ownership and composition. We model it as
 where $n$ is the mod name and $U$ is its declared \texttt{use} set.
 $F_{\mathrm{pub}}$ and $F_{\mathrm{local}}$ are its public and local
 functions, $G$ is its graph, and $N$ contains optional native bindings. The
-on-disk package is a distribution form of this object, not its semantic
-boundary.
+loaded object is the semantic boundary; its on-disk package is the distribution
+form.
 
 The \texttt{use} declarations form a directed mod graph. Search roots determine
 where a named mod can be found, while \texttt{use} edges select the dependencies
@@ -200,8 +132,7 @@ Lifecycle operations preserve the same closure. Installation stages a
 candidate, loads and verifies its dependencies, and publishes it only after
 validation succeeds. Upgrade additionally checks affected reverse dependencies.
 A failed operation leaves the installed graph unchanged. These rules make the
-mod, rather than a collection of edits to global registries, the unit that
-evolves.
+mod the unit that evolves across installation and upgrade.
 
 The mod graph is orthogonal to the containment structure inside a subject
 program. Blocks and operations describe program structure; \texttt{use} edges
@@ -210,8 +141,8 @@ without rewriting the latter. This separation lets one project compose
 analysis, transformation, and artifact mods without embedding those ownership
 decisions into its program IR.
 
-Static mod dependencies remain deliberately coarse. They state what a compiler
-extension may call. During execution, the evaluator records which functions and
+Static mod dependencies state what a compiler extension may call. During
+execution, the evaluator records which functions and
 graph entities a call actually observes. Section~\ref{sec:incremental} uses this
 second, dynamic dependency graph to avoid re-executing unaffected work.
 
@@ -302,22 +233,10 @@ final graph verifies. Failure rolls back graph mutations and revision state; it
 also discards the tentative records. Consequently, the next run cannot reuse
 dependencies derived from an unpublished graph.
 
-Figure~\ref{fig:dependencies} separates the dependency levels. The static
-\texttt{use} graph defines which functions may be called; a compact
-observation ledger records which entities a particular run read. An edit
-invalidates the stage that observed it and only the later stages whose
-recorded inputs overlap its effects.
-
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=.80\columnwidth]{figures/figure-04-dependencies.png}
-  \caption{Static \texttt{use} edges bound calls; dynamic read/effect records
-    select work after an edit.}
-  \Description{The upper region shows the static use graph of seven mods. The
-    lower ledger shows each stage's observed reads, effects, and selection
-    decision after a value-type edit.}
-  \label{fig:dependencies}
-\end{figure}
+For the operator example above, a type edit directly invalidates the legality
+stage that observed it. The fusion stage follows when its recorded input
+overlaps the earlier effect, while stages with disjoint observations retain
+their previous results.
 
 Fine-grained observations reduce re-execution but add capture and validation
 work. For $K$ stages, incremental latency is approximately
@@ -361,8 +280,8 @@ cannot refer to a later entity that reuses the same slot.
 The store maintains whole-mod, structural, and function revisions. Any
 observable edit advances the whole revision. Membership, order, and topology
 changes also advance the structural revision, while function-local changes
-advance the owning function's revision. These counters are freshness tokens
-rather than semantic versions. Their granularity lets a function-level
+advance the owning function's revision. These counters serve as freshness
+tokens. Their granularity lets a function-level
 observation survive an unrelated edit elsewhere in the mod.
 
 Graph relations are updated with the store. In particular, each value records

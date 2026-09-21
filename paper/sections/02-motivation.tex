@@ -52,9 +52,9 @@ implementation effort and the opportunity for an incomplete extension.
 
 \paragraph{Diffuse ownership.}
 Hierarchical IRs organize operations inside regions, blocks, and functions.
-That containment is essential for program semantics, but it does not by itself
-express which compiler capabilities belong together or which project depends
-on them. Capability ownership is often reconstructed from directories, build
+That containment expresses program semantics; compiler capabilities
+additionally need ownership and dependency boundaries. Capability ownership is
+often reconstructed from directories, build
 targets, registries, and pass ordering. A feature revision can therefore touch
 files and subsystems outside its semantic boundary, making review, replacement,
 and parallel development harder to control.
@@ -79,16 +79,15 @@ The preceding workflow gives three requirements for a malleable compiler.
 
 \paragraph{R1---One typed extension surface.}
 Semantic definitions, analyses, transformations, converters, and artifact
-generators must share one language, call model, and value model. Uniformity must
-not erase effects: read-only queries and mutating transformations require
-different publication rules even when they use the same syntax.
+generators must share one language, call model, and value model. The surface
+preserves explicit effects: read-only queries and mutating transformations use
+distinct publication rules within the same syntax.
 
 \paragraph{R2---Explicit capability composition.}
 A feature must have a named owner, public and private functions, declared
 dependencies, and an independent lifecycle. This graph-level package boundary
-must remain separate from hierarchical program containment so that a compiler
-capability can be installed, inspected, replaced, or removed without editing a
-global registry.
+is orthogonal to hierarchical program containment, making a compiler capability
+installable, inspectable, replaceable, and removable through its owner.
 
 \paragraph{R3---Change-proportional execution.}
 Revisions and dependency indices must validate the state a function actually

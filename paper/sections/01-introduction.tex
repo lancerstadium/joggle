@@ -26,7 +26,7 @@ than the change requires.
 This fragmentation creates three coupled problems. First, compiler behavior is
 expressed through several extension interfaces, so one logical feature cannot
 be inspected or generated through one language. Second, ownership follows
-source trees, registries, and IR layers rather than the feature's dependency
+source trees, registries, and IR layers instead of the feature's dependency
 boundary, so its change surface grows with the compiler. Third, staged drivers
 usually track whole pass results, so a small edit can repeat conversions and
 analyses whose observations remain valid. These are programmability,
@@ -60,9 +60,9 @@ and artifact generators are ordinary typed \emph{compiler functions}. A
 \texttt{use} dependencies. An evaluator executes calls transactionally,
 observes the graph state they read, and records the effects they publish.
 
-We call the representation \emph{progressive} because compilation refines one
-verified graph rather than requiring every extension to cross a fixed sequence
-of public IR types. A mod may retain semantic operations, introduce lower-level
+We call the representation \emph{progressive} because compilation proceeds
+through typed refinements of one verified graph. A mod may retain semantic
+operations, introduce lower-level
 helpers, or replace selected definitions; each published intermediate remains
 an inspectable Joggle mod. Progress is therefore chosen by typed functions and
 explicit dependencies, not encoded as a mandatory global pipeline.
@@ -76,8 +76,8 @@ while retaining distinct read and write contracts.
 
 \paragraph{Mod-scoped composition.}
 Graph-level mod packages define ownership, publication, dependency, and change
-boundaries across compilation stages. This boundary complements rather than
-replaces hierarchical program IR.
+boundaries across compilation stages. This boundary is orthogonal to
+hierarchical program IR.
 
 \paragraph{Dependency-directed updates.}
 Revisions, dependency indices, and cached execution plans restrict
@@ -88,5 +88,5 @@ The evaluation assigns one evidence stream to each contribution. Held-out
 extensions measure predictability and executable task success. Matched feature
 patches measure repository footprint. Controlled edits over complete models
 measure latency and executed work. Artifact quality and mechanism costs
-complete the evidence chain without conflating compiler responsiveness with
-generated-code quality.
+complete the evidence chain while reporting compiler responsiveness and
+generated-code quality separately.

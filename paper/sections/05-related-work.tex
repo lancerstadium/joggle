@@ -1,35 +1,38 @@
 \section{Related Work}
 \label{sec:related}
 
-Table~\ref{tab:related} compares public extension and update mechanisms rather
-than project goals. ``One surface'' requires one syntax, call model, and value
-model across semantics, analysis, transformation, conversion, and artifact
-generation. ``Atomic'' requires the subject graph and its reuse records to
-commit or roll back together. A dash marks the absence of that narrowly defined
-public mechanism; other cells name the nearest mechanism instead of collapsing
-partial matches into a check mark.
+Table~\ref{tab:related} aligns related mechanisms with Joggle's three design
+axes. \emph{Roles} covers the five compiler roles through one programmable
+surface. \emph{Owner} and \emph{Deps} capture capability organization.
+
+The final four columns cover reactive updates.
+
+Symbols: \checkmark{} first-class; $\triangle$ role-specific or coarser;
+$\times$ absent.
 
 \begin{table*}[t]
-  \caption{Extension and update mechanisms in related systems.}
+  \caption{Coverage of unified extension, ownership, and reactive-update
+    mechanisms. Columns follow the three design axes in
+    Figure~\ref{fig:thesis-map}.}
   \label{tab:related}
   \scriptsize
-  \setlength{\tabcolsep}{3pt}
+  \setlength{\tabcolsep}{4.5pt}
   \renewcommand{\arraystretch}{1.08}
-  \begin{tabular}{@{}p{0.17\textwidth}p{0.14\textwidth}c p{0.12\textwidth}p{0.12\textwidth}p{0.11\textwidth}c@{}}
+  \begin{tabular}{@{}lcccccccc@{}}
     \toprule
-    System & Metaprogram & One surface & Owner & Reuse key & Effect rule & Atomic \\
+    System & Roles & Calls & Owner & Deps & Reads & Effects & Reactive & Atomic \\
     \midrule
-    LLVM~\cite{lattner2004llvm} & C++ pass & -- & plugin & analysis scope & preserved & -- \\
-    Nanopass~\cite{keep2013nanopass} & Scheme pass & -- & language & -- & pipeline & -- \\
-    MLIR~\cite{lattner2021mlir,mlirpass} & ODS/C++ & -- & dialect & op anchor & preserved & -- \\
-    MLIR Transform~\cite{lucke2025transform} & transform IR & -- & dialect & handle & interface & -- \\
-    xDSL~\cite{fehr2025xdsl} & Python pass & -- & dialect & -- & pipeline & -- \\
-    Halide~\cite{ragankelley2012halide} & schedule & -- & generator & -- & schedule & -- \\
-    TVM~\cite{chen2018tvm} & pass/schedule & -- & target/pass & -- & pipeline & -- \\
-    \texttt{egg}~\cite{willsey2021egg} & rewrite & -- & library & e-class & rebuild & -- \\
-    Adapton~\cite{hammer2014adapton} & computation & -- & library & demand node & demand & -- \\
-    Build systems~\cite{mokhov2018build} & task & -- & task graph & task key & scheduler & -- \\
-    \textbf{Joggle} & compiler function & \checkmark & mod graph & graph entity & overlap & \checkmark \\
+    LLVM~\cite{lattner2004llvm} & $\times$ & $\triangle$ & $\triangle$ & $\triangle$ & $\triangle$ & $\triangle$ & $\times$ & $\times$ \\
+    Nanopass~\cite{keep2013nanopass} & $\times$ & \checkmark & $\triangle$ & $\times$ & $\times$ & $\triangle$ & $\times$ & $\times$ \\
+    MLIR~\cite{lattner2021mlir,mlirpass} & $\triangle$ & $\triangle$ & \checkmark & $\triangle$ & $\triangle$ & $\triangle$ & $\times$ & $\times$ \\
+    MLIR Transform~\cite{lucke2025transform} & $\times$ & \checkmark & \checkmark & $\triangle$ & $\triangle$ & \checkmark & $\times$ & $\times$ \\
+    xDSL~\cite{fehr2025xdsl} & $\triangle$ & $\triangle$ & \checkmark & $\triangle$ & $\times$ & $\times$ & $\times$ & $\times$ \\
+    Halide~\cite{ragankelley2012halide} & $\times$ & \checkmark & \checkmark & $\triangle$ & $\times$ & $\times$ & $\times$ & $\times$ \\
+    TVM~\cite{chen2018tvm} & $\triangle$ & $\triangle$ & $\triangle$ & $\triangle$ & $\times$ & $\times$ & $\times$ & $\times$ \\
+    \texttt{egg}~\cite{willsey2021egg} & $\times$ & \checkmark & $\triangle$ & $\times$ & $\triangle$ & \checkmark & $\triangle$ & $\times$ \\
+    Adapton~\cite{hammer2014adapton} & $\times$ & \checkmark & $\triangle$ & \checkmark & \checkmark & \checkmark & \checkmark & $\triangle$ \\
+    Build systems~\cite{mokhov2018build} & $\times$ & $\triangle$ & \checkmark & \checkmark & $\triangle$ & \checkmark & \checkmark & $\triangle$ \\
+    \textbf{Joggle} & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
     \bottomrule
   \end{tabular}
 \end{table*}
@@ -46,13 +49,12 @@ structure while moving compiler construction and rapid prototyping into
 Python~\cite{fehr2025xdsl}. These systems demonstrate the value of common IR
 infrastructure and extensible operation sets.
 
-Joggle addresses a different boundary. Its central unit is not another
-hierarchical operation container; it is the typed compiler function together
-with the graph-level mod that owns and publishes it. Semantics, analysis,
+Joggle centers the typed compiler function together with the graph-level mod
+that owns and publishes it. Semantics, analysis,
 mutation, conversion, and artifact generation retain their distinct effects
 but share one declaration, resolution, and invocation model. The mod graph is
-orthogonal to blocks and operations, so capability ownership does not have to
-follow program containment.
+orthogonal to blocks and operations, so capability ownership follows declared
+dependencies independently of program containment.
 
 \subsection{Tensor Compilers}
 
@@ -62,9 +64,8 @@ meaning~\cite{ragankelley2012halide}. TVM combines graph-level optimization, ten
 programs, schedule search, and target code generation~\cite{chen2018tvm}.
 Multi-level tensor compilers similarly use progressively lower representations
 to expose decisions at the operator, loop, memory, and target levels. Joggle
-does not replace these optimization algorithms. It provides one programmable
-and organizational substrate for declaring, composing, converting, and
-executing them.
+supplies the programmable and organizational substrate for declaring,
+composing, converting, and executing these algorithms.
 
 This distinction separates two performance dimensions. Tensor compilers
 primarily optimize generated code. Joggle also reduces the compiler
