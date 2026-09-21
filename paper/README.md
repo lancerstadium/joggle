@@ -282,22 +282,24 @@ conversion, and artifact generation. The functions exchange graph handles and
 owned values through the interface above; each role retains its own effect
 contract.
 
-<!-- FIGURE 3 PROMPT — Dense single-column operator example, 0.92 ACM column
-width, with three tightly aligned horizontal bands and no source-code listing.
-Band 1, INPUT GRAPH: small dataflow graph `x,w → Conv → BiasAdd → ReLU → y`;
-show tensor types under edges and a dashed rounded enclosure around the three
-fusible operations. Band 2, ONE MOD / ONE CALL MODEL: five compact colored
-function chips `define`, `legal`, `fuse`, `convert`, `emit`, all connected to
-the same typed handles `Mod Fn Op Val`; show the transformed path
-`ConvBiasReLU → target.conv_relu → artifact`. Band 3, REACTIVE RECORD: a local
-edit `Δ y.type` points to a four-row ledger with columns stage, observed D,
-effects W, decision; `legal` is DIRECT, `fuse` is UPSTREAM, an unrelated
-analysis and `emit` are REUSE. Add a small transaction bracket spanning
-execute→verify→commit. Use white background, thin charcoal strokes,
-blue/teal/lavender role colors, coral only for the edit and selected stages,
-short labels, operator/dataflow glyphs, no decorative people, no numbered
-circles, no red numeric annotations, no imitation of the workflow figure's
-layout. -->
+<!-- FIGURE 3 PROMPT — Dense single-column operator example organized as a
+continuous technical trace, not three presentation panels. A compact top strip
+pairs the typed `G0` graph `x,w → Conv; b → BiasAdd → ReLU → y` with the
+`conv_ext` mod table: `define`, `legal`, `fuse`, `convert`, and `emit`, their
+SEM/READ/WRITE roles, visibility, signatures, `use tensor`, and the shared
+`Mod Fn Op Val Attr` rail. The center is four tightly stacked code/IR cards:
+ANALYZE records type, shape, and use observations over `G0`; TRANSFORM replaces
+the match with `ConvBiasReLU` in `G1`; CONVERT creates `target.conv_relu` with
+layout, tile, and vector attributes in `G2`; EMIT produces artifact `A`.
+Side braces read `one language · call model · value model` and
+`G0 → G1 → G2 → A`. The bottom aligns before/edit/after type snippets with a
+five-row dependency ledger: `legal` and `fuse` DIRECT, `convert` and `emit`
+UPSTREAM, and an unrelated analysis REUSE. Show
+`Δ → D-index → {legal,fuse} → W-overlap → {convert,emit}` above the transaction
+line `select → execute → verify → commit`. Use small crisp type, thin charcoal
+rules, white background, restrained blue/teal/lavender groups, and coral only
+for edits and selected work. No large headings, numbered circles, decorative
+people, gradients, shadows, or imitation of the workflow figure. -->
 
 *Figure 3: One operator extension uses a shared call model across roles and
 records the graph state that governs re-execution.*
@@ -469,9 +471,10 @@ state; it also discards the tentative records. Consequently, the next run
 cannot reuse dependencies derived from an unpublished graph.
 
 The ledger in Figure 3 makes this selection concrete. A type edit directly
-invalidates the legality stage that observed it. The fusion stage follows when
-its recorded input overlaps the earlier effect, while stages with disjoint
-observations retain their previous results.
+invalidates the legality and fusion stages that observed it. Because fusion
+may replace the matched subgraph, conversion is selected by overlap with that
+potential effect; artifact generation follows conversion for the same reason.
+An analysis with disjoint observations retains its previous result.
 
 Fine-grained observations reduce re-execution but add capture and validation
 work. For $K$ stages, incremental latency is approximately
@@ -772,11 +775,13 @@ connect latency changes to observed entities, executed compiler-function
 operations, and plan compilation.
 
 <!-- FIGURE 6 PLAN — Main full-width data figure fed by one CSV and one plotting
-script. Left: heatmap of Full/Reactive speedup for every one of the 15 models by
-edit class and scope; annotate executed/total stages in each cell. Right-top:
-ECDF of edit-to-result latency for Full and Reactive. Right-bottom:
-selection/evaluation/verification share for p50 and p95, with total time
-labels. CSV:
+script. Left: dense heatmap of Full/Reactive speedup for every one of the 15
+models by edit class and scope; annotate executed/total stages in each cell.
+Right-top: per-condition policy ablation for Reactive, Whole-mod, and
+No-plan-cache, using median Full/policy latency with interquartile segments.
+Right-middle: ECDF of edit-to-result latency for Full and Reactive.
+Right-bottom: selection/evaluation/verification share for p50 and p95, with
+total time labels. CSV:
 figure-06-model-update.csv. Raw columns: system,system_revision,subject,
 subject_hash,total_ops,
 affected_ops,fanout,stages,edit_class,edit_scope,edit_site,policy,cache_state,

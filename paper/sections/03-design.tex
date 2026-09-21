@@ -63,12 +63,26 @@ itself be a handle, an ordinary value, structured data, text, or bytes. Handles
 retain graph ownership and lifetime; ordinary values remain independent of
 graph storage.
 
-A common operator extension illustrates these roles. A convolution, bias
-addition, and activation form a fusible subgraph. One mod owns the fused
+A common operator extension illustrates these roles in
+Figure~\ref{fig:operator-extension}. A convolution, bias addition, and
+activation form a fusible subgraph. One mod owns the fused
 operator's semantic contract together with typed functions for legality
 analysis, fusion, target conversion, and artifact generation. The functions
 exchange graph handles and owned values through the interface above; each role
 retains its own effect contract.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/figure-03-operator-extension.png}
+  \caption{One operator extension in Joggle. Five compiler roles share typed
+  calls; recorded observations and effects select work after a local edit.}
+  \Description{A typed convolution, bias, and activation graph is analyzed,
+  fused, converted to a target operation, and emitted by five functions in one
+  mod. The graph progresses through three verified states to an artifact. A
+  type edit directly selects legality and fusion, propagates through conversion
+  and emission, reuses an unrelated analysis, and commits transactionally.}
+  \label{fig:operator-extension}
+\end{figure}
 
 Joggle resolves a call from its qualified name, visible mods, explicit generic
 arguments, parameter types, and result context. The selected implementation may
@@ -233,10 +247,11 @@ final graph verifies. Failure rolls back graph mutations and revision state; it
 also discards the tentative records. Consequently, the next run cannot reuse
 dependencies derived from an unpublished graph.
 
-For the operator example above, a type edit directly invalidates the legality
-stage that observed it. The fusion stage follows when its recorded input
-overlaps the earlier effect, while stages with disjoint observations retain
-their previous results.
+In Figure~\ref{fig:operator-extension}, a type edit directly invalidates the
+legality and fusion stages that observed it. Because fusion may replace the
+matched subgraph, conversion is selected by overlap with that potential
+effect; artifact generation follows conversion for the same reason. An
+analysis with disjoint observations retains its previous result.
 
 Fine-grained observations reduce re-execution but add capture and validation
 work. For $K$ stages, incremental latency is approximately

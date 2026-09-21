@@ -85,9 +85,12 @@ def main() -> int:
                 total[i, j] = float(np.median(stages))
 
     configure()
-    fig = plt.figure(figsize=(7.0, max(3.8, 0.21 * len(subjects))),
+    fig = plt.figure(figsize=(7.0, max(4.6, 0.25 * len(subjects))),
                      constrained_layout=True)
-    grid = fig.add_gridspec(2, 2, width_ratios=(1.6, 1), hspace=0.38, wspace=0.35)
+    grid = fig.add_gridspec(
+        3, 2, width_ratios=(1.38, 1.08), height_ratios=(1.7, 1, 1),
+        hspace=0.28, wspace=0.27,
+    )
     heat = fig.add_subplot(grid[:, 0])
     log_speed = np.log2(speed)
     image = heat.imshow(
@@ -98,7 +101,7 @@ def main() -> int:
     )
     heat.set_xticks(range(len(conditions)), conditions, rotation=35, ha="right")
     heat.set_yticks(range(len(subjects)), subjects)
-    heat.set_title("Full / Reactive speedup")
+    heat.set_title("(a) Full / Reactive · speedup and stages run", loc="left")
     for i in range(len(subjects)):
         for j in range(len(conditions)):
             if np.isfinite(speed[i, j]):
@@ -120,7 +123,56 @@ def main() -> int:
     colorbar.set_ticks((-2, 0, 2, 6, 10),
                        labels=("0.25×", "1×", "4×", "64×", "1024×+"))
 
-    ecdf = fig.add_subplot(grid[0, 1])
+    ablation = fig.add_subplot(grid[0, 1])
+    policy_order = ("reactive", "whole-mod", "no-plan-cache")
+    policy_labels = {
+        "reactive": "Reactive",
+        "whole-mod": "Whole-mod",
+        "no-plan-cache": "No plan cache",
+    }
+    policy_colors = {
+        "reactive": COLORS["reactive"],
+        "whole-mod": "#8E6BBE",
+        "no-plan-cache": "#E08B3E",
+    }
+    offsets = {"reactive": -0.22, "whole-mod": 0.0, "no-plan-cache": 0.22}
+    for policy in policy_order:
+        for index, edit in enumerate(conditions):
+            ratios = []
+            for subject in subjects:
+                for site in sites:
+                    full = summaries.get((subject, edit, site, "full"))
+                    candidate = summaries.get((subject, edit, site, policy))
+                    if full and candidate and candidate["wall_ns"] > 0:
+                        ratios.append(full["wall_ns"] / candidate["wall_ns"])
+            if not ratios:
+                continue
+            low, center, high = np.quantile(ratios, (0.25, 0.5, 0.75))
+            y = index + offsets[policy]
+            ablation.plot((low, high), (y, y), color=policy_colors[policy], lw=1.1)
+            ablation.scatter(center, y, s=12, color=policy_colors[policy], zorder=3,
+                             label=policy_labels[policy] if index == 0 else None)
+    ablation.axvline(1, color="#6B7280", lw=0.7, ls="--")
+    ablation.set_xscale("log")
+    compact_conditions = {
+        "no-op": "no-op",
+        "metadata\naffected cone": "metadata / cone",
+        "metadata\nunrelated": "metadata / other",
+        "value type\naffected cone": "type / cone",
+        "value type\nunrelated": "type / other",
+    }
+    ablation.set_yticks(range(len(conditions)),
+                        [compact_conditions[name] for name in conditions])
+    ablation.set_ylim(len(conditions) - 0.5, -1.5)
+    ablation.tick_params(axis="y", labelsize=5.5)
+    ablation.set_xlabel("Full / policy latency (median, IQR)")
+    ablation.set_title("(b) Policy ablation", loc="left")
+    ablation.grid(axis="x", color="#E7E9EC", lw=0.5)
+    for x, policy in zip((0.04, 0.36, 0.70), policy_order):
+        ablation.text(x, 0.94, policy_labels[policy], color=policy_colors[policy],
+                      fontsize=5.3, transform=ablation.transAxes, va="top")
+
+    ecdf = fig.add_subplot(grid[1, 1])
     independent: dict[str, list[float]] = defaultdict(list)
     for (_subject, _edit, _site, policy), values in summaries.items():
         if policy in {"full", "reactive"}:
@@ -134,10 +186,11 @@ def main() -> int:
     ecdf.xaxis.set_minor_formatter(NullFormatter())
     ecdf.set_xlabel("Edit-to-result latency (ms)")
     ecdf.set_ylabel("ECDF")
-    ecdf.legend(frameon=False)
+    ecdf.legend(frameon=False, fontsize=6, ncol=2, loc="lower right")
     ecdf.grid(color="#E7E9EC", lw=0.5)
+    ecdf.set_title("(c) Edit-to-result distribution", loc="left")
 
-    breakdown = fig.add_subplot(grid[1, 1])
+    breakdown = fig.add_subplot(grid[2, 1])
     reactive = [values for key, values in summaries.items() if key[3] == "reactive"]
     fields = [("select_ns", "select", "#66C2A5"),
               ("evaluate_ns", "evaluate", "#3288BD"),
@@ -165,7 +218,7 @@ def main() -> int:
                        fontsize=6.5)
     breakdown.set_ylim(0, 1.12)
     breakdown.set_ylabel("Component share")
-    breakdown.set_title("Reactive time composition")
+    breakdown.set_title("(d) Reactive time composition", loc="left")
     breakdown.grid(axis="y", color="#E7E9EC", lw=0.5)
 
     save(fig, args.output)
