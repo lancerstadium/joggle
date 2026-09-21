@@ -990,6 +990,6 @@ Revisions, observed dependencies, effect propagation,
 transactions, and cached execution plans make repeated compilation
 change-proportional. This organization connects the way an extension is
 written, the boundary in which it evolves, and the work required after it
-changes. The evaluation tests these claims separately through generation
-success, patch footprint, reactive update latency, artifact performance, and
-system overhead.
+changes. The evaluation provides separate evidence from extension completion,
+patch footprint, reactive update latency, artifact performance, and system
+overhead.
