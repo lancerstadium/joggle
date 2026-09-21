@@ -43,13 +43,23 @@ def task_scores(rows: list[dict[str, str]], k: int):
     return {key: pass_at_k(len(values), sum(values), k) for key, values in grouped.items()}
 
 
-def mean_interval(values: list[float], seed: int = 0) -> tuple[float, float, float]:
-    sample = np.asarray(values, dtype=float)
-    center = float(np.mean(sample))
-    if len(sample) == 1:
+def stratified_interval(
+    values: dict[str, list[float]], seed: int = 0,
+) -> tuple[float, float, float]:
+    strata = [np.asarray(values[family], dtype=float) for family in FAMILY_ORDER
+              if values.get(family)]
+    if not strata:
+        raise ValueError("cannot summarize an empty task population")
+    center = float(np.mean([np.mean(sample) for sample in strata]))
+    if sum(len(sample) for sample in strata) == 1:
         return center, center, center
     random = np.random.default_rng(seed)
-    means = np.mean(random.choice(sample, (10_000, len(sample)), replace=True), axis=1)
+    means = np.mean([
+        np.mean(
+            random.choice(sample, (10_000, len(sample)), replace=True), axis=1
+        )
+        for sample in strata
+    ], axis=0)
     low, high = np.quantile(means, (0.025, 0.975))
     return center, float(low), float(high)
 
@@ -84,7 +94,9 @@ def main() -> int:
                 task_values = [value for (m, s, task, demos), value in scores[1].items()
                                if m == model and s == system and demos == 4
                                and family_of[task] == family]
-                center, low, high = mean_interval(task_values, seed=family_index)
+                center, low, high = stratified_interval(
+                    {family: task_values}, seed=family_index
+                )
                 centers.append(center)
                 lower.append(center - low)
                 upper.append(high - center)
@@ -102,9 +114,13 @@ def main() -> int:
         for system in systems:
             centers, lower, upper = [], [], []
             for demos in (0, 1, 2, 4):
-                task_values = [value for (m, s, _task, count), value in scores[1].items()
-                               if m == model and s == system and count == demos]
-                center, low, high = mean_interval(task_values, seed=10 + demos)
+                task_values: dict[str, list[float]] = defaultdict(list)
+                for (m, s, task, count), value in scores[1].items():
+                    if m == model and s == system and count == demos:
+                        task_values[family_of[task]].append(value)
+                center, low, high = stratified_interval(
+                    task_values, seed=10 + demos
+                )
                 centers.append(center)
                 lower.append(center - low)
                 upper.append(high - center)

@@ -30,7 +30,7 @@ def main() -> int:
     args = parser.parse_args()
     rows = read_rows(args.csv, {"model", "system", "variant", "record_kind",
                                 "supported", "latency_ns", "peak_bytes",
-                                "artifact_bytes", "correct"})
+                                "artifact_bytes", "correct", "iteration", "seed"})
     grouped: dict[tuple[str, str, str], list[dict[str, str]]] = defaultdict(list)
     for row in rows:
         if truth(row["supported"]):
@@ -39,11 +39,14 @@ def main() -> int:
     models = sorted({row["model"] for row in rows})
     observed_variants = {row["variant"] for row in rows}
     variants = [variant for variant in VARIANT_ORDER if variant in observed_variants]
-    reference: dict[str, tuple[float, float]] = {}
+    reference: dict[str, dict[tuple[str, str], float]] = {}
     for model in models:
         sample = grouped.get((model, args.reference, "execute"), [])
         if sample:
-            reference[model] = median_p95(number(row, "latency_ns") for row in sample)
+            reference[model] = {
+                (row["iteration"], row["seed"]): number(row, "latency_ns")
+                for row in sample
+            }
 
     configure()
     fig, axes = plt.subplots(1, 3, figsize=(7.0, max(3.0, 0.22 * len(models))), sharey=True)
@@ -61,17 +64,24 @@ def main() -> int:
                 sample = grouped.get((model, variant, kind), [])
                 if not sample:
                     continue
-                field = "latency_ns" if metric == "latency_ratio" else metric
-                values = [number(row, field) for row in sample if row[field]]
-                if not values:
-                    continue
-                value, p95 = median_p95(values)
                 if metric == "latency_ratio":
                     if model not in reference:
                         continue
-                    reference_median, reference_p95 = reference[model]
-                    value /= reference_median
-                    p95 /= reference_p95
+                    expected = reference[model]
+                    observed = {(row["iteration"], row["seed"]) for row in sample}
+                    if observed != set(expected):
+                        raise SystemExit(
+                            f"latency observations are not paired for {model}/{variant}"
+                        )
+                    values = [
+                        number(row, "latency_ns") / expected[(row["iteration"], row["seed"])]
+                        for row in sample
+                    ]
+                else:
+                    values = [number(row, metric) for row in sample if row[metric]]
+                if not values:
+                    continue
+                value, p95 = median_p95(values)
                 xs.append(value)
                 tails.append(p95)
                 ys.append(index + offset)

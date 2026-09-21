@@ -50,13 +50,12 @@ def main() -> int:
                                       gridspec_kw={"height_ratios": [2.2, 1]})
     for cone in affected:
         points = sorted((total, value / 1e6,
-                         float(np.quantile(latency_samples[(total, a, policy)], 0.25)) / 1e6,
-                         float(np.quantile(latency_samples[(total, a, policy)], 0.75)) / 1e6)
+                         float(np.quantile(latency_samples[(total, a, policy)], 0.95)) / 1e6)
                         for (total, a, policy), value in latency.items()
                         if a == cone and policy == "reactive")
         if points:
-            xs, ys, lows, highs = map(np.asarray, zip(*points))
-            top.errorbar(xs, ys, yerr=(ys - lows, highs - ys), marker="o", ms=3,
+            xs, ys, p95s = map(np.asarray, zip(*points))
+            top.errorbar(xs, ys, yerr=(np.zeros_like(ys), p95s - ys), marker="o", ms=3,
                          lw=1, capsize=1.5, label=f"Reactive Δ={cone}")
         obs = sorted((total, value) for (total, a, policy), value in observed.items()
                      if a == cone and policy == "reactive")
@@ -68,11 +67,10 @@ def main() -> int:
             full[total].extend(value / 1e6 for value in values)
     if full:
         points = sorted((total, float(np.median(values)),
-                         float(np.quantile(values, 0.25)),
-                         float(np.quantile(values, 0.75)))
+                         float(np.quantile(values, 0.95)))
                         for total, values in full.items())
-        xs, ys, lows, highs = map(np.asarray, zip(*points))
-        top.errorbar(xs, ys, yerr=(ys - lows, highs - ys), color=COLORS["full"],
+        xs, ys, p95s = map(np.asarray, zip(*points))
+        top.errorbar(xs, ys, yerr=(np.zeros_like(ys), p95s - ys), color=COLORS["full"],
                      marker="s", ms=3, lw=1.2, capsize=1.5, label="Full")
     for axis in (top, bottom):
         axis.set_xscale("log")
