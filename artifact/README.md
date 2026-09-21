@@ -23,12 +23,12 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 
 cmake -DOUT=.cache/onnx-zoo -P test/tools/fetch_onnx_zoo.cmake
-python3 artifact/generate_operator_models.py \
-  --output .cache/artifact/operator-models
 python3 artifact/generate_benchmark_inputs.py \
-  --operator-models .cache/artifact/operator-models \
-  --model-root .cache/onnx-zoo \
   --output .cache/artifact/benchmark-inputs
+python3 artifact/generate_operator_models.py \
+  --inputs .cache/artifact/benchmark-inputs \
+  --output .cache/artifact/operator-models \
+  --verify-runtime
 ```
 
 The generators validate hashes and numerical fixtures before collection.
