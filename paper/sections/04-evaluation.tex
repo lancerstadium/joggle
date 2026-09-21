@@ -21,7 +21,7 @@ relevant correctness oracle enter an aggregate.
     Property & Comparison & Primary evidence \\
     \midrule
     Convenient & Joggle/MLIR/xDSL; 24 extensions & executable pass@1 \\
-    Controllable & same systems; 12 patches & files, lines, zones, declarations \\
+    Controllable & same systems; 12 matched patches & files, lines, zones, declarations \\
     Efficient & same systems; 15 model DAGs & normalized latency and revisited work \\
     End-to-end & Joggle base/optimized; ONNX Runtime & correctness and latency \\
     \bottomrule
@@ -58,24 +58,14 @@ type or operation definition, analysis, rewrite, conversion, artifact
 generation, and a vertical feature combining these roles. Every task has one
 semantic specification with fixed positive and negative fixtures, a
 system-specific harness, and an idiomatic reference solution that passes the
-common oracle. A separate demonstration bank uses
-disjoint features, so no definition, rewrite, converter, or emitter from an
-evaluation feature enters its prompt. The emitted extension enters the harness
-without manual repair; formatter changes and provided harness boilerplate are
-excluded from target-token counts.
+common oracle. Generated extensions enter the harness without manual repair.
 
 Two frozen open-weight code models in the 1--3B range receive the specification
 and a compact API card. Demonstration counts are $0,1,2,$ and $4$; examples
-come only from the demonstration bank through one deterministic retrieval rule
-and equal API-card and continuation token ceilings. Each condition draws 50
-samples. Sampling
-parameters, seeds, stopping rules, and maximum continuation length are fixed
-per model. Every observation pins the task specification, API card, prompt,
-and output by hash; paired conditions use identical demonstration IDs and
-sampling controls across systems. Demonstration sets are nested prefixes of a
-single deterministic ranking. Reference implementations remain in a separate
-bundle that is unavailable during generation. The bundle is opened only after
-all samples are frozen, for reference scoring and oracle execution.
+come from a disjoint bank under equal token ceilings. Each condition draws 50
+samples with paired sampling controls, producing 29,376 scored rows including
+the reference solutions. Appendix~\ref{app:extension} specifies isolation,
+hashing, and oracle phases.
 
 For reference tokens $x_{1:N}$ and context $c$,
 \[
@@ -104,12 +94,9 @@ local examples.
 \label{sec:eval-controllable}
 
 The footprint study reuses 12 tasks from the extension suite, two from each
-family. Selection is fixed from the semantic specifications before any patch
-metric is collected. Each implementation begins from a clean pinned snapshot
-and ends after the common oracle passes. A deterministic delta-debugging pass
-visits hunks in a fixed order and removes a hunk whenever the oracle continues
-to pass. It repeats to a fixed point, yielding an auditable 1-minimal patch
-under that hunk partition.
+family. Selection is fixed before patch metrics are collected. Each of the 36
+implementations begins from a clean pinned snapshot, passes the common oracle,
+and is reduced to a hunk-level fixed point.
 
 For patch $p$, the footprint is
 \[
@@ -118,10 +105,8 @@ For patch $p$, the footprint is
 where $F_p$ counts touched implementation files, $L_p$ counts added plus
 deleted implementation lines, $Z_p$ counts ownership zones, and $R_p$ counts
 changed build, registry, or pipeline declaration lines under a frozen policy.
-Test changes are reported in
-parallel. Frozen rules exclude generated, vendored, lock, and formatter-only
-changes; a zone is a source package or build target with one public
-responsibility.
+Test changes are reported in parallel. A zone is a source package or build
+target with one public responsibility.
 
 Every task reports all four coordinates, build and oracle status, dependency
 fan-out, and crossed ownership edges; in Joggle, these are declared
@@ -129,8 +114,8 @@ fan-out, and crossed ownership edges; in Joggle, these are declared
 zero registry or build edits, absolute paired counts are primary. We summarize
 the paired difference with a task-level bootstrap interval and report a ratio
 only when both counts are nonzero. Small rewrites and vertical features remain
-separate. The artifact includes patches, frozen zone maps, counting scripts,
-and every inclusion decision.
+separate. Appendix~\ref{app:patch} defines patch reduction, exclusions, and
+zone counting.
 
 \subsection{Reactive Update Cost}
 \label{sec:eval-efficient}
@@ -145,7 +130,9 @@ every stage establish equivalent results.
 
 A case changes operation metadata or a result type at a preselected early,
 middle, or late site. The edit targets either the downstream affected cone or
-an unrelated entity in the same function. Every system first performs a full
+an unrelated entity in the same function. The complete Cartesian matrix has
+108,000 timing rows: 15 models, three systems, three sites, two edit classes,
+two scopes, two paths, and 100 iterations. Every system first performs a full
 rerun. Joggle then performs a reactive update; MLIR and xDSL use their standard
 public pass pipelines after the edit. The primary endpoint normalizes each
 update to its own system's full rerun,
@@ -161,12 +148,7 @@ language and runtime differences out of the headline comparison. Absolute
 edit-to-result latency remains visible as a secondary measure. All paths begin
 from the same logical graph state, apply the same edit, and must produce the
 same final digest.
-
-One compact Joggle-only ablation explains the result rather than replacing the
-external comparison. It uses the smallest, median, and largest model to compare
-entity-level with whole-mod observations and cached with repeatedly decoded
-execution plans. Each ablation condition uses 30 repetitions; the independent
-unit is the model, not an interpreter iteration.
+Appendix~\ref{app:update} fixes adapter contracts and counter semantics.
 
 \subsection{End-to-End Performance}
 \label{sec:eval-artifacts}
@@ -182,8 +164,8 @@ byte-identical inputs and pass dtype-specific numerical oracles.
 The main measure is steady-state execution latency after ten warm-ups and 100
 measurements. Unsupported pairs remain as coverage outcomes instead of
 disappearing from the accepted set. Operator and model results share one figure
-and one CSV. Preparation time, memory, and artifact size are outside this
-question and are not collected by the release path.
+and one CSV, with up to 11,700 timed rows. Appendix~\ref{app:performance}
+specifies inputs, timing boundaries, and numerical tolerances.
 
 Together, generation characterizes the extension surface, patch footprint its
 ownership boundary, the cross-system update study its responsiveness, and the

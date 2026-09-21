@@ -48,7 +48,7 @@ def main() -> int:
                         "record": str(provider_record.resolve()),
                         "record_sha256": sha256(provider_record)})
     rows.sort(key=lambda row: (
-        row["track"], row["subject"], row["system"], row["edit_class"],
+        row["subject"], row["system"], row["edit_class"],
         row["edit_scope"], row["edit_site"], row["policy"],
         int(row["iteration"]), int(row["seed"]),
     ))

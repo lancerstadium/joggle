@@ -13,9 +13,8 @@ design is in [`PROTOCOL.md`](PROTOCOL.md). Raw measurements belong under
 | 6 · cross-system update | `figure-06-update.csv` | `figure_06_update.py` |
 | 7 · end-to-end performance | `figure-07-performance.csv` | `figure_07_performance.py` |
 
-The release path has no separate generated-scaling, preparation, memory, or
-artifact-size figure. Figure 6 keeps a three-model Joggle ablation as an inset.
-Figure 7 combines operator and model results.
+The release path contains only the four claim-facing figures above. Figure 7
+combines operator and model results.
 
 ## Build and inputs
 
@@ -98,13 +97,11 @@ python3 artifact/collect_footprint.py \
 
 ## Figure 6
 
-The shared CSV contains two tracks. `external` pairs `full` and `update` for
-Joggle, MLIR, and xDSL on all 15 models. `ablation` pairs `full`, `reactive`,
-`whole-mod`, and `no-plan-cache` for three representative models.
+The shared CSV pairs `full` and `update` for Joggle, MLIR, and xDSL on all 15
+models.
 
 ```sh
 python3 artifact/run_reactive.py \
-  --track external \
   --model-manifest artifact/manifests/reactive-models.csv \
   --model-root .cache/onnx-zoo \
   --output .cache/artifact/update-joggle.csv \
@@ -114,7 +111,6 @@ python3 artifact/merge_update_rows.py \
   .cache/artifact/update-joggle.csv \
   .cache/artifact/update-mlir.csv \
   .cache/artifact/update-xdsl.csv \
-  .cache/artifact/update-joggle-ablation.csv \
   --output .cache/artifact/figure-06-update.csv
 
 python3 artifact/validate_reactive.py \
@@ -124,10 +120,9 @@ python3 artifact/figures/figure_06_update.py \
   --output .cache/artifact/figure-06-update.pdf
 ```
 
-Run the ablation with `--track ablation`, 30 iterations, and the smallest,
-median, and largest model only. MLIR and xDSL adapters must implement the same
-edit, five logical stages, counters, and digest. The release gate rejects
-Figure 6 without the complete `update-assembly/v1` provenance file.
+MLIR and xDSL adapters must implement the same edit, five logical stages,
+counters, and digest. The release gate rejects Figure 6 without the complete
+`update-assembly/v1` provenance file.
 
 ## Figure 7
 

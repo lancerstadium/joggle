@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot Figure 6: cross-system incremental update cost and Joggle ablation."""
+"""Plot Figure 6: cross-system incremental update cost."""
 
 from __future__ import annotations
 
@@ -39,20 +39,18 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=Path("figure-06-update.pdf"))
     args = parser.parse_args()
     rows = read_rows(args.csv, {
-        "track", "system", "subject", "edit_class", "edit_scope", "edit_site",
+        "system", "subject", "edit_class", "edit_scope", "edit_site",
         "policy", "iteration", "wall_ns", "visited_ops", "total_ops",
         "output_digest", "correct", "seed",
     })
     rows = [row for row in rows if truth(row["correct"])]
-    external = [row for row in rows if row["track"] == "external"]
-    ablation = [row for row in rows if row["track"] == "ablation"]
-    latency = paired(external, "wall_ns")
-    work = paired(external, "visited_ops")
-    subjects = sorted({row["subject"] for row in external})
+    latency = paired(rows, "wall_ns")
+    work = paired(rows, "visited_ops")
+    subjects = sorted({row["subject"] for row in rows})
 
     configure()
     fig = plt.figure(figsize=(7.0, max(2.55, 0.16 * len(subjects))), constrained_layout=True)
-    grid = fig.add_gridspec(1, 4, width_ratios=(1.15, 1.15, 1.05, 0.82))
+    grid = fig.add_gridspec(1, 3, width_ratios=(1.18, 1.18, 1.05))
     y = np.arange(len(subjects))
     offsets = dict(zip(SYSTEMS, (-0.18, 0.0, 0.18)))
 
@@ -80,7 +78,7 @@ def main() -> int:
 
     axis = fig.add_subplot(grid[0, 2])
     absolute: dict[str, list[float]] = defaultdict(list)
-    for row in external:
+    for row in rows:
         if row["policy"] != "full":
             absolute[row["system"]].append(number(row, "wall_ns") / 1e6)
     for system in SYSTEMS:
@@ -95,35 +93,6 @@ def main() -> int:
     axis.set_title("(c) Absolute latency", loc="left")
     axis.grid(color="#E1E5EA", lw=0.5)
     axis.legend(frameon=False, fontsize=5.8, loc="lower right")
-
-    axis = fig.add_subplot(grid[0, 3])
-    policies = ("reactive", "whole-mod", "no-plan-cache")
-    labels = ("Reactive", "Whole-mod", "No cache")
-    # Re-pair each policy explicitly because the main helper aggregates policies.
-    policy_values: dict[str, list[float]] = defaultdict(list)
-    groups: dict[tuple[str, ...], dict[str, dict[str, str]]] = defaultdict(dict)
-    for row in ablation:
-        key = (row["subject"], row["edit_class"], row["edit_scope"], row["edit_site"],
-               row["iteration"], row["seed"])
-        groups[key][row["policy"]] = row
-    for group in groups.values():
-        if "full" not in group:
-            continue
-        full = number(group["full"], "wall_ns")
-        for policy in policies:
-            if policy in group:
-                policy_values[policy].append(number(group[policy], "wall_ns") / full)
-    positions = np.arange(len(policies))
-    boxes = axis.boxplot([policy_values[name] for name in policies], positions=positions,
-                         widths=0.55, showfliers=False, patch_artist=True)
-    for patch, policy in zip(boxes["boxes"], policies):
-        patch.set_facecolor(COLORS[policy]); patch.set_alpha(0.82)
-    axis.axhline(1, color="#737B87", ls="--", lw=0.7)
-    axis.set_yscale("log")
-    axis.set_xticks(positions, labels, rotation=35, ha="right")
-    axis.set_ylabel("Policy / Full")
-    axis.set_title("(d) Joggle ablation", loc="left")
-    axis.grid(axis="y", color="#E1E5EA", lw=0.5)
 
     save(fig, args.output)
     return 0

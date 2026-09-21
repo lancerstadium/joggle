@@ -625,23 +625,14 @@ type or operation definition, analysis, rewrite, conversion, artifact
 generation, and a vertical feature combining these roles. Every task has one
 semantic specification with fixed positive and negative fixtures, a
 system-specific harness, and an idiomatic reference solution that passes the
-common oracle. A separate demonstration bank uses
-disjoint features, so no definition, rewrite, converter, or emitter from an
-evaluation feature enters its prompt. The emitted extension enters the harness
-without manual repair; formatter changes and provided harness boilerplate are
-excluded from target-token counts.
+common oracle. Generated extensions enter the harness without manual repair.
 
 Two frozen open-weight code models in the 1--3B range receive the specification
 and a compact API card. Demonstration counts are $0,1,2,$ and $4$; examples
-come only from the demonstration bank through one deterministic retrieval rule
-and equal API-card and continuation token ceilings. Each condition draws 50 samples. Sampling
-parameters, seeds, stopping rules, and maximum continuation length are fixed
-per model. Every observation pins the task specification, API card, prompt,
-and output by hash; paired conditions use identical demonstration IDs and
-sampling controls across systems. Demonstration sets are nested prefixes of a
-single deterministic ranking. Reference implementations remain in a separate
-bundle that is unavailable during generation. The bundle is opened only after
-all samples are frozen, for reference scoring and oracle execution.
+come from a disjoint bank under equal token ceilings. Each condition draws 50
+samples with paired sampling controls, producing 29,376 scored rows including
+the reference solutions. Appendix A.1 specifies isolation, hashing, and oracle
+phases.
 
 For reference tokens $x_{1:N}$ and context $c$,
 
@@ -682,12 +673,9 @@ prompt_sha256,output_sha256,parsed,typed,built,passed. -->
 ### 4.3 Change Footprint and Ownership
 
 The footprint study reuses 12 tasks from the extension suite, two from each
-family. Selection is fixed from the semantic specifications before any patch
-metric is collected. Each implementation begins from a clean pinned snapshot
-and ends after the common oracle passes. A deterministic delta-debugging pass
-visits hunks in a fixed order and removes a hunk whenever the oracle continues
-to pass. It repeats to a fixed point, yielding an auditable 1-minimal patch
-under that hunk partition.
+family. Selection is fixed before patch metrics are collected. Each of the 36
+implementations begins from a clean pinned snapshot, passes the common oracle,
+and is reduced to a hunk-level fixed point.
 
 For patch $p$, the footprint is
 
@@ -698,10 +686,8 @@ $$
 where $F_p$ counts touched implementation files, $L_p$ counts added plus
 deleted implementation lines, $Z_p$ counts ownership zones, and $R_p$ counts
 changed build, registry, or pipeline declaration lines under a frozen policy.
-Test changes are reported in
-parallel. Frozen rules exclude generated, vendored, lock, and formatter-only
-changes; a zone is a source package or build target with one public
-responsibility.
+Test changes are reported in parallel. A zone is a source package or build
+target with one public responsibility.
 
 Every task reports all four coordinates, build and oracle status, dependency
 fan-out, and crossed ownership edges; in Joggle, these are declared `use`
@@ -709,8 +695,7 @@ edges. Because a baseline may require zero registry or
 build edits, absolute paired counts are primary. We summarize the paired
 difference with a task-level bootstrap interval and report a ratio only when
 both counts are nonzero. Small rewrites and vertical features remain separate.
-The artifact includes patches, frozen zone maps, counting scripts, and every
-inclusion decision.
+Appendix A.2 defines patch reduction, exclusions, and zone counting.
 
 <!-- FIGURE 5 PLAN — One-column dense paired-dot plot fed by one CSV and one
 plotting script. Rows are the 12 feature changes grouped by family; four narrow
@@ -734,7 +719,9 @@ digests after every stage establish equivalent results.
 
 A case changes operation metadata or a result type at a preselected early,
 middle, or late site. The edit targets either the downstream affected cone or
-an unrelated entity in the same function. Every system first performs a full
+an unrelated entity in the same function. The complete Cartesian matrix has
+108,000 timing rows: 15 models, three systems, three sites, two edit classes,
+two scopes, two paths, and 100 iterations. Every system first performs a full
 rerun. Joggle then performs a reactive update; MLIR and xDSL use their standard
 public pass pipelines after the edit. The primary endpoint normalizes each
 update to its own system's full rerun,
@@ -750,21 +737,14 @@ language and runtime differences out of the headline comparison. Absolute
 edit-to-result latency remains visible as a secondary measure. All paths begin
 from the same logical graph state, apply the same edit, and must produce the
 same final digest.
-
-One compact Joggle-only ablation explains the result rather than replacing the
-external comparison. It uses the smallest, median, and largest model to compare
-entity-level with whole-mod observations and cached with repeatedly decoded
-execution plans. Each ablation condition uses 30 repetitions; the independent
-unit is the model, not an interpreter iteration.
+Appendix A.3 fixes adapter contracts and counter semantics.
 
 <!-- FIGURE 6 PLAN — Full-width external comparison fed by one CSV and one
 plotting script. (a) Fifteen model rows show per-system UpdateRatio for Joggle,
 MLIR, and xDSL; every system's Full reference is 1. (b) The aligned WorkRatio
 panel reports visited/total graph entities for the same cases. (c) Absolute
-edit-to-result latency remains a compact log-scale panel. (d) A small inset for
-three representative models compares Joggle Reactive, Whole-mod, and
-No-plan-cache; it is explanatory, not the headline. CSV:
-figure-06-update.csv. Raw columns: track,system,system_revision,subject,
+edit-to-result latency remains a compact log-scale panel. CSV:
+figure-06-update.csv. Raw columns: system,system_revision,subject,
 subject_hash,total_ops,affected_ops,edit_class,edit_scope,edit_site,policy,
 iteration,wall_ns,visited_ops,executed_stages,total_stages,output_digest,
 correct,seed. -->
@@ -782,8 +762,8 @@ byte-identical inputs and pass dtype-specific numerical oracles.
 The main measure is steady-state execution latency after ten warm-ups and 100
 measurements. Unsupported pairs remain as coverage outcomes instead of
 disappearing from the accepted set. Operator and model results share one figure
-and one CSV. Preparation time, memory, and artifact size are outside this
-question and are not collected by the release path.
+and one CSV, with up to 11,700 timed rows. Appendix A.4 specifies inputs,
+timing boundaries, and numerical tolerances.
 
 <!-- FIGURE 7 PLAN — One full-width performance figure fed by one CSV and one
 plotting script. Left: 24 operators grouped by six families, showing Joggle
@@ -953,3 +933,57 @@ boundary in which it evolves, and selective work after it changes. The
 evaluation tests these properties through executable extension completion,
 paired patch footprint, and reactive update cost while measuring generated
 artifacts independently.
+
+## Appendix A. Evaluation Details
+
+This appendix fixes the collection rules behind the four result figures. The
+release gate accepts a figure only when its CSV, provenance record, inputs, and
+rendered output agree by SHA-256 digest.
+
+### A.1 Extension Tasks and Oracles
+
+The 24 evaluation tasks and the demonstration bank contain disjoint feature
+identities. Demonstrations are nested prefixes of one deterministic ranking,
+so increasing the count adds context without replacing earlier examples. A
+sealed reference bundle is unavailable during generation and opens only after
+all model outputs are frozen. Each output is classified at its first failing
+phase: parse, type, build, or semantic oracle. Formatting changes and supplied
+harness boilerplate do not count toward generated target tokens. Every row
+binds the model revision, task specification, API card, prompt, output,
+demonstration IDs, and sampling seed.
+
+### A.2 Patch Reduction and Ownership Zones
+
+Each matched implementation starts at a pinned clean revision. Hunk-level
+delta debugging visits candidate hunks in a fixed order, removes one, and keeps
+the removal only when the build and semantic oracle still pass. Iteration ends
+at a 1-minimal fixed point under that partition. The frozen counting policy
+excludes generated files, vendored sources, lock files, and formatter-only
+changes. Implementation and test changes remain separate. Ownership zones are
+source packages or build targets with one public responsibility; crossed edges
+count dependencies between those zones. The artifact binds the base revision,
+final patch, reduction trace, zone map, and oracle output.
+
+### A.3 Update Adapter Contract
+
+Each adapter consumes the same neutral typed graph and exposes five logical
+stages: analysis, canonicalization, target selection, memory planning, and
+artifact-manifest construction. Counters report visited graph entities and
+executed stages over the timed interval. A case selects an early, middle, or
+late operation, changes either operation metadata or a result type, and targets
+either its affected cone or an unrelated entity. The full and update paths
+start from identical published state. Stage digests and the final canonical
+digest must match within a system and across systems. The validator requires
+every cell in the 15-by-3-by-3-by-2-by-2-by-2-by-100 matrix.
+
+### A.4 Artifact Performance Protocol
+
+The operator corpus contains four cases in each of six families. Model and
+operator variants consume byte-identical, hash-bound tensors. Collection pins
+compiler and runtime revisions, release flags, CPU affinity, thread count, and
+seed. Timing begins immediately before artifact invocation and ends after
+completion; graph loading, input generation, and compilation stay outside the
+interval. Each supported pair runs ten warm-ups and 100 recorded iterations.
+Floating-point outputs use dtype-specific absolute and relative tolerances;
+integer and Boolean outputs require exact equality. Unsupported pairs retain a
+reason and contribute to coverage, but not to latency ratios.

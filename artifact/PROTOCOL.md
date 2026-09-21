@@ -11,6 +11,11 @@ increase the number of independent tasks, patches, or models.
 | 6 | Efficient update | Joggle, MLIR, xDSL | 15 model graphs | Update/Full time and visited work |
 | 7 | End-to-end performance | Joggle base/opt, ONNX Runtime | 24 operators and 15 models | steady-state latency and correct coverage |
 
+The complete release contains 29,376 Figure 4 rows, 36 Figure 5 patch rows,
+108,000 Figure 6 timing rows, and up to 11,700 Figure 7 timing rows. Repeated
+rows estimate each independent task, patch, operator, or model; they are never
+treated as additional independent subjects.
+
 ## Common controls
 
 Pin revisions, model hashes, compiler flags, hardware, affinity, thread count,
@@ -64,16 +69,17 @@ construction.
 For early, middle, and late edit sites, the experiment applies matched metadata
 and value-type edits to an affected or unrelated location. `full` reruns all
 five stages. `update` uses the public incremental mechanism available in the
-system. The primary measurements are:
+system. The Cartesian matrix is 15 models x 3 systems x 3 sites x 2 edit
+classes x 2 scopes x 2 policies x 100 iterations = 108,000 rows. The release
+validator rejects a missing or additional cell. The primary measurements are:
 
 \[
 \mathrm{UpdateRatio}_s=T_{\mathrm{update},s}/T_{\mathrm{full},s},\qquad
 \mathrm{WorkRatio}_s=V_{\mathrm{update},s}/V_{\mathrm{full},s}.
 \]
 
-Absolute edit-to-result latency remains visible. A small Joggle-only ablation
-uses the smallest, median, and largest models to compare entity-level vs.
-whole-mod observations and cached vs. repeatedly decoded execution plans.
+Absolute edit-to-result latency remains visible. Internal scheduler policies
+are implementation diagnostics and do not enter the paper comparison.
 
 - Model index: `manifests/reactive-models.csv`
 - CSV: `templates/figure-06-update.csv`

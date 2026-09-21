@@ -10,8 +10,12 @@ from collections import defaultdict
 from pathlib import Path
 
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
-EXTERNAL = {"full", "update"}
-ABLATION = {"full", "reactive", "whole-mod", "no-plan-cache"}
+POLICIES = {"full", "update"}
+SYSTEMS = {"Joggle", "MLIR", "xDSL"}
+EDIT_CLASSES = {"operation_metadata", "value_type"}
+EDIT_SCOPES = {"affected", "unrelated"}
+EDIT_SITES = {"early", "middle", "late"}
+ITERATIONS = set(range(100))
 
 
 def main() -> int:
@@ -33,8 +37,6 @@ def main() -> int:
     groups: dict[tuple[str, ...], list[dict[str, str]]] = defaultdict(list)
     seen: set[tuple[str, ...]] = set()
     for line, row in enumerate(rows, start=2):
-        if row["track"] not in {"external", "ablation"}:
-            raise SystemExit(f"line {line}: unknown track")
         if not row["system"] or not row["system_revision"] or not row["subject"]:
             raise SystemExit(f"line {line}: missing system or subject identity")
         if not SHA256.fullmatch(row["subject_hash"]):
@@ -51,52 +53,85 @@ def main() -> int:
             raise SystemExit(f"line {line}: time and total_ops must be positive")
         if int(row["affected_ops"]) > int(row["total_ops"]):
             raise SystemExit(f"line {line}: affected_ops exceeds total_ops")
+        if row["policy"] not in POLICIES:
+            raise SystemExit(f"line {line}: policy must be full or update")
+        if row["edit_class"] not in EDIT_CLASSES:
+            raise SystemExit(f"line {line}: edit_class is outside the release matrix")
+        if row["edit_scope"] not in EDIT_SCOPES:
+            raise SystemExit(f"line {line}: edit_scope is outside the release matrix")
+        if row["edit_site"] not in EDIT_SITES:
+            raise SystemExit(f"line {line}: edit_site is outside the release matrix")
         if row["correct"] != "true" or not SHA256.fullmatch(row["output_digest"]):
             raise SystemExit(f"line {line}: correctness or digest gate failed")
-        identity = (row["track"], row["system"], row["system_revision"], row["subject"],
+        identity = (row["system"], row["system_revision"], row["subject"],
                     row["edit_class"], row["edit_scope"], row["edit_site"],
                     row["policy"], row["iteration"], row["seed"])
         if identity in seen:
             raise SystemExit(f"line {line}: duplicate primary key")
         seen.add(identity)
-        comparison = identity[:4] + identity[4:7] + identity[8:]
+        comparison = identity[:6] + identity[7:]
         groups[comparison].append(row)
 
     for key, group in groups.items():
-        expected_policies = EXTERNAL if key[0] == "external" else ABLATION
         policies = {row["policy"] for row in group}
-        if not args.allow_partial and policies != expected_policies:
-            raise SystemExit(f"group {key}: expected {sorted(expected_policies)}, found {sorted(policies)}")
+        if policies != POLICIES:
+            raise SystemExit(f"group {key}: expected full and update")
         if len({row["output_digest"] for row in group}) != 1:
             raise SystemExit(f"group {key}: policies produced different outputs")
+
     semantic_outputs: dict[tuple[str, ...], set[str]] = defaultdict(set)
+    systems_by_subject: dict[str, set[str]] = defaultdict(set)
+    revisions_by_system: dict[str, set[str]] = defaultdict(set)
+    hashes_by_subject: dict[str, set[str]] = defaultdict(set)
+    seeds: set[int] = set()
     for row in rows:
-        if row["track"] == "external":
-            key = (row["subject"], row["edit_class"], row["edit_scope"],
-                   row["edit_site"], row["iteration"], row["seed"])
-            semantic_outputs[key].add(row["output_digest"])
+        key = (row["subject"], row["edit_class"], row["edit_scope"],
+               row["edit_site"], row["iteration"], row["seed"])
+        semantic_outputs[key].add(row["output_digest"])
+        systems_by_subject[row["subject"]].add(row["system"])
+        revisions_by_system[row["system"]].add(row["system_revision"])
+        hashes_by_subject[row["subject"]].add(row["subject_hash"])
+        seeds.add(int(row["seed"]))
     if any(len(digests) != 1 for digests in semantic_outputs.values()):
-        raise SystemExit("external systems produced different canonical outputs")
+        raise SystemExit("systems produced different canonical outputs")
     if not args.allow_partial:
-        tracks = {row["track"] for row in rows}
-        if tracks != {"external", "ablation"}:
-            raise SystemExit("Figure 6 requires external and ablation tracks")
-        external = [row for row in rows if row["track"] == "external"]
-        if {row["system"] for row in external} != {"Joggle", "MLIR", "xDSL"}:
-            raise SystemExit("external track requires Joggle, MLIR, and xDSL")
-        systems_by_subject: dict[str, set[str]] = defaultdict(set)
-        for row in external:
-            systems_by_subject[row["subject"]].add(row["system"])
-        if len(systems_by_subject) != 15 or any(
-            systems != {"Joggle", "MLIR", "xDSL"}
-            for systems in systems_by_subject.values()
+        if set(revisions_by_system) != SYSTEMS or any(
+            len(revisions) != 1 for revisions in revisions_by_system.values()
         ):
-            raise SystemExit("external track requires 15 subjects paired across systems")
-        ablation_subjects = {row["subject"] for row in rows if row["track"] == "ablation"}
-        if len(ablation_subjects) != 3 or any(
-            row["system"] != "Joggle" for row in rows if row["track"] == "ablation"
+            raise SystemExit("Figure 6 requires one pinned revision per system")
+        if any(len(hashes) != 1 for hashes in hashes_by_subject.values()):
+            raise SystemExit("Figure 6 subject hashes differ across systems")
+        if len(seeds) != 1:
+            raise SystemExit("Figure 6 requires one paired seed")
+        if (
+            len(systems_by_subject) != 15
+            or any(systems != SYSTEMS for systems in systems_by_subject.values())
         ):
-            raise SystemExit("ablation track requires three Joggle subjects")
+            raise SystemExit("Figure 6 requires 15 subjects paired across three systems")
+        expected_conditions = {
+            (system, subject, edit_class, edit_scope, edit_site, policy, iteration)
+            for system in SYSTEMS
+            for subject in systems_by_subject
+            for edit_class in EDIT_CLASSES
+            for edit_scope in EDIT_SCOPES
+            for edit_site in EDIT_SITES
+            for policy in POLICIES
+            for iteration in ITERATIONS
+        }
+        observed_conditions = {
+            (row["system"], row["subject"], row["edit_class"], row["edit_scope"],
+             row["edit_site"], row["policy"], int(row["iteration"]))
+            for row in rows
+        }
+        if observed_conditions != expected_conditions:
+            missing = len(expected_conditions - observed_conditions)
+            extra = len(observed_conditions - expected_conditions)
+            raise SystemExit(
+                f"Figure 6 matrix is incomplete: {missing} missing, {extra} unexpected cells"
+            )
+        if len(rows) != 108_000:
+            raise SystemExit(f"Figure 6 requires 108000 rows, found {len(rows)}")
+
     print(f"validated {len(rows)} Figure 6 rows in {len(groups)} paired groups")
     return 0
 

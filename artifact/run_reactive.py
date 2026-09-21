@@ -33,16 +33,15 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--stages", type=int, nargs="+", default=[5])
-    parser.add_argument("--track", choices=("external", "ablation"), default="external")
     subjects = parser.add_mutually_exclusive_group()
     subjects.add_argument("--models", type=Path, nargs="+")
     subjects.add_argument("--model-manifest", type=Path)
     parser.add_argument("--model-root", type=Path)
     parser.add_argument(
         "--edit-classes",
-        choices=("no_op", "operation_metadata", "value_type"),
+        choices=("operation_metadata", "value_type"),
         nargs="+",
-        default=["no_op", "operation_metadata", "value_type"],
+        default=["operation_metadata", "value_type"],
     )
     parser.add_argument(
         "--scopes",
@@ -54,7 +53,7 @@ def parse_args() -> argparse.Namespace:
         "--sites",
         choices=("early", "middle", "late"),
         nargs="+",
-        default=["late"],
+        default=["early", "middle", "late"],
     )
     parser.add_argument("--warmups", type=int, default=10)
     parser.add_argument("--iterations", type=int, default=100)
@@ -90,7 +89,7 @@ def configure(repo: Path, build: Path, persistent: bool, onnx: bool) -> Path:
     return build / "artifact" / f"joggle-artifact-reactive{suffix}"
 
 
-def append_csv(source: Path, output: Path, write_header: bool, track: str) -> bool:
+def append_csv(source: Path, output: Path, write_header: bool) -> bool:
     with source.open(newline="", encoding="utf-8") as stream:
         rows = list(csv.DictReader(stream))
     if not rows:
@@ -103,11 +102,11 @@ def append_csv(source: Path, output: Path, write_header: bool, track: str) -> bo
         if write_header:
             writer.writeheader()
         for row in rows:
-            policy = "update" if track == "external" and row["policy"] == "reactive" else row["policy"]
-            if track == "external" and policy not in {"full", "update"}:
+            policy = "update" if row["policy"] == "reactive" else row["policy"]
+            if policy not in {"full", "update"}:
                 continue
             writer.writerow({
-                "track": track, "system": "Joggle", "system_revision": row["system_revision"],
+                "system": "Joggle", "system_revision": row["system_revision"],
                 "subject": row["subject"], "subject_hash": row["subject_hash"],
                 "total_ops": row["total_ops"], "affected_ops": row["affected_ops"],
                 "edit_class": row["edit_class"], "edit_scope": row["edit_scope"],
@@ -211,7 +210,6 @@ def main() -> int:
 
     onnx = bool(models)
     persistent = configure(repo, build_root / "persistent", True, onnx)
-    no_plans = configure(repo, build_root / "no-plans", False, onnx)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     job_records: list[dict[str, object]] = []
     jobs: list[tuple[Path, list[str]]] = []
@@ -224,8 +222,6 @@ def main() -> int:
             for site in sites:
                 label = f"{subject['name']}-{subject['sha256'][:12]}-{site}"
                 runs = ((persistent, "full"), (persistent, "reactive"))
-                if args.track == "ablation":
-                    runs += ((persistent, "whole-mod"), (no_plans, "no-plan-cache"))
                 for edit_class in args.edit_classes:
                     for binary, policy in runs:
                         partial = build_root / (
@@ -252,10 +248,7 @@ def main() -> int:
                             "--seed",
                             str(args.seed),
                         ]
-                        if (
-                            edit_class != "no_op"
-                            and len(args.scopes) == 1
-                        ):
+                        if len(args.scopes) == 1:
                             invocation.extend(["--scope", args.scopes[0]])
                         invocation.extend([
                             "--input", str(subject["path"]),
@@ -301,7 +294,7 @@ def main() -> int:
         pass
     write_header = True
     for partial, _invocation in jobs:
-        write_header = append_csv(partial, merged, write_header, args.track)
+        write_header = append_csv(partial, merged, write_header)
 
     command(
         [
@@ -321,7 +314,6 @@ def main() -> int:
         "platform": platform.platform(),
         "python": platform.python_version(),
         "cmake": command(["cmake", "--version"], repo, capture=True).splitlines()[0],
-        "track": args.track,
         "stages": args.stages,
         "models": [
             {"name": model["name"], "sha256": model["sha256"]}
