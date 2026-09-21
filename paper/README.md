@@ -587,15 +587,19 @@ Only outputs that pass the relevant correctness oracle enter an aggregate.
 | --- | --- |
 | Unified language | 24 Joggle/MLIR/xDSL tasks; pass@$k$ and log-PPL |
 | Mods | 12 reused tasks; files, lines, zones, and fan-out |
-| Reactive execution | 15 models, generated graphs, four policies; latency, work, and reuse |
+| Reactive execution | Joggle on 15 models and generated graphs; four policies, latency, work, and reuse |
 | Artifact path | operator and accepted-model suites; latency, memory, and size |
 
-*Table 1: Evaluation matrix. All systems use pinned revisions and a shared
-semantic oracle.*
+*Table 1: Evaluation matrix. Every comparison fixes revisions, inputs, and its
+correctness oracle before measurement.*
 
-**Subjects and controls.** MLIR provides a mature multi-level compiler
-baseline; xDSL provides a Python-native SSA framework. Each task follows the
-system's documented extension path from a pinned revision. The model corpus
+**Subjects and controls.** The extension and footprint studies compare Joggle
+with MLIR, a mature multi-level compiler infrastructure, and xDSL, a
+Python-native SSA framework. Each matched task follows the system's documented
+extension path from a pinned revision. The update study instead compares four
+Joggle execution policies over identical graph states and edits, isolating
+dependency precision and plan reuse without conflating them with differences
+among compiler pipelines. The model corpus
 contains 15 SHA-256-pinned ONNX models spanning classification, detection,
 quantized networks, and vision transformers. Results retain every compatibility
 outcome; aggregates over model execution use the accepted intersection.
@@ -606,8 +610,8 @@ fan-out, and stage count independently.
 oracles; graph transformations use verification and canonical structural
 digests; artifacts use reference tensors with dtype-specific tolerances. A
 failed oracle remains visible in coverage results but never contributes a
-latency or speedup. Latency cases run ten warm-ups followed by 100 measurements
-in a seeded random order. We report medians and 95th percentiles per subject;
+latency or speedup. Warm-path latency cases run ten warm-ups followed by 100
+measurements in a seeded random order. We report medians and 95th percentiles per subject;
 confidence intervals resample the independent unit---task, graph, operator, or
 model---rather than repeated timings. Ratios are formed within a subject before
 geometric aggregation. Every raw row records revisions, build flags, host and
@@ -749,15 +753,16 @@ entities; compiler-function operations; plan hits; and miss reasons. For
 policy $p$, speedup is $T_{Full}/T_p$ and work reuse is
 $1-E_p/E_{Full}$, where $E$ is executed compiler-function operations.
 
-The model corpus supplies realistic graph structures for the within-Joggle
-mechanism study. Generated graphs separate $|G|$ from affected scope
-$|\Delta G|$: one sweep fixes a one-operation edit while scaling $|G|$;
-another fixes $|G|$ while increasing $|\Delta G|$. The cross-system track uses
-the same neutral generated DAG, analysis, rewrite, edit, and output digest in
-Joggle, MLIR, and xDSL. It therefore compares update policies without making
-frontend coverage part of the result. Cold measurements include process
-startup, parsing, and setup; warm measurements retain each system's public
-graph and pass infrastructure.
+The model corpus supplies realistic graph structures for the mechanism study.
+Generated graphs then separate total graph size $|G|$ from affected scope
+$|\Delta G|$. One sweep fixes a one-operation edit while scaling $|G|$; a
+second fixes $|G|$ while increasing $|\Delta G|$. Each policy starts from a
+byte-identical graph and establishes the same five compiler properties. The
+Full policy scans the complete function; the other policies use the same
+affected-cone implementations while varying stage selection, observation
+granularity, or plan reuse. Cold measurements include process startup,
+parsing, verification, and plan construction; warm measurements retain the
+loaded graph and evaluator state.
 
 Cold-path accounting separates loading, parsing, verification, plan
 construction, and first execution; warm accounting separates selection,
