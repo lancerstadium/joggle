@@ -44,7 +44,7 @@ struct Config {
   std::string input;
   std::string subject_hash;
   std::string policy = "all";
-  std::string edit = "all";
+  std::string scope = "all";
   std::string site = "late";
   std::size_t total_nodes = 1000;
   std::size_t affected_nodes = 8;
@@ -131,7 +131,7 @@ int usage() {
   std::cerr
       << "usage: joggle-artifact-reactive --modules DIR --output FILE "
          "--revision GIT [--policy all|full|suffix|reactive|whole-mod|"
-         "no-plan-cache] [--edit all|affected|unrelated] "
+         "no-plan-cache] [--scope all|affected|unrelated] "
          "[--site early|middle|late] "
          "[--input MODEL.onnx --subject-hash SHA256] "
          "[--total-nodes N] [--affected-nodes N] [--warmups N] "
@@ -157,8 +157,8 @@ bool parse_args(int argc, char** argv, Config& config) {
       config.subject_hash = value;
     else if (key == "--policy")
       config.policy = value;
-    else if (key == "--edit")
-      config.edit = value;
+    else if (key == "--scope")
+      config.scope = value;
     else if (key == "--site")
       config.site = value;
     else if (key == "--total-nodes") {
@@ -204,8 +204,8 @@ bool parse_args(int argc, char** argv, Config& config) {
       config.policy == "all" || config.policy == "full" ||
       config.policy == "suffix" || config.policy == "reactive" ||
       config.policy == "whole-mod" || config.policy == "no-plan-cache";
-  const bool edit_ok = config.edit == "all" || config.edit == "affected" ||
-                       config.edit == "unrelated";
+  const bool scope_ok = config.scope == "all" || config.scope == "affected" ||
+                        config.scope == "unrelated";
   const bool site_ok = config.site == "early" || config.site == "middle" ||
                        config.site == "late";
   const bool generated = config.input.empty() && config.subject_hash.empty() &&
@@ -214,7 +214,7 @@ bool parse_args(int argc, char** argv, Config& config) {
                          config.fanout > 0;
   const bool model = !config.input.empty() && !config.subject_hash.empty();
   return !config.modules.empty() && !config.output.empty() &&
-         !config.revision.empty() && policy_ok && edit_ok && site_ok &&
+         !config.revision.empty() && policy_ok && scope_ok && site_ok &&
          (generated || model) && config.stage_count > 0 &&
          config.stage_count <= stages.size() && config.iterations > 0;
 }
@@ -431,9 +431,10 @@ bool prepare(const Config& config, Subject& subject) {
   return true;
 }
 
-bool edit_subject(Subject& subject, std::string_view edit,
+bool edit_subject(Subject& subject, std::string_view scope,
                   std::int64_t value) {
-  const joggle::Op operation = edit == "affected" ? subject.hot : subject.cold;
+  const joggle::Op operation =
+      scope == "affected" ? subject.hot : subject.cold;
   if (subject.generated)
     return subject.mod.replace(operation, joggle::Attr(value));
   return subject.mod.set(operation, "artifact.input_revision",
@@ -459,10 +460,10 @@ std::vector<std::string> policies(const Config& config) {
 #endif
 }
 
-std::vector<std::string> edits(const Config& config) {
-  return config.edit == "all"
+std::vector<std::string> scopes(const Config& config) {
+  return config.scope == "all"
              ? std::vector<std::string>{"affected", "unrelated"}
-             : std::vector<std::string>{config.edit};
+             : std::vector<std::string>{config.scope};
 }
 
 bool compatible_policy(std::string_view policy) {
@@ -474,7 +475,7 @@ bool compatible_policy(std::string_view policy) {
 }
 
 bool benchmark(const Config& config, std::ofstream& output,
-               std::string_view policy, std::string_view edit,
+               std::string_view policy, std::string_view scope,
                std::map<std::string, std::string, std::less<>>& expected) {
   Subject subject;
   if (!prepare(config, subject)) {
@@ -514,11 +515,11 @@ bool benchmark(const Config& config, std::ofstream& output,
     return false;
   }
 
-  const std::uint64_t offset = edit == "affected" ? UINT64_C(1000000)
-                                                   : UINT64_C(2000000);
+  const std::uint64_t offset = scope == "affected" ? UINT64_C(1000000)
+                                                    : UINT64_C(2000000);
   for (std::size_t index = 0; index < config.warmups; ++index) {
     const auto value = static_cast<std::int64_t>(offset + config.seed + index);
-    if (!edit_subject(subject, edit, value) || !execute(report, profile)) {
+    if (!edit_subject(subject, scope, value) || !execute(report, profile)) {
       subject.env.print_diags(stderr);
       return false;
     }
@@ -527,7 +528,7 @@ bool benchmark(const Config& config, std::ofstream& output,
   for (std::size_t index = 0; index < config.iterations; ++index) {
     const auto value = static_cast<std::int64_t>(
         offset + config.seed + config.warmups + index);
-    if (!edit_subject(subject, edit, value))
+    if (!edit_subject(subject, scope, value))
       return false;
     report = {};
     profile = {};
@@ -541,7 +542,7 @@ bool benchmark(const Config& config, std::ofstream& output,
       subject.mod.print_diags(stderr);
     }
     const std::string output_digest = digest(joggle::print(subject.mod));
-    const std::string key = std::string(edit) + ":" + std::to_string(index);
+    const std::string key = std::string(scope) + ":" + std::to_string(index);
     const auto [position, inserted] = expected.emplace(key, output_digest);
     const bool correct = verified &&
                          (inserted || position->second == output_digest);
@@ -550,8 +551,8 @@ bool benchmark(const Config& config, std::ofstream& output,
     output << "joggle," << csv(config.revision) << ',' << csv(subject.name) << ','
            << subject.source_hash << ',' << subject.total_ops << ','
            << subject.affected_ops << ',' << subject.fanout << ','
-           << config.stage_count << ',' << edit << ','
-           << csv(edit == "affected" ? subject.hot_site : subject.cold_site)
+           << config.stage_count << ",operation_metadata," << scope << ','
+           << csv(scope == "affected" ? subject.hot_site : subject.cold_site)
            << ','
            << policy << ",warm," << index << ',' << wall.count() << ','
            << measured.select_ns << ',' << measured.evaluate_ns << ','
@@ -588,16 +589,17 @@ int main(int argc, char** argv) {
     return 1;
   }
   output << "system,system_revision,subject,subject_hash,total_ops,"
-            "affected_ops,fanout,stages,edit_class,edit_site,policy,"
-            "cache_state,iteration,wall_ns,select_ns,evaluate_ns,verify_ns,"
+            "affected_ops,fanout,stages,edit_class,edit_scope,edit_site,"
+            "policy,cache_state,iteration,wall_ns,select_ns,evaluate_ns,"
+            "verify_ns,"
             "executed_stages,reused_stages,observed_ops,observed_values,"
             "changed_functions,evaluated_ops,plan_compiles,plan_hits,"
             "miss_reason,output_digest,correct,seed\n";
 
   std::map<std::string, std::string, std::less<>> expected;
   for (const std::string& policy : policies(config))
-    for (const std::string& edit : edits(config))
-      if (!benchmark(config, output, policy, edit, expected))
+    for (const std::string& scope : scopes(config))
+      if (!benchmark(config, output, policy, scope, expected))
         return 1;
   return output ? 0 : 1;
 }

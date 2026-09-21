@@ -10,6 +10,8 @@ from pathlib import Path
 
 
 POLICIES = {"full", "suffix", "reactive", "whole-mod", "no-plan-cache"}
+EDIT_CLASSES = {"operation_metadata"}
+EDIT_SCOPES = {"affected", "unrelated"}
 UNSIGNED = {
     "total_ops",
     "affected_ops",
@@ -55,6 +57,8 @@ def main() -> int:
         "subject",
         "subject_hash",
         "edit_class",
+        "edit_scope",
+        "edit_site",
         "policy",
         "iteration",
         "output_digest",
@@ -78,6 +82,10 @@ def main() -> int:
                 raise SystemExit(f"line {line}: {name} is negative")
         if row["policy"] not in POLICIES:
             raise SystemExit(f"line {line}: unknown policy {row['policy']}")
+        if row["edit_class"] not in EDIT_CLASSES:
+            raise SystemExit(f"line {line}: unknown edit class {row['edit_class']}")
+        if row["edit_scope"] not in EDIT_SCOPES:
+            raise SystemExit(f"line {line}: unknown edit scope {row['edit_scope']}")
         if row["correct"] != "true":
             raise SystemExit(f"line {line}: correctness gate failed")
         identity = (
@@ -86,6 +94,7 @@ def main() -> int:
             row["subject"],
             row["subject_hash"],
             row["edit_class"],
+            row["edit_scope"],
             row["edit_site"],
             row["stages"],
             row["policy"],
@@ -102,6 +111,7 @@ def main() -> int:
             row["subject"],
             row["subject_hash"],
             row["edit_class"],
+            row["edit_scope"],
             row["edit_site"],
             row["stages"],
             row["cache_state"],

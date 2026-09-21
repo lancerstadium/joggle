@@ -116,11 +116,11 @@ An update case begins with a verified optimized graph, applies one controlled
 edit, restores the required compiler result, and checks its semantic digest.
 The fixed pipeline performs analysis, canonicalization, target selection or
 legalization, memory planning, and artifact preparation. Its six edit classes
-are no-op, value metadata, value type, operation operands or callee,
-function-local topology, and mod dependency or environment. Sites are chosen
-before timing at early, middle, and late topological positions among editable
-entry-block computations. Each case records the selected operation and its
-measured affected scope.
+are no-op, operation or value metadata, value type, operation operands or
+callee, function-local topology, and mod dependency or environment. Sites are
+chosen before timing at early, middle, and late topological positions among
+editable entry-block computations. Each case records the selected operation and
+its measured affected scope.
 
 Five policies isolate the mechanisms. \textbf{Full} reruns every stage;
 \textbf{Suffix} reruns from the first possibly affected stage;

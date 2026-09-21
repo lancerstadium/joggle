@@ -761,11 +761,11 @@ An update case begins with a verified optimized graph, applies one controlled
 edit, restores the required compiler result, and checks its semantic digest.
 The fixed pipeline performs analysis, canonicalization, target selection or
 legalization, memory planning, and artifact preparation. Its six edit classes
-are no-op, value metadata, value type, operation operands or callee,
-function-local topology, and mod dependency or environment. Sites are chosen
-before timing at early, middle, and late topological positions among editable
-entry-block computations. Each case records the selected operation and its
-measured affected scope.
+are no-op, operation or value metadata, value type, operation operands or
+callee, function-local topology, and mod dependency or environment. Sites are
+chosen before timing at early, middle, and late topological positions among
+editable entry-block computations. Each case records the selected operation and
+its measured affected scope.
 
 Five policies isolate the mechanisms. **Full** reruns every stage; **Suffix**
 reruns from the first possibly affected stage; **Reactive** validates recorded
@@ -792,8 +792,8 @@ speedup for every one of the 16 models by edit class; annotate executed/total
 stages in each cell. Right-top: ECDF of edit-to-result latency for Full, Suffix,
 Reactive. Right-bottom: stacked selection/evaluation/verification time for
 p50 and p95. CSV schema: system,system_revision,subject,subject_hash,total_ops,
-affected_ops,fanout,stages,edit_class,edit_site,policy,cache_state,iteration,
-wall_ns,select_ns,evaluate_ns,verify_ns,executed_stages,reused_stages,
+affected_ops,fanout,stages,edit_class,edit_scope,edit_site,policy,cache_state,
+iteration,wall_ns,select_ns,evaluate_ns,verify_ns,executed_stages,reused_stages,
 observed_ops,observed_values,changed_functions,evaluated_ops,plan_compiles,
 plan_hits,miss_reason,output_digest,correct,seed. -->
 

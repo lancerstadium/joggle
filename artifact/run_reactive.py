@@ -36,6 +36,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stages", type=int, nargs="+", default=[5])
     parser.add_argument("--models", type=Path, nargs="+")
     parser.add_argument(
+        "--scopes",
+        choices=("affected", "unrelated"),
+        nargs="+",
+        default=["affected", "unrelated"],
+    )
+    parser.add_argument(
         "--sites",
         choices=("early", "middle", "late"),
         nargs="+",
@@ -205,6 +211,8 @@ def main() -> int:
                         "--seed",
                         str(args.seed),
                     ]
+                    if len(args.scopes) == 1:
+                        invocation.extend(["--scope", args.scopes[0]])
                     if models:
                         invocation.extend(
                             [
@@ -240,7 +248,7 @@ def main() -> int:
         repo,
     )
     metadata = {
-        "schema": "reactive-update/v1",
+        "schema": "reactive-update/v2",
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "revision": revision,
         "dirty": bool(status),
@@ -256,6 +264,7 @@ def main() -> int:
             for model in models
         ],
         "sites": args.sites if models else [],
+        "scopes": args.scopes,
         "warmups": args.warmups,
         "iterations": args.iterations,
         "seed": args.seed,

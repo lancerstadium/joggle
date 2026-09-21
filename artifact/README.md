@@ -28,9 +28,9 @@ are separate generator parameters.
 The same executable also accepts pinned ONNX files. It decodes the complete
 model, selects pre-registered early, middle, or late single-output computations,
 and chooses a same-function operation outside each computation's affected cone.
-The two edit classes then change metadata on the selected or unrelated
-operation. Every row records the model SHA-256 supplied by the runner and the
-exact selected sites.
+The current edit class changes operation metadata at either the affected or
+unrelated scope. Every row records the model SHA-256 supplied by the runner and
+the exact selected sites.
 
 Fetch the 15 standard cases and the separately gated heavy case. The download
 script checks every file against the shared pinned manifest:
