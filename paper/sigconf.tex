@@ -1,0 +1,85 @@
+%%
+%% This is the sigconf entry point supplied by the ACM template package.
+%% The sample article body has been replaced with the Joggle manuscript.
+%%
+%% Commands for TeXCount
+%TC:macro \cite [option:text,text]
+%TC:macro \citep [option:text,text]
+%TC:macro \citet [option:text,text]
+%TC:envir table 0 1
+%TC:envir table* 0 1
+%TC:envir tabular [ignore] word
+%TC:envir displaymath 0 word
+%TC:envir math 0 word
+%TC:envir comment 0 0
+%%
+%% The supplied template identifies anonymous, review as the submission mode.
+\documentclass[sigconf,anonymous,review]{acmart}
+
+\AtBeginDocument{%
+  \providecommand\BibTeX{{%
+    Bib\TeX}}}
+
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{xcolor}
+
+%% Rights information is replaced by the ACM rights-form block for publication.
+\setcopyright{none}
+\copyrightyear{2027}
+\acmYear{2027}
+\acmConference[EuroSys '27]{EuroSys 2027}{April 19--23, 2027}{Rabat, Morocco}
+
+\definecolor{jogblue}{HTML}{0B6FB8}
+\definecolor{joggreen}{HTML}{147D64}
+\definecolor{joggray}{HTML}{F4F6F8}
+\definecolor{jogcomment}{HTML}{667085}
+
+\lstdefinelanguage{jog}{
+  sensitive=true,
+  morekeywords={mod,use,fn,local,let,var,if,else,for,in,return,true,false},
+  morecomment=[l]{//},
+  morestring=[b]"
+}
+
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  keywordstyle=\color{jogblue}\bfseries,
+  commentstyle=\color{jogcomment},
+  stringstyle=\color{joggreen},
+  backgroundcolor=\color{joggray},
+  frame=single,
+  rulecolor=\color{black!12},
+  framesep=4pt,
+  xleftmargin=3pt,
+  xrightmargin=3pt,
+  breaklines=true,
+  breakatwhitespace=false,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  captionpos=b
+}
+
+\begin{document}
+
+\title[Joggle]{Joggle: Malleable Compilation with a Progressive Intermediate Representation}
+
+\begin{abstract}
+\end{abstract}
+
+\keywords{}
+
+\maketitle
+
+%% Sections 1 and 2 remain in the Markdown manuscript until their prose is set.
+\setcounter{section}{2}
+\setcounter{figure}{1}
+\input{sections/03-design}
+
+\bibliographystyle{ACM-Reference-Format}
+
+\end{document}
+\endinput
