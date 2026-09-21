@@ -40,7 +40,11 @@ compact system-specific API card. Two pinned 1--3B code models run with 0, 1,
 samples.
 
 `manifests/extension-tasks.csv` freezes the held-out task identities and the
-two tasks per family reused by Figure 5. Task implementations, prompts, and
+two tasks per family reused by Figure 5. `manifests/extension-specs.json`
+freezes their system-neutral semantics: valid and invalid fixtures, observable
+results, comparison rule, and ordered oracle phases. All three systems solve
+these contracts with idiomatic APIs; an adapter may change syntax but may not
+add, remove, or reinterpret a fixture. Task implementations, prompts, and
 reference solutions live outside the model context until the manifest is
 sealed; demonstration-bank features must use different operation names,
 semantics, and oracle fixtures.
@@ -50,7 +54,23 @@ sample-budget sensitivity. Reference-solution log-perplexity is secondary and
 is compared only within one model and tokenizer. The oracle records the first
 failed phase: parse, type, build, or semantic test.
 
+Every raw row pins the semantic-contract, API-card, prompt, and output hashes.
+The demonstration IDs, sample seed, temperature, nucleus threshold, API-card
+token ceiling, and continuation budget are explicit. Release validation
+requires the same demonstrations and sampling controls for a paired model/task
+condition across all three systems, while retaining each card's actual token
+count.
+
+Before prompts are generated, `validate_extension_specs.py` checks that the
+contract contains exactly four tasks per family, exactly two preselected
+footprint tasks per family, the frozen role sequences, at least two positive
+fixtures per task, and ordered failure phases. The same validated contract is
+the semantic oracle for the paired Figure 5 patches.
+
 - CSV: `templates/figure-04-extension.csv`
+- Task index: `manifests/extension-tasks.csv`
+- Semantic contract: `manifests/extension-specs.json`
+- Contract schema: `schemas/extension-specs.schema.json`
 - Plot: `figures/figure_04_extension.py`
 - Required pairing: model, task, and demonstration count across systems
 

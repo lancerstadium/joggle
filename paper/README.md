@@ -618,18 +618,22 @@ CPU policy, seed, cache state, and correctness outcome.
 The extension suite contains 24 held-out tasks, four in each of six families:
 type or operation definition, analysis, rewrite, conversion, artifact
 generation, and a vertical feature combining these roles. Every task has one
-semantic specification, a system-specific harness, and an idiomatic reference
-solution that passes the common oracle. A separate demonstration bank uses
+semantic specification with fixed positive and negative fixtures, a
+system-specific harness, and an idiomatic reference solution that passes the
+common oracle. A separate demonstration bank uses
 disjoint features, so no definition, rewrite, converter, or emitter from an
-evaluation feature enters its prompt. Formatting is normalized; generated code
-and harness boilerplate are not scored.
+evaluation feature enters its prompt. The emitted extension enters the harness
+without manual repair; formatter changes and provided harness boilerplate are
+excluded from target-token counts.
 
 Two frozen open-weight code models in the 1--3B range receive the specification
 and a compact API card. Demonstration counts are $0,1,2,$ and $4$; examples
 come only from the demonstration bank through one deterministic retrieval rule
-and an equal token budget. Each condition draws 50 samples. Sampling
+and equal API-card and continuation token ceilings. Each condition draws 50 samples. Sampling
 parameters, seeds, stopping rules, and maximum continuation length are fixed
-per model.
+per model. Every observation pins the task specification, API card, prompt,
+and output by hash; paired conditions use identical demonstration IDs and
+sampling controls across systems.
 
 For reference tokens $x_{1:N}$ and context $c$,
 
@@ -659,11 +663,13 @@ local examples.
 <!-- FIGURE 4 PLAN — Full-width, three compact panels fed by one CSV and one
 plotting script. (a) task-level pass@1 at four demonstrations, grouped by
 family; (b) pass@1 response to 0/1/2/4 demonstrations; (c) parse/type/build/
-oracle failure composition. Keep the two models in separate rows. Show paired
-log-perplexity only as a small secondary inset so syntax length cannot dominate
-the headline. CSV: figure-04-extension.csv. Raw columns: model,
-model_revision,system,system_revision,task,family,demo_count,seed,sample_index,
-target_tokens,context_tokens,nll,parsed,typed,built,passed. -->
+semantic failure composition. Keep the two models in separate compact rows.
+Report paired log-perplexity as a secondary numeric table so syntax length
+cannot dominate the headline. CSV: figure-04-extension.csv. Raw columns: model,
+model_revision,system,system_revision,task,family,demo_count,demo_ids,seed,
+sample_index,temperature,top_p,max_new_tokens,target_tokens,context_tokens,
+api_card_tokens,api_card_budget_tokens,nll,task_spec_sha256,api_card_sha256,
+prompt_sha256,output_sha256,parsed,typed,built,passed. -->
 
 ### 4.3 Change Footprint and Ownership
 

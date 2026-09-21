@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://joggle.dev/schemas/extension-specs.schema.json",
+  "title": "Joggle cross-system extension task specifications",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "comparison_policy", "tasks"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "comparison_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["float_rtol", "float_atol", "nan_equal", "structural_form"],
+      "properties": {
+        "float_rtol": {"type": "number", "minimum": 0},
+        "float_atol": {"type": "number", "minimum": 0},
+        "nan_equal": {"type": "boolean"},
+        "structural_form": {"type": "string", "minLength": 1}
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 24,
+      "maxItems": 24,
+      "items": {"$ref": "#/$defs/task"}
+    }
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "input", "expect"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+        "input": {"type": "object"},
+        "expect": {"type": "object"}
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "family", "title", "footprint", "required_roles",
+        "contract", "positive_cases", "negative_cases", "oracle"
+      ],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+        "family": {
+          "enum": ["definition", "analysis", "rewrite", "conversion", "emission", "vertical"]
+        },
+        "title": {"type": "string", "minLength": 1},
+        "footprint": {"type": "boolean"},
+        "required_roles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["definition", "analysis", "rewrite", "conversion", "emission"]}
+        },
+        "contract": {"type": "string", "minLength": 20},
+        "positive_cases": {
+          "type": "array", "minItems": 2, "items": {"$ref": "#/$defs/case"}
+        },
+        "negative_cases": {
+          "type": "array", "items": {"$ref": "#/$defs/case"}
+        },
+        "oracle": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["phases", "comparison"],
+          "properties": {
+            "phases": {
+              "type": "array", "minItems": 1, "uniqueItems": true,
+              "items": {"enum": ["parse", "type", "build", "semantic"]}
+            },
+            "comparison": {
+              "enum": ["exact-json", "canonical-graph", "numerical", "compile-and-run"]
+            }
+          }
+        }
+      }
+    }
+  }
+}

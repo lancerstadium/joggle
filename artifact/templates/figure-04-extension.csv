@@ -1,1 +1,1 @@
-record_kind,model,model_revision,system,system_revision,task,family,demo_count,seed,sample_index,target_tokens,context_tokens,nll,parsed,typed,built,passed
+record_kind,model,model_revision,system,system_revision,task,family,demo_count,demo_ids,seed,sample_index,temperature,top_p,max_new_tokens,target_tokens,context_tokens,api_card_tokens,api_card_budget_tokens,nll,task_spec_sha256,api_card_sha256,prompt_sha256,output_sha256,parsed,typed,built,passed

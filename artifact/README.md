@@ -18,6 +18,27 @@ PDF and review PNG; it never invokes Joggle or changes measurements.
 | 8 | operator artifact quality | `figure-08-operators.csv` | `figure_08_operators.py` |
 | 9 | model artifact quality | `figure-09-models.csv` | `figure_09_models.py` |
 
+## Extension-completion experiment
+
+`manifests/extension-tasks.csv` is the compact task index used by CSV
+validation. `manifests/extension-specs.json` is the executable semantic
+contract shared by Joggle, MLIR, and xDSL adapters. Each of its 24 tasks fixes
+the accepted inputs, rejected inputs, observable result, comparison rule, and
+ordered parse/type/build/semantic phases. It deliberately contains no syntax
+from any evaluated system.
+
+Validate the contract before constructing prompts or reference solutions:
+
+```sh
+python3 artifact/validate_extension_specs.py
+```
+
+An adapter may translate a fixture into its system's idiomatic API, but the
+oracle must return the same canonical JSON, graph, numerical result, or
+compiled execution result. Figure 5 reuses the twelve entries marked
+`footprint`; this keeps completion and change-footprint tasks semantically
+paired.
+
 ## Change-footprint experiment
 
 `collect_footprint.py` derives Figure 5 rows from pinned Git revisions. The case
@@ -164,6 +185,7 @@ python3 artifact/validate_figure.py 8 .cache/artifact/figure-08-operators.csv
 python3 artifact/validate_figure.py 9 .cache/artifact/figure-09-models.csv
 ```
 
-The committed schema is `schemas/reactive.schema.json`. Raw CSV and JSON run
-records remain outside Git until the hardware, operating system, compiler, and
-CPU policy are frozen for the paper's reported run.
+The committed schemas are `schemas/extension-specs.schema.json` and
+`schemas/reactive.schema.json`. Raw CSV and JSON run records remain outside Git
+until the hardware, operating system, compiler, and CPU policy are frozen for
+the paper's reported run.

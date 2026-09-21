@@ -1,0 +1,400 @@
+{
+  "schema_version": 1,
+  "comparison_policy": {
+    "float_rtol": 0.0001,
+    "float_atol": 0.000001,
+    "nan_equal": false,
+    "structural_form": "Topological JSON nodes with stable op names, ordered inputs, sorted attributes, explicit tensor types, and dead nodes removed"
+  },
+  "tasks": [
+    {
+      "id": "def-parametric-type",
+      "family": "definition",
+      "title": "Parametric numeric type",
+      "footprint": true,
+      "required_roles": ["definition"],
+      "contract": "Define a signed fixed-point scalar fx<width,frac>; require 2 <= width <= 32 and 0 <= frac < width; preserve both parameters through construction and text round-trip.",
+      "positive_cases": [
+        {"id": "fx8-3", "input": {"type": "fx", "width": 8, "frac": 3}, "expect": {"canonical": "fx<8,3>", "storage_bits": 8}},
+        {"id": "fx16-7", "input": {"type": "fx", "width": 16, "frac": 7}, "expect": {"canonical": "fx<16,7>", "storage_bits": 16}}
+      ],
+      "negative_cases": [
+        {"id": "fraction-overflow", "input": {"type": "fx", "width": 8, "frac": 8}, "expect": {"error": "invalid-type-parameter", "phase": "type"}},
+        {"id": "width-too-small", "input": {"type": "fx", "width": 1, "frac": 0}, "expect": {"error": "invalid-type-parameter", "phase": "type"}}
+      ],
+      "oracle": {"phases": ["parse", "type", "build", "semantic"], "comparison": "exact-json"}
+    },
+    {
+      "id": "def-quantized-op",
+      "family": "definition",
+      "title": "Quantized arithmetic operation",
+      "footprint": true,
+      "required_roles": ["definition"],
+      "contract": "Define qadd on equal-shape i8 tensors with finite positive input/output scales and signed i32 zero points; the result shape equals the operands and its element type is i8.",
+      "positive_cases": [
+        {"id": "vector", "input": {"lhs": {"type": "tensor<4xi8>", "scale": 0.5, "zero": 0}, "rhs": {"type": "tensor<4xi8>", "scale": 0.25, "zero": -3}, "output_scale": 0.5, "output_zero": 0}, "expect": {"result": "tensor<4xi8>"}},
+        {"id": "matrix", "input": {"lhs": {"type": "tensor<2x3xi8>", "scale": 0.125, "zero": 2}, "rhs": {"type": "tensor<2x3xi8>", "scale": 0.125, "zero": 2}, "output_scale": 0.25, "output_zero": 1}, "expect": {"result": "tensor<2x3xi8>"}}
+      ],
+      "negative_cases": [
+        {"id": "shape-mismatch", "input": {"lhs": "tensor<2x3xi8>", "rhs": "tensor<3x2xi8>", "output_scale": 0.5}, "expect": {"error": "shape-mismatch", "phase": "type"}},
+        {"id": "zero-scale", "input": {"lhs": "tensor<4xi8>", "rhs": "tensor<4xi8>", "output_scale": 0.0}, "expect": {"error": "invalid-scale", "phase": "build"}}
+      ],
+      "oracle": {"phases": ["parse", "type", "build", "semantic"], "comparison": "exact-json"}
+    },
+    {
+      "id": "def-layout-attribute",
+      "family": "definition",
+      "title": "Layout-carrying operation",
+      "footprint": false,
+      "required_roles": ["definition"],
+      "contract": "Define relayout on a rank-four tensor with source and destination layouts drawn from NCHW and NHWC; infer the permuted result shape and retain both layouts through round-trip.",
+      "positive_cases": [
+        {"id": "to-nhwc", "input": {"type": "tensor<1x3x8x16xf32>", "src": "NCHW", "dst": "NHWC"}, "expect": {"result": "tensor<1x8x16x3xf32>", "permutation": [0, 2, 3, 1]}},
+        {"id": "to-nchw", "input": {"type": "tensor<2x7x9x4xf16>", "src": "NHWC", "dst": "NCHW"}, "expect": {"result": "tensor<2x4x7x9xf16>", "permutation": [0, 3, 1, 2]}}
+      ],
+      "negative_cases": [
+        {"id": "wrong-rank", "input": {"type": "tensor<3x8x16xf32>", "src": "NCHW", "dst": "NHWC"}, "expect": {"error": "rank-mismatch", "phase": "type"}}
+      ],
+      "oracle": {"phases": ["parse", "type", "build", "semantic"], "comparison": "exact-json"}
+    },
+    {
+      "id": "def-target-intrinsic",
+      "family": "definition",
+      "title": "Target intrinsic operation",
+      "footprint": false,
+      "required_roles": ["definition"],
+      "contract": "Define dot4_i8 taking two vector<4xi8> operands and one i32 accumulator and returning i32; reject every other lane count or element type.",
+      "positive_cases": [
+        {"id": "zero-acc", "input": {"lhs": [1, 2, 3, 4], "rhs": [4, 3, 2, 1], "acc": 0}, "expect": {"result": 20, "type": "i32"}},
+        {"id": "negative", "input": {"lhs": [-2, 3, 1, 0], "rhs": [4, -5, 2, 7], "acc": 9}, "expect": {"result": -12, "type": "i32"}}
+      ],
+      "negative_cases": [
+        {"id": "wrong-lanes", "input": {"lhs_type": "vector<8xi8>", "rhs_type": "vector<8xi8>", "acc_type": "i32"}, "expect": {"error": "operand-type-mismatch", "phase": "type"}},
+        {"id": "wrong-element", "input": {"lhs_type": "vector<4xi16>", "rhs_type": "vector<4xi16>", "acc_type": "i32"}, "expect": {"error": "operand-type-mismatch", "phase": "type"}}
+      ],
+      "oracle": {"phases": ["parse", "type", "build", "semantic"], "comparison": "exact-json"}
+    },
+    {
+      "id": "ana-broadcast-shape",
+      "family": "analysis",
+      "title": "Broadcast shape legality",
+      "footprint": true,
+      "required_roles": ["analysis"],
+      "contract": "Analyze NumPy-style trailing-dimension broadcast compatibility; each aligned pair is legal when equal or one, and the result takes the maximum extent.",
+      "positive_cases": [
+        {"id": "rank-expand", "input": {"lhs": [2, 3, 1], "rhs": [4]}, "expect": {"legal": true, "shape": [2, 3, 4]}},
+        {"id": "two-sided-one", "input": {"lhs": [5, 1, 7], "rhs": [1, 6, 1]}, "expect": {"legal": true, "shape": [5, 6, 7]}}
+      ],
+      "negative_cases": [
+        {"id": "extent-conflict", "input": {"lhs": [2, 3], "rhs": [4, 3]}, "expect": {"legal": false, "conflict_axis_from_end": 1}},
+        {"id": "zero-rank-extent", "input": {"lhs": [2, 0], "rhs": [2, 3]}, "expect": {"legal": false, "conflict_axis_from_end": 0}}
+      ],
+      "oracle": {"phases": ["build", "semantic"], "comparison": "exact-json"}
+    },
+    {
+      "id": "ana-numeric-range",
+      "family": "analysis",
+      "title": "Interval propagation",
+      "footprint": true,
+      "required_roles": ["analysis"],
+      "contract": "Propagate closed finite real intervals through add, multiply, ReLU, and clamp using endpoint arithmetic; multiplication evaluates all four endpoint products.",
+      "positive_cases": [
+        {"id": "mixed-product", "input": {"op": "mul", "lhs": [-2.0, 3.0], "rhs": [-4.0, 5.0]}, "expect": {"interval": [-12.0, 15.0]}},
+        {"id": "relu-add", "input": {"graph": [{"op": "add", "lhs": [-3.0, 2.0], "rhs": [1.0, 4.0]}, {"op": "relu"}]}, "expect": {"interval": [0.0, 6.0]}}
+      ],
+      "negative_cases": [
+        {"id": "reversed", "input": {"op": "relu", "value": [2.0, -1.0]}, "expect": {"error": "invalid-interval", "phase": "build"}}
+      ],
+      "oracle": {"phases": ["build", "semantic"], "comparison": "numerical"}
+    },
+    {
+      "id": "ana-fusion-match",
+      "family": "analysis",
+      "title": "Conv Bias ReLU opportunity",
+      "footprint": false,
+      "required_roles": ["analysis"],
+      "contract": "Report a fusion only for Conv2D feeding BiasAdd feeding ReLU through single-use edges, with a rank-one bias matching the convolution output-channel extent.",
+      "positive_cases": [
+        {"id": "nchw-chain", "input": {"layout": "NCHW", "ops": ["conv2d", "bias_add", "relu"], "uses": [1, 1], "channels": 16, "bias": [16]}, "expect": {"matches": [[0, 1, 2]]}},
+        {"id": "nhwc-chain", "input": {"layout": "NHWC", "ops": ["conv2d", "bias_add", "relu"], "uses": [1, 1], "channels": 8, "bias": [8]}, "expect": {"matches": [[0, 1, 2]]}}
+      ],
+      "negative_cases": [
+        {"id": "multi-use-conv", "input": {"ops": ["conv2d", "bias_add", "relu"], "uses": [2, 1], "channels": 16, "bias": [16]}, "expect": {"matches": []}},
+        {"id": "bias-mismatch", "input": {"ops": ["conv2d", "bias_add", "relu"], "uses": [1, 1], "channels": 16, "bias": [8]}, "expect": {"matches": []}}
+      ],
+      "oracle": {"phases": ["build", "semantic"], "comparison": "exact-json"}
+    },
+    {
+      "id": "ana-storage-cost",
+      "family": "analysis",
+      "title": "Tensor storage cost",
+      "footprint": false,
+      "required_roles": ["analysis"],
+      "contract": "Compute dense tensor storage as ceil(product(shape) times element_bits divided by eight), treating any zero extent as zero and rejecting negative extents.",
+      "positive_cases": [
+        {"id": "packed-int4", "input": {"shape": [3, 5], "element_bits": 4}, "expect": {"bytes": 8}},
+        {"id": "float32", "input": {"shape": [2, 3, 4], "element_bits": 32}, "expect": {"bytes": 96}},
+        {"id": "empty", "input": {"shape": [2, 0, 4], "element_bits": 16}, "expect": {"bytes": 0}}
+      ],
+      "negative_cases": [
+        {"id": "negative-extent", "input": {"shape": [2, -1, 4], "element_bits": 16}, "expect": {"error": "invalid-extent", "phase": "build"}}
+      ],
+      "oracle": {"phases": ["build", "semantic"], "comparison": "exact-json"}
+    },
+    {
+      "id": "rew-add-zero",
+      "family": "rewrite",
+      "title": "Add-zero simplification",
+      "footprint": true,
+      "required_roles": ["rewrite"],
+      "contract": "Replace add(x, zero) or add(zero, x) by x only when zero is a scalar or splat constant exactly representable in the result element type; remove dead constants.",
+      "positive_cases": [
+        {"id": "rhs-f32", "input": {"graph": "return add(arg0:tensor<4xf32>, splat(0.0))"}, "expect": {"graph": "return arg0"}},
+        {"id": "lhs-i32", "input": {"graph": "return add(splat(0:i32), arg0:tensor<2x3xi32>)"}, "expect": {"graph": "return arg0"}}
+      ],
+      "negative_cases": [
+        {"id": "nonzero", "input": {"graph": "return add(arg0:tensor<4xf32>, splat(0.001))"}, "expect": {"graph": "unchanged"}},
+        {"id": "signed-zero", "input": {"graph": "return add(arg0:tensor<4xf32>, splat(-0.0))"}, "expect": {"graph": "unchanged"}}
+      ],
+      "oracle": {"phases": ["build", "semantic"], "comparison": "canonical-graph"}
+    },
+    {
+      "id": "rew-redundant-cast",
+      "family": "rewrite",
+      "title": "Redundant conversion elimination",
+      "footprint": true,
+      "required_roles": ["rewrite"],
+      "contract": "Remove identity casts and cancel cast(cast(x,A to B),B to A) only for lossless pairs; keep narrowing, float-integer, and shape-changing conversions.",
+      "positive_cases": [
+        {"id": "identity", "input": {"graph": "return cast(arg0:tensor<4xf32> to tensor<4xf32>)"}, "expect": {"graph": "return arg0"}},
+        {"id": "lossless-roundtrip", "input": {"graph": "return cast(cast(arg0:tensor<4xi8> to tensor<4xi16>) to tensor<4xi8>)"}, "expect": {"graph": "return arg0"}}
+      ],
+      "negative_cases": [
+        {"id": "lossy-roundtrip", "input": {"graph": "return cast(cast(arg0:tensor<4xi16> to tensor<4xi8>) to tensor<4xi16>)"}, "expect": {"graph": "unchanged"}},
+        {"id": "float-int", "input": {"graph": "return cast(cast(arg0:tensor<4xf32> to tensor<4xi32>) to tensor<4xf32>)"}, "expect": {"graph": "unchanged"}}
+      ],
+      "oracle": {"phases": ["build", "semantic"], "comparison": "canonical-graph"}
+    },
+    {
+      "id": "rew-conv-bias-relu",
+      "family": "rewrite",
+      "title": "Conv Bias ReLU fusion",
+      "footprint": false,
+      "required_roles": ["rewrite"],
+      "contract": "Fuse an analysis-approved Conv2D, BiasAdd, ReLU chain into fused_conv_bias_relu with identical operands and convolution attributes; preserve graphs rejected by the match contract.",
+      "positive_cases": [
+        {"id": "valid-nchw", "input": {"graph": "relu(bias_add(conv2d(x,w,stride=1,pad=1),b))", "shape": [1, 3, 8, 8]}, "expect": {"ops": ["fused_conv_bias_relu"], "attributes": {"stride": 1, "pad": 1}}},
+        {"id": "valid-nhwc", "input": {"graph": "relu(bias_add(conv2d(x,w,stride=2,pad=0),b))", "shape": [1, 8, 8, 3]}, "expect": {"ops": ["fused_conv_bias_relu"], "attributes": {"stride": 2, "pad": 0}}}
+      ],
+      "negative_cases": [
+        {"id": "shared-conv", "input": {"graph": "pair(relu(bias_add(conv2d(x,w),b)),conv2d-result)", "conv_uses": 2}, "expect": {"graph": "unchanged"}}
+      ],
+      "oracle": {"phases": ["build", "semantic"], "comparison": "numerical"}
+    },
+    {
+      "id": "rew-transpose-pair",
+      "family": "rewrite",
+      "title": "Inverse transpose cancellation",
+      "footprint": false,
+      "required_roles": ["rewrite"],
+      "contract": "Replace transpose(transpose(x,p),q) by x exactly when q is the inverse permutation of p; require each permutation to contain every rank index once.",
+      "positive_cases": [
+        {"id": "rank-four", "input": {"shape": [1, 3, 8, 16], "p": [0, 2, 3, 1], "q": [0, 3, 1, 2]}, "expect": {"graph": "return arg0"}},
+        {"id": "self-inverse", "input": {"shape": [2, 5, 7], "p": [2, 1, 0], "q": [2, 1, 0]}, "expect": {"graph": "return arg0"}}
+      ],
+      "negative_cases": [
+        {"id": "not-inverse", "input": {"shape": [2, 5, 7], "p": [1, 2, 0], "q": [1, 2, 0]}, "expect": {"graph": "unchanged"}},
+        {"id": "invalid-permutation", "input": {"shape": [2, 5, 7], "p": [0, 0, 2], "q": [0, 1, 2]}, "expect": {"error": "invalid-permutation", "phase": "build"}}
+      ],
+      "oracle": {"phases": ["build", "semantic"], "comparison": "canonical-graph"}
+    },
+    {
+      "id": "con-gelu-expand",
+      "family": "conversion",
+      "title": "GELU decomposition",
+      "footprint": true,
+      "required_roles": ["conversion"],
+      "contract": "Convert exact GELU(x) into 0.5*x*(1+erf(x/sqrt(2))) using target arithmetic and erf operations; preserve shape and floating element type.",
+      "positive_cases": [
+        {"id": "vector-f32", "input": {"op": "gelu", "type": "tensor<5xf32>", "values": [-3.0, -1.0, 0.0, 1.0, 3.0]}, "expect": {"forbidden_ops": ["gelu"], "required_ops": ["mul", "add", "erf"], "result_type": "tensor<5xf32>"}},
+        {"id": "matrix-f64", "input": {"op": "gelu", "type": "tensor<2x3xf64>", "values": [-2.0, -0.5, 0.0, 0.5, 1.0, 2.0]}, "expect": {"forbidden_ops": ["gelu"], "required_ops": ["mul", "add", "erf"], "result_type": "tensor<2x3xf64>"}}
+      ],
+      "negative_cases": [
+        {"id": "integer-input", "input": {"op": "gelu", "type": "tensor<4xi32>"}, "expect": {"error": "unsupported-element-type", "phase": "type"}}
+      ],
+      "oracle": {"phases": ["type", "build", "semantic"], "comparison": "numerical"}
+    },
+    {
+      "id": "con-quant-expand",
+      "family": "conversion",
+      "title": "Quantized arithmetic expansion",
+      "footprint": true,
+      "required_roles": ["conversion"],
+      "contract": "Convert qadd into dequantize(lhs), dequantize(rhs), floating add, and quantize using round-to-nearest-ties-to-even plus i8 saturation.",
+      "positive_cases": [
+        {"id": "same-scale", "input": {"lhs": [-3, 0, 5, 120], "rhs": [2, 1, -8, 120], "lhs_scale": 0.5, "rhs_scale": 0.5, "output_scale": 0.5, "zeros": [0, 0, 0]}, "expect": {"values": [-1, 1, -3, 127], "required_ops": ["dequantize", "add", "quantize"]}},
+        {"id": "mixed-scale", "input": {"lhs": [1, 2, -4, 8], "rhs": [2, -2, 4, -4], "lhs_scale": 0.5, "rhs_scale": 0.25, "output_scale": 0.25, "zeros": [0, 0, 0]}, "expect": {"values": [4, 2, -4, 12], "required_ops": ["dequantize", "add", "quantize"]}}
+      ],
+      "negative_cases": [
+        {"id": "negative-scale", "input": {"lhs_scale": -0.5, "rhs_scale": 0.5, "output_scale": 0.5}, "expect": {"error": "invalid-scale", "phase": "build"}}
+      ],
+      "oracle": {"phases": ["type", "build", "semantic"], "comparison": "numerical"}
+    },
+    {
+      "id": "con-layout-legalize",
+      "family": "conversion",
+      "title": "Layout legalization",
+      "footprint": false,
+      "required_roles": ["conversion"],
+      "contract": "Legalize an NHWC Conv2D for an NCHW-only target by transposing input and output and mapping HWIO weights to OIHW; retain stride, dilation, and spatial padding.",
+      "positive_cases": [
+        {"id": "unit-stride", "input": {"input": [1, 8, 16, 3], "weight": [3, 3, 3, 4], "stride": [1, 1], "pad": [1, 1, 1, 1]}, "expect": {"ops": ["transpose", "conv2d_nchw", "transpose"], "internal_input": [1, 3, 8, 16], "internal_weight": [4, 3, 3, 3], "output": [1, 8, 16, 4]}},
+        {"id": "strided", "input": {"input": [2, 9, 9, 8], "weight": [3, 3, 8, 16], "stride": [2, 2], "pad": [0, 0, 0, 0]}, "expect": {"ops": ["transpose", "conv2d_nchw", "transpose"], "internal_input": [2, 8, 9, 9], "internal_weight": [16, 8, 3, 3], "output": [2, 4, 4, 16]}}
+      ],
+      "negative_cases": [
+        {"id": "channel-mismatch", "input": {"input": [1, 8, 8, 3], "weight": [3, 3, 4, 8]}, "expect": {"error": "channel-mismatch", "phase": "type"}}
+      ],
+      "oracle": {"phases": ["type", "build", "semantic"], "comparison": "numerical"}
+    },
+    {
+      "id": "con-instruction-select",
+      "family": "conversion",
+      "title": "Matrix instruction selection",
+      "footprint": false,
+      "required_roles": ["conversion"],
+      "contract": "Select mma_m16n16k16 for rank-two f16 matrix multiplication when M, N, and K are positive multiples of 16; otherwise retain the generic matrix multiplication.",
+      "positive_cases": [
+        {"id": "single-tile", "input": {"lhs": [16, 16], "rhs": [16, 16], "type": "f16"}, "expect": {"op": "mma_m16n16k16", "tiles": [1, 1, 1]}},
+        {"id": "multi-tile", "input": {"lhs": [32, 48], "rhs": [48, 64], "type": "f16"}, "expect": {"op": "mma_m16n16k16", "tiles": [2, 4, 3]}}
+      ],
+      "negative_cases": [
+        {"id": "ragged", "input": {"lhs": [17, 16], "rhs": [16, 16], "type": "f16"}, "expect": {"op": "matmul"}},
+        {"id": "wrong-type", "input": {"lhs": [16, 16], "rhs": [16, 16], "type": "f32"}, "expect": {"op": "matmul"}}
+      ],
+      "oracle": {"phases": ["type", "build", "semantic"], "comparison": "numerical"}
+    },
+    {
+      "id": "emit-graph-manifest",
+      "family": "emission",
+      "title": "Graph manifest artifact",
+      "footprint": true,
+      "required_roles": ["emission"],
+      "contract": "Emit deterministic JSON with schema_version, topologically ordered nodes, explicit input and result tensor types, sorted attribute keys, and stable node identifiers n0..nK.",
+      "positive_cases": [
+        {"id": "linear", "input": {"graph": "return relu(add(arg0,splat(1.0)))"}, "expect": {"node_ops": ["input", "const", "add", "relu", "return"], "schema_version": 1}},
+        {"id": "diamond", "input": {"graph": "return add(relu(arg0),neg(arg0))"}, "expect": {"node_ops": ["input", "relu", "neg", "add", "return"], "schema_version": 1}}
+      ],
+      "negative_cases": [],
+      "oracle": {"phases": ["build", "semantic"], "comparison": "exact-json"}
+    },
+    {
+      "id": "emit-kernel-wrapper",
+      "family": "emission",
+      "title": "Kernel wrapper artifact",
+      "footprint": true,
+      "required_roles": ["emission"],
+      "contract": "Emit a C99-callable wrapper for a contiguous f32 elementwise kernel with arguments (const float* input, float* output, size_t count); compile it with the pinned compiler and execute fixed vectors.",
+      "positive_cases": [
+        {"id": "relu", "input": {"kernel": "relu", "values": [-2.0, -0.0, 1.5, 4.0]}, "expect": {"values": [0.0, 0.0, 1.5, 4.0], "symbol": "task_kernel"}},
+        {"id": "affine", "input": {"kernel": "2*x+1", "values": [-2.0, 0.0, 1.5, 4.0]}, "expect": {"values": [-3.0, 1.0, 4.0, 9.0], "symbol": "task_kernel"}}
+      ],
+      "negative_cases": [],
+      "oracle": {"phases": ["build", "semantic"], "comparison": "compile-and-run"}
+    },
+    {
+      "id": "emit-storage-plan",
+      "family": "emission",
+      "title": "Storage plan report",
+      "footprint": false,
+      "required_roles": ["emission"],
+      "contract": "Emit deterministic JSON intervals and first-fit buffer offsets for statically sized temporaries in topological order; align every allocation to 16 bytes and reuse non-overlapping intervals.",
+      "positive_cases": [
+        {"id": "reuse", "input": {"values": [{"id": "v0", "bytes": 16, "live": [0, 1]}, {"id": "v1", "bytes": 16, "live": [2, 3]}]}, "expect": {"allocations": [{"id": "v0", "offset": 0}, {"id": "v1", "offset": 0}], "peak_bytes": 16}},
+        {"id": "overlap", "input": {"values": [{"id": "v0", "bytes": 20, "live": [0, 3]}, {"id": "v1", "bytes": 8, "live": [1, 2]}]}, "expect": {"allocations": [{"id": "v0", "offset": 0}, {"id": "v1", "offset": 32}], "peak_bytes": 40}}
+      ],
+      "negative_cases": [
+        {"id": "dynamic-size", "input": {"values": [{"id": "v0", "bytes": "dynamic", "live": [0, 1]}]}, "expect": {"error": "dynamic-storage-size", "phase": "build"}}
+      ],
+      "oracle": {"phases": ["build", "semantic"], "comparison": "exact-json"}
+    },
+    {
+      "id": "emit-target-capability",
+      "family": "emission",
+      "title": "Target capability manifest",
+      "footprint": false,
+      "required_roles": ["emission"],
+      "contract": "Emit deterministic JSON containing target, pointer_bits, little_endian, sorted feature names, and sorted supported intrinsic signatures; omit host-specific paths and timestamps.",
+      "positive_cases": [
+        {"id": "scalar", "input": {"target": "generic64", "pointer_bits": 64, "little_endian": true, "features": [], "intrinsics": []}, "expect": {"canonical_sha256": "oracle-computed"}},
+        {"id": "dot4", "input": {"target": "generic64-dot4", "pointer_bits": 64, "little_endian": true, "features": ["dot4", "simd128"], "intrinsics": ["dot4_i8(vector<4xi8>,vector<4xi8>,i32)->i32"]}, "expect": {"canonical_sha256": "oracle-computed"}}
+      ],
+      "negative_cases": [],
+      "oracle": {"phases": ["build", "semantic"], "comparison": "exact-json"}
+    },
+    {
+      "id": "vert-int4",
+      "family": "vertical",
+      "title": "Four-bit numeric format",
+      "footprint": true,
+      "required_roles": ["definition", "analysis", "conversion", "emission"],
+      "contract": "Add signed qint4 values in [-8,7], packed low nibble first; provide range analysis, lower elementwise add through i8 with saturation, and emit packed bytes.",
+      "positive_cases": [
+        {"id": "odd-count", "input": {"lhs": [-8, -1, 0, 3, 7], "rhs": [1, 1, -2, 6, 7]}, "expect": {"values": [-7, 0, -2, 7, 7], "bytes_hex": "09 7e 07", "range": [-8, 7]}},
+        {"id": "even-count", "input": {"lhs": [2, -3, 4, -5], "rhs": [3, 1, -2, -4]}, "expect": {"values": [5, -2, 2, -8], "bytes_hex": "e5 82", "range": [-8, 7]}}
+      ],
+      "negative_cases": [
+        {"id": "literal-out-of-range", "input": {"values": [0, 8]}, "expect": {"error": "literal-out-of-range", "phase": "build"}}
+      ],
+      "oracle": {"phases": ["parse", "type", "build", "semantic"], "comparison": "exact-json"}
+    },
+    {
+      "id": "vert-fused-op",
+      "family": "vertical",
+      "title": "Fused quantized convolution",
+      "footprint": true,
+      "required_roles": ["definition", "analysis", "rewrite", "emission"],
+      "contract": "Add fused_qconv_relu for NHWC i8 convolution, i32 channel bias, requantization, and ReLU; match the unfused single-use chain and emit one manifest node.",
+      "positive_cases": [
+        {"id": "unit-kernel", "input": {"x": [[[[1, -2]]]], "w": [[[[2], [-3]]]], "bias": [1], "scales": {"acc": 0.25, "out": 0.5}, "output_zero": 0}, "expect": {"values": [[[[4]]]], "node_ops": ["fused_qconv_relu"]}},
+        {"id": "relu-clamp", "input": {"x": [[[[1]]]], "w": [[[[-2]]]], "bias": [0], "scales": {"acc": 0.5, "out": 0.5}, "output_zero": 0}, "expect": {"values": [[[[0]]]], "node_ops": ["fused_qconv_relu"]}}
+      ],
+      "negative_cases": [
+        {"id": "shared-conv", "input": {"chain": ["qconv", "bias", "requantize", "relu"], "conv_uses": 2}, "expect": {"matches": []}}
+      ],
+      "oracle": {"phases": ["type", "build", "semantic"], "comparison": "numerical"}
+    },
+    {
+      "id": "vert-vector-backend",
+      "family": "vertical",
+      "title": "Vector backend slice",
+      "footprint": false,
+      "required_roles": ["definition", "conversion", "emission"],
+      "contract": "Add a v4f32 target slice that lowers length-multiple-of-four f32 add and ReLU chains to four-lane vector operations, emits a callable artifact, and retains a scalar path otherwise.",
+      "positive_cases": [
+        {"id": "vectorized", "input": {"op": "relu(add(a,b))", "length": 8, "a": [-2, -1, 0, 1, 2, 3, 4, 5], "b": [1, 1, 1, 1, 1, 1, 1, 1]}, "expect": {"required_ops": ["vload4", "vadd4", "vmax4", "vstore4"], "values": [0, 0, 1, 2, 3, 4, 5, 6]}},
+        {"id": "scalar-fallback", "input": {"op": "add(a,b)", "length": 6, "a": [0, 1, 2, 3, 4, 5], "b": [5, 4, 3, 2, 1, 0]}, "expect": {"forbidden_ops": ["vload4"], "values": [5, 5, 5, 5, 5, 5]}}
+      ],
+      "negative_cases": [
+        {"id": "wrong-element", "input": {"op": "add(a,b)", "length": 8, "type": "i32"}, "expect": {"error": "unsupported-element-type", "phase": "type"}}
+      ],
+      "oracle": {"phases": ["type", "build", "semantic"], "comparison": "compile-and-run"}
+    },
+    {
+      "id": "vert-input-format",
+      "family": "vertical",
+      "title": "Graph input format",
+      "footprint": false,
+      "required_roles": ["definition", "conversion"],
+      "contract": "Add a line-oriented graph format with typed inputs, constants, add, mul, relu, and return; parse it into the common graph, preserve semantics through canonical round-trip, and reject undefined values.",
+      "positive_cases": [
+        {"id": "linear", "input": {"text": "input %x tensor<4xf32>\n%z = const 0.0 tensor<4xf32>\n%y = add %x %z\nreturn %y"}, "expect": {"node_ops": ["input", "const", "add", "return"], "roundtrip_stable": true}},
+        {"id": "branched", "input": {"text": "input %x tensor<2xf32>\n%a = relu %x\n%b = mul %a %a\nreturn %b"}, "expect": {"node_ops": ["input", "relu", "mul", "return"], "roundtrip_stable": true}}
+      ],
+      "negative_cases": [
+        {"id": "undefined-value", "input": {"text": "input %x tensor<2xf32>\n%y = add %x %missing\nreturn %y"}, "expect": {"error": "undefined-value", "phase": "build"}},
+        {"id": "syntax", "input": {"text": "input %x tensor<2xf32\nreturn %x"}, "expect": {"error": "syntax-error", "phase": "parse"}}
+      ],
+      "oracle": {"phases": ["parse", "type", "build", "semantic"], "comparison": "canonical-graph"}
+    }
+  ]
+}

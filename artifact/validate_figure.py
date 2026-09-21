@@ -5,12 +5,16 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
+import math
+import re
 from collections import Counter, defaultdict
 from pathlib import Path
 
 
 FAMILIES = {"definition", "analysis", "rewrite", "conversion", "emission", "vertical"}
 DEMOS = {0, 1, 2, 4}
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 def boolean(row: dict[str, str], field: str, line: int) -> bool:
@@ -39,8 +43,15 @@ def real(row: dict[str, str], field: str, line: int, *, empty: bool = False) -> 
         value = float(row[field])
     except ValueError as error:
         raise SystemExit(f"line {line}: {field} is not numeric") from error
-    if value < 0:
-        raise SystemExit(f"line {line}: {field} is negative")
+    if not math.isfinite(value) or value < 0:
+        raise SystemExit(f"line {line}: {field} must be finite and non-negative")
+    return value
+
+
+def digest(row: dict[str, str], field: str, line: int) -> str:
+    value = row[field]
+    if not SHA256.fullmatch(value):
+        raise SystemExit(f"line {line}: {field} must be a lowercase SHA-256")
     return value
 
 
@@ -71,15 +82,21 @@ def unique(rows: list[dict[str, str]], fields: tuple[str, ...]) -> None:
 
 
 def extension(
-    rows: list[dict[str, str]], partial: bool, expected_tasks: dict[str, str]
+    rows: list[dict[str, str]], partial: bool, expected_tasks: dict[str, str],
+    expected_spec_hash: str,
 ) -> None:
     unique(rows, ("record_kind", "model", "system", "task", "demo_count", "seed", "sample_index"))
     samples: dict[tuple[str, str, str, int], list[int]] = defaultdict(list)
     references: Counter[tuple[str, str, str, int]] = Counter()
     task_family: dict[str, str] = {}
+    audit: dict[tuple[str, str, int, str, int], tuple[str, str, str, str]] = {}
+    condition_systems: dict[tuple[str, str, int], set[str]] = defaultdict(set)
     for line, row in enumerate(rows, start=2):
         if row["record_kind"] not in {"sample", "reference"}:
             raise SystemExit(f"line {line}: unknown record_kind")
+        for field in ("model", "model_revision", "system", "system_revision", "task"):
+            if not row[field].strip():
+                raise SystemExit(f"line {line}: {field} is empty")
         if row["family"] not in FAMILIES:
             raise SystemExit(f"line {line}: unknown family {row['family']}")
         if expected_tasks.get(row["task"]) != row["family"]:
@@ -90,24 +107,59 @@ def extension(
         demos = unsigned(row, "demo_count", line)
         if demos not in DEMOS:
             raise SystemExit(f"line {line}: demo_count must be 0, 1, 2, or 4")
-        unsigned(row, "seed", line)
+        demo_ids = row["demo_ids"].split(";") if row["demo_ids"] else []
+        if len(demo_ids) != demos or len(set(demo_ids)) != len(demo_ids):
+            raise SystemExit(f"line {line}: demo_ids must contain {demos} unique IDs")
+        seed = unsigned(row, "seed", line)
+        temperature = real(row, "temperature", line)
+        top_p = real(row, "top_p", line)
+        if temperature > 2:
+            raise SystemExit(f"line {line}: temperature exceeds 2")
+        if not 0 < top_p <= 1:
+            raise SystemExit(f"line {line}: top_p must lie in (0, 1]")
+        max_new_tokens = unsigned(row, "max_new_tokens", line)
+        if max_new_tokens == 0:
+            raise SystemExit(f"line {line}: max_new_tokens must be positive")
         target_tokens = unsigned(row, "target_tokens", line)
         if target_tokens == 0:
             raise SystemExit(f"line {line}: target_tokens must be positive")
         unsigned(row, "context_tokens", line)
+        api_card_tokens = unsigned(row, "api_card_tokens", line)
+        api_card_budget = unsigned(row, "api_card_budget_tokens", line)
+        if api_card_budget == 0 or api_card_tokens > api_card_budget:
+            raise SystemExit(f"line {line}: API card exceeds its positive token budget")
+        if digest(row, "task_spec_sha256", line) != expected_spec_hash:
+            raise SystemExit(f"line {line}: task_spec_sha256 differs from frozen contract")
+        for field in ("api_card_sha256", "prompt_sha256", "output_sha256"):
+            digest(row, field, line)
         key = (row["model"], row["system"], row["task"], demos)
+        condition = (row["model"], row["task"], demos)
+        condition_systems[condition].add(row["system"])
         if row["record_kind"] == "sample":
+            if row["nll"]:
+                raise SystemExit(f"line {line}: sample row must not contain reference NLL")
             index = unsigned(row, "sample_index", line)
             outcomes = [boolean(row, field, line)
                         for field in ("parsed", "typed", "built", "passed")]
             if outcomes != sorted(outcomes, reverse=True):
                 raise SystemExit(f"line {line}: completion phases are inconsistent")
             samples[key].append(index)
+            audit_key = (*condition, "sample", index)
         else:
             if row["sample_index"]:
                 raise SystemExit(f"line {line}: reference row has sample_index")
             real(row, "nll", line)
+            if any(row[field] for field in ("parsed", "typed", "built", "passed")):
+                raise SystemExit(f"line {line}: reference row has completion outcomes")
             references[key] += 1
+            audit_key = (*condition, "reference", 0)
+        audit_value = (row["demo_ids"], str(seed), row["temperature"],
+                       f"{row['top_p']}:{max_new_tokens}:{api_card_budget}")
+        if audit_key in audit and audit[audit_key] != audit_value:
+            raise SystemExit(
+                f"line {line}: demonstrations or sampling controls differ across systems"
+            )
+        audit[audit_key] = audit_value
     if partial:
         return
     families = Counter(task_family.values())
@@ -115,6 +167,16 @@ def extension(
         {family: 4 for family in FAMILIES}
     ):
         raise SystemExit(f"expected 24 tasks, four per family; found {dict(families)}")
+    models = {row["model"] for row in rows}
+    systems = {row["system"] for row in rows}
+    if len(models) != 2:
+        raise SystemExit(f"expected two models; found {sorted(models)}")
+    expected_systems = {"Joggle", "MLIR", "xDSL"}
+    if systems != expected_systems:
+        raise SystemExit(f"expected {sorted(expected_systems)}; found {sorted(systems)}")
+    for condition, observed in condition_systems.items():
+        if observed != systems:
+            raise SystemExit(f"condition {condition}: incomplete systems {sorted(observed)}")
     if set(samples) != set(references):
         missing = sorted(set(samples) - set(references))
         extra = sorted(set(references) - set(samples))
@@ -200,6 +262,8 @@ def main() -> int:
     ) as stream:
         manifest = list(csv.DictReader(stream))
     all_tasks = {row["task_id"]: row["family"] for row in manifest}
+    spec_path = root / "manifests" / "extension-specs.json"
+    expected_spec_hash = hashlib.sha256(spec_path.read_bytes()).hexdigest()
     footprint_tasks = {
         row["task_id"]: row["family"]
         for row in manifest
@@ -209,7 +273,7 @@ def main() -> int:
              "8": "figure-08-operators.csv", "9": "figure-09-models.csv"}
     rows = load(args.csv, root / "templates" / names[args.figure])
     if args.figure == "4":
-        extension(rows, args.allow_partial, all_tasks)
+        extension(rows, args.allow_partial, all_tasks, expected_spec_hash)
     elif args.figure == "5":
         footprint(rows, args.allow_partial, footprint_tasks)
     elif args.figure == "8":

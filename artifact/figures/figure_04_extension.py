@@ -10,8 +10,21 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import Patch
 
-from common import COLORS, configure, number, read_rows, save, truth
+from common import COLORS, configure, read_rows, save, truth
+
+
+FAMILY_ORDER = ("definition", "analysis", "rewrite", "conversion", "emission", "vertical")
+FAMILY_LABELS = ("Def", "Analyze", "Rewrite", "Convert", "Emit", "Vertical")
+SYSTEM_MARKERS = {"Joggle": "o", "MLIR": "s", "xDSL": "^"}
+OUTCOME_COLORS = {
+    "parse": "#D9DEE7",
+    "type": "#F2C14E",
+    "build": "#E07A2D",
+    "semantic": "#C44E52",
+    "pass": "#087E8B",
+}
 
 
 def pass_at_k(n: int, successes: int, k: int) -> float:
@@ -50,21 +63,22 @@ def main() -> int:
                                 "demo_count", "sample_index", "nll", "target_tokens",
                                 "parsed", "typed", "built", "passed"})
     samples = [row for row in rows if row["record_kind"] == "sample"]
-    references = [row for row in rows if row["record_kind"] == "reference"]
     if not samples:
         raise SystemExit("CSV has no sample rows")
     models = sorted({row["model"] for row in samples})
     systems = sorted({row["system"] for row in samples})
-    families = sorted({row["family"] for row in samples})
+    observed_families = {row["family"] for row in samples}
+    families = [family for family in FAMILY_ORDER if family in observed_families]
+    family_labels = [FAMILY_LABELS[FAMILY_ORDER.index(family)] for family in families]
     family_of = {row["task"]: row["family"] for row in samples}
     scores = {k: task_scores(samples, k) for k in (1, 5, 10)}
 
     configure()
-    fig, axes = plt.subplots(len(models), 3, figsize=(7.0, 2.25 * len(models)),
+    fig, axes = plt.subplots(len(models), 3, figsize=(7.0, 1.85 * len(models)),
                              squeeze=False)
     for row_index, model in enumerate(models):
         left, middle, right = axes[row_index]
-        for system in systems:
+        for system_index, system in enumerate(systems):
             centers, lower, upper = [], [], []
             for family_index, family in enumerate(families):
                 task_values = [value for (m, s, task, demos), value in scores[1].items()
@@ -74,13 +88,16 @@ def main() -> int:
                 centers.append(center)
                 lower.append(center - low)
                 upper.append(high - center)
-            left.errorbar(range(len(families)), centers, yerr=(lower, upper),
-                          marker="o", ms=3, lw=1, capsize=1.5,
+            x = np.arange(len(families)) + (system_index - (len(systems) - 1) / 2) * 0.16
+            left.errorbar(x, centers, yerr=(lower, upper),
+                          marker=SYSTEM_MARKERS.get(system, "o"), ms=3.2, lw=0,
+                          elinewidth=0.8, capsize=1.5,
                           color=COLORS.get(system), label=system)
-        left.set_xticks(range(len(families)), families, rotation=35, ha="right")
+        left.set_xticks(range(len(families)), family_labels, rotation=28, ha="right")
         left.set_ylim(0, 1.02)
         left.set_ylabel("Task-macro pass@1")
-        left.set_title(f"{model}: four demonstrations")
+        left.text(0.02, 0.96, model, transform=left.transAxes,
+                  ha="left", va="top", fontweight="bold", fontsize=6.5)
 
         for system in systems:
             centers, lower, upper = [], [], []
@@ -91,16 +108,15 @@ def main() -> int:
                 centers.append(center)
                 lower.append(center - low)
                 upper.append(high - center)
-            middle.errorbar((0, 1, 2, 4), centers, yerr=(lower, upper), marker="o",
+            middle.errorbar((0, 1, 2, 4), centers, yerr=(lower, upper),
+                            marker=SYSTEM_MARKERS.get(system, "o"),
                             ms=3, lw=1, capsize=1.5, color=COLORS.get(system),
                             label=system)
         middle.set_xticks((0, 1, 2, 4))
         middle.set_ylim(0, 1.02)
         middle.set_xlabel("Demonstrations")
         middle.set_ylabel("Task-macro pass@1")
-        middle.set_title("Demonstration response")
-
-        stages = ["parse", "type", "build", "oracle", "pass"]
+        stages = ["parse", "type", "build", "semantic", "pass"]
         bottoms = np.zeros(len(systems))
         for stage in stages:
             values = []
@@ -112,40 +128,30 @@ def main() -> int:
                     if not truth(entry["parsed"]): counts["parse"] += 1
                     elif not truth(entry["typed"]): counts["type"] += 1
                     elif not truth(entry["built"]): counts["build"] += 1
-                    elif not truth(entry["passed"]): counts["oracle"] += 1
+                    elif not truth(entry["passed"]): counts["semantic"] += 1
                     else: counts["pass"] += 1
                 values.append(counts[stage] / len(subset))
-            right.bar(systems, values, bottom=bottoms, width=0.68, label=stage)
+            right.bar(systems, values, bottom=bottoms, width=0.66,
+                      color=OUTCOME_COLORS[stage], label=stage)
             bottoms += np.asarray(values)
         right.set_ylim(0, 1)
         right.set_ylabel("Sample fraction")
-        right.set_title("Outcome composition")
 
-        if references:
-            inset = middle.inset_axes([0.57, 0.08, 0.4, 0.34])
-            inset.set_facecolor((1, 1, 1, 0.92))
-            for system in systems:
-                points = []
-                for demos in (0, 1, 2, 4):
-                    values = [number(entry, "nll") / number(entry, "target_tokens")
-                              for entry in references if entry["model"] == model
-                              and entry["system"] == system
-                              and int(entry["demo_count"]) == demos]
-                    if values:
-                        points.append((demos, float(np.mean(values))))
-                if points:
-                    inset.plot(*zip(*points), lw=0.8, color=COLORS.get(system))
-            inset.text(0.03, 0.94, "mean token NLL", transform=inset.transAxes,
-                       va="top", fontsize=5.5)
-            inset.tick_params(labelsize=5)
+        if row_index == 0:
+            left.set_title("(a) Completion by family")
+            middle.set_title("(b) Demonstration response")
+            right.set_title("(c) Outcome composition")
 
     for axis in axes.flat:
         axis.grid(axis="y", color="#E7E9EC", lw=0.5)
-    handles, labels = axes[0, 0].get_legend_handles_labels()
-    outcome_handles, outcome_labels = axes[0, 2].get_legend_handles_labels()
-    fig.legend(handles + outcome_handles, labels + outcome_labels, ncol=4,
-               loc="upper center", frameon=False)
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    system_handles, system_labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(system_handles, system_labels, ncol=len(systems), loc="upper left",
+               bbox_to_anchor=(0.15, 1.01), frameon=False)
+    outcome_handles = [Patch(facecolor=OUTCOME_COLORS[stage], label=stage)
+                       for stage in stages]
+    fig.legend(outcome_handles, stages, ncol=len(stages), loc="upper right",
+               bbox_to_anchor=(0.99, 1.01), frameon=False)
+    fig.tight_layout(rect=(0.02, 0, 1, 0.91), w_pad=1.0, h_pad=0.8)
     save(fig, args.output)
     return 0
 

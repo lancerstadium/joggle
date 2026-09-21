@@ -56,18 +56,23 @@ and correctness outcome.
 The extension suite contains 24 held-out tasks, four in each of six families:
 type or operation definition, analysis, rewrite, conversion, artifact
 generation, and a vertical feature combining these roles. Every task has one
-semantic specification, a system-specific harness, and an idiomatic reference
-solution that passes the common oracle. A separate demonstration bank uses
+semantic specification with fixed positive and negative fixtures, a
+system-specific harness, and an idiomatic reference solution that passes the
+common oracle. A separate demonstration bank uses
 disjoint features, so no definition, rewrite, converter, or emitter from an
-evaluation feature enters its prompt. Formatting is normalized; generated code
-and harness boilerplate are not scored.
+evaluation feature enters its prompt. The emitted extension enters the harness
+without manual repair; formatter changes and provided harness boilerplate are
+excluded from target-token counts.
 
 Two frozen open-weight code models in the 1--3B range receive the specification
 and a compact API card. Demonstration counts are $0,1,2,$ and $4$; examples
 come only from the demonstration bank through one deterministic retrieval rule
-and an equal token budget. Each condition draws 50 samples. Sampling
+and equal API-card and continuation token ceilings. Each condition draws 50
+samples. Sampling
 parameters, seeds, stopping rules, and maximum continuation length are fixed
-per model.
+per model. Every observation pins the task specification, API card, prompt,
+and output by hash; paired conditions use identical demonstration IDs and
+sampling controls across systems.
 
 For reference tokens $x_{1:N}$ and context $c$,
 \[
