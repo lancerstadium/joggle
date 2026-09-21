@@ -9,10 +9,9 @@ analysis and transformation~\cite{lattner2004llvm}; MLIR generalized this
 approach to multiple abstraction levels~\cite{lattner2021mlir}; Halide
 separated algorithms from schedules~\cite{ragankelley2012halide}; and TVM
 combined graph- and operator-level optimization for diverse
-targets~\cite{chen2018tvm}. These systems make programs increasingly
-malleable. Extending the compiler that manipulates them, however, still
-requires coordinating mechanisms with different syntax, ownership, and
-execution rules.
+targets~\cite{chen2018tvm}. Together they make programs increasingly malleable,
+but the compiler's own extension model remains divided among mechanisms with
+different syntax, ownership, and execution rules.
 
 Consider adding a numeric format or a target-specific operator family. Its
 semantic definition may live in an operator registry, legality in an analysis,
@@ -36,9 +35,9 @@ organization, and update-efficiency problems, respectively.
 Figure~\ref{fig:thesis-map} states the paper's argument as three vertical
 chains. Each column connects a development problem to one Joggle mechanism and
 one measurable outcome. This 3$\times$3 mapping also aligns the evaluation with
-the design: small-model synthesis perplexity measures the extension surface,
-change footprint measures ownership, and update latency measures reuse after an
-edit.
+the design: held-out extension tasks measure predictability and executable
+completion, paired patches measure change footprint, and controlled edits
+measure update latency and executed work.
 
 \begin{figure*}[t]
   \centering
@@ -81,13 +80,13 @@ boundaries across compilation stages. This boundary complements rather than
 replaces hierarchical program IR.
 
 \paragraph{Dependency-directed updates.}
-Revisions, dependency indices, and cached execution plans restrict responsive
+Revisions, dependency indices, and cached execution plans restrict
 re-execution to affected graph regions and stages under transactional
 publication.
 
 The evaluation assigns one evidence stream to each contribution. Held-out
-extensions measure small-model uncertainty and executable task success. Matched
-feature patches measure repository footprint. Controlled edits over complete
-models measure latency and executed work. Artifact quality and mechanism costs
+extensions measure predictability and executable task success. Matched feature
+patches measure repository footprint. Controlled edits over complete models
+measure latency and executed work. Artifact quality and mechanism costs
 complete the evidence chain without conflating compiler responsiveness with
 generated-code quality.

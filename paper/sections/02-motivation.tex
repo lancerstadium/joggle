@@ -33,12 +33,11 @@ change is conceptually one feature, but its pieces occupy several stages in
 Figure~\ref{fig:workflow}. Later revisions---such as admitting another width or
 changing target selection---must preserve the same cross-stage agreement.
 
-Existing infrastructures offer rich extension points. LLVM exposes analyses
-and passes, MLIR adds dialects and conversions, Halide exposes schedules, and
-TVM exposes graph and tensor-program
-optimization~\cite{lattner2004llvm,lattner2021mlir,ragankelley2012halide,chen2018tvm}.
-A complete feature combines several of these roles, while their declarations,
-composition boundaries, and invalidation rules remain separate.
+Existing infrastructures offer rich extension points for these individual
+roles. The difficulty addressed here is their composition: a complete feature
+must connect declarations, transformations, target realization, and
+invalidation even when those roles have separate interfaces and ownership
+boundaries.
 
 \subsection{Development Friction}
 \label{sec:friction}
@@ -65,9 +64,8 @@ A conventional pipeline establishes correctness by running an ordered sequence
 of stages over each new input. After a local graph or policy edit, rerunning the
 affected suffix is safe but can be unnecessarily broad: an analysis that did
 not observe the edited entity is recomputed, and a later stage can be rerun even
-when an earlier stage publishes no relevant effect. Multi-level conversion
-amplifies this work because each materialized boundary becomes another unit to
-rebuild, validate, and traverse.
+when an earlier stage publishes no relevant effect. Materialized representation
+boundaries add further units to rebuild, validate, and traverse.
 
 The three costs reinforce one another. Fragmented interfaces spread a feature;
 spread ownership enlarges its change surface; a larger change surface forces

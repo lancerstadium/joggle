@@ -132,9 +132,10 @@ fn select(m: Mod) -> bool {
 
 Given a \texttt{sat<W>} result, \texttt{select} calls \texttt{supports},
 retargets the addition to \texttt{sat.add}, and reports whether the subject
-changed. Its signature distinguishes mutation from the read-only query.
-Body-less \texttt{sim} and \texttt{emit} declarations bind native
-implementations behind the same typed call boundary.
+changed. The \texttt{Mod} argument gives \texttt{select} access to the subject
+under a mutating run, whereas \texttt{supports} only inspects an owned
+\texttt{Ty} value. Body-less \texttt{sim} and \texttt{emit} declarations bind
+native implementations behind the same typed call boundary.
 
 Joggle resolves a call from its qualified name, visible mods, explicit generic
 arguments, parameter types, and result context. The selected implementation may
@@ -165,7 +166,7 @@ that organize these functions.
 
 A mod is Joggle's unit of ownership and composition. We model it as
 \[
-  \mathcal{M} = (n, U, F_{\mathrm{pub}}, F_{\mathrm{local}}, G, N),
+  \mathcal{M} = (n, U, F_{\mathrm{pub}}, F_{\mathrm{local}}, G, N).
 \]
 where $n$ is the mod name and $U$ is its declared \texttt{use} set.
 $F_{\mathrm{pub}}$ and $F_{\mathrm{local}}$ are its public and local
@@ -251,12 +252,13 @@ report names the first invalid contract, such as an environment, structure,
 function, operation, or value change. Generation checks distinguish an edited
 entity from a new entity that later reuses the same slot.
 
-Mutating pipelines require one further step. A reactive schedule stores, for
-each stage $s_i$, its call key $K_i$, observed inputs $D_i$, and previous output
-scope $W_i$. The key names the environment, function, and arguments. The output
-scope contains changed function identities and flags for structural or
-mod-dependency changes. A stage is selected when its key or inputs are stale,
-or when an earlier selected stage may change something it observed:
+Mutating pipelines require one further step. After a successful run, a reactive
+schedule stores for each stage $s_i$ its call key $K_i$, observed inputs $D_i$,
+and output scope $W_i$. The key names the environment, function, and arguments.
+The output scope contains changed function identities and flags for structural
+or mod-dependency changes. On the next run, a stage is selected when its key or
+inputs are stale, or when an earlier selected stage may change something it
+observed:
 \[
   \begin{aligned}
     \operatorname{Selected}_i ={}&

@@ -76,24 +76,23 @@
 \title[Joggle]{Joggle: Malleable Compilation with a Progressive Intermediate Representation}
 
 \begin{abstract}
-Extending a heterogeneous compiler is a cross-cutting task. One feature can
-require a semantic definition, an analysis, a graph transformation, a
-conversion, and an artifact generator, yet established infrastructures expose
-these roles through different extension and invalidation mechanisms. Joggle
-makes compiler behavior part of the program model. Programs and compiler
-extensions share one typed graph, one function language, and one value model;
-graph-level \emph{mods} define ownership and dependency boundaries across
-stages; and an evaluator records graph observations and effects while
-publishing updates transactionally. The resulting intermediate representation
-is progressive: typed compiler functions refine verified mods without
-requiring a fixed sequence of public IR classes. Joggle combines stable graph
-handles, hierarchical revisions, dependency indices, and cached execution
-plans to re-execute only stages whose recorded inputs may have changed. We
-evaluate the design through held-out compiler-extension tasks, matched
-cross-system feature patches, controlled edits over a pinned full-model corpus,
-and operator- and model-level artifact measurements. These measurements connect
-extension predictability to executable completion, feature ownership to patch
-footprint, and affected graph scope to update cost.
+A heterogeneous-compiler feature is rarely local. Its semantics, analyses,
+graph transformations, conversions, and artifact generation often use
+different extension and invalidation mechanisms. Joggle instead represents
+programs and compiler behavior on one typed graph substrate. Typed compiler
+functions give these roles one language, call model, and value model;
+graph-level \emph{mods} define ownership and dependency boundaries; and an
+evaluator records graph observations and effects before publishing updates
+transactionally. This arrangement forms a progressive intermediate
+representation: compiler functions refine verified mods without crossing a
+fixed sequence of public IR classes. Stable handles, hierarchical revisions,
+dependency indices, and cached execution plans then restrict re-execution to
+stages whose recorded inputs may have changed. We evaluate this design with
+held-out extension tasks, matched cross-system feature patches, controlled
+edits over a pinned model corpus, and operator- and model-level artifact
+measurements. The experiments connect one programmable surface to executable
+completion, mod ownership to patch footprint, and affected graph scope to
+update cost.
 \end{abstract}
 
 \keywords{compilers, extensibility, metaprogramming, incremental compilation}
