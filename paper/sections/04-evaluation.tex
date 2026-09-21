@@ -171,25 +171,37 @@ frontend coverage part of the result. Cold measurements include process
 startup, parsing, and setup; warm measurements retain each system's public
 graph and pass infrastructure.
 
+Cold-path accounting separates loading, parsing, verification, plan
+construction, and first execution; warm accounting separates selection,
+evaluation, verification, and commit. The Whole-mod and No-plan-cache policies
+isolate observation precision and persistent execution plans. Their counters
+connect latency changes to observed entities, executed compiler-function
+operations, and plan compilation.
+
 \subsection{Artifact Quality and System Costs}
 \label{sec:eval-artifacts}
 
 Artifact measurements keep compiler responsiveness separate from generated-code
-quality. The operator matrix covers elementwise chains, reductions, matrix
-multiplication, convolution, quantize/dequantize paths, and fusion opportunities
-across fixed shapes and dtypes; model results use the accepted corpus subset.
-We compare unoptimized Joggle, optimized Joggle, and a pinned reference runtime
-on one CPU. Operator records contain kernel and call latency, compile time, and
-code size; model records contain inference latency, peak memory, and artifact
-size. Speedups are computed per subject before geometric aggregation, and fixed
-inputs establish numerical equivalence.
+quality. The operator matrix contains 24 fixed graphs, four each for
+elementwise chains, reductions, matrix multiplication, convolution,
+quantization, and fusion. Model measurements cover all 15 pinned subjects and
+retain unsupported model/variant pairs as coverage rows. We compare Joggle with
+and without its optional optimization passes against a pinned, single-thread
+ONNX Runtime CPU Execution Provider with full graph optimization. All three
+variants consume byte-identical deterministic inputs.
 
-Finally, cold-path accounting separates loading, parsing, verification, plan
-construction, and first execution; warm accounting separates selection,
-evaluation, verification, and commit. The Whole-mod and No-plan-cache policies
-provide the two mechanism ablations: observation precision and persistent
-execution plans. Their counters connect latency changes to observed entities,
-executed compiler-function operations, and plan compilation.
+Preparation, execution, and memory are separate records. Each supported pair
+has 30 fresh-process preparation measurements, ten fresh-process memory
+measurements, then ten warm-ups and 100 steady-state executions. Execution
+records contain latency, output digest, and absolute and relative error; memory
+records execute the same checked workload and report peak resident-set growth.
+Generated artifact size covers model-specific code and constants and is
+compared only between the two Joggle variants; shared
+runtime libraries do not have a per-model size boundary. Speedups are formed
+within a subject before geometric aggregation, and case-specific tolerances
+establish numerical equivalence. Preparation spans model bytes to callable
+state; execution times one backend call over resident buffers; memory is peak
+resident-set growth above an idle backend worker.
 
 Together, generation characterizes the extension surface, patch footprint its
 ownership boundary, reactive execution its update cost, and artifact and

@@ -39,6 +39,75 @@ compiled execution result. Figure 5 reuses the twelve entries marked
 `footprint`; this keeps completion and change-footprint tasks semantically
 paired.
 
+## Generated-artifact benchmarks
+
+`manifests/benchmark-cases.json` freezes the 24 operator graphs, inputs,
+initializers, numerical tolerances, 15 model inputs, three execution variants,
+and repetition counts used by Figures 8 and 9. Validate it before generating
+inputs or running a backend:
+
+```sh
+python3 artifact/validate_benchmark_cases.py
+```
+
+When the pinned model corpus is present, also validate every model hash and the
+chosen concrete input signature against ONNX Runtime:
+
+```sh
+python3 artifact/validate_benchmark_cases.py --model-root .cache/onnx-zoo
+```
+
+Materialize the byte-identical input corpus once. Repeating the command verifies
+existing bytes and refuses to replace a mismatching file:
+
+```sh
+python3 artifact/generate_benchmark_inputs.py \
+  --output .cache/artifact/benchmark-inputs
+```
+
+The generated `index.json` records the benchmark-manifest hash, every tensor
+hash, and the combined `input_digest` copied into Figures 8 and 9.
+
+Generate the 24 ONNX operator fixtures directly from the same manifest, then
+check every graph and execute it with the pinned reference runtime. This step
+requires `onnx`, `numpy`, and `onnxruntime`:
+
+```sh
+python3 artifact/generate_operator_models.py \
+  --inputs .cache/artifact/benchmark-inputs \
+  --output .cache/artifact/operator-models \
+  --verify-runtime
+```
+
+The generator refuses to replace non-matching files. Its index binds each ONNX
+file and verified output to the benchmark specification.
+
+Collect a small structural run before the release run:
+
+```sh
+python3 artifact/run_onnxruntime_benchmarks.py \
+  --group operators \
+  --inputs .cache/artifact/benchmark-inputs \
+  --operator-models .cache/artifact/operator-models \
+  --output .cache/artifact/figure-08-ort-smoke.csv \
+  --smoke
+
+python3 artifact/validate_figure.py 8 \
+  .cache/artifact/figure-08-ort-smoke.csv --allow-partial
+```
+
+Omit `--smoke` for the frozen counts. Use `--group models` with
+`--model-root .cache/onnx-zoo` for Figure 9. Each run writes a sidecar JSON with
+the Git revision, runtime configuration, model hashes, host, thread controls,
+counts, and command. Release runs reject dirty trees.
+
+The two Joggle variants differ only in optional optimization passes. ONNX
+Runtime CPU EP provides the single-thread reference. The CSV separates fresh
+preparation, steady-state execution, and fresh-process memory records and
+retains one coverage record for every unsupported subject/variant pair.
+Artifact bytes are defined only for generated Joggle code and constants;
+shared runtime libraries are not assigned to individual reference models.
+
 ## Change-footprint experiment
 
 `collect_footprint.py` derives Figure 5 rows from pinned Git revisions. The case

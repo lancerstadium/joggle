@@ -127,21 +127,41 @@ No-plan-cache alter only observation precision and plan persistence.
 
 ## Figures 8 and 9: generated artifacts
 
-Figure 8 covers elementwise chains, reductions, matrix multiplication,
-convolution, quantize/dequantize paths, and fusion opportunities at fixed
-shapes and dtypes. Figure 9 covers every pinned model, retaining unsupported
-cases as coverage rows. The three variants are unoptimized Joggle, optimized
-Joggle, and one pinned CPU reference with a fixed thread policy.
+`manifests/benchmark-cases.json` freezes 24 operator graphs---four each for
+elementwise, reduction, matrix multiplication, convolution, quantization, and
+fusion---plus deterministic inputs for all 15 pinned models. Figure 9 retains
+every model/variant pair: an unsupported pair contributes one coverage row
+rather than disappearing from the accepted intersection.
 
-Preparation time and steady-state latency are separate. Operator rows also
-record code size; model rows record peak memory and artifact size. Fixed inputs
-and dtype-specific tolerances define numerical equivalence.
+The three variants are Joggle without optional optimization passes, Joggle
+with the frozen optimization pipeline, and a pinned single-thread ONNX Runtime
+CPU Execution Provider with full graph optimization. All variants consume
+byte-identical inputs. Required conversion, legalization, memory planning, and
+emission remain in both Joggle paths; only optional optimization passes differ.
+
+Each supported pair has 30 fresh-process preparation observations, ten
+fresh-process memory observations, and, after ten warm-ups, 100 steady-state
+executions. Execution rows record latency, output digests, and absolute and
+relative error. Memory rows execute the same checked workload and record peak
+resident-set growth. Preparation rows record the path from model bytes to
+callable state; this includes emission and host compilation for Joggle and
+session construction for ONNX Runtime.
+Execution timing surrounds one backend call over resident buffers. Memory is
+the peak resident-set increase above an idle backend worker after its libraries
+load. Generated artifact size covers model-specific object code and constants
+and is compared only between the two Joggle variants; shared runtime libraries
+have no equivalent per-model boundary and remain blank for the reference.
+Dtype- and case-specific tolerances define numerical equivalence.
 
 - Operator CSV: `templates/figure-08-operators.csv`
 - Operator plot: `figures/figure_08_operators.py`
 - Model CSV: `templates/figure-09-models.csv`
 - Model plot: `figures/figure_09_models.py`
-- Required pairing: operator/shape/dtype or model/input/seed across variants
+- Case manifest: `manifests/benchmark-cases.json`
+- Input generator: `generate_benchmark_inputs.py`
+- Operator-model generator: `generate_operator_models.py`
+- Reference collector: `run_onnxruntime_benchmarks.py`
+- Required pairing: frozen case ID, input digest, iteration, and seed across variants
 
 ## Release gate
 

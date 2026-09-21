@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 COLORS = {
@@ -18,6 +19,9 @@ COLORS = {
     "reactive": "#087E8B",
     "whole-mod": "#8C6BB1",
     "no-plan-cache": "#C44E52",
+    "joggle-unoptimized": "#7B8494",
+    "joggle-optimized": "#087E8B",
+    "onnxruntime": "#E07A2D",
 }
 
 
@@ -64,6 +68,13 @@ def number(row: dict[str, str], key: str) -> float:
         return float(row[key])
     except (KeyError, ValueError) as error:
         raise ValueError(f"invalid numeric {key}={row.get(key)!r}") from error
+
+
+def median_p95(values: Iterable[float]) -> tuple[float, float]:
+    sample = np.asarray(list(values), dtype=float)
+    if sample.size == 0 or not np.all(np.isfinite(sample)):
+        raise ValueError("summary requires at least one finite value")
+    return float(np.median(sample)), float(np.percentile(sample, 95))
 
 
 def save(fig: plt.Figure, output: Path) -> None:

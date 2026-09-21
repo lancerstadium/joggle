@@ -1,0 +1,297 @@
+{
+  "schema_version": 1,
+  "measurement": {
+    "warmups": 10,
+    "execution_iterations": 100,
+    "preparation_iterations": 30,
+    "memory_iterations": 10,
+    "threads": 1,
+    "operator_opset": 12,
+    "reference_provider": "CPUExecutionProvider",
+    "reference_graph_optimization": "ORT_ENABLE_ALL",
+    "reference_execution_mode": "ORT_SEQUENTIAL",
+    "random_generator": "SplitMix64; float32 takes the upper 24 bits and maps them to [low,high), while uniform-integer uses the inclusive integer interval",
+    "input_policy": "Generate once per case from the pinned specification; reuse identical bytes across variants and iterations",
+    "preparation_boundary": "Model bytes available to backend-specific callable execution state; Joggle includes emission and host compilation, ONNX Runtime includes session construction",
+    "execution_boundary": "One backend call over resident input and output buffers; exclude input generation, serialization, and process launch",
+    "memory_boundary": "Peak resident-set increase above an idle backend worker after libraries load and before model or session construction",
+    "artifact_boundary": "Generated model-specific object code and embedded constants; shared runtime libraries are excluded"
+  },
+  "variants": [
+    {
+      "id": "joggle-unoptimized",
+      "system": "Joggle",
+      "role": "candidate",
+      "pipeline": "Required ONNX conversion, target legalization, scalarization, memory planning, and emission; omit optional Joggle optimization passes",
+      "artifact_size": true
+    },
+    {
+      "id": "joggle-optimized",
+      "system": "Joggle",
+      "role": "candidate",
+      "pipeline": "The same required path plus the frozen Joggle optimization pipeline",
+      "artifact_size": true
+    },
+    {
+      "id": "onnxruntime",
+      "system": "ONNX Runtime CPU EP",
+      "role": "reference",
+      "pipeline": "Pinned CPU Execution Provider, graph optimization level, and single-thread session options",
+      "artifact_size": false
+    }
+  ],
+  "operator_cases": [
+    {
+      "id": "ew-affine-1k",
+      "family": "elementwise",
+      "nodes": [{"op": "Add", "inputs": ["x", "b"], "outputs": ["add"], "attributes": {}}, {"op": "Mul", "inputs": ["add", "scale"], "outputs": ["y"], "attributes": {}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [1024]}],
+      "inputs": [
+        {"name": "x", "dtype": "float32", "shape": [1024], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1101},
+        {"name": "b", "dtype": "float32", "shape": [1024], "distribution": "uniform", "low": -0.5, "high": 0.5, "seed": 1102}
+      ],
+      "initializers": {"scale": {"dtype": "float32", "shape": [], "values": [1.25]}},
+      "rtol": 0.0001, "atol": 0.000001
+    },
+    {
+      "id": "ew-broadcast-relu",
+      "family": "elementwise",
+      "nodes": [{"op": "Add", "inputs": ["x", "bias"], "outputs": ["add"], "attributes": {}}, {"op": "Relu", "inputs": ["add"], "outputs": ["y"], "attributes": {}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [32, 128]}],
+      "inputs": [
+        {"name": "x", "dtype": "float32", "shape": [32, 128], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1111},
+        {"name": "bias", "dtype": "float32", "shape": [128], "distribution": "uniform", "low": -0.25, "high": 0.25, "seed": 1112}
+      ],
+      "initializers": {}, "rtol": 0.0001, "atol": 0.000001
+    },
+    {
+      "id": "ew-chain-64k",
+      "family": "elementwise",
+      "nodes": [{"op": "Add", "inputs": ["x", "y"], "outputs": ["add"], "attributes": {}}, {"op": "Mul", "inputs": ["add", "z"], "outputs": ["mul"], "attributes": {}}, {"op": "Relu", "inputs": ["mul"], "outputs": ["relu"], "attributes": {}}, {"op": "Clip", "inputs": ["relu", "min", "max"], "outputs": ["out"], "attributes": {}}],
+      "outputs": [{"name": "out", "dtype": "float32", "shape": [65536]}],
+      "inputs": [
+        {"name": "x", "dtype": "float32", "shape": [65536], "distribution": "uniform", "low": -2.0, "high": 2.0, "seed": 1121},
+        {"name": "y", "dtype": "float32", "shape": [65536], "distribution": "uniform", "low": -2.0, "high": 2.0, "seed": 1122},
+        {"name": "z", "dtype": "float32", "shape": [65536], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1123}
+      ],
+      "initializers": {"min": {"dtype": "float32", "shape": [], "values": [-0.5]}, "max": {"dtype": "float32", "shape": [], "values": [0.5]}}, "rtol": 0.0001, "atol": 0.000001
+    },
+    {
+      "id": "ew-select-16k",
+      "family": "elementwise",
+      "nodes": [{"op": "Greater", "inputs": ["x", "zero"], "outputs": ["condition"], "attributes": {}}, {"op": "Where", "inputs": ["condition", "x", "y"], "outputs": ["out"], "attributes": {}}],
+      "outputs": [{"name": "out", "dtype": "float32", "shape": [16384]}],
+      "inputs": [
+        {"name": "x", "dtype": "float32", "shape": [16384], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1131},
+        {"name": "y", "dtype": "float32", "shape": [16384], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1132}
+      ],
+      "initializers": {"zero": {"dtype": "float32", "shape": [], "values": [0.0]}},
+      "rtol": 0.0, "atol": 0.0
+    },
+    {
+      "id": "red-sum-row",
+      "family": "reduction",
+      "nodes": [{"op": "ReduceSum", "inputs": ["x"], "outputs": ["y"], "attributes": {"axes": [1], "keepdims": 0}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [128]}],
+      "inputs": [{"name": "x", "dtype": "float32", "shape": [128, 1024], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1201}],
+      "initializers": {}, "rtol": 0.0005, "atol": 0.00001
+    },
+    {
+      "id": "red-mean-spatial",
+      "family": "reduction",
+      "nodes": [{"op": "ReduceMean", "inputs": ["x"], "outputs": ["y"], "attributes": {"axes": [2, 3], "keepdims": 0}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [8, 32]}],
+      "inputs": [{"name": "x", "dtype": "float32", "shape": [8, 32, 28, 28], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1211}],
+      "initializers": {}, "rtol": 0.0005, "atol": 0.00001
+    },
+    {
+      "id": "red-max-channel",
+      "family": "reduction",
+      "nodes": [{"op": "ReduceMax", "inputs": ["x"], "outputs": ["y"], "attributes": {"axes": [1], "keepdims": 1}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [4, 1, 56, 56]}],
+      "inputs": [{"name": "x", "dtype": "float32", "shape": [4, 64, 56, 56], "distribution": "uniform", "low": -2.0, "high": 2.0, "seed": 1221}],
+      "initializers": {}, "rtol": 0.0, "atol": 0.0
+    },
+    {
+      "id": "red-l2-last",
+      "family": "reduction",
+      "nodes": [{"op": "ReduceL2", "inputs": ["x"], "outputs": ["y"], "attributes": {"axes": [2], "keepdims": 0}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [32, 16]}],
+      "inputs": [{"name": "x", "dtype": "float32", "shape": [32, 16, 128], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1231}],
+      "initializers": {}, "rtol": 0.0005, "atol": 0.00001
+    },
+    {
+      "id": "mm-square-64",
+      "family": "matmul",
+      "nodes": [{"op": "MatMul", "inputs": ["a", "b"], "outputs": ["y"], "attributes": {}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [64, 64]}],
+      "inputs": [
+        {"name": "a", "dtype": "float32", "shape": [64, 64], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1301},
+        {"name": "b", "dtype": "float32", "shape": [64, 64], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1302}
+      ],
+      "initializers": {}, "rtol": 0.0005, "atol": 0.00001
+    },
+    {
+      "id": "mm-square-256",
+      "family": "matmul",
+      "nodes": [{"op": "MatMul", "inputs": ["a", "b"], "outputs": ["y"], "attributes": {}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [256, 256]}],
+      "inputs": [
+        {"name": "a", "dtype": "float32", "shape": [256, 256], "distribution": "uniform", "low": -0.25, "high": 0.25, "seed": 1311},
+        {"name": "b", "dtype": "float32", "shape": [256, 256], "distribution": "uniform", "low": -0.25, "high": 0.25, "seed": 1312}
+      ],
+      "initializers": {}, "rtol": 0.001, "atol": 0.00001
+    },
+    {
+      "id": "mm-rectangular",
+      "family": "matmul",
+      "nodes": [{"op": "MatMul", "inputs": ["a", "b"], "outputs": ["y"], "attributes": {}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [128, 64]}],
+      "inputs": [
+        {"name": "a", "dtype": "float32", "shape": [128, 512], "distribution": "uniform", "low": -0.25, "high": 0.25, "seed": 1321},
+        {"name": "b", "dtype": "float32", "shape": [512, 64], "distribution": "uniform", "low": -0.25, "high": 0.25, "seed": 1322}
+      ],
+      "initializers": {}, "rtol": 0.001, "atol": 0.00001
+    },
+    {
+      "id": "mm-batched",
+      "family": "matmul",
+      "nodes": [{"op": "MatMul", "inputs": ["a", "b"], "outputs": ["y"], "attributes": {}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [8, 64, 64]}],
+      "inputs": [
+        {"name": "a", "dtype": "float32", "shape": [8, 64, 64], "distribution": "uniform", "low": -0.5, "high": 0.5, "seed": 1331},
+        {"name": "b", "dtype": "float32", "shape": [8, 64, 64], "distribution": "uniform", "low": -0.5, "high": 0.5, "seed": 1332}
+      ],
+      "initializers": {}, "rtol": 0.001, "atol": 0.00001
+    },
+    {
+      "id": "conv-stem",
+      "family": "convolution",
+      "nodes": [{"op": "Conv", "inputs": ["x", "w"], "outputs": ["y"], "attributes": {"strides": [2, 2], "pads": [1, 1, 1, 1], "group": 1}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [1, 16, 112, 112]}],
+      "inputs": [{"name": "x", "dtype": "float32", "shape": [1, 3, 224, 224], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1401}],
+      "initializers": {"w": {"dtype": "float32", "shape": [16, 3, 3, 3], "distribution": "uniform", "low": -0.1, "high": 0.1, "seed": 1402}},
+      "rtol": 0.001, "atol": 0.00001
+    },
+    {
+      "id": "conv-depthwise",
+      "family": "convolution",
+      "nodes": [{"op": "Conv", "inputs": ["x", "w"], "outputs": ["y"], "attributes": {"strides": [1, 1], "pads": [1, 1, 1, 1], "group": 32}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [1, 32, 56, 56]}],
+      "inputs": [{"name": "x", "dtype": "float32", "shape": [1, 32, 56, 56], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1411}],
+      "initializers": {"w": {"dtype": "float32", "shape": [32, 1, 3, 3], "distribution": "uniform", "low": -0.1, "high": 0.1, "seed": 1412}},
+      "rtol": 0.001, "atol": 0.00001
+    },
+    {
+      "id": "conv-pointwise",
+      "family": "convolution",
+      "nodes": [{"op": "Conv", "inputs": ["x", "w"], "outputs": ["y"], "attributes": {"strides": [1, 1], "pads": [0, 0, 0, 0], "group": 1}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [1, 128, 56, 56]}],
+      "inputs": [{"name": "x", "dtype": "float32", "shape": [1, 64, 56, 56], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1421}],
+      "initializers": {"w": {"dtype": "float32", "shape": [128, 64, 1, 1], "distribution": "uniform", "low": -0.05, "high": 0.05, "seed": 1422}},
+      "rtol": 0.001, "atol": 0.00001
+    },
+    {
+      "id": "conv-strided",
+      "family": "convolution",
+      "nodes": [{"op": "Conv", "inputs": ["x", "w"], "outputs": ["y"], "attributes": {"strides": [2, 2], "pads": [1, 1, 1, 1], "group": 1}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [1, 128, 14, 14]}],
+      "inputs": [{"name": "x", "dtype": "float32", "shape": [1, 64, 28, 28], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1431}],
+      "initializers": {"w": {"dtype": "float32", "shape": [128, 64, 3, 3], "distribution": "uniform", "low": -0.05, "high": 0.05, "seed": 1432}},
+      "rtol": 0.001, "atol": 0.00001
+    },
+    {
+      "id": "quant-qdq-tensor",
+      "family": "quantization",
+      "nodes": [{"op": "QuantizeLinear", "inputs": ["x", "scale", "zero"], "outputs": ["q"], "attributes": {}}, {"op": "DequantizeLinear", "inputs": ["q", "scale", "zero"], "outputs": ["y"], "attributes": {}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [1, 4096]}],
+      "inputs": [{"name": "x", "dtype": "float32", "shape": [1, 4096], "distribution": "uniform", "low": -3.0, "high": 3.0, "seed": 1501}],
+      "initializers": {"scale": {"dtype": "float32", "shape": [], "values": [0.025]}, "zero": {"dtype": "uint8", "shape": [], "values": [128]}},
+      "rtol": 0.0, "atol": 0.000001
+    },
+    {
+      "id": "quant-dynamic",
+      "family": "quantization",
+      "nodes": [{"op": "DynamicQuantizeLinear", "inputs": ["x"], "outputs": ["y", "scale", "zero"], "attributes": {}}],
+      "outputs": [{"name": "y", "dtype": "uint8", "shape": [1, 8192]}, {"name": "scale", "dtype": "float32", "shape": []}, {"name": "zero", "dtype": "uint8", "shape": []}],
+      "inputs": [{"name": "x", "dtype": "float32", "shape": [1, 8192], "distribution": "uniform", "low": -2.0, "high": 4.0, "seed": 1511}],
+      "initializers": {}, "rtol": 0.0, "atol": 0.0
+    },
+    {
+      "id": "quant-matmul",
+      "family": "quantization",
+      "nodes": [{"op": "QLinearMatMul", "inputs": ["a", "a_scale", "a_zero", "b", "b_scale", "b_zero", "y_scale", "y_zero"], "outputs": ["y"], "attributes": {}}],
+      "outputs": [{"name": "y", "dtype": "uint8", "shape": [64, 64]}],
+      "inputs": [
+        {"name": "a", "dtype": "uint8", "shape": [64, 128], "distribution": "uniform-integer", "low": 0, "high": 255, "seed": 1521},
+        {"name": "b", "dtype": "uint8", "shape": [128, 64], "distribution": "uniform-integer", "low": 0, "high": 255, "seed": 1522}
+      ],
+      "initializers": {"a_scale": {"dtype": "float32", "shape": [], "values": [0.02]}, "a_zero": {"dtype": "uint8", "shape": [], "values": [127]}, "b_scale": {"dtype": "float32", "shape": [], "values": [0.015]}, "b_zero": {"dtype": "uint8", "shape": [], "values": [129]}, "y_scale": {"dtype": "float32", "shape": [], "values": [0.08]}, "y_zero": {"dtype": "uint8", "shape": [], "values": [120]}},
+      "rtol": 0.0, "atol": 0.0
+    },
+    {
+      "id": "quant-conv",
+      "family": "quantization",
+      "nodes": [{"op": "QLinearConv", "inputs": ["x", "x_scale", "x_zero", "w", "w_scale", "w_zero", "y_scale", "y_zero", "bias"], "outputs": ["y"], "attributes": {"strides": [1, 1], "pads": [1, 1, 1, 1], "group": 1}}],
+      "outputs": [{"name": "y", "dtype": "uint8", "shape": [1, 16, 32, 32]}],
+      "inputs": [{"name": "x", "dtype": "uint8", "shape": [1, 8, 32, 32], "distribution": "uniform-integer", "low": 0, "high": 255, "seed": 1531}],
+      "initializers": {"w": {"dtype": "int8", "shape": [16, 8, 3, 3], "distribution": "uniform-integer", "low": -127, "high": 127, "seed": 1532}, "bias": {"dtype": "int32", "shape": [16], "distribution": "uniform-integer", "low": -64, "high": 64, "seed": 1533}, "x_scale": {"dtype": "float32", "shape": [], "values": [0.02]}, "x_zero": {"dtype": "uint8", "shape": [], "values": [128]}, "w_scale": {"dtype": "float32", "shape": [], "values": [0.01]}, "w_zero": {"dtype": "int8", "shape": [], "values": [0]}, "y_scale": {"dtype": "float32", "shape": [], "values": [0.05]}, "y_zero": {"dtype": "uint8", "shape": [], "values": [120]}},
+      "rtol": 0.0, "atol": 0.0
+    },
+    {
+      "id": "fuse-add-relu",
+      "family": "fusion",
+      "nodes": [{"op": "Add", "inputs": ["x", "y"], "outputs": ["add"], "attributes": {}}, {"op": "Relu", "inputs": ["add"], "outputs": ["out"], "attributes": {}}],
+      "outputs": [{"name": "out", "dtype": "float32", "shape": [65536]}],
+      "inputs": [
+        {"name": "x", "dtype": "float32", "shape": [65536], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1601},
+        {"name": "y", "dtype": "float32", "shape": [65536], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1602}
+      ],
+      "initializers": {}, "rtol": 0.0001, "atol": 0.000001
+    },
+    {
+      "id": "fuse-matmul-bias-relu",
+      "family": "fusion",
+      "nodes": [{"op": "MatMul", "inputs": ["x", "w"], "outputs": ["matmul"], "attributes": {}}, {"op": "Add", "inputs": ["matmul", "bias"], "outputs": ["add"], "attributes": {}}, {"op": "Relu", "inputs": ["add"], "outputs": ["y"], "attributes": {}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [128, 128]}],
+      "inputs": [{"name": "x", "dtype": "float32", "shape": [128, 256], "distribution": "uniform", "low": -0.25, "high": 0.25, "seed": 1611}],
+      "initializers": {"w": {"dtype": "float32", "shape": [256, 128], "distribution": "uniform", "low": -0.1, "high": 0.1, "seed": 1612}, "bias": {"dtype": "float32", "shape": [128], "distribution": "uniform", "low": -0.1, "high": 0.1, "seed": 1613}},
+      "rtol": 0.001, "atol": 0.00001
+    },
+    {
+      "id": "fuse-conv-bias-relu",
+      "family": "fusion",
+      "nodes": [{"op": "Conv", "inputs": ["x", "w", "bias"], "outputs": ["conv"], "attributes": {"strides": [1, 1], "pads": [1, 1, 1, 1], "group": 1}}, {"op": "Relu", "inputs": ["conv"], "outputs": ["y"], "attributes": {}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [1, 64, 56, 56]}],
+      "inputs": [{"name": "x", "dtype": "float32", "shape": [1, 32, 56, 56], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1621}],
+      "initializers": {"w": {"dtype": "float32", "shape": [64, 32, 3, 3], "distribution": "uniform", "low": -0.05, "high": 0.05, "seed": 1622}, "bias": {"dtype": "float32", "shape": [64], "distribution": "uniform", "low": -0.1, "high": 0.1, "seed": 1623}},
+      "rtol": 0.001, "atol": 0.00001
+    },
+    {
+      "id": "fuse-mul-add",
+      "family": "fusion",
+      "nodes": [{"op": "Mul", "inputs": ["x", "scale"], "outputs": ["mul"], "attributes": {}}, {"op": "Add", "inputs": ["mul", "bias"], "outputs": ["y"], "attributes": {}}],
+      "outputs": [{"name": "y", "dtype": "float32", "shape": [131072]}],
+      "inputs": [{"name": "x", "dtype": "float32", "shape": [131072], "distribution": "uniform", "low": -1.0, "high": 1.0, "seed": 1631}],
+      "initializers": {"scale": {"dtype": "float32", "shape": [], "values": [0.75]}, "bias": {"dtype": "float32", "shape": [], "values": [0.125]}},
+      "rtol": 0.0001, "atol": 0.000001
+    }
+  ],
+  "model_cases": [
+    {"id": "mnist-8", "sha256": "2f06e72de813a8635c9bc0397ac447a601bdbfa7df4bebc278723b958831c9bf", "inputs": [{"name": "Input3", "dtype": "float32", "shape": [1, 1, 28, 28], "distribution": "uniform", "low": 0.0, "high": 1.0, "seed": 2101}], "rtol": 0.0001, "atol": 0.00001},
+    {"id": "mobilenetv2-7", "sha256": "c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f", "inputs": [{"name": "data", "dtype": "float32", "shape": [1, 3, 224, 224], "distribution": "uniform", "low": 0.0, "high": 1.0, "seed": 2111}], "rtol": 0.001, "atol": 0.00001},
+    {"id": "squeezenet1.1-7", "sha256": "1eeff551a67ae8d565ca33b572fc4b66e3ef357b0eb2863bb9ff47a918cc4088", "inputs": [{"name": "data", "dtype": "float32", "shape": [1, 3, 224, 224], "distribution": "uniform", "low": 0.0, "high": 1.0, "seed": 2121}], "rtol": 0.001, "atol": 0.00001},
+    {"id": "squeezenet1.0-13-qdq", "sha256": "4a567dd7542ef440890d57268fabf47211174c593d7a1837bd7f16a1067169e7", "inputs": [{"name": "data_0", "dtype": "float32", "shape": [1, 3, 224, 224], "distribution": "uniform", "low": 0.0, "high": 1.0, "seed": 2131}], "rtol": 0.002, "atol": 0.00002},
+    {"id": "resnet18-v1-7", "sha256": "4e8f8653e7a2222b3904cc3fe8e304cd8b339ce1d05fd24688162f86fb6df52c", "inputs": [{"name": "data", "dtype": "float32", "shape": [1, 3, 224, 224], "distribution": "uniform", "low": 0.0, "high": 1.0, "seed": 2141}], "rtol": 0.001, "atol": 0.00001},
+    {"id": "tinyyolov2-8", "sha256": "583fb7fdc948435ceac9fa82efc7708701efe8382a859a3dd46526b155f5f2ae", "inputs": [{"name": "image", "dtype": "float32", "shape": [1, 3, 416, 416], "distribution": "uniform", "low": 0.0, "high": 1.0, "seed": 2151}], "rtol": 0.002, "atol": 0.00002},
+    {"id": "tiny-yolov3-11", "sha256": "f715cc2d99740d22d312777e20d9de2b2ecdc250155be8fd3752ce7e8b823521", "inputs": [{"name": "input_1", "dtype": "float32", "shape": [1, 3, 416, 416], "distribution": "uniform", "low": 0.0, "high": 1.0, "seed": 2161}, {"name": "image_shape", "dtype": "float32", "shape": [1, 2], "values": [416.0, 416.0]}], "rtol": 0.002, "atol": 0.00002},
+    {"id": "ultraface-rfb-320", "sha256": "34cd7e60aeff28744c657de7a3dc64e872d506741de66987f3426f2b79f88017", "inputs": [{"name": "input", "dtype": "float32", "shape": [1, 3, 240, 320], "distribution": "uniform", "low": 0.0, "high": 1.0, "seed": 2171}], "rtol": 0.001, "atol": 0.00001},
+    {"id": "ssd-mobilenetv1-12", "sha256": "b8fba5e404077d4048d27fcd1667e85e27e192eb9bf51e696c46a3acd7d21058", "inputs": [{"name": "inputs", "dtype": "uint8", "shape": [1, 300, 300, 3], "distribution": "uniform-integer", "low": 0, "high": 255, "seed": 2181}], "rtol": 0.002, "atol": 0.00002},
+    {"id": "shufflenet-v2-12", "sha256": "ea69821b4dd374ae2f33f9710dd1229ac263d0ee5b5a46ca3521f6483e1ba035", "inputs": [{"name": "input", "dtype": "float32", "shape": [1, 3, 224, 224], "distribution": "uniform", "low": 0.0, "high": 1.0, "seed": 2191}], "rtol": 0.001, "atol": 0.00001},
+    {"id": "densenet-12", "sha256": "0294e7e88e5b3360de9b0fdc321baf9e6ef18b7f058c4536caae3b9f18ed9ed5", "inputs": [{"name": "data_0", "dtype": "float32", "shape": [1, 3, 224, 224], "distribution": "uniform", "low": 0.0, "high": 1.0, "seed": 2201}], "rtol": 0.001, "atol": 0.00001},
+    {"id": "googlenet-12", "sha256": "c99c507058eaf41de8723408fdda7db8325cb57f0a89f2ee07a716d6e963e14e", "inputs": [{"name": "data_0", "dtype": "float32", "shape": [1, 3, 224, 224], "distribution": "uniform", "low": 0.0, "high": 1.0, "seed": 2211}], "rtol": 0.001, "atol": 0.00001},
+    {"id": "efficientnet-lite4-11-int8", "sha256": "2b3cbb5077262b20df565dacddecb3724c0976c35029a87e512d13aa4eff04a2", "inputs": [{"name": "images:0", "dtype": "float32", "shape": [1, 224, 224, 3], "distribution": "uniform", "low": 0.0, "high": 1.0, "seed": 2221}], "rtol": 0.002, "atol": 0.00002},
+    {"id": "efficientnet-lite4-11-qdq", "sha256": "6837d0b19625d4aff8266d7197a7f3775afd82a8c40f9fd0283d52db4955566f", "inputs": [{"name": "images:0", "dtype": "float32", "shape": [1, 224, 224, 3], "distribution": "uniform", "low": 0.0, "high": 1.0, "seed": 2231}], "rtol": 0.002, "atol": 0.00002},
+    {"id": "xcit-tiny-12-p8-224-opset17", "sha256": "b5cffe4f64dbee8d1f9c74442a91611b74fd57925599ae46bccf1f7fa3e57093", "inputs": [{"name": "x", "dtype": "float32", "shape": [1, 3, 224, 224], "distribution": "uniform", "low": 0.0, "high": 1.0, "seed": 2241}], "rtol": 0.001, "atol": 0.00001}
+  ]
+}

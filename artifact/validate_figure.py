@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import json
 import math
 import re
 from collections import Counter, defaultdict
@@ -225,29 +226,173 @@ def footprint(
             raise SystemExit(f"task {task}: incomplete systems {sorted(observed)}")
 
 
-def operators(rows: list[dict[str, str]]) -> None:
-    unique(rows, ("operator", "shape", "dtype", "system", "system_revision",
-                  "variant", "iteration", "seed"))
-    for line, row in enumerate(rows, start=2):
-        for field in ("iteration", "prepare_ns", "latency_ns", "code_bytes", "seed"):
-            unsigned(row, field, line)
-        real(row, "max_abs_error", line)
-        boolean(row, "correct", line)
+def blank(row: dict[str, str], fields: tuple[str, ...], line: int) -> None:
+    present = [field for field in fields if row[field]]
+    if present:
+        raise SystemExit(f"line {line}: fields must be empty: {', '.join(present)}")
 
 
-def models(rows: list[dict[str, str]]) -> None:
-    unique(rows, ("model", "model_hash", "system", "system_revision", "variant",
-                  "iteration", "seed"))
+def benchmark_rows(
+    rows: list[dict[str, str]], partial: bool, subjects: dict[str, dict[str, str]],
+    variants: dict[str, dict[str, object]], expected_spec_hash: str,
+    *, subject_field: str, include_family: bool,
+) -> None:
+    unique(rows, (subject_field, "variant", "record_kind", "iteration", "seed"))
+    preparations: dict[tuple[str, str], list[int]] = defaultdict(list)
+    executions: dict[tuple[str, str], list[int]] = defaultdict(list)
+    memories: dict[tuple[str, str], list[int]] = defaultdict(list)
+    coverage: Counter[tuple[str, str]] = Counter()
+    observed: dict[str, set[str]] = defaultdict(set)
+    input_digests: dict[str, str] = {}
+    audit: dict[tuple[str, str, int], tuple[int, str]] = {}
+    revisions: dict[str, tuple[str, str]] = {}
+    preparation_fields = (
+        "latency_ns", "peak_bytes", "max_abs_error", "max_rel_error",
+        "output_digest", "correct",
+    )
+    execution_fields = ("prepare_ns", "peak_bytes", "artifact_bytes")
+    memory_fields = ("prepare_ns", "latency_ns", "artifact_bytes")
+    unsupported_fields = tuple(sorted(set(preparation_fields + execution_fields)))
+
     for line, row in enumerate(rows, start=2):
+        subject = row[subject_field]
+        if subject not in subjects:
+            raise SystemExit(f"line {line}: unknown {subject_field} {subject}")
+        expected_subject = subjects[subject]
+        if include_family and row["family"] != expected_subject["family"]:
+            raise SystemExit(f"line {line}: family differs from benchmark manifest")
+        if subject_field == "model" and row["model_hash"] != expected_subject["sha256"]:
+            raise SystemExit(f"line {line}: model_hash differs from benchmark manifest")
+        if digest(row, "case_spec_sha256", line) != expected_spec_hash:
+            raise SystemExit(f"line {line}: case_spec_sha256 differs from frozen manifest")
+        input_digest = digest(row, "input_digest", line)
+        if subject in input_digests and input_digests[subject] != input_digest:
+            raise SystemExit(f"line {line}: input_digest changes within subject")
+        input_digests[subject] = input_digest
+
+        variant = row["variant"]
+        if variant not in variants:
+            raise SystemExit(f"line {line}: unknown variant {variant}")
+        expected_variant = variants[variant]
+        if row["system"] != expected_variant["system"]:
+            raise SystemExit(f"line {line}: system differs from benchmark manifest")
+        if not row["system_revision"]:
+            raise SystemExit(f"line {line}: system_revision is empty")
+        revision = (row["system"], row["system_revision"])
+        if variant in revisions and revisions[variant] != revision:
+            raise SystemExit(f"line {line}: system revision changes within variant")
+        revisions[variant] = revision
+        observed[subject].add(variant)
         supported = boolean(row, "supported", line)
-        boolean(row, "correct", line)
-        unsigned(row, "iteration", line)
-        unsigned(row, "seed", line)
-        for field in ("prepare_ns", "latency_ns", "peak_bytes", "artifact_bytes"):
-            unsigned(row, field, line, empty=not supported)
-        real(row, "max_abs_error", line, empty=not supported)
-        if not supported and not row["reason"]:
-            raise SystemExit(f"line {line}: unsupported row requires reason")
+        seed = unsigned(row, "seed", line)
+        kind = row["record_kind"]
+        if kind not in {"coverage", "prepare", "execute", "memory"}:
+            raise SystemExit(f"line {line}: unknown record_kind {kind}")
+
+        if kind == "coverage":
+            if supported or not row["reason"] or row["iteration"]:
+                raise SystemExit(
+                    f"line {line}: coverage row must be unsupported with reason and no iteration"
+                )
+            blank(row, unsupported_fields, line)
+            coverage[(subject, variant)] += 1
+            continue
+
+        if not supported or row["reason"]:
+            raise SystemExit(f"line {line}: measured row must be supported without reason")
+        iteration = unsigned(row, "iteration", line)
+        audit_key = (subject, kind, iteration)
+        audit_value = (seed, input_digest)
+        if audit_key in audit and audit[audit_key] != audit_value:
+            raise SystemExit(f"line {line}: paired seed or input differs across variants")
+        audit[audit_key] = audit_value
+
+        if kind == "prepare":
+            prepare_ns = unsigned(row, "prepare_ns", line)
+            if prepare_ns == 0:
+                raise SystemExit(f"line {line}: prepare_ns must be positive")
+            if bool(expected_variant["artifact_size"]):
+                artifact_bytes = unsigned(row, "artifact_bytes", line)
+                if artifact_bytes == 0:
+                    raise SystemExit(f"line {line}: artifact_bytes must be positive")
+            elif row["artifact_bytes"]:
+                raise SystemExit(f"line {line}: reference artifact size is not comparable")
+            blank(row, preparation_fields, line)
+            preparations[(subject, variant)].append(iteration)
+        elif kind == "execute":
+            latency_ns = unsigned(row, "latency_ns", line)
+            if latency_ns == 0:
+                raise SystemExit(f"line {line}: latency_ns must be positive")
+            real(row, "max_abs_error", line)
+            real(row, "max_rel_error", line)
+            digest(row, "output_digest", line)
+            passed = boolean(row, "correct", line)
+            if not passed and not partial:
+                raise SystemExit(f"line {line}: incorrect execution enters release data")
+            blank(row, execution_fields, line)
+            executions[(subject, variant)].append(iteration)
+        else:
+            peak_bytes = unsigned(row, "peak_bytes", line)
+            if peak_bytes == 0:
+                raise SystemExit(f"line {line}: peak_bytes must be positive")
+            real(row, "max_abs_error", line)
+            real(row, "max_rel_error", line)
+            digest(row, "output_digest", line)
+            passed = boolean(row, "correct", line)
+            if not passed and not partial:
+                raise SystemExit(f"line {line}: incorrect memory run enters release data")
+            blank(row, memory_fields, line)
+            memories[(subject, variant)].append(iteration)
+
+    if partial:
+        return
+    if set(observed) != set(subjects):
+        raise SystemExit(f"benchmark subjects are incomplete")
+    expected_variants = set(variants)
+    prepare_count = int(next(iter(variants.values()))["preparation_iterations"])
+    execute_count = int(next(iter(variants.values()))["execution_iterations"])
+    memory_count = int(next(iter(variants.values()))["memory_iterations"])
+    for subject, found in observed.items():
+        if found != expected_variants:
+            raise SystemExit(f"{subject}: incomplete variants {sorted(found)}")
+        for variant in expected_variants:
+            key = (subject, variant)
+            unsupported = coverage[key]
+            prepared = preparations[key]
+            executed = executions[key]
+            measured_memory = memories[key]
+            if unsupported:
+                if unsupported != 1 or prepared or executed or measured_memory:
+                    raise SystemExit(f"{subject}/{variant}: invalid unsupported record set")
+                continue
+            if sorted(prepared) != list(range(prepare_count)):
+                raise SystemExit(
+                    f"{subject}/{variant}: expected preparation iterations 0..{prepare_count - 1}"
+                )
+            if sorted(executed) != list(range(execute_count)):
+                raise SystemExit(
+                    f"{subject}/{variant}: expected execution iterations 0..{execute_count - 1}"
+                )
+            if sorted(measured_memory) != list(range(memory_count)):
+                raise SystemExit(
+                    f"{subject}/{variant}: expected memory iterations 0..{memory_count - 1}"
+                )
+
+
+def operators(
+    rows: list[dict[str, str]], partial: bool, subjects: dict[str, dict[str, str]],
+    variants: dict[str, dict[str, object]], expected_spec_hash: str,
+) -> None:
+    benchmark_rows(rows, partial, subjects, variants, expected_spec_hash,
+                   subject_field="case_id", include_family=True)
+
+
+def models(
+    rows: list[dict[str, str]], partial: bool, subjects: dict[str, dict[str, str]],
+    variants: dict[str, dict[str, object]], expected_spec_hash: str,
+) -> None:
+    benchmark_rows(rows, partial, subjects, variants, expected_spec_hash,
+                   subject_field="model", include_family=False)
 
 
 def main() -> int:
@@ -264,6 +409,28 @@ def main() -> int:
     all_tasks = {row["task_id"]: row["family"] for row in manifest}
     spec_path = root / "manifests" / "extension-specs.json"
     expected_spec_hash = hashlib.sha256(spec_path.read_bytes()).hexdigest()
+    benchmark_path = root / "manifests" / "benchmark-cases.json"
+    with benchmark_path.open(encoding="utf-8") as stream:
+        benchmark = json.load(stream)
+    expected_benchmark_hash = hashlib.sha256(benchmark_path.read_bytes()).hexdigest()
+    measurement = benchmark["measurement"]
+    benchmark_variants = {
+        row["id"]: {
+            **row,
+            "preparation_iterations": measurement["preparation_iterations"],
+            "execution_iterations": measurement["execution_iterations"],
+            "memory_iterations": measurement["memory_iterations"],
+        }
+        for row in benchmark["variants"]
+    }
+    operator_subjects = {
+        row["id"]: {"family": row["family"]}
+        for row in benchmark["operator_cases"]
+    }
+    model_subjects = {
+        row["id"]: {"sha256": row["sha256"]}
+        for row in benchmark["model_cases"]
+    }
     footprint_tasks = {
         row["task_id"]: row["family"]
         for row in manifest
@@ -277,9 +444,11 @@ def main() -> int:
     elif args.figure == "5":
         footprint(rows, args.allow_partial, footprint_tasks)
     elif args.figure == "8":
-        operators(rows)
+        operators(rows, args.allow_partial, operator_subjects,
+                  benchmark_variants, expected_benchmark_hash)
     else:
-        models(rows)
+        models(rows, args.allow_partial, model_subjects,
+               benchmark_variants, expected_benchmark_hash)
     print(f"validated {len(rows)} rows for Figure {args.figure}")
     return 0
 

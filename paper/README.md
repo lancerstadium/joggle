@@ -755,6 +755,13 @@ frontend coverage part of the result. Cold measurements include process
 startup, parsing, and setup; warm measurements retain each system's public
 graph and pass infrastructure.
 
+Cold-path accounting separates loading, parsing, verification, plan
+construction, and first execution; warm accounting separates selection,
+evaluation, verification, and commit. The Whole-mod and No-plan-cache policies
+isolate observation precision and persistent execution plans. Their counters
+connect latency changes to observed entities, executed compiler-function
+operations, and plan compilation.
+
 <!-- FIGURE 6 PLAN — Main full-width data figure fed by one CSV and one plotting
 script. Left: heatmap of Full/Reactive speedup for every one of the 15 models by
 edit class and scope; annotate executed/total stages in each cell. Right-top:
@@ -778,36 +785,46 @@ CSV: figure-07-scaling.csv, using the Figure 6 columns on generated subjects. --
 ### 4.5 Artifact Quality and System Costs
 
 Artifact measurements keep compiler responsiveness separate from generated-code
-quality. The operator matrix covers elementwise chains, reductions, matrix
-multiplication, convolution, quantize/dequantize paths, and fusion opportunities
-across fixed shapes and dtypes; model results use the accepted corpus subset.
-We compare unoptimized Joggle, optimized Joggle, and a pinned reference runtime
-on one CPU. Operator records contain kernel and call latency, compile time, and
-code size; model records contain inference latency, peak memory, and artifact
-size. Speedups are computed per subject before geometric aggregation, and fixed
-inputs establish numerical equivalence.
+quality. The operator matrix contains 24 fixed graphs, four each for elementwise
+chains, reductions, matrix multiplication, convolution, quantization, and
+fusion. Model measurements cover all 15 pinned subjects and retain unsupported
+model/variant pairs as coverage rows. We compare Joggle with and without its
+optional optimization passes against a pinned, single-thread ONNX Runtime CPU
+Execution Provider with full graph optimization. All three variants consume
+byte-identical deterministic inputs.
 
-<!-- FIGURE 8 PLAN — Single-column operator figure fed by one CSV and one
+Preparation, execution, and memory are separate records. Each supported pair
+has 30 fresh-process preparation measurements, ten fresh-process memory
+measurements, then ten warm-ups and 100 steady-state executions. Execution
+records contain latency, output digest, and absolute and relative error; memory
+records execute the same checked workload and report peak resident-set growth.
+Generated artifact size covers model-specific code and constants and is
+compared only between the two Joggle variants; shared
+runtime libraries do not have a per-model size boundary. Speedups are formed
+within a subject before geometric aggregation, and case-specific tolerances
+establish numerical equivalence. Preparation spans model bytes to callable
+state; execution times one backend call over resident buffers; memory is peak
+resident-set growth above an idle backend worker.
+
+<!-- FIGURE 8 PLAN — Full-width operator figure fed by one CSV and one
 plotting script. Use log-scale paired points for unoptimized Joggle, optimized
-Joggle, and the pinned CPU reference, faceted by operator family. Separate
-preparation time from steady-state latency. CSV: figure-08-operators.csv.
-Columns: operator,family,shape,dtype,system,system_revision,variant,iteration,
-prepare_ns,latency_ns,code_bytes,max_abs_error,correct,seed. -->
+Joggle, and the pinned CPU reference, grouped by operator family. Separate
+preparation time, steady-state latency, and comparable Joggle artifact bytes;
+use dots for medians and thin segments to 95th percentiles; show unsupported
+pairs as crosses. CSV: figure-08-operators.csv. Columns:
+case_id,case_spec_sha256,family,system,system_revision,variant,record_kind,
+supported,reason,iteration,prepare_ns,latency_ns,peak_bytes,artifact_bytes,
+max_abs_error,max_rel_error,input_digest,output_digest,correct,seed. -->
 
 <!-- FIGURE 9 PLAN — Full-width model figure fed by one CSV and one plotting
 script. Left: per-model latency relative to the pinned CPU reference. Right:
-peak memory and artifact size as aligned dot plots. Mark the common supported
-set and retain unsupported models as coverage marks rather than dropping them.
-CSV: figure-09-models.csv. Columns: model,model_hash,system,system_revision,
-variant,supported,reason,iteration,prepare_ns,latency_ns,peak_bytes,
-artifact_bytes,max_abs_error,correct,seed. -->
-
-Finally, cold-path accounting separates loading, parsing, verification, plan
-construction, and first execution; warm accounting separates selection,
-evaluation, verification, and commit. The Whole-mod and No-plan-cache policies
-provide the two mechanism ablations: observation precision and persistent
-execution plans. Their counters connect latency changes to observed entities,
-executed compiler-function operations, and plan compilation.
+peak memory and comparable Joggle artifact size as aligned dot plots. Mark the
+common supported set, use dots for medians and thin segments to 95th
+percentiles, and retain unsupported models as coverage crosses rather than
+dropping them. CSV: figure-09-models.csv. Columns: model,model_hash,
+case_spec_sha256,system,system_revision,variant,record_kind,supported,reason,
+iteration,prepare_ns,latency_ns,peak_bytes,artifact_bytes,max_abs_error,
+max_rel_error,input_digest,output_digest,correct,seed. -->
 
 Together, generation characterizes the extension surface, patch footprint its
 ownership boundary, reactive execution its update cost, and artifact and
