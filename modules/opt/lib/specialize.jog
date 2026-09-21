@@ -17,6 +17,10 @@ local fn specialize_loop(m: Mod, loop: Op) -> bool {
   var lower: list<int> = []
   var sizes: list<int> = []
   var count = 1
+  // Shape programs benefit from eliminating short structural loops, but
+  // expanding a tensor-sized loop multiplies IR size and compile time. Larger
+  // finite loops stay structured for the backend.
+  let max_points = 256
   for axis in 0..axes {
     let range = ir.def(inputs[axis])
     if !ir.live(range) || ir.kind(range) != "call" ||
@@ -38,6 +42,9 @@ local fn specialize_loop(m: Mod, loop: Op) -> bool {
     }
     lower += [begin]
     sizes += [size]
+    if size != 0 && count > max_points / size {
+      return false
+    }
     count *= size
   }
 
@@ -107,4 +114,3 @@ local fn template_name(m: Mod, name: str) -> str {
   assert(out != "", "opt.instantiate could not reserve a temporary name")
   return out
 }
-

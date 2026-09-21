@@ -235,6 +235,12 @@ local fn prepare_with(m: Mod, config: dict) -> bool {
   if opt.expose(m, accept, config, len(ir.ops(m)) + 1) {
     changed = true
   }
+  // The last expansion round can expose structural constants such as
+  // len(list) inside a shape loop. Fold them before deciding whether the loop
+  // is statically specializable.
+  if opt.fold(m) {
+    changed = true
+  }
   if opt.specialize(m, "stage", "shape") {
     changed = true
   }
@@ -246,8 +252,24 @@ local fn prepare_with(m: Mod, config: dict) -> bool {
   }
   for op in ir.ops(m, ["call"]) {
     if ir.live(op) {
-      assert(accepts_with(m, op, config),
-             "c: unsupported call remains: " + ir.callee(op))
+      if !accepts_with(m, op, config) {
+        var detail = "c: unsupported call remains: " + ir.callee(op) +
+                     " (target " + ir.target(m, op) + ")"
+        let inputs = ir.args(op)
+        let outputs = ir.outs(op)
+        if len(outputs) > 0 {
+          detail += ", output " + text(ir.type(outputs[0]))
+        }
+        if len(inputs) > 0 {
+          let source = ir.def(inputs[0])
+          detail += ", input " + text(ir.type(inputs[0]))
+          if ir.live(source) && ir.kind(source) == "call" {
+            detail += " from " + ir.callee(source) +
+                      " (target " + ir.target(m, source) + ")"
+          }
+        }
+        assert(false, detail)
+      }
     }
   }
   return changed

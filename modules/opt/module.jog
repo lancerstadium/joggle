@@ -3,7 +3,8 @@ use ir
 use tensor
 
 fn fold(m: Mod, fns: list<Fn>) -> bool {
-  var changed = ir.fold(m, fns)
+  var changed = fold_len(m)
+  changed = ir.fold(m, fns) || changed
   changed = project(m) || changed
   changed = select(m) || changed
   let controls = ir.ops(m, ["loop", "branch"])
@@ -24,9 +25,12 @@ fn specialize(m: Mod, key: str, value: Attr) -> bool {
     let op = candidates[len(candidates) - reverse - 1]
     if ir.live(op) && ir.has(op, key) &&
        ir.meta(op, key) == value {
-      assert(specialize_loop(m, op),
-             "opt.specialize requires finite static ranges")
-      changed = true
+      // Specialization is an optimization, not a legality condition.  A tagged
+      // loop whose bounds are known is expanded here; a loop with runtime
+      // bounds stays structured for a backend that can lower control flow.
+      if specialize_loop(m, op) {
+        changed = true
+      }
     }
   }
   if changed {

@@ -20,6 +20,41 @@ local fn mapped(value: Val, old: list<Val>, next: list<Val>) -> Val {
   return value
 }
 
+local fn fold_len(m: Mod) -> bool {
+  var changed = false
+  for op in ir.ops(m, ["call"]) {
+    if ir.live(op) && matches(m, op, "base.len") {
+      let inputs = ir.args(op)
+      let outputs = ir.outs(op)
+      if len(inputs) == 1 && len(outputs) == 1 {
+        let source = ir.def(inputs[0])
+        if ir.live(source) && ir.kind(source) == "call" &&
+           matches(m, source, "base.list") {
+          let output = outputs[0]
+          let name = ir.name(output)
+          if ir.type(output) == ty("_") {
+            assert(ir.type(m, output, ty("int")),
+                   "opt.fold could not type a list length")
+          }
+          let size = ir.constant(
+            m, op, base.int(len(ir.args(source))), ty("int")
+          )
+          assert(ir.replace(m, output, size),
+                 "opt.fold could not replace a list length")
+          assert(ir.erase(m, op),
+                 "opt.fold could not erase a folded list length")
+          if name != "" {
+            assert(ir.rename(m, size, name),
+                   "opt.fold could not preserve a list length name")
+          }
+          changed = true
+        }
+      }
+    }
+  }
+  return changed
+}
+
 local fn project(m: Mod) -> bool {
   var changed = false
   for op in ir.ops(m, ["call"]) {

@@ -4994,6 +4994,49 @@ int main(int argc, char** argv) {
   CHECK(specialized_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(specialized, specialized_roundtrip));
 
+  constexpr std::string_view dynamic_specialized_source =
+      "mod dynamic_specialized\n"
+      "fn work(n: int) -> int {\n"
+      "  var out = 0\n"
+      "  let values = [n, n]\n"
+      "  out += len(values)\n"
+      "  [stage: \"shape\"]\n"
+      "  for i in 0..n {\n"
+      "    out += i\n"
+      "  }\n"
+      "  return out\n"
+      "}\n"
+      "fn large() -> int {\n"
+      "  var out = 0\n"
+      "  [stage: \"shape\"]\n"
+      "  for i in 0..257 {\n"
+      "    out += i\n"
+      "  }\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod dynamic_specialized;
+  CHECK(joggle::parse(env, dynamic_specialized_source, dynamic_specialized,
+                      "dynamic-specialized.jog"));
+  CHECK(dynamic_specialized.verify(env));
+  CHECK(joggle::run(env, "opt.specialize", dynamic_specialized,
+                    specialize_args));
+  CHECK(dynamic_specialized.verify(env));
+  const std::string retained_specialization_text =
+      joggle::print(dynamic_specialized);
+  CHECK(retained_specialization_text.find("for i in 0..n") !=
+        std::string::npos);
+  CHECK(retained_specialization_text.find("for i_1 in 0..257") !=
+            std::string::npos ||
+        retained_specialization_text.find("for i in 0..257") !=
+            std::string::npos);
+  CHECK(joggle::run(env, "c.prepare", dynamic_specialized));
+  CHECK(dynamic_specialized.verify(env));
+  joggle::Attr dynamic_specialized_c;
+  CHECK(joggle::query(env, "c.source", dynamic_specialized,
+                      dynamic_specialized_c));
+  CHECK(dynamic_specialized_c.string() &&
+        dynamic_specialized_c.string()->find("for (") != std::string::npos);
+
   constexpr std::string_view generic_entry_source =
       "mod generic_entry\n"
       "use tensor\n"
