@@ -1,6 +1,39 @@
 \section{Related Work}
 \label{sec:related}
 
+Table~\ref{tab:related} compares public extension and update mechanisms rather
+than project goals. ``One surface'' requires one syntax, call model, and value
+model across semantics, analysis, transformation, conversion, and artifact
+generation. ``Atomic'' requires the subject graph and its reuse records to
+commit or roll back together. A dash marks the absence of that narrowly defined
+public mechanism; other cells name the nearest mechanism instead of collapsing
+partial matches into a check mark.
+
+\begin{table*}[t]
+  \caption{Extension and update mechanisms in related systems.}
+  \label{tab:related}
+  \scriptsize
+  \setlength{\tabcolsep}{3pt}
+  \renewcommand{\arraystretch}{1.08}
+  \begin{tabular}{@{}p{0.17\textwidth}p{0.14\textwidth}c p{0.12\textwidth}p{0.12\textwidth}p{0.11\textwidth}c@{}}
+    \toprule
+    System & Metaprogram & One surface & Owner & Reuse key & Effect rule & Atomic \\
+    \midrule
+    LLVM~\cite{lattner2004llvm} & C++ pass & -- & plugin & analysis scope & preserved & -- \\
+    Nanopass~\cite{keep2013nanopass} & Scheme pass & -- & language & -- & pipeline & -- \\
+    MLIR~\cite{lattner2021mlir,mlirpass} & ODS/C++ & -- & dialect & op anchor & preserved & -- \\
+    MLIR Transform~\cite{lucke2025transform} & transform IR & -- & dialect & handle & interface & -- \\
+    xDSL~\cite{fehr2025xdsl} & Python pass & -- & dialect & -- & pipeline & -- \\
+    Halide~\cite{ragankelley2012halide} & schedule & -- & generator & -- & schedule & -- \\
+    TVM~\cite{chen2018tvm} & pass/schedule & -- & target/pass & -- & pipeline & -- \\
+    \texttt{egg}~\cite{willsey2021egg} & rewrite & -- & library & e-class & rebuild & -- \\
+    Adapton~\cite{hammer2014adapton} & computation & -- & library & demand node & demand & -- \\
+    Build systems~\cite{mokhov2018build} & task & -- & task graph & task key & scheduler & -- \\
+    \textbf{Joggle} & compiler function & \checkmark & mod graph & graph entity & overlap & \checkmark \\
+    \bottomrule
+  \end{tabular}
+\end{table*}
+
 \subsection{Extensible Compiler Infrastructures}
 
 LLVM established a reusable typed SSA infrastructure with shared analyses and

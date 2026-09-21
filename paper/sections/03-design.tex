@@ -328,10 +328,11 @@ work. For $K$ stages, incremental latency is approximately
 \]
 Reuse is beneficial when this cost is lower than executing the omitted stages.
 Broad graph APIs remain correct but record broad dependencies; narrow APIs can
-preserve results across unrelated edits. External mutable state must appear in
-arguments or the environment, and native callbacks must expose relevant graph
-reads through the public API. These rules define the state over which Joggle can
-validate reuse.
+preserve results across unrelated edits. External mutable state must enter
+through typed arguments or an environment change before reuse. Native bindings
+exchange scalar or byte attributes and do not receive graph entities, so
+graph-dependent work remains in tracked compiler functions. These rules define
+the state over which Joggle can validate reuse.
 
 Incremental evaluation therefore depends on more than a result cache. It
 requires stable entity identity, revisions that reflect every published edit,

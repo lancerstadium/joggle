@@ -16,8 +16,8 @@
 %% Anonymous two-column submission layout at the EuroSys minimum type size.
 \documentclass[sigconf,anonymous,10pt]{acmart}
 
-%% Balance the reference columns explicitly; acmart's end hook runs too late
-%% once the bibliography has already entered the second column.
+%% Submission references may extend past the technical-content limit; leave
+%% their final columns unbalanced while the bibliography is still changing.
 \makeatletter
 \@ACM@balancefalse
 \makeatother
@@ -29,7 +29,6 @@
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 \usepackage{amsmath}
-\usepackage{balance}
 \usepackage{listings}
 \usepackage{xcolor}
 
@@ -111,7 +110,6 @@ footprint, and affected graph scope to update cost.
 \input{sections/06-discussion}
 \input{sections/07-conclusion}
 
-\balance
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{references}
 
