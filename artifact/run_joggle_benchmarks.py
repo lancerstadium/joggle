@@ -247,7 +247,7 @@ def read_outputs(directory: Path, expected: list[tuple[str, np.ndarray]]) -> lis
     for index, (_, reference) in enumerate(expected):
         data = (directory / f"output-{index}.bin").read_bytes()
         if len(data) != reference.nbytes:
-            raise SystemExit("generated output has the wrong byte length")
+            raise Unsupported("oracle:output-size")
         values.append(np.frombuffer(data, dtype=reference.dtype).reshape(reference.shape).copy())
     return values
 
@@ -261,14 +261,18 @@ def compare(
     for value, (_, reference) in zip(actual, expected, strict=True):
         if value.dtype.kind in "iu":
             if not np.array_equal(value, reference):
-                raise SystemExit("generated integer output differs from the reference")
+                raise Unsupported("oracle:integer-mismatch")
             continue
         absolute = np.abs(value.astype(np.float64) - reference.astype(np.float64))
         relative = absolute / np.maximum(np.abs(reference.astype(np.float64)), atol or 1e-30)
         max_abs = max(max_abs, float(np.max(absolute, initial=0.0)))
         max_rel = max(max_rel, float(np.max(relative, initial=0.0)))
         if not np.allclose(value, reference, rtol=rtol, atol=atol, equal_nan=False):
-            raise SystemExit("generated floating-point output exceeds its tolerance")
+            raise Unsupported(
+                "oracle:tolerance",
+                f"max_abs={max_abs:.9g}; max_rel={max_rel:.9g}; "
+                f"atol={atol:.9g}; rtol={rtol:.9g}",
+            )
     return max_abs, max_rel
 
 
@@ -438,49 +442,67 @@ def main(args: argparse.Namespace) -> int:
                 failures.append(failure)
                 write_rows(args.output, header, rows)
                 continue
-            _prepare_ns, _artifact_bytes, artifact, header_file, _ = first
-            case_rows = []
-            harness = root / f"{case_id}-harness.c"
-            tensor_records = {item["name"]: item for item in input_record["tensors"]}
-            batch = measurement["execution_batches"][case_id]
-            make_harness(
-                harness, case["inputs"], tensor_records, expected, args.inputs, batch
-            )
-            harness_object = root / f"{case_id}-harness.o"; executable = root / f"{case_id}-run"
-            for command in (
-                [args.cc, *flags, "-I", header_file.parent, "-c", harness, "-o", harness_object],
-                [args.cc, *flags, artifact, harness_object, "-lm", "-o", executable],
-            ):
-                result = subprocess.run(
-                    command, capture_output=True, text=True,
-                    timeout=args.stage_timeout,
+            try:
+                _prepare_ns, _artifact_bytes, artifact, header_file, _ = first
+                case_rows = []
+                harness = root / f"{case_id}-harness.c"
+                tensor_records = {item["name"]: item for item in input_record["tensors"]}
+                batch = measurement["execution_batches"][case_id]
+                make_harness(
+                    harness, case["inputs"], tensor_records, expected, args.inputs, batch
                 )
+                harness_object = root / f"{case_id}-harness.o"
+                executable = root / f"{case_id}-run"
+                for command in (
+                    [args.cc, *flags, "-I", header_file.parent, "-c", harness,
+                     "-o", harness_object],
+                    [args.cc, *flags, artifact, harness_object, "-lm", "-o", executable],
+                ):
+                    try:
+                        result = subprocess.run(
+                            command, capture_output=True, text=True,
+                            timeout=args.stage_timeout,
+                        )
+                    except subprocess.TimeoutExpired as error:
+                        raise Unsupported("harness-compile:timeout", str(error)) from error
+                    if result.returncode:
+                        raise Unsupported("harness-compile", result.stderr)
+                execute_out = root / f"{case_id}-execute"
+                execute_out.mkdir()
+                try:
+                    result = subprocess.run(
+                        [executable, "execute", str(warmups), str(execute_count), execute_out],
+                        capture_output=True, text=True, env={**os.environ, **THREAD_ENV},
+                        timeout=args.stage_timeout,
+                    )
+                except subprocess.TimeoutExpired as error:
+                    raise Unsupported("execute:timeout", str(error)) from error
                 if result.returncode:
-                    raise SystemExit(f"harness compilation failed: {result.stderr}")
-            execute_out = root / f"{case_id}-execute"; execute_out.mkdir()
-            result = subprocess.run(
-                [executable, "execute", str(warmups), str(execute_count), execute_out],
-                capture_output=True, text=True, env={**os.environ, **THREAD_ENV},
-                timeout=args.stage_timeout,
-            )
-            if result.returncode:
-                raise SystemExit(f"generated execution failed: {result.stderr}")
-            latencies = [int(line.split()[1]) for line in result.stdout.splitlines()
-                         if line.startswith("NS ")]
-            if len(latencies) != execute_count:
-                raise SystemExit("generated execution returned the wrong timing count")
-            actual = read_outputs(execute_out, expected)
-            max_abs, max_rel = compare(actual, expected, case["rtol"], case["atol"])
-            digest = output_digest([name for name, _ in expected], actual)
-            for iteration, latency in enumerate(latencies):
-                case_rows.append(csv_row(
-                    header, common, iteration=iteration,
-                    calls_per_sample=batch, latency_ns=latency, max_abs_error=max_abs,
-                    max_rel_error=max_rel, output_digest=digest,
-                    correct="true", seed=args.seed + 10_000 + iteration,
-                ))
-            rows.extend(case_rows)
-            write_rows(args.output, header, rows)
+                    raise Unsupported("execute", result.stderr)
+                latencies = [int(line.split()[1]) for line in result.stdout.splitlines()
+                             if line.startswith("NS ")]
+                if len(latencies) != execute_count:
+                    raise Unsupported("execute:timing-count")
+                actual = read_outputs(execute_out, expected)
+                max_abs, max_rel = compare(actual, expected, case["rtol"], case["atol"])
+                digest = output_digest([name for name, _ in expected], actual)
+                for iteration, latency in enumerate(latencies):
+                    case_rows.append(csv_row(
+                        header, common, iteration=iteration,
+                        calls_per_sample=batch, latency_ns=latency, max_abs_error=max_abs,
+                        max_rel_error=max_rel, output_digest=digest,
+                        correct="true", seed=args.seed + 10_000 + iteration,
+                    ))
+                rows.extend(case_rows)
+                write_rows(args.output, header, rows)
+            except Unsupported as error:
+                common.update(supported="false", reason=f"unsupported:{error.stage}")
+                rows.append(csv_row(header, common, seed=args.seed))
+                failure = {"id": case_id, "stage": error.stage,
+                           "stderr": error.stderr[-4000:]}
+                append_jsonl(failure_path, failure)
+                failures.append(failure)
+                write_rows(args.output, header, rows)
     write_rows(args.output, header, rows)
     compiler = subprocess.run([args.cc, "--version"], capture_output=True, text=True)
     record = {"schema_version": 1, "created_utc": datetime.now(timezone.utc).isoformat(),
