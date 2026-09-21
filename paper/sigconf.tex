@@ -13,8 +13,8 @@
 %TC:envir math 0 word
 %TC:envir comment 0 0
 %%
-%% The supplied template identifies anonymous, review as the submission mode.
-\documentclass[sigconf,anonymous,review]{acmart}
+%% Anonymous two-column submission layout without review line numbers.
+\documentclass[sigconf,anonymous]{acmart}
 
 \AtBeginDocument{%
   \providecommand\BibTeX{{%
@@ -60,7 +60,7 @@
   columns=fullflexible,
   keepspaces=true,
   showstringspaces=false,
-  captionpos=b
+  captionpos=t
 }
 
 \begin{document}
@@ -74,12 +74,12 @@
 
 \maketitle
 
-%% Sections 1 and 2 remain in the Markdown manuscript until their prose is set.
-\setcounter{section}{2}
-\setcounter{figure}{1}
+\input{sections/01-introduction}
+\input{sections/02-motivation}
 \input{sections/03-design}
 
 \bibliographystyle{ACM-Reference-Format}
+\bibliography{references}
 
 \end{document}
 \endinput

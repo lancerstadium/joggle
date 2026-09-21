@@ -4,13 +4,195 @@
 
 ## 1. Introduction
 
+Compilers for heterogeneous systems coordinate decisions at several scales.
+They define operator semantics, transform graphs, schedule loops and memory,
+convert representations, and generate artifacts for processors and
+accelerators. LLVM established the value of a shared typed representation for
+analysis and transformation [@lattner2004llvm]; MLIR generalized this approach
+to multiple abstraction levels [@lattner2021mlir]; Halide separated algorithms
+from schedules [@ragankelley2012halide]; and TVM combined graph- and
+operator-level optimization for diverse targets [@chen2018tvm]. These systems
+make programs increasingly malleable. Extending the compiler that manipulates
+them, however, still requires coordinating mechanisms with different syntax,
+ownership, and execution rules.
+
+Consider adding a numeric format or a target-specific operator family. Its
+semantic definition may live in an operator registry, legality in an analysis,
+selection in a pass, representation changes in conversions, and realization in
+an emitter or runtime binding. Each mechanism is individually useful, yet the
+extension is the conjunction of all of them. A developer must reconstruct the
+cross-layer contract before making a local change. A code-generating agent faces
+the same structural burden: a plausible edit can omit a registration path,
+modify the wrong representation, or trigger a wider rebuild and rerun than the
+change requires.
+
+This fragmentation creates three coupled problems. First, compiler behavior is
+expressed through several extension interfaces, so one logical feature cannot
+be inspected or generated through one language. Second, ownership follows
+source trees, registries, and IR layers rather than the feature's dependency
+boundary, so its change surface grows with the compiler. Third, staged drivers
+usually track whole pass results, so a small edit can repeat conversions and
+analyses whose observations remain valid. These are programmability,
+organization, and update-efficiency problems, respectively.
+
+Figure 1 states the paper's argument as three vertical chains. Each column
+connects a development problem to one Joggle mechanism and one measurable
+outcome. This 3×3 mapping also aligns the evaluation with the design:
+small-model synthesis perplexity measures the extension surface, change
+footprint measures ownership, and update latency measures reuse after an edit.
+
+<!-- FIGURE 1 PROMPT — A dense two-column 3×3 systems-paper argument map. The
+columns are PROGRAMMABILITY, ORGANIZATION, and UPDATE; the rows are CHALLENGE,
+JOGGLE DESIGN, and OUTCOME. Each column reads top to bottom with no cross-column
+arrows. Programmability: fragmented Semantics/Analysis/Transform/Convert/Emit
+mechanisms → Unified metaprogramming using `fn optimize(m: Mod)`, one language,
+one call model, one value model, and `Ty Attr Mod Fn Op Val` → CONVENIENT with
+`PPL ↓` and `pass@k ↑`. Organization: one feature scattered across hierarchical
+IR, pass registry, build target, conversion, and backend → Graph-level mod
+boundary with `mod quant`, `use tensor`, own/publish/version/change tabs, and an
+app→quant→tensor use graph → CONTROLLABLE with `files Δ ↓` and `LoC Δ ↓`.
+Update: local edit causing A→B→C→D rerun → Reactive re-execution over an
+affected subgraph using revisions, dependency index `D/W`, and cached execution
+plan → EFFICIENT with `p50 / p95 ↓` and `visited nodes ↓`. Use compact technical
+glyphs, thin dark connectors, white background, restrained blue/teal/lavender,
+and coral only for changed state. Use only the named Joggle constructs; omit
+step numbers, numbered circles, red numeric labels, gradients, shadows, and
+decorative people. -->
+
+*Figure 1: Joggle maps three extension challenges to system mechanisms and
+measurable outcomes.*
+
+Joggle addresses them by making compiler behavior part of the program model. A
+Joggle program and its compiler extensions use the same typed graph and the
+same function language. Analyses, transformations, converters, and artifact
+generators are ordinary typed *compiler functions*. A *mod* owns such functions
+with its graph, native bindings, and explicit `use` dependencies. An evaluator
+executes calls transactionally, observes the graph state they read, and records
+the effects they publish.
+
+We call the representation *progressive* because compilation refines one
+verified graph rather than requiring every extension to cross a fixed sequence
+of public IR types. A mod may retain semantic operations, introduce lower-level
+helpers, or replace selected definitions; each published intermediate remains
+an inspectable Joggle mod. Progress is therefore chosen by typed functions and
+explicit dependencies, not encoded as a mandatory global pipeline.
+
+This design yields three contributions:
+
+1. **Unified metaprogramming.** One language, call model, and value model cover
+   semantic definitions, analyses, graph transformations, representation
+   conversion, and artifact generation while retaining distinct read and write
+   contracts.
+2. **Mod-scoped composition.** Graph-level mod packages define ownership,
+   publication, dependency, and change boundaries across compilation stages.
+   This boundary complements rather than replaces hierarchical program IR.
+3. **Dependency-directed updates.** Revisions, dependency indices, and cached
+   execution plans restrict responsive re-execution to affected graph regions
+   and stages under transactional publication.
+
+The evaluation matches one question to each contribution. It measures
+small-model perplexity and task success on held-out extensions, the repository
+footprint of representative changes, and update latency after controlled edits
+across complete models. Operator- and model-level measurements separately
+evaluate the performance of artifacts produced by those extensions. This
+separation distinguishes compiler malleability from generated-code quality
+while testing both.
+
 ## 2. Motivation and Design Requirements
 
 ### 2.1 Compiler Extension Workflow
 
+Figure 2 summarizes where extension work enters a heterogeneous compilation
+stack. Model formats carry structures and semantics into the compiler.
+Operator-level transformations specialize individual computations;
+graph-level transformations fuse, propagate, or quantize across operations;
+system-level transformations plan ordering, storage, and communication. The
+runtime then supplies execution and platform support before deployment to a
+target. These levels cooperate, but they are commonly exposed through different
+APIs and maintained by different developers.
+
+<!-- FIGURE 2 PROMPT — Preserve the supplied overview artwork and its existing
+layout. It shows model structure and formats above offline operator-, graph-,
+and system-level compilation; an online runtime and target devices below; model,
+pass, operator/type, and hardware customization on the left; and design,
+optimization, and deployment roles on the right. Do not regenerate or alter
+the figure. -->
+
+*Figure 2: A compiler extension can span semantic definition, optimization,
+runtime support, and target deployment.*
+
+As a running example, consider introducing saturating arithmetic for a
+low-precision model. The feature begins with a parametric type and arithmetic
+semantics. It then needs a capability test, a transformation that selects the
+new operation, a storage policy, and one or more target implementations. The
+change is conceptually one feature, but its pieces occupy several stages in
+Figure 2. Later revisions—such as admitting another width or changing target
+selection—must preserve the same cross-stage agreement.
+
+The difficulty is not that existing infrastructures lack extension points.
+LLVM exposes analyses and passes, MLIR adds dialects and conversions, Halide
+exposes schedules, and TVM exposes graph and tensor-program optimization
+[@lattner2004llvm; @lattner2021mlir; @ragankelley2012halide; @chen2018tvm]. The
+difficulty is that a complete feature combines several of these roles, while
+their declarations, composition boundaries, and invalidation rules remain
+separate.
+
 ### 2.2 Development Friction
 
+*Fragmented metaprogramming.* An operator schema describes admissible programs,
+but a pass, converter, and emitter describe actions over those programs. When
+each role uses a different registration and invocation model, neither a person
+nor a synthesis tool can treat the feature as one typed program. The required
+context includes framework conventions that are not present in the local
+definition, increasing both implementation effort and the opportunity for an
+incomplete extension.
+
+*Diffuse ownership.* Hierarchical IRs organize operations inside regions,
+blocks, and functions. That containment is essential for program semantics, but
+it does not by itself express which compiler capabilities belong together or
+which project depends on them. Capability ownership is often reconstructed from
+directories, build targets, registries, and pass ordering. A feature revision
+can therefore touch files and subsystems outside its semantic boundary, making
+review, replacement, and parallel development harder to control.
+
+*Coarse update boundaries.* A conventional pipeline establishes correctness by
+running an ordered sequence of stages over each new input. After a local graph
+or policy edit, rerunning the affected suffix is safe but can be unnecessarily
+broad: an analysis that did not observe the edited entity is recomputed, and a
+later stage can be rerun even when an earlier stage publishes no relevant
+effect. Multi-level conversion amplifies this work because each materialized
+boundary becomes another unit to rebuild, validate, and traverse.
+
+The three costs reinforce one another. Fragmented interfaces spread a feature;
+spread ownership enlarges its change surface; a larger change surface forces
+coarser invalidation. Addressing only one layer leaves the other two as limits
+on extension velocity.
+
 ### 2.3 Design Requirements
+
+The preceding workflow gives three requirements for a malleable compiler.
+
+**R1 — One typed extension surface.** Semantic definitions, analyses,
+transformations, converters, and artifact generators must share one language,
+call model, and value model. Uniformity must not erase effects: read-only
+queries and mutating transformations require different publication rules even
+when they use the same syntax.
+
+**R2 — Explicit capability composition.** A feature must have a named owner,
+public and private functions, declared dependencies, and an independent
+lifecycle. This graph-level package boundary must remain separate from
+hierarchical program containment so that a compiler capability can be
+installed, inspected, replaced, or removed without editing a global registry.
+
+**R3 — Change-proportional execution.** Revisions and dependency indices must
+validate the state a function actually observed and propagate only effects that
+can reach a later observation. Cached execution plans must avoid repeated setup.
+Updates remain transactional: records and plans become reusable only with the
+verified graph from which they were derived.
+
+These requirements determine Joggle's structure. Compiler functions provide
+R1, mods provide R2, and the evaluator and graph runtime provide R3. The next
+section develops these mechanisms in the order in which a call uses them.
 
 ## 3. Joggle Design
 
@@ -48,11 +230,11 @@ returns $r$, records the observed graph state $D$, and publishes graph effects
 $W$. Read-only calls have $W=\varnothing$. Mutating calls produce $W$ only
 after the resulting graph passes verification.
 
-Figure 2 follows this call from definition to publication. A mod supplies the
+Figure 3 follows this call from definition to publication. A mod supplies the
 typed function, the evaluator observes its graph access, and the runtime either
 commits a verified update or returns a read-only result.
 
-<!-- FIGURE 2 PROMPT — Compact square Joggle call mechanism for 0.80 of one ACM
+<!-- FIGURE 3 PROMPT — Compact square Joggle call mechanism for 0.80 of one ACM
 column. Use a white background, thin dark strokes, restrained blue/teal/purple/
 coral fills, short arrows, tight boxes, and monospace code labels. The top strip
 contains `mod sat`, `use ir`, `fn select`, `[stage: select]`, and
@@ -64,13 +246,19 @@ key `E, fn, args`, result `r`, reads `Val9 type + Op17 callee`, and effects
 `Op17`, followed by `reuse = same(key) ∧ current(D)`. Eliminate title banners,
 large containers, long connectors, and decorative whitespace. -->
 
-*Figure 2: A typed compiler call executes transactionally and records reads and
+*Figure 3: A typed compiler call executes transactionally and records reads and
 effects for reuse.*
 
-The remainder of this section develops the model in execution order. Section
-3.2 defines compiler functions. Section 3.3 explains how mods own and compose
-them. Section 3.4 derives incremental execution from observed dependencies.
-Section 3.5 presents the runtime mechanisms that preserve these contracts.
+Joggle calls this representation progressive because each successful compiler
+function publishes another verified mod over the same entity model. A stage may
+retain semantic operations while introducing lower-level helpers, and a later
+stage may replace only the definitions it owns. Progress therefore does not
+require a public transition from one IR class to another.
+
+The rest of the design follows the three requirements from Section 2. Section
+3.2 realizes R1 with typed compiler functions. Section 3.3 realizes R2 with
+mod-scoped composition. Sections 3.4 and 3.5 realize R3 through observed
+dependencies and the graph runtime that validates them.
 
 ### 3.2 Compiler Functions
 
@@ -261,14 +449,17 @@ function, operation, or value change. Generation checks distinguish an edited
 entity from a new entity that later reuses the same slot.
 
 Mutating pipelines require one further step. A reactive schedule stores, for
-each stage $s_i$, both its observed inputs $D_i$ and its previous output scope
-$W_i$. The output scope contains changed function identities and flags for
-structural or mod-dependency changes. A stage is selected when its own inputs
-are stale or when an earlier selected stage may change something it observed:
+each stage $s_i$, its call key $K_i$, observed inputs $D_i$, and previous output
+scope $W_i$. The key names the environment, function, and arguments. The output
+scope contains changed function identities and flags for structural or
+mod-dependency changes. A stage is selected when its key or inputs are stale,
+or when an earlier selected stage may change something it observed:
 
 $$
-Selected_i = \neg Current(D_i) \lor
-  \exists j<i:\ Selected_j \land Overlap(W_j,D_i).
+\begin{aligned}
+Selected_i ={}& \neg Current(K_i,D_i) \\
+              & \lor \exists j<i:\ Selected_j \land Overlap(W_j,D_i).
+\end{aligned}
 $$
 
 The second term is an *upstream* miss. The inputs recorded for $s_i$ may still
@@ -306,13 +497,13 @@ the final graph verifies. Failure rolls back graph mutations and revision
 state; it also discards the tentative records. Consequently, the next run
 cannot reuse dependencies derived from an unpublished graph.
 
-Figure 3 separates the dependency levels. The static `use` graph defines which
+Figure 4 separates the dependency levels. The static `use` graph defines which
 functions may be called; a compact observation ledger records which entities a
 particular run read. An edit invalidates the stage that observed it and only
 the later stages whose recorded inputs overlap its effects.
 
-<!-- FIGURE 3 PROMPT — Compact square dependency diagram for 0.80 of one ACM
-column, using Figure 2's thin strokes and restrained semantic colors. The top
+<!-- FIGURE 4 PROMPT — Compact square dependency diagram for 0.80 of one ACM
+column, using Figure 3's thin strokes and restrained semantic colors. The top
 quarter is a tight `use` graph: Project→sat,nn; sat→ir; nn→tensor,math; and
 ir,tensor→base. The lower region is a four-column ledger headed stage, D: reads,
 W: effects, decision. Its rows are Select | Val9 type | Op17 | DIRECT; Plan |
@@ -322,7 +513,7 @@ the observation; a purple arrow connects Select's Op17 effect to Plan's Op17
 read and is labeled overlap. Use tight cells and short arrows, with no large
 panels or decorative whitespace. -->
 
-*Figure 3: Static `use` edges bound calls; dynamic read/effect records select
+*Figure 4: Static `use` edges bound calls; dynamic read/effect records select
 work after an edit.*
 
 Fine-grained observations reduce re-execution but add capture and validation
@@ -330,10 +521,10 @@ work. For $K$ stages, incremental latency is approximately
 
 $$
 \begin{aligned}
-T_{select} &= \sum_{i=1}^{K} T_{validate}(D_i) + T_{propagate}, \\
-T_{inc} &= T_{select} + T_{commit} \\
-        &\quad + \sum_{s_i \in Selected}
-          \left(T_{eval}(s_i) + T_{verify}(s_i)\right).
+T_{select} &= \sum_{i=1}^{K} T_{validate}(K_i,D_i) + T_{propagate}, \\
+T_{inc} &= T_{select}
+        + \sum_{s_i \in Selected} T_{eval}(s_i) \\
+        &\quad + T_{verify}(G') + T_{commit}.
 \end{aligned}
 $$
 

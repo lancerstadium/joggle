@@ -38,7 +38,7 @@ and the runtime either commits a verified update or returns a read-only result.
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=.80\columnwidth]{figures/figure-02-system-model.png}
+  \includegraphics[width=.80\columnwidth]{figures/figure-03-call-model.png}
   \caption{A typed compiler call executes transactionally and records reads
     and effects for reuse.}
   \Description{A typed function enters an evaluator that reads and writes a
@@ -48,12 +48,18 @@ and the runtime either commits a verified update or returns a read-only result.
   \label{fig:system-model}
 \end{figure}
 
-The remainder of this section develops the model in execution order.
-Section~\ref{sec:compiler-functions} defines compiler functions.
-Section~\ref{sec:mods} explains how mods own and compose them.
-Section~\ref{sec:incremental} derives incremental execution from observed
-dependencies. Section~\ref{sec:graph-runtime} presents the runtime mechanisms
-that preserve these contracts.
+Joggle calls this representation progressive because each successful compiler
+function publishes another verified mod over the same entity model. A stage may
+retain semantic operations while introducing lower-level helpers, and a later
+stage may replace only the definitions it owns. Progress therefore does not
+require a public transition from one IR class to another.
+
+The rest of the design follows the three requirements from
+Section~\ref{sec:requirements}. Section~\ref{sec:compiler-functions} realizes
+R1 with typed compiler functions. Section~\ref{sec:mods} realizes R2 with
+mod-scoped composition. Sections~\ref{sec:incremental}
+and~\ref{sec:graph-runtime} realize R3 through observed dependencies and the
+graph runtime that validates them.
 
 \subsection{Compiler Functions}
 \label{sec:compiler-functions}
@@ -78,7 +84,7 @@ Listing~\ref{lst:sat} shows these roles in the bundled \texttt{sat} mod. The
 same syntax declares a parametric type, a capability query, native simulation
 and artifact functions, and a mutating selection stage.
 
-\begin{lstlisting}[language=jog,caption={The \texttt{sat} mod defines semantics,
+\begin{lstlisting}[language=jog,float=t,caption={The \texttt{sat} mod defines semantics,
 analysis, native boundaries, and transformation with one function syntax.},
 label={lst:sat}]
 mod sat
@@ -242,14 +248,18 @@ function, operation, or value change. Generation checks distinguish an edited
 entity from a new entity that later reuses the same slot.
 
 Mutating pipelines require one further step. A reactive schedule stores, for
-each stage $s_i$, both its observed inputs $D_i$ and its previous output scope
-$W_i$. The output scope contains changed function identities and flags for
-structural or mod-dependency changes. A stage is selected when its own inputs
-are stale or when an earlier selected stage may change something it observed:
+each stage $s_i$, its call key $K_i$, observed inputs $D_i$, and previous output
+scope $W_i$. The key names the environment, function, and arguments. The output
+scope contains changed function identities and flags for structural or
+mod-dependency changes. A stage is selected when its key or inputs are stale,
+or when an earlier selected stage may change something it observed:
 \[
-  \operatorname{Selected}_i = \neg \operatorname{Current}(D_i) \lor
-  \exists j<i:\ \operatorname{Selected}_j \land
-  \operatorname{Overlap}(W_j,D_i).
+  \begin{aligned}
+    \operatorname{Selected}_i ={}&
+      \neg \operatorname{Current}(K_i,D_i) \\
+      &\lor \exists j<i:\ \operatorname{Selected}_j \land
+      \operatorname{Overlap}(W_j,D_i).
+  \end{aligned}
 \]
 The second term is an \emph{upstream} miss. The inputs recorded for $s_i$ may
 still match at the start of a run, yet an earlier stage selected in the same run
@@ -294,7 +304,7 @@ recorded inputs overlap its effects.
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=.80\columnwidth]{figures/figure-03-dependencies.png}
+  \includegraphics[width=.80\columnwidth]{figures/figure-04-dependencies.png}
   \caption{Static \texttt{use} edges bound calls; dynamic read/effect records
     select work after an edit.}
   \Description{The upper region shows the static use graph of seven mods. The
@@ -308,12 +318,12 @@ work. For $K$ stages, incremental latency is approximately
 \[
   \begin{aligned}
     T_{\mathrm{select}}
-      &= \sum_{i=1}^{K} T_{\mathrm{validate}}(D_i)
+      &= \sum_{i=1}^{K} T_{\mathrm{validate}}(K_i,D_i)
          + T_{\mathrm{propagate}}, \\
     T_{\mathrm{inc}}
-      &= T_{\mathrm{select}} + T_{\mathrm{commit}} \\
-      &\quad + \sum_{s_i \in \mathrm{Selected}}
-        \left(T_{\mathrm{eval}}(s_i) + T_{\mathrm{verify}}(s_i)\right).
+      &= T_{\mathrm{select}}
+         + \sum_{s_i \in \mathrm{Selected}} T_{\mathrm{eval}}(s_i) \\
+      &\quad + T_{\mathrm{verify}}(G') + T_{\mathrm{commit}}.
   \end{aligned}
 \]
 Reuse is beneficial when this cost is lower than executing the omitted stages.
