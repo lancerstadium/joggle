@@ -9,6 +9,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import TwoSlopeNorm
 
 from common import COLORS, configure, number, read_rows, save, truth
 
@@ -16,7 +17,13 @@ from common import COLORS, configure, number, read_rows, save, truth
 def condition(row: dict[str, str]) -> str:
     if row["edit_class"] == "no_op":
         return "no-op"
-    return f"{row['edit_class'].replace('_', ' ')}\n{row['edit_scope']}"
+    name = {"operation_metadata": "metadata", "value_type": "value type"}[
+        row["edit_class"]
+    ]
+    scope = {"affected": "changed cone", "unrelated": "unrelated"}[
+        row["edit_scope"]
+    ]
+    return f"{name}\n{scope}"
 
 
 def main() -> int:
@@ -48,7 +55,15 @@ def main() -> int:
                                         "executed_stages", "stages")}
 
     subjects = sorted({row["subject"] for row in rows})
-    conditions = sorted({condition(row) for row in rows})
+    condition_order = [
+        "no-op",
+        "metadata\nchanged cone",
+        "metadata\nunrelated",
+        "value type\nchanged cone",
+        "value type\nunrelated",
+    ]
+    present = {condition(row) for row in rows}
+    conditions = [name for name in condition_order if name in present]
     sites = sorted({row["edit_site"] for row in rows})
     speed = np.full((len(subjects), len(conditions)), np.nan)
     executed = np.full_like(speed, np.nan)
@@ -73,17 +88,36 @@ def main() -> int:
                      constrained_layout=True)
     grid = fig.add_gridspec(2, 2, width_ratios=(1.6, 1), hspace=0.38, wspace=0.35)
     heat = fig.add_subplot(grid[:, 0])
-    image = heat.imshow(speed, aspect="auto", cmap="YlGnBu", vmin=1)
+    log_speed = np.log2(speed)
+    image = heat.imshow(
+        log_speed,
+        aspect="auto",
+        cmap="RdBu",
+        norm=TwoSlopeNorm(vmin=-2, vcenter=0, vmax=10),
+    )
     heat.set_xticks(range(len(conditions)), conditions, rotation=35, ha="right")
     heat.set_yticks(range(len(subjects)), subjects)
     heat.set_title("Full / Reactive speedup")
     for i in range(len(subjects)):
         for j in range(len(conditions)):
             if np.isfinite(speed[i, j]):
-                heat.text(j, i, f"{speed[i,j]:.1f}×\n{executed[i,j]:.0f}/{total[i,j]:.0f}",
-                          ha="center", va="center", fontsize=5.2,
-                          color="white" if speed[i, j] > np.nanmedian(speed) else "#1F2933")
-    fig.colorbar(image, ax=heat, fraction=0.035, pad=0.02)
+                saturated = log_speed[i, j] < -1.25 or log_speed[i, j] > 8
+                value = speed[i, j]
+                label = f"{value:.1f}×" if value < 10 else (
+                    f"{value:.0f}×" if value < 1000 else f"{value / 1000:.1f}k×"
+                )
+                heat.text(
+                    j,
+                    i,
+                    f"{label}\n{executed[i,j]:.0f}/{total[i,j]:.0f}",
+                    ha="center",
+                    va="center",
+                    fontsize=5.2,
+                    color="white" if saturated else "#1F2933",
+                )
+    colorbar = fig.colorbar(image, ax=heat, fraction=0.035, pad=0.02)
+    colorbar.set_ticks((-2, 0, 2, 6, 10),
+                       labels=("0.25×", "1×", "4×", "64×", "1024×+"))
 
     ecdf = fig.add_subplot(grid[0, 1])
     independent: dict[str, list[float]] = defaultdict(list)
@@ -105,14 +139,25 @@ def main() -> int:
     fields = [("select_ns", "select", "#66C2A5"),
               ("evaluate_ns", "evaluate", "#3288BD"),
               ("verify_ns", "verify", "#FDAE61")]
+    cases = np.asarray([[entry[field] / 1e6 for field, _label, _color in fields]
+                        for entry in reactive])
+    case_totals = np.sum(cases, axis=1)
+    targets = np.quantile(case_totals, (0.5, 0.95))
+    selected = [int(np.argmin(np.abs(case_totals - target))) for target in targets]
+    components = cases[selected].T
+    totals = case_totals[selected]
+    shares = components / totals
     bottom = np.zeros(2)
-    for field, label, color in fields:
-        values = np.asarray([entry[field] / 1e6 for entry in reactive])
-        quantiles = np.quantile(values, (0.5, 0.95))
-        breakdown.bar(("p50", "p95"), quantiles, bottom=bottom, color=color, label=label)
-        bottom += quantiles
-    breakdown.set_ylabel("Component time (ms)")
-    breakdown.set_title("Reactive component quantiles")
+    for index, (_field, label, color) in enumerate(fields):
+        breakdown.bar(("p50", "p95"), shares[index], bottom=bottom,
+                      color=color, label=label)
+        bottom += shares[index]
+    for index, total in enumerate(totals):
+        breakdown.text(index, 1.02, f"{total:.2g} ms", ha="center", va="bottom",
+                       fontsize=6.5)
+    breakdown.set_ylim(0, 1.12)
+    breakdown.set_ylabel("Component share")
+    breakdown.set_title("Reactive time composition")
     breakdown.legend(frameon=False)
     breakdown.grid(axis="y", color="#E7E9EC", lw=0.5)
 

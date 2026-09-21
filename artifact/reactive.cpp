@@ -13,6 +13,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <random>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -30,6 +31,12 @@ constexpr std::array<std::string_view, 5> stages{
     "artifact.reactive.analyze", "artifact.reactive.canonicalize",
     "artifact.reactive.select", "artifact.reactive.plan",
     "artifact.reactive.prepare"};
+
+constexpr std::array<std::string_view, 5> full_stages{
+    "artifact.reactive.full_analyze",
+    "artifact.reactive.full_canonicalize",
+    "artifact.reactive.full_select", "artifact.reactive.full_plan",
+    "artifact.reactive.full_prepare"};
 
 constexpr std::array<std::string_view, 5> whole_stages{
     "artifact.reactive.whole_analyze",
@@ -533,18 +540,22 @@ bool benchmark(const Config& config, std::ofstream& output,
   const std::array<joggle::Attr, 2> args{joggle::Attr(subject.owner),
                                          joggle::Attr(static_cast<std::int64_t>(
                                              subject.hot_index))};
+  const std::span<const std::string_view> complete =
+      std::span<const std::string_view>(full_stages).first(config.stage_count);
 
   const auto execute = [&](joggle::Attr& report, joggle::Attr& profile) {
     if (reactive)
       return schedule->run(subject.env, subject.mod, args, &report);
-    return run_direct(
-        subject, std::span<const std::string_view>(stages).first(
-                     config.stage_count),
-        profile);
+    return run_direct(subject, complete, profile);
   };
 
   joggle::Attr report;
   joggle::Attr profile;
+  joggle::Attr initialization;
+  if (!run_direct(subject, complete, initialization)) {
+    subject.env.print_diags(stderr);
+    return false;
+  }
   if (!execute(report, profile)) {
     subject.env.print_diags(stderr);
     return false;
@@ -635,7 +646,10 @@ int main(int argc, char** argv) {
             "miss_reason,output_digest,correct,seed\n";
 
   std::map<std::string, std::string, std::less<>> expected;
-  for (const std::string& policy : policies(config))
+  std::vector<std::string> selected_policies = policies(config);
+  std::mt19937_64 random(config.seed);
+  std::shuffle(selected_policies.begin(), selected_policies.end(), random);
+  for (const std::string& policy : selected_policies)
     for (const std::string& scope : scopes(config))
       if (!benchmark(config, output, policy, scope, expected))
         return 1;

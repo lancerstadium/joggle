@@ -34,9 +34,12 @@ run record beside the CSV.
 The generated subject contains independent affected and unrelated chains. Both
 edits occur in the same function, so function- or mod-granular policies rerun
 the pipeline; entity-granular validation can reject the unrelated edit without
-executing a stage. The CSV records actual IR operation counts rather than the
-requested generator size. Total nodes, affected nodes, fan-out, and stage count
-are separate generator parameters.
+executing a stage. Every policy begins with the same properties initialized on
+the complete function. Timed Full stages rescan that function, while timed
+Reactive stages retain their recorded root and traverse only its affected cone.
+The CSV records actual IR operation counts rather than the requested generator
+size. Total nodes, affected nodes, fan-out, and stage count are separate
+generator parameters.
 
 The same executable also accepts pinned ONNX files. It decodes the complete
 model, selects pre-registered early, middle, or late single-output computations,
@@ -70,7 +73,8 @@ Run the model-backed track over an already downloaded pinned corpus:
 ```sh
 python3 artifact/run_reactive.py \
   --output .cache/artifact/figure-06-model-update.csv \
-  --models .cache/onnx-zoo/*.onnx \
+  --model-manifest artifact/manifests/reactive-models.csv \
+  --model-root .cache/onnx-zoo \
   --sites early middle late \
   --stages 5 --warmups 10 --iterations 100
 ```
@@ -82,6 +86,7 @@ python3 artifact/run_reactive.py \
   --output .cache/artifact/figure-07-scaling.csv \
   --nodes 1000 10000 100000 1000000 \
   --affected 1 8 64 512 \
+  --edit-classes operation_metadata --scopes affected \
   --fanout 1 --stages 5 \
   --warmups 10 --iterations 100
 ```
@@ -102,6 +107,16 @@ python3 artifact/figures/figure_06_model_update.py \
 python3 artifact/figures/figure_07_scaling.py \
   .cache/artifact/figure-07-scaling.csv \
   --output .cache/artifact/figure-07-scaling.pdf
+```
+
+Figures 4, 5, 8, and 9 use the shared structural validator; `--allow-partial`
+is reserved for collection-time checks and is not accepted by the release gate:
+
+```sh
+python3 artifact/validate_figure.py 4 .cache/artifact/figure-04-extension.csv
+python3 artifact/validate_figure.py 5 .cache/artifact/figure-05-footprint.csv
+python3 artifact/validate_figure.py 8 .cache/artifact/figure-08-operators.csv
+python3 artifact/validate_figure.py 9 .cache/artifact/figure-09-models.csv
 ```
 
 The committed schema is `schemas/reactive.schema.json`. Raw CSV and JSON run

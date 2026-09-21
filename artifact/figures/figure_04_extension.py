@@ -30,6 +30,17 @@ def task_scores(rows: list[dict[str, str]], k: int):
     return {key: pass_at_k(len(values), sum(values), k) for key, values in grouped.items()}
 
 
+def mean_interval(values: list[float], seed: int = 0) -> tuple[float, float, float]:
+    sample = np.asarray(values, dtype=float)
+    center = float(np.mean(sample))
+    if len(sample) == 1:
+        return center, center, center
+    random = np.random.default_rng(seed)
+    means = np.mean(random.choice(sample, (10_000, len(sample)), replace=True), axis=1)
+    low, high = np.quantile(means, (0.025, 0.975))
+    return center, float(low), float(high)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("csv", type=Path)
@@ -54,32 +65,40 @@ def main() -> int:
     for row_index, model in enumerate(models):
         left, middle, right = axes[row_index]
         for system in systems:
-            values = []
-            for family in families:
+            centers, lower, upper = [], [], []
+            for family_index, family in enumerate(families):
                 task_values = [value for (m, s, task, demos), value in scores[1].items()
                                if m == model and s == system and demos == 4
                                and family_of[task] == family]
-                values.append(float(np.mean(task_values)) if task_values else np.nan)
-            left.plot(range(len(families)), values, marker="o", ms=3, lw=1,
-                      color=COLORS.get(system), label=system)
+                center, low, high = mean_interval(task_values, seed=family_index)
+                centers.append(center)
+                lower.append(center - low)
+                upper.append(high - center)
+            left.errorbar(range(len(families)), centers, yerr=(lower, upper),
+                          marker="o", ms=3, lw=1, capsize=1.5,
+                          color=COLORS.get(system), label=system)
         left.set_xticks(range(len(families)), families, rotation=35, ha="right")
         left.set_ylim(0, 1.02)
         left.set_ylabel("Task-macro pass@1")
         left.set_title(f"{model}: four demonstrations")
 
         for system in systems:
-            values = []
-            for k in (1, 5, 10):
-                task_values = [value for (m, s, _task, demos), value in scores[k].items()
-                               if m == model and s == system and demos == 4]
-                values.append(float(np.mean(task_values)))
-            middle.plot((1, 5, 10), values, marker="o", ms=3, lw=1,
-                        color=COLORS.get(system), label=system)
-        middle.set_xticks((1, 5, 10))
+            centers, lower, upper = [], [], []
+            for demos in (0, 1, 2, 4):
+                task_values = [value for (m, s, _task, count), value in scores[1].items()
+                               if m == model and s == system and count == demos]
+                center, low, high = mean_interval(task_values, seed=10 + demos)
+                centers.append(center)
+                lower.append(center - low)
+                upper.append(high - center)
+            middle.errorbar((0, 1, 2, 4), centers, yerr=(lower, upper), marker="o",
+                            ms=3, lw=1, capsize=1.5, color=COLORS.get(system),
+                            label=system)
+        middle.set_xticks((0, 1, 2, 4))
         middle.set_ylim(0, 1.02)
-        middle.set_xlabel("k")
-        middle.set_ylabel("Task-macro pass@k")
-        middle.set_title("Sampling budget")
+        middle.set_xlabel("Demonstrations")
+        middle.set_ylabel("Task-macro pass@1")
+        middle.set_title("Demonstration response")
 
         stages = ["parse", "type", "build", "oracle", "pass"]
         bottoms = np.zeros(len(systems))
@@ -104,6 +123,7 @@ def main() -> int:
 
         if references:
             inset = middle.inset_axes([0.57, 0.08, 0.4, 0.34])
+            inset.set_facecolor((1, 1, 1, 0.92))
             for system in systems:
                 points = []
                 for demos in (0, 1, 2, 4):
@@ -115,7 +135,8 @@ def main() -> int:
                         points.append((demos, float(np.mean(values))))
                 if points:
                     inset.plot(*zip(*points), lw=0.8, color=COLORS.get(system))
-            inset.set_title("mean token NLL", fontsize=6)
+            inset.text(0.03, 0.94, "mean token NLL", transform=inset.transAxes,
+                       va="top", fontsize=5.5)
             inset.tick_params(labelsize=5)
 
     for axis in axes.flat:
@@ -131,4 +152,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

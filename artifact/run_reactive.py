@@ -8,6 +8,7 @@ import csv
 import hashlib
 import json
 import platform
+import random
 import subprocess
 import sys
 import tempfile
@@ -34,7 +35,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--affected", type=int, nargs="+", default=[1, 8, 64])
     parser.add_argument("--fanout", type=int, nargs="+", default=[1])
     parser.add_argument("--stages", type=int, nargs="+", default=[5])
-    parser.add_argument("--models", type=Path, nargs="+")
+    subjects = parser.add_mutually_exclusive_group()
+    subjects.add_argument("--models", type=Path, nargs="+")
+    subjects.add_argument("--model-manifest", type=Path)
+    parser.add_argument("--model-root", type=Path)
     parser.add_argument(
         "--edit-classes",
         choices=("no_op", "operation_metadata", "value_type"),
@@ -105,6 +109,45 @@ def sha256(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def resolve_models(args: argparse.Namespace) -> list[dict[str, object]]:
+    if args.model_manifest and not args.model_root:
+        raise SystemExit("--model-manifest requires --model-root")
+    if args.model_root and not args.model_manifest:
+        raise SystemExit("--model-root requires --model-manifest")
+    requested: list[tuple[Path, str | None, str | None]] = []
+    if args.models:
+        requested = [(path, None, None) for path in args.models]
+    elif args.model_manifest:
+        with args.model_manifest.open(newline="", encoding="utf-8") as stream:
+            reader = csv.DictReader(stream)
+            if reader.fieldnames != ["model", "sha256"]:
+                raise SystemExit("model manifest columns must be model,sha256")
+            for line, row in enumerate(reader, start=2):
+                name = row["model"]
+                digest = row["sha256"].lower()
+                if not name or len(digest) != 64 or any(
+                    char not in "0123456789abcdef" for char in digest
+                ):
+                    raise SystemExit(f"invalid model manifest row {line}")
+                requested.append((args.model_root / f"{name}.onnx", name, digest))
+    models: list[dict[str, object]] = []
+    seen: set[tuple[str, str]] = set()
+    for path, declared_name, declared_hash in requested:
+        resolved = path.resolve()
+        if not resolved.is_file():
+            raise SystemExit(f"model does not exist: {path}")
+        digest = sha256(resolved)
+        if declared_hash and digest != declared_hash:
+            raise SystemExit(f"model hash mismatch: {path}")
+        name = declared_name or resolved.stem
+        identity = (name, digest)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        models.append({"path": resolved, "name": name, "sha256": digest})
+    return models
+
+
 def main() -> int:
     args = parse_args()
     repo = Path(__file__).resolve().parents[1]
@@ -114,7 +157,7 @@ def main() -> int:
     revision = command(["git", "rev-parse", "HEAD"], repo, capture=True)
     if status:
         revision += "-dirty"
-    invalid_generator = not args.models and (
+    invalid_generator = not (args.models or args.model_manifest) and (
         any(node <= 1 for node in args.nodes)
         or any(value <= 0 for value in args.affected)
         or any(value <= 0 for value in args.fanout)
@@ -127,6 +170,7 @@ def main() -> int:
         or args.seed < 0
     ):
         raise SystemExit("benchmark arguments are out of range")
+    models = resolve_models(args)
 
     owned_temp = None
     if args.build_root:
@@ -136,32 +180,14 @@ def main() -> int:
         owned_temp = tempfile.TemporaryDirectory(prefix="joggle-artifact-")
         build_root = Path(owned_temp.name)
 
-    persistent = configure(repo, build_root / "persistent", True, bool(args.models))
-    no_plans = configure(repo, build_root / "no-plans", False, bool(args.models))
+    onnx = bool(models)
+    persistent = configure(repo, build_root / "persistent", True, onnx)
+    no_plans = configure(repo, build_root / "no-plans", False, onnx)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.unlink(missing_ok=True)
-    write_header = True
     commands: list[list[str]] = []
+    jobs: list[tuple[Path, list[str]]] = []
 
-    models = []
-    seen_models: set[tuple[str, str]] = set()
-    if args.models:
-        for path in args.models:
-            resolved = path.resolve()
-            if not resolved.is_file():
-                raise SystemExit(f"model does not exist: {path}")
-            digest = sha256(resolved)
-            identity = (resolved.stem, digest)
-            if identity in seen_models:
-                continue
-            seen_models.add(identity)
-            models.append(
-                {
-                    "path": resolved,
-                    "name": resolved.stem,
-                    "sha256": digest,
-                }
-            )
     subjects = models
     if not subjects:
         subjects = []
@@ -249,11 +275,14 @@ def main() -> int:
                                     str(subject["fanout"]),
                                 ]
                             )
-                        command(invocation, repo)
-                        commands.append(invocation)
-                        write_header = append_csv(
-                            partial, args.output, write_header
-                        )
+                        jobs.append((partial, invocation))
+
+    random.Random(args.seed).shuffle(jobs)
+    write_header = True
+    for partial, invocation in jobs:
+        command(invocation, repo)
+        commands.append(invocation)
+        write_header = append_csv(partial, args.output, write_header)
 
     command(
         [
@@ -279,6 +308,14 @@ def main() -> int:
             {"name": model["name"], "sha256": model["sha256"]}
             for model in models
         ],
+        "model_manifest": (
+            {
+                "path": str(args.model_manifest.resolve()),
+                "sha256": sha256(args.model_manifest.resolve()),
+            }
+            if args.model_manifest
+            else None
+        ),
         "sites": args.sites if models else [],
         "edit_classes": args.edit_classes,
         "scopes": args.scopes,

@@ -658,7 +658,7 @@ local examples.
 
 <!-- FIGURE 4 PLAN — Full-width, three compact panels fed by one CSV and one
 plotting script. (a) task-level pass@1 at four demonstrations, grouped by
-family; (b) pass@k response to 0/1/2/4 demonstrations; (c) parse/type/build/
+family; (b) pass@1 response to 0/1/2/4 demonstrations; (c) parse/type/build/
 oracle failure composition. Keep the two models in separate rows. Show paired
 log-perplexity only as a small secondary inset so syntax length cannot dominate
 the headline. CSV: figure-04-extension.csv. Raw columns: model,
@@ -726,6 +726,12 @@ observations with one mod revision; and **No-plan-cache** retains reactive
 selection but decodes functions again. All policies must produce the same
 verified digest.
 
+Every policy starts from the same fully initialized graph. A Full stage walks
+the complete function, whereas a Reactive stage invokes the same property
+computation through its recorded root and therefore visits the affected cone.
+This setup holds the required compiler result constant while separating global
+re-execution from dependency-selected work.
+
 The primary measure is edit-to-result latency. We also record selection,
 evaluation, and verification time; executed and reused stages; observed
 entities; compiler-function operations; plan hits; and miss reasons. For
@@ -746,7 +752,8 @@ graph and pass infrastructure.
 script. Left: heatmap of Full/Reactive speedup for every one of the 15 models by
 edit class and scope; annotate executed/total stages in each cell. Right-top:
 ECDF of edit-to-result latency for Full and Reactive. Right-bottom:
-selection/evaluation/verification composition for p50 and p95. CSV:
+selection/evaluation/verification share for p50 and p95, with total time
+labels. CSV:
 figure-06-model-update.csv. Raw columns: system,system_revision,subject,
 subject_hash,total_ops,
 affected_ops,fanout,stages,edit_class,edit_scope,edit_site,policy,cache_state,
@@ -756,8 +763,9 @@ plan_hits,miss_reason,output_digest,correct,seed. -->
 
 <!-- FIGURE 7 PLAN — Single-column scaling figure fed by one CSV and one plotting
 script. Log-scaled x-axis is total operations; y-axis is update latency.
-Separate lines for affected cones of 1/8/64/512 operations and Full. A lower
-inset plots observed entities. Do not connect unsupported or missing cases.
+For an affected metadata edit, separate lines show cones of 1/8/64/512
+operations and Full. A lower inset plots observed entities. Do not connect
+unsupported or missing cases.
 CSV: figure-07-scaling.csv, using the Figure 6 columns on generated subjects. -->
 
 ### 4.5 Artifact Quality and System Costs

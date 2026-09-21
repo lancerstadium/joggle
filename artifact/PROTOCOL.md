@@ -74,8 +74,10 @@ changes and dependency fan-out remain visible but separate.
 
 Figure 6 uses the 15 pinned non-heavy ONNX subjects from `test/models.cmake`.
 Figure 7 uses generated graphs with total operations 1K, 10K, 100K, and 1M and
-affected cones of 1, 8, 64, and 512 operations. Both figures compare Full,
-Reactive, Whole-mod, and No-plan-cache under one edit and one verified output
+affected cones of 1, 8, 64, and 512 operations. Its scaling plot fixes the edit
+to affected operation metadata; Figure 6 retains all edit classes and scopes.
+Both figures compare Full, Reactive, Whole-mod, and No-plan-cache under one edit
+and one verified output
 digest. A suffix policy is not a separate condition because every edit enters
 before the first stage; its conservative suffix is the Full policy.
 
@@ -85,7 +87,13 @@ operations, observations, and plan counters validate the mechanism. Figure 6
 and Figure 7 receive separate exported CSVs even when they originate from the
 same raw run.
 
+All policies begin after the same full-function initialization. Full scans the
+complete function after each edit. Reactive calls retain a recorded root and
+visit its affected cone when their dependencies change; Whole-mod and
+No-plan-cache alter only observation precision and plan persistence.
+
 - Model CSV: `templates/figure-06-model-update.csv`
+- Model manifest: `manifests/reactive-models.csv`
 - Model plot: `figures/figure_06_model_update.py`
 - Scaling CSV: `templates/figure-07-scaling.csv`
 - Scaling plot: `figures/figure_07_scaling.py`

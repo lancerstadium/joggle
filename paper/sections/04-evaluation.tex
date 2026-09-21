@@ -143,6 +143,12 @@ Four policies isolate the mechanisms. \textbf{Full} reruns every stage;
 \textbf{No-plan-cache} retains reactive selection but decodes functions again.
 All policies must produce the same verified digest.
 
+Every policy starts from the same fully initialized graph. A Full stage walks
+the complete function, whereas a Reactive stage invokes the same property
+computation through its recorded root and therefore visits the affected cone.
+This setup holds the required compiler result constant while separating global
+re-execution from dependency-selected work.
+
 The primary measure is edit-to-result latency. We also record selection,
 evaluation, and verification time; executed and reused stages; observed
 entities; compiler-function operations; plan hits; and miss reasons. For

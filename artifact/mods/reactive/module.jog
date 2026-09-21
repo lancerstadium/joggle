@@ -22,6 +22,14 @@ local fn annotate(
   return changed
 }
 
+local fn annotate_all(m: Mod, owner: str, key: str) -> bool {
+  var changed = false
+  for op in ir.ops(ir.find(m, owner)) {
+    changed = ir.set(m, op, key, true) || changed
+  }
+  return changed
+}
+
 fn analyze(m: Mod, owner: str, index: int) -> bool {
   return annotate(m, owner, index, "artifact.analysis")
 }
@@ -40,6 +48,30 @@ fn plan(m: Mod, owner: str, index: int) -> bool {
 
 fn prepare(m: Mod, owner: str, index: int) -> bool {
   return annotate(m, owner, index, "artifact.artifact")
+}
+
+// Full-policy stages establish the same properties while deliberately walking
+// the complete function. The benchmark initializes these properties once for
+// every policy, then contrasts full rescans with dependency-selected local
+// calls after an edit.
+fn full_analyze(m: Mod, owner: str, index: int) -> bool {
+  return annotate_all(m, owner, "artifact.analysis") || index < 0
+}
+
+fn full_canonicalize(m: Mod, owner: str, index: int) -> bool {
+  return annotate_all(m, owner, "artifact.canonical") || index < 0
+}
+
+fn full_select(m: Mod, owner: str, index: int) -> bool {
+  return annotate_all(m, owner, "artifact.target") || index < 0
+}
+
+fn full_plan(m: Mod, owner: str, index: int) -> bool {
+  return annotate_all(m, owner, "artifact.plan") || index < 0
+}
+
+fn full_prepare(m: Mod, owner: str, index: int) -> bool {
+  return annotate_all(m, owner, "artifact.artifact") || index < 0
 }
 
 // These wrappers produce the same graph while deliberately observing the
