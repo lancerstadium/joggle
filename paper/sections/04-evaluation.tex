@@ -4,14 +4,14 @@
 \subsection{Experimental Framework}
 \label{sec:eval-method}
 
-The evaluation follows the three claims in Figure~\ref{fig:thesis-map}. The
-first analysis tests whether a uniform extension surface is predictable to a
-small code model and still produces executable programs. The second measures
-whether feature changes remain inside their declared ownership boundary. The
-third measures whether dependency-directed execution makes update work
-proportional to the affected graph. Artifact quality and mechanism overhead
-bound these results: a shorter update is useful only when it preserves
-correctness, generated-code quality, and acceptable cold-path cost.
+The evaluation quantifies the consequences of the three mechanisms in
+Figure~\ref{fig:thesis-map}. For the unified language, it measures model
+uncertainty and executable task completion over matched extension tasks. For
+mods, it measures the files, source lines, ownership zones, and registration
+sites changed by a complete feature. For reactive execution, it measures
+edit-to-result latency and work reuse as graph size and affected scope vary.
+Separate artifact and overhead measurements establish that responsiveness
+preserves correctness, generated-code quality, and acceptable cold-path cost.
 
 \paragraph{Subjects.}
 The extension and change-footprint experiments compare Joggle with MLIR and
@@ -55,7 +55,7 @@ Ratios are aggregated with the geometric mean. The artifact records the
 machine, operating system, compiler revision and flags, CPU affinity, frequency
 policy, model digest, random seed, and raw per-iteration rows.
 
-\subsection{Convenient: Unified Extensions}
+\subsection{Extension Predictability and Completion}
 \label{sec:eval-convenient}
 
 This experiment jointly evaluates predictability and executable task
@@ -103,7 +103,7 @@ We also report syntax success, type-check success, context tokens, completion
 tokens, and repair-free success. The paired task design separates the extension
 surface from differences in task semantics.
 
-\subsection{Controllable: Mod-Scoped Change}
+\subsection{Change Footprint and Ownership}
 \label{sec:eval-controllable}
 
 The change-footprint experiment uses the same semantic feature families but
@@ -141,11 +141,10 @@ records whether the change remains within one mod or crosses declared
 The principal comparison is paired by task: for each coordinate, we compute
 the within-task ratio between Joggle and each baseline, then summarize the
 ratios with a geometric mean and bootstrap interval. A second view groups tasks
-by role to test whether a unified surface helps only small rewrites or also
-vertical features. Complete patches, counting scripts, and inclusion decisions
-ship with the artifact.
+by role and contrasts small rewrites with vertical features. Complete patches,
+counting scripts, and inclusion decisions ship with the artifact.
 
-\subsection{Efficient: Reactive Updates}
+\subsection{Reactive Update Cost}
 \label{sec:eval-efficient}
 
 The update experiment measures an edit-to-result operation: begin with a
@@ -186,11 +185,11 @@ compiler-function operations $E_p$ define work reuse as
 $1-E_p/E_{\mathrm{Full}}$. Work counts explain latency and remain comparable
 when host-language runtimes differ.
 
-The 16-model corpus tests realistic graph shapes. The generated family then
-separates total graph size $|G|$ from the affected region $|\Delta G|$. For a
-fixed one-operation edit, it tests whether validation and update latency remain
-near the recorded dependency size as $|G|$ grows. A second sweep fixes $|G|$
-and increases $|\Delta G|$ to expose the crossover at which complete execution
+The 16-model corpus covers realistic graph shapes. The generated family then
+separates total graph size $|G|$ from the affected region $|\Delta G|$. One
+sweep fixes a one-operation edit and scales $|G|$, exposing the relation
+between validation cost and recorded dependency size. A second fixes $|G|$
+and increases $|\Delta G|$, locating the crossover at which complete execution
 becomes preferable. Every raw sample includes the miss reason and output
 digest, which detects unintended reuse.
 
@@ -244,8 +243,7 @@ whole-graph traversal, a function-scoped traversal, and direct entity lookup.
 It connects API choice to observed dependency size, validation cost, and later
 reuse without changing the analysis result.
 
-Together, these experiments form one evidence chain. Generation tests the
-regularity of the extension surface; patch footprint tests whether a complete
-feature stays within its declared boundary; reactive execution tests whether
-the runtime exploits that boundary after an edit; and artifact and overhead
-measurements establish the resulting costs.
+Together, these experiments form one evidence chain: generation characterizes
+the regularity of the extension surface; patch footprint characterizes the
+boundary of a complete feature; reactive execution quantifies reuse after an
+edit; and artifact and overhead measurements establish the resulting costs.

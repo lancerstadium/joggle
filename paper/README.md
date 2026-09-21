@@ -17,10 +17,9 @@ hierarchical revisions, dependency indices, and cached execution plans to
 re-execute only stages whose recorded inputs may have changed. We evaluate the
 design through held-out compiler-extension tasks, matched cross-system feature
 patches, controlled edits over a pinned full-model corpus, and operator- and
-model-level artifact measurements. The evidence tests whether extensions are
-predictable to generate, whether changes remain within their ownership
-boundary, and whether update cost follows the affected graph rather than the
-complete pipeline.
+model-level artifact measurements. These measurements connect extension
+predictability to executable completion, feature ownership to patch footprint,
+and affected graph scope to update cost.
 
 ## 1. Introduction
 
@@ -640,14 +639,14 @@ publication boundaries.
 
 ### 4.1 Experimental Framework
 
-The evaluation follows the three claims in Figure 1. The first analysis tests
-whether a uniform extension surface is predictable to a small code model and
-still produces executable programs. The second measures whether feature changes
-remain inside their declared ownership boundary. The third measures whether
-dependency-directed execution makes update work proportional to the affected
-graph. Artifact quality and mechanism overhead bound these results: a shorter
-update is useful only when it preserves correctness, generated-code quality,
-and acceptable cold-path cost.
+The evaluation quantifies the consequences of the three mechanisms in Figure 1.
+For the unified language, it measures model uncertainty and executable task
+completion over matched extension tasks. For mods, it measures the files,
+source lines, ownership zones, and registration sites changed by a complete
+feature. For reactive execution, it measures edit-to-result latency and work
+reuse as graph size and affected scope vary. Separate artifact and overhead
+measurements establish that responsiveness preserves correctness,
+generated-code quality, and acceptable cold-path cost.
 
 **Subjects.** The extension and change-footprint experiments compare Joggle
 with MLIR and xDSL. MLIR represents a mature multi-level compiler
@@ -692,7 +691,7 @@ system/revision, host language, extension task count, accepted models, execution
 mode, compiler flags, correctness oracle. Put full version and hardware strings
 in the artifact, not in dense prose. -->
 
-### 4.2 Convenient: Unified Extensions
+### 4.2 Extension Predictability and Completion
 
 This experiment jointly evaluates predictability and executable task
 completion; code length is reported as a control. The suite contains 36 paired
@@ -748,7 +747,7 @@ two small models separate, and use the same system colors in every panel. CSV
 schema: model,system,task,family,demo_count,seed,target_tokens,context_tokens,
 nll,parsed,typed,passed,sample_index. -->
 
-### 4.3 Controllable: Mod-Scoped Change
+### 4.3 Change Footprint and Ownership
 
 The change-footprint experiment uses the same semantic feature families but
 evaluates repository changes.
@@ -787,9 +786,8 @@ edges.
 The principal comparison is paired by task: for each coordinate, we compute the
 within-task ratio between Joggle and each baseline, then summarize the ratios
 with a geometric mean and bootstrap interval. A second view groups tasks by
-role to test whether a unified surface helps only small rewrites or also
-vertical features. Complete patches, counting scripts, and inclusion decisions
-ship with the artifact.
+role and contrasts small rewrites with vertical features. Complete patches,
+counting scripts, and inclusion decisions ship with the artifact.
 
 <!-- FIGURE 6 PLAN — One-column dense paired-dot plot. Rows are the 12 feature
 changes grouped by role; columns are touched source files, changed source lines,
@@ -797,7 +795,7 @@ ownership zones, and registry/build edits. Plot normalized paired ratios, not
 paragraphs inside a table. CSV schema: system,task,family,patch,source_files,
 source_loc,test_files,test_loc,zones,registrations,fanout,oracle_passed. -->
 
-### 4.4 Efficient: Reactive Updates
+### 4.4 Reactive Update Cost
 
 The update experiment measures an edit-to-result operation: begin with a
 verified optimized graph, apply one controlled edit, restore the required
@@ -841,11 +839,11 @@ compiler-function operations $E_p$ define work reuse as $1-E_p/E_{Full}$.
 Work counts explain latency and remain comparable when host-language runtimes
 differ.
 
-The 16-model corpus tests realistic graph shapes. The generated family then
-separates total graph size $|G|$ from the affected region $|\Delta G|$. For a
-fixed one-operation edit, it tests whether validation and update latency remain
-near the recorded dependency size as $|G|$ grows. A second sweep fixes $|G|$
-and increases $|\Delta G|$ to expose the crossover at which complete execution
+The 16-model corpus covers realistic graph shapes. The generated family then
+separates total graph size $|G|$ from the affected region $|\Delta G|$. One
+sweep fixes a one-operation edit and scales $|G|$, exposing the relation
+between validation cost and recorded dependency size. A second fixes $|G|$
+and increases $|\Delta G|$, locating the crossover at which complete execution
 becomes preferable. Every raw sample includes the miss reason and output
 digest, which detects unintended reuse.
 
@@ -920,11 +918,10 @@ whole-graph traversal, a function-scoped traversal, and direct entity lookup.
 It connects API choice to observed dependency size, validation cost, and later
 reuse without changing the analysis result.
 
-Together, these experiments form one evidence chain. Generation tests the
-regularity of the extension surface; patch footprint tests whether a complete
-feature stays within its declared boundary; reactive execution tests whether
-the runtime exploits that boundary after an edit; and artifact and overhead
-measurements establish the resulting costs.
+Together, these experiments form one evidence chain: generation characterizes
+the regularity of the extension surface; patch footprint characterizes the
+boundary of a complete feature; reactive execution quantifies reuse after an
+edit; and artifact and overhead measurements establish the resulting costs.
 
 ## 5. Related Work
 
