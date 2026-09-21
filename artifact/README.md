@@ -1,280 +1,87 @@
-# EuroSys artifact
+# Joggle evaluation artifact
 
-This directory contains measurement programs for the paper. It is independent
-of `test/`: tests reject implementation regressions, whereas artifact programs
-produce versioned observations for statistical analysis.
+This directory contains the executable evidence path for Section 4. The frozen
+design is in [`PROTOCOL.md`](PROTOCOL.md). Raw measurements belong under
+`.cache/artifact/`; Git tracks contracts, collectors, validators, and plots.
 
-`PROTOCOL.md` is the frozen claim-to-measurement contract. Figure-ready CSV
-headers live under `templates/`, and `figures/` contains one plotting script per
-data figure. A plotting script reads only its named CSV and writes both vector
-PDF and review PNG; it never invokes Joggle or changes measurements.
+## Evidence layout
 
-Collectors and assemblers publish a JSON sidecar that binds the final CSV to
-its raw inputs by SHA-256. After all six release CSVs are present in one
-directory, one gate revalidates their complete populations and provenance,
-then renders every PDF and PNG into a new directory:
+| Figure | Input CSV | Plot |
+| --- | --- | --- |
+| 4 · extension completion | `figure-04-extension.csv` | `figure_04_extension.py` |
+| 5 · change footprint | `figure-05-footprint.csv` | `figure_05_footprint.py` |
+| 6 · cross-system update | `figure-06-update.csv` | `figure_06_update.py` |
+| 7 · end-to-end performance | `figure-07-performance.csv` | `figure_07_performance.py` |
 
-```sh
-python3 artifact/check_release.py \
-  --data-dir .cache/artifact/release-data \
-  --output-dir .cache/artifact/release-figures
-```
+The release path has no separate generated-scaling, preparation, memory, or
+artifact-size figure. Figure 6 keeps a three-model Joggle ablation as an inset.
+Figure 7 combines operator and model results.
 
-The gate rejects dirty or smoke run records, missing backend logs, stale hashes,
-partial policy matrices, and an existing output directory. Its
-`release-manifest.json` binds the six input CSVs, six provenance records, and
-twelve rendered files.
-
-| Figure | Evidence | CSV | Plotting entry |
-| --- | --- | --- | --- |
-| 4 | extension completion | `figure-04-extension.csv` | `figure_04_extension.py` |
-| 5 | paired patch footprint | `figure-05-footprint.csv` | `figure_05_footprint.py` |
-| 6 | model-backed reactive updates | `figure-06-model-update.csv` | `figure_06_model_update.py` |
-| 7 | generated-graph scaling | `figure-07-scaling.csv` | `figure_07_scaling.py` |
-| 8 | operator artifact quality | `figure-08-operators.csv` | `figure_08_operators.py` |
-| 9 | model artifact quality | `figure-09-models.csv` | `figure_09_models.py` |
-
-## Extension-completion experiment
-
-`manifests/extension-tasks.csv` is the compact task index used by CSV
-validation. `manifests/extension-specs.json` is the executable semantic
-contract shared by Joggle, MLIR, and xDSL adapters. Each of its 24 tasks fixes
-the accepted inputs, rejected inputs, observable result, comparison rule, and
-ordered parse/type/build/semantic phases. It deliberately contains no syntax
-from any evaluated system.
-
-Validate the contract before constructing prompts or reference solutions:
+## Build and inputs
 
 ```sh
-python3 artifact/validate_extension_specs.py
-```
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
 
-An adapter may translate a fixture into its system's idiomatic API, but the
-oracle must return the same canonical JSON, graph, numerical result, or
-compiled execution result. Figure 5 reuses the twelve entries marked
-`footprint`; this keeps completion and change-footprint tasks semantically
-paired.
-
-The Figure 4 workflow keeps model inference separate from system evaluation.
-Create a release configuration outside the repository with exactly two model
-revisions; Joggle, MLIR, and xDSL revisions; one API card, reference directory,
-demonstration directory, and oracle argv per system; and a disjoint
-demonstration bank. An oracle argv may use the exact placeholders
-`{candidate}`, `{task}`, `{spec}`, and `{work}` and must print one JSON object:
-
-```json
-{"parsed": true, "typed": true, "built": true, "passed": true}
-```
-
-Materialize the complete matrix before starting a model server:
-
-```sh
-python3 artifact/prepare_extension_requests.py \
-  --config .cache/artifact/extension-run.json \
-  --output .cache/artifact/extension-requests.jsonl \
-  --references-output .cache/artifact/extension-references.private.jsonl
-```
-
-The request file has 576 conditions: two models, three systems, 24 tasks, and
-four demonstration counts. Demonstrations are selected by a stable hash of the
-held-out task and demonstration ID; the 1-, 2-, and 4-example prompts are
-nested prefixes. Each condition carries 50 deterministic sample seeds. The
-private file contains reference code and must never be passed to the inference
-backend; the public request contains only its hash.
-
-Run each pinned Hugging Face revision in `generate` mode. The second model
-appends to the same durable sample log with `--resume`; this command does not
-open the private reference bundle:
-
-```sh
-python3 artifact/run_extension_transformers.py generate \
-  --config .cache/artifact/extension-run.json \
-  --requests .cache/artifact/extension-requests.jsonl \
-  --model MODEL_ID \
-  --output .cache/artifact/extension-samples.jsonl \
-  --resume
-```
-
-After both 14,400-sample model matrices are frozen, expose the private bundle
-in a separate scoring invocation. `score` first checks that all 50 generated
-outputs exist for every condition of that model, then computes continuation
-NLL without regenerating a sample:
-
-```sh
-python3 artifact/run_extension_transformers.py score \
-  --config .cache/artifact/extension-run.json \
-  --requests .cache/artifact/extension-requests.jsonl \
-  --references .cache/artifact/extension-references.private.jsonl \
-  --samples .cache/artifact/extension-samples.jsonl \
-  --model MODEL_ID \
-  --output .cache/artifact/extension-reference-scores.jsonl \
-  --resume
-```
-
-These commands write two provider-neutral JSONL files. Each sample row contains
-`request_id`, `sample_index`, `seed`, `output`, `output_sha256`,
-`context_tokens`, and `api_card_tokens`. Each reference-score row contains
-`request_id`, total `nll`, `target_tokens`, `context_tokens`, and
-`api_card_tokens`. Total NLL and
-the positive target-token count are retained separately so the analysis can
-compute log-perplexity without confusing sequence length with predictability.
-
-Run the build-and-test oracles over all model outputs. The evaluator verifies
-the 72 unique system/task references before accepting a generated sample and
-appends each completed result durably, so an interrupted run can resume:
-
-```sh
-python3 artifact/evaluate_extension_outputs.py \
-  --config .cache/artifact/extension-run.json \
-  --requests .cache/artifact/extension-requests.jsonl \
-  --references .cache/artifact/extension-references.private.jsonl \
-  --responses .cache/artifact/extension-samples.jsonl \
-  --output .cache/artifact/extension-evaluations.jsonl \
-  --resume
-```
-
-Finally, join the hashed inference and oracle records, validate the full paired
-matrix, and render Figure 4:
-
-```sh
-python3 artifact/assemble_extension_rows.py \
-  --requests .cache/artifact/extension-requests.jsonl \
-  --responses .cache/artifact/extension-samples.jsonl \
-  --scores .cache/artifact/extension-reference-scores.jsonl \
-  --evaluations .cache/artifact/extension-evaluations.jsonl \
-  --output .cache/artifact/figure-04-extension.csv
-
-python3 artifact/validate_figure.py 4 \
-  .cache/artifact/figure-04-extension.csv
-
-python3 artifact/figures/figure_04_extension.py \
-  .cache/artifact/figure-04-extension.csv \
-  --output .cache/artifact/figure-04-extension.pdf
-```
-
-## Generated-artifact benchmarks
-
-`manifests/benchmark-cases.json` freezes the 24 operator graphs, inputs,
-initializers, numerical tolerances, 15 model inputs, three execution variants,
-and repetition counts used by Figures 8 and 9. Validate it before generating
-inputs or running a backend:
-
-```sh
-python3 artifact/validate_benchmark_cases.py
-```
-
-When the pinned model corpus is present, also validate every model hash and the
-chosen concrete input signature against ONNX Runtime:
-
-```sh
-python3 artifact/validate_benchmark_cases.py --model-root .cache/onnx-zoo
-```
-
-Materialize the byte-identical input corpus once. Repeating the command verifies
-existing bytes and refuses to replace a mismatching file:
-
-```sh
+cmake -DOUT=.cache/onnx-zoo -P test/tools/fetch_onnx_zoo.cmake
+python3 artifact/generate_operator_models.py \
+  --output .cache/artifact/operator-models
 python3 artifact/generate_benchmark_inputs.py \
+  --operator-models .cache/artifact/operator-models \
+  --model-root .cache/onnx-zoo \
   --output .cache/artifact/benchmark-inputs
 ```
 
-The generated `index.json` records the benchmark-manifest hash, every tensor
-hash, and the combined `input_digest` copied into Figures 8 and 9.
+The generators validate hashes and numerical fixtures before collection.
 
-Generate the 24 ONNX operator fixtures directly from the same manifest, then
-check every graph and execute it with the pinned reference runtime. This step
-requires `onnx`, `numpy`, and `onnxruntime`:
+## Figure 4
 
-```sh
-python3 artifact/generate_operator_models.py \
-  --inputs .cache/artifact/benchmark-inputs \
-  --output .cache/artifact/operator-models \
-  --verify-runtime
-```
-
-The generator refuses to replace non-matching files. Its index binds each ONNX
-file and verified output to the benchmark specification.
-
-Collect a small structural run before the release run:
+Validate the task contract, materialize paired requests, run the pinned local
+models, evaluate outputs with system adapters, and assemble one CSV:
 
 ```sh
-python3 artifact/run_onnxruntime_benchmarks.py \
-  --group operators \
-  --inputs .cache/artifact/benchmark-inputs \
-  --operator-models .cache/artifact/operator-models \
-  --output .cache/artifact/figure-08-ort-smoke.csv \
-  --smoke
+python3 artifact/validate_extension_specs.py
+python3 artifact/prepare_extension_requests.py \
+  --config "$CONFIG" \
+  --output .cache/artifact/extension-requests.jsonl \
+  --references-output .cache/artifact/extension-references.jsonl
 
-python3 artifact/validate_figure.py 8 \
-  .cache/artifact/figure-08-ort-smoke.csv --allow-partial
+python3 artifact/run_extension_transformers.py generate \
+  --config "$CONFIG" \
+  --requests .cache/artifact/extension-requests.jsonl \
+  --model "$MODEL" \
+  --output .cache/artifact/extension-generations.jsonl
+
+python3 artifact/run_extension_transformers.py score \
+  --config "$CONFIG" \
+  --requests .cache/artifact/extension-requests.jsonl \
+  --references .cache/artifact/extension-references.jsonl \
+  --model "$MODEL" \
+  --output .cache/artifact/extension-scores.jsonl
+
+python3 artifact/evaluate_extension_outputs.py \
+  --config "$CONFIG" \
+  --requests .cache/artifact/extension-requests.jsonl \
+  --references .cache/artifact/extension-references.jsonl \
+  --responses .cache/artifact/extension-generations.jsonl \
+  --output .cache/artifact/extension-oracles.jsonl
+
+python3 artifact/assemble_extension_rows.py \
+  --requests .cache/artifact/extension-requests.jsonl \
+  --responses .cache/artifact/extension-generations.jsonl \
+  --scores .cache/artifact/extension-scores.jsonl \
+  --evaluations .cache/artifact/extension-oracles.jsonl \
+  --output .cache/artifact/figure-04-extension.csv
 ```
 
-Omit `--smoke` for the frozen counts. Use `--group models` with
-`--model-root .cache/onnx-zoo` for Figure 9. Each run writes a sidecar JSON with
-the Git revision, runtime configuration, model hashes, host, thread controls,
-counts, and command. Release runs reject dirty trees.
+`$CONFIG` pins both models, all system revisions, API cards, demonstration
+sources, reference sources, and oracle commands. Run generation and scoring
+once for each configured `$MODEL`; use `--resume` for the shared JSONL files.
 
-Collect each Joggle variant through the executable stage list in the manifest:
+## Figure 5
 
-```sh
-python3 artifact/run_joggle_benchmarks.py \
-  --group operators \
-  --variant joggle-optimized \
-  --inputs .cache/artifact/benchmark-inputs \
-  --operator-models .cache/artifact/operator-models \
-  --joggle build/joggle \
-  --builtin-mods build/modules \
-  --extension-mods examples/mods \
-  --output .cache/artifact/figure-08-joggle-opt.csv
-```
-
-The collector generates C, compiles the model-specific object with the frozen
-flags, builds a measurement harness outside the preparation boundary, checks
-every output against ONNX Runtime, and records unsupported frontiers as
-coverage rows. Fixed per-case batch counts make sub-microsecond operators
-measurable; CSV latency is per call and `calls_per_sample` preserves the
-division factor. `--stage-timeout` defaults to 600 seconds and is written into
-the run record; a timeout remains a coverage row with its failing stage. The
-CSV is replaced atomically after each complete case. If a long run is
-interrupted before its run record is published, repeat the identical command
-with `--resume`; the collector verifies the header, backend, Git revision, and
-expected row counts before skipping a case. It rejects partial case data rather
-than mixing an interrupted measurement into the release CSV. Unsupported-case
-stderr is durably retained in the adjacent `*.failures.jsonl`; the final run
-record binds that log by SHA-256, so resuming does not erase the failure
-frontier that produced a coverage row.
-
-Merge the three backend files only through the validator-backed merger:
-
-```sh
-python3 artifact/merge_benchmark_rows.py 8 \
-  .cache/artifact/figure-08-joggle-base.csv \
-  .cache/artifact/figure-08-joggle-opt.csv \
-  .cache/artifact/figure-08-ort.csv \
-  --output .cache/artifact/figure-08-operators.csv
-```
-
-Without `--allow-partial`, the merger requires the complete population and all
-frozen repetition counts before publishing the combined CSV.
-
-The two Joggle variants differ only in optional optimization passes. ONNX
-Runtime CPU EP provides the single-thread reference. The CSV separates fresh
-preparation, steady-state execution, and fresh-process memory records and
-retains one coverage record for every unsupported subject/variant pair.
-Artifact bytes are defined only for generated Joggle code and constants;
-shared runtime libraries are not assigned to individual reference models.
-
-## Change-footprint experiment
-
-`collect_footprint.py` derives Figure 5 rows from pinned Git revisions. The case
-manifest names the repository, base and head commits, frozen counting policy,
-and SHA-256-pinned oracle and minimization logs. The collector rejects binary
-patches, unclassified paths, source files outside exactly one ownership zone,
-and a `system_revision` that differs from the resolved base commit.
-
-First reduce a passing candidate patch. The minimizer works in a temporary
-detached worktree, visits textual hunks in a stable order until a fixed point,
-and records every oracle decision:
+Each task starts from a passing candidate patch. Reduce it, pin the resulting
+revision and logs in the case file, then collect the frozen coordinates:
 
 ```sh
 python3 artifact/minimize_patch.py \
@@ -283,147 +90,101 @@ python3 artifact/minimize_patch.py \
   --oracle-log .cache/artifact/task-oracle.log \
   --log .cache/artifact/task-minimization.json \
   -- ./task-oracle
-```
 
-The default oracle timeout is 1,800 seconds per trial. A timeout aborts the
-case instead of being classified as evidence that a hunk is necessary; set a
-different positive bound with `--oracle-timeout` before the release run.
-
-Apply the emitted patch to the pinned base and commit that exact tree as the
-case `head`. The collector verifies that the resulting Git diff equals the
-final patch hash in the minimization log and that its final oracle-output hash
-equals the supplied oracle log.
-
-Each system policy defines source, test, and excluded paths; registry/build
-markers; ownership zones; and the dependent-zone graph. Consequently files,
-lines, zones, registry edits, fan-out, and crossed zone edges are derived from
-the patch rather than copied from an implementation log. Start from
-`templates/footprint-cases.csv` and `templates/footprint-policy.json`, then run:
-
-```sh
 python3 artifact/collect_footprint.py \
   --cases .cache/artifact/footprint-cases.csv \
   --output .cache/artifact/figure-05-footprint.csv
-
-python3 artifact/validate_figure.py 5 \
-  .cache/artifact/figure-05-footprint.csv
-
-python3 artifact/figures/figure_05_footprint.py \
-  .cache/artifact/figure-05-footprint.csv \
-  --output .cache/artifact/figure-05-footprint.pdf
 ```
 
-## Reactive-update experiment
+## Figure 6
 
-`run_reactive.py` builds two Release configurations, runs the four policies
-from Section 4.4, merges their rows, checks graph equivalence, and writes a JSON
-run record beside the CSV.
-
-| Policy | Execution rule |
-| --- | --- |
-| `full` | execute all five compiler stages |
-| `reactive` | validate recorded entity dependencies |
-| `whole-mod` | use the same stages with one mod-wide observation |
-| `no-plan-cache` | use reactive selection but decode plans again |
-
-The generated subject contains independent affected and unrelated chains. Both
-edits occur in the same function, so function- or mod-granular policies rerun
-the pipeline; entity-granular validation can reject the unrelated edit without
-executing a stage. Every policy begins with the same properties initialized on
-the complete function. Timed Full stages rescan that function, while timed
-Reactive stages retain their recorded root and traverse only its affected cone.
-The CSV records actual IR operation counts rather than the requested generator
-size. Total nodes, affected nodes, fan-out, and stage count are separate
-generator parameters.
-
-The same executable also accepts pinned ONNX files. It decodes the complete
-model, selects pre-registered early, middle, or late single-output computations,
-and chooses a same-function operation outside each computation's affected cone.
-The current edit classes are `no_op`, which measures stable scheduling and
-cache overhead; `operation_metadata`; and `value_type`. The latter two operate
-at either the affected or unrelated scope. Every row records the model SHA-256
-supplied by the runner and the exact selected sites.
-
-Fetch the 15 standard cases and the separately gated heavy case. The download
-script checks every file against the shared pinned manifest:
-
-```sh
-cmake -DOUT=.cache/onnx-zoo -P test/tools/fetch_onnx_zoo.cmake
-cmake -DOUT=.cache/onnx-zoo -DMODELS=bidaf-9 \
-  -P test/tools/fetch_onnx_zoo.cmake
-```
-
-Run a short end-to-end check:
+The shared CSV contains two tracks. `external` pairs `full` and `update` for
+Joggle, MLIR, and xDSL on all 15 models. `ablation` pairs `full`, `reactive`,
+`whole-mod`, and `no-plan-cache` for three representative models.
 
 ```sh
 python3 artifact/run_reactive.py \
-  --output .cache/artifact/figure-07-scaling-smoke.csv \
-  --nodes 1000 --affected 1 8 64 \
-  --fanout 1 --stages 5 \
-  --warmups 1 --iterations 3 --allow-dirty
-```
-
-Run the model-backed track over an already downloaded pinned corpus:
-
-```sh
-python3 artifact/run_reactive.py \
-  --output .cache/artifact/figure-06-model-update.csv \
+  --track external \
   --model-manifest artifact/manifests/reactive-models.csv \
   --model-root .cache/onnx-zoo \
-  --sites early middle late \
-  --stages 5 --warmups 10 --iterations 100 \
-  --build-root .cache/artifact/reactive-model-build
+  --output .cache/artifact/update-joggle.csv \
+  --build-root .cache/artifact/update-joggle-build
+
+python3 artifact/merge_update_rows.py \
+  .cache/artifact/update-joggle.csv \
+  .cache/artifact/update-mlir.csv \
+  .cache/artifact/update-xdsl.csv \
+  .cache/artifact/update-joggle-ablation.csv \
+  --output .cache/artifact/figure-06-update.csv
+
+python3 artifact/validate_reactive.py \
+  .cache/artifact/figure-06-update.csv
+python3 artifact/figures/figure_06_update.py \
+  .cache/artifact/figure-06-update.csv \
+  --output .cache/artifact/figure-06-update.pdf
 ```
 
-Run the planned scaling matrix from a clean revision:
+Run the ablation with `--track ablation`, 30 iterations, and the smallest,
+median, and largest model only. MLIR and xDSL adapters must implement the same
+edit, five logical stages, counters, and digest. The release gate rejects
+Figure 6 without the complete `update-assembly/v1` provenance file.
+
+## Figure 7
+
+Run each backend for operators and models. The Joggle base and optimized paths
+differ only in optional optimization stages; required conversion, memory
+planning, and emission remain in both.
 
 ```sh
-python3 artifact/run_reactive.py \
-  --output .cache/artifact/figure-07-scaling.csv \
-  --nodes 1000 10000 100000 1000000 \
-  --affected 1 8 64 512 \
-  --edit-classes operation_metadata --scopes affected \
-  --fanout 1 --stages 5 \
-  --warmups 10 --iterations 100 \
-  --build-root .cache/artifact/reactive-scaling-build
+python3 artifact/run_joggle_benchmarks.py \
+  --group operators --variant joggle-optimized \
+  --inputs .cache/artifact/benchmark-inputs \
+  --operator-models .cache/artifact/operator-models \
+  --joggle build/joggle --builtin-mods build/modules \
+  --output .cache/artifact/operators-joggle-opt.csv
+
+python3 artifact/run_onnxruntime_benchmarks.py \
+  --group operators \
+  --inputs .cache/artifact/benchmark-inputs \
+  --operator-models .cache/artifact/operator-models \
+  --output .cache/artifact/operators-ort.csv
 ```
 
-Each invocation writes one validated CSV and `*.job.json` sidecar per shuffled
-job under the persistent build root. After an interruption, repeat the exact
-command with `--resume`. A cached job is reused only when its revision, argv,
-and content hash match; the final CSV is reconstructed from the complete job
-set, validated across all four policies, and atomically published. A completed
-run record is never overwritten.
-
-Validate an existing result independently:
+Repeat the Joggle command for `joggle-unoptimized`; repeat all three variants
+with `--group models --model-root .cache/onnx-zoo`. Then assemble the one figure
+file:
 
 ```sh
-python3 artifact/validate_reactive.py .cache/artifact/figure-07-scaling.csv
+python3 artifact/merge_benchmark_rows.py \
+  --operators \
+    .cache/artifact/operators-joggle-base.csv \
+    .cache/artifact/operators-joggle-opt.csv \
+    .cache/artifact/operators-ort.csv \
+  --models \
+    .cache/artifact/models-joggle-base.csv \
+    .cache/artifact/models-joggle-opt.csv \
+    .cache/artifact/models-ort.csv \
+  --output .cache/artifact/figure-07-performance.csv
+
+python3 artifact/validate_figure.py 7 \
+  .cache/artifact/figure-07-performance.csv
 ```
 
-Render a validated result without modifying it:
+Collectors checkpoint complete cases and record unsupported cases explicitly.
+Only steady-state execution is repeated. A smoke run uses three iterations;
+the release population uses the 100 iterations frozen in the manifest.
+
+## Render and release
+
+Individual validators and plots never execute Joggle. Once all four CSVs and
+their provenance records are present:
 
 ```sh
-python3 artifact/figures/figure_06_model_update.py \
-  .cache/artifact/figure-06-model-update.csv \
-  --output .cache/artifact/figure-06-model-update.pdf
-
-python3 artifact/figures/figure_07_scaling.py \
-  .cache/artifact/figure-07-scaling.csv \
-  --output .cache/artifact/figure-07-scaling.pdf
+python3 artifact/check_release.py \
+  --data-dir .cache/artifact/release-data \
+  --output-dir .cache/artifact/release
 ```
 
-Figures 4, 5, 8, and 9 use the shared structural validator; `--allow-partial`
-is reserved for collection-time checks and is not accepted by the release gate:
-
-```sh
-python3 artifact/validate_figure.py 4 .cache/artifact/figure-04-extension.csv
-python3 artifact/validate_figure.py 5 .cache/artifact/figure-05-footprint.csv
-python3 artifact/validate_figure.py 8 .cache/artifact/figure-08-operators.csv
-python3 artifact/validate_figure.py 9 .cache/artifact/figure-09-models.csv
-```
-
-The committed schemas are `schemas/extension-specs.schema.json` and
-`schemas/reactive.schema.json`. Raw CSV and JSON run records remain outside Git
-until the hardware, operating system, compiler, and CPU policy are frozen for
-the paper's reported run.
+The command validates all pairings and correctness gates, verifies hashes,
+renders PDF and PNG figures, and publishes one `evaluation-release/v2`
+manifest. It never overwrites an existing release directory.

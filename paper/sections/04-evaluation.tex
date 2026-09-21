@@ -16,31 +16,27 @@ relevant correctness oracle enter an aggregate.
   \small
   \setlength{\tabcolsep}{3pt}
   \renewcommand{\arraystretch}{1.08}
-  \begin{tabular}{@{}p{0.22\columnwidth}p{0.70\columnwidth}@{}}
+  \begin{tabular}{@{}p{0.19\columnwidth}p{0.37\columnwidth}p{0.36\columnwidth}@{}}
     \toprule
-    Mechanism & Subjects, controls, and measurements \\
+    Property & Comparison & Primary evidence \\
     \midrule
-    Language & 24 Joggle/MLIR/xDSL tasks; pass@$k$ and log-PPL \\
-    Mods & 12 reused tasks; files, lines, zones, and fan-out \\
-    Reactive & Joggle on 15 models and generated graphs; four policies, latency, work, and reuse \\
-    Artifacts & operator and accepted-model suites; latency, memory, and size \\
+    Convenient & Joggle/MLIR/xDSL; 24 extensions & executable pass@1 \\
+    Controllable & same systems; 12 patches & files, lines, zones, declarations \\
+    Efficient & same systems; 15 model DAGs & normalized latency and revisited work \\
+    End-to-end & Joggle base/optimized; ONNX Runtime & correctness and latency \\
     \bottomrule
   \end{tabular}
 \end{table}
 
 \paragraph{Subjects and controls.}
-The extension and footprint studies compare Joggle with MLIR, a mature
-multi-level compiler infrastructure, and xDSL, a Python-native SSA framework.
-Each matched task follows the system's documented extension path from a pinned
-revision. The update study instead compares four Joggle execution policies over
-identical graph states and edits, isolating dependency precision and plan reuse
-without conflating them with differences among compiler pipelines. The model
-corpus contains 15
-SHA-256-pinned ONNX models spanning classification, detection, quantized
-networks, and vision transformers. Results retain every compatibility outcome;
-aggregates over model execution use the accepted intersection. Generated graphs
-at $10^3$--$10^6$ operations vary total size, affected scope, fan-out, and
-stage count independently.
+The first three studies compare Joggle with MLIR, a mature multi-level compiler
+infrastructure, and xDSL, a Python-native SSA framework. Each extension follows
+the system's documented path from a pinned revision. The update study imports
+one typed topology from each of 15 SHA-256-pinned ONNX models and applies the
+same edit and five-stage compiler task in every system. Its primary ratios are
+formed against that system's own full rerun, separating update scope from
+implementation language. End-to-end execution compares byte-identical inputs
+and numerical outputs with a pinned, single-thread ONNX Runtime CPU reference.
 
 \paragraph{Correctness and measurement.}
 Compiler-extension tasks use build-and-test oracles; graph transformations use
@@ -49,10 +45,10 @@ with dtype-specific tolerances. A failed oracle remains visible in coverage
 results but never contributes a latency or speedup. Warm-path latency cases run
 ten warm-ups followed by 100 measurements in a seeded random order. We report
 medians and 95th percentiles per subject; confidence intervals resample the
-independent unit---task, graph, operator, or model---rather than repeated
-timings. Ratios are formed within a subject before geometric aggregation. Every
-raw row records revisions, build flags, host and CPU policy, seed, cache state,
-and correctness outcome.
+independent unit---task, model, or operator---rather than repeated
+timings. Ratios are formed within a subject before geometric aggregation. CSV
+rows record subject identity, seed, and correctness; hash-bound run records pin
+revisions, build flags, host and CPU policy, and cache configuration.
 
 \subsection{Extension Predictability and Completion}
 \label{sec:eval-convenient}
@@ -139,84 +135,56 @@ and every inclusion decision.
 \subsection{Reactive Update Cost}
 \label{sec:eval-efficient}
 
-An update case begins with a verified optimized graph, applies one controlled
-edit, restores the required compiler result, and checks its semantic digest.
-The fixed pipeline performs analysis, canonicalization, target selection or
-legalization, memory planning, and artifact preparation. Three edit classes
-exercise distinct invalidation paths: no-op isolates scheduling overhead,
-operation metadata changes operation state, and value-type changes value state.
-Metadata and type edits target either the affected cone or an unrelated
-same-function entity. Sites are chosen before timing at early, middle, and late
-topological positions among editable entry-block computations. Each case
-records the selected operation and its measured affected scope.
+The update experiment compares the three systems, not only Joggle policies.
+Each pinned ONNX subject is decoded once into a system-neutral typed topology
+that preserves operation kinds, values, types, and def--use edges. The three
+adapters materialize this topology in their native graph representation and run
+the same five logical stages: analysis, canonicalization, target selection,
+memory planning, and artifact-manifest construction. Canonical digests after
+every stage establish equivalent results.
 
-Four policies isolate the mechanisms. \textbf{Full} reruns every stage;
-\textbf{Reactive} validates recorded inputs and propagates overlapping effects;
-\textbf{Whole-mod} replaces entity observations with one mod revision; and
-\textbf{No-plan-cache} retains reactive selection but decodes functions again.
-All policies must produce the same verified digest.
+A case changes operation metadata or a result type at a preselected early,
+middle, or late site. The edit targets either the downstream affected cone or
+an unrelated entity in the same function. Every system first performs a full
+rerun. Joggle then performs a reactive update; MLIR and xDSL use their standard
+public pass pipelines after the edit. The primary endpoint normalizes each
+update to its own system's full rerun,
+\[
+  \operatorname{UpdateRatio}_s = \frac{T_{\mathrm{update},s}}
+                                      {T_{\mathrm{full},s}},
+  \qquad
+  \operatorname{WorkRatio}_s = \frac{V_{\mathrm{update},s}}
+                                    {V_{\mathrm{full},s}},
+\]
+where $V$ counts graph entities visited by the five stages. This pairing keeps
+language and runtime differences out of the headline comparison. Absolute
+edit-to-result latency remains visible as a secondary measure. All paths begin
+from the same logical graph state, apply the same edit, and must produce the
+same final digest.
 
-Every policy starts from the same fully initialized graph. A Full stage walks
-the complete function, whereas a Reactive stage invokes the same property
-computation through its recorded root and therefore visits the affected cone.
-This setup holds the required compiler result constant while separating global
-re-execution from dependency-selected work.
+One compact Joggle-only ablation explains the result rather than replacing the
+external comparison. It uses the smallest, median, and largest model to compare
+entity-level with whole-mod observations and cached with repeatedly decoded
+execution plans. Each ablation condition uses 30 repetitions; the independent
+unit is the model, not an interpreter iteration.
 
-The primary measure is edit-to-result latency. We also record selection,
-evaluation, and verification time; executed and reused stages; observed
-entities; compiler-function operations; plan hits; and miss reasons. For
-policy $p$, speedup is $T_{\mathrm{Full}}/T_p$ and work reuse is
-$1-E_p/E_{\mathrm{Full}}$, where $E$ is executed compiler-function operations.
-
-The model corpus supplies realistic graph structures for the mechanism study.
-Generated graphs then separate total graph size $|G|$ from affected scope
-$|\Delta G|$. One sweep fixes a one-operation edit while scaling $|G|$; a
-second fixes $|G|$ while increasing $|\Delta G|$. Each policy starts from a
-byte-identical graph and establishes the same five compiler properties. The
-Full policy scans the complete function; the other policies use the same
-affected-cone implementations while varying stage selection, observation
-granularity, or plan reuse. Cold measurements include process startup,
-parsing, verification, and plan construction; warm measurements retain the
-loaded graph and evaluator state.
-
-Cold-path accounting separates loading, parsing, verification, plan
-construction, and first execution; warm accounting separates selection,
-evaluation, verification, and commit. The Whole-mod and No-plan-cache policies
-isolate observation precision and persistent execution plans. Their counters
-connect latency changes to observed entities, executed compiler-function
-operations, and plan compilation.
-
-\subsection{Artifact Quality and System Costs}
+\subsection{End-to-End Performance}
 \label{sec:eval-artifacts}
 
-Artifact measurements keep compiler responsiveness separate from generated-code
-quality. The operator matrix contains 24 fixed graphs, four each for
+The final experiment asks whether the programmable infrastructure still emits
+competitive code. One matrix contains 24 fixed operator graphs---four each for
 elementwise chains, reductions, matrix multiplication, convolution,
-quantization, and fusion. Model measurements cover all 15 pinned subjects and
-retain unsupported model/variant pairs as coverage rows. We compare Joggle with
-and without its optional optimization passes against a pinned, single-thread
-ONNX Runtime CPU Execution Provider with full graph optimization. All three
-variants consume byte-identical deterministic inputs. The frozen Joggle
-optimization pack adds dead-code elimination, floating-point
-matrix-multiplication implementation selection, range and constant folding,
-affine canonicalization, locality-guided loop order, and scalar promotion to
-the required path.
+quantization, and fusion---and the same 15 model subjects. We compare Joggle's
+required lowering path, the same path plus its frozen optimization pack, and a
+pinned single-thread ONNX Runtime CPU reference. All variants consume
+byte-identical inputs and pass dtype-specific numerical oracles.
 
-Preparation, execution, and memory are separate records. Each supported pair
-has 30 fresh-process preparation measurements, ten fresh-process memory
-measurements, then ten warm-ups and 100 steady-state executions. Execution
-records contain latency, output digest, and absolute and relative error; memory
-records execute the same checked workload and report peak resident-set growth.
-Generated artifact size covers model-specific code and constants and is
-compared only between the two Joggle variants; shared
-runtime libraries do not have a per-model size boundary. Speedups are formed
-within a subject before geometric aggregation, and case-specific tolerances
-establish numerical equivalence. Preparation spans model bytes to callable
-state; execution times one backend call over resident buffers; memory is peak
-resident-set growth above an idle backend worker. The manifest fixes calls per
-timing sample: short operators use a shared batch whose elapsed time is divided
-by its call count, whereas each model sample contains one call.
+The main measure is steady-state execution latency after ten warm-ups and 100
+measurements. Unsupported pairs remain as coverage outcomes instead of
+disappearing from the accepted set. Operator and model results share one figure
+and one CSV. Preparation time, memory, and artifact size are outside this
+question and are not collected by the release path.
 
 Together, generation characterizes the extension surface, patch footprint its
-ownership boundary, reactive execution its update cost, and artifact and
-overhead measurements its end-to-end consequence.
+ownership boundary, the cross-system update study its responsiveness, and the
+combined operator/model matrix its generated performance.

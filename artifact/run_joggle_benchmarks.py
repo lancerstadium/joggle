@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect Joggle rows for the generated-artifact experiments."""
+"""Collect Joggle steady-state rows for Figure 7."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import csv
 import json
 import os
 import random
-import select
 import shlex
 import subprocess
 import sys
@@ -211,15 +210,7 @@ int main(int argc, char **argv) {{
   const char *output_dir = argv[4];
 {chr(10).join(declarations)}
 {chr(10).join(loads)}
-  if (strcmp(mode, "memory") == 0) {{
-    puts("READY"); fflush(stdout);
-    if (getchar() == EOF) return 6;
-    for (long i = 0; i < warmups; ++i) {{ {call} }}
-    {call}
-{chr(10).join(writes)}
-    struct timespec hold = {{0, 100000000}};
-    nanosleep(&hold, NULL);
-  }} else if (strcmp(mode, "execute") == 0) {{
+  if (strcmp(mode, "execute") == 0) {{
     for (long i = 0; i < warmups; ++i) {{ {call} }}
     uint64_t *elapsed = calloc((size_t)iterations, sizeof *elapsed);
     if (!elapsed) return 7;
@@ -281,44 +272,6 @@ def compare(
     return max_abs, max_rel
 
 
-def memory_run(
-    executable: Path, warmups: int, output: Path, timeout: float
-) -> int:
-    try:
-        import psutil
-    except ImportError as error:
-        raise SystemExit("psutil is required for memory measurements") from error
-    process = subprocess.Popen(
-        [executable, "memory", str(warmups), "1", output],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, env={**os.environ, **THREAD_ENV},
-    )
-    assert process.stdin is not None and process.stdout is not None
-    if process.stdout.readline().strip() != "READY":
-        stderr = process.stderr.read() if process.stderr else ""
-        process.kill()
-        raise SystemExit(f"generated memory worker did not become ready: {stderr}")
-    observed = psutil.Process(process.pid)
-    baseline = observed.memory_info().rss
-    peak = baseline
-    deadline = time.monotonic() + timeout
-    process.stdin.write("\n"); process.stdin.flush()
-    while process.poll() is None:
-        if time.monotonic() >= deadline:
-            process.kill()
-            process.wait()
-            raise SystemExit("generated memory worker timed out")
-        try:
-            peak = max(peak, observed.memory_info().rss)
-        except psutil.NoSuchProcess:
-            break
-        select.select([], [], [], 0.0005)
-    stderr = process.stderr.read() if process.stderr else ""
-    if process.returncode:
-        raise SystemExit(f"generated memory worker failed ({process.returncode}): {stderr}")
-    return max(0, peak - baseline)
-
-
 def csv_row(header: list[str], common: dict[str, Any], **values: Any) -> dict[str, Any]:
     result = {name: "" for name in header}; result.update(common); result.update(values)
     return result
@@ -347,7 +300,7 @@ def append_jsonl(path: Path, value: dict[str, Any]) -> None:
 
 def load_checkpoint(
     path: Path, header: list[str], *, group: str, variant: str, revision: str,
-    prepare_count: int, execute_count: int, memory_count: int,
+    execute_count: int,
 ) -> tuple[list[dict[str, str]], set[str]]:
     """Load only checkpoints containing whole, internally consistent cases."""
     subject = "case_id" if group == "operators" else "model"
@@ -368,19 +321,14 @@ def load_checkpoint(
         grouped.setdefault(case_id, []).append(row)
     complete: set[str] = set()
     for case_id, case_rows in grouped.items():
-        counts: dict[str, int] = {}
-        for row in case_rows:
-            counts[row["record_kind"]] = counts.get(row["record_kind"], 0) + 1
-        coverage = counts.get("coverage", 0)
-        expected = {"prepare": prepare_count, "execute": execute_count,
-                    "memory": memory_count}
-        if coverage == 1 and len(case_rows) == 1:
+        unsupported = [row for row in case_rows if row["supported"] == "false"]
+        if len(unsupported) == 1 and len(case_rows) == 1:
             complete.add(case_id)
-        elif coverage == 0 and counts == expected:
+        elif not unsupported and len(case_rows) == execute_count:
             complete.add(case_id)
         else:
             raise SystemExit(
-                f"checkpoint {case_id}: incomplete case rows {counts}; "
+                f"checkpoint {case_id}: incomplete case rows; "
                 "remove it or restore a complete per-case snapshot"
             )
     return rows, complete
@@ -419,12 +367,10 @@ def main(args: argparse.Namespace) -> int:
             raise SystemExit("one or more requested cases are absent")
     random.Random(args.seed).shuffle(cases)
     measurement = spec["measurement"]
-    prepare_count = 2 if args.smoke else measurement["preparation_iterations"]
     execute_count = 3 if args.smoke else measurement["execution_iterations"]
-    memory_count = 2 if args.smoke else measurement["memory_iterations"]
     warmups = 1 if args.smoke else measurement["warmups"]
     flags = measurement["host_compile_flags"]
-    template = "figure-08-operators.csv" if args.group == "operators" else "figure-09-models.csv"
+    template = "benchmark-operators.csv" if args.group == "operators" else "benchmark-models.csv"
     with (repo / "artifact/templates" / template).open(newline="") as stream:
         header = next(csv.reader(stream))
     if args.output.exists() and not args.resume:
@@ -434,8 +380,7 @@ def main(args: argparse.Namespace) -> int:
     if args.output.exists():
         rows, completed = load_checkpoint(
             args.output, header, group=args.group, variant=args.variant,
-            revision=revision, prepare_count=prepare_count,
-            execute_count=execute_count, memory_count=memory_count,
+            revision=revision, execute_count=execute_count,
         )
         unknown = completed - {case["id"] for case in cases}
         if unknown:
@@ -456,7 +401,7 @@ def main(args: argparse.Namespace) -> int:
             failures.append(failure)
     coverage_ids = {
         row["case_id"] if args.group == "operators" else row["model"]
-        for row in rows if row["record_kind"] == "coverage"
+        for row in rows if row["supported"] == "false"
     }
     if coverage_ids != {failure["id"] for failure in failures}:
         raise SystemExit("failure log differs from checkpoint coverage rows")
@@ -486,18 +431,15 @@ def main(args: argparse.Namespace) -> int:
                 first = prepare(args, model, variant, root / f"{case_id}-first", flags)
             except Unsupported as error:
                 common.update(supported="false", reason=f"unsupported:{error.stage}")
-                rows.append(csv_row(header, common, record_kind="coverage", seed=args.seed))
+                rows.append(csv_row(header, common, seed=args.seed))
                 failure = {"id": case_id, "stage": error.stage,
                            "stderr": error.stderr[-4000:]}
                 append_jsonl(failure_path, failure)
                 failures.append(failure)
                 write_rows(args.output, header, rows)
                 continue
-            prepare_ns, artifact_bytes, artifact, header_file, _ = first
-            case_rows = [csv_row(
-                header, common, record_kind="prepare", iteration=0,
-                prepare_ns=prepare_ns, artifact_bytes=artifact_bytes, seed=args.seed,
-            )]
+            _prepare_ns, _artifact_bytes, artifact, header_file, _ = first
+            case_rows = []
             harness = root / f"{case_id}-harness.c"
             tensor_records = {item["name"]: item for item in input_record["tensors"]}
             batch = measurement["execution_batches"][case_id]
@@ -532,30 +474,10 @@ def main(args: argparse.Namespace) -> int:
             digest = output_digest([name for name, _ in expected], actual)
             for iteration, latency in enumerate(latencies):
                 case_rows.append(csv_row(
-                    header, common, record_kind="execute", iteration=iteration,
+                    header, common, iteration=iteration,
                     calls_per_sample=batch, latency_ns=latency, max_abs_error=max_abs,
                     max_rel_error=max_rel, output_digest=digest,
                     correct="true", seed=args.seed + 10_000 + iteration,
-                ))
-            for iteration in range(memory_count):
-                memory_out = root / f"{case_id}-memory-{iteration}"; memory_out.mkdir()
-                peak = memory_run(executable, warmups, memory_out, args.stage_timeout)
-                memory_actual = read_outputs(memory_out, expected)
-                mem_abs, mem_rel = compare(memory_actual, expected, case["rtol"], case["atol"])
-                case_rows.append(csv_row(
-                    header, common, record_kind="memory", iteration=iteration,
-                    peak_bytes=peak, max_abs_error=mem_abs, max_rel_error=mem_rel,
-                    output_digest=output_digest(
-                        [name for name, _ in expected], memory_actual
-                    ),
-                    correct="true", seed=args.seed + 20_000 + iteration,
-                ))
-            for iteration in range(1, prepare_count):
-                with tempfile.TemporaryDirectory(prefix=f"{case_id}-prepare-", dir=root) as work:
-                    elapsed, size, *_ = prepare(args, model, variant, Path(work), flags)
-                case_rows.append(csv_row(
-                    header, common, record_kind="prepare", iteration=iteration,
-                    prepare_ns=elapsed, artifact_bytes=size, seed=args.seed + iteration,
                 ))
             rows.extend(case_rows)
             write_rows(args.output, header, rows)
@@ -575,8 +497,8 @@ def main(args: argparse.Namespace) -> int:
               "joggle_sha256": sha256(args.joggle.read_bytes()),
               "compiler": compiler.stdout.splitlines()[0] if compiler.stdout else str(args.cc),
               "compile_flags": flags, "pipeline": variant["pipeline"],
-              "prepare_iterations": prepare_count, "execution_iterations": execute_count,
-              "memory_iterations": memory_count, "warmups": warmups, "seed": args.seed,
+              "execution_iterations": execute_count,
+              "warmups": warmups, "seed": args.seed,
               "stage_timeout_seconds": args.stage_timeout,
               "execution_batches": {case["id"]: measurement["execution_batches"][case["id"]]
                                       for case in cases},

@@ -1,147 +1,103 @@
 #!/usr/bin/env python3
-"""Validate the reactive-update CSV before analysis or plotting."""
+"""Validate the cross-system update measurements consumed by Figure 6."""
 
 from __future__ import annotations
 
 import argparse
 import csv
+import re
 from collections import defaultdict
 from pathlib import Path
 
-
-POLICIES = {"full", "reactive", "whole-mod", "no-plan-cache"}
-EDIT_CLASSES = {"no_op", "operation_metadata", "value_type"}
-EDIT_SCOPES = {"none", "affected", "unrelated"}
-UNSIGNED = {
-    "total_ops",
-    "affected_ops",
-    "fanout",
-    "stages",
-    "iteration",
-    "wall_ns",
-    "select_ns",
-    "evaluate_ns",
-    "verify_ns",
-    "executed_stages",
-    "reused_stages",
-    "observed_ops",
-    "observed_values",
-    "changed_functions",
-    "evaluated_ops",
-    "plan_compiles",
-    "plan_hits",
-    "seed",
-}
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("csv", type=Path)
-    parser.add_argument(
-        "--allow-partial",
-        action="store_true",
-        help="accept a subset of the four policies",
-    )
-    return parser.parse_args()
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
+EXTERNAL = {"full", "update"}
+ABLATION = {"full", "reactive", "whole-mod", "no-plan-cache"}
 
 
 def main() -> int:
-    args = parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("csv", type=Path)
+    parser.add_argument("--allow-partial", action="store_true")
+    args = parser.parse_args()
+    root = Path(__file__).resolve().parent
+    with (root / "templates/figure-06-update.csv").open(newline="", encoding="utf-8") as stream:
+        expected = next(csv.reader(stream))
     with args.csv.open(newline="", encoding="utf-8") as stream:
         reader = csv.DictReader(stream)
+        if reader.fieldnames != expected:
+            raise SystemExit("columns differ from figure-06-update.csv")
         rows = list(reader)
-        fields = set(reader.fieldnames or [])
-    required = {
-        "system",
-        "system_revision",
-        "subject",
-        "subject_hash",
-        "edit_class",
-        "edit_scope",
-        "edit_site",
-        "policy",
-        "iteration",
-        "output_digest",
-        "correct",
-    } | UNSIGNED
-    missing = sorted(required - fields)
-    if missing:
-        raise SystemExit(f"missing columns: {', '.join(missing)}")
     if not rows:
         raise SystemExit("CSV contains no measurements")
 
-    seen: set[tuple[str, ...]] = set()
     groups: dict[tuple[str, ...], list[dict[str, str]]] = defaultdict(list)
+    seen: set[tuple[str, ...]] = set()
     for line, row in enumerate(rows, start=2):
-        for name in UNSIGNED:
+        if row["track"] not in {"external", "ablation"}:
+            raise SystemExit(f"line {line}: unknown track")
+        if not row["system"] or not row["system_revision"] or not row["subject"]:
+            raise SystemExit(f"line {line}: missing system or subject identity")
+        if not SHA256.fullmatch(row["subject_hash"]):
+            raise SystemExit(f"line {line}: invalid subject hash")
+        for field in ("total_ops", "affected_ops", "iteration", "wall_ns",
+                      "visited_ops", "executed_stages", "total_stages", "seed"):
             try:
-                value = int(row[name])
+                value = int(row[field])
             except ValueError as error:
-                raise SystemExit(f"line {line}: {name} is not an integer") from error
+                raise SystemExit(f"line {line}: {field} is not an integer") from error
             if value < 0:
-                raise SystemExit(f"line {line}: {name} is negative")
-        if row["policy"] not in POLICIES:
-            raise SystemExit(f"line {line}: unknown policy {row['policy']}")
-        if row["edit_class"] not in EDIT_CLASSES:
-            raise SystemExit(f"line {line}: unknown edit class {row['edit_class']}")
-        if row["edit_scope"] not in EDIT_SCOPES:
-            raise SystemExit(f"line {line}: unknown edit scope {row['edit_scope']}")
-        if row["edit_class"] == "no_op" and row["edit_scope"] != "none":
-            raise SystemExit(f"line {line}: no_op requires scope none")
-        if row["edit_class"] != "no_op" and row["edit_scope"] == "none":
-            raise SystemExit(
-                f"line {line}: {row['edit_class']} requires an edit scope"
-            )
-        if row["correct"] != "true":
-            raise SystemExit(f"line {line}: correctness gate failed")
-        identity = (
-            row["system"],
-            row["system_revision"],
-            row["subject"],
-            row["subject_hash"],
-            row["total_ops"],
-            row["affected_ops"],
-            row["fanout"],
-            row["edit_class"],
-            row["edit_scope"],
-            row["edit_site"],
-            row["stages"],
-            row["policy"],
-            row["cache_state"],
-            row["iteration"],
-            row["seed"],
-        )
+                raise SystemExit(f"line {line}: {field} is negative")
+        if int(row["wall_ns"]) == 0 or int(row["total_ops"]) == 0:
+            raise SystemExit(f"line {line}: time and total_ops must be positive")
+        if int(row["affected_ops"]) > int(row["total_ops"]):
+            raise SystemExit(f"line {line}: affected_ops exceeds total_ops")
+        if row["correct"] != "true" or not SHA256.fullmatch(row["output_digest"]):
+            raise SystemExit(f"line {line}: correctness or digest gate failed")
+        identity = (row["track"], row["system"], row["system_revision"], row["subject"],
+                    row["edit_class"], row["edit_scope"], row["edit_site"],
+                    row["policy"], row["iteration"], row["seed"])
         if identity in seen:
             raise SystemExit(f"line {line}: duplicate primary key")
         seen.add(identity)
-        comparison = (
-            row["system"],
-            row["system_revision"],
-            row["subject"],
-            row["subject_hash"],
-            row["total_ops"],
-            row["affected_ops"],
-            row["fanout"],
-            row["edit_class"],
-            row["edit_scope"],
-            row["edit_site"],
-            row["stages"],
-            row["cache_state"],
-            row["iteration"],
-            row["seed"],
-        )
+        comparison = identity[:4] + identity[4:7] + identity[8:]
         groups[comparison].append(row)
 
-    for key, samples in groups.items():
-        policies = {row["policy"] for row in samples}
-        if not args.allow_partial and policies != POLICIES:
-            absent = ", ".join(sorted(POLICIES - policies))
-            raise SystemExit(f"group {key}: missing policies: {absent}")
-        digests = {row["output_digest"] for row in samples}
-        if len(digests) != 1:
-            raise SystemExit(f"group {key}: policies produced different graphs")
-
-    print(f"validated {len(rows)} rows in {len(groups)} comparison groups")
+    for key, group in groups.items():
+        expected_policies = EXTERNAL if key[0] == "external" else ABLATION
+        policies = {row["policy"] for row in group}
+        if not args.allow_partial and policies != expected_policies:
+            raise SystemExit(f"group {key}: expected {sorted(expected_policies)}, found {sorted(policies)}")
+        if len({row["output_digest"] for row in group}) != 1:
+            raise SystemExit(f"group {key}: policies produced different outputs")
+    semantic_outputs: dict[tuple[str, ...], set[str]] = defaultdict(set)
+    for row in rows:
+        if row["track"] == "external":
+            key = (row["subject"], row["edit_class"], row["edit_scope"],
+                   row["edit_site"], row["iteration"], row["seed"])
+            semantic_outputs[key].add(row["output_digest"])
+    if any(len(digests) != 1 for digests in semantic_outputs.values()):
+        raise SystemExit("external systems produced different canonical outputs")
+    if not args.allow_partial:
+        tracks = {row["track"] for row in rows}
+        if tracks != {"external", "ablation"}:
+            raise SystemExit("Figure 6 requires external and ablation tracks")
+        external = [row for row in rows if row["track"] == "external"]
+        if {row["system"] for row in external} != {"Joggle", "MLIR", "xDSL"}:
+            raise SystemExit("external track requires Joggle, MLIR, and xDSL")
+        systems_by_subject: dict[str, set[str]] = defaultdict(set)
+        for row in external:
+            systems_by_subject[row["subject"]].add(row["system"])
+        if len(systems_by_subject) != 15 or any(
+            systems != {"Joggle", "MLIR", "xDSL"}
+            for systems in systems_by_subject.values()
+        ):
+            raise SystemExit("external track requires 15 subjects paired across systems")
+        ablation_subjects = {row["subject"] for row in rows if row["track"] == "ablation"}
+        if len(ablation_subjects) != 3 or any(
+            row["system"] != "Joggle" for row in rows if row["track"] == "ablation"
+        ):
+            raise SystemExit("ablation track requires three Joggle subjects")
+    print(f"validated {len(rows)} Figure 6 rows in {len(groups)} paired groups")
     return 0
 
 

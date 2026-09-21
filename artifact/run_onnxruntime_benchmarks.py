@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect the ONNX Runtime rows for Figures 8 and 9."""
+"""Collect ONNX Runtime steady-state rows for Figure 7."""
 
 from __future__ import annotations
 
@@ -105,16 +105,7 @@ def worker(args: argparse.Namespace) -> int:
 
     measurement, _, feeds = load_case(args.spec, args.inputs, args.case_id)
     model = args.model.read_bytes()
-    if args.worker == "memory":
-        print("READY", flush=True)
-        if not sys.stdin.readline():
-            raise SystemExit("memory monitor closed before start")
-    started = time.perf_counter_ns()
     session = ort_session(model, measurement)
-    prepared = time.perf_counter_ns() - started
-    if args.worker == "prepare":
-        print(json.dumps({"prepare_ns": prepared}))
-        return 0
 
     names = [item.name for item in session.get_outputs()]
     for _ in range(args.warmups):
@@ -134,9 +125,7 @@ def worker(args: argparse.Namespace) -> int:
         }))
         return 0
 
-    outputs = session.run(names, feeds)
-    print(json.dumps({"output_digest": output_digest(names, outputs)}), flush=True)
-    return 0
+    raise SystemExit(f"unknown worker {args.worker}")
 
 
 def command(
@@ -159,41 +148,6 @@ def run_json(argv: list[str]) -> dict[str, Any]:
         argv, check=True, capture_output=True, text=True, env=environment
     )
     return json.loads(result.stdout.strip().splitlines()[-1])
-
-
-def memory_run(argv: list[str]) -> tuple[int, dict[str, Any]]:
-    try:
-        import psutil
-    except ImportError as error:
-        raise SystemExit("psutil is required for memory measurements") from error
-    environment = {**os.environ, **THREAD_ENV}
-    process = subprocess.Popen(
-        argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, text=True, env=environment,
-    )
-    assert process.stdin is not None and process.stdout is not None
-    if process.stdout.readline().strip() != "READY":
-        stderr = process.stderr.read() if process.stderr else ""
-        process.kill()
-        raise SystemExit(f"memory worker did not become ready: {stderr}")
-    observed = psutil.Process(process.pid)
-    baseline = observed.memory_info().rss
-    peak = baseline
-    process.stdin.write("\n")
-    process.stdin.flush()
-    while process.poll() is None:
-        try:
-            peak = max(peak, observed.memory_info().rss)
-        except psutil.NoSuchProcess:
-            break
-        time.sleep(0.0005)
-    stdout = process.stdout.read()
-    stderr = process.stderr.read() if process.stderr else ""
-    if process.returncode:
-        raise SystemExit(f"memory worker failed ({process.returncode}): {stderr}")
-    payload = json.loads(stdout.strip().splitlines()[-1])
-    delta = peak - baseline
-    return max(0, delta), payload
 
 
 def git_state(repo: Path) -> tuple[str, bool]:
@@ -254,21 +208,18 @@ def main(args: argparse.Namespace) -> int:
             raise SystemExit(f"unknown cases: {sorted(missing)}")
     random.Random(args.seed).shuffle(cases)
     measurement = spec["measurement"]
-    prepare_count = 2 if args.smoke else measurement["preparation_iterations"]
     execute_count = 3 if args.smoke else measurement["execution_iterations"]
-    memory_count = 2 if args.smoke else measurement["memory_iterations"]
     warmups = 1 if args.smoke else measurement["warmups"]
 
     try:
         import onnxruntime as ort
-        import psutil
     except ImportError as error:
-        raise SystemExit("onnxruntime and psutil are required") from error
+        raise SystemExit("onnxruntime is required") from error
     if ort.get_available_providers().count(measurement["reference_provider"]) != 1:
         raise SystemExit(f"missing provider {measurement['reference_provider']}")
     system_revision = f"onnxruntime-{ort.__version__}"
-    template_name = ("figure-08-operators.csv" if args.group == "operators"
-                     else "figure-09-models.csv")
+    template_name = ("benchmark-operators.csv" if args.group == "operators"
+                     else "benchmark-models.csv")
     with (repo / "artifact" / "templates" / template_name).open(newline="") as stream:
         header = next(csv.reader(stream))
     if args.output.exists():
@@ -315,12 +266,6 @@ def main(args: argparse.Namespace) -> int:
             common.update(case_id=case_id, family=case["family"])
         else:
             common.update(model=case_id, model_hash=case["sha256"])
-        for iteration in range(prepare_count):
-            payload = run_json(command(args, "prepare", case_id, model))
-            rows.append(row(
-                header, common, record_kind="prepare", iteration=iteration,
-                prepare_ns=payload["prepare_ns"], seed=args.seed + iteration,
-            ))
         payload = run_json(command(
             args, "execute", case_id, model,
             iterations=execute_count, warmups=warmups,
@@ -328,21 +273,11 @@ def main(args: argparse.Namespace) -> int:
         ))
         for iteration, latency in enumerate(payload["latencies_ns"]):
             rows.append(row(
-                header, common, record_kind="execute", iteration=iteration,
+                header, common, iteration=iteration,
                 calls_per_sample=measurement["execution_batches"][case_id],
                 latency_ns=latency, max_abs_error=0, max_rel_error=0,
                 output_digest=payload["output_digest"], correct="true",
                 seed=args.seed + 10_000 + iteration,
-            ))
-        for iteration in range(memory_count):
-            peak, payload = memory_run(command(
-                args, "memory", case_id, model, warmups=warmups,
-            ))
-            rows.append(row(
-                header, common, record_kind="memory", iteration=iteration,
-                peak_bytes=peak, max_abs_error=0, max_rel_error=0,
-                output_digest=payload["output_digest"], correct="true",
-                seed=args.seed + 20_000 + iteration,
             ))
 
     with args.output.open("w", newline="", encoding="utf-8") as stream:
@@ -366,9 +301,7 @@ def main(args: argparse.Namespace) -> int:
         "graph_optimization": measurement["reference_graph_optimization"],
         "execution_mode": measurement["reference_execution_mode"],
         "threads": measurement["threads"],
-        "prepare_iterations": prepare_count,
         "execution_iterations": execute_count,
-        "memory_iterations": memory_count,
         "warmups": warmups,
         "execution_batches": {
             case["id"]: measurement["execution_batches"][case["id"]]
@@ -383,7 +316,6 @@ def main(args: argparse.Namespace) -> int:
             "processor": platform.processor(),
             "logical_cpus": os.cpu_count(),
             "python": platform.python_version(),
-            "memory_bytes": psutil.virtual_memory().total,
         },
         "command": sys.argv,
     }
@@ -396,7 +328,7 @@ def main(args: argparse.Namespace) -> int:
 def parse_args() -> argparse.Namespace:
     root = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser()
-    parser.add_argument("--worker", choices=("prepare", "execute", "memory"))
+    parser.add_argument("--worker", choices=("execute",))
     parser.add_argument("--spec", type=Path,
                         default=root / "manifests" / "benchmark-cases.json")
     parser.add_argument("--inputs", type=Path, required=True)

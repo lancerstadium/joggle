@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build both evaluator variants and collect the reactive-update matrix."""
+"""Collect the Joggle rows for the model-backed Figure 6 experiment."""
 
 from __future__ import annotations
 
@@ -32,10 +32,8 @@ def command(args: list[str], cwd: Path, capture: bool = False) -> str:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--nodes", type=int, nargs="+", default=[1000])
-    parser.add_argument("--affected", type=int, nargs="+", default=[1, 8, 64])
-    parser.add_argument("--fanout", type=int, nargs="+", default=[1])
     parser.add_argument("--stages", type=int, nargs="+", default=[5])
+    parser.add_argument("--track", choices=("external", "ablation"), default="external")
     subjects = parser.add_mutually_exclusive_group()
     subjects.add_argument("--models", type=Path, nargs="+")
     subjects.add_argument("--model-manifest", type=Path)
@@ -92,17 +90,34 @@ def configure(repo: Path, build: Path, persistent: bool, onnx: bool) -> Path:
     return build / "artifact" / f"joggle-artifact-reactive{suffix}"
 
 
-def append_csv(source: Path, output: Path, write_header: bool) -> bool:
+def append_csv(source: Path, output: Path, write_header: bool, track: str) -> bool:
     with source.open(newline="", encoding="utf-8") as stream:
-        reader = csv.reader(stream)
-        rows = list(reader)
+        rows = list(csv.DictReader(stream))
     if not rows:
         raise RuntimeError(f"empty result file: {source}")
+    template = Path(__file__).resolve().parent / "templates/figure-06-update.csv"
+    with template.open(newline="", encoding="utf-8") as stream:
+        header = next(csv.reader(stream))
     with output.open("a", newline="", encoding="utf-8") as stream:
-        writer = csv.writer(stream, lineterminator="\n")
+        writer = csv.DictWriter(stream, fieldnames=header, lineterminator="\n")
         if write_header:
-            writer.writerow(rows[0])
-        writer.writerows(rows[1:])
+            writer.writeheader()
+        for row in rows:
+            policy = "update" if track == "external" and row["policy"] == "reactive" else row["policy"]
+            if track == "external" and policy not in {"full", "update"}:
+                continue
+            writer.writerow({
+                "track": track, "system": "Joggle", "system_revision": row["system_revision"],
+                "subject": row["subject"], "subject_hash": row["subject_hash"],
+                "total_ops": row["total_ops"], "affected_ops": row["affected_ops"],
+                "edit_class": row["edit_class"], "edit_scope": row["edit_scope"],
+                "edit_site": row["edit_site"], "policy": policy,
+                "iteration": row["iteration"], "wall_ns": row["wall_ns"],
+                "visited_ops": row["evaluated_ops"],
+                "executed_stages": row["executed_stages"], "total_stages": row["stages"],
+                "output_digest": row["output_digest"], "correct": row["correct"],
+                "seed": row["seed"],
+            })
     return False
 
 
@@ -176,13 +191,8 @@ def main() -> int:
     metadata_path = args.output.with_suffix(".json")
     if metadata_path.exists():
         raise SystemExit(f"refusing to replace completed run record {metadata_path}")
-    invalid_generator = not (args.models or args.model_manifest) and (
-        any(node <= 1 for node in args.nodes)
-        or any(value <= 0 for value in args.affected)
-        or any(value <= 0 for value in args.fanout)
-    )
     if (
-        invalid_generator
+        not (args.models or args.model_manifest)
         or any(value < 1 or value > 5 for value in args.stages)
         or args.warmups < 0
         or args.iterations <= 0
@@ -203,49 +213,19 @@ def main() -> int:
     persistent = configure(repo, build_root / "persistent", True, onnx)
     no_plans = configure(repo, build_root / "no-plans", False, onnx)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    commands: list[list[str]] = []
     job_records: list[dict[str, object]] = []
     jobs: list[tuple[Path, list[str]]] = []
 
     subjects = models
-    if not subjects:
-        subjects = []
-        generated: set[tuple[int, int, int]] = set()
-        for nodes in args.nodes:
-            for affected in args.affected:
-                if affected >= nodes:
-                    continue
-                for fanout in args.fanout:
-                    effective = min(fanout, max(1, affected - 1))
-                    key = (nodes, affected, effective)
-                    if key in generated:
-                        continue
-                    generated.add(key)
-                    subjects.append(
-                        {"nodes": nodes, "affected": affected, "fanout": effective}
-                    )
-    if not subjects:
-        raise SystemExit("the requested matrix contains no valid subjects")
 
     for subject in subjects:
         for stage_count in args.stages:
-            sites = args.sites if models else [None]
+            sites = args.sites
             for site in sites:
-                if models:
-                    label = f"{subject['name']}-{subject['sha256'][:12]}"
-                else:
-                    label = (
-                        f"{subject['nodes']}-{subject['affected']}-"
-                        f"{subject['fanout']}"
-                    )
-                if site:
-                    label += f"-{site}"
-                runs = (
-                    (persistent, "full"),
-                    (persistent, "reactive"),
-                    (persistent, "whole-mod"),
-                    (no_plans, "no-plan-cache"),
-                )
+                label = f"{subject['name']}-{subject['sha256'][:12]}-{site}"
+                runs = ((persistent, "full"), (persistent, "reactive"))
+                if args.track == "ablation":
+                    runs += ((persistent, "whole-mod"), (no_plans, "no-plan-cache"))
                 for edit_class in args.edit_classes:
                     for binary, policy in runs:
                         partial = build_root / (
@@ -277,28 +257,10 @@ def main() -> int:
                             and len(args.scopes) == 1
                         ):
                             invocation.extend(["--scope", args.scopes[0]])
-                        if models:
-                            invocation.extend(
-                                [
-                                    "--input",
-                                    str(subject["path"]),
-                                    "--subject-hash",
-                                    subject["sha256"],
-                                    "--site",
-                                    site,
-                                ]
-                            )
-                        else:
-                            invocation.extend(
-                                [
-                                    "--total-nodes",
-                                    str(subject["nodes"]),
-                                    "--affected-nodes",
-                                    str(subject["affected"]),
-                                    "--fanout",
-                                    str(subject["fanout"]),
-                                ]
-                            )
+                        invocation.extend([
+                            "--input", str(subject["path"]),
+                            "--subject-hash", subject["sha256"], "--site", site,
+                        ])
                         jobs.append((partial, invocation))
 
     random.Random(args.seed).shuffle(jobs)
@@ -318,11 +280,6 @@ def main() -> int:
                 raise SystemExit(f"cached job command differs: {partial}")
             if observed.get("output_sha256") != sha256(partial):
                 raise SystemExit(f"cached job hash differs: {partial}")
-            command(
-                [sys.executable, str(repo / "artifact" / "validate_reactive.py"),
-                 str(partial), "--allow-partial"],
-                repo,
-            )
             reused = True
         if not reused:
             if partial.exists() or sidecar.exists():
@@ -330,17 +287,13 @@ def main() -> int:
                     f"refusing to replace cached job {partial}; use a fresh build root"
                 )
             command(invocation, repo)
-            command(
-                [sys.executable, str(repo / "artifact" / "validate_reactive.py"),
-                 str(partial), "--allow-partial"],
-                repo,
-            )
             write_json(sidecar, {**expected_job, "output_sha256": sha256(partial)})
-        commands.append(invocation)
         job_records.append({
             "path": str(partial),
             "sha256": sha256(partial),
             "reused": reused,
+            "record": str(sidecar),
+            "record_sha256": sha256(sidecar),
         })
 
     merged = args.output.with_name(f".{args.output.name}.tmp")
@@ -348,28 +301,27 @@ def main() -> int:
         pass
     write_header = True
     for partial, _invocation in jobs:
-        write_header = append_csv(partial, merged, write_header)
+        write_header = append_csv(partial, merged, write_header, args.track)
 
     command(
         [
             sys.executable,
             str(repo / "artifact" / "validate_reactive.py"),
             str(merged),
+            "--allow-partial",
         ],
         repo,
     )
     merged.replace(args.output)
     metadata = {
-        "schema": "reactive-update/v2",
+        "schema": "update-provider/v1",
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "revision": revision,
         "dirty": bool(status),
         "platform": platform.platform(),
         "python": platform.python_version(),
         "cmake": command(["cmake", "--version"], repo, capture=True).splitlines()[0],
-        "nodes": args.nodes,
-        "affected": args.affected,
-        "fanout": args.fanout,
+        "track": args.track,
         "stages": args.stages,
         "models": [
             {"name": model["name"], "sha256": model["sha256"]}
@@ -383,16 +335,15 @@ def main() -> int:
             if args.model_manifest
             else None
         ),
-        "sites": args.sites if models else [],
+        "sites": args.sites,
         "edit_classes": args.edit_classes,
         "scopes": args.scopes,
         "warmups": args.warmups,
         "iterations": args.iterations,
         "seed": args.seed,
-        "csv_sha256": sha256(args.output),
+        "output_sha256": sha256(args.output),
+        "inputs": job_records,
         "expected_jobs": len(jobs),
-        "commands": commands,
-        "jobs": job_records,
     }
     write_json(metadata_path, metadata)
     if owned_temp is not None:

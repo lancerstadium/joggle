@@ -131,27 +131,22 @@ def validate(spec: Any, model_manifest: list[dict[str, str]]) -> None:
 
     measurement = spec["measurement"]
     measurement_fields = {
-        "warmups", "execution_iterations", "preparation_iterations",
-        "memory_iterations", "threads", "operator_opset", "random_generator", "input_policy",
+        "warmups", "execution_iterations", "threads", "operator_opset", "random_generator", "input_policy",
         "reference_provider", "reference_graph_optimization", "reference_execution_mode",
         "host_compile_flags",
-        "execution_batches",
-        "preparation_boundary", "execution_boundary", "memory_boundary",
-        "artifact_boundary",
+        "execution_batches", "execution_boundary",
     }
     if not isinstance(measurement, dict):
         fail("measurement", "must be an object")
     fields(measurement, measurement_fields, measurement_fields, "measurement")
     for name in (
-        "warmups", "execution_iterations", "preparation_iterations",
-        "memory_iterations", "threads", "operator_opset",
+        "warmups", "execution_iterations", "threads", "operator_opset",
     ):
         value = measurement[name]
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             fail(f"measurement.{name}", "must be a positive integer")
     for name in (
-        "random_generator", "input_policy", "preparation_boundary",
-        "execution_boundary", "memory_boundary", "artifact_boundary",
+        "random_generator", "input_policy", "execution_boundary",
         "reference_provider", "reference_graph_optimization", "reference_execution_mode",
     ):
         if not isinstance(measurement[name], str) or not measurement[name].strip():
@@ -171,7 +166,7 @@ def validate(spec: Any, model_manifest: list[dict[str, str]]) -> None:
     reference_count = 0
     for index, variant in enumerate(variants):
         where = f"variants[{index}]"
-        required = {"id", "system", "role", "pipeline", "artifact_size"}
+        required = {"id", "system", "role", "pipeline"}
         if not isinstance(variant, dict):
             fail(where, "must be an object")
         fields(variant, required, required, where)
@@ -181,8 +176,6 @@ def validate(spec: Any, model_manifest: list[dict[str, str]]) -> None:
         if variant["role"] not in {"candidate", "reference"}:
             fail(f"{where}.role", "must be candidate or reference")
         reference_count += variant["role"] == "reference"
-        if not isinstance(variant["artifact_size"], bool):
-            fail(f"{where}.artifact_size", "must be boolean")
         if not isinstance(variant["system"], str) or not variant["system"].strip():
             fail(f"{where}.system", "must be non-empty")
         pipeline = variant["pipeline"]
@@ -218,10 +211,6 @@ def validate(spec: Any, model_manifest: list[dict[str, str]]) -> None:
                 fail(f"{where}.pipeline", "differs from reference measurement settings")
     if seen_variants != VARIANTS or reference_count != 1:
         fail("variants", "IDs or reference role differ from the frozen design")
-    reference = next(variant for variant in variants if variant["role"] == "reference")
-    if reference["artifact_size"]:
-        fail("variants", "shared-runtime reference cannot report comparable artifact size")
-
     seeds: set[int] = set()
     operator_cases = spec["operator_cases"]
     if not isinstance(operator_cases, list) or len(operator_cases) != 24:

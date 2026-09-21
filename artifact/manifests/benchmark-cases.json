@@ -3,8 +3,6 @@
   "measurement": {
     "warmups": 10,
     "execution_iterations": 100,
-    "preparation_iterations": 30,
-    "memory_iterations": 10,
     "threads": 1,
     "operator_opset": 12,
     "reference_provider": "CPUExecutionProvider",
@@ -54,10 +52,7 @@
     },
     "random_generator": "SplitMix64; float32 takes the upper 24 bits and maps them to [low,high), while uniform-integer uses the inclusive integer interval",
     "input_policy": "Generate once per case from the pinned specification; reuse identical bytes across variants and iterations",
-    "preparation_boundary": "Model bytes available to backend-specific callable execution state; Joggle includes emission and host compilation, ONNX Runtime includes session construction",
-    "execution_boundary": "One backend call over resident input and output buffers; exclude input generation, serialization, and process launch",
-    "memory_boundary": "Peak resident-set increase above an idle backend worker after libraries load and before model or session construction",
-    "artifact_boundary": "Generated model-specific object code and embedded constants; shared runtime libraries are excluded"
+    "execution_boundary": "One backend call over resident input and output buffers; exclude input generation, serialization, preparation, and process launch"
   },
   "variants": [
     {
@@ -70,8 +65,7 @@
         {"functions": ["tile.scalarize"], "args": [], "mod_roots": ["builtin"]},
         {"functions": ["mem.plan", "c.noalias"], "args": [], "mod_roots": ["builtin"]},
         {"functions": ["c.place"], "args": ["\"static\""], "mod_roots": ["builtin"]}
-      ],
-      "artifact_size": true
+      ]
     },
     {
       "id": "joggle-optimized",
@@ -87,15 +81,13 @@
         {"functions": ["tile.scalarize", "opt.basic"], "args": [], "mod_roots": ["builtin"]},
         {"functions": ["mem.plan", "c.noalias"], "args": [], "mod_roots": ["builtin"]},
         {"functions": ["c.place"], "args": ["\"static\""], "mod_roots": ["builtin"]}
-      ],
-      "artifact_size": true
+      ]
     },
     {
       "id": "onnxruntime",
       "system": "ONNX Runtime CPU EP",
       "role": "reference",
-      "pipeline": {"provider": "CPUExecutionProvider", "graph_optimization": "ORT_ENABLE_ALL", "execution_mode": "ORT_SEQUENTIAL", "threads": 1},
-      "artifact_size": false
+      "pipeline": {"provider": "CPUExecutionProvider", "graph_optimization": "ORT_ENABLE_ALL", "execution_mode": "ORT_SEQUENTIAL", "threads": 1}
     }
   ],
   "operator_cases": [
