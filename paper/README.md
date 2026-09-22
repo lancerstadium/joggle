@@ -724,11 +724,12 @@ edit-to-artifact latency remains visible.
 
 A second panel calibrates these update ratios against Joggle's production
 lowering path. For the same models it reports the time spent in decoding,
-inference and conversion, `c.prepare`, scalar lowering, storage planning and
-placement, and C emission, together with graph size, emitted bytes, and
-artifact correctness. These full-path measurements do not enter $UpdateRatio$;
-they establish the absolute work represented by a complete artifact rebuild.
-Both panels accept a row only when
+fixed-shape entry specialization with inference and conversion, `c.prepare`,
+scalar lowering, storage planning and placement, and C emission, together with
+graph size, emitted bytes, and artifact correctness. Entry types come from the
+same pinned workloads used by the end-to-end experiment. These full-path
+measurements do not enter $UpdateRatio$; they establish the absolute work
+represented by a complete artifact rebuild. Both panels accept a row only when
 its result matches the corresponding full-rerun oracle.
 
 <!-- FIGURE 6 PLAN — Full-width, dense three-panel result. (a) Fifteen model
@@ -748,7 +749,8 @@ elementwise chains, reductions, matrix multiplication, convolution,
 quantization, and fusion---and the same 15 model subjects. We compare Joggle's
 required lowering path, the same path plus its frozen optimization pack, and a
 pinned single-thread ONNX Runtime CPU reference. All variants consume
-byte-identical inputs and pass dtype-specific numerical oracles.
+byte-identical inputs and pass dtype-specific numerical oracles. Joggle fixes
+each entry signature from those inputs before either lowering pipeline begins.
 
 The main measure is steady-state execution latency after ten warm-ups and 100
 measurements. Unsupported pairs remain as coverage outcomes instead of

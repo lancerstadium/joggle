@@ -95,13 +95,16 @@ the lowercase FNV-1a-64 digest of that canonical byte stream. Paired policies
 and all three systems must produce the same digest for a case.
 
 A calibration panel measures Joggle's production path on the same 15 models.
-It reports decoding, inference and conversion, `c.prepare`, storage planning,
-scalar lowering, storage placement, C emission, graph size, emitted bytes, and
-correctness for a complete rebuild. Each model runs one warm-up and ten measured
-rebuilds, producing seven stage rows per rebuild. These rows establish the
-absolute cost represented by the normalized matched stages; they do not enter
-UpdateRatio or WorkRatio. Their output digest is SHA-256 over the emitted C
-header and source separated by one zero byte.
+The collector specializes `main` from the fixed input types in
+`benchmark-cases.json` before conversion; `opt.signature` binds named shape
+parameters and refines anonymous extents in one checked operation. It reports
+decoding, specialization plus inference and conversion, `c.prepare`, storage
+planning, scalar lowering, storage placement, C emission, graph size, emitted
+bytes, and correctness for a complete rebuild. Each model runs one warm-up and
+ten measured rebuilds, producing seven stage rows per rebuild. These rows
+establish the absolute cost represented by the normalized matched stages; they
+do not enter UpdateRatio or WorkRatio. Their output digest is SHA-256 over the
+emitted C header and source separated by one zero byte.
 
 - Model index: `manifests/reactive-models.csv`
 - CSV: `templates/figure-06-update.csv`
@@ -121,6 +124,9 @@ optimization pipeline, and single-thread ONNX Runtime CPU EP. All consume
 byte-identical inputs. Each supported pair runs ten warm-ups and 100 timed
 steady-state executions. Short operators use a fixed batch; the CSV reports
 per-call latency and preserves the batch size.
+
+The Joggle collector applies the same manifest-derived `opt.signature` step as
+the production calibration before either required or optimized lowering.
 
 Correct coverage is reported over the complete population. Unsupported pairs
 remain explicit and do not enter latency ratios. Preparation time, peak memory,

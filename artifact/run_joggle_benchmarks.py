@@ -19,6 +19,8 @@ from typing import Any
 
 import numpy as np
 
+from joggle_entry import signature_command
+
 from run_onnxruntime_benchmarks import (
     NUMPY_DTYPES,
     THREAD_ENV,
@@ -71,7 +73,7 @@ def mod_flags(
 
 def prepare(
     args: argparse.Namespace, model: Path, variant: dict[str, Any], work: Path,
-    flags: list[str],
+    flags: list[str], inputs: list[dict[str, Any]],
 ) -> tuple[int, int, Path, Path, Path]:
     work.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter_ns()
@@ -81,7 +83,13 @@ def prepare(
          "-M", args.builtin_mods],
         current, "onnx.read", args.stage_timeout,
     )
-    for index, stage in enumerate(variant["pipeline"], start=1):
+    following = work / "01-specialize.jog"
+    run_to_file(
+        signature_command(args.joggle, current, args.builtin_mods, inputs),
+        following, "opt.signature", args.stage_timeout,
+    )
+    current = following
+    for index, stage in enumerate(variant["pipeline"], start=2):
         following = work / f"{index:02d}-stage.jog"
         command = [args.joggle, "run", *stage["functions"], current]
         for value in stage["args"]:
@@ -432,7 +440,10 @@ def main(args: argparse.Namespace) -> int:
             common.update({"case_id": case_id, "family": case["family"]} if args.group == "operators"
                           else {"model": case_id, "model_hash": case["sha256"]})
             try:
-                first = prepare(args, model, variant, root / f"{case_id}-first", flags)
+                first = prepare(
+                    args, model, variant, root / f"{case_id}-first", flags,
+                    case["inputs"],
+                )
             except Unsupported as error:
                 common.update(supported="false", reason=f"unsupported:{error.stage}")
                 rows.append(csv_row(header, common, seed=args.seed))
@@ -519,6 +530,7 @@ def main(args: argparse.Namespace) -> int:
               "joggle_sha256": sha256(args.joggle.read_bytes()),
               "compiler": compiler.stdout.splitlines()[0] if compiler.stdout else str(args.cc),
               "compile_flags": flags, "pipeline": variant["pipeline"],
+              "entry_specialization": "opt.signature(main, benchmark input types)",
               "execution_iterations": execute_count,
               "warmups": warmups, "seed": args.seed,
               "stage_timeout_seconds": args.stage_timeout,

@@ -15,6 +15,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from joggle_entry import signature_command
+
 STAGES = (
     "decode", "infer_convert", "c_prepare", "scalar_lowering",
     "storage_plan", "storage_place", "c_emit",
@@ -72,7 +74,7 @@ def stage_run(
 
 
 def rebuild(
-    args: argparse.Namespace, model: Path, work: Path,
+    args: argparse.Namespace, model: Path, inputs: list[dict[str, object]], work: Path,
 ) -> tuple[dict[str, int], int, int, str]:
     work.mkdir(parents=True)
     timings: dict[str, int] = {}
@@ -81,31 +83,39 @@ def rebuild(
         [args.joggle, "read", "onnx.read", model, "-M", args.builtin_mods],
         current, args.stage_timeout,
     )
-    following = work / "01-convert.jog"
-    timings["infer_convert"] = stage_run(
+    following = work / "01-specialize.jog"
+    timings["infer_convert"] = run_file(
+        signature_command(
+            args.joggle, current, args.builtin_mods, inputs,
+        ),
+        following, args.stage_timeout,
+    )
+    current = following
+    following = work / "02-convert.jog"
+    timings["infer_convert"] += stage_run(
         args.joggle, args.builtin_mods, current, following,
         ["onnx.nn.infer", "onnx.nn.convert"], args.stage_timeout,
     )
     current = following
-    following = work / "02-c-prepare.jog"
+    following = work / "03-c-prepare.jog"
     timings["c_prepare"] = stage_run(
         args.joggle, args.builtin_mods, current, following,
         ["c.prepare"], args.stage_timeout,
     )
     current = following
-    following = work / "03-scalar.jog"
+    following = work / "04-scalar.jog"
     timings["scalar_lowering"] = stage_run(
         args.joggle, args.builtin_mods, current, following,
         ["tile.scalarize"], args.stage_timeout,
     )
     current = following
-    following = work / "04-storage.jog"
+    following = work / "05-storage.jog"
     timings["storage_plan"] = stage_run(
         args.joggle, args.builtin_mods, current, following,
         ["mem.plan", "c.noalias"], args.stage_timeout,
     )
     current = following
-    following = work / "05-place.jog"
+    following = work / "06-place.jog"
     timings["storage_place"] = stage_run(
         args.joggle, args.builtin_mods, current, following,
         ["c.place"], args.stage_timeout, ['"static"'],
@@ -144,6 +154,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model-manifest", type=Path, default=root / "manifests/reactive-models.csv")
+    parser.add_argument("--benchmark-spec", type=Path, default=root / "manifests/benchmark-cases.json")
     parser.add_argument("--model-root", type=Path, required=True)
     parser.add_argument("--model", action="append")
     parser.add_argument("--joggle", type=Path, required=True)
@@ -175,6 +186,8 @@ def main() -> int:
 
     with args.model_manifest.open(newline="", encoding="utf-8") as stream:
         models = list(csv.DictReader(stream))
+    benchmark = json.loads(args.benchmark_spec.read_text(encoding="utf-8"))
+    benchmark_cases = {case["id"]: case for case in benchmark["model_cases"]}
     if args.model:
         wanted = set(args.model)
         models = [row for row in models if row["model"] in wanted]
@@ -188,14 +201,20 @@ def main() -> int:
         work_root = Path(temporary)
         for model_row in models:
             name, expected_hash = model_row["model"], model_row["sha256"]
+            if name not in benchmark_cases:
+                raise SystemExit(f"model has no fixed-shape benchmark case: {name}")
+            case = benchmark_cases[name]
+            if case["sha256"] != expected_hash:
+                raise SystemExit(f"model hashes differ between manifests: {name}")
             model = args.model_root / f"{name}.onnx"
             if not model.is_file() or sha256(model) != expected_hash:
                 raise SystemExit(f"missing or mismatched model: {model}")
             for warmup in range(args.warmups):
-                rebuild(args, model, work_root / name / f"warmup-{warmup}")
+                rebuild(args, model, case["inputs"], work_root / name / f"warmup-{warmup}")
             for iteration in range(args.iterations):
                 timings, total_ops, artifact_bytes, digest = rebuild(
-                    args, model, work_root / name / f"iteration-{iteration}"
+                    args, model, case["inputs"],
+                    work_root / name / f"iteration-{iteration}"
                 )
                 for stage in STAGES:
                     rows.append({
@@ -227,6 +246,8 @@ def main() -> int:
         "path": "production", "models": [row["model"] for row in models],
         "warmups": args.warmups, "iterations": args.iterations,
         "stages": list(STAGES), "seed": args.seed,
+        "entry_specialization": "opt.signature(main, benchmark input types)",
+        "benchmark_spec_sha256": sha256(args.benchmark_spec),
         "output_sha256": sha256(args.output), "command": sys.argv,
     }
     record_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")

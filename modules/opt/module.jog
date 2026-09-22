@@ -135,20 +135,87 @@ fn bind(m: Mod, name: str, index: int, values: list<int>) -> bool {
   return ir.replace(m, parameter, constant)
 }
 
-fn signature(m: Mod, name: str, types: list<Ty>) -> bool {
-  // Some graphs declare an input whose extents have no name at all, so there is
-  // no dimension parameter for opt.instantiate to bind. A caller that knows the
-  // shape it will feed can state it here before conversion, which is the same
-  // obligation TVM and ONNX-MLIR place on their users.
-  let fn = ir.find(m, name)
-  if !ir.live(fn) || len(ir.blks(fn)) == 0 {
+local fn concrete_signature(source: list<Val>, target: list<Ty>) -> bool {
+  if len(source) != len(target) {
     return false
   }
-  let args = ir.params(fn)
-  if len(args) != len(types) {
+  for i in 0..len(source) {
+    let before = ir.type(source[i])
+    let after = target[i]
+    if before != after {
+      if !tensor.valid(before) || !tensor.valid(after) ||
+         tensor.elem(before) != tensor.elem(after) {
+        return false
+      }
+      let old_dims = tensor.dims(before)
+      let new_dims = tensor.dims(after)
+      if len(old_dims) != len(new_dims) {
+        return false
+      }
+      for axis in 0..len(old_dims) {
+        if base.kind(new_dims[axis]) != "int" ||
+           (base.kind(old_dims[axis]) == "int" &&
+            old_dims[axis] != new_dims[axis]) {
+          return false
+        }
+      }
+    }
+  }
+  return true
+}
+
+local fn signature_generics(fn: Fn, types: list<Ty>) -> list<Ty> {
+  let params = ir.params(fn)
+  let generics = ir.generics(fn)
+  var applied: list<Ty> = []
+  for generic in generics {
+    var bound = ty("_")
+    for i in 0..len(params) {
+      let before = ir.type(params[i])
+      let after = types[i]
+      if tensor.valid(before) && tensor.valid(after) {
+        let old_dims = tensor.dims(before)
+        let new_dims = tensor.dims(after)
+        for axis in 0..len(old_dims) {
+          if base.name(old_dims[axis]) == ir.name(generic) {
+            if base.kind(new_dims[axis]) != "int" ||
+               (bound != ty("_") && bound != new_dims[axis]) {
+              return []
+            }
+            bound = new_dims[axis]
+          }
+        }
+      }
+    }
+    if bound == ty("_") {
+      return []
+    }
+    applied += [bound]
+  }
+  return applied
+}
+
+fn signature(m: Mod, name: str, types: list<Ty>) -> bool {
+  // A concrete entry signature is the single fixed-shape boundary. Named
+  // extents instantiate the entry template; anonymous extents are refined on
+  // the resulting parameters. Concrete extents and element types cannot be
+  // rewritten, so a mismatched workload is rejected before the IR changes.
+  var fn = ir.find(m, name)
+  if !ir.live(fn) || len(ir.blks(fn)) == 0 ||
+     !concrete_signature(ir.params(fn), types) {
     return false
   }
   var changed = false
+  let generics = ir.generics(fn)
+  if len(generics) != 0 {
+    let applied = signature_generics(fn, types)
+    if len(applied) != len(generics) || !instantiate(m, name, applied) {
+      return false
+    }
+    changed = true
+    fn = ir.find(m, name)
+  }
+  let args = ir.params(fn)
   for i in 0..len(args) {
     if ir.type(args[i]) != types[i] {
       changed = ir.type(m, args[i], types[i]) || changed

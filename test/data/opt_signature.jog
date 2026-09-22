@@ -1,0 +1,11 @@
+mod opt.signature.test
+use tensor
+
+[entry]
+fn main<N: int>(x: tensor<f32, [N, _]>) -> tensor<f32, [N, _]> {
+  return x
+}
+
+fn fixed(x: tensor<f32, [2, 4]>) -> tensor<f32, [2, 4]> {
+  return x
+}

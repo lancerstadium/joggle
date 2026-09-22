@@ -106,6 +106,11 @@ python3 artifact/figures/figure_06_update.py \
   --output .cache/artifact/figure-06-update.pdf
 ```
 
+The production and end-to-end collectors both derive the entry signature from
+`benchmark-cases.json`. `opt.signature` binds named shape parameters and
+refines anonymous input extents before ONNX conversion, so both figures compile
+the same fixed workload rather than separate model variants.
+
 MLIR and xDSL adapters must implement the same edit, five logical stages,
 counters, and digest. The release gate rejects Figure 6 without the complete
 `update-assembly/v1` provenance file.
