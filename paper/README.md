@@ -759,20 +759,47 @@ through the programmable infrastructure. One matrix contains 24 fixed operator g
 elementwise chains, reductions, matrix multiplication, convolution,
 quantization, and fusion---and the same 15 model subjects. We compare Joggle's
 required lowering path, the same path plus its frozen optimization pack, and a
-pinned single-thread ONNX Runtime CPU reference. All variants consume
-byte-identical inputs and pass dtype-specific numerical oracles. Joggle fixes
+pinned single-thread ONNX Runtime CPU reference. Each case uses byte-identical
+inputs; dtype-specific numerical oracles gate its timing results. Joggle fixes
 each entry signature from those inputs before either lowering pipeline begins.
 
 The main measure is steady-state execution latency after ten warm-ups and 100
-measurements. Figure 7 shows every operator and model individually. A point
-marks its median latency divided by the ONNX Runtime median; a line extends
-to its 95th-percentile latency under the same denominator. The line describes
-timing variation, not a confidence interval. Values below one indicate faster
-execution. Unsuccessful pairs retain their row and contribute to the coverage
-table. Operator and model results share one figure and one CSV, with up to
-11,700 timed rows.
+measurements. The performance figure groups the 24 operators into six compact
+panels with shared logarithmic axes. Each bar extends from parity to a
+per-operator median divided by its ONNX Runtime median; the upper whisker reaches p95 under the
+same denominator. The dashed line marks equal latency. Values below one
+indicate faster execution. Whiskers describe timing variation. Model results
+use the same normalization, and unsuccessful cases contribute to coverage.
 
-For the pinned operator configuration in Appendix A, all 24 operators pass the
+<!-- PERFORMANCE FIGURE PROMPT — Render from measured CSV using
+artifact/figures/figure_07_performance.py. Compact single-column figure with
+six panels, three rows by two
+columns: elementwise, reduction, matmul, convolution, quantization, fusion.
+Every panel contains four operators and paired base/optimized bars. Shared
+logarithmic y axis, one legend, ORT=1 dashed line, median-to-p95 whiskers,
+hatched base bars and solid optimized bars. Report correct coverage in the
+caption. Bars start at parity; use compact wrapped labels and shared axes at
+the final column width. Add model
+panels only from measured model rows. Preserve every case and failed outcome.
+No generated pixels or illustrative numbers for data. -->
+
+*Figure: Operator execution across all six families. Bars extend from parity
+to median latency relative to ONNX Runtime; whiskers extend to p95. All panels use the same
+scale, and values below one indicate faster execution. Each path passes all
+24 numerical oracles.*
+
+| Operator-suite measure | Base | Optimized |
+| --- | ---: | ---: |
+| Correct operators | 24/24 | 24/24 |
+| Faster than ORT | 3/24 | 3/24 |
+| Geometric mean latency / ORT | 9.08× | 5.02× |
+| Geometric mean speedup / base | 1.00× | 1.81× |
+
+*Table: Main operator results. Ratios pair per-operator medians before
+geometric aggregation. Configuration and exact per-operator values appear in
+Appendix A.*
+
+Across the operator suite, all 24 operators pass the
 numerical oracle in both Joggle paths. The optimization pack achieves a
 geometric mean speedup of 1.81× over the base path. Relative to ONNX Runtime, the
 base and optimized latency ratios are 9.08× and 5.02×, respectively; the
@@ -783,13 +810,8 @@ latency. These per-operator differences locate the remaining generated-code
 costs and distinguish the effect of an optimization pack from compiler update
 responsiveness.
 
-<!-- FIGURE 7 PLAN — One full-width performance figure fed by one CSV and one
-plotting script. Left: all 24 operators grouped by six families. Right top:
-all 15 models. Each subject has base/optimized median points and median-to-p95
-segments, normalized by its ONNX Runtime median. Both panels share limits;
-no subject is compressed into a family mean. Right bottom: correct-coverage
-counts for both Joggle variants and ONNX Runtime. Failed cases use × in a
-non-data margin; missing measurements use ?. CSV: figure-07-performance.csv. Columns:
+<!-- PERFORMANCE DATA — One CSV and one plotting script serve the combined
+operator/model experiment. CSV: figure-07-performance.csv. Columns:
 subject_kind,subject,subject_hash,family,system,system_revision,variant,
 supported,reason,iteration,calls_per_sample,latency_ns,max_abs_error,
 max_rel_error,input_digest,output_digest,correct,seed. -->
@@ -800,7 +822,7 @@ combined operator/model matrix its generated performance.
 
 ## 5. Related Work
 
-Table 2 aligns related mechanisms with Joggle's three design axes. **Roles**
+The related-work table aligns mechanisms with Joggle's three design axes. **Roles**
 covers the five compiler roles through one programmable surface. **Owner** and
 **Deps** capture capability organization.
 

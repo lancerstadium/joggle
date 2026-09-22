@@ -152,5 +152,9 @@ release path.
 ## Release gate
 
 `check_release.py` validates Figures 4--7, verifies provenance hashes, renders
-PDF and PNG outputs, and writes `evaluation-release/v2`. A figure enters the
-paper only after this gate succeeds from a clean, pinned collection.
+PDF and PNG outputs, and writes `evaluation-release/v2`. The complete artifact
+release requires this gate to succeed from a clean, pinned collection. During
+drafting, an independently audited snapshot may supply a measured subset (such
+as the complete operator suite); its hash-bound merge record retains
+`complete: false`, and the figure caption identifies the population actually
+shown. It is not a complete Figure 7 release.

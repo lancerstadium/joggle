@@ -5,19 +5,30 @@ from __future__ import annotations
 
 import argparse
 import csv
+import textwrap
 from collections import defaultdict
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 
 from common import COLORS, configure, number, read_rows, save, truth
 
 VARIANTS = ("joggle-unoptimized", "joggle-optimized")
 LABELS = {"joggle-unoptimized": "Joggle base", "joggle-optimized": "Joggle opt"}
-MARKERS = {"joggle-unoptimized": "o", "joggle-optimized": "D"}
 FAMILIES = ("elementwise", "reduction", "matmul", "convolution", "quantization", "fusion")
+FAMILY_LABELS = ("Elementwise", "Reductions", "Matmul", "Convolution", "Quantization", "Fusion")
+MODEL_LABELS = {
+    "densenet-12": "DenseNet", "efficientnet-lite4-11-int8": "EffNet-int8",
+    "efficientnet-lite4-11-qdq": "EffNet-QDQ", "googlenet-12": "GoogLeNet",
+    "mnist-8": "MNIST", "mobilenetv2-7": "MobileNetV2", "resnet18-v1-7": "ResNet18",
+    "shufflenet-v2-12": "ShuffleNetV2", "squeezenet1.0-13-qdq": "SqueezeNet-QDQ",
+    "squeezenet1.1-7": "SqueezeNet", "ssd-mobilenetv1-12": "SSD-MobileNet",
+    "tiny-yolov3-11": "TinyYOLOv3", "tinyyolov2-8": "TinyYOLOv2",
+    "ultraface-rfb-320": "UltraFace", "xcit-tiny-12-p8-224-opset17": "XCiT-Tiny",
+}
 
 
 def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
@@ -78,66 +89,65 @@ def main() -> int:
                             key=lambda s: (rank.get(family[kind, s], 99), s))
                 for kind in ("operator", "model")}
     configure()
-    fig = plt.figure(figsize=(7.0, max(3.5, 0.15 * len(subjects["operator"]) + 0.9)))
-    grid = fig.add_gridspec(1, 2)
-    right = grid[0, 1].subgridspec(2, 1, height_ratios=(3.2, 0.85), hspace=0.52)
-    axes = (fig.add_subplot(grid[0, 0]), fig.add_subplot(right[0, 0]))
+    plt.rcParams.update({"font.size": 7, "legend.fontsize": 7,
+                         "savefig.bbox": None})
+    panels = [("operator", label, [s for s in subjects["operator"] if family["operator", s] == name])
+              for name, label in zip(FAMILIES, FAMILY_LABELS)]
+    panels = [panel for panel in panels if panel[2]]
+    for start in range(0, len(subjects["model"]), 5):
+        panels.append(("model", f"Models {start + 1}–{min(start + 5, len(subjects['model']))}",
+                       subjects["model"][start:start + 5]))
+    if not panels:
+        raise ValueError("no recognized operator families or model subjects")
+    ncols = 2
+    nrows = (len(panels) + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3.35, 0.93 * nrows + 0.32),
+                             squeeze=False, sharey=True)
     finite = [float(r[k]) for r in summary if r["variant"] in VARIANTS
               for k in ("latency_over_ort", "p95_over_ort_median") if r[k] != ""]
-    low, high = min([1.0, *finite]) / 1.5, max([1.0, *finite]) * 1.8
-    for ax, kind, letter in zip(axes, ("operator", "model"), ("a", "b")):
-        names = subjects[kind]
-        previous = None
+    low, high = min([1.0, *finite]) / 1.5, max([1.0, *finite]) * 1.5
+    for panel_index, (ax, (kind, title, names)) in enumerate(zip(axes.flat, panels)):
         for i, subject in enumerate(names):
-            if i % 2 == 0:
-                ax.axhspan(i - 0.5, i + 0.5, color="#F2F5F7", zorder=0)
-            current = family[kind, subject]
-            if kind == "operator" and previous is not None and current != previous:
-                ax.axhline(i - 0.5, color="#B9C3CC", lw=0.65)
-            previous = current
-            for variant, offset in zip(VARIANTS, (-0.17, 0.17)):
+            for variant, offset in zip(VARIANTS, (-0.19, 0.19)):
                 row = indexed.get((kind, subject, variant))
                 if row and row["latency_over_ort"] != "":
-                    x, tail = row["latency_over_ort"], row["p95_over_ort_median"]
-                    ax.plot([x, tail], [i + offset] * 2, color=COLORS[variant], lw=0.8)
-                    ax.plot(x, i + offset, MARKERS[variant], color=COLORS[variant], ms=3)
+                    value, tail = row["latency_over_ort"], row["p95_over_ort_median"]
+                    ax.bar(i + offset, value - 1, bottom=1, width=0.34,
+                           color=COLORS[variant], edgecolor="#27333D", linewidth=0.35,
+                           hatch="///" if variant == "joggle-unoptimized" else None,
+                           zorder=3)
+                    ax.errorbar(i + offset, value, yerr=[[0], [max(0, tail - value)]],
+                                color="#27333D", lw=0.6, capsize=1.5, zorder=4)
                 else:
-                    ax.text(1.03, i + offset, "×" if row else "?",
-                            transform=ax.get_yaxis_transform(), va="center", ha="right",
+                    ax.text(i + offset, 0.03, "×" if row else "?",
+                            transform=ax.get_xaxis_transform(), va="bottom", ha="center",
                             color=COLORS[variant], fontsize=7)
-        ax.axvline(1, color="#6A737E", ls="--", lw=0.75)
-        ax.set_xscale("log")
-        ax.set_xlim(low, high)
-        ax.set_ylim(max(len(names), 1) - 0.5, -0.5)
-        ax.set_yticks(range(len(names)), names)
-        ax.tick_params(axis="y", length=0, labelsize=6)
-        ax.set_xlabel("Latency / ONNX Runtime  (lower is faster)", fontsize=6.5)
-        ax.set_title(f"({letter}) {len(names)} {kind}s", loc="left")
-        ax.grid(axis="x", color="#DDE3E8", lw=0.45)
+        ax.axhline(1, color="#565F69", ls="--", lw=0.8, zorder=4)
+        ax.set_yscale("log")
+        ax.set_ylim(low, high)
+        ticks = [10.0 ** exponent for exponent in range(-6, 7)
+                 if low <= 10.0 ** exponent <= high]
+        ax.set_yticks(ticks, [f"{tick:g}" for tick in ticks])
+        ax.set_xlim(-0.6, len(names) - 0.4)
+        labels = [MODEL_LABELS.get(s, s) if kind == "model" else
+                  textwrap.fill(s.split("-", 1)[-1].replace("-", " "), width=10,
+                                break_long_words=False, break_on_hyphens=False)
+                  for s in names]
+        ax.set_xticks(range(len(names)), labels, rotation=35, ha="right")
+        ax.tick_params(axis="both", labelsize=6, length=1.5, pad=1)
+        ax.set_title(f"({chr(97 + panel_index)}) {title}", loc="left", fontsize=7, pad=2)
+        ax.grid(axis="y", which="major", color="#DDE3E8", lw=0.45)
         ax.set_axisbelow(True)
-    ax = fig.add_subplot(right[1, 0])
-    ax.axis("off")
-    cells = []
-    for variant in (*VARIANTS, "onnxruntime"):
-        cells.append([LABELS.get(variant, "ONNX Runtime"), *[
-            f"{sum(bool(indexed.get((kind, s, variant), {}).get('correct')) for s in subjects[kind])}/{len(subjects[kind])}"
-            for kind in ("operator", "model")]])
-    table = ax.table(cellText=cells, colLabels=("Correct coverage", "Operators", "Models"),
-                     loc="center", cellLoc="center", colWidths=(0.5, 0.25, 0.25))
-    table.auto_set_font_size(False)
-    table.set_fontsize(6.5)
-    table.scale(1, 1.1)
-    for (row, _), cell in table.get_celld().items():
-        cell.set_edgecolor("#DBE2E8")
-        cell.set_linewidth(0.5)
-        cell.set_facecolor("#E8EFF5" if row == 0 else "white")
-    handles = [Line2D([], [], marker=MARKERS[v], color=COLORS[v], lw=0.8, ms=3,
+    for ax in list(axes.flat)[len(panels):]:
+        ax.set_visible(False)
+    handles = [Patch(facecolor=COLORS[v], edgecolor="#27333D", linewidth=0.35,
+                      hatch="///" if v == "joggle-unoptimized" else None,
                       label=LABELS[v]) for v in VARIANTS]
-    fig.legend(handles=handles, loc="upper center", ncol=2, frameon=False,
-               bbox_to_anchor=(0.52, 1.005))
-    fig.text(0.5, 0.005, "Point: median · line: median to p95 · ×: no correct result · ?: missing measurement",
-             ha="center", fontsize=6.2)
-    fig.subplots_adjust(left=0.19, right=0.99, bottom=0.12, top=0.92, wspace=1.15)
+    handles.append(Line2D([], [], color="#565F69", ls="--", lw=0.8, label="ORT = 1"))
+    fig.legend(handles=handles, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.0))
+    fig.text(0.012, 0.53, "Latency / ORT (log scale)", va="center", rotation=90, fontsize=7)
+    fig.subplots_adjust(left=0.135, right=0.985, bottom=0.145,
+                        top=0.89, wspace=0.18, hspace=1.0)
     save(fig, args.output)
     if args.summary:
         args.summary.parent.mkdir(parents=True, exist_ok=True)

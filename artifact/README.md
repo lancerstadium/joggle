@@ -164,10 +164,14 @@ Collectors checkpoint complete cases and record unsupported cases explicitly.
 Only steady-state execution is repeated. A smoke run uses three iterations;
 the release population uses the 100 iterations frozen in the manifest.
 
-Figure 7 retains one row per operator and model. Points show medians; segments
-extend to p95, with both divided by the same subject's ORT median. These
-segments show timing variation. Failed cases remain visible in the margin and
-coverage table. Export the plotted statistics alongside the PDF:
+Figure 7 uses two columns of compact panels at single-column manuscript width.
+It groups operators by family and models in batches of five, with one shared
+logarithmic scale. Paired bars extend from the ORT parity line to each
+Joggle median; upper whiskers reach p95, using that subject's ORT median as
+the common denominator. Hatching distinguishes the base path in grayscale.
+Whiskers show timing variation, not confidence intervals. Failed and missing
+cases remain explicit; the caption reports correct coverage. Export the
+plotted statistics alongside the PDF:
 
 ```sh
 python3 artifact/figures/figure_07_performance.py \
@@ -179,7 +183,8 @@ python3 artifact/figures/figure_07_performance.py \
 `merge_benchmark_rows.py --allow-partial` supports intermediate, hash-checked
 snapshots, including operator-only data. Their merge record has
 `complete: false`; the complete release still requires the full model matrix.
-The operator table in Appendix A uses revision `83aa8d4fc72d` and the
+The main-text operator figure and summary, and the detailed table in Appendix A,
+use revision `83aa8d4fc72d` and the
 `figure-07-operators-83aa8d4.csv` snapshot. Its 7,200 rows cover all 24 operators,
 both Joggle paths, and ONNX Runtime; it contains no model measurements.
 
