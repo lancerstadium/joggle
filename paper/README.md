@@ -865,24 +865,24 @@ scale, and values below one indicate faster execution. Each path passes all
 | Operator-suite measure | Base | Optimized |
 | --- | ---: | ---: |
 | Correct operators | 24/24 | 24/24 |
-| Faster than ORT | 3/24 | 3/24 |
-| Geometric mean latency / ORT | 9.08× | 5.02× |
-| Geometric mean speedup / base | 1.00× | 1.81× |
+| Faster than ORT | 4/24 | 4/24 |
+| Geometric mean latency / ORT | 9.27× | 5.21× |
+| Geometric mean speedup / base | 1.00× | 1.78× |
 
 *Table: Main operator results. Ratios pair per-operator medians before
 geometric aggregation. Configuration and exact per-operator values appear in
 Appendix A.*
 
-Across the operator suite, all 24 operators pass the
-numerical oracle in both Joggle paths. The optimization pack achieves a
-geometric mean speedup of 1.81× over the base path. Relative to ONNX Runtime, the
-base and optimized latency ratios are 9.08× and 5.02×, respectively; the
-optimized path is faster on three operators. The effect varies across
-operators: the 256×256 matrix multiply improves by 12.83× over the base path,
-whereas strided convolution regresses from 146.82× to 164.31× the reference
-latency. Thus, the pack's largest gain comes from matrix multiplication,
-while convolution remains a major execution cost. These measurements concern
-generated-code execution, distinct from the compiler update costs in Section 4.4.
+The optimization pack reduced geometric mean operator latency by 1.78× relative
+to the base path, with all 24 operators passing both numerical checks.
+The optimized path had lower median latency than ONNX Runtime on four operators;
+its geometric mean latency remained 5.21× the reference.
+Gains concentrated in matrix multiplication: rectangular and 256×256 products
+improved by 21.67× and 12.90× over the base path, respectively.
+By contrast, strided convolution increased from 171.00× to 190.42× ORT latency.
+Thus, the optimization pack improved aggregate execution performance, with
+substantial workload-dependent gaps to ONNX Runtime remaining.
+These execution measurements complement the compiler update costs in Section 4.4.
 
 Figure 8 extends the comparison to all 15 models. Both Joggle paths pass the
 numerical oracle on the same 11 models; ONNX Runtime passes all 15. SSD-MobileNet
@@ -1087,34 +1087,34 @@ artifacts independently.
 
 | Operator | ORT (µs) | Base / ORT | Opt / ORT |
 | --- | ---: | ---: | ---: |
-| conv-depthwise | 39.95 | 3.81 | 4.66 |
-| conv-pointwise | 60.54 | 152.08 | 19.34 |
-| conv-stem | 178.33 | 4.28 | 8.58 |
-| conv-strided | 43.33 | 146.82 | 164.31 |
-| ew-affine-1k | 2.87 | 0.09 | 0.08 |
-| ew-broadcast-relu | 3.53 | 0.79 | 0.79 |
-| ew-chain-64k | 21.87 | 4.42 | 3.16 |
-| ew-select-16k | 8.13 | 1.27 | 1.24 |
-| fuse-add-relu | 13.10 | 2.71 | 4.98 |
-| fuse-conv-bias-relu | 307.00 | 86.18 | 41.68 |
-| fuse-matmul-bias-relu | 14.52 | 156.55 | 13.00 |
-| fuse-mul-add | 20.28 | 2.26 | 2.30 |
-| mm-batched | 11.25 | 65.84 | 66.53 |
-| mm-rectangular | 13.26 | 207.14 | 9.88 |
-| mm-square-256 | 30.98 | 332.02 | 25.87 |
-| mm-square-64 | 4.40 | 20.77 | 1.72 |
-| quant-conv | 26.27 | 9.10 | 10.02 |
-| quant-dynamic | 4.86 | 1.40 | 1.46 |
-| quant-matmul | 6.26 | 20.12 | 2.36 |
-| quant-qdq-tensor | 3.33 | 0.58 | 0.55 |
-| red-l2-last | 15.23 | 1.11 | 1.09 |
-| red-max-channel | 58.95 | 9.89 | 10.12 |
-| red-mean-spatial | 11.99 | 9.27 | 9.51 |
-| red-sum-row | 9.53 | 5.60 | 5.60 |
-| Geometric mean ratio | — | 9.08 | 5.02 |
+| conv-depthwise | 41.92 | 3.64 | 4.57 |
+| conv-pointwise | 63.83 | 146.92 | 32.66 |
+| conv-stem | 178.12 | 4.44 | 9.35 |
+| conv-strided | 39.06 | 171.00 | 190.42 |
+| ew-affine-1k | 2.80 | 0.08 | 0.08 |
+| ew-broadcast-relu | 3.58 | 0.81 | 0.79 |
+| ew-chain-64k | 21.55 | 3.40 | 3.92 |
+| ew-select-16k | 8.08 | 0.98 | 0.87 |
+| fuse-add-relu | 14.11 | 4.89 | 4.53 |
+| fuse-conv-bias-relu | 294.42 | 101.45 | 43.96 |
+| fuse-matmul-bias-relu | 14.26 | 170.18 | 13.35 |
+| fuse-mul-add | 20.34 | 2.32 | 2.44 |
+| mm-batched | 10.64 | 71.02 | 71.00 |
+| mm-rectangular | 13.23 | 214.80 | 9.91 |
+| mm-square-256 | 31.51 | 327.35 | 25.37 |
+| mm-square-64 | 4.55 | 20.57 | 1.66 |
+| quant-conv | 26.51 | 9.06 | 10.25 |
+| quant-dynamic | 4.82 | 1.48 | 1.52 |
+| quant-matmul | 6.15 | 20.78 | 2.40 |
+| quant-qdq-tensor | 3.40 | 0.54 | 0.56 |
+| red-l2-last | 15.46 | 1.10 | 1.07 |
+| red-max-channel | 59.16 | 10.66 | 10.40 |
+| red-mean-spatial | 12.25 | 9.54 | 9.57 |
+| red-sum-row | 9.49 | 5.78 | 6.28 |
+| Geometric mean ratio | — | 9.27 | 5.21 |
 | Correct operators | 24/24 | 24/24 | 24/24 |
 
-*Table A1: Operator execution measurements. Joggle revision `83aa8d4fc72d`,
+*Table A1: Operator execution measurements. Joggle revision `5a71fe55a3be`,
 Apple Clang 17.0.0 (`-O3 -DNDEBUG`), and ONNX Runtime 1.26.0 CPU with one thread
 and full graph optimization. Each entry uses ten warm-ups and 100 measured
 samples. Ratios divide unrounded per-operator medians; values below one
