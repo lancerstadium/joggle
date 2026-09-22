@@ -12,6 +12,11 @@ void dynamic_c_prefix(int32_t* result, int64_t* result_dim_0);
 void dynamic_c_static_result(const int32_t* x, int32_t* result, int64_t* length);
 int32_t dynamic_c_sum(const int32_t* x, int64_t x_dim_0);
 void dynamic_c_gather_last(const int32_t* x, int64_t x_dim_0, int32_t* result);
+void dynamic_c_gather_prefix(const int32_t* x, const int64_t* indices, int64_t n,
+                             int32_t* result, int64_t* rows);
+void dynamic_c_gather_element(const int32_t* x, int32_t* result);
+void dynamic_c_transpose_prefix(const int32_t* x, int64_t rows,
+                                int32_t* result, int64_t* cols);
 void dynamic_c_gather_middle(const int32_t* x, int64_t x_dim_1,
                              const int64_t* indices, int64_t indices_dim_0,
                              int32_t* result);
@@ -90,6 +95,15 @@ int main(int argc, char** argv) {
   if (dynamic_c_sum(result, rows) != 42)
     return 3;
   const int32_t input[6] = {0, 1, 2, 3, 4, 5};
+  for (int64_t n = 0; n <= 2; ++n) {
+    int32_t transposed[7] = {-1, -1, -1, -1, -1, -1, -1};
+    int64_t cols = -1;
+    dynamic_c_transpose_prefix(input, n, transposed, &cols);
+    if (cols != n || transposed[n * 3] != -1) return 33;
+    for (int64_t row = 0; row < 3; ++row)
+      for (int64_t col = 0; col < n; ++col)
+        if (transposed[row * n + col] != input[col * 3 + row]) return 34;
+  }
   int32_t gathered[2] = {-1, -1};
   dynamic_c_gather_last(input, 3, gathered);
   if (gathered[0] != 4 || gathered[1] != 5)
@@ -100,6 +114,17 @@ int main(int argc, char** argv) {
     return 5;
   const int32_t volume[12] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   const int64_t indices[2] = {-1, 0};
+  for (int64_t n = 0; n <= 2; ++n) {
+    int32_t prefix[5] = {-1, -1, -1, -1, -1};
+    int64_t selected_rows = -1;
+    dynamic_c_gather_prefix(input, indices, n, prefix, &selected_rows);
+    if (selected_rows != n || prefix[n * 2] != -1) return 30;
+    const int32_t wanted[4] = {4, 5, 0, 1};
+    for (int64_t i = 0; i < n * 2; ++i)
+      if (prefix[i] != wanted[i]) return 31;
+  }
+  dynamic_c_gather_element(input, gathered);
+  if (gathered[0] != 2) return 32;
   const int32_t expected[8] = {4, 5, 0, 1, 10, 11, 6, 7};
   int32_t middle[8] = {0};
   dynamic_c_gather_middle(volume, 3, indices, 2, middle);

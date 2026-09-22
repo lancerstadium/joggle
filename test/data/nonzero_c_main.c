@@ -6,6 +6,8 @@ void nonzero_c_filtered(const float* x, int64_t count, int64_t* result,
                         int64_t* result_dim_1);
 void nonzero_c_rows(const int32_t* x, int64_t rows, int64_t* result,
                     int64_t* result_dim_1);
+void nonzero_c_coordinates(const float* x, int64_t count, int64_t* result,
+                           int64_t* result_dim_0);
 
 int main(void) {
   const int32_t input[6] = {0, 1, 0, 2, 3, 0};
@@ -28,6 +30,12 @@ int main(void) {
     if (wanted == 0 && result[0] != -1) return 4;
     if (wanted >= 1 && result[0] != 1) return 5;
     if (wanted == 2 && result[1] != 3) return 6;
+    result[0] = -1;
+    nonzero_c_coordinates(values, count, result, &selected);
+    if (selected != wanted) return 10;
+    if (wanted == 0 && result[0] != -1) return 11;
+    if (wanted >= 1 && result[0] != 1) return 12;
+    if (wanted == 2 && result[1] != 3) return 13;
   }
   for (int64_t rows = 0; rows <= 2; ++rows) {
     nonzero_c_rows(input, rows, result, &selected);

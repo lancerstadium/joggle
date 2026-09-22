@@ -1,5 +1,5 @@
 local fn gather_runtime<
-  E: Ty, D: list<int>, S: list<int>, Y: list<int>, R: int, Q: int
+  E: Ty, D: list<int>, S: list<int>, Y: list<int>, R: int, Q: int, K: int
 >(
   data: tensor<E, D>, indices: tensor<index, S>, axis: int
 ) -> tensor<E, Y> {
@@ -7,6 +7,7 @@ local fn gather_runtime<
   if selected_axis < 0 { selected_axis += R }
   assert(selected_axis >= 0 && selected_axis < R,
          "tensor.gather axis is out of range")
+  assert(K == R + Q - 1, "tensor.gather result rank is inconsistent")
   var inner = 1
   for axis_index in selected_axis + 1..R {
     inner *= int(dim(data, index(axis_index)))
@@ -21,7 +22,29 @@ local fn gather_runtime<
   for axis_index in 0..Q {
     count *= int(dim(indices, index(axis_index)))
   }
-  var out = tensor<E, Y>(E(0))
+  // Gather replaces the selected data axis with all index axes. Carry that
+  // runtime shape into allocation, including empty selections and scalar
+  // indices; a symbolic result type alone does not specify its extents.
+  var shape = tensor<index, [K]>(index(0))
+  [stage: "shape"]
+  for result_axis in 0..K {
+    if result_axis < selected_axis {
+      shape[result_axis] = dim(data, index(result_axis))
+    } else {
+      if result_axis < selected_axis + Q {
+        shape[result_axis] = dim(indices, index(result_axis - selected_axis))
+      } else {
+        shape[result_axis] = dim(data, index(result_axis - Q + 1))
+      }
+    }
+  }
+  var out: tensor<E, Y> = make(E(0), shape)
+  [stage: "shape"]
+  for result_axis in 0..K {
+    assert(shape[result_axis] >= index(0) &&
+           dim(out, index(result_axis)) == shape[result_axis],
+           "tensor.gather result disagrees with its declared shape")
+  }
   for group in 0..outer, item in 0..count, offset in 0..inner {
     var selected = int(indices[item])
     if selected < 0 {
@@ -40,7 +63,7 @@ local fn gather_runtime<
 fn gather<E: Ty, D: list<int>, S: list<int>, Y: list<int>>(
   data: tensor<E, D>, indices: tensor<index, S>, axis: int
 ) -> tensor<E, Y> {
-  return gather_runtime<E, D, S, Y, len<D>, len<S>>(data, indices, axis)
+  return gather_runtime<E, D, S, Y, len<D>, len<S>, len<Y>>(data, indices, axis)
 }
 
 // Deterministic selection along one logical axis.  Scanning candidates in

@@ -12,6 +12,14 @@ fn filtered(x: tensor<f32, [4]>, count: index) -> tensor<i64, [1, _]> {
   return nn.nonzero(mask)
 }
 
+fn coordinates(x: tensor<f32, [4]>, count: index) -> tensor<i64, [_, 1]> {
+  let shape = tensor<index, [1]>(count)
+  let prefix: tensor<f32, [_]> = tensor.view(x, shape)
+  let mask: tensor<bool, [_]> = prefix > tensor<f32, []>(f32(0))
+  let selected: tensor<i64, [1, _]> = nn.nonzero(mask)
+  return tensor.permute(selected, [1, 0])
+}
+
 fn rows(x: tensor<i32, [2, 3]>, rows: index) -> tensor<i64, [2, _]> {
   var shape = tensor<index, [2]>(index(3))
   shape[0] = rows

@@ -159,7 +159,7 @@ local fn tensor_new(
 
 local fn tensor_make(
   m: Mod, op: Op, depth: int, blob: str,
-  data_fns: list<Fn>, config: dict
+  data_fns: list<Fn>, config: dict, direct: list<str>, results: list<str>
 ) -> str {
   let outputs = ir.outs(op)
   let inputs = ir.args(op)
@@ -173,20 +173,27 @@ local fn tensor_make(
   let indent = pad(depth)
   var out = ""
   if !reuses(op) && !mem.planned(output) {
-    var storage = n
-    if storage == 0 {
-      storage = 1
+    let target = direct_result(output, direct, results)
+    if target != "" {
+      out = indent + scalar(tensor.elem(ir.type(output)), config) + "* " +
+            val(output) + " = " + target + ";\n"
+    } else {
+      var storage = n
+      if storage == 0 {
+        storage = 1
+      }
+      out = indent + storage_prefix(ir.owner(ir.blk(op))) +
+            scalar(tensor.elem(ir.type(output)), config) + " " +
+            val(output) + "[" + text(storage) + "];\n"
     }
-    out = indent + storage_prefix(ir.owner(ir.blk(op))) +
-          scalar(tensor.elem(ir.type(output)), config) + " " +
-          val(output) + "[" + text(storage) + "];\n"
   }
+  out += bind_extents(m, op, output, inputs[1], true, depth, config)
   if !ir.has(op, "mem.fill") || ir.meta(op, "mem.fill") != false {
     out += indent + "for (" + index_type(config) +
-           " i = 0; i < " + text(n) + "; ++i) " + val(output) +
+           " i = 0; i < " + logical_count(m, output) + "; ++i) " + val(output) +
            "[i] = " + expr(m, inputs[0], blob, data_fns, config) + ";\n"
   }
-  return out + bind_extents(m, op, output, inputs[1], true, depth, config)
+  return out
 }
 
 local fn readonly_storage(m: Mod, value: Val) -> bool {

@@ -30,7 +30,7 @@ local fn call(
   assert(accepts_with(m, op, config), "c: call must be prepared: " + name)
   let resolved = ir.target(m, op)
   if resolved == "tensor.make" {
-    return tensor_make(m, op, depth, blob, data_fns, config)
+    return tensor_make(m, op, depth, blob, data_fns, config, direct, results)
   }
   if resolved == "tensor.view" {
     return tensor_view(m, op, depth, config)

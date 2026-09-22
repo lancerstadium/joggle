@@ -186,24 +186,62 @@ fn concatenated(
   return replaced(out, dim, extent)
 }
 
-fn permute<E: Ty, S: list<int>, T: list<int>>(
+local fn permute_runtime<E: Ty, S: list<int>, T: list<int>, R: int, Q: int>(
   x: tensor<E, S>, axes: list<int>
 ) -> tensor<E, T> {
-  var out = tensor<E, T>(E(0))
-  for i in 0..numel<T>() {
-    var source = 0
-    var output_stride = 1
-    for reverse_output in 0..len(T) {
-      let output_axis = len(T) - reverse_output - 1
-      let input_axis = axes[output_axis]
-      var source_stride = 1
-      for trailing in input_axis + 1..len(S) {
-        source_stride *= S[trailing]
-      }
-      source += i / output_stride % T[output_axis] * source_stride
-      output_stride *= T[output_axis]
+  assert(R == Q && len(axes) == R, "tensor.permute ranks must match")
+  [stage: "shape"]
+  for axis in 0..R {
+    assert(axes[axis] >= 0 && axes[axis] < R,
+           "tensor.permute axis is out of range")
+    [stage: "shape"]
+    for prior in 0..axis {
+      assert(axes[prior] != axes[axis], "tensor.permute axes must be unique")
+    }
+  }
+  var source_strides = tensor<index, [R]>(index(1))
+  var shape = tensor<index, [R]>(index(0))
+  var total = index(1)
+  [stage: "shape"]
+  for reverse in 0..R {
+    let axis = R - reverse - 1
+    let size = dim(x, index(axis))
+    assert(size >= index(0), "tensor.permute extent is negative")
+    source_strides[axis] = total
+    assert(i64(total) <= i64(9223372036854775807) /
+             (i64(size) + i64(size == index(0))),
+           "tensor.permute size overflows")
+    let next = i64(total) * i64(size)
+    total = index(next)
+    assert(i64(total) == next, "tensor.permute index range overflows")
+  }
+  [stage: "shape"]
+  for axis in 0..R {
+    shape[axis] = dim(x, index(axes[axis]))
+  }
+  var out: tensor<E, T> = make(E(0), shape)
+  [stage: "shape"]
+  for axis in 0..R {
+    assert(dim(out, index(axis)) == shape[axis],
+           "tensor.permute result disagrees with its declared shape")
+  }
+  for i in index(0)..total {
+    var source = index(0)
+    var remaining = i
+    [stage: "shape"]
+    for reverse in 0..R {
+      let axis = R - reverse - 1
+      let size = shape[axis] + index(shape[axis] == index(0))
+      source += (remaining % size) * source_strides[axes[axis]]
+      remaining /= size
     }
     out[i] = x[source]
   }
   return out
+}
+
+fn permute<E: Ty, S: list<int>, T: list<int>>(
+  x: tensor<E, S>, axes: list<int>
+) -> tensor<E, T> {
+  return permute_runtime<E, S, T, len<S>, len<T>>(x, axes)
 }

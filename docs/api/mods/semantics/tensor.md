@@ -308,6 +308,42 @@ fn structural(type: Ty) -> list<Ty> {
 | linear algebra | `matmul` | contracts compatible inner dimensions |
 | arithmetic | `cast`, `fill`, operators | elementwise work |
 
+### Runtime-shape indexing and layout
+
+`gather` and `permute` carry runtime dimensions into their result allocation.
+The result type records the rank and known extents; its `_` axes are populated
+from the input dimensions rather than replaced with a fixed size.
+
+```jog
+fn selected_rows(x: tensor<i32, [3, 2]>, indices: tensor<index, [2]>, n: index)
+    -> tensor<i32, [_, 2]> {
+  let shape = tensor<index, [1]>(n)
+  let selected: tensor<index, [_]> = tensor.view(indices, shape)
+  return tensor.gather(x, selected, 0)
+}
+
+fn transpose_prefix(x: tensor<i32, [2, 3]>, n: index)
+    -> tensor<i32, [3, _]> {
+  var shape = tensor<index, [2]>(index(3))
+  shape[0] = n
+  let prefix: tensor<i32, [_, 3]> = tensor.view(x, shape)
+  return tensor.permute(prefix, [1, 0])
+}
+```
+
+For `selected_rows`, use `x = [[0, 1], [2, 3], [4, 5]]` and
+`indices = [-1, 0]`. Negative indices count from the selected axis's end:
+`n = 1` returns `[[4, 5]]`, `n = 2` returns `[[4, 5], [0, 1]]`, and
+`n = 0` returns a `[0, 2]` tensor. Scalar indices remove the selected axis;
+an index tensor's axes replace that axis.
+
+For `transpose_prefix`, use `x = [[0, 1, 2], [3, 4, 5]]`.
+`n = 2` returns `[[0, 3], [1, 4], [2, 5]]`; `n = 1` returns
+`[[0], [1], [2]]`; `n = 0` returns a `[3, 0]` tensor. `permute` validates
+that its axis list contains each input axis exactly once and precomputes
+source strides before copying elements. Both operations preserve logical
+sizes separately from allocation capacities.
+
 ## Internal organization
 
 | Fragment | Main concern |
