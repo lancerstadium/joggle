@@ -7,6 +7,7 @@ void dynamic_c_gather_middle(const int32_t* x, int64_t x_dim_1,
                              const int64_t* indices, int64_t indices_dim_0,
                              int32_t* result);
 void dynamic_c_gather_scalar(const int32_t* x, int64_t x_dim_0, int32_t* result);
+void dynamic_c_gather_i32(const int32_t* x, int64_t x_dim_0, int32_t* result);
 void dynamic_c_shape(const int32_t* x, int64_t x_dim_0, int64_t* result);
 
 int main(void) {
@@ -44,5 +45,8 @@ int main(void) {
   dynamic_c_shape(input, 0, shape);
   if (shape[0] != 0 || shape[1] != 2)
     return 8;
+  dynamic_c_gather_i32(input, 3, gathered);
+  if (gathered[0] != 4 || gathered[1] != 5)
+    return 9;
   return 0;
 }

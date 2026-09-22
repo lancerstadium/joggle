@@ -23,7 +23,7 @@ local fn gather_runtime<
   }
   var out = tensor<E, Y>(E(0))
   for group in 0..outer, item in 0..count, offset in 0..inner {
-    var selected = indices[item]
+    var selected = int(indices[item])
     if selected < 0 {
       selected += extent
     }
