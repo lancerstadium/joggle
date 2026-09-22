@@ -5,7 +5,7 @@ set(WANT_HEADER ON)
 macro(c_pipeline_checks)
   joggle_expect("NMS C ABI omits its dynamic result extent"
     FILE "${header}" MATCHES
-    "int64_t\\* out_[0-9]+, int64_t\\* out_[0-9]+_dim_0")
+    "int64_t\\* out(_[0-9]+)?, int64_t\\* out(_[0-9]+)?_dim_0")
 endmacro()
 
 include("${CMAKE_CURRENT_LIST_DIR}/c_pipeline.cmake")

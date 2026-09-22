@@ -161,6 +161,12 @@ fn nonzero<E: Ty, S: list<int>, R: int>(
 The dynamic axis is explicit semantic information; bounded allocation requires a
 later proof/capacity, not a guessed fixed shape.
 
+`nms` accepts rank-three boxes and scores with a runtime candidate count, such
+as `tensor<f32, [1, _, 4]>` and `tensor<f32, [1, 2, _]>`. Rank comes from the
+type structure; candidate counts come from `tensor.dim`. The result contains
+`[batch, class, box]` rows with shape `[selected, 3]`. A bounded-storage backend
+also needs a capacity bound for its selected-row and suppression buffers.
+
 `nonzero` reads the input's runtime dimensions and returns the coordinates of
 nonzero elements in row-major traversal order. Each output row corresponds to
 one input axis. Numeric inputs select values unequal to zero; Boolean inputs

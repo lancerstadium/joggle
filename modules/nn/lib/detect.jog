@@ -107,7 +107,9 @@ local fn iou<E: Ty>(
 
 // Shared variable-result suppression.  Runtime shape stays a value: `make`
 // owns the working storage and `view` exposes only the selected prefix.
-fn nms<E: Ty, I: Ty, B: list<int>, S: list<int>>(
+local fn nms_runtime<
+  E: Ty, I: Ty, B: list<int>, S: list<int>, BR: int, SR: int
+>(
   boxes: tensor<E, B>,
   scores: tensor<E, S>,
   maximum_output: tensor<I, []>,
@@ -115,7 +117,7 @@ fn nms<E: Ty, I: Ty, B: list<int>, S: list<int>>(
   score_threshold: tensor<E, []>,
   center: int
 ) -> tensor<i64, [_, 3]> {
-  assert(len(B) == 3 && len(S) == 3,
+  assert(BR == 3 && SR == 3,
          "nn.nms expects rank-three boxes and scores")
   let batches = tensor.dim(boxes, index(0))
   let box_count = tensor.dim(boxes, index(1))
@@ -182,4 +184,18 @@ fn nms<E: Ty, I: Ty, B: list<int>, S: list<int>>(
   result_shape[0] = count
   result_shape[1] = index(3)
   return tensor.view(out, result_shape)
+}
+
+fn nms<E: Ty, I: Ty, B: list<int>, S: list<int>>(
+  boxes: tensor<E, B>,
+  scores: tensor<E, S>,
+  maximum_output: tensor<I, []>,
+  overlap_threshold: tensor<E, []>,
+  score_threshold: tensor<E, []>,
+  center: int
+) -> tensor<i64, [_, 3]> {
+  // Rank is structural even when individual extents are runtime values.
+  return nms_runtime<E, I, B, S, len<B>, len<S>>(
+    boxes, scores, maximum_output, overlap_threshold, score_threshold, center
+  )
 }
