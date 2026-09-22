@@ -12,6 +12,7 @@ import sys
 import socket
 import tempfile
 import unittest
+import csv
 from unittest.mock import patch
 from pathlib import Path
 
@@ -25,11 +26,95 @@ from run_joggle_benchmarks import compiler_identity, checkpoint_protocol, make_h
 from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
 from run_extension_task import execute, fusion_fixture, sandbox_policy
-from run_extension_agent import public_case_ids, tool_feedback
+from run_extension_agent import public_case_ids, tool_feedback, response_usage, final_checks
+import run_extension_agent
 from merge_benchmark_rows import audited_input
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_agent_provider_and_final_failures_still_export_records(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "trajectory"
+            argv = ["agent", "--model", "test-model", "--system", "Joggle",
+                    "--task", "ana-storage-cost", "--seed", "1", "--output", str(output),
+                    "--joggle", sys.executable, "--builtin-mods", directory]
+            def api(path, payload=None):
+                if path == "tags":
+                    return {"models": [{"name": "test-model", "digest": "f" * 64}]}
+                if path == "version":
+                    return {"version": "test"}
+                raise TimeoutError("test provider timeout")
+            def git(command, **kwargs):
+                return "a" * 40 if "rev-parse" in command else b""
+            with patch.object(sys, "argv", argv), patch.object(sys, "platform", "darwin"), \
+                    patch.object(run_extension_agent, "local_api", side_effect=api), \
+                    patch.object(run_extension_agent, "native_identity", return_value={}), \
+                    patch.object(subprocess, "check_output", side_effect=git), \
+                    patch.object(subprocess, "run", side_effect=OSError("test oracle unavailable")):
+                self.assertEqual(run_extension_agent.main(), 0)
+            record = json.loads((output / "trajectory.json").read_text())
+            self.assertIn("provider", record["infrastructure_error"])
+            self.assertIn("final-oracle", record["infrastructure_error"])
+            self.assertIsNone(record["final_oracle_sha256"])
+            self.assertTrue(record["identity_stable"])
+            with (output / "result.csv").open() as stream:
+                row = next(csv.DictReader(stream))
+            self.assertEqual(row["stop_reason"], "agent_error")
+            self.assertEqual(row["passed"], "false")
+            self.assertEqual(row["parsed"], "")
+            self.assertFalse(json.loads((output / "result.json").read_text())["release_eligible"])
+
+    def test_agent_usage_rejects_missing_or_out_of_budget_counts(self):
+        response = {"done": True, "model": "test-model", "message": {"content": "{}"},
+                    "prompt_eval_count": 100, "eval_count": 20}
+        self.assertEqual(response_usage(response, "test-model", 128, 32), (100, 20))
+        for field, value in (("prompt_eval_count", None), ("eval_count", True),
+                             ("eval_count", "20"), ("eval_count", 0),
+                             ("eval_count", 33), ("prompt_eval_count", 109),
+                             ("done", False), ("model", "other")):
+            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                response_usage(response | {field: value}, "test-model", 128, 32)
+
+    def test_agent_final_oracle_failure_retains_identity_check(self):
+        def fail(*args, **kwargs):
+            raise RuntimeError("oracle executable missing")
+        with patch("run_extension_agent.native_identity") as identity:
+            identity.return_value = True
+            final, stable, errors = final_checks(fail, identity)
+            self.assertIsNone(final)
+            self.assertTrue(stable)
+            identity.assert_called_once_with()
+            self.assertIn("final-oracle", errors[0])
+
+    def test_agent_final_identity_failure_retains_oracle_result(self):
+        report = {"passed": False, "setup": [], "cases": []}
+        def unavailable():
+            raise TimeoutError("provider unavailable")
+        final, stable, errors = final_checks(lambda *a, **k: report, unavailable)
+        self.assertIs(final, report)
+        self.assertFalse(stable)
+        self.assertIn("identity", errors[0])
+        final, stable, errors = final_checks(lambda *a, **k: report, lambda: False)
+        self.assertIs(final, report)
+        self.assertFalse(stable)
+        self.assertIn("identity changed", errors[0])
+
+    def test_agent_final_checks_reject_inconsistent_success(self):
+        valid = {"passed": True, "setup": [], "cases": [
+            {"exit_code": 0, "decode_error": "", "passed": True}]}
+        final, stable, errors = final_checks(lambda *a, **k: valid, lambda: True)
+        self.assertIs(final, valid)
+        self.assertTrue(stable)
+        self.assertEqual(errors, [])
+        invalid = [None, {}, valid | {"cases": []}, valid | {"setup": [{}]},
+                   valid | {"cases": [{"exit_code": 0, "decode_error": "", "passed": False}]}]
+        for report in invalid:
+            with self.subTest(report=report):
+                final, stable, errors = final_checks(lambda *a, **k: report, lambda: True)
+                self.assertIsNone(final)
+                self.assertTrue(stable)
+                self.assertTrue(errors)
+
     def test_benchmark_assembly_rejects_changed_compiler_identity(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "rows.csv"

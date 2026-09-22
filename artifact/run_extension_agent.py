@@ -34,6 +34,56 @@ def local_api(path: str, payload: dict | None = None) -> dict:
         return json.load(response)
 
 
+def response_usage(response: dict, model: str, context: int, prediction: int) -> tuple[int, int]:
+    """Reject missing usage and reported context rollover before accepting an action."""
+    if (not isinstance(response, dict) or response.get("done") is not True or
+            response.get("model") != model or
+            not isinstance(response.get("message"), dict) or
+            not isinstance(response["message"].get("content"), str)):
+        raise ValueError("incomplete or mismatched model response")
+    prompt, completion = response.get("prompt_eval_count"), response.get("eval_count")
+    if (type(prompt) is not int or type(completion) is not int or
+            prompt <= 0 or completion <= 0):
+        raise ValueError("missing or invalid provider token counts")
+    if completion > prediction:
+        raise ValueError("provider exceeded the requested generation limit")
+    if prompt + completion > context:
+        raise ValueError("provider token counts exceed the context window")
+    return prompt, completion
+
+
+def final_checks(oracle, identity_check) -> tuple[dict | None, bool, list[str]]:
+    """Keep failed final checks observable without inventing semantic results."""
+    final, stable, errors = None, False, []
+    try:
+        report = oracle("final-oracle", public=False)
+        if (not isinstance(report, dict) or type(report.get("passed")) is not bool or
+                not isinstance(report.get("setup"), list) or
+                not isinstance(report.get("cases"), list)):
+            raise ValueError("invalid final oracle report")
+        for step in report["setup"]:
+            if not isinstance(step, dict) or "exit_code" not in step:
+                raise ValueError("invalid final oracle setup record")
+        for case in report["cases"]:
+            if not isinstance(case, dict) or not {"exit_code", "decode_error"} <= case.keys():
+                raise ValueError("invalid final oracle case record")
+        if report["passed"] and (not report["cases"] or
+                any(step["exit_code"] != 0 for step in report["setup"]) or
+                any(case["exit_code"] != 0 or case["decode_error"] or
+                    case.get("passed") is not True for case in report["cases"])):
+            raise ValueError("inconsistent final oracle success")
+        final = report
+    except Exception as failure:
+        errors.append(f"final-oracle: {type(failure).__name__}: {failure}")
+    try:
+        stable = identity_check() is True
+        if not stable:
+            errors.append("identity: model or native tool identity changed")
+    except Exception as failure:
+        errors.append(f"identity: {type(failure).__name__}: {failure}")
+    return final, stable, errors
+
+
 def public_case_ids(task: dict) -> list[str]:
     return [cases[0]["id"] for cases in (task["positive_cases"], task["negative_cases"]) if cases]
 
@@ -166,9 +216,18 @@ def main() -> int:
         result = subprocess.run(argv, capture_output=True, text=True)
         if result.returncode not in (0, 1) or not output.exists():
             raise RuntimeError("oracle infrastructure failed: " + result.stderr[-6000:])
-        report = json.loads(output.read_text())
-        if public and any(case["id"] not in public_ids for case in report["cases"]):
-            raise RuntimeError("oracle returned a non-public fixture during testing")
+        try:
+            report = json.loads(output.read_text())
+            if report["complete_task"] is not (not public):
+                raise ValueError("oracle returned the wrong fixture visibility")
+            if all(step["exit_code"] == 0 for step in report["setup"]):
+                expected_ids = (public_ids if public else [case["id"] for case in
+                    task["positive_cases"] + task["negative_cases"]])
+                actual_ids = [case["id"] for case in report["cases"]]
+                if len(actual_ids) != len(expected_ids) or set(actual_ids) != set(expected_ids):
+                    raise ValueError("oracle returned an incomplete or unexpected fixture population")
+        except (ValueError, KeyError, TypeError) as failure:
+            raise RuntimeError(f"invalid oracle report: {failure}") from failure
         return report
 
     for action_index in range(ACTIONS):
@@ -179,17 +238,19 @@ def main() -> int:
                    "think": False, "format": ACTION_SCHEMA,
                    "options": {**options, "seed": args.seed + action_index,
                                "num_predict": min(4096, remaining)}}
+        response = None
         try:
             response = local_api("chat", request)
-            if (not response.get("done") or response.get("model") != args.model or
-                    not isinstance(response.get("message", {}).get("content"), str)):
-                raise ValueError("incomplete or mismatched model response")
+            prompt_count, completion_count = response_usage(
+                response, args.model, options["num_ctx"], request["options"]["num_predict"])
         except Exception as failure:
-            events.append({"action_index": action_index, "provider_error": str(failure)})
+            infrastructure_error = f"provider: {type(failure).__name__}: {failure}"
+            events.append({"action_index": action_index, "provider_error": infrastructure_error,
+                           "response": response})
             stop = "agent_error"
             break
-        prompt_tokens += int(response["prompt_eval_count"])
-        completion_tokens += int(response["eval_count"])
+        prompt_tokens += prompt_count
+        completion_tokens += completion_count
         events.append({"action_index": action_index, "response": response,
                        "candidate_before_sha256": digest(candidate)})
         content = response["message"]["content"]
@@ -215,11 +276,14 @@ def main() -> int:
                 edits += 1
                 feedback = {"edited": True, "source_sha256": digest(candidate)}
             else:
-                feedback = tool_feedback(oracle(f"public-{action_index}", public=True))
+                try:
+                    feedback = tool_feedback(oracle(f"public-{action_index}", public=True))
+                except Exception as failure:
+                    raise RuntimeError(f"public oracle failed: {failure}") from failure
         except (ValueError, KeyError, TypeError) as failure:
             feedback = {"error": str(failure)}
-        except RuntimeError as failure:
-            infrastructure_error = str(failure)
+        except Exception as failure:
+            infrastructure_error = f"tool: {type(failure).__name__}: {failure}"
             stop = "agent_error"
             break
         events[-1]["feedback"] = feedback
@@ -227,19 +291,24 @@ def main() -> int:
         (root / "checkpoint.json").write_text(json.dumps({"events": events,
             "messages": messages, "completion_tokens": completion_tokens}, indent=2) + "\n")
     wall_ms = round((time.perf_counter() - started) * 1000)
-    final = oracle("final-oracle", public=False)
-    final_tags = local_api("tags")["models"]
-    identity_stable = (any(model.get("name") == args.model and model.get("digest") == model_revision
-                          for model in final_tags) and native_identity(args) == system_identity and
-                       all(digest(ROOT / path) == value for path, value in source_identity.items()))
-    passed = bool(final["passed"] and completion_tokens <= TOKENS and identity_stable and
+    def identity_check() -> bool:
+        final_tags = local_api("tags")["models"]
+        return (any(model.get("name") == args.model and model.get("digest") == model_revision
+                    for model in final_tags) and native_identity(args) == system_identity and
+                all(digest(ROOT / path) == value for path, value in source_identity.items()))
+
+    final, identity_stable, final_errors = final_checks(oracle, identity_check)
+    if final_errors:
+        infrastructure_error = "; ".join(filter(None, [infrastructure_error, *final_errors]))
+        stop = "agent_error"
+    passed = bool(final and final["passed"] and completion_tokens <= TOKENS and identity_stable and
                   not infrastructure_error and stop != "agent_error")
     if passed:
         stop = "success"
     elif stop == "submitted":
         stop = "build" if any(step["exit_code"] != 0 for step in final["setup"]) else "semantic"
-    gates = all(step["exit_code"] == 0 for step in final["setup"]) and any(
-        case["exit_code"] == 0 and not case["decode_error"] for case in final["cases"])
+    gates = bool(final and all(step["exit_code"] == 0 for step in final["setup"]) and any(
+        case["exit_code"] == 0 and not case["decode_error"] for case in final["cases"]))
     patch_text = "".join(difflib.unified_diff(starter.read_text().splitlines(keepends=True),
         candidate.read_text().splitlines(keepends=True), fromfile="starter." + suffix,
         tofile="candidate." + suffix))
@@ -253,7 +322,9 @@ def main() -> int:
         "api_card_sha256": source_identity[str(card.relative_to(ROOT))], "seed": args.seed, "run": args.run,
         "options": options, "think": False, "public_case_ids": public_ids,
         "demonstrations": demos, "messages": messages, "events": events,
-        "submitted": submitted, "wall_ms": wall_ms, "final_oracle_sha256": digest(root / "final-oracle.json")}
+        "submitted": submitted, "wall_ms": wall_ms, "final_check_errors": final_errors,
+        "final_oracle_sha256": (digest(root / "final-oracle.json")
+                                if (root / "final-oracle.json").is_file() else None)}
     trajectory = root / "trajectory.json"
     trajectory.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
     row = {"model": args.model, "model_revision": model_revision, "system": args.system,

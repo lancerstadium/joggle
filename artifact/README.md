@@ -105,6 +105,14 @@ credentials are removed from the child environment. MLIR additionally needs
 The agent has no shell action. `--allow-dirty` marks an integration run against
 uncommitted harness changes; otherwise the collector requires a clean checkout.
 
+Each response must report valid token counts within the requested generation
+and context limits. These checks validate reported usage; provider-side input
+truncation requires tokenizer-level accounting before a formal collection.
+Public and final oracle reports must cover their assigned fixture populations.
+Provider, oracle, and identity-check exceptions are retained in the trajectory
+with `stop_reason: agent_error`; final-check failures still produce the CSV and
+patch record, with unknown compiler phases left empty.
+
 The current collector emits integration records with `release_eligible: false`.
 It records successful native execution but does not infer a failed compiler's
 parse/type/build phase from its exit code. Unmeasured phase fields and reference
