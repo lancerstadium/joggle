@@ -5436,6 +5436,10 @@ int main(int argc, char** argv) {
   CHECK(!env.diags().empty());
   CHECK(env.diags().front().message.find("compile-time range") !=
         std::string::npos);
+  CHECK(env.diags().front().message.find("0..1000001") !=
+        std::string::npos);
+  CHECK(env.diags().front().message.find("materialization limit 1000000") !=
+        std::string::npos);
   env.clear_diags();
 
   // A constant control region is only evaluable if every call is supported.

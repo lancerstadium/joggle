@@ -2944,7 +2944,12 @@ private:
       if (size && *size > max_range_items && folding_)
         return std::nullopt;
       if (!size || *size > max_range_items) {
-        fail("compile-time range is invalid or too large", loc);
+        const std::string bounds = first && last
+            ? std::to_string(*first) + ".." + std::to_string(*last)
+            : "non-integer bounds";
+        fail("compile-time range is invalid or too large: " + bounds +
+                 " (materialization limit " +
+                 std::to_string(max_range_items) + ")", loc);
         return std::nullopt;
       }
       Items out;
