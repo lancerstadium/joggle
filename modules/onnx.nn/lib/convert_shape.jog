@@ -296,11 +296,19 @@ local fn convert_split(m: Mod, op: Op) -> bool {
     }
   }
   for i in 0..len(outputs) {
+    var values: list<Val> = [inputs[0]]
+    if tensor.static(input) {
+      values += [ints(m, op, [start]), ints(m, op, [axis]),
+                 ints(m, op, [1])]
+    } else {
+      // A static split axis does not make the remaining axes static. Keep
+      // runtime extents and explicit end bounds in the tensor-control form.
+      values += [shape_tensor(m, op, [start]),
+                 shape_tensor(m, op, [start + sizes[i]]),
+                 shape_tensor(m, op, [axis])]
+    }
     let next = ir.call(
-      m, op, "tensor.slice",
-      [inputs[0], ints(m, op, [start]), ints(m, op, [axis]),
-       ints(m, op, [1])],
-      ir.type(outputs[i])
+      m, op, "tensor.slice", values, ir.type(outputs[i])
     )
     carry(m, outputs[i], next)
     carry(m, op, ir.def(next))

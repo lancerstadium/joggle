@@ -26,3 +26,13 @@ fn prefix(x: tensor<i32, [4, 5]>, rows: index) -> tensor<i32, [_, 2]> {
   let result: tensor<i32, [_, 2]> = onnx.Slice(data, starts, ends, axes, steps)
   return result
 }
+
+fn split_prefix(x: tensor<i32, [4, 5]>, rows: index)
+    -> (tensor<i32, [_, 2]>, tensor<i32, [_, 3]>) {
+  var shape = tensor<index, [2]>(index(5))
+  shape[0] = rows
+  let data: tensor<i32, [_, 5]> = tensor.view(x, shape)
+  [onnx: {axis: -1, split: [2, 3]}]
+  let left: tensor<i32, [_, 2]>, right: tensor<i32, [_, 3]> = onnx.Split(data)
+  return left, right
+}

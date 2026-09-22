@@ -7,6 +7,9 @@ void dynamic_slice_c_main(
 void dynamic_slice_c_reverse(const int32_t* x, int32_t* result);
 void dynamic_slice_c_prefix(const int32_t* x, int64_t rows, int32_t* result,
                             int64_t* result_dim_0);
+void dynamic_slice_c_split_prefix(const int32_t* x, int64_t rows,
+                                  int32_t* left, int64_t* left_rows,
+                                  int32_t* right, int64_t* right_rows);
 
 static int check(const int32_t* actual, const int32_t* expected,
                  int64_t count) {
@@ -82,6 +85,25 @@ int main(void) {
         return 8;
     if (result[2 * n] != -99)
       return 9;
+    int32_t left[9], right[13];
+    for (int64_t i = 0; i < 9; ++i)
+      left[i] = -99;
+    for (int64_t i = 0; i < 13; ++i)
+      right[i] = -99;
+    int64_t left_rows = -1, right_rows = -1;
+    dynamic_slice_c_split_prefix(input, n, left, &left_rows, right, &right_rows);
+    if (left_rows != n || right_rows != n)
+      return 10;
+    for (int64_t i = 0; i < n; ++i) {
+      for (int64_t j = 0; j < 2; ++j)
+        if (left[2 * i + j] != input[5 * i + j])
+          return 11;
+      for (int64_t j = 0; j < 3; ++j)
+        if (right[3 * i + j] != input[5 * i + 2 + j])
+          return 12;
+    }
+    if (left[2 * n] != -99 || right[3 * n] != -99)
+      return 13;
   }
   return 0;
 }

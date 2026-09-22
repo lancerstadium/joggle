@@ -231,13 +231,20 @@ def main() -> int:
             model = args.model_root / f"{name}.onnx"
             if not model.is_file() or sha256(model) != expected_hash:
                 raise SystemExit(f"missing or mismatched model: {model}")
+            # Bound scratch storage by one rebuild, not the complete model x
+            # repetition matrix. Directory cleanup is outside every timed stage.
             for warmup in range(args.warmups):
-                rebuild(args, model, case["inputs"], work_root / name / f"warmup-{warmup}")
+                with tempfile.TemporaryDirectory(
+                    prefix=f"{name}-warmup-{warmup}-", dir=work_root,
+                ) as sample:
+                    rebuild(args, model, case["inputs"], Path(sample) / "rebuild")
             for iteration in range(args.iterations):
-                timings, total_ops, artifact_bytes, digest = rebuild(
-                    args, model, case["inputs"],
-                    work_root / name / f"iteration-{iteration}"
-                )
+                with tempfile.TemporaryDirectory(
+                    prefix=f"{name}-iteration-{iteration}-", dir=work_root,
+                ) as sample:
+                    timings, total_ops, artifact_bytes, digest = rebuild(
+                        args, model, case["inputs"], Path(sample) / "rebuild"
+                    )
                 for stage in STAGES:
                     rows.append({
                         "path": "production", "system": "Joggle",
