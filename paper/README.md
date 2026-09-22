@@ -257,6 +257,32 @@ retain semantic operations while introducing lower-level helpers, and a later
 stage may replace definitions it owns. Typed refinements express progress
 within one graph model, and every published state remains inspectable.
 
+Figure 3 separates the two graphs that organize compilation. The mod graph
+determines which compiler functions are available; the subject graph contains
+the program those functions inspect and refine. Typed handles connect the
+shared evaluator to the subject store. Execution plans cache function decoding,
+whereas dependency records track the graph state observed by a call. These
+caches serve different purposes and share a transactional publication boundary.
+
+<!-- FIGURE 3 PROMPT — system-architecture.png. Original compact single-column
+square compiler architecture, white background, fine charcoal rules, pale blue
+and amber nodes, small serif mathematics and monospace field annotations.
+Top left: tensor/fusion/target mod boundaries, use edges from dependents to
+tensor; legal/fuse/lower/emit function nodes. Top right: nested M/f/b0 subject
+graph x,w→Conv→Add→ReLU→y, b→Add, value circles and users(v) links.
+Middle: f:(H,A)→R and parallel query(R), run(RW), emit(R) entrances to one
+resolve/evaluate interface. Bottom: evaluator plan table, register slots and
+K/D/W records beside separate F/B/O/V entity-slot arrays, h=(S,i,g), revision
+scopes and a separate o0→v0→o1 def-use relation. Plan key includes store,
+function, generation and revision. Transaction: G→G′→verify, success publishes
+graph and dependency records; failure restores G. No invented timing numbers,
+large title bands, decorative icons, paragraphs, or sequential query/run/emit.
+Use thin dependency arrows and tiny local annotations, not word-heavy cards. -->
+
+*Figure 3: Joggle's two graph structures. Mods delimit compiler capabilities;
+typed calls operate on the subject graph. Decoded plans, dependency records,
+and versioned entity stores support transactional publication. Entries are schematic.*
+
 The rest of the design follows the three requirements from Section 2. Section
 3.2 realizes R1 with typed compiler functions. Section 3.3 realizes R2 with
 mod-scoped composition. Sections 3.4 and 3.5 realize R3 through observed
@@ -280,7 +306,7 @@ or `Attr`. The result $R$ may itself be a handle, an ordinary value, structured
 data, text, or bytes. Handles retain graph ownership and lifetime; ordinary
 values remain independent of graph storage.
 
-Figure 3 follows the operator extension introduced in Section 2. The graph
+Figure 4 follows the operator extension introduced in Section 2. The graph
 computes $y=\max(\operatorname{Conv}(x,w)+b,0)$. A legality function checks
 types, shapes, and intermediate uses; fusion replaces the matched operations
 with one semantic operation; conversion selects its target form. These graph
@@ -289,7 +315,7 @@ emitter reads $G_2$ and returns the artifact. The extension's mod owns all five
 roles, which exchange graph handles and owned values through the same call
 interface.
 
-<!-- FIGURE 3 PROMPT — Original compact single-column scientific diagram,
+<!-- FIGURE 4 PROMPT — Original compact single-column scientific diagram,
 3.35 inches wide and approximately 2.6 inches high. Top: one conv_ext mod
 containing Semantics/Analysis/Transform/Convert/Emit columns, with
 define/legal/fuse/lower/emit and contract/read/write/write/read beneath them;
@@ -303,7 +329,7 @@ Thin charcoal connectors, white background, pale teal/blue/lavender;
 coral only for the match boundary. Compact readable labels, no numeric callouts,
 fake source code, cache-hit counts, or isolated output-type edits. -->
 
-*Figure 3: A schematic fused-operator extension. One mod owns five compiler
+*Figure 4: A schematic fused-operator extension. One mod owns five compiler
 roles. Fusion and conversion publish verified graphs; emission reads the
 prepared graph and returns an artifact without changing it.*
 
@@ -321,7 +347,7 @@ Read-only execution rejects mutation, and a run publishes only a verified
 graph.
 
 Compiler functions also compose through ordinary calls. A fusion function can
-invoke the legality analysis in Figure 3, and a conversion can query the fused
+invoke the legality analysis in Figure 4, and a conversion can query the fused
 operator's semantic contract. These calls remain visible to type checking,
 diagnostics, and dependency capture. The typed call graph therefore defines
 composition directly.
@@ -473,12 +499,30 @@ the final graph verifies. Failure rolls back graph mutations and revision
 state; it also discards the tentative records. Consequently, the next run
 cannot reuse dependencies derived from an unpublished graph.
 
-For example, changing an operator's layout metadata invalidates a legality
-query that read that metadata. A scheduled transformation that observed the
-same property is selected directly. A later stage is selected when its inputs
-overlap the transformation's recorded output scope. A query over a disjoint
-function retains its result. Selection follows recorded observations and
-effects, including their function and structural granularity.
+Figure 5 illustrates the distinction between a direct and an upstream miss.
+An external edit changes the convolution's layout metadata. Stage $s_1$ read
+that property, so its observation is stale. Stage $s_2$ read the ReLU operation:
+that observation remains current at selection time, but $s_1$ previously wrote
+to the containing function $f$. This output scope overlaps $s_2$'s input, so
+$s_2$ is selected as an upstream miss. Stage $s_3$ observed a reduction in a
+disjoint function $g$ and retains its result. Thus, stage selection follows
+recorded reads and write scopes, not merely reachability from the edited node.
+
+<!-- FIGURE 5 PROMPT — reactive-update.png. Dense square single-column
+mechanism diagram, fine black rules, small math annotations, pale blue graph
+nodes, amber selected stages and hatched retained records. Three tight bands:
+(a) f contains x,w→Conv→Add→ReLU→y and b→Add; disjoint g contains u→Reduce→v.
+External edit layout a→b at Conv; cached D1 records layout=a, D2 observes ReLU,
+D3 observes Reduce. (b) Record table s1/Conv.layout/f/stale,
+s2/ReLU/f/upstream, s3/Reduce/empty/reuse; selected_i=stale(Ki,Di) OR
+overlap(dirty,Di). Scope intersections explain selection. (c) s1→s2 within a
+transaction captures fresh D′/W′; verify G′ precedes joint publication;
+failure restores G, including the already committed external edit layout=b.
+Retained s3 records are rebased. No timings, large headings or prose boxes. -->
+
+*Figure 5: Reactive stage selection. A stale observation selects $s_1$;
+overlapping effects select $s_2$; disjoint observations retain $s_3$.
+Verification gates joint publication; rollback preserves the committed external edit.*
 
 Fine-grained observations reduce re-execution but add capture and validation
 work. For $K$ stages, incremental latency is approximately
@@ -623,20 +667,45 @@ geometric aggregation. CSV rows record subject identity, seed, and correctness;
 hash-bound run records pin revisions, build flags, host and CPU policy, and
 cache configuration.
 
+Figure 6 summarizes the common comparison structure. Extension and ownership
+studies share feature specifications; update paths start from the same edited
+graph; execution paths consume identical tensors. The oracle precedes metric
+aggregation in each branch. Successful cases provide paired measurements,
+while unsuccessful cases remain in the coverage denominator.
+
+<!-- FIGURE 6 PROMPT — evaluation-workflow.png. Original dense square
+single-column protocol schematic, fine black rules, white background, small
+serif math labels and monospace annotations. Independent source glyphs for
+specification, graph G, tensor X and revision/hash. Four compact rows:
+(a) native function/type specification → Joggle/MLIR/xDSL → budgeted code/oracle
+repair loop → pass/tokens; (b) feature patch hunks and package dependency
+boundaries → (F,L,Z,R); (c) same edited G forks into update/full execution,
+matching five-node topology, highlight two affected nodes versus all five,
+artifact-equivalence check → Tu/Tf and Vu/Vf; (d) same X forks into
+base/opt/ORT, numerical comparison → median/p95 and correct/total. Brace only
+the first three rows with Joggle/MLIR/xDSL. Bottom success/failure branches
+both retain CSV records. This is a protocol, not numerical results. No
+fabricated bar charts, percentages, prose boxes, large headers or gradients. -->
+
+*Figure 6: Four paired comparisons. Shared specifications, edited graphs,
+and tensors align inputs; correctness gates measurements while failures
+remain in coverage. Update shading denotes executed work.*
+
 ### 4.2 Agent Extension Completion
 
-The extension suite contains 24 held-out tasks, four in each of six families:
+The extension protocol specifies 24 tasks, four in each of six families:
 type or operation definition, analysis, rewrite, conversion, artifact
-generation, and a vertical feature combining these roles. Every task has one
-semantic specification, fixed positive and negative fixtures, a
-system-specific harness, and an idiomatic passing reference patch.
+generation, and a vertical feature combining these roles. Each task has one
+semantic specification and fixed positive and negative fixtures. Admission to
+the trajectory matrix requires a system-specific harness and an idiomatic
+reference patch that passes the shared oracle.
 
-Two frozen small code models drive the same deterministic coding-agent
+The agent protocol uses two frozen small instruction models with the same deterministic coding-agent
 harness. For each system, the agent receives the semantic specification, a
 compact native API card, an isolated workspace, and the same inspect, edit,
 build, and test tools. It may take at most 30 actions and emit at most 32k
 tokens. Each model--system--task condition runs ten paired seeds with zero or
-two disjoint demonstrations, yielding 2,880 complete trajectories.
+two disjoint demonstrations. The full design contains 2,880 trajectory conditions.
 
 The primary endpoint is executable success within budget: the final workspace
 must parse, type-check, build, and pass the semantic oracle without manual
@@ -779,11 +848,11 @@ Every panel contains four operators and paired base/optimized bars. Shared
 logarithmic y axis, one legend, ORT=1 dashed line, median-to-p95 whiskers,
 hatched base bars and solid optimized bars. Report correct coverage in the
 caption. Bars start at parity; use compact wrapped labels and shared axes at
-the final column width. Add model
-panels only from measured model rows. Preserve every case and failed outcome.
+the final column width. Source CSV: paper/data/figure-07-operators.csv.
+Model measurements have a separate companion display. Preserve every case and failed outcome.
 No generated pixels or illustrative numbers for data. -->
 
-*Figure: Operator execution across all six families. Bars extend from parity
+*Figure 7: Operator execution across all six families. Bars extend from parity
 to median latency relative to ONNX Runtime; whiskers extend to p95. All panels use the same
 scale, and values below one indicate faster execution. Each path passes all
 24 numerical oracles.*
@@ -810,8 +879,38 @@ latency. These per-operator differences locate the remaining generated-code
 costs and distinguish the effect of an optimization pack from compiler update
 responsiveness.
 
-<!-- PERFORMANCE DATA — One CSV and one plotting script serve the combined
-operator/model experiment. CSV: figure-07-performance.csv. Columns:
+Figure 8 extends the comparison to all 15 models. Both Joggle paths pass the
+numerical oracle on the same 11 models; ONNX Runtime passes all 15. SSD-MobileNet
+and TinyYOLOv3 stop during preparation, while EfficientNet INT8 and QDQ exceed
+the numerical tolerance. These four cases remain visible in the model matrix
+and do not enter latency aggregates.
+
+Across the 11 jointly correct models, the optimization pack reduces latency by
+a geometric mean of 2.30× relative to the base path. The corresponding latency
+ratios to ONNX Runtime are 48.52× for the base path and 21.05× for the optimized
+path. All 11 optimized models remain slower than ONNX Runtime. MobileNetV2
+improves from 192.94 to 86.85 ms, whereas XCiT changes from 3081.52 to 2955.53 ms;
+the respective ONNX Runtime medians are 6.02 and 36.24 ms. The two model
+responses show that the optimization pack's benefit depends on the workload
+and does not eliminate the remaining generated-code gap.
+
+<!-- FIGURE 8 DATA — Single-column 3.35-inch horizontal point-interval plot.
+All 15 models plus a separately ruled geometric-mean row. Square for base,
+circle for optimized, shared logarithmic latency/ORT axis, parity at one;
+median-to-p95 intervals, optimized milliseconds in a narrow right column.
+Explicit ×C for preparation failures and ×N for numerical failures, never
+zero-valued points. Aggregate only the 11 jointly correct models.
+CSV: paper/data/figure-07-models.csv; per-model summaries:
+paper/data/figure-07-models-summary.csv; script:
+artifact/figures/figure_07_models.py. -->
+
+*Figure 8: Execution across 15 models: median/p95 latency normalized to ORT
+(100 samples). Right: optimized median milliseconds. ×C/×N: lowering/numerical
+failures. Geometric means include the 11 jointly correct models.*
+
+<!-- PERFORMANCE DATA — Separate operator and model displays form one
+end-to-end experiment. Each display has a source CSV and plotting script.
+Model CSV: paper/data/figure-07-models.csv. Columns:
 subject_kind,subject,subject_hash,family,system,system_revision,variant,
 supported,reason,iteration,calls_per_sample,latency_ns,max_abs_error,
 max_rel_error,input_digest,output_digest,correct,seed. -->

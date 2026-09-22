@@ -1,0 +1,150 @@
+{
+  "complete_model_population": true,
+  "inputs": [
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-joggle-base-40fc928.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-joggle-base-40fc928.run.json",
+      "record_sha256": "3eb5110c77b0c9eb1a8180955295f790a946162c1ed770f60f9103c63693a960",
+      "sha256": "c1772407ab295cdb6faddbf326486667d37c0762d3e1a9d5037cb7d8e5a15b1a"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-joggle-opt-40fc928.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-joggle-opt-40fc928.run.json",
+      "record_sha256": "813b33124b04073b79c30786a59b55e0757437fe7dab3934810caf9919ac34a0",
+      "sha256": "71d59385cf9c11b6c9d6dc136d0d146b48d692d19ec0b9d0e7d908001e651d75"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-ort-becdc24.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-ort-becdc24.run.json",
+      "record_sha256": "dbc623a8b8832bd2af67362b4f3a9c0c55062da2f9fa71b2468390b651d44ec6",
+      "sha256": "e47e2ae9c43cc1e7cbd1e98629efb08a40c457c33bda56496837a6e7fd7e10e9"
+    }
+  ],
+  "output": {
+    "path": "paper/data/figure-07-models.csv",
+    "sha256": "9492b7da2c580da7823b2a41cf568d0805a75be841ab88ffe79e13cf89372871"
+  },
+  "rows": 3708,
+  "schema": "model-performance-merge/v1",
+  "shared_protocol": {
+    "benchmark_spec_sha256": "2fa842e74a5cfcbf59217c4e1d85f7cf2fd11e09dc5ef429f8510965e0835d00",
+    "cases": [
+      "googlenet-12",
+      "tinyyolov2-8",
+      "shufflenet-v2-12",
+      "resnet18-v1-7",
+      "ultraface-rfb-320",
+      "densenet-12",
+      "ssd-mobilenetv1-12",
+      "tiny-yolov3-11",
+      "squeezenet1.1-7",
+      "efficientnet-lite4-11-int8",
+      "mobilenetv2-7",
+      "xcit-tiny-12-p8-224-opset17",
+      "mnist-8",
+      "squeezenet1.0-13-qdq",
+      "efficientnet-lite4-11-qdq"
+    ],
+    "execution_batches": {
+      "densenet-12": 1,
+      "efficientnet-lite4-11-int8": 1,
+      "efficientnet-lite4-11-qdq": 1,
+      "googlenet-12": 1,
+      "mnist-8": 1,
+      "mobilenetv2-7": 1,
+      "resnet18-v1-7": 1,
+      "shufflenet-v2-12": 1,
+      "squeezenet1.0-13-qdq": 1,
+      "squeezenet1.1-7": 1,
+      "ssd-mobilenetv1-12": 1,
+      "tiny-yolov3-11": 1,
+      "tinyyolov2-8": 1,
+      "ultraface-rfb-320": 1,
+      "xcit-tiny-12-p8-224-opset17": 1
+    },
+    "execution_iterations": 100,
+    "group": "models",
+    "host_controls": {
+      "affinity": null,
+      "governors": null,
+      "nice": 0
+    },
+    "input_index_sha256": "848044a73fcc1481328def6b4c33f843949e3a3a681a1372f632c813d958ce23",
+    "model_files": [
+      {
+        "id": "googlenet-12",
+        "sha256": "c99c507058eaf41de8723408fdda7db8325cb57f0a89f2ee07a716d6e963e14e"
+      },
+      {
+        "id": "tinyyolov2-8",
+        "sha256": "583fb7fdc948435ceac9fa82efc7708701efe8382a859a3dd46526b155f5f2ae"
+      },
+      {
+        "id": "shufflenet-v2-12",
+        "sha256": "ea69821b4dd374ae2f33f9710dd1229ac263d0ee5b5a46ca3521f6483e1ba035"
+      },
+      {
+        "id": "resnet18-v1-7",
+        "sha256": "4e8f8653e7a2222b3904cc3fe8e304cd8b339ce1d05fd24688162f86fb6df52c"
+      },
+      {
+        "id": "ultraface-rfb-320",
+        "sha256": "34cd7e60aeff28744c657de7a3dc64e872d506741de66987f3426f2b79f88017"
+      },
+      {
+        "id": "densenet-12",
+        "sha256": "0294e7e88e5b3360de9b0fdc321baf9e6ef18b7f058c4536caae3b9f18ed9ed5"
+      },
+      {
+        "id": "ssd-mobilenetv1-12",
+        "sha256": "b8fba5e404077d4048d27fcd1667e85e27e192eb9bf51e696c46a3acd7d21058"
+      },
+      {
+        "id": "tiny-yolov3-11",
+        "sha256": "f715cc2d99740d22d312777e20d9de2b2ecdc250155be8fd3752ce7e8b823521"
+      },
+      {
+        "id": "squeezenet1.1-7",
+        "sha256": "1eeff551a67ae8d565ca33b572fc4b66e3ef357b0eb2863bb9ff47a918cc4088"
+      },
+      {
+        "id": "efficientnet-lite4-11-int8",
+        "sha256": "2b3cbb5077262b20df565dacddecb3724c0976c35029a87e512d13aa4eff04a2"
+      },
+      {
+        "id": "mobilenetv2-7",
+        "sha256": "c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f"
+      },
+      {
+        "id": "xcit-tiny-12-p8-224-opset17",
+        "sha256": "b5cffe4f64dbee8d1f9c74442a91611b74fd57925599ae46bccf1f7fa3e57093"
+      },
+      {
+        "id": "mnist-8",
+        "sha256": "2f06e72de813a8635c9bc0397ac447a601bdbfa7df4bebc278723b958831c9bf"
+      },
+      {
+        "id": "squeezenet1.0-13-qdq",
+        "sha256": "4a567dd7542ef440890d57268fabf47211174c593d7a1837bd7f16a1067169e7"
+      },
+      {
+        "id": "efficientnet-lite4-11-qdq",
+        "sha256": "6837d0b19625d4aff8266d7197a7f3775afd82a8c40f9fd0283d52db4955566f"
+      }
+    ],
+    "seed": 20260921,
+    "thread_environment": {
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1"
+    },
+    "warmups": 10
+  },
+  "source_revisions": [
+    "40fc9288722d4f204fc0e0b32fa2c21691fb186e",
+    "40fc9288722d4f204fc0e0b32fa2c21691fb186e",
+    "becdc24d2f365edb6bd87bd0567cc3dde3a1d6a3"
+  ]
+}

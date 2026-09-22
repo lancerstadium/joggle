@@ -1,0 +1,32 @@
+{
+  "aggregate_population": [
+    "densenet-12",
+    "googlenet-12",
+    "mnist-8",
+    "mobilenetv2-7",
+    "resnet18-v1-7",
+    "shufflenet-v2-12",
+    "squeezenet1.0-13-qdq",
+    "squeezenet1.1-7",
+    "tinyyolov2-8",
+    "ultraface-rfb-320",
+    "xcit-tiny-12-p8-224-opset17"
+  ],
+  "correct": {
+    "joggle-optimized": 11,
+    "joggle-unoptimized": 11,
+    "onnxruntime": 15
+  },
+  "estimator": "median of 100 execution samples; whisker from median to p95",
+  "failed_latency": "absent, not zero; no failed model included in the geometric mean",
+  "geometric_base_over_opt": 2.304782972188989,
+  "geometric_latency_over_ort": {
+    "joggle-optimized": 21.052514256574295,
+    "joggle-unoptimized": 48.521476380318376
+  },
+  "normalization": "each Joggle latency divided by same-model ORT median",
+  "paired_correct": 11,
+  "population": 15,
+  "source_csv": "paper/data/figure-07-models.csv",
+  "source_sha256": "9492b7da2c580da7823b2a41cf568d0805a75be841ab88ffe79e13cf89372871"
+}

@@ -38,6 +38,26 @@ retain semantic operations while introducing lower-level helpers, and a later
 stage may replace definitions it owns. Typed refinements express progress
 within one graph model, and every published state remains inspectable.
 
+Figure~\ref{fig:architecture} separates the two graphs that organize
+compilation. The mod graph determines which compiler functions are available;
+the subject graph contains the program those functions inspect and refine.
+Typed handles connect the shared evaluator to the subject store. Execution
+plans cache function decoding, whereas dependency records track the graph
+state observed by a call. These caches serve different purposes and share a
+transactional publication boundary.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/system-architecture.png}
+  \caption{Joggle's two graph structures. Mods delimit compiler capabilities;
+  typed calls operate on the subject graph. Decoded plans, dependency records,
+  and versioned entity stores support transactional publication. Entries are schematic.}
+  \Description{Mod dependency and operator graphs connect to a shared typed
+  call interface. Below, plan and dependency tables sit beside entity-slot
+  arrays, followed by a verified transaction with commit and rollback paths.}
+  \label{fig:architecture}
+\end{figure}
+
 The rest of the design follows the three requirements from
 Section~\ref{sec:requirements}. Section~\ref{sec:compiler-functions} realizes
 R1 with typed compiler functions. Section~\ref{sec:mods} realizes R2 with
@@ -248,12 +268,27 @@ final graph verifies. Failure rolls back graph mutations and revision state; it
 also discards the tentative records. Consequently, the next run cannot reuse
 dependencies derived from an unpublished graph.
 
-For example, changing an operator's layout metadata invalidates a legality
-query that read that metadata. A scheduled transformation that observed the
-same property is selected directly. A later stage is selected when its inputs
-overlap the transformation's recorded output scope. A query over a disjoint
-function retains its result. Selection follows recorded observations and
-effects, including their function and structural granularity.
+Figure~\ref{fig:reactive-mechanism} illustrates the distinction between a
+direct and an upstream miss. An external edit changes the convolution's layout
+metadata. Stage $s_1$ read that property, so its observation is stale. Stage
+$s_2$ read the ReLU operation: that observation remains current at selection
+time, but $s_1$ previously wrote to the containing function $f$. This output
+scope overlaps $s_2$'s input, so $s_2$ is selected as an upstream miss. Stage
+$s_3$ observed a reduction in a disjoint function $g$ and retains its result.
+Thus, stage selection follows recorded reads and write scopes, not merely
+reachability from the edited node.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/reactive-update.png}
+  \caption{Reactive stage selection. A stale observation selects $s_1$;
+  overlapping effects select $s_2$; disjoint observations retain $s_3$.
+  Verification gates joint publication; rollback preserves the committed external edit.}
+  \Description{A convolution metadata edit invalidates a recorded read;
+  overlapping write scopes select a later stage while a disjoint stage is
+  retained. A transaction verifies the new graph before publishing records.}
+  \label{fig:reactive-mechanism}
+\end{figure}
 
 Fine-grained observations reduce re-execution but add capture and validation
 work. For $K$ stages, incremental latency is approximately

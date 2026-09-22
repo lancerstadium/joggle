@@ -1,0 +1,30 @@
+{
+  "complete": false,
+  "created_utc": "2026-09-22T05:21:41.549904+00:00",
+  "inputs": [
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/operators-joggle-base.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/operators-joggle-base.run.json",
+      "record_sha256": "0cf87408d5f70b9d7efa278dbe3bd9e13e467a6402d565f0b3e671ee9f291208",
+      "sha256": "4ccdae76e2565fa386ec486ca2dba504bdff0473c61370a835ef25e30b769b46"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/operators-joggle-opt.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/operators-joggle-opt.run.json",
+      "record_sha256": "32b609dba1a3c2158270ac455d51357e9f080d12c241f4d8fee9a5f0b1a8c1db",
+      "sha256": "6ff60956787bb626323fc4db6a5704ac8cb55bc54325ee8624c4708270eed73d"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/operators-ort.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/operators-ort.run.json",
+      "record_sha256": "1a6ca20618a30fb6fced032513e7cd10c358fca5d188c7e3c3d79aee09a7619a",
+      "sha256": "d238353ff7d8682a6d4ac7f1c52b1af67ba34e1643ae94eaa5170f711e9e0789"
+    }
+  ],
+  "output": {
+    "path": "paper/data/figure-07-operators.csv",
+    "sha256": "0004f99dac55b0f62b9bc3569da09e424487c29cecceb2c06bc14eddad369f00"
+  },
+  "rows": 7200,
+  "schema": "performance-merge/v1"
+}

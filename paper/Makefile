@@ -9,7 +9,9 @@ sigconf.pdf: sigconf.tex references.bib \
 	sections/06-discussion.tex sections/07-conclusion.tex \
 	sections/appendix-operator-data.tex \
 	figures/figure-01-thesis-map.png figures/figure-02-workflow.png \
-	figures/figure-03-operator-extension.png figures/figure-07-performance.pdf
+	figures/figure-03-operator-extension.png figures/figure-07-performance.pdf \
+	figures/system-architecture.png figures/reactive-update.png \
+	figures/evaluation-workflow.png figures/figure-07-models.pdf
 	latexmk -pdf -interaction=nonstopmode -halt-on-error sigconf.tex
 
 clean:

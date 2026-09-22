@@ -43,7 +43,8 @@ python3 artifact/validate_extension_specs.py
 ```
 
 `run_extension_task.py` executes candidate code against the shared contract.
-The native tasks currently include `ana-broadcast-shape` and `ana-storage-cost`.
+The native tasks include `ana-broadcast-shape`, `ana-storage-cost`,
+`ana-numeric-range`, `emit-storage-plan`, and `emit-target-capability`.
 Each task directory under `extensions/` contains reference implementations for
 Joggle, MLIR, and xDSL; the shared `starter.*` files contain their empty entry
 points. Joggle reads the request from function metadata; MLIR and xDSL
@@ -67,6 +68,13 @@ Run each reference and its empty starter: the reference must pass every case,
 and the starter must fail. Reports contain per-case process output and exact
 oracle comparisons. They are task-validation records, not agent trajectories.
 Candidate code from an agent runs inside its isolated execution environment.
+
+The current references pass every oracle in all three systems for broadcast
+shape, storage cost, storage planning, and target capability. Numeric range
+passes in MLIR and xDSL; Joggle currently rejects its floating-point comparison
+in the evaluator. The shared contract retains fractional and negative inputs.
+Emission oracles also require byte-identical outputs across repeated runs.
+These reference checks validate task execution, not agent completion rates.
 
 The 24-task native harness, demonstrations, and agent collector must be
 completed before collecting the full trajectory matrix. The assembler consumes
@@ -202,7 +210,7 @@ Collectors checkpoint complete cases and record unsupported cases explicitly.
 Only steady-state execution is repeated. A smoke run uses three iterations;
 the release population uses the 100 iterations frozen in the manifest.
 
-Figure 7 uses two columns of compact panels at single-column manuscript width.
+The operator display uses two columns of compact panels at single-column manuscript width.
 It groups operators by family and models in batches of five, with one shared
 logarithmic scale. Paired bars extend from the ORT parity line to each
 Joggle median; upper whiskers reach p95, using that subject's ORT median as
@@ -225,6 +233,32 @@ The main-text operator figure and summary, and the detailed table in Appendix A,
 use revision `83aa8d4fc72d` and the
 `figure-07-operators-83aa8d4.csv` snapshot. Its 7,200 rows cover all 24 operators,
 both Joggle paths, and ONNX Runtime; it contains no model measurements.
+
+The authoring exports in `paper/data/` contain separate operator and model
+CSVs and their per-case summaries. The model export contains all 15 subjects
+at Joggle revision `40fc928`, with the matched ORT run collected at `becdc24`.
+Input/model hashes and measurement settings match across the three runs;
+the base and optimized Joggle runs use the same compiler binary. Eleven models
+pass all three paths. Four Joggle failures remain explicit in the plot and CSV.
+
+```sh
+python3 artifact/figures/figure_07_performance.py \
+  paper/data/figure-07-operators.csv \
+  --output paper/figures/figure-07-performance.pdf \
+  --summary paper/data/figure-07-operators-summary.csv
+
+python3 artifact/figures/figure_07_models.py \
+  paper/data/figure-07-models.csv \
+  --output paper/figures/figure-07-models.pdf \
+  --summary paper/data/figure-07-models-summary.csv
+```
+
+The model companion is a single-column point-interval plot: base squares and
+optimized circles show medians, intervals extend to p95, and the right column
+reports optimized milliseconds. `×C` and `×N` distinguish lowering and
+numerical failures. Its geometric mean includes only the 11 jointly correct
+models. Small authoring fonts are configurable; final submission typography
+must be checked against the venue's figure-text requirements.
 
 ## Render and release
 
