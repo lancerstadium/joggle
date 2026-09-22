@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdio>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -2022,6 +2023,49 @@ int main(int argc, char** argv) {
   CHECK(batch_rollback.revision() == rollback_revision);
   batch_rollback.clear_diags();
   CHECK(batch_rollback.verify(env));
+
+  // A batch shares its name reservations across clones and retains existing
+  // suffixed names, including names used by nested loop arguments.
+  std::string named_batch_source =
+      "mod named_batch\nfn body(x: i32) -> i32 {\n"
+      " var value = x\n for i in 0..2 { value += x }\n return value\n}\n"
+      "fn main(x: i32, i: i32, i_1: i32) -> i32 {\n";
+  for (int index = 0; index < 16; ++index)
+    named_batch_source += " let result" + std::to_string(index) +
+        " = body(" + (index == 0 ? std::string("x")
+                                : "result" + std::to_string(index - 1)) + ")\n";
+  named_batch_source += " return result15 + i + i_1\n}\n";
+  std::string named_batch_text;
+  for (int repeat = 0; repeat < 2; ++repeat) {
+    joggle::Mod named_batch;
+    CHECK(joggle::parse(env, named_batch_source, named_batch, "named-batch.jog"));
+    std::vector<joggle::Op> calls;
+    std::vector<joggle::Fn> bodies;
+    for (const auto op : named_batch.find_fn("main").ops())
+      if (op.callee() == "body") {
+        calls.push_back(op);
+        bodies.push_back(named_batch.find_fn("body"));
+      }
+    CHECK(env.expand(named_batch, calls, bodies));
+    CHECK(named_batch.verify(env));
+    std::set<std::string> iterators;
+    for (const auto op : named_batch.find_fn("main").ops())
+      if (op.kind() == joggle::Op::Kind::loop) {
+        const std::string name(op.blks()[0].args()[0].name());
+        CHECK(name != "i" && name != "i_1");
+        CHECK(iterators.insert(name).second);
+      }
+    CHECK(iterators.size() == 16);
+    const auto text = joggle::print(named_batch);
+    if (repeat == 0)
+      named_batch_text = text;
+    else
+      CHECK(text == named_batch_text);
+    joggle::Mod roundtrip;
+    CHECK(joggle::parse(env, text, roundtrip, "named-batch-roundtrip.jog"));
+    CHECK(roundtrip.verify(env));
+    CHECK(joggle::structurally_equal(named_batch, roundtrip));
+  }
 
   // Best-effort expansion must reach calls after a refusal, regardless of
   // position. A late metadata conflict exercises rollback after body cloning.

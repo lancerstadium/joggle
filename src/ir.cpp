@@ -1827,7 +1827,9 @@ Fn Mod::bind(const Env& env, Op call, Fn source_fn, std::string name,
 }
 
 bool Mod::expand(const Env& env, Op call, Fn callee,
-                 std::string_view semantic, std::vector<Op>* created) {
+                 std::string_view semantic,
+                 std::unordered_map<std::string, std::size_t>& used_names,
+                 std::vector<Op>* created) {
   auto& store = impl_->store;
   if (!call.valid() || call.store_ != &store ||
       call.kind() != Op::Kind::call) {
@@ -1988,10 +1990,6 @@ bool Mod::expand(const Env& env, Op call, Fn callee,
   const detail::Store& source = *callee.store_;
   const std::uint32_t destination = call.blk().id_;
   const std::uint32_t owner = store.blks[destination].data.fn;
-  std::unordered_set<std::string> used_names;
-  for (const auto& slot : store.vals)
-    if (slot.live && !slot.data.name.empty())
-      used_names.insert(slot.data.name);
   std::unordered_map<std::string, std::string> copied_names;
   const auto copy_name = [&](std::string_view source_name) {
     if (source_name.empty())
@@ -2000,9 +1998,13 @@ bool Mod::expand(const Env& env, Op call, Fn callee,
     if (found != copied_names.end())
       return found->second;
     std::string candidate(source_name);
-    for (std::size_t suffix = 1; used_names.contains(candidate); ++suffix)
-      candidate = std::string(source_name) + '_' + std::to_string(suffix);
-    used_names.insert(candidate);
+    const auto [entry, inserted] = used_names.try_emplace(candidate, 1);
+    if (!inserted) {
+      std::size_t& suffix = entry->second;
+      do {
+        candidate = std::string(source_name) + '_' + std::to_string(suffix++);
+      } while (!used_names.try_emplace(candidate, 1).second);
+    }
     copied_names.emplace(std::string(source_name), candidate);
     return candidate;
   };

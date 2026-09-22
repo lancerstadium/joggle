@@ -1052,11 +1052,18 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
       return rollback();
 
   mod.impl_->store.revision = backup.revision;
+  // Reserve names for the complete transaction. Expansion only adds names or
+  // restores an existing call-result name; retaining intermediate names also
+  // keeps later clones distinct without rescanning the growing value store.
+  std::unordered_map<std::string, std::size_t> reserved_names;
+  for (const auto& slot : mod.impl_->store.vals)
+    if (slot.live && !slot.data.name.empty())
+      reserved_names.try_emplace(slot.data.name, 1);
   std::size_t expanded = 0;
   std::vector<Op> created;
   for (std::size_t index = 0; index < calls.size(); ++index) {
     if (!mod.expand(*this, calls[index], implementations[index],
-                    semantics[index], &created)) {
+                    semantics[index], reserved_names, &created)) {
       return rollback();
     }
     for (Op op : created) {
@@ -1095,7 +1102,7 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
     closure_complete = pending.empty();
     for (std::size_t index = 0; index < pending.size(); ++index)
       if (!mod.expand(*this, pending[index], bodies[index],
-                      bodies[index].name()))
+                      bodies[index].name(), reserved_names))
         return rollback();
   }
   if (!closure_complete) {

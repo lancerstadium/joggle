@@ -10,6 +10,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -487,6 +488,7 @@ private:
   std::unique_ptr<Impl> impl_;
 
   bool expand(const Env& env, Op call, Fn callee, std::string_view semantic,
+              std::unordered_map<std::string, std::size_t>& reserved_names,
               std::vector<Op>* created = nullptr);
   Fn clone_one(const Env& env, Fn source, std::string name,
                std::span<const Ty> generics,
