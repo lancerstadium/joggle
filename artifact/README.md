@@ -297,10 +297,15 @@ python3 artifact/figures/figure_07_performance.py \
 `merge_benchmark_rows.py --allow-partial` supports intermediate, hash-checked
 snapshots, including operator-only data. Their merge record has
 `complete: false`; the complete release still requires the full model matrix.
-The main-text operator figure and summary, and the detailed table in Appendix A,
-use revision `5a71fe55a3be` and the
-`figure-07-operators-5a71fe5.csv` snapshot. Its 7,200 rows cover all 24 operators,
-both Joggle paths, and ONNX Runtime; it contains no model measurements.
+The operator figure uses `paper/data/figure-07-operators.csv`: 9,402 rows for
+Joggle revision `5a71fe55a3be`, ORT, and default TVM. The main-text summary and
+Appendix A additionally use `paper/data/onnx-mlir-operators.csv` and its
+hash-bound run record. These 2,202 additional rows cover ONNX-MLIR alone;
+they do not duplicate measurements in the figure source. Across the four
+systems, the common correctness population is 22 operators. QLinearConv is
+unsupported by both external compilers; QLinearMatMul is unsupported by TVM
+and fails the numerical oracle in ONNX-MLIR. Both Joggle paths and ORT pass
+all 24. The table distinguishes all-24 and common-22 geometric means.
 
 The authoring exports in `paper/data/` contain separate operator and model
 CSVs and their per-case summaries. The model export contains all 15 subjects

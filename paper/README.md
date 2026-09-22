@@ -642,7 +642,7 @@ Only outputs that pass the relevant correctness oracle enter an aggregate.
 | Convenient | 3 systems; 24 tasks | completion, tokens |
 | Controllable | 3 systems; 12 patches | files, lines, zones |
 | Efficient | 3 systems; 15 models | latency, visited work |
-| End-to-end | Joggle, ORT, TVM | correctness, latency |
+| End-to-end | 4 systems | correctness, latency |
 
 *Table 1: Evaluation matrix. Every comparison fixes revisions, inputs, and its
 correctness oracle before measurement.*
@@ -832,9 +832,9 @@ elementwise chains, reductions, matrix multiplication, convolution,
 quantization, and fusion---and the same 15 model subjects. We compare Joggle's
 required lowering path, the same path plus its frozen optimization pack, and a
 pinned single-thread ONNX Runtime CPU reference. The operator comparison also
-includes TVM Relax with its default LLVM CPU pipeline and no tuning trials.
-Each case uses byte-identical
-inputs; dtype-specific numerical oracles gate its timing results. Joggle fixes
+includes TVM Relax's default LLVM CPU pipeline without tuning and ONNX-MLIR's
+LLVM pipeline at `-O3`, with parallelism and fast math disabled.
+Each case uses byte-identical inputs; dtype-specific numerical oracles gate its timing results. Joggle fixes
 each entry signature from those inputs before either lowering pipeline begins.
 
 The main measure is steady-state execution latency after ten warm-ups and 100
@@ -865,22 +865,28 @@ Bars run from parity to the median; whiskers reach p95 over 100 samples.
 Joggle and ORT pass 24/24 cases; TVM passes 22/24. × marks unsupported
 QLinearConv and QLinearMatMul imports.*
 
-| Operator-suite measure | Base | Optimized | TVM |
-| --- | ---: | ---: | ---: |
-| Correct operators | 24/24 | 24/24 | 22/24 |
-| Faster than ORT | 4/24 | 4/24 | 7/22 |
-| Latency / ORT, all 24 | 9.27× | 5.21× | — |
-| Latency / ORT, common 22 | 8.95× | 5.23× | 6.66× |
+| Operator-suite measure | Base | Optimized | TVM | ONNX-MLIR |
+| --- | ---: | ---: | ---: | ---: |
+| Correct operators | 24/24 | 24/24 | 22/24 | 22/24 |
+| Faster than ORT | 4/24 | 4/24 | 7/22 | 7/22 |
+| Latency / ORT, all 24 | 9.27× | 5.21× | — | — |
+| Latency / ORT, common 22 | 8.95× | 5.23× | 6.66× | 3.18× |
 
 *Table: Operator summary. Geometric means use all 24 or the common 22 operators,
 as indicated. Per-operator values appear in Appendix A.*
 
-Across the 22 jointly supported operators, Joggle's optimized path achieved
-a geometric mean speedup of 1.27× over the default TVM configuration.
-Joggle had lower median latency on ten of those operators.
-The difference varied by family: Joggle favored rectangular and square matrix
-products, whereas TVM favored several elementwise and reduction workloads.
-Both systems remained slower than ORT in aggregate, as shown in the table.
+Across the 22 jointly correct operators, Joggle's optimized path was 1.27×
+faster than default TVM; ONNX-MLIR was 1.64× faster than Joggle.
+Joggle had lower median latency on ten operators against TVM and eight against
+ONNX-MLIR. Its rectangular and square matrix products outperformed TVM, whereas TVM favored several
+elementwise and reduction workloads. All three compiler configurations remained
+slower than ORT in aggregate.
+
+Joggle and ORT passed all 24 operators, while each external compiler passed 22.
+TVM could not import QLinearConv or QLinearMatMul; ONNX-MLIR could not lower
+QLinearConv, and its QLinearMatMul output failed the integer oracle.
+The common-set aggregate therefore used the same 22 operators across all
+configurations, with complete per-operator measurements in Appendix A.
 
 Within Joggle, the optimization pack reduced geometric mean latency by 1.78×
 over all 24 operators, with gains concentrated in matrix multiplication.
@@ -1090,38 +1096,41 @@ artifacts independently.
 
 ## Appendix A. Operator Measurements
 
-| Operator | ORT (µs) | Base / ORT | Opt / ORT |
-| --- | ---: | ---: | ---: |
-| conv-depthwise | 41.92 | 3.64 | 4.57 |
-| conv-pointwise | 63.83 | 146.92 | 32.66 |
-| conv-stem | 178.12 | 4.44 | 9.35 |
-| conv-strided | 39.06 | 171.00 | 190.42 |
-| ew-affine-1k | 2.80 | 0.08 | 0.08 |
-| ew-broadcast-relu | 3.58 | 0.81 | 0.79 |
-| ew-chain-64k | 21.55 | 3.40 | 3.92 |
-| ew-select-16k | 8.08 | 0.98 | 0.87 |
-| fuse-add-relu | 14.11 | 4.89 | 4.53 |
-| fuse-conv-bias-relu | 294.42 | 101.45 | 43.96 |
-| fuse-matmul-bias-relu | 14.26 | 170.18 | 13.35 |
-| fuse-mul-add | 20.34 | 2.32 | 2.44 |
-| mm-batched | 10.64 | 71.02 | 71.00 |
-| mm-rectangular | 13.23 | 214.80 | 9.91 |
-| mm-square-256 | 31.51 | 327.35 | 25.37 |
-| mm-square-64 | 4.55 | 20.57 | 1.66 |
-| quant-conv | 26.51 | 9.06 | 10.25 |
-| quant-dynamic | 4.82 | 1.48 | 1.52 |
-| quant-matmul | 6.15 | 20.78 | 2.40 |
-| quant-qdq-tensor | 3.40 | 0.54 | 0.56 |
-| red-l2-last | 15.46 | 1.10 | 1.07 |
-| red-max-channel | 59.16 | 10.66 | 10.40 |
-| red-mean-spatial | 12.25 | 9.54 | 9.57 |
-| red-sum-row | 9.49 | 5.78 | 6.28 |
-| Geometric mean ratio | — | 9.27 | 5.21 |
-| Correct operators | 24/24 | 24/24 | 24/24 |
+| Operator | ORT (µs) | Base / ORT | Opt / ORT | TVM / ORT | ONNX-MLIR / ORT |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| conv-depthwise | 41.92 | 3.64 | 4.57 | 0.82 | 3.74 |
+| conv-pointwise | 63.83 | 146.92 | 32.66 | 144.27 | 12.65 |
+| conv-stem | 178.12 | 4.44 | 9.35 | 2.50 | 5.96 |
+| conv-strided | 39.06 | 171.00 | 190.42 | 186.00 | 180.75 |
+| ew-affine-1k | 2.80 | 0.08 | 0.08 | 0.33 | 0.21 |
+| ew-broadcast-relu | 3.58 | 0.81 | 0.79 | 0.32 | 0.21 |
+| ew-chain-64k | 21.55 | 3.40 | 3.92 | 1.32 | 0.55 |
+| ew-select-16k | 8.08 | 0.98 | 0.87 | 0.59 | 0.96 |
+| fuse-add-relu | 14.11 | 4.89 | 4.53 | 0.85 | 0.52 |
+| fuse-conv-bias-relu | 294.42 | 101.45 | 43.96 | 84.67 | 75.86 |
+| fuse-matmul-bias-relu | 14.26 | 170.18 | 13.35 | 166.48 | 6.56 |
+| fuse-mul-add | 20.34 | 2.32 | 2.44 | 0.83 | 0.47 |
+| mm-batched | 10.64 | 71.02 | 71.00 | 69.89 | 6.41 |
+| mm-rectangular | 13.23 | 214.80 | 9.91 | 225.47 | 10.36 |
+| mm-square-256 | 31.51 | 327.35 | 25.37 | 330.90 | 16.21 |
+| mm-square-64 | 4.55 | 20.57 | 1.66 | 20.40 | 1.57 |
+| quant-conv | 26.51 | 9.06 | 10.25 | — | — |
+| quant-dynamic | 4.82 | 1.48 | 1.52 | 3.15 | 5.24 |
+| quant-matmul | 6.15 | 20.78 | 2.40 | — | × |
+| quant-qdq-tensor | 3.40 | 0.54 | 0.56 | 0.44 | 0.65 |
+| red-l2-last | 15.46 | 1.10 | 1.07 | 1.23 | 1.21 |
+| red-max-channel | 59.16 | 10.66 | 10.40 | 3.72 | 2.22 |
+| red-mean-spatial | 12.25 | 9.54 | 9.57 | 6.75 | 8.36 |
+| red-sum-row | 9.49 | 5.78 | 6.28 | 6.36 | 6.39 |
+| Geometric mean, all 24 | — | 9.27 | 5.21 | — | — |
+| Geometric mean, common 22 | — | 8.95 | 5.23 | 6.66 | 3.18 |
+| Correct operators | 24/24 | 24/24 | 24/24 | 22/24 | 22/24 |
 
 *Table A1: Operator execution measurements. Joggle revision `5a71fe55a3be`,
-Apple Clang 17.0.0 (`-O3 -DNDEBUG`), and ONNX Runtime 1.26.0 CPU with one thread
-and full graph optimization. Each entry uses ten warm-ups and 100 measured
-samples. Ratios divide unrounded per-operator medians; values below one
-indicate lower latency than ORT. All 72 subject/variant pairs pass the
-numerical oracle. The geometric mean covers all 24 operators.*
+Apple Clang 17.0.0 (`-O3 -DNDEBUG`), ONNX Runtime 1.26.0 CPU with full graph
+optimization, TVM revision `c7b458e946bc` (default LLVM), and ONNX-MLIR revision
+`4a13c34aa695` (`-O3`, no parallelism or fast math). All use one CPU thread.
+Each passing entry uses ten warm-ups and 100 measured samples. Ratios divide
+unrounded per-operator medians; values below one indicate lower latency than
+ORT. — denotes an unsupported operation; × denotes a failed numerical oracle.
+Geometric means use the indicated common population.*

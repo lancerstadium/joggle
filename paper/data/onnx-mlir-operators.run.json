@@ -1,0 +1,351 @@
+{
+  "backend": {
+    "artifacts": {
+      "libcruntime.a": {
+        "path": "/Users/lancer/Documents/Item/joggle-study/onnx-mlir-baseline/build/Release/lib/libcruntime.a",
+        "sha256": "ba66b8952bb89dc600e38198ce4f77e5db106f92a713bad12f16e2c841737afa"
+      },
+      "onnx-mlir": {
+        "path": "/Users/lancer/Documents/Item/joggle-study/onnx-mlir-baseline/build/Release/bin/onnx-mlir",
+        "sha256": "7d00d28ccb2d4b6e5ba18a5d01c05f2b7d574c27c958a1b400032f0407f566b0"
+      }
+    },
+    "compile_flags": [
+      "-O3",
+      "--parallel=false",
+      "--enable-fast-math=false",
+      "--EmitLib"
+    ],
+    "execution_boundary": "C ABI run_main_graph with resident inputs; includes prior output release and native output allocation; copies excluded",
+    "shape_specialization": "fixed benchmark inputs",
+    "source_dirty": false,
+    "source_revision": "4a13c34aa695b228599d637cdb772c19b4b18dba",
+    "system": "ONNX-MLIR LLVM",
+    "system_revision": "onnx-mlir version 0.4.2, onnx version 1.21.0 (https://github.com/onnx/onnx-mlir.git 4a13c34aa695b228599d637cdb772c19b4b18dba)",
+    "variant": "onnx-mlir-llvm",
+    "version": "onnx-mlir version 0.4.2, onnx version 1.21.0 (https://github.com/onnx/onnx-mlir.git 4a13c34aa695b228599d637cdb772c19b4b18dba)\nLLVM version 23.0.0git (https://github.com/llvm/llvm-project.git 1053047a4be7d1fece3adaf5e7597f838058c947)\nOptimized build with assertions.\nDefault target: arm64-apple-darwin24.6.0\nHost CPU: apple-m4"
+  },
+  "benchmark_spec_sha256": "2fa842e74a5cfcbf59217c4e1d85f7cf2fd11e09dc5ef429f8510965e0835d00",
+  "cases": [
+    "fuse-mul-add",
+    "ew-select-16k",
+    "fuse-add-relu",
+    "mm-rectangular",
+    "ew-affine-1k",
+    "mm-square-64",
+    "mm-square-256",
+    "conv-strided",
+    "conv-pointwise",
+    "red-sum-row",
+    "quant-dynamic",
+    "quant-conv",
+    "conv-depthwise",
+    "quant-matmul",
+    "quant-qdq-tensor",
+    "fuse-matmul-bias-relu",
+    "mm-batched",
+    "conv-stem",
+    "red-mean-spatial",
+    "fuse-conv-bias-relu",
+    "ew-chain-64k",
+    "red-max-channel",
+    "ew-broadcast-relu",
+    "red-l2-last"
+  ],
+  "collector_sources": {
+    "benchmark_backends.py": "09505ebaa0169ff5d7d09caea59e53ff14fe1196c8d69a8e5557ff4b25d8892e",
+    "run_baseline_benchmarks.py": "a4ceb445f50d02eb005ead6d0a84ec29b82341522ef1a43e5e5f580d486edc8d"
+  },
+  "collector_sources_unchanged": true,
+  "command": [
+    "artifact/run_baseline_benchmarks.py",
+    "--backend",
+    "onnx-mlir",
+    "--onnx-mlir",
+    "/Users/lancer/Documents/Item/joggle-study/onnx-mlir-baseline/build/Release/bin/onnx-mlir",
+    "--group",
+    "operators",
+    "--operator-models",
+    ".cache/artifact/release-data/operator-models",
+    "--inputs",
+    ".cache/artifact/release-data/inputs",
+    "--output",
+    ".cache/artifact/release-data/operators-onnx-mlir-90e606b.csv"
+  ],
+  "correctness_failures": [
+    {
+      "id": "quant-matmul",
+      "max_abs_error": 0.0,
+      "max_rel_error": 0.0,
+      "output_digest": "4be987a6551adc30a33a22eac73d8ce561abe7826d7de05250e99bc9103847ec",
+      "reason": "oracle:integer-mismatch"
+    }
+  ],
+  "correctness_oracle": {
+    "graph_optimization": "ORT_DISABLE_ALL",
+    "provider": "CPUExecutionProvider",
+    "runtime": "onnxruntime-1.26.0",
+    "schema": "onnx-graph-semantics/v1"
+  },
+  "created_utc": "2026-09-22T17:58:30.093719+00:00",
+  "execution_batches": {
+    "conv-depthwise": 10,
+    "conv-pointwise": 1,
+    "conv-stem": 1,
+    "conv-strided": 1,
+    "ew-affine-1k": 1000,
+    "ew-broadcast-relu": 500,
+    "ew-chain-64k": 100,
+    "ew-select-16k": 100,
+    "fuse-add-relu": 100,
+    "fuse-conv-bias-relu": 1,
+    "fuse-matmul-bias-relu": 10,
+    "fuse-mul-add": 100,
+    "mm-batched": 10,
+    "mm-rectangular": 5,
+    "mm-square-256": 5,
+    "mm-square-64": 100,
+    "quant-conv": 10,
+    "quant-dynamic": 500,
+    "quant-matmul": 100,
+    "quant-qdq-tensor": 500,
+    "red-l2-last": 50,
+    "red-max-channel": 10,
+    "red-mean-spatial": 50,
+    "red-sum-row": 100
+  },
+  "execution_failures": [
+    {
+      "id": "quant-conv",
+      "reason": "backend-error",
+      "stderr": "Traceback (most recent call last):\n  File \"/Users/lancer/Documents/Item/joggle/artifact/run_baseline_benchmarks.py\", line 523, in <module>\n    raise SystemExit(worker(parsed) if parsed.worker else main(parsed))\n                     ~~~~~~^^^^^^^^\n  File \"/Users/lancer/Documents/Item/joggle/artifact/run_baseline_benchmarks.py\", line 158, in worker\n    runner = ONNXMLIRRunner(model, feeds, args.onnx_mlir, measurement[\"threads\"])\n  File \"/Users/lancer/Documents/Item/joggle/artifact/benchmark_backends.py\", line 79, in __init__\n    raise RuntimeError(f\"ONNX-MLIR compilation failed:\\n{compiled.stdout}\\n{compiled.stderr}\")\nRuntimeError: ONNX-MLIR compilation failed:\n[1/6] Wed Sep 23 01:58:18 2026 (0s) Importing ONNX Model to MLIR Module from \"model.onnx\"\n[2/6] Wed Sep 23 01:58:18 2026 (0s) Compiling and Optimizing MLIR Module\n\nfailed to legalize operation 'onnx.QLinearConv'\n\n"
+    }
+  ],
+  "execution_iterations": 100,
+  "execution_mode": "native-c-abi",
+  "git_dirty": false,
+  "git_revision": "90e606b6f80cb8167769260049b277453f9b0c2f",
+  "graph_optimization": "O3",
+  "group": "operators",
+  "host": {
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "platform": "macOS-15.7.3-arm64-arm-64bit-Mach-O",
+    "processor": "arm",
+    "python": "3.14.0"
+  },
+  "host_controls": {
+    "affinity": null,
+    "governors": null,
+    "nice": 0
+  },
+  "input_index_sha256": "848044a73fcc1481328def6b4c33f843949e3a3a681a1372f632c813d958ce23",
+  "model_files": [
+    {
+      "id": "fuse-mul-add",
+      "sha256": "a3ef92cda5b7e519d2065e9ea65f78c0881a4d9d8ec951e5e08e3ecfd3969637"
+    },
+    {
+      "id": "ew-select-16k",
+      "sha256": "1ea90cbec087abfc0419348362997793f97861c984e845d43c65fbe2e2892106"
+    },
+    {
+      "id": "fuse-add-relu",
+      "sha256": "e23728c4e146c1c357f6b694596aa2dac931075a7b7e70bd5054cb78e578434a"
+    },
+    {
+      "id": "mm-rectangular",
+      "sha256": "b6fe9d95fa3c82bbffda6165893120c70edef1c84ae18d7b463bf362bf755ad6"
+    },
+    {
+      "id": "ew-affine-1k",
+      "sha256": "09320a7c9adf855d895cd37db31f5494e6d13d9ce1e4f03e0309ab26deb72f51"
+    },
+    {
+      "id": "mm-square-64",
+      "sha256": "765e13cc14b97d4048cac559eaabe2fb8b6d00e9f75e49d2ebeecc78c395bcee"
+    },
+    {
+      "id": "mm-square-256",
+      "sha256": "e29b457f7af8c6c0137b5668b16914b9a2292cf46489b340ba7a102af354de30"
+    },
+    {
+      "id": "conv-strided",
+      "sha256": "f22e8d5b7018c1cb343f3a22b947dba3b4776dbfeb8c010c8dfc7049cc43e834"
+    },
+    {
+      "id": "conv-pointwise",
+      "sha256": "61bbd5d56aa0ee4121784f3b17d13db72aeada1d1e27eecce2fa8343873326af"
+    },
+    {
+      "id": "red-sum-row",
+      "sha256": "1d322f49a9671c2df243efd39e2785e4c414b873046254c5cdbd3cc5cdc8fa3b"
+    },
+    {
+      "id": "quant-dynamic",
+      "sha256": "d27d451a41c304f8ed2ee1d8f61ba688e31c8755e63828b2006c52f26dbeca4b"
+    },
+    {
+      "id": "quant-conv",
+      "sha256": "da02ad593c79ced47797e16074d3be1b87b2ee59b9181cfcac7d913b0dd96bc3"
+    },
+    {
+      "id": "conv-depthwise",
+      "sha256": "66713898d55589ff5b0e55316ad82e505566f0eca2a06275fbdd29f7031e587c"
+    },
+    {
+      "id": "quant-matmul",
+      "sha256": "bf0e5f9d2ddb8670b1ecf36d2c98243b830e6f23738e7072c5a69b2eaa5bf20a"
+    },
+    {
+      "id": "quant-qdq-tensor",
+      "sha256": "a02dd249ef57454be98d5b4941235b249bcd3bccac2c4a2fb0b3c5419589a218"
+    },
+    {
+      "id": "fuse-matmul-bias-relu",
+      "sha256": "af6fc120f80e7033090cbfd78ec90204a4f2dad46cc1f8fe63fca5d1eaf449cc"
+    },
+    {
+      "id": "mm-batched",
+      "sha256": "9a9b5d6cbdbe9db118329b9f18dbc95e6a2da4b4d47842b6aec824a654c791b6"
+    },
+    {
+      "id": "conv-stem",
+      "sha256": "75b7b182404cb9d6df8b09fda91174fd59c9d8d8ad597a874edcb037b3f2195d"
+    },
+    {
+      "id": "red-mean-spatial",
+      "sha256": "61fed846b3e5a8f63c048f33daecae3a43973878f9a1fa5ac54fad16db5e1318"
+    },
+    {
+      "id": "fuse-conv-bias-relu",
+      "sha256": "4efe84df9e11674a97ef260ab0b61abf639cc3b01b3f2036779227dbbfc7196c"
+    },
+    {
+      "id": "ew-chain-64k",
+      "sha256": "f8d5602c75f109766e19fd81069d4d063c142bdd18d21c495e532b9105fcf605"
+    },
+    {
+      "id": "red-max-channel",
+      "sha256": "9ead6cbd80b9ea57fb2892a52113e3e39abd81fadabcb8b6dbc60fff4f148341"
+    },
+    {
+      "id": "ew-broadcast-relu",
+      "sha256": "be59991ea2afc670c42a6f4a096fd9d5626ffcdef25d07ee14732ff32ff417e5"
+    },
+    {
+      "id": "red-l2-last",
+      "sha256": "bdaa40babb460f88360f5a196bbf511da6e339d44e123afdb14f9e9b3bcd551b"
+    }
+  ],
+  "output_sha256": "bcb1524832b1b55ca224037d362be70bdffc458524062c64436216a1fef51bb1",
+  "preparation_ns": {
+    "conv-depthwise": {
+      "bind": 258956500,
+      "compile": 171612417
+    },
+    "conv-pointwise": {
+      "bind": 272265792,
+      "compile": 152831250
+    },
+    "conv-stem": {
+      "bind": 253607875,
+      "compile": 175905542
+    },
+    "conv-strided": {
+      "bind": 289276792,
+      "compile": 174614583
+    },
+    "ew-affine-1k": {
+      "bind": 256421417,
+      "compile": 147537833
+    },
+    "ew-broadcast-relu": {
+      "bind": 255900750,
+      "compile": 158502500
+    },
+    "ew-chain-64k": {
+      "bind": 271130250,
+      "compile": 155010625
+    },
+    "ew-select-16k": {
+      "bind": 260370292,
+      "compile": 162352417
+    },
+    "fuse-add-relu": {
+      "bind": 315217000,
+      "compile": 149004500
+    },
+    "fuse-conv-bias-relu": {
+      "bind": 259576167,
+      "compile": 187036458
+    },
+    "fuse-matmul-bias-relu": {
+      "bind": 255940083,
+      "compile": 202589083
+    },
+    "fuse-mul-add": {
+      "bind": 422380541,
+      "compile": 559379291
+    },
+    "mm-batched": {
+      "bind": 257065125,
+      "compile": 171818708
+    },
+    "mm-rectangular": {
+      "bind": 254933916,
+      "compile": 163977583
+    },
+    "mm-square-256": {
+      "bind": 308223417,
+      "compile": 184258667
+    },
+    "mm-square-64": {
+      "bind": 331377708,
+      "compile": 151125500
+    },
+    "quant-dynamic": {
+      "bind": 255757375,
+      "compile": 168907792
+    },
+    "quant-matmul": {
+      "bind": 249596167,
+      "compile": 185995458
+    },
+    "quant-qdq-tensor": {
+      "bind": 256311000,
+      "compile": 148540500
+    },
+    "red-l2-last": {
+      "bind": 257020500,
+      "compile": 244716916
+    },
+    "red-max-channel": {
+      "bind": 257416125,
+      "compile": 175810709
+    },
+    "red-mean-spatial": {
+      "bind": 263015291,
+      "compile": 154542542
+    },
+    "red-sum-row": {
+      "bind": 314786875,
+      "compile": 158369584
+    }
+  },
+  "provider": "llvm-cpu",
+  "release_eligible": true,
+  "schema_version": 1,
+  "seed": 20260921,
+  "system_revision": "onnx-mlir version 0.4.2, onnx version 1.21.0 (https://github.com/onnx/onnx-mlir.git 4a13c34aa695b228599d637cdb772c19b4b18dba)",
+  "thread_environment": {
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "TVM_NUM_THREADS": "1",
+    "VECLIB_MAXIMUM_THREADS": "1"
+  },
+  "threads": 1,
+  "warmups": 10
+}
