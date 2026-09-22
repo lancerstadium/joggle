@@ -1,0 +1,44 @@
+mod extension
+use base
+use ir
+
+fn analyze(m: Mod) -> dict {
+  let request = ir.meta(ir.find(m, "subject"), "request")
+  let lhs = get(request, "lhs")
+  let rhs = get(request, "rhs")
+  for shape in [lhs, rhs] {
+    for extent in shape {
+      if int(extent) < 0 {
+        return {error: "invalid-extent", phase: "build"}
+      }
+    }
+  }
+  var rank = len(lhs)
+  if len(rhs) > rank {
+    rank = len(rhs)
+  }
+  var result: list<int> = []
+  for offset in 0..rank {
+    var a = 1
+    var b = 1
+    if offset < len(lhs) {
+      a = int(lhs[len(lhs) - offset - 1])
+    }
+    if offset < len(rhs) {
+      b = int(rhs[len(rhs) - offset - 1])
+    }
+    if a != b && a != 1 && b != 1 {
+      var rejected: dict = {legal: false}
+      rejected["conflict_axis_from_end"] = offset
+      return rejected
+    }
+    var extent = a
+    if a == 1 {
+      extent = b
+    }
+    result = [extent] + result
+  }
+  var accepted: dict = {legal: true}
+  accepted["shape"] = result
+  return accepted
+}

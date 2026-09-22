@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.20)
+project(JoggleExtensionOracle LANGUAGES C CXX)
+find_package(MLIR REQUIRED CONFIG)
+if(NOT EXISTS "${EXTENSION_SOURCE}")
+  message(FATAL_ERROR "EXTENSION_SOURCE must name the candidate C++ implementation")
+endif()
+add_executable(extension-oracle mlir-driver.cpp "${EXTENSION_SOURCE}")
+target_compile_features(extension-oracle PRIVATE cxx_std_17)
+target_include_directories(extension-oracle SYSTEM PRIVATE
+  ${MLIR_INCLUDE_DIRS} ${LLVM_INCLUDE_DIRS})
+separate_arguments(EXTENSION_LLVM_DEFINITIONS NATIVE_COMMAND "${LLVM_DEFINITIONS}")
+target_compile_options(extension-oracle PRIVATE ${EXTENSION_LLVM_DEFINITIONS})
+target_link_libraries(extension-oracle PRIVATE MLIRParser MLIRIR MLIRSupport)

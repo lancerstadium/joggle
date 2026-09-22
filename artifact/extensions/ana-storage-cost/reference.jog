@@ -1,0 +1,23 @@
+mod extension
+use base
+use ir
+
+fn analyze(m: Mod) -> dict {
+  let request = ir.meta(ir.find(m, "subject"), "request")
+  let shape = get(request, "shape")
+  var elements = 1
+  for extent in shape {
+    if int(extent) < 0 {
+      return {error: "invalid-extent", phase: "build"}
+    }
+    elements *= int(extent)
+  }
+  let bits = elements * int(get(request, "element_bits"))
+  var bytes = bits / 8
+  if bits % 8 != 0 {
+    bytes += 1
+  }
+  var result: dict = {}
+  result["bytes"] = bytes
+  return result
+}

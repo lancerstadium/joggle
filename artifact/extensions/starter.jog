@@ -1,0 +1,7 @@
+mod extension
+use base
+use ir
+
+fn analyze(m: Mod) -> dict {
+  return {}
+}

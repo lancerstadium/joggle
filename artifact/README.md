@@ -35,11 +35,44 @@ The generators validate hashes and numerical fixtures before collection.
 
 ## Figure 4
 
-Validate the task contract, run the frozen coding-agent harness for every
-model/system provider, and assemble one CSV:
+Validate the task contract, execute the native task oracles, and then collect
+model/system trajectories for assembly into one CSV:
 
 ```sh
 python3 artifact/validate_extension_specs.py
+```
+
+`run_extension_task.py` executes candidate code against the shared contract.
+The native tasks currently include `ana-broadcast-shape` and `ana-storage-cost`.
+Each task directory under `extensions/` contains reference implementations for
+Joggle, MLIR, and xDSL; the shared `starter.*` files contain their empty entry
+points. Joggle reads the request from function metadata; MLIR and xDSL
+read the same request from a builtin module's dictionary attribute. The driver
+only parses the input and calls the candidate. Shape analysis runs in native
+extension code, and expected outputs remain in the external oracle.
+
+```sh
+python3 artifact/run_extension_task.py \
+  --task ana-broadcast-shape --system Joggle \
+  --source artifact/extensions/ana-broadcast-shape/reference.jog \
+  --joggle build/joggle --builtin-mods build/modules \
+  --build-root .cache/artifact/extension-tasks \
+  --output .cache/artifact/extension-reference-joggle.json
+```
+
+For MLIR, pass `--system MLIR`, a `.cpp` source, and `--mlir-dir` pointing to
+the pinned build's `lib/cmake/mlir`. For xDSL, pass `--system xDSL`, a `.py`
+source, and `--xdsl-python` pointing to the pinned environment's interpreter.
+Run each reference and its empty starter: the reference must pass every case,
+and the starter must fail. Reports contain per-case process output and exact
+oracle comparisons. They are task-validation records, not agent trajectories.
+Candidate code from an agent runs inside its isolated execution environment.
+
+The 24-task native harness, demonstrations, and agent collector must be
+completed before collecting the full trajectory matrix. The assembler consumes
+those provider records:
+
+```sh
 python3 artifact/merge_agent_rows.py \
   .cache/artifact/agent-model-a-joggle.csv \
   .cache/artifact/agent-model-a-mlir.csv \
