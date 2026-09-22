@@ -81,6 +81,18 @@ fn local_probe(m: Mod) -> bool {
   return hidden(m)
 }
 
+local fn selected_value<T: Ty>(value: T) -> int { return 11 }
+local fn selected_value(value: bool) -> int { return 23 }
+local fn selected_wrapper<T: Ty>(value: T) -> int {
+  return selected_value(value)
+}
+fn local_overload_probe<T: Ty>(value: T) -> int {
+  return selected_wrapper(value)
+}
+fn direct_overload_probe<T: Ty>(value: T) -> int {
+  return selected_value(value)
+}
+
 fn fn_revision(m: Mod, name: str) -> int {
   return ir.revision(ir.find(m, name))
 }

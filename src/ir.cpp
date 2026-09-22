@@ -1331,13 +1331,20 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
       const Ty applied(std::string(op.callee()));
       if (!applied.valid())
         continue;
-      const Fn callee =
-          env.match(op, env.resolve_fns(current, applied.name()));
-      if (!callee || !callee.local() ||
-          callee.store_ != source_fn.store_ || callee == current)
-        continue;
-      if (!self(self, callee))
-        return false;
+      // A generic call can choose another overload after specialization.
+      // Preserve its lexical family rather than freezing the member selected
+      // while its argument types are still generic.
+      const std::vector<Fn> candidates =
+          env.resolve_fns(current, applied.name());
+      const Fn selected = env.match(op, candidates);
+      for (Fn callee : candidates) {
+        if (!callee.local() || callee.store_ != source_fn.store_ ||
+            callee == current ||
+            (current.generics().empty() && callee != selected))
+          continue;
+        if (!self(self, callee))
+          return false;
+      }
     }
     mark = 2;
     if (current != source_fn)

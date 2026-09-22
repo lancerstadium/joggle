@@ -114,6 +114,22 @@ fn replace_with_zero(m: Mod, op: Op) -> bool {
 Core edits include `call`, `constant`, `clone`, `move`, `args`, `retarget`,
 `replace`, `erase`, and `rename`.
 
+Copying or expanding a function preserves its private lexical dependencies.
+For generic bodies, that includes private overload families: a call whose
+argument type is `T` can select a more specific overload once `T` becomes
+concrete. A same-named function in the destination mod does not replace the
+source's private helper.
+
+```jog
+local fn classify<T: Ty>(x: T) -> int { return 11 }
+local fn classify(x: bool) -> int { return 23 }
+fn wrapper<T: Ty>(x: T) -> int { return classify(x) }
+```
+
+`wrapper(true)` returns `23`, whereas `wrapper(7)` returns `11`. These results
+remain unchanged after cloning or expanding the wrapper, including when another
+generic helper sits between the wrapper and `classify`.
+
 ### Batch example
 
 ```jog

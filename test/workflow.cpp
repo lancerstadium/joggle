@@ -1940,6 +1940,65 @@ int main(int argc, char** argv) {
   CHECK(lexical_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(lexical_expand, lexical_roundtrip));
 
+  // Capturing a generic helper must retain its lexical overload family:
+  // specialization can select a different member after the wrapper is copied.
+  joggle::Mod overload_expand;
+  CHECK(joggle::parse(env,
+      "mod lexical.overload\nuse script\n"
+      "local fn selected_value(x: bool) -> int { return 99 }\n"
+      "fn main(m: Mod) -> int { return script.local_overload_probe(true) }\n",
+      overload_expand, "lexical-overload.jog"));
+  CHECK(overload_expand.verify(env));
+  joggle::Attr overload_result;
+  CHECK(joggle::query(env, overload_expand.find_fn("main"), overload_expand,
+                       overload_result));
+  CHECK(overload_result.integer() == 23);
+  joggle::Op overload_call;
+  for (joggle::Op op : overload_expand.find_fn("main").ops())
+    if (op.callee() == "script.local_overload_probe") overload_call = op;
+  CHECK(overload_call);
+  CHECK(env.expand(overload_expand, overload_call,
+                   env.resolve(overload_expand, overload_call)));
+  CHECK(overload_expand.verify(env));
+  CHECK(joggle::query(env, overload_expand.find_fn("main"), overload_expand,
+                       overload_result));
+  CHECK(overload_result.integer() == 23);
+  joggle::Mod lexical_overload_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(overload_expand), lexical_overload_roundtrip,
+                       "lexical-overload-roundtrip.jog"));
+  CHECK(lexical_overload_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(overload_expand, lexical_overload_roundtrip));
+
+  for (const std::string name : {"local_overload_probe", "direct_overload_probe"}) {
+    for (const std::string value : {"true", "7"}) {
+      for (const bool clone_first : {false, true}) {
+        joggle::Mod code;
+        CHECK(joggle::parse(env,
+            "mod lexical.family\nuse script\n"
+            "fn main(m: Mod) -> int { return script." + name + "(" + value + ") }\n",
+            code, "lexical-family.jog"));
+        CHECK(code.verify(env));
+        joggle::Op call;
+        for (joggle::Op op : code.find_fn("main").ops())
+          if (op.callee() == "script." + name)
+            call = op;
+        CHECK(call);
+        joggle::Fn body = env.resolve(code, call);
+        if (clone_first) {
+          body = code.clone(env, body, "derived");
+          CHECK(body && code.retarget(env, call, body));
+        }
+        CHECK(code.verify(env));
+        CHECK(joggle::query(env, code.find_fn("main"), code, overload_result));
+        CHECK(overload_result.integer() == (value == "true" ? 23 : 11));
+        CHECK(env.expand(code, call, body));
+        CHECK(code.verify(env));
+        CHECK(joggle::query(env, code.find_fn("main"), code, overload_result));
+        CHECK(overload_result.integer() == (value == "true" ? 23 : 11));
+      }
+    }
+  }
+
   joggle::Mod recursive_closure;
   constexpr std::string_view recursive_closure_source =
       "mod recursive.closure\n"

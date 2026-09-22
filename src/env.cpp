@@ -923,40 +923,47 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
       return rollback();
   }
 
-  const auto lexical_target = [&](Fn context, Op op) {
+  const auto lexical_candidates = [&](Fn context, Op op) {
     if (!context || !op || op.kind() != Op::Kind::call)
-      return Fn{};
+      return std::vector<Fn>{};
     const Ty applied{std::string(op.callee())};
     if (!applied.valid())
-      return Fn{};
-    Fn target = match(op, resolve_fns(context, applied.name()));
-    if (target)
-      return target;
+      return std::vector<Fn>{};
+    std::vector<Fn> candidates = resolve_fns(context, applied.name());
+    if (match(op, candidates))
+      return candidates;
     const std::string prefix = std::string(context.module()) + '.';
     if (!applied.name().starts_with(prefix))
-      return Fn{};
-    return match(op, resolve_fns(context, applied.name().substr(prefix.size())));
+      return candidates;
+    return resolve_fns(context, applied.name().substr(prefix.size()));
+  };
+  const auto lexical_target = [&](Fn context, Op op) {
+    return match(op, lexical_candidates(context, op));
   };
   std::vector<Fn> local_dependencies;
   std::vector<Fn> active_dependencies;
   bool recursive_local_dependency = false;
   const auto collect_locals = [&](const auto& self, Fn context) -> void {
     for (Op op : context.ops()) {
-      const Fn target = lexical_target(context, op);
-      if (!target || !target.local() || target.module() == mod.name())
-        continue;
-      if (std::find(active_dependencies.begin(), active_dependencies.end(),
-                    target) != active_dependencies.end()) {
-        recursive_local_dependency = true;
-        continue;
+      const std::vector<Fn> candidates = lexical_candidates(context, op);
+      const Fn selected = match(op, candidates);
+      for (Fn target : candidates) {
+        if (!target.local() || target.module() == mod.name() ||
+            (context.generics().empty() && target != selected))
+          continue;
+        if (std::find(active_dependencies.begin(), active_dependencies.end(),
+                      target) != active_dependencies.end()) {
+          recursive_local_dependency = true;
+          continue;
+        }
+        if (std::find(local_dependencies.begin(), local_dependencies.end(),
+                      target) != local_dependencies.end())
+          continue;
+        local_dependencies.push_back(target);
+        active_dependencies.push_back(target);
+        self(self, target);
+        active_dependencies.pop_back();
       }
-      if (std::find(local_dependencies.begin(), local_dependencies.end(),
-                    target) != local_dependencies.end())
-        continue;
-      local_dependencies.push_back(target);
-      active_dependencies.push_back(target);
-      self(self, target);
-      active_dependencies.pop_back();
     }
   };
   for (Fn implementation : implementations) {
