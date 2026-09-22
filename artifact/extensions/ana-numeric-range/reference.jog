@@ -2,12 +2,12 @@ mod extension
 use base
 use ir
 
-local fn minimum(a: f32, b: f32) -> f32 {
+local fn minimum(a: f64, b: f64) -> f64 {
   if a < b { return a }
   return b
 }
 
-local fn maximum(a: f32, b: f32) -> f32 {
+local fn maximum(a: f64, b: f64) -> f64 {
   if a > b { return a }
   return b
 }

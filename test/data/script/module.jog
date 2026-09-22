@@ -636,6 +636,40 @@ fn value_alias_probe(m: Mod) -> bool {
          int(fields_before["value"]) == 1 && int(fields["value"]) == 2
 }
 
+local fn real_minimum(a: f64, b: f64) -> f64 {
+  if a < b { return a }
+  return b
+}
+
+fn real_arithmetic_probe(m: Mod) -> bool {
+  let a = real(1.5)
+  let b = real(-2.0)
+  assert(a + b == real(-0.5) && a - b == real(3.5),
+         "real addition or subtraction differs")
+  assert(a * b == real(-3) && a / b == real(-0.75),
+         "real multiplication or division differs")
+  assert(+a == a && -b == real(2), "real unary arithmetic differs")
+  assert(b < a && b <= b && a > b && a >= a && a != b,
+         "real ordering differs")
+  assert(real_minimum(a, b) == b, "real typed helper dispatch differs")
+  assert(real(16777217) - real(16777216) == real(1),
+         "real conversion must retain binary64 precision")
+  assert(9007199254740993 > 9007199254740992,
+         "integer comparison must remain exact")
+  var result = real(0)
+  for i in 0..4 { result += a }
+  assert(result == real(6), "real loop-carried arithmetic differs")
+  return false
+}
+
+fn real_division_zero(m: Mod) -> bool {
+  return real(1) / real(0) == real(0)
+}
+
+fn real_overflow(m: Mod) -> bool {
+  return real(1.0e308) * real(1.0e308) == real(0)
+}
+
 fn value_lifetime_probe(m: Mod) -> bool {
   var fields: dict = {}
   for i in 0..32 {

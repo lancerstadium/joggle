@@ -58,7 +58,7 @@ and fails the current compiler invocation when absent.
 | --- | --- | --- |
 | `kind` | `Attr` or `Ty` | runtime structural kind string |
 | `int` | integer `Attr` or integer `Ty` term | `int` |
-| `real` | floating `Attr` | `f32` |
+| `real` | integer or floating `Attr` | `f64` |
 | `str` | string `Attr` or compatible `Ty` | unquoted string |
 | `text` | any `Attr` or `Ty` | canonical source spelling |
 
@@ -71,6 +71,33 @@ fn explain(value: Attr) -> str {
 
 `str("fast")` returns `fast`; `text("fast")` returns the canonical quoted
 spelling `"fast"`.
+
+Real-valued compiler metadata uses binary64 precision. Project it with `real`
+before arithmetic or comparison; integer-only calculations retain integer
+precision.
+
+```jog
+fn affine_interval(config: dict) -> dict {
+  let lower = real(get(config, "lower"))
+  let upper = real(get(config, "upper"))
+  let scale = real(get(config, "scale"))
+  let bias = real(get(config, "bias", 0))
+  assert(lower <= upper, "invalid interval")
+  var a = lower * scale + bias
+  var b = upper * scale + bias
+  if a > b {
+    let saved = a
+    a = b
+    b = saved
+  }
+  return {lower: a, upper: b}
+}
+```
+
+For `{lower: -2, upper: 3, scale: -0.5, bias: 1}`, this function returns
+`{lower: -0.5, upper: 2.0}`. The negative scale reverses the endpoints, so the
+branch restores their order. Division by zero and non-finite arithmetic results
+stop evaluation with a diagnostic.
 
 ## Type-term API
 

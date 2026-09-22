@@ -5234,6 +5234,12 @@ int main(int argc, char** argv) {
                     overload_execution));
   CHECK(joggle::run(env, "script.value_alias_probe", overload_execution));
   CHECK(joggle::run(env, "script.value_lifetime_probe", overload_execution));
+  CHECK(joggle::run(env, "script.real_arithmetic_probe", overload_execution));
+  for (const auto entry : {"script.real_division_zero", "script.real_overflow"}) {
+    CHECK(!joggle::run(env, entry, overload_execution));
+    CHECK(!env.diags().empty());
+    env.clear_diags();
+  }
   CHECK(joggle::run(env, "script.numel_probe", overload_execution));
   CHECK(joggle::run(env, "script.make_pair", overload_execution));
   CHECK(joggle::print(overload_execution)

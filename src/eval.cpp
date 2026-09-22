@@ -4,6 +4,7 @@
 #include <array>
 #include <bit>
 #include <charconv>
+#include <cmath>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -2788,6 +2789,57 @@ private:
   std::optional<Items> operation(OperatorCode code, std::span<Item> args,
                                  const Loc& loc,
                                  SingleResult* single_result = nullptr) {
+    // Attr real values have binary64 semantics. Keep integer-only operations
+    // on their exact path below instead of converting every number to double.
+    const auto is_real = [](const Item& item) {
+      const Attr* value = as<Attr>(item);
+      return value && value->real().has_value();
+    };
+    if (args.size() == 1 && is_real(args[0]) &&
+        (code == OperatorCode::add || code == OperatorCode::subtract)) {
+      const double value = *real(args[0]);
+      return single(Item(Attr(code == OperatorCode::subtract ? -value : value)),
+                    single_result);
+    }
+    if (args.size() == 2 && (is_real(args[0]) || is_real(args[1]))) {
+      const auto left = real(args[0]);
+      const auto right = real(args[1]);
+      if (left && right) {
+        std::optional<bool> comparison;
+        switch (code) {
+          case OperatorCode::equal: comparison = *left == *right; break;
+          case OperatorCode::not_equal: comparison = *left != *right; break;
+          case OperatorCode::less: comparison = *left < *right; break;
+          case OperatorCode::less_equal: comparison = *left <= *right; break;
+          case OperatorCode::greater: comparison = *left > *right; break;
+          case OperatorCode::greater_equal: comparison = *left >= *right; break;
+          default: break;
+        }
+        if (comparison)
+          return single(Item(Attr(*comparison)), single_result);
+        std::optional<double> value;
+        switch (code) {
+          case OperatorCode::add: value = *left + *right; break;
+          case OperatorCode::subtract: value = *left - *right; break;
+          case OperatorCode::multiply: value = *left * *right; break;
+          case OperatorCode::divide:
+            if (*right != 0.0) value = *left / *right;
+            else {
+              fail("compile-time real division by zero", loc);
+              return std::nullopt;
+            }
+            break;
+          default: break;
+        }
+        if (value) {
+          if (!std::isfinite(*value)) {
+            fail("compile-time real overflow", loc);
+            return std::nullopt;
+          }
+          return single(Item(Attr(*value)), single_result);
+        }
+      }
+    }
     if (code == OperatorCode::index && args.size() == 2) {
       if (const Items* items = list(args[0])) {
         const auto index = integer(args[1]);
