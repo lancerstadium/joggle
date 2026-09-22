@@ -2674,6 +2674,7 @@ bool Mod::replace(std::span<const Val> old_values,
       found = replacements.find(new_value);
     }
   }
+  std::vector<std::uint32_t> selected_users;
   for (const auto& [old_value, new_value] : replacements) {
     for (const std::uint32_t user : store.vals[old_value].data.users) {
       if (!detail::dominates(store, new_value, user)) {
@@ -2683,10 +2684,16 @@ bool Mod::replace(std::span<const Val> old_values,
             store.ops[user].data.loc);
         return false;
       }
+      selected_users.push_back(user);
     }
   }
+  // Snapshot before mutating use lists. A user can occur for several replaced
+  // values, or several times for repeated operands; visit its arguments once.
+  std::sort(selected_users.begin(), selected_users.end());
+  selected_users.erase(std::unique(selected_users.begin(), selected_users.end()),
+                       selected_users.end());
   bool changed = false;
-  for (std::uint32_t user = 0; user < store.ops.size(); ++user) {
+  for (const std::uint32_t user : selected_users) {
     auto& entry = store.ops[user];
     if (!entry.live)
       continue;

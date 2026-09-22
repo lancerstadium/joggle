@@ -2781,6 +2781,41 @@ int main(int argc, char** argv) {
   CHECK(remaining_users.front() == sum_return);
   CHECK(duplicate_uses.verify(env));
 
+  // The use index selects each shared user once, even for chained batch
+  // replacements and repeated operands. Rejected batches leave it unchanged.
+  joggle::Mod indexed_replace;
+  CHECK(joggle::parse(env,
+      "mod indexed_replace\n"
+      "fn sum(x: i32, y: i32, z: i32) -> i32 {\n"
+      "  let pair = x + y\n"
+      "  let repeated = x + x\n"
+      "  return pair + repeated\n}\n"
+      "fn untouched(a: i32) -> i32 { return a + a }\n",
+      indexed_replace, "indexed-replace.jog"));
+  const auto indexed_params = indexed_replace.find_fn("sum").params();
+  const auto indexed_ops = indexed_replace.find_fn("sum").body().ops();
+  const std::array replace_from{indexed_params[0], indexed_params[1]};
+  const std::array replace_cycle{indexed_params[1], indexed_params[0]};
+  const auto before_cycle = indexed_replace.revision();
+  CHECK(!indexed_replace.replace(replace_from, replace_cycle));
+  CHECK(indexed_replace.revision() == before_cycle);
+  CHECK(indexed_params[0].users().size() == 3);
+  CHECK(indexed_params[1].users().size() == 1);
+  indexed_replace.clear_diags();
+  const std::array replace_to{indexed_params[1], indexed_params[2]};
+  CHECK(indexed_replace.replace(replace_from, replace_to));
+  CHECK(indexed_params[0].users().empty());
+  CHECK(indexed_params[1].users().empty());
+  CHECK(indexed_params[2].users().size() == 4);
+  for (std::size_t i = 0; i < 2; ++i)
+    for (const auto arg : indexed_ops[i].args())
+      CHECK(arg == indexed_params[2]);
+  CHECK(indexed_replace.find_fn("untouched").params()[0].users().size() == 2);
+  CHECK(indexed_replace.verify(env));
+  const auto after_indexed_replace = indexed_replace.revision();
+  CHECK(indexed_replace.replace(replace_from, replace_to));
+  CHECK(indexed_replace.revision() == after_indexed_replace);
+
   joggle::Mod cloned_loop;
   constexpr std::string_view loop_source =
       "mod looped\n"
