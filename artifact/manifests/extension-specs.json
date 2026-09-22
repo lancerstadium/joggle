@@ -103,10 +103,17 @@
       "contract": "Propagate closed finite real intervals through add, multiply, ReLU, and clamp using endpoint arithmetic; multiplication evaluates all four endpoint products.",
       "positive_cases": [
         {"id": "mixed-product", "input": {"op": "mul", "lhs": [-2.0, 3.0], "rhs": [-4.0, 5.0]}, "expect": {"interval": [-12.0, 15.0]}},
-        {"id": "relu-add", "input": {"graph": [{"op": "add", "lhs": [-3.0, 2.0], "rhs": [1.0, 4.0]}, {"op": "relu"}]}, "expect": {"interval": [0.0, 6.0]}}
+        {"id": "relu-add", "input": {"graph": [{"op": "add", "lhs": [-3.0, 2.0], "rhs": [1.0, 4.0]}, {"op": "relu"}]}, "expect": {"interval": [0.0, 6.0]}},
+        {"id": "clamp-both-ends", "input": {"op": "clamp", "value": [-3.5, 7.25], "lower": -1.5, "upper": 2.75}, "expect": {"interval": [-1.5, 2.75]}},
+        {"id": "clamp-below", "input": {"op": "clamp", "value": [-8.0, -4.0], "lower": -2.0, "upper": 3.0}, "expect": {"interval": [-2.0, -2.0]}},
+        {"id": "negative-product", "input": {"op": "mul", "lhs": [-4.0, -2.0], "rhs": [-3.0, -1.0]}, "expect": {"interval": [2.0, 12.0]}},
+        {"id": "fractional-product", "input": {"op": "mul", "lhs": [0.25, 0.5], "rhs": [-0.5, 1.5]}, "expect": {"interval": [-0.25, 0.75]}},
+        {"id": "relu-negative", "input": {"op": "relu", "value": [-5.5, -0.25]}, "expect": {"interval": [0.0, 0.0]}}
       ],
       "negative_cases": [
-        {"id": "reversed", "input": {"op": "relu", "value": [2.0, -1.0]}, "expect": {"error": "invalid-interval", "phase": "build"}}
+        {"id": "reversed", "input": {"op": "relu", "value": [2.0, -1.0]}, "expect": {"error": "invalid-interval", "phase": "build"}},
+        {"id": "reversed-clamp", "input": {"op": "clamp", "value": [-1.0, 2.0], "lower": 3.0, "upper": 1.0}, "expect": {"error": "invalid-interval", "phase": "build"}},
+        {"id": "unsupported-op", "input": {"op": "exp", "value": [0.0, 1.0]}, "expect": {"error": "unsupported-op", "phase": "build"}}
       ],
       "oracle": {"phases": ["build", "semantic"], "comparison": "numerical"}
     },
@@ -312,10 +319,14 @@
       "title": "Storage plan report",
       "footprint": false,
       "required_roles": ["emission"],
-      "contract": "Emit deterministic JSON intervals and first-fit buffer offsets for statically sized temporaries in topological order; align every allocation to 16 bytes and reuse non-overlapping intervals.",
+      "contract": "Emit deterministic JSON allocations and peak occupied bytes for statically sized temporaries in topological order. Assign the lowest available nonnegative offset aligned to 16 bytes; closed live intervals sharing an endpoint overlap, and zero-byte values occupy no storage. Reuse storage across non-overlapping live intervals.",
       "positive_cases": [
         {"id": "reuse", "input": {"values": [{"id": "v0", "bytes": 16, "live": [0, 1]}, {"id": "v1", "bytes": 16, "live": [2, 3]}]}, "expect": {"allocations": [{"id": "v0", "offset": 0}, {"id": "v1", "offset": 0}], "peak_bytes": 16}},
-        {"id": "overlap", "input": {"values": [{"id": "v0", "bytes": 20, "live": [0, 3]}, {"id": "v1", "bytes": 8, "live": [1, 2]}]}, "expect": {"allocations": [{"id": "v0", "offset": 0}, {"id": "v1", "offset": 32}], "peak_bytes": 40}}
+        {"id": "overlap", "input": {"values": [{"id": "v0", "bytes": 20, "live": [0, 3]}, {"id": "v1", "bytes": 8, "live": [1, 2]}]}, "expect": {"allocations": [{"id": "v0", "offset": 0}, {"id": "v1", "offset": 32}], "peak_bytes": 40}},
+        {"id": "shared-endpoint", "input": {"values": [{"id": "v0", "bytes": 16, "live": [0, 1]}, {"id": "v1", "bytes": 16, "live": [1, 2]}]}, "expect": {"allocations": [{"id": "v0", "offset": 0}, {"id": "v1", "offset": 16}], "peak_bytes": 32}},
+        {"id": "first-fit-hole", "input": {"values": [{"id": "v0", "bytes": 16, "live": [0, 6]}, {"id": "v1", "bytes": 32, "live": [1, 2]}, {"id": "v2", "bytes": 16, "live": [2, 5]}, {"id": "v3", "bytes": 24, "live": [3, 4]}]}, "expect": {"allocations": [{"id": "v0", "offset": 0}, {"id": "v1", "offset": 16}, {"id": "v2", "offset": 48}, {"id": "v3", "offset": 16}], "peak_bytes": 64}},
+        {"id": "zero-storage", "input": {"values": [{"id": "v0", "bytes": 32, "live": [0, 3]}, {"id": "v1", "bytes": 0, "live": [1, 2]}]}, "expect": {"allocations": [{"id": "v0", "offset": 0}, {"id": "v1", "offset": 0}], "peak_bytes": 32}},
+        {"id": "empty", "input": {"values": []}, "expect": {"allocations": [], "peak_bytes": 0}}
       ],
       "negative_cases": [
         {"id": "dynamic-size", "input": {"values": [{"id": "v0", "bytes": "dynamic", "live": [0, 1]}]}, "expect": {"error": "dynamic-storage-size", "phase": "build"}}
@@ -331,7 +342,9 @@
       "contract": "Emit deterministic JSON containing target, pointer_bits, little_endian, sorted feature names, and sorted supported intrinsic signatures; omit host-specific paths and timestamps.",
       "positive_cases": [
         {"id": "scalar", "input": {"target": "generic64", "pointer_bits": 64, "little_endian": true, "features": [], "intrinsics": []}, "expect": {"canonical_sha256": "oracle-computed"}},
-        {"id": "dot4", "input": {"target": "generic64-dot4", "pointer_bits": 64, "little_endian": true, "features": ["dot4", "simd128"], "intrinsics": ["dot4_i8(vector<4xi8>,vector<4xi8>,i32)->i32"]}, "expect": {"canonical_sha256": "oracle-computed"}}
+        {"id": "dot4", "input": {"target": "generic64-dot4", "pointer_bits": 64, "little_endian": true, "features": ["dot4", "simd128"], "intrinsics": ["dot4_i8(vector<4xi8>,vector<4xi8>,i32)->i32"]}, "expect": {"canonical_sha256": "oracle-computed"}},
+        {"id": "sorted-portable", "input": {"target": "generic32-be", "pointer_bits": 32, "little_endian": false, "features": ["simd128", "dot4", "atomics"], "intrinsics": ["zext(i8)->i32", "add(i32,i32)->i32"], "host_path": "/temporary/host-only", "timestamp": "2030-01-01T00:00:00Z"}, "expect": {"canonical_sha256": "oracle-computed"}},
+        {"id": "duplicate-names", "input": {"target": "generic64", "pointer_bits": 64, "little_endian": true, "features": ["simd128", "dot4", "simd128"], "intrinsics": ["zext(i8)->i32", "add(i32,i32)->i32", "add(i32,i32)->i32"]}, "expect": {"canonical_sha256": "oracle-computed"}}
       ],
       "negative_cases": [],
       "oracle": {"phases": ["build", "semantic"], "comparison": "exact-json"}

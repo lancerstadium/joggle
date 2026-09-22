@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import shutil
 import subprocess
 import sys
@@ -19,7 +20,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
-SUPPORTED_TASKS = {"ana-broadcast-shape", "ana-storage-cost"}
+SUPPORTED_TASKS = {"ana-broadcast-shape", "ana-storage-cost", "ana-numeric-range",
+                   "emit-storage-plan", "emit-target-capability"}
 
 
 def digest(path: Path) -> str:
@@ -35,12 +37,38 @@ def invalid_constant(token: str) -> None:
     raise ValueError(f"non-finite JSON constant: {token}")
 
 
+def equivalent(actual: object, expected: object, numerical: bool, policy: dict) -> bool:
+    if isinstance(expected, dict):
+        return (isinstance(actual, dict) and actual.keys() == expected.keys() and
+                all(equivalent(actual[key], value, numerical, policy)
+                    for key, value in expected.items()))
+    if isinstance(expected, list):
+        return (isinstance(actual, list) and len(actual) == len(expected) and
+                all(equivalent(a, b, numerical, policy) for a, b in zip(actual, expected)))
+    if numerical and type(expected) in (int, float) and type(actual) in (int, float):
+        return math.isfinite(actual) and math.isclose(
+            actual, expected, rel_tol=policy["float_rtol"], abs_tol=policy["float_atol"])
+    return canonical(actual) == canonical(expected)
+
+
+def expected_result(task: str, case: dict) -> dict:
+    if task == "emit-target-capability":
+        request = case["input"]
+        return {"target": request["target"], "pointer_bits": request["pointer_bits"],
+                "little_endian": request["little_endian"],
+                "features": sorted(request["features"]),
+                "intrinsics": sorted(request["intrinsics"])}
+    return case["expect"]
+
+
 def native_attr(value: object) -> str:
     """Serialize the input only; expected outputs never enter native fixtures."""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int):
         return f"{value} : i64"
+    if isinstance(value, float) and math.isfinite(value):
+        return f"{value:.17e} : f64"
     if isinstance(value, list):
         return "[" + ", ".join(map(native_attr, value)) + "]"
     if isinstance(value, dict):
@@ -92,13 +120,14 @@ def main() -> int:
     args.build_root.mkdir(parents=True, exist_ok=True)
     spec_path = ROOT / "manifests/extension-specs.json"
     spec = json.loads(spec_path.read_text())
+    spec_hash = digest(spec_path)
     task = next(task for task in spec["tasks"] if task["id"] == args.task)
     source_hash = digest(args.source)
     harness_files = [Path(__file__).resolve(), ROOT / "extensions/CMakeLists.txt",
                      ROOT / "extensions/mlir-driver.cpp", ROOT / "extensions/xdsl-driver.py"]
     record = {"schema": "extension-task-oracle/v1", "task": args.task,
               "system": args.system, "source": str(args.source),
-              "source_sha256": source_hash, "task_spec_sha256": digest(spec_path),
+              "source_sha256": source_hash, "task_spec_sha256": spec_hash,
               "harness_sha256": {str(path.relative_to(ROOT)): digest(path)
                                  for path in harness_files},
               "setup": [], "cases": [], "passed": False}
@@ -154,16 +183,25 @@ def main() -> int:
                     except ValueError as failure:
                         actual = None
                         error = str(failure)
-                # Compare canonical JSON to distinguish Boolean from integer
-                # values as well as detect missing or additional result fields.
+                # Numeric tasks use the shared tolerance only for numbers;
+                # object keys, sequence lengths, Booleans, and errors stay exact.
+                expected = expected_result(args.task, case)
                 passed = (step["exit_code"] == 0 and not error and
-                          canonical(actual) == canonical(case["expect"]))
+                          equivalent(actual, expected, task["oracle"]["comparison"] == "numerical",
+                                     spec["comparison_policy"]))
+                repeat = None
+                if task["family"] == "emission" and step["exit_code"] == 0:
+                    repeat = execute([*command, path, *flags], args.timeout)
+                    passed = passed and repeat["exit_code"] == 0 and repeat["stdout"] == step["stdout"]
                 record["cases"].append({"id": case["id"], "input": case["input"],
-                                        "expected": case["expect"], "actual": actual,
-                                        "passed": passed, "decode_error": error, **step})
+                                        "expected": expected, "actual": actual,
+                                        "expected_sha256": hashlib.sha256(canonical(expected).encode()).hexdigest(),
+                                        "passed": passed, "repeat": repeat,
+                                        "decode_error": error, **step})
         record["passed"] = (setup_ok and bool(record["cases"]) and
                             all(case["passed"] for case in record["cases"]) and
                             digest(args.source) == source_hash and
+                            digest(spec_path) == spec_hash and
                             all(digest(ROOT / path) == value
                                 for path, value in record["harness_sha256"].items()))
     args.output.parent.mkdir(parents=True, exist_ok=True)

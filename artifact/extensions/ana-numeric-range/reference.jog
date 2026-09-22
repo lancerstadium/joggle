@@ -1,0 +1,59 @@
+mod extension
+use base
+use ir
+
+local fn minimum(a: f32, b: f32) -> f32 {
+  if a < b { return a }
+  return b
+}
+
+local fn maximum(a: f32, b: f32) -> f32 {
+  if a > b { return a }
+  return b
+}
+
+fn analyze(m: Mod) -> dict {
+  let request = ir.meta(ir.find(m, "subject"), "request")
+  let steps = get(request, "graph", [request])
+  var low = real(0)
+  var high = real(0)
+  for step in steps {
+    let op = str(get(step, "op"))
+    let left = get(step, "lhs", get(step, "value", [low, high]))
+    let right = get(step, "rhs", [0.0, 0.0])
+    let a = real(left[0])
+    let b = real(left[1])
+    let c = real(right[0])
+    let d = real(right[1])
+    if a > b || c > d {
+      return {error: "invalid-interval", phase: "build"}
+    }
+    if op == "add" {
+      low = a + c
+      high = b + d
+    }
+    if op == "mul" {
+      low = minimum(minimum(a * c, a * d), minimum(b * c, b * d))
+      high = maximum(maximum(a * c, a * d), maximum(b * c, b * d))
+    }
+    if op == "relu" {
+      low = maximum(a, real(0))
+      high = maximum(b, real(0))
+    }
+    if op == "clamp" {
+      let lower = real(get(step, "lower"))
+      let upper = real(get(step, "upper"))
+      if lower > upper {
+        return {error: "invalid-interval", phase: "build"}
+      }
+      low = minimum(maximum(a, lower), upper)
+      high = minimum(maximum(b, lower), upper)
+    }
+    if op != "add" && op != "mul" && op != "relu" && op != "clamp" {
+      return {error: "unsupported-op", phase: "build"}
+    }
+  }
+  var result: dict = {}
+  result["interval"] = [low, high]
+  return result
+}

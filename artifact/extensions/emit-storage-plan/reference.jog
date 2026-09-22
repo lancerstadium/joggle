@@ -1,0 +1,52 @@
+mod extension
+use base
+use ir
+
+fn analyze(m: Mod) -> dict {
+  let request = ir.meta(ir.find(m, "subject"), "request")
+  var placed: list<dict> = []
+  var allocations: list<dict> = []
+  var peak = 0
+  for value in get(request, "values") {
+    let size = get(value, "bytes")
+    if kind(size) != "int" {
+      return {error: "dynamic-storage-size", phase: "build"}
+    }
+    let bytes = int(size)
+    let live = get(value, "live")
+    var offset = 0
+    var done = false
+    for attempt in 0..(len(placed) + 1) {
+      if !done {
+        var next = offset
+        for prior in placed {
+          let span = get(prior, "live")
+          let address = int(get(prior, "offset"))
+          let end = address + int(get(prior, "bytes"))
+          if bytes > 0 && int(get(prior, "bytes")) > 0 &&
+             int(live[0]) <= int(span[1]) && int(span[0]) <= int(live[1]) &&
+             offset < end && address < offset + bytes {
+            let aligned = ((end + 15) / 16) * 16
+            if aligned > next { next = aligned }
+          }
+        }
+        done = next == offset
+        offset = next
+      }
+    }
+    var item: dict = {}
+    item["id"] = get(value, "id")
+    item["offset"] = offset
+    allocations += [item]
+    var occupied: dict = {}
+    occupied["live"] = live
+    occupied["offset"] = offset
+    occupied["bytes"] = bytes
+    placed += [occupied]
+    if offset + bytes > peak { peak = offset + bytes }
+  }
+  var result: dict = {}
+  result["allocations"] = allocations
+  result["peak_bytes"] = peak
+  return result
+}

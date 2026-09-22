@@ -1,0 +1,28 @@
+mod extension
+use base
+use ir
+
+local fn ordered(values: Attr) -> list<str> {
+  var counts: dict = {}
+  for value in values {
+    let name = str(value)
+    counts[name] = int(get(counts, name, 0)) + 1
+  }
+  var result: list<str> = []
+  // Dictionary keys have lexical order; counts retain duplicate entries.
+  for name in keys(counts) {
+    for count in 0..int(get(counts, name)) { result += [name] }
+  }
+  return result
+}
+
+fn analyze(m: Mod) -> dict {
+  let request = ir.meta(ir.find(m, "subject"), "request")
+  var result: dict = {}
+  for key in ["target", "pointer_bits", "little_endian"] {
+    result[key] = get(request, key)
+  }
+  result["features"] = ordered(get(request, "features"))
+  result["intrinsics"] = ordered(get(request, "intrinsics"))
+  return result
+}
