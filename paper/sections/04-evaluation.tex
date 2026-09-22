@@ -23,7 +23,7 @@ relevant correctness oracle enter an aggregate.
     Convenient & 3 systems; 24 tasks & completion, tokens \\
     Controllable & 3 systems; 12 patches & files, lines, zones \\
     Efficient & 3 systems; 15 models & latency, visited work \\
-    End-to-end & 2 paths + ORT & correctness, latency \\
+    End-to-end & Joggle, ORT, TVM & correctness, latency \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -177,7 +177,9 @@ through the programmable infrastructure. One matrix contains 24 fixed operator g
 elementwise chains, reductions, matrix multiplication, convolution,
 quantization, and fusion---and the same 15 model subjects. We compare Joggle's
 required lowering path, the same path plus its frozen optimization pack, and a
-pinned single-thread ONNX Runtime CPU reference. Each case uses byte-identical
+pinned single-thread ONNX Runtime CPU reference. The operator comparison also
+includes TVM Relax with its default LLVM CPU pipeline and no tuning trials.
+Each case uses byte-identical
 inputs; dtype-specific numerical oracles gate its timing results. Joggle fixes
 each entry signature from those inputs before either lowering pipeline begins.
 
@@ -192,44 +194,47 @@ use the same normalization, and unsuccessful cases contribute to coverage.
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-07-performance.pdf}
-  \caption{Operator execution across all six families. Bars extend from parity
-  to median latency relative to ONNX Runtime; whiskers extend to p95. All panels use the
-  same scale, and values below one indicate faster execution. Each path passes
-  all 24 numerical oracles.}
+  \caption{Operator latency relative to ORT (log scale; lower is faster).
+  Bars run from parity to the median; whiskers reach p95 over 100 samples.
+  Joggle and ORT pass 24/24 cases; TVM passes 22/24. $\times$ marks unsupported
+  QLinearConv and QLinearMatMul imports.}
   \Description{Six aligned small multiples compare the base and optimized
-  Joggle paths on four operators per family, with a common logarithmic scale
-  and an ONNX Runtime reference line at one.}
+  Joggle paths and TVM on four operators per family, with a common logarithmic
+  scale and an ONNX Runtime reference line at one.}
   \label{fig:performance}
 \end{figure}
 
 \begin{table}[t]
-  \caption{Main operator results. Ratios pair per-operator medians before
-  geometric aggregation. Configuration and exact per-operator values appear
-  in Appendix~\ref{sec:operator-data}.}
+  \caption{Operator summary. Geometric means use all 24 or the common 22
+  operators, as indicated. Per-operator values appear in
+  Appendix~\ref{sec:operator-data}.}
   \label{tab:operator-summary}
   \centering
-  \begin{tabular}{@{}lrr@{}}
+  \begin{tabular}{@{}lrrr@{}}
     \toprule
-    Operator-suite measure & Base & Optimized \\
+    Operator-suite measure & Base & Opt. & TVM \\
     \midrule
-    Correct operators & 24/24 & 24/24 \\
-    Faster than ORT & 4/24 & 4/24 \\
-    Geometric mean latency / ORT & $9.27\times$ & $5.21\times$ \\
-    Geometric mean speedup / base & $1.00\times$ & $1.78\times$ \\
+    Correct operators & 24/24 & 24/24 & 22/24 \\
+    Faster than ORT & 4/24 & 4/24 & 7/22 \\
+    Latency / ORT, all 24 & $9.27\times$ & $5.21\times$ & --- \\
+    Latency / ORT, common 22 & $8.95\times$ & $5.23\times$ & $6.66\times$ \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-The optimization pack reduced geometric mean operator latency by $1.78\times$
-relative to the base path, with all 24 operators passing both numerical checks.
-The optimized path had lower median latency than ONNX Runtime on four operators;
-its geometric mean latency remained $5.21\times$ the reference.
-Gains concentrated in matrix multiplication: rectangular and $256\times256$
-products improved by $21.67\times$ and $12.90\times$ over the base path, respectively.
-By contrast, strided convolution increased from $171.00\times$ to $190.42\times$
-ORT latency. Thus, the optimization pack improved aggregate execution
-performance, with substantial workload-dependent gaps to ONNX Runtime remaining.
-These execution measurements complement the compiler update costs in
+Across the 22 jointly supported operators, Joggle's optimized path achieved
+a geometric mean speedup of $1.27\times$ over the default TVM configuration.
+Joggle had lower median latency on ten of those operators.
+The difference varied by family: Joggle favored rectangular and square matrix
+products, whereas TVM favored several elementwise and reduction workloads.
+Both systems remained slower than ORT in aggregate, as shown in the table.
+
+Within Joggle, the optimization pack reduced geometric mean latency by $1.78\times$
+over all 24 operators, with gains concentrated in matrix multiplication.
+Rectangular and $256\times256$ products improved by $21.67\times$ and $12.90\times$,
+respectively. Strided convolution instead slowed by $1.11\times$ relative to
+the base path. These results distinguish optimization gains from
+cross-system kernel performance and complement the compiler update costs in
 Section~\ref{sec:eval-efficient}.
 
 Figure~\ref{fig:model-performance} extends the comparison to all 15 models.

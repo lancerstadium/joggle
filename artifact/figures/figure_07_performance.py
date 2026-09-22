@@ -18,7 +18,10 @@ from matplotlib.ticker import LogLocator, NullFormatter
 from common import COLORS, configure, number, read_rows, save, truth
 
 VARIANTS = ("joggle-unoptimized", "joggle-optimized")
-LABELS = {"joggle-unoptimized": "Joggle base", "joggle-optimized": "Joggle opt"}
+PLOT_VARIANTS = (*VARIANTS, "tvm-relax-llvm")
+LABELS = {"joggle-unoptimized": "Joggle base", "joggle-optimized": "Joggle opt",
+          "tvm-relax-llvm": "TVM"}
+HATCHES = {"joggle-unoptimized": "///", "joggle-optimized": None, "tvm-relax-llvm": ".."}
 FAMILIES = ("elementwise", "reduction", "matmul", "convolution", "quantization", "fusion")
 FAMILY_LABELS = ("Elementwise", "Reductions", "Matmul", "Convolution", "Quantization", "Fusion")
 MODEL_LABELS = {
@@ -85,6 +88,13 @@ def main() -> int:
         "latency_ns", "correct", "iteration", "subject_hash", "system_revision", "input_digest",
     })
     summary = summarize(rows)
+    present = {row["variant"] for row in summary}
+    unknown = present - {*PLOT_VARIANTS, "onnxruntime"}
+    if unknown:
+        raise ValueError(f"no plot encoding defined for variants: {sorted(unknown)}")
+    variants = tuple(variant for variant in PLOT_VARIANTS if variant in present)
+    if not variants or "onnxruntime" not in present:
+        raise ValueError("comparison requires candidate measurements and the ORT reference")
     indexed = {(r["subject_kind"], r["subject"], r["variant"]): r for r in summary}
     family = {(r["subject_kind"], r["subject"]): r["family"] for r in summary}
     rank = {value: i for i, value in enumerate(FAMILIES)}
@@ -109,18 +119,20 @@ def main() -> int:
     nrows = (len(panels) + ncols - 1) // ncols
     fig, axes = plt.subplots(nrows, ncols, figsize=(3.35, (0.99 * nrows + 0.36) * max(1, font / 6)),
                              squeeze=False, sharey=True)
-    finite = [float(r[k]) for r in summary if r["variant"] in VARIANTS
+    finite = [float(r[k]) for r in summary if r["variant"] in variants
               for k in ("latency_over_ort", "p95_over_ort_median") if r[k] != ""]
     low, high = min([1.0, *finite]) / 1.5, max([1.0, *finite]) * 1.5
     for panel_index, (ax, (kind, title, names)) in enumerate(zip(axes.flat, panels)):
         for i, subject in enumerate(names):
-            for variant, offset in zip(VARIANTS, (-0.19, 0.19)):
+            width = 0.76 / len(variants)
+            offsets = (np.arange(len(variants)) - (len(variants) - 1) / 2) * width
+            for variant, offset in zip(variants, offsets):
                 row = indexed.get((kind, subject, variant))
                 if row and row["latency_over_ort"] != "":
                     value, tail = row["latency_over_ort"], row["p95_over_ort_median"]
-                    ax.bar(i + offset, value - 1, bottom=1, width=0.34,
+                    ax.bar(i + offset, value - 1, bottom=1, width=width * 0.9,
                            color=COLORS[variant], edgecolor="#27333D", linewidth=0.35,
-                           hatch="///" if variant == "joggle-unoptimized" else None,
+                           hatch=HATCHES[variant],
                            zorder=3)
                     ax.errorbar(i + offset, value, yerr=[[0], [max(0, tail - value)]],
                                 color="#27333D", lw=0.45, capsize=1, zorder=4)
@@ -151,11 +163,10 @@ def main() -> int:
     for ax in list(axes.flat)[len(panels):]:
         ax.set_visible(False)
     handles = [Patch(facecolor=COLORS[v], edgecolor="#27333D", linewidth=0.35,
-                      hatch="///" if v == "joggle-unoptimized" else None,
-                      label=LABELS[v]) for v in VARIANTS]
+                      hatch=HATCHES[v], label=LABELS[v]) for v in variants]
     handles.append(Line2D([], [], color="#565F69", ls="--", lw=0.6, label="ORT = 1"))
-    fig.legend(handles=handles, loc="upper center", ncol=3, frameon=False,
-               handlelength=1.4, columnspacing=1.1, bbox_to_anchor=(0.51, 1.015))
+    fig.legend(handles=handles, loc="upper center", ncol=len(handles), frameon=False,
+               handlelength=1.2, columnspacing=0.8, bbox_to_anchor=(0.51, 1.015))
     fig.text(0.01, 0.56, "Latency / ORT (log scale)", va="center", rotation=90, fontsize=font)
     fig.subplots_adjust(left=0.125, right=0.988, bottom=0.185,
                         top=0.88, wspace=0.12, hspace=0.90)
@@ -163,7 +174,7 @@ def main() -> int:
     if args.summary:
         args.summary.parent.mkdir(parents=True, exist_ok=True)
         with args.summary.open("w", newline="", encoding="utf-8") as stream:
-            writer = csv.DictWriter(stream, fieldnames=list(summary[0]))
+            writer = csv.DictWriter(stream, fieldnames=list(summary[0]), lineterminator="\n")
             writer.writeheader()
             writer.writerows(summary)
     return 0

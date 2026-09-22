@@ -225,9 +225,10 @@ python3 artifact/merge_benchmark_rows.py \
 This operator-only export is partial relative to the full operator-and-model
 population. For the complete export, provide all four model runs through
 `--models` and omit `--allow-partial`. The assembler checks native sampling and
-input protocols as well as CSV identities. The existing paper plots still
-display the two Joggle variants relative to ORT; importing a TVM row does not
-automatically add it to those plots.
+input protocols as well as CSV identities. The operator plot includes each
+supported plotting configuration present in the export, including TVM, against
+the shared ORT reference. The model plot still requires matched base, optimized,
+and ORT runs.
 
 Repeat the Joggle command for `joggle-unoptimized`; repeat the variants
 with `--group models --model-root .cache/onnx-zoo`. Then assemble the one figure

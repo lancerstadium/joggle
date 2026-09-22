@@ -642,7 +642,7 @@ Only outputs that pass the relevant correctness oracle enter an aggregate.
 | Convenient | 3 systems; 24 tasks | completion, tokens |
 | Controllable | 3 systems; 12 patches | files, lines, zones |
 | Efficient | 3 systems; 15 models | latency, visited work |
-| End-to-end | 2 Joggle paths + ORT | correctness, latency |
+| End-to-end | Joggle, ORT, TVM | correctness, latency |
 
 *Table 1: Evaluation matrix. Every comparison fixes revisions, inputs, and its
 correctness oracle before measurement.*
@@ -831,7 +831,9 @@ through the programmable infrastructure. One matrix contains 24 fixed operator g
 elementwise chains, reductions, matrix multiplication, convolution,
 quantization, and fusion---and the same 15 model subjects. We compare Joggle's
 required lowering path, the same path plus its frozen optimization pack, and a
-pinned single-thread ONNX Runtime CPU reference. Each case uses byte-identical
+pinned single-thread ONNX Runtime CPU reference. The operator comparison also
+includes TVM Relax with its default LLVM CPU pipeline and no tuning trials.
+Each case uses byte-identical
 inputs; dtype-specific numerical oracles gate its timing results. Joggle fixes
 each entry signature from those inputs before either lowering pipeline begins.
 
@@ -847,9 +849,10 @@ use the same normalization, and unsuccessful cases contribute to coverage.
 artifact/figures/figure_07_performance.py. Compact single-column figure with
 six panels, two rows by three columns: elementwise, reduction, matmul,
 convolution, quantization, fusion.
-Every panel contains four operators and paired base/optimized bars. Shared
+Every panel contains four operators and grouped base/optimized/TVM bars. Shared
 logarithmic y axis, one legend, ORT=1 dashed line, median-to-p95 whiskers,
-hatched base bars and solid optimized bars. Report correct coverage in the
+hatched base bars, solid optimized bars, and dotted amber TVM bars. Mark unsupported
+TVM cases with ×, not zero-height bars. Report correct coverage in the
 caption. Bars start at parity; use compact wrapped labels and shared axes at
 the final column width. Enclose every panel in four thin spines with inward
 ticks on all sides; share colors, hatching, and the compact legend with Figure 8.
@@ -857,32 +860,34 @@ Source CSV: paper/data/figure-07-operators.csv.
 Model measurements have a separate companion display. Preserve every case and failed outcome.
 No generated pixels or illustrative numbers for data. -->
 
-*Figure 7: Operator execution across all six families. Bars extend from parity
-to median latency relative to ONNX Runtime; whiskers extend to p95. All panels use the same
-scale, and values below one indicate faster execution. Each path passes all
-24 numerical oracles.*
+*Figure 7: Operator latency relative to ORT (log scale; lower is faster).
+Bars run from parity to the median; whiskers reach p95 over 100 samples.
+Joggle and ORT pass 24/24 cases; TVM passes 22/24. × marks unsupported
+QLinearConv and QLinearMatMul imports.*
 
-| Operator-suite measure | Base | Optimized |
-| --- | ---: | ---: |
-| Correct operators | 24/24 | 24/24 |
-| Faster than ORT | 4/24 | 4/24 |
-| Geometric mean latency / ORT | 9.27× | 5.21× |
-| Geometric mean speedup / base | 1.00× | 1.78× |
+| Operator-suite measure | Base | Optimized | TVM |
+| --- | ---: | ---: | ---: |
+| Correct operators | 24/24 | 24/24 | 22/24 |
+| Faster than ORT | 4/24 | 4/24 | 7/22 |
+| Latency / ORT, all 24 | 9.27× | 5.21× | — |
+| Latency / ORT, common 22 | 8.95× | 5.23× | 6.66× |
 
-*Table: Main operator results. Ratios pair per-operator medians before
-geometric aggregation. Configuration and exact per-operator values appear in
-Appendix A.*
+*Table: Operator summary. Geometric means use all 24 or the common 22 operators,
+as indicated. Per-operator values appear in Appendix A.*
 
-The optimization pack reduced geometric mean operator latency by 1.78× relative
-to the base path, with all 24 operators passing both numerical checks.
-The optimized path had lower median latency than ONNX Runtime on four operators;
-its geometric mean latency remained 5.21× the reference.
-Gains concentrated in matrix multiplication: rectangular and 256×256 products
-improved by 21.67× and 12.90× over the base path, respectively.
-By contrast, strided convolution increased from 171.00× to 190.42× ORT latency.
-Thus, the optimization pack improved aggregate execution performance, with
-substantial workload-dependent gaps to ONNX Runtime remaining.
-These execution measurements complement the compiler update costs in Section 4.4.
+Across the 22 jointly supported operators, Joggle's optimized path achieved
+a geometric mean speedup of 1.27× over the default TVM configuration.
+Joggle had lower median latency on ten of those operators.
+The difference varied by family: Joggle favored rectangular and square matrix
+products, whereas TVM favored several elementwise and reduction workloads.
+Both systems remained slower than ORT in aggregate, as shown in the table.
+
+Within Joggle, the optimization pack reduced geometric mean latency by 1.78×
+over all 24 operators, with gains concentrated in matrix multiplication.
+Rectangular and 256×256 products improved by 21.67× and 12.90×, respectively.
+Strided convolution instead slowed by 1.11× relative to the base path.
+These results distinguish optimization gains from cross-system kernel performance
+and complement the compiler update costs in Section 4.4.
 
 Figure 8 extends the comparison to all 15 models. Both Joggle paths pass the
 numerical oracle on the same 11 models; ONNX Runtime passes all 15. SSD-MobileNet

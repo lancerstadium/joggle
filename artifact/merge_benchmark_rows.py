@@ -161,7 +161,7 @@ def main() -> int:
     temporary_path = Path(temporary)
     try:
         with temporary_path.open("w", newline="", encoding="utf-8") as stream:
-            writer = csv.DictWriter(stream, fieldnames=output_header)
+            writer = csv.DictWriter(stream, fieldnames=output_header, lineterminator="\n")
             writer.writeheader()
             writer.writerows(rows)
         command = [sys.executable, str(root / "validate_figure.py"), "7", str(temporary_path)]

@@ -22,6 +22,7 @@ COLORS = {
     "joggle-unoptimized": "#7B8494",
     "joggle-optimized": "#087E8B",
     "onnxruntime": "#E07A2D",
+    "tvm-relax-llvm": "#E07A2D",
 }
 
 
