@@ -67,6 +67,13 @@ def audited_input(path: Path) -> dict[str, object]:
     if (not record.get("release_eligible") or record.get("git_dirty")
             or record.get("output_sha256") != sha256(path)):
         raise SystemExit(f"{path}: run record is not release eligible")
+    if "compiler_identity" in record:
+        initial = record["compiler_identity"]
+        if (record.get("identity_stable") is not True or
+                initial != record.get("final_compiler_identity") or
+                not isinstance(initial, dict) or
+                initial.get("joggle_sha256") != record.get("joggle_sha256")):
+            raise SystemExit(f"{path}: compiler identity changed during measurement")
     return {"path": str(path.resolve()), "sha256": sha256(path),
             "record": str(record_path.resolve()), "record_sha256": sha256(record_path),
             "correctness_oracle": record.get("correctness_oracle", {

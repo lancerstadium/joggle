@@ -21,14 +21,58 @@ from onnx import helper, numpy_helper
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "artifact"))
 from run_baseline_benchmarks import compare_outputs, isolated_reference, ort_session, run_json
-from run_joggle_benchmarks import checkpoint_protocol, make_harness, Unsupported
+from run_joggle_benchmarks import compiler_identity, checkpoint_protocol, make_harness, Unsupported
 from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
 from run_extension_task import execute, fusion_fixture, sandbox_policy
 from run_extension_agent import public_case_ids, tool_feedback
+from merge_benchmark_rows import audited_input
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_benchmark_assembly_rejects_changed_compiler_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rows.csv"
+            path.write_text("header\n")
+            identity = {"joggle_sha256": "a" * 64, "module_files": {}}
+            record = {"release_eligible": True, "git_dirty": False,
+                      "output_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                      "joggle_sha256": "a" * 64, "identity_stable": True,
+                      "compiler_identity": identity,
+                      "final_compiler_identity": copy.deepcopy(identity)}
+            record_path = path.with_suffix(".run.json")
+            record_path.write_text(json.dumps(record))
+            audited_input(path)
+            record["final_compiler_identity"]["joggle_sha256"] = "b" * 64
+            record_path.write_text(json.dumps(record))
+            with self.assertRaisesRegex(SystemExit, "compiler identity changed"):
+                audited_input(path)
+
+    def test_joggle_identity_tracks_native_mods_and_executable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            executable = root / "joggle"
+            executable.write_bytes(b"executable-v1")
+            mods = root / "mods"
+            native = mods / "native"
+            native.mkdir(parents=True)
+            (mods / "module.jog").write_text("mod example\n")
+            plugin = native / "example.so"
+            plugin.write_bytes(b"plugin-v1")
+            args = argparse.Namespace(joggle=executable, builtin_mods=mods,
+                                      extension_mods=root / "extensions")
+            original = compiler_identity(args)
+            self.assertEqual(original, compiler_identity(args))
+            self.assertIn("native/example.so", original["module_files"]["builtin"])
+            plugin.write_bytes(b"plugin-v2")
+            self.assertNotEqual(original, compiler_identity(args))
+            plugin.write_bytes(b"plugin-v1")
+            executable.write_bytes(b"executable-v2")
+            self.assertNotEqual(original, compiler_identity(args))
+            executable.write_bytes(b"executable-v1")
+            plugin.unlink()
+            self.assertNotEqual(original, compiler_identity(args))
+
     def test_agent_assembler_rejects_integration_records(self):
         artifact = Path(__file__).resolve().parents[1] / "artifact"
         with tempfile.TemporaryDirectory() as directory:

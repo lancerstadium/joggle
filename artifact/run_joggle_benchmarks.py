@@ -395,6 +395,27 @@ def load_checkpoint(
     return rows, complete
 
 
+def compiler_identity(args: argparse.Namespace) -> dict[str, Any]:
+    """Bind executable code, including native mod implementations, to a run."""
+    collector = Path(__file__).resolve().parent
+    return {
+        "joggle_sha256": sha256(args.joggle.read_bytes()),
+        "collector_sources": {
+            name: sha256((collector / name).read_bytes()) for name in
+            ("run_joggle_benchmarks.py", "joggle_entry.py",
+             "run_baseline_benchmarks.py", "benchmark_backends.py")
+        },
+        "module_files": {
+            name: {str(path.relative_to(root)): sha256(path.read_bytes())
+                   for path in sorted(root.rglob("*"))
+                   if path.is_file() and path.suffix in
+                   {".jog", ".json", ".so", ".dylib", ".dll"}}
+            for name, root in (("builtin", args.builtin_mods),
+                               ("extensions", args.extension_mods))
+        },
+    }
+
+
 def main(args: argparse.Namespace) -> int:
     repo = Path(__file__).resolve().parent.parent
     revision, dirty = git_state(repo)
@@ -407,7 +428,9 @@ def main(args: argparse.Namespace) -> int:
     if failure_path.exists() and not args.resume:
         raise SystemExit(f"refusing to replace {failure_path}; pass --resume")
     spec_bytes = args.spec.read_bytes(); spec = json.loads(spec_bytes); spec_hash = sha256(spec_bytes)
-    index = json.loads((args.inputs / "index.json").read_text())
+    input_index_bytes = (args.inputs / "index.json").read_bytes()
+    input_index_hash = sha256(input_index_bytes)
+    index = json.loads(input_index_bytes)
     if index.get("spec_sha256") != spec_hash:
         raise SystemExit("input index was generated from a different benchmark specification")
     indexed = {record["id"]: record for record in index["cases"]}
@@ -436,19 +459,15 @@ def main(args: argparse.Namespace) -> int:
         header = next(csv.reader(stream))
     if args.output.exists() and not args.resume:
         raise SystemExit(f"refusing to replace {args.output}; pass --resume for a checkpoint")
+    initial_identity = compiler_identity(args)
     checkpoint_protocol(args.output, {
         "schema": "joggle-benchmark-checkpoint/v1",
         "correctness_oracle": correctness_oracle_record(),
         "git_revision": revision, "variant": args.variant, "group": args.group,
         "benchmark_spec_sha256": spec_hash,
-        "input_index_sha256": sha256((args.inputs / "index.json").read_bytes()),
-        "joggle_sha256": sha256(args.joggle.read_bytes()),
-        "module_sources": {
-            name: {str(path.relative_to(root)): sha256(path.read_bytes())
-                   for path in sorted(root.rglob("*.jog"))}
-            for name, root in (("builtin", args.builtin_mods),
-                               ("extensions", args.extension_mods))
-        },
+        "input_index_sha256": input_index_hash,
+        "compiler_identity": initial_identity,
+        "joggle_sha256": initial_identity["joggle_sha256"],
         "execution_iterations": execute_count, "warmups": warmups,
         "seed": args.seed, "compile_flags": flags,
         "cases": [case["id"] for case in cases],
@@ -587,8 +606,17 @@ def main(args: argparse.Namespace) -> int:
                 write_rows(args.output, header, rows)
     write_rows(args.output, header, rows)
     compiler = subprocess.run([args.cc, "--version"], capture_output=True, text=True)
+    final_identity = compiler_identity(args)
+    identity_stable = (initial_identity == final_identity and
+                       git_state(repo) == (revision, dirty) and
+                       sha256(args.spec.read_bytes()) == spec_hash and
+                       sha256((args.inputs / "index.json").read_bytes()) == input_index_hash)
     record = {"schema_version": 1, "created_utc": datetime.now(timezone.utc).isoformat(),
-              "release_eligible": not args.smoke and not dirty, "group": args.group,
+              "release_eligible": not args.smoke and not dirty and identity_stable,
+              "identity_stable": identity_stable,
+              "compiler_identity": initial_identity,
+              "final_compiler_identity": final_identity,
+              "group": args.group,
               "variant": args.variant, "cases": [case["id"] for case in cases],
               "model_files": model_files,
               "output_sha256": sha256(args.output.read_bytes()),
@@ -596,10 +624,10 @@ def main(args: argparse.Namespace) -> int:
               "failure_log": ({"path": str(failure_path),
                                "sha256": sha256(failure_path.read_bytes())}
                               if failure_path.exists() else None),
-              "input_index_sha256": sha256((args.inputs / "index.json").read_bytes()),
+              "input_index_sha256": input_index_hash,
               "git_revision": revision, "git_dirty": dirty,
               "correctness_oracle": correctness_oracle_record(),
-              "joggle_sha256": sha256(args.joggle.read_bytes()),
+              "joggle_sha256": initial_identity["joggle_sha256"],
               "compiler": compiler.stdout.splitlines()[0] if compiler.stdout else str(args.cc),
               "compile_flags": flags, "pipeline": variant["pipeline"],
               "entry_specialization": "opt.signature(main, benchmark input types)",
