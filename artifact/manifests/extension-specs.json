@@ -295,10 +295,67 @@
       "title": "Graph manifest artifact",
       "footprint": true,
       "required_roles": ["emission"],
-      "contract": "Emit deterministic JSON with schema_version, topologically ordered nodes, explicit input and result tensor types, sorted attribute keys, and stable node identifiers n0..nK.",
+      "contract": "Read the native typed SSA function subject and emit {schema_version:1, inputs, nodes, outputs}. Inputs are ordered {id,type} records; nodes are calls in block/topological order with {id,op,inputs,results,attrs}. Number nodes n0.. and values v0.., assigning parameter ids first and then call-result ids in result order. Each type is {element,shape}, using -1 for dynamic extents and [] for rank zero. Each result is {id,type}; inputs and outputs reference value ids, preserving repeated operands and return order. attrs is a lexicographically sorted array of [key,value] pairs from user operation attributes, excluding native callee bookkeeping. Preserve scalar and array attribute values. All fixture calls are reachable from returns; repeated emission must be byte-identical. Do not emit source names, parameter nodes, return nodes, declarations, or a request dictionary.",
       "positive_cases": [
-        {"id": "linear", "input": {"graph": "return relu(add(arg0,splat(1.0)))"}, "expect": {"node_ops": ["input", "const", "add", "relu", "return"], "schema_version": 1}},
-        {"id": "diamond", "input": {"graph": "return add(relu(arg0),neg(arg0))"}, "expect": {"node_ops": ["input", "relu", "neg", "add", "return"], "schema_version": 1}}
+        {"id": "linear", "input": {
+          "inputs": [{"name":"x","element":"f32","shape":[2,3]}],
+          "nodes": [
+            {"op":"splat","inputs":[],"results":[{"name":"c","element":"f32","shape":[2,3]}],"attrs":{"value":1.25}},
+            {"op":"add","inputs":["x","c"],"results":[{"name":"sum","element":"f32","shape":[2,3]}]},
+            {"op":"relu","inputs":["sum"],"results":[{"name":"y","element":"f32","shape":[2,3]}]}],
+          "outputs":["y"]}, "expect": {"schema_version":1,
+          "inputs":[{"id":"v0","type":{"element":"f32","shape":[2,3]}}],
+          "nodes":[
+            {"id":"n0","op":"splat","inputs":[],"results":[{"id":"v1","type":{"element":"f32","shape":[2,3]}}],"attrs":[["value",1.25]]},
+            {"id":"n1","op":"add","inputs":["v0","v1"],"results":[{"id":"v2","type":{"element":"f32","shape":[2,3]}}],"attrs":[]},
+            {"id":"n2","op":"relu","inputs":["v2"],"results":[{"id":"v3","type":{"element":"f32","shape":[2,3]}}],"attrs":[]}],"outputs":["v3"]}},
+        {"id": "diamond", "input": {
+          "inputs":[{"name":"source","element":"f32","shape":[4]}],
+          "nodes":[
+            {"op":"relu","inputs":["source"],"results":[{"name":"left","element":"f32","shape":[4]}]},
+            {"op":"neg","inputs":["source"],"results":[{"name":"right","element":"f32","shape":[4]}]},
+            {"op":"add","inputs":["left","right"],"results":[{"name":"combined","element":"f32","shape":[4]}]}],
+          "outputs":["combined"]}, "expect":{"schema_version":1,
+          "inputs":[{"id":"v0","type":{"element":"f32","shape":[4]}}],
+          "nodes":[
+            {"id":"n0","op":"relu","inputs":["v0"],"results":[{"id":"v1","type":{"element":"f32","shape":[4]}}],"attrs":[]},
+            {"id":"n1","op":"neg","inputs":["v0"],"results":[{"id":"v2","type":{"element":"f32","shape":[4]}}],"attrs":[]},
+            {"id":"n2","op":"add","inputs":["v1","v2"],"results":[{"id":"v3","type":{"element":"f32","shape":[4]}}],"attrs":[]}],"outputs":["v3"]}},
+        {"id":"repeated-edges", "input":{
+          "inputs":[{"name":"arg","element":"i32","shape":[3]}],
+          "nodes":[{"op":"add","inputs":["arg","arg"],"results":[{"name":"twice","element":"i32","shape":[3]}]}],
+          "outputs":["twice","arg","twice"]}, "expect":{"schema_version":1,
+          "inputs":[{"id":"v0","type":{"element":"i32","shape":[3]}}],
+          "nodes":[{"id":"n0","op":"add","inputs":["v0","v0"],"results":[{"id":"v1","type":{"element":"i32","shape":[3]}}],"attrs":[]}],"outputs":["v1","v0","v1"]}},
+        {"id":"multiple-results", "input":{
+          "inputs":[{"name":"whole","element":"f32","shape":[2,4]}],
+          "nodes":[{"op":"split","inputs":["whole"],"results":[{"name":"first","element":"f32","shape":[2,2]},{"name":"second","element":"f32","shape":[2,2]}],"attrs":{"axis":1}}],
+          "outputs":["second","first"]}, "expect":{"schema_version":1,
+          "inputs":[{"id":"v0","type":{"element":"f32","shape":[2,4]}}],
+          "nodes":[{"id":"n0","op":"split","inputs":["v0"],"results":[{"id":"v1","type":{"element":"f32","shape":[2,2]}},{"id":"v2","type":{"element":"f32","shape":[2,2]}}],"attrs":[["axis",1]]}],"outputs":["v2","v1"]}},
+        {"id":"dynamic-extent", "input":{
+          "inputs":[{"name":"dynamic","element":"f32","shape":[-1,4]}],
+          "nodes":[{"op":"to_i32","inputs":["dynamic"],"results":[{"name":"converted","element":"i32","shape":[-1,4]}],"attrs":{"saturate":true}}],
+          "outputs":["converted"]}, "expect":{"schema_version":1,
+          "inputs":[{"id":"v0","type":{"element":"f32","shape":[-1,4]}}],
+          "nodes":[{"id":"n0","op":"to_i32","inputs":["v0"],"results":[{"id":"v1","type":{"element":"i32","shape":[-1,4]}}],"attrs":[["saturate",true]]}],"outputs":["v1"]}},
+        {"id":"rank-zero", "input":{
+          "inputs":[{"name":"scalar","element":"f64","shape":[]}],
+          "nodes":[{"op":"scale","inputs":["scalar"],"results":[{"name":"scaled","element":"f64","shape":[]}],"attrs":{"factor":0.5}}],
+          "outputs":["scaled"]}, "expect":{"schema_version":1,
+          "inputs":[{"id":"v0","type":{"element":"f64","shape":[]}}],
+          "nodes":[{"id":"n0","op":"scale","inputs":["v0"],"results":[{"id":"v1","type":{"element":"f64","shape":[]}}],"attrs":[["factor",0.5]]}],"outputs":["v1"]}},
+        {"id":"attribute-order", "input":{
+          "inputs":[{"name":"empty","element":"i64","shape":[0,3]}],
+          "nodes":[{"op":"tag","inputs":["empty"],"results":[{"name":"tagged","element":"i64","shape":[0,3]}],"attrs":{"zeta":[2,0,1],"note":"a\"b","enabled":false,"alpha":-3}}],
+          "outputs":["tagged"]}, "expect":{"schema_version":1,
+          "inputs":[{"id":"v0","type":{"element":"i64","shape":[0,3]}}],
+          "nodes":[{"id":"n0","op":"tag","inputs":["v0"],"results":[{"id":"v1","type":{"element":"i64","shape":[0,3]}}],"attrs":[["alpha",-3],["enabled",false],["note","a\"b"],["zeta",[2,0,1]]]}],"outputs":["v1"]}},
+        {"id":"identity", "input":{
+          "inputs":[{"name":"a","element":"f32","shape":[2]},{"name":"b","element":"i32","shape":[]}],
+          "nodes":[],"outputs":["b","a","b"]}, "expect":{"schema_version":1,
+          "inputs":[{"id":"v0","type":{"element":"f32","shape":[2]}},{"id":"v1","type":{"element":"i32","shape":[]}}],
+          "nodes":[],"outputs":["v1","v0","v1"]}}
       ],
       "negative_cases": [],
       "oracle": {"phases": ["build", "semantic"], "comparison": "exact-json"}

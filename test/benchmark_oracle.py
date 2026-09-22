@@ -25,13 +25,56 @@ from run_baseline_benchmarks import compare_outputs, isolated_reference, ort_ses
 from run_joggle_benchmarks import compiler_identity, checkpoint_protocol, make_harness, Unsupported
 from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
-from run_extension_task import execute, fusion_fixture, sandbox_policy
+from run_extension_task import execute, fusion_fixture, graph_fixture, sandbox_policy, equivalent
 from run_extension_agent import public_case_ids, tool_feedback, response_usage, final_checks
 import run_extension_agent
 from merge_benchmark_rows import audited_input
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    @unittest.skipUnless(importlib.util.find_spec("xdsl"), "xDSL is unavailable")
+    def test_manifest_fixtures_use_verified_native_ssa(self):
+        from xdsl.context import Context
+        from xdsl.dialects.builtin import Builtin
+        from xdsl.dialects.func import CallOp, Func, FuncOp, ReturnOp
+        from xdsl.parser import Parser
+        root = Path(__file__).resolve().parents[1] / "artifact"
+        task = next(t for t in json.loads((root / "manifests/extension-specs.json").read_text())["tasks"]
+                    if t["id"] == "emit-graph-manifest")
+        self.assertEqual(len(task["positive_cases"]), 8)
+        for case in task["positive_cases"]:
+            with self.subTest(case=case["id"]):
+                for system in ("Joggle", "MLIR", "xDSL"):
+                    source = graph_fixture(case["input"], system)
+                    self.assertNotIn("request", source)
+                    self.assertNotIn("schema_version", source)
+                context = Context()
+                context.load_dialect(Builtin)
+                context.load_dialect(Func)
+                module = Parser(context, graph_fixture(case["input"], "xDSL")).parse_module()
+                module.verify()
+                subject = next(op for op in module.ops
+                               if isinstance(op, FuncOp) and op.sym_name.data == "subject")
+                calls = [op for op in subject.body.block.ops if isinstance(op, CallOp)]
+                self.assertEqual(len(calls), len(case["input"]["nodes"]))
+                self.assertEqual(len(subject.body.block.args), len(case["input"]["inputs"]))
+                ret = subject.body.block.last_op
+                self.assertIsInstance(ret, ReturnOp)
+                self.assertEqual(len(ret.arguments), len(case["input"]["outputs"]))
+                expected = case["expect"]
+                self.assertFalse(equivalent({}, expected, False, {}))
+                self.assertFalse(equivalent({"schema_version": 1}, expected, False, {}))
+                self.assertFalse(equivalent(expected | {"outputs": []}, expected, False, {}))
+
+    def test_benchmark_assembly_rejects_invalidated_measurements(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rows.csv"
+            path.write_text("header\n")
+            path.with_suffix(".invalid.json").write_text(json.dumps({
+                "reason": "concurrent native build during measurement"}))
+            with self.assertRaisesRegex(SystemExit, "measurement was invalidated"):
+                audited_input(path)
+
     def test_agent_provider_and_final_failures_still_export_records(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "trajectory"

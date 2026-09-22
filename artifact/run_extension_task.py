@@ -23,7 +23,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 SUPPORTED_TASKS = {"ana-broadcast-shape", "ana-storage-cost", "ana-numeric-range",
-                   "ana-fusion-match", "emit-storage-plan", "emit-target-capability"}
+                   "ana-fusion-match", "emit-storage-plan", "emit-target-capability",
+                   "emit-graph-manifest"}
 
 
 def digest(path: Path) -> str:
@@ -131,6 +132,59 @@ def fusion_fixture(request: dict, system: str) -> str:
             f"    %activated = func.call @{activation}(%biased) : ({ty}) -> {ty}\n"
             f"    func.return {', '.join('%' + n for n in returned)} : "
             f"{', '.join([ty] * len(returned))}\n  }}\n}}\n")
+
+
+def graph_fixture(request: dict, system: str) -> str:
+    """Create typed SSA calls with native attributes, not a serialized request."""
+    def tensor(value: dict) -> str:
+        dims, element = value["shape"], value["element"]
+        if system == "Joggle":
+            return f"tensor<{element}, [" + ", ".join("_" if d < 0 else str(d) for d in dims) + "]>"
+        return "tensor<" + "".join(("?" if d < 0 else str(d)) + "x" for d in dims) + element + ">"
+
+    def result_type(types: list[str]) -> str:
+        return types[0] if len(types) == 1 else "(" + ", ".join(types) + ")"
+
+    values = {value["name"]: tensor(value) for value in request["inputs"]}
+    declarations, body = {}, []
+    for node in request["nodes"]:
+        operands = node["inputs"]
+        inputs = [values[name] for name in operands]
+        outputs = [tensor(value) for value in node["results"]]
+        signature = (inputs, outputs)
+        if node["op"] in declarations and declarations[node["op"]] != signature:
+            raise ValueError("fixture symbols must have one function signature")
+        declarations[node["op"]] = signature
+        for result, ty in zip(node["results"], outputs, strict=True):
+            if result["name"] in values:
+                raise ValueError("fixture result redefines an SSA name")
+            values[result["name"]] = ty
+        names = [value["name"] for value in node["results"]]
+        attrs = node.get("attrs", {})
+        if system == "Joggle":
+            if attrs:
+                body.append("  [" + ", ".join(f"{key}: {json.dumps(value)}" for key, value in attrs.items()) + "]")
+            body.append(f"  let {', '.join(names)} = {node['op']}({', '.join(operands)})")
+        else:
+            metadata = (" {" + ", ".join(f"{key} = {native_attr(value)}" for key, value in attrs.items()) + "}") if attrs else ""
+            body.append(f"    {', '.join('%' + name for name in names)} = func.call @{node['op']}"
+                        f"({', '.join('%' + name for name in operands)}){metadata} : "
+                        f"({', '.join(inputs)}) -> {result_type(outputs)}")
+    returns = [values[name] for name in request["outputs"]]
+    if system == "Joggle":
+        declarations_text = [f"fn {name}(" + ", ".join(f"a{i}: {ty}" for i, ty in enumerate(inputs)) +
+                             f") -> {result_type(outputs)};" for name, (inputs, outputs) in declarations.items()]
+        params = ", ".join(f"{value['name']}: {tensor(value)}" for value in request["inputs"])
+        return "\n".join(["mod fixture", "use tensor", *declarations_text,
+                          f"fn subject({params}) -> {result_type(returns)} {{", *body,
+                          "  return " + ", ".join(request["outputs"]), "}", ""])
+    declarations_text = [f"  func.func private @{name}({', '.join(inputs)}) -> {result_type(outputs)}"
+                         for name, (inputs, outputs) in declarations.items()]
+    params = ", ".join(f"%{value['name']}: {tensor(value)}" for value in request["inputs"])
+    return "\n".join(["module {", *declarations_text,
+                      f"  func.func @subject({params}) -> {result_type(returns)} {{", *body,
+                      "    func.return " + ", ".join("%" + name for name in request["outputs"]) +
+                      " : " + ", ".join(returns), "  }", "}", ""])
 
 
 def sandbox_policy(args: argparse.Namespace, work: Path) -> str:
@@ -301,6 +355,8 @@ def main() -> int:
                 path = work / ("input.jog" if args.system == "Joggle" else "input.mlir")
                 if args.task == "ana-fusion-match":
                     source = fusion_fixture(case["input"], args.system)
+                elif args.task == "emit-graph-manifest":
+                    source = graph_fixture(case["input"], args.system)
                 elif args.system == "Joggle":
                     source = ("mod fixture\n[request: " + json.dumps(case["input"]) +
                               "]\nfn subject() -> int { return 0 }\n")

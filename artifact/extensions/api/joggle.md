@@ -58,3 +58,20 @@ Check `ir.live(producer)` before inspecting a definition; function arguments
 have no defining operation. Tensor types are `tensor<f32, [d0, ...]>`.
 Report each match as indices into the subject's call sequence, excluding its
 return operation. Uses include every actual operand occurrence and returns.
+
+## Graph manifest emission
+
+`emit-graph-manifest` also supplies a native `subject` function. Its inputs are
+`ir.params(subject)`; traverse `ir.ops(subject)` in structural order. Calls have
+kind `"call"`, results from `ir.outs(op)`, and user attributes from `ir.meta(op)`.
+The return has kind `"return"` and ordered operands from `ir.args(op)`.
+`ir.key(value)` distinguishes values within this mod, including distinct
+results of one call. Use native value identity, not source variable names.
+
+For tensor types, `args(ir.type(value))[0]` is the element type and
+`args(args(ir.type(value))[1])` gives dimension types. `text(type)` prints a
+type; `name(dimension) == "_"` denotes a dynamic extent. `int(dimension)` reads
+a concrete integer dimension. Metadata `keys` are lexicographically ordered;
+`base.get(metadata, key)` preserves its attribute value. Build computed JSON
+objects using a mutable `dict` and indexed assignments, as above; dictionary
+literals contain attribute literals, not arbitrary expressions.

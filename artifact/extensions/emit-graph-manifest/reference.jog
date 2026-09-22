@@ -1,0 +1,72 @@
+mod extension
+use base
+use ir
+
+fn value_type(value: Val) -> dict {
+  let parameters = args(ir.type(value))
+  var shape: list<int> = []
+  for dimension in args(parameters[1]) {
+    if name(dimension) == "_" { shape += [-1] }
+    else { shape += [int(dimension)] }
+  }
+  var result: dict = {}
+  result["element"] = text(parameters[0])
+  result["shape"] = shape
+  return result
+}
+
+fn record(value: Val, id: str) -> dict {
+  var result: dict = {}
+  result["id"] = id
+  result["type"] = value_type(value)
+  return result
+}
+
+fn references(values: list<Val>, ids: dict) -> list<str> {
+  var result: list<str> = []
+  for value in values { result += [str(ids[text(ir.key(value))])] }
+  return result
+}
+
+fn analyze(m: Mod) -> dict {
+  let subject = ir.find(m, "subject")
+  var ids: dict = {}
+  var inputs: list<dict> = []
+  var nodes: list<dict> = []
+  var outputs: list<str> = []
+  var next = 0
+  for value in ir.params(subject) {
+    let id = "v" + text(next)
+    next += 1
+    ids[text(ir.key(value))] = id
+    inputs += [record(value, id)]
+  }
+  for op in ir.ops(subject) {
+    if ir.kind(op) == "call" {
+      let operands = references(ir.args(op), ids)
+      var results: list<dict> = []
+      for value in ir.outs(op) {
+        let id = "v" + text(next)
+        next += 1
+        ids[text(ir.key(value))] = id
+        results += [record(value, id)]
+      }
+      var attrs: list = []
+      let metadata = ir.meta(op)
+      for key in keys(metadata) { attrs += [[key, base.get(metadata, key)]] }
+      var node: dict = {}
+      node["id"] = "n" + text(len(nodes))
+      node["op"] = ir.callee(op)
+      node["inputs"] = operands
+      node["results"] = results
+      node["attrs"] = attrs
+      nodes += [node]
+    }
+    if ir.kind(op) == "return" { outputs = references(ir.args(op), ids) }
+  }
+  var result: dict = {schema_version: 1}
+  result["inputs"] = inputs
+  result["nodes"] = nodes
+  result["outputs"] = outputs
+  return result
+}

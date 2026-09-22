@@ -45,7 +45,7 @@ python3 artifact/validate_extension_specs.py
 `run_extension_task.py` executes candidate code against the shared contract.
 The native tasks include `ana-broadcast-shape`, `ana-storage-cost`,
 `ana-numeric-range`, `ana-fusion-match`, `emit-storage-plan`, and
-`emit-target-capability`.
+`emit-target-capability`, and `emit-graph-manifest`.
 Each task directory under `extensions/` contains reference implementations for
 Joggle, MLIR, and xDSL; the shared `starter.*` files contain their empty entry
 points. Attribute-analysis tasks read a request from function metadata in
@@ -80,6 +80,14 @@ operations, and use lists through each framework's native APIs. Match positions
 refer to the actual call sequence, not a precomputed input descriptor.
 Emission oracles also require byte-identical outputs across repeated runs.
 These reference checks validate task execution, not agent completion rates.
+
+`emit-graph-manifest` walks actual native SSA operations, tensor types, and
+operation attributes. Eight fixtures cover linear and shared-branch graphs,
+repeated operands/returns, multiple results, dynamic dimensions, rank-zero
+tensors, ordered mixed attributes, and identity graphs. The expected manifests
+are stored only in the oracle contract; native fixtures contain no request
+dictionary or expected output. Every case checks the full manifest and repeats
+emission to check byte stability.
 
 ### Local agent execution
 
@@ -117,7 +125,7 @@ The current collector emits integration records with `release_eligible: false`.
 It records successful native execution but does not infer a failed compiler's
 parse/type/build phase from its exit code. Unmeasured phase fields and reference
 likelihoods remain empty. These records cannot enter the release assembler.
-The full matrix additionally requires the remaining 18 native task harnesses,
+The full matrix additionally requires the remaining 17 native task harnesses,
 phase-specific instrumentation, and the frozen demonstration sets. The
 assembler consumes complete provider records:
 

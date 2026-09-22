@@ -62,6 +62,8 @@ def convert(path: Path, kind: str, expected: list[str]) -> list[dict[str, str]]:
 
 
 def audited_input(path: Path) -> dict[str, object]:
+    if path.with_suffix(".invalid.json").exists():
+        raise SystemExit(f"{path}: measurement was invalidated; collect a new run")
     record_path = path.with_suffix(".run.json")
     record = json.loads(record_path.read_text(encoding="utf-8"))
     if (not record.get("release_eligible") or record.get("git_dirty")

@@ -59,3 +59,19 @@ Check `isinstance(producer, CallOp)` before inspecting a defining call; block
 arguments have a block owner. Tensor types expose `get_shape()` as an integer
 tuple. Report each match as indices into the subject's call sequence,
 excluding its return. Uses include every actual operand occurrence and returns.
+
+## Graph manifest emission
+
+For `emit-graph-manifest`, use `subject.body.block.args` for ordered inputs and
+`subject.body.block.ops` for operation order. `CallOp.arguments` and `CallOp.res`
+contain operands and results; `ReturnOp.arguments` contains ordered returns.
+SSA values can be dictionary keys and distinguish different results of one
+operation. User attributes are in `op.attributes`; exclude a `callee` field
+if present. Return JSON-compatible Python objects.
+
+`TensorType.element_type` prints the element type with `str(...)`; `get_shape()`
+returns dimensions, with negative values denoting dynamic extents. Rank-zero
+tensors have an empty shape. `StringAttr.data`, `FloatAttr.value.data`, and
+`IntegerAttr.value.data` expose scalar attributes. Integer attributes with
+`value.type.width.data == 1` are Booleans. `ArrayAttr` is iterable. Sort user
+attribute names when constructing the contract's attribute-pair array.

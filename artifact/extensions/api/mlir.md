@@ -62,3 +62,19 @@ Tensor types expose `getRank()` and `getDimSize(axis)`. Report each match as
 indices into the subject's `func.call` sequence, excluding its return.
 Uses include every actual operand occurrence and returns. The driver also
 links `MLIRFuncDialect`.
+
+## Graph manifest emission
+
+For `emit-graph-manifest`, `subject.getArguments()` lists inputs and
+`subject.getBody().front()` lists operations. `func::CallOp` exposes
+`getOperands()`, `getResults()`, and `getCallee()`; `func::ReturnOp` exposes
+ordered return operands. `llvm::DenseMap<mlir::Value, ...>` can track native
+SSA identities. User attributes come from `call->getAttrs()`; exclude `callee`
+bookkeeping and sort the remaining `NamedAttribute` names explicitly.
+
+`RankedTensorType` exposes `getElementType()`, `getRank()`, `getDimSize(axis)`,
+and `isDynamicDim(axis)`. Types print into `llvm::raw_string_ostream`.
+`IntegerAttr.getInt()`, `FloatAttr.getValueAsDouble()`, and `StringAttr.getValue()`
+provide scalar values; integer attributes of type `i1` represent Booleans.
+`ArrayAttr` is iterable. LLVM JSON arrays retain insertion order, allowing the
+contract's sorted attribute-pair array and ordered graph references.
