@@ -214,22 +214,51 @@ local fn capacity_with(
   return out
 }
 
-[memo]
-local fn function_values(fn: Fn) -> list<Val> {
-  return ir.vals(fn)
-}
-
-[memo]
-local fn value_names(fn: Fn) -> dict {
-  let values = function_values(fn)
-  var names: dict = {}
-  for index in 0..len(values) {
-    let name = ir.name(values[index])
-    if name != "" {
-      names[name] = base.get(names, name, []) + [index]
+local fn storage_root(m: Mod, value: Val, seen: list<Val>) -> Val {
+  for prior in seen { if prior == value { return value } }
+  let next = seen + [value]
+  let source = ir.def(value)
+  if !ir.live(source) { return value }
+  let inputs = ir.args(source)
+  if ir.kind(source) == "call" && len(inputs) != 0 {
+    let target = ir.target(m, source)
+    if target == "tensor.view" || target == "base.copy" ||
+       target == "tensor.write" || target == "tensor.operator []=" {
+      return storage_root(m, inputs[0], next)
     }
   }
-  return names
+  let kind = ir.kind(source)
+  if kind != "loop" && kind != "branch" { return value }
+  let outputs = ir.outs(source)
+  var position = -1
+  for i in 0..len(outputs) { if outputs[i] == value { position = i } }
+  if position < 0 { return value }
+  let bodies = ir.blks(source)
+  if len(bodies) == 0 { return value }
+  var root = value
+  for body in bodies {
+    let ops = ir.ops(body)
+    if len(ops) == 0 || ir.kind(ops[len(ops) - 1]) != "yield" { return value }
+    let yielded = ir.args(ops[len(ops) - 1])
+    if position >= len(yielded) { return value }
+    let origin = storage_root(m, yielded[position], next)
+    let args = ir.args(body)
+    var slot = -1
+    for i in 0..len(args) { if args[i] == origin { slot = i } }
+    if slot < 0 { return value }
+    var input_slot = slot
+    if kind == "branch" { input_slot += 1 }
+    if input_slot >= len(inputs) { return value }
+    // A loop-carried buffer must keep its own allocation at every iteration.
+    // A branch can borrow a buffer only when every arm selects the same root.
+    if kind == "loop" && input_slot != len(inputs) - len(outputs) + position {
+      return value
+    }
+    let incoming = storage_root(m, inputs[input_slot], next)
+    if root != value && root != incoming { return value }
+    root = incoming
+  }
+  return root
 }
 
 local fn capacity_guarded(m: Mod, value: Val, seen: list<Val>) -> list<int> {
@@ -242,20 +271,8 @@ local fn capacity_guarded(m: Mod, value: Val, seen: list<Val>) -> list<int> {
     }
     return recorded
   }
-  let source = ir.def(value)
-  if ir.live(source) && ir.kind(source) == "call" &&
-     (ir.target(m, source) == "tensor.view" ||
-      ir.callee(source) == "tensor.view") && len(ir.args(source)) == 2 {
-    return capacity_guarded(m, ir.args(source)[0], next)
-  }
-  if ir.live(source) && ir.kind(source) == "call" &&
-     (ir.target(m, source) == "base.copy" ||
-      ir.target(m, source) == "tensor.write" ||
-      ir.callee(source) == "base.copy" ||
-      ir.callee(source) == "tensor.write") &&
-     len(ir.args(source)) != 0 {
-    return capacity_guarded(m, ir.args(source)[0], next)
-  }
+  let root = storage_root(m, value, [])
+  if root != value { return capacity_guarded(m, root, next) }
   // A concrete storage shape needs no interval analysis. Keep view/copy
   // provenance above this shortcut so their backing capacity is preserved.
   let type = ir.type(value)
@@ -263,22 +280,7 @@ local fn capacity_guarded(m: Mod, value: Val, seen: list<Val>) -> list<int> {
     return tensor.shape(type)
   }
   let known = bounds.infer(m)
-  let direct = capacity_with(m, value, known, next)
-  if len(direct) != 0 || !ir.live(source) || ir.name(value) == "" {
-    return direct
-  }
-  let fn = ir.owner(ir.blk(source))
-  // Assignment versions share their printed name. Index them once per
-  // function revision instead of rescanning every value for each query.
-  let values = function_values(fn)
-  let names = value_names(fn)
-  for index in base.get(names, ir.name(value), []) {
-    let inherited = capacity_with(m, values[base.int(index)], known, next)
-    if len(inherited) != 0 {
-      return inherited
-    }
-  }
-  return []
+  return capacity_with(m, value, known, next)
 }
 
 fn capacity(m: Mod, value: Val) -> list<int> {

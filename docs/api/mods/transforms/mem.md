@@ -80,12 +80,18 @@ Planning computes lifetimes and reuses compatible slots only where overlap is
 excluded. Unknown/unbounded capacity is not silently rounded to a fixed size.
 Replanning replaces derived metadata deterministically.
 
-Capacity queries follow allocation and view provenance. For assignment
-versions that inherit an allocation by name, `mem` builds a per-function name
-index and reuses it within the current evaluation. The index preserves value
-order and is invalidated by the owning store's revision. Repeated queries
-therefore inspect matching versions instead of rescanning every value in the
-function; the capacity proof itself is unchanged.
+Capacity queries follow SSA allocation provenance through views, copies,
+element writes, and structured control flow. A loop preserves its incoming
+allocation when its yielded value traces back to the corresponding carried
+argument. A branch preserves storage when every arm selects the same backing
+allocation. Nested regions use the same rule. Printed variable names do not
+participate in the proof: renaming a value leaves its capacity unchanged, and
+assigning a new buffer to the same variable does not inherit the old bound.
+
+This distinction matters for a dynamic `topk` followed by a tensor cast. TopK's
+logical length is K, while its checked storage bound comes from the input.
+Selection loops update elements without changing that allocation. The cast
+therefore receives a finite capacity through the result's SSA provenance.
 
 ```mermaid
 flowchart TD

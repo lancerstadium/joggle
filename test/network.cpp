@@ -64,6 +64,48 @@ int main(int argc, char** argv) {
       indexed_capacity, "indexed-capacity.jog"));
   CHECK(joggle::run(env, "script.capacity_index_probe", indexed_capacity));
 
+  // Carry physical storage through nested loops/branches and views by SSA
+  // identity, independent of printed assignment names.
+  joggle::Mod carried_capacity;
+  CHECK(joggle::parse(env,
+      "mod carried_capacity\nuse tensor\n"
+      "fn main(choose: bool) -> tensor<f32, [_]> {\n"
+      " let storage = tensor<f32, [7]>(f32(0))\n"
+      " let shape = tensor<index, [1]>(index(3))\n"
+      " var result: tensor<f32, [_]> = tensor.view(storage, shape)\n"
+      " for i in 0..2 { for j in 0..2 {\n"
+      "  if choose { result[index(0)] = f32(1) }\n"
+      "  else { result[index(1)] = f32(2) }\n"
+      " } }\n return result\n}\n",
+      carried_capacity, "carried-capacity.jog"));
+  joggle::Attr capacity;
+  CHECK(joggle::query(env, "script.return_capacity", carried_capacity, capacity));
+  CHECK(capacity.list() && capacity.list()->size() == 1);
+  CHECK(capacity.list()->front().integer() == 7);
+  std::size_t capacity_name = 0;
+  for (joggle::Val value : carried_capacity.vals())
+    CHECK(carried_capacity.rename(value, "renamed_" + std::to_string(capacity_name++)));
+  CHECK(joggle::query(env, "script.return_capacity", carried_capacity, capacity));
+  CHECK(capacity.list() && capacity.list()->size() == 1);
+  CHECK(capacity.list()->front().integer() == 7);
+
+  // Rebinding the same source-level variable to another allocation is not a
+  // proof that its old capacity survives the control-flow merge.
+  for (const std::string& control : {std::string("if choose"), std::string("for i in 0..2")}) {
+    joggle::Mod rebound;
+    CHECK(joggle::parse(env,
+        "mod rebound\nuse tensor\n"
+        "fn main(choose: bool) -> tensor<f32, [_]> {\n"
+        " let small = tensor<index, [1]>(index(3))\n"
+        " var result: tensor<f32, [_]> = tensor.make(f32(0), small)\n" +
+        control + " {\n"
+        " let large = tensor<index, [1]>(index(7))\n"
+        " result = tensor.make(f32(0), large)\n"
+        " }\n return result\n}\n", rebound, "rebound.jog"));
+    CHECK(joggle::query(env, "script.return_capacity", rebound, capacity));
+    CHECK(capacity.list() && capacity.list()->empty());
+  }
+
   // A backing allocation bounds one open view axis only when all remaining
   // axes are positive and fixed. Narrowing and overflowing shape arithmetic
   // must not turn an unknown allocation into an accepted finite capacity.

@@ -62,11 +62,12 @@ fn dynamic_vector(extent: index, count: i64) -> tensor<f32, [8]> {
   let k = tensor<i64, [1]>(count)
   let values: tensor<f32, [_]>,
       indices: tensor<i64, [_]> = tensor.topk(data, k, 0, true)
+  let narrowed: tensor<i32, [_]> = tensor.cast(indices)
   var result = tensor<f32, [8]>(f32(-99))
   result[0] = f32(tensor.dim(values, index(0)))
   for i in index(0)..index(count) {
     result[index(1) + i] = values[i]
-    result[index(5) + i] = f32(indices[i])
+    result[index(5) + i] = f32(narrowed[i])
   }
   return result
 }
