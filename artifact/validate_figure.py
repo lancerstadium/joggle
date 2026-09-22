@@ -16,6 +16,7 @@ FAMILIES = {"definition", "analysis", "rewrite", "conversion", "emission", "vert
 SYSTEMS = {"Joggle", "MLIR", "xDSL"}
 DEMOS = {0, 2}
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+EXTERNAL_VARIANTS = {"tvm-relax-llvm": {"id": "tvm-relax-llvm", "system": "TVM Relax LLVM"}}
 
 
 def boolean(row: dict[str, str], field: str, line: int) -> bool:
@@ -156,17 +157,26 @@ def footprint(rows: list[dict[str, str]], partial: bool, tasks: dict[str, str]) 
 
 
 def performance(
-    rows: list[dict[str, str]], partial: bool, spec: dict[str, object], spec_hash: str
+    rows: list[dict[str, str]], partial: bool, spec: dict[str, object], spec_hash: str,
+    selected_variants: list[str] | None = None,
 ) -> None:
     require_unique(rows, ("subject_kind", "subject", "variant", "iteration", "seed"))
     measurement = spec["measurement"]
     variants = {row["id"]: row for row in spec["variants"]}
+    if selected_variants is not None:
+        available = {**variants, **EXTERNAL_VARIANTS}
+        if (not selected_variants or len(set(selected_variants)) != len(selected_variants)
+                or set(selected_variants) - set(available)):
+            raise SystemExit("unknown or duplicate performance variants")
+        variants = {name: available[name] for name in selected_variants}
     operators = {row["id"]: row for row in spec["operator_cases"]}
     models = {row["id"]: row for row in spec["model_cases"]}
     observed: dict[tuple[str, str], set[str]] = defaultdict(set)
     counts: Counter[tuple[str, str, str]] = Counter()
     supported_pairs: dict[tuple[str, str, str], bool] = {}
     pairing: dict[tuple[str, str, int], tuple[str, int]] = {}
+    identities = {}
+    iterations = defaultdict(set)
     for line, row in enumerate(rows, start=2):
         kind, subject, variant = row["subject_kind"], row["subject"], row["variant"]
         subjects = operators if kind == "operator" else models if kind == "model" else {}
@@ -188,6 +198,11 @@ def performance(
             raise SystemExit(f"line {line}: support status changes within a pair")
         supported_pairs[pair_id] = supported
         counts[(kind, subject, variant)] += 1
+        digest(row["input_digest"], line, "input_digest")
+        identity = (row["system_revision"], row["input_digest"])
+        if pair_id in identities and identities[pair_id] != identity:
+            raise SystemExit(f"line {line}: mixed revision or input within a workload")
+        identities[pair_id] = identity
         if not supported:
             if not row["reason"] or any(row[field] for field in (
                 "iteration", "calls_per_sample", "latency_ns", "max_abs_error",
@@ -196,6 +211,9 @@ def performance(
                 raise SystemExit(f"line {line}: malformed unsupported row")
             continue
         iteration = unsigned(row, "iteration", line)
+        if iteration >= measurement["execution_iterations"] or iteration in iterations[pair_id]:
+            raise SystemExit(f"line {line}: duplicate or out-of-range iteration")
+        iterations[pair_id].add(iteration)
         if row["reason"] or unsigned(row, "latency_ns", line) == 0:
             raise SystemExit(f"line {line}: malformed timing row")
         if unsigned(row, "calls_per_sample", line) != measurement["execution_batches"][subject]:
@@ -232,6 +250,7 @@ def main() -> int:
     parser.add_argument("figure", choices=("4", "5", "7"))
     parser.add_argument("csv", type=Path)
     parser.add_argument("--allow-partial", action="store_true")
+    parser.add_argument("--variants", nargs="+", help="Explicit Figure 7 comparison population")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent
     names = {"4": "figure-04-extension.csv", "5": "figure-05-footprint.csv",
@@ -249,7 +268,7 @@ def main() -> int:
     else:
         benchmark_path = root / "manifests/benchmark-cases.json"
         performance(rows, args.allow_partial, json.loads(benchmark_path.read_text()),
-                    hashlib.sha256(benchmark_path.read_bytes()).hexdigest())
+                    hashlib.sha256(benchmark_path.read_bytes()).hexdigest(), args.variants)
     print(f"validated {len(rows)} rows for Figure {args.figure}")
     return 0
 

@@ -14,7 +14,8 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-VARIANT_ORDER = {"joggle-unoptimized": 0, "joggle-optimized": 1, "onnxruntime": 2}
+VARIANT_ORDER = {"joggle-unoptimized": 0, "joggle-optimized": 1, "onnxruntime": 2,
+                 "tvm-relax-llvm": 3}
 
 
 def sha256(path: Path) -> str:
@@ -74,12 +75,51 @@ def audited_input(path: Path) -> dict[str, object]:
             })}
 
 
+def audit_protocols(paths: list[Path], group: str, spec: dict, spec_hash: str) -> None:
+    """Match native runs before combining timings from different systems."""
+    records = [json.loads(path.with_suffix(".run.json").read_text()) for path in paths]
+    if not records:
+        return
+    measurement = spec["measurement"]
+    for path, record in zip(paths, records):
+        if record.get("group") != group or record.get("benchmark_spec_sha256") != spec_hash:
+            raise SystemExit(f"{path}: workload contract differs")
+        for field in ("warmups", "execution_iterations"):
+            if record.get(field) != measurement[field]:
+                raise SystemExit(f"{path}: {field} differs from measurement contract")
+        for case in record["cases"]:
+            if record["execution_batches"].get(case) != measurement["execution_batches"].get(case):
+                raise SystemExit(f"{path}: batch size differs for {case}")
+        # TVM's explicit pool control was added after the original CPU runs.
+        # The shared CPU controls must match; backend-specific controls remain
+        # recorded in each native run rather than erased from provenance.
+        controls = record["thread_environment"]
+        for key in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+                    "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS"):
+            if controls.get(key) != str(measurement["threads"]):
+                raise SystemExit(f"{path}: mismatched thread control {key}")
+        if record.get("backend", {}).get("variant") == "tvm-relax-llvm":
+            if controls.get("TVM_NUM_THREADS") != str(measurement["threads"]):
+                raise SystemExit(f"{path}: mismatched TVM pool control")
+    for field in ("input_index_sha256", "seed", "host_controls", "cases", "model_files"):
+        if any(record.get(field) != records[0].get(field) for record in records[1:]):
+            raise SystemExit(f"{group}: incompatible native runs: {field}")
+    candidates = [record for record in records
+                  if record.get("variant") in {"joggle-unoptimized", "joggle-optimized"}]
+    for field in ("git_revision", "joggle_sha256", "compiler", "compile_flags"):
+        if candidates and any(record.get(field) != candidates[0].get(field)
+                              for record in candidates[1:]):
+            raise SystemExit(f"{group}: unmatched Joggle variants: {field}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--operators", type=Path, nargs="+", required=True)
     parser.add_argument("--models", type=Path, nargs="+", default=[])
     parser.add_argument("--allow-partial", action="store_true",
                         help="Export an explicitly incomplete, validated measurement snapshot")
+    parser.add_argument("--variants", nargs="+",
+                        help="Explicit comparison population, including optional external backends")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if not args.models and not args.allow_partial:
@@ -99,6 +139,10 @@ def main() -> int:
     policies = {json.dumps(item["correctness_oracle"], sort_keys=True) for item in audited}
     if len(policies) != 1:
         raise SystemExit("refusing to mix different numerical oracle policies")
+    spec_path = root / "manifests/benchmark-cases.json"
+    spec = json.loads(spec_path.read_text())
+    audit_protocols(args.operators, "operators", spec, sha256(spec_path))
+    audit_protocols(args.models, "models", spec, sha256(spec_path))
     rows = []
     for path in args.operators:
         rows.extend(convert(path, "operator", operator_header))
@@ -123,6 +167,8 @@ def main() -> int:
         command = [sys.executable, str(root / "validate_figure.py"), "7", str(temporary_path)]
         if args.allow_partial:
             command.append("--allow-partial")
+        if args.variants:
+            command.extend(["--variants", *args.variants])
         subprocess.run(command, check=True)
         temporary_path.replace(args.output)
     finally:
@@ -131,6 +177,8 @@ def main() -> int:
     write_json(record_path, {
         "schema": "performance-merge/v1",
         "complete": not args.allow_partial,
+        "variants": args.variants or [row["id"] for row in json.loads(
+            (root / "manifests/benchmark-cases.json").read_text())["variants"]],
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "inputs": audited,
         "output": {"path": str(args.output.resolve()), "sha256": sha256(args.output)},

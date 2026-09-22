@@ -1,6 +1,7 @@
 """Numerical-oracle regressions; run with NumPy, ONNX, and ONNX Runtime."""
 
 import json
+import copy
 import importlib.util
 import shutil
 import subprocess
@@ -17,9 +18,38 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "artifact"))
 from run_baseline_benchmarks import compare_outputs, ort_session
 from run_joggle_benchmarks import checkpoint_protocol, make_harness, Unsupported
 from benchmark_backends import TVMRunner, tvm_identity
+from validate_figure import performance
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_external_performance_population_and_sample_identity(self):
+        # Synthetic validator fixtures, never used as experimental results.
+        variants = {"joggle-unoptimized": "Joggle", "joggle-optimized": "Joggle",
+                    "onnxruntime": "ONNX Runtime", "tvm-relax-llvm": "TVM Relax LLVM"}
+        spec = {"measurement": {"execution_iterations": 2, "execution_batches": {"op": 1}},
+                "variants": [{"id": k, "system": v} for k, v in variants.items()
+                             if k != "tvm-relax-llvm"],
+                "operator_cases": [{"id": "op", "family": "elementwise"}], "model_cases": []}
+        rows = [{"subject_kind": "operator", "subject": "op", "subject_hash": "a" * 64,
+                 "family": "elementwise", "system": system, "system_revision": "revision",
+                 "variant": variant, "supported": "true", "reason": "",
+                 "iteration": str(i), "calls_per_sample": "1", "latency_ns": "100",
+                 "max_abs_error": "0", "max_rel_error": "0", "input_digest": "b" * 64,
+                 "output_digest": "c" * 64, "correct": "true", "seed": str(10 + i)}
+                for variant, system in variants.items() for i in range(2)]
+        performance(rows, False, spec, "a" * 64, list(variants))
+        with self.assertRaises(SystemExit):
+            performance(rows, False, spec, "a" * 64)  # External variants are opt-in.
+        with self.assertRaises(SystemExit):
+            performance(rows[:-1], False, spec, "a" * 64, list(variants))
+        for field, value in (("iteration", "0"), ("iteration", "2"),
+                             ("system_revision", "different"), ("input_digest", "d" * 64),
+                             ("system", "other"), ("correct", "false")):
+            invalid = copy.deepcopy(rows)
+            invalid[-1][field] = value
+            with self.subTest(field=field, value=value), self.assertRaises(SystemExit):
+                performance(invalid, False, spec, "a" * 64, list(variants))
+
     def test_dynamic_output_harness_uses_capacity_and_checks_extents(self):
         compiler = shutil.which("cc")
         if compiler is None:

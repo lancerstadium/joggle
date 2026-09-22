@@ -210,8 +210,24 @@ synchronous, and TVM's thread pool is fixed to the manifest's thread count.
 
 Use `--smoke` to validate integration before formal timing. Smoke records are
 not release eligible. Run backends sequentially on an otherwise idle host.
-TVM rows currently use the raw benchmark schema; the existing three-variant
-figure assembler does not yet accept them.
+Include TVM in the shared source-data export by explicitly selecting the four
+configurations. The workload manifest and its input hashes remain unchanged:
+
+```sh
+python3 artifact/merge_benchmark_rows.py \
+  --operators .cache/artifact/operators-joggle-base.csv \
+    .cache/artifact/operators-joggle-opt.csv \
+    .cache/artifact/operators-ort.csv .cache/artifact/operators-tvm.csv \
+  --variants joggle-unoptimized joggle-optimized onnxruntime tvm-relax-llvm \
+  --allow-partial --output .cache/artifact/operators-cross-system.csv
+```
+
+This operator-only export is partial relative to the full operator-and-model
+population. For the complete export, provide all four model runs through
+`--models` and omit `--allow-partial`. The assembler checks native sampling and
+input protocols as well as CSV identities. The existing paper plots still
+display the two Joggle variants relative to ORT; importing a TVM row does not
+automatically add it to those plots.
 
 Repeat the Joggle command for `joggle-unoptimized`; repeat the variants
 with `--group models --model-root .cache/onnx-zoo`. Then assemble the one figure
