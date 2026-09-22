@@ -18,6 +18,11 @@ void qlinear_c_avg_pool(const uint8_t* x, const float* input_scale,
                         const uint8_t* input_zero,
                         const float* output_scale,
                         const uint8_t* output_zero, uint8_t* result);
+void qlinear_c_qdq_overflow_boundary(
+    const uint8_t* x, const int8_t* weight, const int32_t* bias,
+    const float* input_scale, const float* weight_scale,
+    const float* output_scale, const uint8_t* input_zero,
+    const int8_t* weight_zero, const int32_t* bias_zero, uint8_t* result);
 
 int main(void) {
   const uint8_t matmul_expected[4] = {1, 2, 3, 4};
@@ -62,5 +67,19 @@ int main(void) {
   for (int i = 0; i < 4; ++i)
     if (pool[i] != pool_expected[i])
       return 4;
+  /* The source graph is floating-point Conv, not an overflowing int32 Conv.
+     DQ(1) * DQ(-1) + DQ(INT32_MIN) is negative and quantizes to zero. */
+  const uint8_t boundary_x[1] = {1};
+  const int8_t boundary_weight[1] = {-1};
+  const int32_t boundary_bias[1] = {INT32_MIN};
+  const int32_t bias_zero[1] = {0};
+  const float boundary_scale[1] = {1.0e-9f};
+  uint8_t boundary_result[1] = {255};
+  qlinear_c_qdq_overflow_boundary(
+      boundary_x, boundary_weight, boundary_bias, scalar_scale,
+      boundary_scale, scalar_scale, scalar_zero, signed_zero, bias_zero,
+      boundary_result);
+  if (boundary_result[0] != 0)
+    return 5;
   return 0;
 }

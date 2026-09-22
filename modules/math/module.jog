@@ -61,12 +61,14 @@ fn tanh(x: f32) -> f32;
 fn tanh(x: f64) -> f64;
 
 fn round_even(x: f32) -> f32 {
+  // Classify the tie from one rounded input, including after call expansion.
+  let value: f32 = x
   let zero: f32 = 0.0
   let half: f32 = 0.5
   let one: f32 = 1.0
   let two: f32 = 2.0
-  let lower = floor(x)
-  let delta = x - lower
+  let lower = floor(value)
+  let delta = value - lower
   var out: f32 = lower + one
   if delta < half {
     out = lower
@@ -79,12 +81,14 @@ fn round_even(x: f32) -> f32 {
 }
 
 fn round_even(x: f64) -> f64 {
+  // Classify the tie from one rounded input, including after call expansion.
+  let value: f64 = x
   let zero: f64 = 0.0
   let half: f64 = 0.5
   let one: f64 = 1.0
   let two: f64 = 2.0
-  let lower = floor(x)
-  let delta = x - lower
+  let lower = floor(value)
+  let delta = value - lower
   var out: f64 = lower + one
   if delta < half {
     out = lower

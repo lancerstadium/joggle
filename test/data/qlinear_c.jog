@@ -52,3 +52,17 @@ fn avg_pool(
   )
   return result
 }
+
+fn qdq_overflow_boundary(
+  x: tensor<u8, [1, 1, 1, 1]>,
+  weight: tensor<i8, [1, 1, 1, 1]>, bias: tensor<i32, [1]>,
+  input_scale: tensor<f32, []>, weight_scale: tensor<f32, []>,
+  output_scale: tensor<f32, []>, input_zero: tensor<u8, []>,
+  weight_zero: tensor<i8, []>, bias_zero: tensor<i32, []>
+) -> tensor<u8, [1, 1, 1, 1]> {
+  let xf = onnx.DequantizeLinear(x, input_scale, input_zero)
+  let wf = onnx.DequantizeLinear(weight, weight_scale, weight_zero)
+  let bf = onnx.DequantizeLinear(bias, weight_scale, bias_zero)
+  let convolved = onnx.Conv(xf, wf, bf)
+  return onnx.QuantizeLinear(convolved, output_scale, input_zero)
+}

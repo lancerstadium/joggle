@@ -34,12 +34,21 @@ THREAD_ENV = {
     "NUMEXPR_NUM_THREADS": "1",
 }
 
+# Correctness follows the submitted graph, independently of the optimized
+# implementation used for timing. In particular, QDQ-to-QLinearConv fusion can
+# introduce int32 overflow that is absent from the floating-point Conv graph.
+CORRECTNESS_ORACLE = {
+    "schema": "onnx-graph-semantics/v1",
+    "graph_optimization": "ORT_DISABLE_ALL",
+    "provider": "CPUExecutionProvider",
+}
+
 
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def ort_session(model: bytes, measurement: dict[str, Any]):
+def ort_session(model: bytes, measurement: dict[str, Any], *, semantic: bool = False):
     import onnxruntime as ort
 
     options = ort.SessionOptions()
@@ -48,12 +57,44 @@ def ort_session(model: bytes, measurement: dict[str, Any]):
     options.execution_mode = getattr(ort.ExecutionMode,
                                      measurement["reference_execution_mode"])
     options.graph_optimization_level = getattr(
-        ort.GraphOptimizationLevel, measurement["reference_graph_optimization"]
+        ort.GraphOptimizationLevel,
+        CORRECTNESS_ORACLE["graph_optimization"] if semantic
+        else measurement["reference_graph_optimization"]
     )
     options.log_severity_level = 3
-    return ort.InferenceSession(
-        model, sess_options=options, providers=[measurement["reference_provider"]]
-    )
+    provider = CORRECTNESS_ORACLE["provider"] if semantic else measurement["reference_provider"]
+    return ort.InferenceSession(model, sess_options=options, providers=[provider])
+
+
+def correctness_oracle_record() -> dict[str, str]:
+    import onnxruntime as ort
+
+    return {**CORRECTNESS_ORACLE, "runtime": f"onnxruntime-{ort.__version__}"}
+
+
+def compare_outputs(
+    actual: list[np.ndarray], expected: list[np.ndarray], rtol: float, atol: float,
+) -> dict[str, Any]:
+    result = {"correct": True, "reason": "", "max_abs_error": 0.0,
+              "max_rel_error": 0.0}
+    if len(actual) != len(expected):
+        return {**result, "correct": False, "reason": "oracle:output-count"}
+    for value, reference in zip(actual, expected, strict=True):
+        if value.shape != reference.shape or value.dtype != reference.dtype:
+            return {**result, "correct": False, "reason": "oracle:type-shape"}
+        if value.dtype.kind in "iub":
+            if not np.array_equal(value, reference):
+                result.update(correct=False, reason="oracle:integer-mismatch")
+            continue
+        if not np.all(np.isfinite(value)) or not np.all(np.isfinite(reference)):
+            return {**result, "correct": False, "reason": "oracle:nonfinite"}
+        absolute = np.abs(value.astype(np.float64) - reference.astype(np.float64))
+        relative = absolute / np.maximum(np.abs(reference.astype(np.float64)), atol or 1e-30)
+        result["max_abs_error"] = max(result["max_abs_error"], float(np.max(absolute, initial=0.0)))
+        result["max_rel_error"] = max(result["max_rel_error"], float(np.max(relative, initial=0.0)))
+        if not np.allclose(value, reference, rtol=rtol, atol=atol, equal_nan=False):
+            result.update(correct=False, reason="oracle:tolerance")
+    return result
 
 
 def load_case(
@@ -119,9 +160,16 @@ def worker(args: argparse.Namespace) -> int:
                 outputs = session.run(names, feeds)
             elapsed = time.perf_counter_ns() - started
             latencies.append(max(1, elapsed // args.batch))
+        spec = json.loads(args.spec.read_text())
+        case = next(case for case in spec["operator_cases"] + spec["model_cases"]
+                    if case["id"] == args.case_id)
+        semantic_session = ort_session(model, measurement, semantic=True)
+        comparison = compare_outputs(outputs, semantic_session.run(names, feeds),
+                                     case["rtol"], case["atol"])
         print(json.dumps({
             "latencies_ns": latencies,
             "output_digest": output_digest(names, outputs),
+            **comparison,
         }))
         return 0
 
@@ -240,6 +288,7 @@ def main(args: argparse.Namespace) -> int:
         operator_records = {record["id"]: record for record in operator_index["cases"]}
 
     rows = []
+    correctness_failures = []
     model_files = []
     for case in cases:
         case_id = case["id"]
@@ -271,11 +320,22 @@ def main(args: argparse.Namespace) -> int:
             iterations=execute_count, warmups=warmups,
             batch=measurement["execution_batches"][case_id],
         ))
+        if not payload["correct"]:
+            correctness_failures.append({
+                "id": case_id, "reason": payload["reason"],
+                "max_abs_error": payload["max_abs_error"],
+                "max_rel_error": payload["max_rel_error"],
+                "output_digest": payload["output_digest"],
+            })
+            rows.append(row(header, common, supported="false",
+                            reason="unsupported:" + payload["reason"], seed=args.seed))
+            continue
         for iteration, latency in enumerate(payload["latencies_ns"]):
             rows.append(row(
                 header, common, iteration=iteration,
                 calls_per_sample=measurement["execution_batches"][case_id],
-                latency_ns=latency, max_abs_error=0, max_rel_error=0,
+                latency_ns=latency, max_abs_error=payload["max_abs_error"],
+                max_rel_error=payload["max_rel_error"],
                 output_digest=payload["output_digest"], correct="true",
                 seed=args.seed + 10_000 + iteration,
             ))
@@ -299,6 +359,8 @@ def main(args: argparse.Namespace) -> int:
         "system_revision": system_revision,
         "provider": measurement["reference_provider"],
         "graph_optimization": measurement["reference_graph_optimization"],
+        "correctness_oracle": correctness_oracle_record(),
+        "correctness_failures": correctness_failures,
         "execution_mode": measurement["reference_execution_mode"],
         "threads": measurement["threads"],
         "execution_iterations": execute_count,

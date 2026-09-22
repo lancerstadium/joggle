@@ -67,7 +67,11 @@ def audited_input(path: Path) -> dict[str, object]:
             or record.get("output_sha256") != sha256(path)):
         raise SystemExit(f"{path}: run record is not release eligible")
     return {"path": str(path.resolve()), "sha256": sha256(path),
-            "record": str(record_path.resolve()), "record_sha256": sha256(record_path)}
+            "record": str(record_path.resolve()), "record_sha256": sha256(record_path),
+            "correctness_oracle": record.get("correctness_oracle", {
+                "schema": "legacy-optimized-reference/v0",
+                "graph_optimization": "ORT_ENABLE_ALL",
+            })}
 
 
 def main() -> int:
@@ -92,6 +96,9 @@ def main() -> int:
     output_header = header(root / "templates/figure-07-performance.csv")
     inputs = [*args.operators, *args.models]
     audited = [audited_input(path) for path in inputs]
+    policies = {json.dumps(item["correctness_oracle"], sort_keys=True) for item in audited}
+    if len(policies) != 1:
+        raise SystemExit("refusing to mix different numerical oracle policies")
     rows = []
     for path in args.operators:
         rows.extend(convert(path, "operator", operator_header))

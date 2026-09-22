@@ -24,6 +24,8 @@ from joggle_entry import signature_command
 from run_onnxruntime_benchmarks import (
     NUMPY_DTYPES,
     THREAD_ENV,
+    compare_outputs,
+    correctness_oracle_record,
     git_state,
     host_controls,
     load_case,
@@ -245,7 +247,7 @@ def oracle(
 ) -> list[tuple[str, np.ndarray]]:
     from run_onnxruntime_benchmarks import ort_session
 
-    session = ort_session(model.read_bytes(), measurement)
+    session = ort_session(model.read_bytes(), measurement, semantic=True)
     names = [item.name for item in session.get_outputs()]
     return list(zip(names, session.run(names, feeds), strict=True))
 
@@ -264,24 +266,14 @@ def compare(
     actual: list[np.ndarray], expected: list[tuple[str, np.ndarray]],
     rtol: float, atol: float,
 ) -> tuple[float, float]:
-    max_abs = 0.0
-    max_rel = 0.0
-    for value, (_, reference) in zip(actual, expected, strict=True):
-        if value.dtype.kind in "iu":
-            if not np.array_equal(value, reference):
-                raise Unsupported("oracle:integer-mismatch")
-            continue
-        absolute = np.abs(value.astype(np.float64) - reference.astype(np.float64))
-        relative = absolute / np.maximum(np.abs(reference.astype(np.float64)), atol or 1e-30)
-        max_abs = max(max_abs, float(np.max(absolute, initial=0.0)))
-        max_rel = max(max_rel, float(np.max(relative, initial=0.0)))
-        if not np.allclose(value, reference, rtol=rtol, atol=atol, equal_nan=False):
-            raise Unsupported(
-                "oracle:tolerance",
-                f"max_abs={max_abs:.9g}; max_rel={max_rel:.9g}; "
-                f"atol={atol:.9g}; rtol={rtol:.9g}",
-            )
-    return max_abs, max_rel
+    result = compare_outputs(actual, [value for _, value in expected], rtol, atol)
+    if not result["correct"]:
+        raise Unsupported(
+            result["reason"],
+            f"max_abs={result['max_abs_error']:.9g}; max_rel={result['max_rel_error']:.9g}; "
+            f"atol={atol:.9g}; rtol={rtol:.9g}",
+        )
+    return result["max_abs_error"], result["max_rel_error"]
 
 
 def csv_row(header: list[str], common: dict[str, Any], **values: Any) -> dict[str, Any]:
@@ -308,6 +300,26 @@ def append_jsonl(path: Path, value: dict[str, Any]) -> None:
         stream.write(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n")
         stream.flush()
         os.fsync(stream.fileno())
+
+
+def checkpoint_protocol(path: Path, expected: dict[str, Any]) -> None:
+    """Pin the protocol before the first case; never relabel an old checkpoint."""
+    protocol_path = path.with_suffix(".checkpoint.json")
+    if protocol_path.exists():
+        try:
+            recorded = json.loads(protocol_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise SystemExit(f"invalid checkpoint protocol {protocol_path}: {error}") from error
+        if recorded != expected:
+            raise SystemExit("checkpoint protocol differs; use a new output path")
+    elif path.exists():
+        raise SystemExit("checkpoint has no pinned protocol; use a new output path")
+    else:
+        protocol_path.parent.mkdir(parents=True, exist_ok=True)
+        with protocol_path.open("x", encoding="utf-8") as stream:
+            stream.write(json.dumps(expected, indent=2, sort_keys=True) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
 
 
 def load_checkpoint(
@@ -387,6 +399,23 @@ def main(args: argparse.Namespace) -> int:
         header = next(csv.reader(stream))
     if args.output.exists() and not args.resume:
         raise SystemExit(f"refusing to replace {args.output}; pass --resume for a checkpoint")
+    checkpoint_protocol(args.output, {
+        "schema": "joggle-benchmark-checkpoint/v1",
+        "correctness_oracle": correctness_oracle_record(),
+        "git_revision": revision, "variant": args.variant, "group": args.group,
+        "benchmark_spec_sha256": spec_hash,
+        "input_index_sha256": sha256((args.inputs / "index.json").read_bytes()),
+        "joggle_sha256": sha256(args.joggle.read_bytes()),
+        "module_sources": {
+            name: {str(path.relative_to(root)): sha256(path.read_bytes())
+                   for path in sorted(root.rglob("*.jog"))}
+            for name, root in (("builtin", args.builtin_mods),
+                               ("extensions", args.extension_mods))
+        },
+        "execution_iterations": execute_count, "warmups": warmups,
+        "seed": args.seed, "compile_flags": flags,
+        "cases": [case["id"] for case in cases],
+    })
     rows: list[dict[str, Any]] = []
     completed: set[str] = set()
     if args.output.exists():
@@ -527,6 +556,7 @@ def main(args: argparse.Namespace) -> int:
                               if failure_path.exists() else None),
               "input_index_sha256": sha256((args.inputs / "index.json").read_bytes()),
               "git_revision": revision, "git_dirty": dirty,
+              "correctness_oracle": correctness_oracle_record(),
               "joggle_sha256": sha256(args.joggle.read_bytes()),
               "compiler": compiler.stdout.splitlines()[0] if compiler.stdout else str(args.cc),
               "compile_flags": flags, "pipeline": variant["pipeline"],

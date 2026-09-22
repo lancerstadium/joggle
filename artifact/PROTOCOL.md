@@ -140,6 +140,22 @@ byte-identical inputs. Each supported pair runs ten warm-ups and 100 timed
 steady-state executions. Short operators use a fixed batch; the CSV reports
 per-call latency and preserves the batch size.
 
+Correctness and timing use separate ONNX Runtime sessions. The semantic oracle
+executes the submitted graph with `ORT_DISABLE_ALL`; the performance baseline
+retains `ORT_ENABLE_ALL`. Both Joggle and the optimized ONNX Runtime baseline
+are checked against the same semantic output and the unchanged per-case
+tolerances, outside timed regions. Run records bind this policy as
+`onnx-graph-semantics/v1`. Optimized baseline outputs are not assumed correct.
+This distinction preserves the arithmetic of QDQ graphs: fusing floating-point
+Conv into QLinearConv can introduce int32 bias overflow that the source graph
+does not contain. Incorrect outputs remain explicit coverage failures rather
+than latency ratios. Historical collections retain their original oracle
+policy. New Joggle runs pin this policy, source-mod hashes, and measurement
+configuration in a `.checkpoint.json` sidecar before publishing any case
+rows. Resuming requires an identical sidecar; legacy checkpoints without one
+remain unchanged and require a new output path. The final run record and both
+merge paths reject mixed oracle policies.
+
 The Joggle collector applies the same manifest-derived `opt.signature` step as
 the production calibration before either required or optimized lowering.
 

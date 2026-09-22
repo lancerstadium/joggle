@@ -1,4 +1,5 @@
 mod quant_kernel
+use math
 use quant
 use tensor
 
@@ -16,4 +17,16 @@ fn quant_scalar(
   zero: tensor<u8, []>
 ) -> tensor<u8, [2]> {
   return quant.quantize(x, scale, zero, 0, 0, 255)
+}
+
+fn requantize_ties(
+  x: tensor<i32, [4]>,
+  scale: tensor<f32, []>,
+  zero: tensor<u8, []>
+) -> tensor<u8, [4]> {
+  return quant.accumulate(x, scale, zero, 0, 0, 255)
+}
+
+fn rounded_product64(x: f64, scale: f64) -> f64 {
+  return math.round_even(x * scale)
 }

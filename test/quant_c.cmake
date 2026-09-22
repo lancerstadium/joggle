@@ -24,7 +24,7 @@ joggle_run("quantized C header failed"
   ERROR_VARIABLE error)
 
 joggle_run("quantized C did not compile"
-  COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
+  COMMAND "${CC}" -std=c99 -O3 -Wall -Wextra -Wstrict-prototypes -Werror
           -include "${header}" "${source}" "${HARNESS}" -lm -o "${program}"
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error)
