@@ -112,11 +112,14 @@ local fn select(m: Mod) -> bool {
           for i in 1..len(inputs) {
             next += [inputs[i]]
           }
-          for i in 0..len(ops) - 1 {
-            let copy = ir.clone(m, ops[i], branch, old, next)
-            assert(ir.live(copy), "opt.fold could not select a branch")
-            old += ir.outs(ops[i])
-            next += ir.outs(copy)
+          var source_ops: list<Op> = []
+          for i in 0..len(ops) - 1 { source_ops += [ops[i]] }
+          let copies = ir.clone(m, source_ops, branch, old, next)
+          assert(len(copies) == len(source_ops),
+                 "opt.fold could not select a branch")
+          for i in 0..len(source_ops) {
+            old += ir.outs(source_ops[i])
+            next += ir.outs(copies[i])
           }
           var values: list<Val> = []
           for value in ir.args(ops[len(ops) - 1]) {

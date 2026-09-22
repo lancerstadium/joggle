@@ -399,6 +399,13 @@ local fn prepare_with(m: Mod, config: dict) -> bool {
         }
         for index in 1..len(inputs) {
           detail += ", input " + text(index) + " " + text(ir.type(inputs[index]))
+          let source = ir.def(inputs[index])
+          if ir.live(source) && ir.kind(source) == "call" {
+            detail += " from " + ir.callee(source)
+          }
+          if ir.name(inputs[index]) != "" {
+            detail += " [" + ir.name(inputs[index]) + "]"
+          }
         }
         assert(false, detail)
       }

@@ -1177,6 +1177,14 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
     copied_names.emplace(std::string(source_name), candidate);
     return candidate;
   };
+  const auto remap_name = [&](std::string name) {
+    if (const auto copied = copied_names.find(name); copied != copied_names.end())
+      return copied->second;
+    if (const auto mapped = substituted_names.find(name);
+        mapped != substituted_names.end() && !mapped->second.empty())
+      return mapped->second;
+    return name;
+  };
   std::unordered_map<std::uint32_t, std::uint32_t> values = substitutions;
   const auto copy_op = [&](const auto& self, std::uint32_t old_id,
                            std::uint32_t blk) -> std::uint32_t {
@@ -1200,19 +1208,16 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
       if (roots.contains(old_id) &&
           (old.form == Op::Form::let || old.form == Op::Form::var))
         value.name = copy_name(value.name);
+      else if ((old.form == Op::Form::let || old.form == Op::Form::var) &&
+               !value.name.empty())
+        copied_names[value.name] = value.name;
       else if (old.form == Op::Form::assign ||
                old.form == Op::Form::compound ||
                old.form == Op::Form::index_assign) {
-        const auto mapped_name = substituted_names.find(value.name);
-        if (mapped_name != substituted_names.end() &&
-            !mapped_name->second.empty())
-          value.name = mapped_name->second;
+        value.name = remap_name(std::move(value.name));
       } else if (old.kind == Op::Kind::loop ||
                  old.kind == Op::Kind::branch) {
-        const auto mapped_name = substituted_names.find(value.name);
-        if (mapped_name != substituted_names.end() &&
-            !mapped_name->second.empty())
-          value.name = mapped_name->second;
+        value.name = remap_name(std::move(value.name));
       }
       value.def = next_id;
       value.index = store.ops[next_id].data.outs.size();
@@ -1224,6 +1229,7 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
     }
 
     for (const std::uint32_t old_blk : old.blks) {
+      auto enclosing_names = copied_names;
       detail::BlkData body;
       body.fn = fn;
       body.parent_op = next_id;
@@ -1238,10 +1244,7 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
       for (const std::uint32_t old_arg : old_args) {
         detail::ValData value = store.vals[old_arg].data;
         value.fn = fn;
-        const auto mapped_name = substituted_names.find(value.name);
-        if (mapped_name != substituted_names.end() &&
-            !mapped_name->second.empty())
-          value.name = mapped_name->second;
+        value.name = remap_name(std::move(value.name));
         value.users.clear();
         const auto value_id = static_cast<std::uint32_t>(store.vals.size());
         store.vals.push_back({std::move(value), 1, true});
@@ -1250,10 +1253,12 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
       }
       for (const std::uint32_t child : old_ops)
         self(self, child, body_id);
+      copied_names = std::move(enclosing_names);
     }
     return next_id;
   };
 
+  const std::uint32_t first_clone = static_cast<std::uint32_t>(store.ops.size());
   std::vector<std::uint32_t> cloned_ids;
   cloned_ids.reserve(sources.size());
   for (Op source : sources)
@@ -1264,7 +1269,12 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
   if (position == order.end())
     return reject("clone insertion point is not in its Blk", before.loc());
   order.insert(position, cloned_ids.begin(), cloned_ids.end());
-  detail::rebuild_uses(store);
+  // Cloning only appends operations and values. Existing operand edges are
+  // unchanged; attach the new edges without rescanning the entire module.
+  // Preserve repeated operands, just as rebuild_uses does.
+  for (std::uint32_t id = first_clone; id < store.ops.size(); ++id)
+    for (const std::uint32_t arg : store.ops[id].data.args)
+      store.vals[arg].data.users.push_back(id);
   touch(store, store.blks[destination].data.fn);
   std::vector<Op> copies;
   copies.reserve(cloned_ids.size());

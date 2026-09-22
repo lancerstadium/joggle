@@ -134,6 +134,13 @@ bool audit(const joggle::Mod& mod) {
       for (joggle::Op user : value.users())
         if (!contains(user.args(), value))
           return false;
+      std::size_t expected_uses = 0;
+      for (joggle::Op op : fn.ops()) {
+        const auto args = op.args();
+        expected_uses += std::count(args.begin(), args.end(), value);
+      }
+      if (value.users().size() != expected_uses)
+        return false;
     }
   }
   return true;

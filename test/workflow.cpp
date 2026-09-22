@@ -2649,6 +2649,11 @@ int main(int argc, char** argv) {
   const joggle::Op addition = duplicate_sum.body().ops()[0];
   const joggle::Op sum_return = duplicate_sum.body().ops()[1];
   CHECK(duplicate_sum.params()[0].users().size() == 2);
+  const joggle::Op duplicate_copy = duplicate_uses.clone(addition, sum_return);
+  CHECK(duplicate_copy);
+  CHECK(duplicate_sum.params()[0].users().size() == 4);
+  CHECK(duplicate_uses.erase(duplicate_copy));
+  CHECK(duplicate_sum.params()[0].users().size() == 2);
   CHECK(duplicate_uses.replace(duplicate_sum.params()[0],
                                duplicate_sum.params()[1]));
   CHECK(duplicate_sum.params()[0].users().empty());
@@ -2725,6 +2730,39 @@ int main(int argc, char** argv) {
   CHECK(cloned_sequence.clone(duplicate_sequence, sequence_ops.back()).empty());
   CHECK(cloned_sequence.revision() == before_duplicate_clone);
   cloned_sequence.clear_diags();
+
+  // A batch can declare a mutable binding and then carry it through updates
+  // and nested control. Every copied member must use the new binding name.
+  joggle::Mod cloned_updates;
+  CHECK(joggle::parse(env,
+      "mod cloned_updates\n"
+      "fn grow(x: int) -> int {\n"
+      "  var total = x\n"
+      "  total += total\n"
+      "  for i in 0..2 {\n"
+      "    total += i\n"
+      "    if i == 0 { var total = i; total += 1 }\n"
+      "  }\n"
+      "  return total\n}\n", cloned_updates, "cloned-updates.jog"));
+  const auto update_ops = cloned_updates.find_fn("grow").body().ops();
+  const std::span<const joggle::Op> update_body(update_ops.data(),
+                                              update_ops.size() - 1);
+  CHECK(cloned_updates.clone(update_body, update_ops.back()).size() ==
+        update_body.size());
+  CHECK(cloned_updates.verify(env));
+  for (const auto value : cloned_updates.vals()) {
+    std::size_t expected_uses = 0;
+    for (const auto op : cloned_updates.ops()) {
+      const auto args = op.args();
+      expected_uses += std::count(args.begin(), args.end(), value);
+    }
+    CHECK(value.users().size() == expected_uses);
+  }
+  joggle::Mod updates_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(cloned_updates), updates_roundtrip,
+                      "cloned-updates-roundtrip.jog"));
+  CHECK(updates_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(cloned_updates, updates_roundtrip));
 
   joggle::Mod remapped_loop;
   constexpr std::string_view remapped_loop_source =
