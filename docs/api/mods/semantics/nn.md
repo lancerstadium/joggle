@@ -89,6 +89,36 @@ fn nonzero<E: Ty, S: list<int>, R: int>(
 The dynamic axis is explicit semantic information; bounded allocation requires a
 later proof/capacity, not a guessed fixed shape.
 
+`nonzero` reads the input's runtime dimensions and returns the coordinates of
+nonzero elements in row-major traversal order. Each output row corresponds to
+one input axis. Numeric inputs select values unequal to zero; Boolean inputs
+select `true` through a private overload of the same predicate.
+
+```jog
+fn selected(x: tensor<f32, [4]>, count: index) -> tensor<i64, [1, _]> {
+  let shape = tensor<index, [1]>(count)
+  let prefix: tensor<f32, [_]> = tensor.view(x, shape)
+  let mask: tensor<bool, [_]> = prefix > tensor<f32, []>(f32(0))
+  return nn.nonzero(mask)
+}
+```
+
+For `x = [-1, 2, 0, 3]`, the output depends on the prefix length:
+
+| `count` | Selected coordinates | Output shape |
+| ---: | --- | --- |
+| 0 | `[]` | `[1, 0]` |
+| 3 | `[[1]]` | `[1, 1]` |
+| 4 | `[[1, 3]]` | `[1, 2]` |
+
+The implementation first counts selected elements, then writes their coordinates.
+Its allocation capacity is bounded by the input element count; its logical output
+extent is the selected count. Here the view retains the four-element source
+capacity while `count` controls the runtime extent. A two-dimensional input
+`[[0, 1, 0], [2, 3, 0]]` produces `[[0, 1, 1], [1, 0, 1]]`, not flattened
+indices. Empty inputs produce an empty coordinate result without reading input
+elements or writing coordinate entries.
+
 ## Implementation boundary
 
 1. A frontend converts source calls to `nn` calls.
