@@ -227,15 +227,16 @@ are $9.08\times$ and $5.02\times$, respectively; the optimized path is faster
 on three operators. The effect varies across operators: the $256\times256$
 matrix multiply improves by $12.83\times$ over the base path, whereas strided
 convolution regresses from $146.82\times$ to $164.31\times$ the reference
-latency. These per-operator differences locate the remaining generated-code
-costs and distinguish the effect of an optimization pack from compiler update
-responsiveness.
+latency. Thus, the pack's largest gain comes from matrix multiplication,
+while convolution remains a major execution cost. These measurements concern
+generated-code execution, distinct from the compiler update costs in
+Section~\ref{sec:eval-efficient}.
 
 Figure~\ref{fig:model-performance} extends the comparison to all 15 models.
 Both Joggle paths pass the numerical oracle on the same 11 models; ONNX Runtime
 passes all 15. SSD-MobileNet and TinyYOLOv3 stop during preparation, while
 EfficientNet INT8 and QDQ exceed the numerical tolerance. These four cases
-remain visible in the model matrix and do not enter latency aggregates.
+remain visible in the figure and do not enter latency aggregates.
 
 Across the 11 jointly correct models, the optimization pack reduces latency by
 a geometric mean of $2.30\times$ relative to the base path. The corresponding
@@ -243,17 +244,18 @@ latency ratios to ONNX Runtime are $48.52\times$ for the base path and
 $21.05\times$ for the optimized path. All 11 optimized models remain slower
 than ONNX Runtime. MobileNetV2 improves from 192.94 to 86.85\,ms, whereas XCiT
 changes from 3081.52 to 2955.53\,ms; the respective ONNX Runtime medians are
-6.02 and 36.24\,ms. The two model responses show that the optimization pack's
-benefit depends on the workload and does not eliminate the remaining
-generated-code gap.
+6.02 and 36.24\,ms. The pack therefore accelerates MobileNetV2 by
+$2.22\times$ but XCiT by only $1.04\times$. The model breakdown separates
+these workload-dependent gains from the suite-wide aggregate.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-07-models.pdf}
-  \caption{Execution across 15 models: median/p95 latency normalized to ORT
-  (100 samples). Right: optimized median milliseconds. $\times$C/$\times$N:
-  lowering/numerical failures. Geometric means include the 11 jointly correct models.}
-  \Description{A logarithmic point-interval plot includes all 15 models.
+  \caption{Model execution by family. Bars show median latency / ORT;
+  whiskers reach p95 over 100 samples. $\times$C/$\times$N mark
+  preparation/numerical failures. Panel (f) aggregates the 11 jointly correct models.}
+  \Description{Six boxed panels contain paired base and optimized bars:
+  five model groups cover all 15 subjects and one panel gives geometric means.
   Four failed cases are marked explicitly. All 11 correct optimized models
   are faster than the base path but slower than ONNX Runtime.}
   \label{fig:model-performance}

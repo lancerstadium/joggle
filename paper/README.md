@@ -271,10 +271,13 @@ Top left: tensor/fusion/target mod boundaries, use edges from dependents to
 tensor; legal/fuse/lower/emit function nodes. Top right: nested M/f/b0 subject
 graph x,w→Conv→Add→ReLU→y, b→Add, value circles and users(v) links.
 Middle: f:(H,A)→R and parallel query(R), run(RW), emit(R) entrances to one
-resolve/evaluate interface. Bottom: evaluator plan table, register slots and
+resolve/evaluate interface; a compact body/intrinsic/native bracket identifies
+implementation forms. Bottom: evaluator plan table, register slots and
 K/D/W records beside separate F/B/O/V entity-slot arrays, h=(S,i,g), revision
 scopes and a separate o0→v0→o1 def-use relation. Plan key includes store,
-function, generation and revision. Transaction: G→G′→verify, success publishes
+function, generation and revision. Tiny annotations distinguish query (K,r,D)
+from stage (K,D,W) records and decode the store/slot/generation handle fields.
+Transaction: G→G′→verify ownership/types/uses, success publishes
 graph and dependency records; failure restores G. No invented timing numbers,
 large title bands, decorative icons, paragraphs, or sequential query/run/emit.
 Use thin dependency arrows and tiny local annotations, not word-heavy cards. -->
@@ -842,13 +845,15 @@ use the same normalization, and unsuccessful cases contribute to coverage.
 
 <!-- PERFORMANCE FIGURE PROMPT — Render from measured CSV using
 artifact/figures/figure_07_performance.py. Compact single-column figure with
-six panels, three rows by two
-columns: elementwise, reduction, matmul, convolution, quantization, fusion.
+six panels, two rows by three columns: elementwise, reduction, matmul,
+convolution, quantization, fusion.
 Every panel contains four operators and paired base/optimized bars. Shared
 logarithmic y axis, one legend, ORT=1 dashed line, median-to-p95 whiskers,
 hatched base bars and solid optimized bars. Report correct coverage in the
 caption. Bars start at parity; use compact wrapped labels and shared axes at
-the final column width. Source CSV: paper/data/figure-07-operators.csv.
+the final column width. Enclose every panel in four thin spines with inward
+ticks on all sides; share colors, hatching, and the compact legend with Figure 8.
+Source CSV: paper/data/figure-07-operators.csv.
 Model measurements have a separate companion display. Preserve every case and failed outcome.
 No generated pixels or illustrative numbers for data. -->
 
@@ -875,14 +880,14 @@ base and optimized latency ratios are 9.08× and 5.02×, respectively; the
 optimized path is faster on three operators. The effect varies across
 operators: the 256×256 matrix multiply improves by 12.83× over the base path,
 whereas strided convolution regresses from 146.82× to 164.31× the reference
-latency. These per-operator differences locate the remaining generated-code
-costs and distinguish the effect of an optimization pack from compiler update
-responsiveness.
+latency. Thus, the pack's largest gain comes from matrix multiplication,
+while convolution remains a major execution cost. These measurements concern
+generated-code execution, distinct from the compiler update costs in Section 4.4.
 
 Figure 8 extends the comparison to all 15 models. Both Joggle paths pass the
 numerical oracle on the same 11 models; ONNX Runtime passes all 15. SSD-MobileNet
 and TinyYOLOv3 stop during preparation, while EfficientNet INT8 and QDQ exceed
-the numerical tolerance. These four cases remain visible in the model matrix
+the numerical tolerance. These four cases remain visible in the figure
 and do not enter latency aggregates.
 
 Across the 11 jointly correct models, the optimization pack reduces latency by
@@ -890,23 +895,26 @@ a geometric mean of 2.30× relative to the base path. The corresponding latency
 ratios to ONNX Runtime are 48.52× for the base path and 21.05× for the optimized
 path. All 11 optimized models remain slower than ONNX Runtime. MobileNetV2
 improves from 192.94 to 86.85 ms, whereas XCiT changes from 3081.52 to 2955.53 ms;
-the respective ONNX Runtime medians are 6.02 and 36.24 ms. The two model
-responses show that the optimization pack's benefit depends on the workload
-and does not eliminate the remaining generated-code gap.
+the respective ONNX Runtime medians are 6.02 and 36.24 ms. The pack therefore
+accelerates MobileNetV2 by 2.22× but XCiT by only 1.04×. The model breakdown
+separates these workload-dependent gains from the suite-wide aggregate.
 
-<!-- FIGURE 8 DATA — Single-column 3.35-inch horizontal point-interval plot.
-All 15 models plus a separately ruled geometric-mean row. Square for base,
-circle for optimized, shared logarithmic latency/ORT axis, parity at one;
-median-to-p95 intervals, optimized milliseconds in a narrow right column.
+<!-- FIGURE 8 DATA — Single-column 3.35-inch paired bar plot, two rows by
+three columns. Five panels contain all 15 models grouped as dense CNNs,
+mobile CNNs, detectors, quantized models, and other models; the sixth gives
+the paired geometric means. Shared logarithmic latency/ORT axis, parity at
+one; hatched gray base bars and solid teal optimized bars start at parity.
+Whiskers extend from median to p95; the aggregate has no timing whisker.
+Four thin spines, inward major/minor ticks, compact labels, and one legend.
 Explicit ×C for preparation failures and ×N for numerical failures, never
-zero-valued points. Aggregate only the 11 jointly correct models.
+zero-valued bars. Aggregate only the 11 jointly correct models.
 CSV: paper/data/figure-07-models.csv; per-model summaries:
 paper/data/figure-07-models-summary.csv; script:
 artifact/figures/figure_07_models.py. -->
 
-*Figure 8: Execution across 15 models: median/p95 latency normalized to ORT
-(100 samples). Right: optimized median milliseconds. ×C/×N: lowering/numerical
-failures. Geometric means include the 11 jointly correct models.*
+*Figure 8: Model execution by family. Bars show median latency / ORT;
+whiskers reach p95 over 100 samples. ×C/×N mark preparation/numerical failures.
+Panel (f) aggregates the 11 jointly correct models.*
 
 <!-- PERFORMANCE DATA — Separate operator and model displays form one
 end-to-end experiment. Each display has a source CSV and plotting script.

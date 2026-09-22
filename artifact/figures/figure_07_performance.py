@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
+from matplotlib.ticker import LogLocator, NullFormatter
 
 from common import COLORS, configure, number, read_rows, save, truth
 
@@ -76,6 +77,8 @@ def main() -> int:
     parser.add_argument("csv", type=Path)
     parser.add_argument("--output", type=Path, default=Path("figure-07-performance.pdf"))
     parser.add_argument("--summary", type=Path, help="Export displayed medians, p95s, and ratios")
+    parser.add_argument("--font-size", type=float, default=6.0,
+                        help="Authoring font size in points")
     args = parser.parse_args()
     rows = read_rows(args.csv, {
         "subject_kind", "subject", "family", "variant", "supported", "reason",
@@ -89,7 +92,10 @@ def main() -> int:
                             key=lambda s: (rank.get(family[kind, s], 99), s))
                 for kind in ("operator", "model")}
     configure()
-    plt.rcParams.update({"font.size": 7, "legend.fontsize": 7,
+    font = args.font_size
+    if font <= 0:
+        raise ValueError("font size must be positive")
+    plt.rcParams.update({"font.size": font, "legend.fontsize": font,
                          "savefig.bbox": None})
     panels = [("operator", label, [s for s in subjects["operator"] if family["operator", s] == name])
               for name, label in zip(FAMILIES, FAMILY_LABELS)]
@@ -99,9 +105,9 @@ def main() -> int:
                        subjects["model"][start:start + 5]))
     if not panels:
         raise ValueError("no recognized operator families or model subjects")
-    ncols = 2
+    ncols = 3
     nrows = (len(panels) + ncols - 1) // ncols
-    fig, axes = plt.subplots(nrows, ncols, figsize=(3.35, 0.93 * nrows + 0.32),
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3.35, (0.99 * nrows + 0.36) * max(1, font / 6)),
                              squeeze=False, sharey=True)
     finite = [float(r[k]) for r in summary if r["variant"] in VARIANTS
               for k in ("latency_over_ort", "p95_over_ort_median") if r[k] != ""]
@@ -117,25 +123,29 @@ def main() -> int:
                            hatch="///" if variant == "joggle-unoptimized" else None,
                            zorder=3)
                     ax.errorbar(i + offset, value, yerr=[[0], [max(0, tail - value)]],
-                                color="#27333D", lw=0.6, capsize=1.5, zorder=4)
+                                color="#27333D", lw=0.45, capsize=1, zorder=4)
                 else:
                     ax.text(i + offset, 0.03, "×" if row else "?",
                             transform=ax.get_xaxis_transform(), va="bottom", ha="center",
-                            color=COLORS[variant], fontsize=7)
-        ax.axhline(1, color="#565F69", ls="--", lw=0.8, zorder=4)
+                            color=COLORS[variant], fontsize=font)
+        ax.axhline(1, color="#565F69", ls="--", lw=0.6, zorder=4)
         ax.set_yscale("log")
         ax.set_ylim(low, high)
         ticks = [10.0 ** exponent for exponent in range(-6, 7)
                  if low <= 10.0 ** exponent <= high]
         ax.set_yticks(ticks, [f"{tick:g}" for tick in ticks])
+        ax.yaxis.set_minor_locator(LogLocator(base=10, subs=(2, 5)))
+        ax.yaxis.set_minor_formatter(NullFormatter())
         ax.set_xlim(-0.6, len(names) - 0.4)
         labels = [MODEL_LABELS.get(s, s) if kind == "model" else
-                  textwrap.fill(s.split("-", 1)[-1].replace("-", " "), width=10,
+                  textwrap.fill(s.split("-", 1)[-1].replace("-", " "), width=9,
                                 break_long_words=False, break_on_hyphens=False)
                   for s in names]
-        ax.set_xticks(range(len(names)), labels, rotation=35, ha="right")
-        ax.tick_params(axis="both", labelsize=6, length=1.5, pad=1)
-        ax.set_title(f"({chr(97 + panel_index)}) {title}", loc="left", fontsize=7, pad=2)
+        ax.set_xticks(range(len(names)), labels, rotation=50, ha="right")
+        ax.tick_params(axis="both", which="both", direction="in", top=True,
+                       right=True, labelsize=font - 1, length=2, width=0.45, pad=1)
+        ax.tick_params(which="minor", length=1.1, width=0.35)
+        ax.set_title(f"({chr(97 + panel_index)}) {title}", loc="left", fontsize=font, pad=2)
         ax.grid(axis="y", which="major", color="#DDE3E8", lw=0.45)
         ax.set_axisbelow(True)
     for ax in list(axes.flat)[len(panels):]:
@@ -143,11 +153,12 @@ def main() -> int:
     handles = [Patch(facecolor=COLORS[v], edgecolor="#27333D", linewidth=0.35,
                       hatch="///" if v == "joggle-unoptimized" else None,
                       label=LABELS[v]) for v in VARIANTS]
-    handles.append(Line2D([], [], color="#565F69", ls="--", lw=0.8, label="ORT = 1"))
-    fig.legend(handles=handles, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.0))
-    fig.text(0.012, 0.53, "Latency / ORT (log scale)", va="center", rotation=90, fontsize=7)
-    fig.subplots_adjust(left=0.135, right=0.985, bottom=0.145,
-                        top=0.89, wspace=0.18, hspace=1.0)
+    handles.append(Line2D([], [], color="#565F69", ls="--", lw=0.6, label="ORT = 1"))
+    fig.legend(handles=handles, loc="upper center", ncol=3, frameon=False,
+               handlelength=1.4, columnspacing=1.1, bbox_to_anchor=(0.51, 1.015))
+    fig.text(0.01, 0.56, "Latency / ORT (log scale)", va="center", rotation=90, fontsize=font)
+    fig.subplots_adjust(left=0.125, right=0.988, bottom=0.185,
+                        top=0.88, wspace=0.12, hspace=0.90)
     save(fig, args.output)
     if args.summary:
         args.summary.parent.mkdir(parents=True, exist_ok=True)

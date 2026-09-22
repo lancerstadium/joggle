@@ -210,8 +210,9 @@ Collectors checkpoint complete cases and record unsupported cases explicitly.
 Only steady-state execution is repeated. A smoke run uses three iterations;
 the release population uses the 100 iterations frozen in the manifest.
 
-The operator display uses two columns of compact panels at single-column manuscript width.
-It groups operators by family and models in batches of five, with one shared
+The operator display uses three columns and two rows of compact panels at
+single-column manuscript width, with four operators per family. Every panel
+has a complete box and inward ticks on all four sides, with one shared
 logarithmic scale. Paired bars extend from the ORT parity line to each
 Joggle median; upper whiskers reach p95, using that subject's ORT median as
 the common denominator. Hatching distinguishes the base path in grayscale.
@@ -253,11 +254,12 @@ python3 artifact/figures/figure_07_models.py \
   --summary paper/data/figure-07-models-summary.csv
 ```
 
-The model companion is a single-column point-interval plot: base squares and
-optimized circles show medians, intervals extend to p95, and the right column
-reports optimized milliseconds. `×C` and `×N` distinguish lowering and
-numerical failures. Its geometric mean includes only the 11 jointly correct
-models. Small authoring fonts are configurable; final submission typography
+The model companion uses the same boxed three-column, two-row bar layout.
+Five panels group all 15 models; the sixth shows the geometric means of the
+11 jointly correct models. Bars show medians and whiskers extend to p95;
+the aggregate has no timing whisker. `×C` and `×N` distinguish preparation
+and numerical failures. Absolute milliseconds remain in the exported summary
+CSV and the main-text model discussion. Small authoring fonts are configurable; final submission typography
 must be checked against the venue's figure-text requirements.
 
 ## Render and release

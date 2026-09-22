@@ -17,6 +17,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+from matplotlib.ticker import LogLocator, MultipleLocator
 
 from common import COLORS, configure, read_rows, save
 from figure_07_performance import LABELS, MODEL_LABELS, VARIANTS, summarize
@@ -40,6 +42,9 @@ def assemble(sources: list[Path], output: Path) -> None:
     if output.exists() or output.with_suffix(".merge.json").exists():
         raise ValueError(f"refusing to replace source-data export {output}")
     audited = [audited_input(path) for path in sources]
+    policies = {json.dumps(item["correctness_oracle"], sort_keys=True) for item in audited}
+    if len(policies) != 1:
+        raise ValueError("refusing to mix different numerical oracle policies")
     records = [json.loads(path.with_suffix(".run.json").read_text()) for path in sources]
     shared = ("benchmark_spec_sha256", "input_index_sha256", "execution_iterations",
               "execution_batches", "warmups", "seed", "thread_environment",
@@ -130,73 +135,89 @@ def main() -> int:
     with plt.rc_context({"font.size": font, "savefig.bbox": None,
                          "axes.linewidth": 0.5, "legend.fontsize": font,
                          "xtick.labelsize": font, "ytick.labelsize": font}):
-        fig, ax = plt.subplots(figsize=(3.35, 3.25 * max(1, font / 7)))
-        markers = {VARIANTS[0]: "s", VARIANTS[1]: "o"}
-        positions = np.arange(len(names))
+        fig, axes = plt.subplots(2, 3, figsize=(3.35, 2.65 * max(1, font / 7)),
+                                 sharey=True)
+        panels = [
+            ("Dense CNNs", [("densenet-12", "Dense"), ("googlenet-12", "Google"),
+                            ("resnet18-v1-7", "Res18")]),
+            ("Mobile CNNs", [("mobilenetv2-7", "MBV2"), ("shufflenet-v2-12", "Shuffle"),
+                             ("squeezenet1.1-7", "SqNet")]),
+            ("Detectors", [("ssd-mobilenetv1-12", "SSD"), ("tiny-yolov3-11", "YOLOv3"),
+                           ("tinyyolov2-8", "YOLOv2"), ("ultraface-rfb-320", "UFace")]),
+            ("Quantized", [("efficientnet-lite4-11-int8", "Eff-I8"),
+                           ("efficientnet-lite4-11-qdq", "Eff-QDQ"),
+                           ("squeezenet1.0-13-qdq", "Sq-QDQ")]),
+            ("Other models", [("mnist-8", "MNIST"),
+                              ("xcit-tiny-12-p8-224-opset17", "XCiT")]),
+            ("Aggregate", [("geomean", f"GeoMean\n{len(paired)}/{len(names)} correct")]),
+        ]
         finite = [float(row["p95_over_ort_median"]) for row in summary
                   if row["variant"] in VARIANTS and row["correct"]]
-        upper = max(finite) * 1.15
-        for position, name in zip(positions, names):
-            if position % 2 == 0:
-                ax.axhspan(position - 0.48, position + 0.48, color="#F1F4F6", zorder=0)
-            entries = [indexed[name, variant] for variant in VARIANTS]
-            if all(entry["correct"] for entry in entries):
-                ax.plot([entry["latency_over_ort"] for entry in entries],
-                        [position + 0.13, position - 0.13], color="#C2C9CF", lw=0.6, zorder=2)
-            for variant, offset in zip(VARIANTS, (0.13, -0.13)):
-                row = indexed[name, variant]
-                if not row["correct"]:
-                    continue
-                value, tail = row["latency_over_ort"], row["p95_over_ort_median"]
-                ax.errorbar(value, position + offset,
-                            xerr=[[0], [max(0, tail - value)]], fmt=markers[variant],
-                            color=COLORS[variant], markeredgecolor="#26333D",
-                            markeredgewidth=0.35, markersize=3.0, lw=0.65, capsize=1,
-                            zorder=4)
-            opt = indexed[name, VARIANTS[1]]
-            if opt["correct"]:
-                latency = opt["median_ns"] / 1e6
-                label = f"{latency:.0f}" if latency >= 100 else f"{latency:.3g}"
-            else:
-                code = "C" if opt["reason"] == "unsupported:c.prepare" else "N"
-                if any(row["reason"] not in {"unsupported:c.prepare", "unsupported:oracle:tolerance"}
-                       or row["correct"] for row in entries):
-                    raise ValueError(f"unhandled failure/coverage difference: {name}")
-                label = "—"
-                ax.text(0.52, position, f"×{code}", transform=ax.get_yaxis_transform(),
-                        ha="center", va="center", fontsize=font, color="#454E58")
-            ax.text(1.035, position, label, transform=ax.get_yaxis_transform(),
-                    ha="left", va="center", fontsize=font)
-        aggregate_y = len(names) + 0.25
-        ax.axhline(len(names) - 0.38, color="#9AA4AD", lw=0.6)
-        for variant, offset in zip(VARIANTS, (0.13, -0.13)):
-            ax.plot(geometric[variant], aggregate_y + offset, markers[variant],
-                    color=COLORS[variant], markeredgecolor="#26333D", markeredgewidth=0.35,
-                    markersize=3.5, zorder=4)
-        ax.axvline(1, color="#58616B", ls="--", lw=0.75)
-        ax.set_xscale("log")
-        ax.set_xlim(0.8, upper)
-        ax.set_ylim(aggregate_y + 0.65, -0.7)
-        ticks = [tick for tick in (1, 10, 100, 1000) if tick <= upper]
-        ax.set_xticks(ticks, [str(tick) for tick in ticks])
-        ax.set_yticks([*positions, aggregate_y],
-                     [*[MODEL_LABELS[name] for name in names], f"GeoMean ({len(paired)})"])
-        ax.set_xlabel("Latency / ORT  ↓  (log scale)", labelpad=2, fontsize=font)
-        ax.tick_params(axis="y", length=0, pad=3)
-        ax.tick_params(axis="x", which="both", length=2, pad=2)
-        ax.grid(axis="x", which="major", color="#D9DFE4", lw=0.4)
-        ax.spines["left"].set_visible(False)
-        ax.text(1.035, 1.022, "Opt\n(ms)", transform=ax.transAxes,
-                ha="left", va="bottom", fontsize=font, linespacing=1)
-        handles = [Line2D([], [], marker=markers[variant], linestyle="none", markersize=3.5,
-                          color=COLORS[variant], markeredgecolor="#26333D", markeredgewidth=0.35,
-                          label=LABELS[variant]) for variant in VARIANTS]
+        low, upper = 0.75, max(finite) * 1.4
+        for panel_index, (ax, (title, entries)) in enumerate(zip(axes.flat, panels)):
+            for position, (name, _) in enumerate(entries):
+                failures = []
+                for variant, offset in zip(VARIANTS, (-0.19, 0.19)):
+                    row = indexed.get((name, variant))
+                    if name != "geomean" and not row["correct"]:
+                        failures.append(row["reason"])
+                        continue
+                    value = geometric[variant] if name == "geomean" else row["latency_over_ort"]
+                    ax.bar(position + offset, value - 1, bottom=1, width=0.34,
+                           color=COLORS[variant], edgecolor="#26333D", linewidth=0.35,
+                           hatch="///" if variant == VARIANTS[0] else None, zorder=3)
+                    if name == "geomean":
+                        ax.text(position + offset, value * 1.2, f"{value:.1f}",
+                                ha="center", va="bottom", fontsize=font - 1.5)
+                    else:
+                        tail = row["p95_over_ort_median"]
+                        ax.errorbar(position + offset, value,
+                                    yerr=[[0], [max(0, tail - value)]], fmt="none",
+                                    color="#26333D", linewidth=0.55, capsize=1, zorder=4)
+                if failures:
+                    if len(failures) != 2 or len(set(failures)) != 1:
+                        raise ValueError(f"unhandled coverage difference: {name}")
+                    codes = {"unsupported:c.prepare": "C", "unsupported:oracle:tolerance": "N"}
+                    if failures[0] not in codes:
+                        raise ValueError(f"unhandled failure: {name}")
+                    ax.text(position, 0.1, f"×{codes[failures[0]]}",
+                            transform=ax.get_xaxis_transform(), ha="center", va="bottom",
+                            fontsize=font - 1, color="#454E58")
+            ax.axhline(1, color="#58616B", ls="--", lw=0.65, zorder=4)
+            ax.set_yscale("log")
+            ax.set_ylim(low, upper)
+            ax.set_yticks([1, 10, 100], ["1", "10", "100"])
+            ax.yaxis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10)))
+            ax.set_xlim(-0.6, len(entries) - 0.4)
+            ax.set_xticks(range(len(entries)), [label for _, label in entries],
+                          rotation=35 if len(entries) > 1 else 0,
+                          ha="right" if len(entries) > 1 else "center")
+            ax.xaxis.set_minor_locator(MultipleLocator(0.5))
+            ax.set_title(f"({chr(97 + panel_index)}) {title}", loc="left", pad=2,
+                         fontsize=font - 0.7)
+            for spine in ax.spines.values():
+                spine.set_visible(True)
+                spine.set_linewidth(0.5)
+            ax.tick_params(axis="both", which="major", direction="in", top=True,
+                           right=True, labeltop=False, labelright=False,
+                           labelleft=panel_index % 3 == 0, length=2.2, width=0.5,
+                           pad=1.5, labelsize=font - 1.5)
+            ax.tick_params(axis="both", which="minor", direction="in", top=True,
+                           right=True, length=1.1, width=0.35)
+            ax.grid(axis="y", which="major", color="#D9DFE4", linewidth=0.35)
+            ax.set_axisbelow(True)
+        handles = [Patch(facecolor=COLORS[variant], edgecolor="#26333D", linewidth=0.35,
+                         hatch="///" if variant == VARIANTS[0] else None,
+                         label=LABELS[variant]) for variant in VARIANTS]
         handles.append(Line2D([], [], color="#58616B", ls="--", lw=0.75, label="ORT = 1"))
         fig.legend(handles=handles, loc="upper center", ncol=3, frameon=False,
                    handletextpad=0.3, handlelength=1.1, columnspacing=0.8,
                    bbox_to_anchor=(0.5, 1.0))
-        fig.text(0.03, 0.011, "×C  lowering     ×N  numerical check     n = 100", fontsize=font)
-        fig.subplots_adjust(left=0.35, right=0.85, top=0.88, bottom=0.13)
+        fig.text(0.012, 0.54, "Latency / ORT ↓ (log)", rotation=90,
+                 va="center", fontsize=font - 0.5)
+        fig.text(0.12, 0.012, "×C  lowering   ×N  numerical check   n = 100", fontsize=font - 1.2)
+        fig.subplots_adjust(left=0.13, right=0.986, top=0.875, bottom=0.14,
+                            wspace=0.17, hspace=0.7)
         save(fig, args.output)
         plt.close(fig)
     print(json.dumps(aggregate, indent=2))
