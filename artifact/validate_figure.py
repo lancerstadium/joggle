@@ -16,7 +16,10 @@ FAMILIES = {"definition", "analysis", "rewrite", "conversion", "emission", "vert
 SYSTEMS = {"Joggle", "MLIR", "xDSL"}
 DEMOS = {0, 2}
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
-EXTERNAL_VARIANTS = {"tvm-relax-llvm": {"id": "tvm-relax-llvm", "system": "TVM Relax LLVM"}}
+EXTERNAL_VARIANTS = {
+    "tvm-relax-llvm": {"id": "tvm-relax-llvm", "system": "TVM Relax LLVM"},
+    "onnx-mlir-llvm": {"id": "onnx-mlir-llvm", "system": "ONNX-MLIR LLVM"},
+}
 
 
 def boolean(row: dict[str, str], field: str, line: int) -> bool:

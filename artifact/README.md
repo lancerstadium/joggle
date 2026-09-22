@@ -208,6 +208,27 @@ compilation, and input binding are recorded separately as preparation
 diagnostics, not as responsive-update measurements. CPU execution is
 synchronous, and TVM's thread pool is fixed to the manifest's thread count.
 
+ONNX-MLIR uses the same cases and oracle through its native C ABI:
+
+```sh
+python3 artifact/run_baseline_benchmarks.py --backend onnx-mlir \
+  --onnx-mlir /path/to/onnx-mlir/build/Release/bin/onnx-mlir \
+  --group operators \
+  --inputs .cache/artifact/benchmark-inputs \
+  --operator-models .cache/artifact/operator-models \
+  --output .cache/artifact/operators-onnx-mlir.csv
+```
+
+The adapter specializes input shapes to the fixed benchmark inputs and compiles
+with `-O3`, parallel execution disabled, and fast math disabled. Inputs remain
+resident across calls. Timing includes the native entry point, output allocation,
+and release of the previous output list; output copies and numerical comparisons
+are outside the timed region. The run record stores the compiler version, source
+revision, compiler/runtime hashes, flags, and separate preparation timings.
+Set `ONNX_MLIR_BIN` when running `test/benchmark_oracle.py` to exercise dynamic
+input specialization, multiple outputs, and native buffer lifetime. Add
+`onnx-mlir-llvm` explicitly to `--variants` when merging these measurements.
+
 Use `--smoke` to validate integration before formal timing. Smoke records are
 not release eligible. Run backends sequentially on an otherwise idle host.
 Include TVM in the shared source-data export by explicitly selecting the four

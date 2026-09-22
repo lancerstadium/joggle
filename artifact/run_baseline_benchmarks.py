@@ -10,6 +10,7 @@ import json
 import os
 import platform
 import random
+import signal
 import subprocess
 import sys
 import time
@@ -148,9 +149,14 @@ def worker(args: argparse.Namespace) -> int:
     measurement, _, feeds = load_case(args.spec, args.inputs, args.case_id)
     model = args.model.read_bytes()
     stages_ns = {}
-    if args.backend == "tvm":
-        from benchmark_backends import TVMRunner
-        runner = TVMRunner(model, feeds, json.loads(args.target_json), measurement["threads"])
+    if args.backend in {"tvm", "onnx-mlir"}:
+        from benchmark_backends import ONNXMLIRRunner, TVMRunner
+        if args.backend == "tvm":
+            runner = TVMRunner(model, feeds, json.loads(args.target_json), measurement["threads"])
+        else:
+            import atexit
+            runner = ONNXMLIRRunner(model, feeds, args.onnx_mlir, measurement["threads"])
+            atexit.register(runner.close)
         names = runner.names
         invoke = runner.invoke
         get_outputs = runner.outputs
@@ -198,7 +204,7 @@ def command(
     *, iterations: int = 1, warmups: int = 0,
     batch: int = 1,
 ) -> list[str]:
-    return [
+    argv = [
         sys.executable, str(Path(__file__).resolve()), "--worker", kind,
         "--spec", str(args.spec), "--inputs", str(args.inputs),
         "--case-id", case_id, "--model", str(model),
@@ -206,14 +212,32 @@ def command(
         "--batch", str(batch),
         "--backend", args.backend, "--target-json", args.target_json,
     ]
+    if args.onnx_mlir:
+        argv.extend(["--onnx-mlir", str(args.onnx_mlir)])
+    return argv
 
 
 def run_json(argv: list[str], timeout: float = 1200) -> dict[str, Any]:
     environment = {**os.environ, **THREAD_ENV}
-    result = subprocess.run(
-        argv, check=True, capture_output=True, text=True, env=environment, timeout=timeout
-    )
-    return json.loads(result.stdout.strip().splitlines()[-1])
+    # A compiler worker may launch opt, llc, and a linker. Reap the complete
+    # process group on timeout so they cannot interfere with subsequent cases.
+    with subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          text=True, env=environment, start_new_session=True) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            if os.name == "posix":
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            else:
+                process.kill()
+            stdout, stderr = process.communicate()
+            raise subprocess.TimeoutExpired(argv, timeout, output=stdout, stderr=stderr)
+        if process.returncode:
+            raise subprocess.CalledProcessError(process.returncode, argv, output=stdout, stderr=stderr)
+    return json.loads(stdout.strip().splitlines()[-1])
 
 
 def git_state(repo: Path) -> tuple[str, bool]:
@@ -291,8 +315,11 @@ def main(args: argparse.Namespace) -> int:
     if args.backend == "tvm":
         from benchmark_backends import tvm_identity
         backend = tvm_identity(json.loads(args.target_json))
-        if backend["source_dirty"] and not args.allow_dirty:
-            raise SystemExit("refusing a modified external compiler; use a clean baseline checkout")
+    elif args.backend == "onnx-mlir":
+        from benchmark_backends import onnx_mlir_identity
+        backend = onnx_mlir_identity(args.onnx_mlir)
+    if backend.get("source_dirty") and not args.allow_dirty:
+        raise SystemExit("refusing a modified external compiler; use a clean baseline checkout")
     system_revision = backend["system_revision"]
     template_name = ("benchmark-operators.csv" if args.group == "operators"
                      else "benchmark-models.csv")
@@ -406,13 +433,15 @@ def main(args: argparse.Namespace) -> int:
         "system_revision": system_revision,
         "backend": backend,
         "provider": measurement["reference_provider"] if args.backend == "onnxruntime" else "llvm-cpu",
-        "graph_optimization": measurement["reference_graph_optimization"] if args.backend == "onnxruntime" else "default",
+        "graph_optimization": (measurement["reference_graph_optimization"] if args.backend == "onnxruntime"
+                               else "O3" if args.backend == "onnx-mlir" else "default"),
         "correctness_oracle": correctness_oracle_record(),
         "correctness_failures": correctness_failures,
         "execution_failures": execution_failures,
         "preparation_ns": preparation,
         "execution_mode": (measurement["reference_execution_mode"]
-                           if args.backend == "onnxruntime" else "stateful-vm"),
+                           if args.backend == "onnxruntime" else "native-c-abi"
+                           if args.backend == "onnx-mlir" else "stateful-vm"),
         "threads": measurement["threads"],
         "execution_iterations": execute_count,
         "warmups": warmups,
@@ -442,7 +471,8 @@ def parse_args() -> argparse.Namespace:
     root = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser()
     parser.add_argument("--worker", choices=("execute",))
-    parser.add_argument("--backend", choices=("onnxruntime", "tvm"), default="onnxruntime")
+    parser.add_argument("--backend", choices=("onnxruntime", "tvm", "onnx-mlir"), default="onnxruntime")
+    parser.add_argument("--onnx-mlir", type=Path, help="path to the ONNX-MLIR compiler executable")
     parser.add_argument("--target-json", default='{"kind":"llvm","num-cores":1}')
     parser.add_argument("--case-timeout", type=float, default=1200)
     parser.add_argument("--spec", type=Path,
@@ -462,6 +492,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
     args = parser.parse_args()
+    if args.backend == "onnx-mlir" and (not args.onnx_mlir or not args.onnx_mlir.is_file()):
+        parser.error("--backend onnx-mlir requires an existing --onnx-mlir executable")
     try:
         target = json.loads(args.target_json)
     except json.JSONDecodeError:

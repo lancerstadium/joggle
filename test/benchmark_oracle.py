@@ -1,6 +1,7 @@
 """Numerical-oracle regressions; run with NumPy, ONNX, and ONNX Runtime."""
 
 import json
+import os
 import copy
 import importlib.util
 import shutil
@@ -15,20 +16,30 @@ import onnx
 from onnx import helper, numpy_helper
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "artifact"))
-from run_baseline_benchmarks import compare_outputs, ort_session
+from run_baseline_benchmarks import compare_outputs, ort_session, run_json
 from run_joggle_benchmarks import checkpoint_protocol, make_harness, Unsupported
-from benchmark_backends import TVMRunner, tvm_identity
+from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_external_worker_reports_errors_and_reaps_timeout(self):
+        self.assertEqual(run_json([sys.executable, "-c", 'print("log"); print(\'{"ok": true}\')']),
+                         {"ok": True})
+        with self.assertRaises(subprocess.CalledProcessError) as failure:
+            run_json([sys.executable, "-c", 'import sys; print("failed", file=sys.stderr); sys.exit(2)'])
+        self.assertIn("failed", failure.exception.stderr)
+        with self.assertRaises(subprocess.TimeoutExpired):
+            run_json([sys.executable, "-c", "import time; time.sleep(30)"], timeout=0.1)
+
     def test_external_performance_population_and_sample_identity(self):
         # Synthetic validator fixtures, never used as experimental results.
         variants = {"joggle-unoptimized": "Joggle", "joggle-optimized": "Joggle",
-                    "onnxruntime": "ONNX Runtime", "tvm-relax-llvm": "TVM Relax LLVM"}
+                    "onnxruntime": "ONNX Runtime", "tvm-relax-llvm": "TVM Relax LLVM",
+                    "onnx-mlir-llvm": "ONNX-MLIR LLVM"}
         spec = {"measurement": {"execution_iterations": 2, "execution_batches": {"op": 1}},
                 "variants": [{"id": k, "system": v} for k, v in variants.items()
-                             if k != "tvm-relax-llvm"],
+                             if k not in {"tvm-relax-llvm", "onnx-mlir-llvm"}],
                 "operator_cases": [{"id": "op", "family": "elementwise"}], "model_cases": []}
         rows = [{"subject_kind": "operator", "subject": "op", "subject_hash": "a" * 64,
                  "family": "elementwise", "system": system, "system_revision": "revision",
@@ -198,6 +209,58 @@ class TVMIntegrationTests(unittest.TestCase):
             self.assertTrue(compare_outputs(actual, [np.maximum(expected, 0), expected], 0, 0)["correct"])
         self.assertEqual(runner.names, ["positive", "sum"])
         self.assertEqual(set(runner.stages_ns), {"import", "compile", "bind"})
+
+
+@unittest.skipUnless(os.environ.get("ONNX_MLIR_BIN"), "ONNX_MLIR_BIN is not set")
+class ONNXMLIRIntegrationTests(unittest.TestCase):
+    def test_identity_and_single_thread_contract(self):
+        compiler = Path(os.environ["ONNX_MLIR_BIN"])
+        identity = onnx_mlir_identity(compiler)
+        json.dumps(identity)
+        self.assertEqual(identity["variant"], "onnx-mlir-llvm")
+        self.assertEqual(len(identity["artifacts"]["onnx-mlir"]["sha256"]), 64)
+        with self.assertRaises(ValueError):
+            ONNXMLIRRunner(b"", {}, compiler, 2)
+
+    def test_resident_inputs_multiple_outputs_and_native_lifetime(self):
+        compiler = Path(os.environ["ONNX_MLIR_BIN"])
+        # Identity can alias an input; transpose can expose non-contiguous storage.
+        # Neither output release nor copying may damage resident input buffers.
+        for dtype, tensor_type in ((np.float32, onnx.TensorProto.FLOAT),
+                                   (np.int64, onnx.TensorProto.INT64)):
+            shape = ["N", 3]
+            graph = helper.make_graph([
+                helper.make_node("Add", ["x.0", "offset"], ["sum"]),
+                helper.make_node("Transpose", ["sum"], ["transposed"], perm=[1, 0]),
+                helper.make_node("Identity", ["x.0"], ["identity"]),
+            ], "native-lifetime", [
+                helper.make_tensor_value_info("x.0", tensor_type, shape),
+                helper.make_tensor_value_info("offset", tensor_type, [3]),
+            ], [helper.make_tensor_value_info("transposed", tensor_type, [3, "N"]),
+                helper.make_tensor_value_info("identity", tensor_type, shape)])
+            model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 12)])
+            model.ir_version = 10
+            feeds = {"offset": np.array([1, -1, 2], dtype),
+                     "x.0": np.arange(-3, 3, dtype=dtype).reshape(2, 3)}
+            original = feeds["x.0"].copy()
+            runner = ONNXMLIRRunner(model.SerializeToString(), feeds, compiler, 1)
+            try:
+                with self.assertRaises(RuntimeError):
+                    runner.outputs()
+                for _ in range(20):
+                    runner.invoke()
+                    actual = runner.outputs()
+                    self.assertTrue(compare_outputs(actual, [(original + feeds["offset"]).T,
+                                                              original], 0, 0)["correct"])
+                self.assertEqual(runner.names, ["transposed", "identity"])
+                self.assertEqual(set(runner.stages_ns), {"compile", "bind"})
+            finally:
+                runner.close()
+            runner.close()  # Idempotent cleanup; previously copied outputs remain valid.
+            np.testing.assert_array_equal(actual[1], original)
+            np.testing.assert_array_equal(feeds["x.0"], original)
+            with self.assertRaises(RuntimeError):
+                runner.invoke()
 
 
 if __name__ == "__main__":

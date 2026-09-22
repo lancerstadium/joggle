@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 VARIANT_ORDER = {"joggle-unoptimized": 0, "joggle-optimized": 1, "onnxruntime": 2,
-                 "tvm-relax-llvm": 3}
+                 "tvm-relax-llvm": 3, "onnx-mlir-llvm": 4}
 
 
 def sha256(path: Path) -> str:
