@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 SUPPORTED_TASKS = {"ana-broadcast-shape", "ana-storage-cost", "ana-numeric-range",
-                   "emit-storage-plan", "emit-target-capability"}
+                   "ana-fusion-match", "emit-storage-plan", "emit-target-capability"}
 
 
 def digest(path: Path) -> str:
@@ -79,6 +79,56 @@ def native_attr(value: object) -> str:
     if isinstance(value, str):
         return json.dumps(value)
     raise ValueError(f"no native attribute serialization for {value!r}")
+
+
+def fusion_fixture(request: dict, system: str) -> str:
+    """Materialize types and SSA uses; never pass a graph description to the candidate."""
+    layout = request.get("layout", "NCHW")
+    channels = request["channels"]
+    shape = [1, channels, 5, 7] if layout == "NCHW" else [1, 5, 7, channels]
+    input_shape = [1, 3, 5, 7] if layout == "NCHW" else [1, 5, 7, 3]
+    weight_shape = [channels, 3, 3, 3]
+    bias_shape = request["bias"]
+    conv, bias, activation = request["ops"]
+    returned = ["activated"]
+    for name, uses in zip(("convolved", "biased"), request["uses"], strict=True):
+        returned.extend([name] * (uses - 1))
+    if system == "Joggle":
+        tensor = lambda dims: "tensor<f32, [" + ", ".join(map(str, dims)) + "]>"
+        ty, bt, xt, wt = map(tensor, (shape, bias_shape, input_shape, weight_shape))
+        returns = ty if len(returned) == 1 else "(" + ", ".join([ty] * len(returned)) + ")"
+        declaration = f"fn side(x: {xt}) -> {xt};\n" if request.get("interleave") else ""
+        side = "  let independent = side(x)\n" if request.get("interleave") else ""
+        return (f"mod fixture\nuse tensor\n"
+                f"{declaration}"
+                f"fn {conv}(x: {xt}, w: {wt}) -> {ty};\n"
+                f"fn {bias}(x: {ty}, b: {bt}) -> {ty};\n"
+                f"fn {activation}(x: {ty}) -> {ty};\n"
+                f"[layout: {json.dumps(layout)}]\n"
+                f"fn subject(x: {xt}, w: {wt}, b: {bt}) -> {returns} {{\n"
+                f"  let convolved = {conv}(x, w)\n"
+                f"{side}"
+                f"  let biased = {bias}(convolved, b)\n"
+                f"  let activated = {activation}(biased)\n"
+                f"  return {', '.join(returned)}\n}}\n")
+    tensor = lambda dims: "tensor<" + "x".join(map(str, dims)) + "xf32>"
+    ty, bt, xt, wt = map(tensor, (shape, bias_shape, input_shape, weight_shape))
+    returns = ty if len(returned) == 1 else "(" + ", ".join([ty] * len(returned)) + ")"
+    declaration = f"  func.func private @side({xt}) -> {xt}\n" if request.get("interleave") else ""
+    side = f"    %independent = func.call @side(%x) : ({xt}) -> {xt}\n" if request.get("interleave") else ""
+    return (f"module {{\n"
+            f"{declaration}"
+            f"  func.func private @{conv}({xt}, {wt}) -> {ty}\n"
+            f"  func.func private @{bias}({ty}, {bt}) -> {ty}\n"
+            f"  func.func private @{activation}({ty}) -> {ty}\n"
+            f"  func.func @subject(%x: {xt}, %w: {wt}, %b: {bt}) -> {returns} "
+            f"attributes {{layout = {json.dumps(layout)}}} {{\n"
+            f"    %convolved = func.call @{conv}(%x, %w) : ({xt}, {wt}) -> {ty}\n"
+            f"{side}"
+            f"    %biased = func.call @{bias}(%convolved, %b) : ({ty}, {bt}) -> {ty}\n"
+            f"    %activated = func.call @{activation}(%biased) : ({ty}) -> {ty}\n"
+            f"    func.return {', '.join('%' + n for n in returned)} : "
+            f"{', '.join([ty] * len(returned))}\n  }}\n}}\n")
 
 
 def execute(command: list[str | Path], timeout: float) -> dict:
@@ -167,7 +217,9 @@ def main() -> int:
         if setup_ok:
             for case in task["positive_cases"] + task["negative_cases"]:
                 path = work / ("input.jog" if args.system == "Joggle" else "input.mlir")
-                if args.system == "Joggle":
+                if args.task == "ana-fusion-match":
+                    source = fusion_fixture(case["input"], args.system)
+                elif args.system == "Joggle":
                     source = ("mod fixture\n[request: " + json.dumps(case["input"]) +
                               "]\nfn subject() -> int { return 0 }\n")
                 else:

@@ -5,6 +5,7 @@ from types import ModuleType
 
 from xdsl.context import Context
 from xdsl.dialects.builtin import Builtin
+from xdsl.dialects.func import Func
 from xdsl.parser import Parser
 
 
@@ -18,6 +19,7 @@ def main() -> None:
     exec(compile(implementation.read_bytes(), str(implementation), "exec"), candidate.__dict__)
     context = Context()
     context.load_dialect(Builtin)
+    context.load_dialect(Func)
     module = Parser(context, input_path.read_text()).parse_module()
     module.verify()
     print(json.dumps(candidate.analyze(module), sort_keys=True, allow_nan=False))

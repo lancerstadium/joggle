@@ -23,9 +23,42 @@ from run_baseline_benchmarks import compare_outputs, isolated_reference, ort_ses
 from run_joggle_benchmarks import checkpoint_protocol, make_harness, Unsupported
 from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
+from run_extension_task import fusion_fixture
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    @unittest.skipUnless(importlib.util.find_spec("xdsl"), "xDSL is unavailable")
+    def test_fusion_fixture_uses_native_def_use_edges_and_tensor_types(self):
+        from xdsl.context import Context
+        from xdsl.dialects.builtin import Builtin
+        from xdsl.dialects.func import CallOp, Func, FuncOp
+        from xdsl.parser import Parser
+        request = {"layout": "NHWC", "channels": 8, "bias": [8],
+                   "ops": ["conv2d", "bias_add", "relu"], "uses": [2, 1],
+                   "interleave": True}
+        for system in ("Joggle", "MLIR", "xDSL"):
+            text = fusion_fixture(request, system)
+            self.assertNotIn("request", text)
+            self.assertNotIn("matches", text)
+        context = Context()
+        context.load_dialect(Builtin)
+        context.load_dialect(Func)
+        module = Parser(context, fusion_fixture(request, "xDSL")).parse_module()
+        module.verify()
+        subject = next(op for op in module.ops
+                       if isinstance(op, FuncOp) and op.sym_name.data == "subject")
+        calls = [op for op in subject.body.block.ops if isinstance(op, CallOp)]
+        self.assertEqual([op.callee.root_reference.data for op in calls],
+                         ["conv2d", "side", "bias_add", "relu"])
+        self.assertIs(calls[2].arguments[0], calls[0].res[0])
+        self.assertIs(calls[3].arguments[0], calls[2].res[0])
+        self.assertFalse(calls[0].res[0].has_one_use())
+        self.assertTrue(calls[2].res[0].has_one_use())
+        self.assertEqual(calls[0].arguments[0].type.get_shape(), (1, 5, 7, 3))
+        self.assertEqual(calls[0].arguments[1].type.get_shape(), (8, 3, 3, 3))
+        self.assertEqual(calls[0].res[0].type.get_shape(), (1, 5, 7, 8))
+        self.assertEqual(calls[2].arguments[1].type.get_shape(), (8,))
+
     def test_semantic_oracle_uses_a_separate_process_and_named_outputs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

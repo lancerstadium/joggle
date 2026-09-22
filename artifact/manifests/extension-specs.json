@@ -126,11 +126,15 @@
       "contract": "Report a fusion only for Conv2D feeding BiasAdd feeding ReLU through single-use edges, with a rank-one bias matching the convolution output-channel extent.",
       "positive_cases": [
         {"id": "nchw-chain", "input": {"layout": "NCHW", "ops": ["conv2d", "bias_add", "relu"], "uses": [1, 1], "channels": 16, "bias": [16]}, "expect": {"matches": [[0, 1, 2]]}},
-        {"id": "nhwc-chain", "input": {"layout": "NHWC", "ops": ["conv2d", "bias_add", "relu"], "uses": [1, 1], "channels": 8, "bias": [8]}, "expect": {"matches": [[0, 1, 2]]}}
+        {"id": "nhwc-chain", "input": {"layout": "NHWC", "ops": ["conv2d", "bias_add", "relu"], "uses": [1, 1], "channels": 8, "bias": [8]}, "expect": {"matches": [[0, 1, 2]]}},
+        {"id": "interleaved-chain", "input": {"layout": "NCHW", "ops": ["conv2d", "bias_add", "relu"], "uses": [1, 1], "channels": 16, "bias": [16], "interleave": true}, "expect": {"matches": [[0, 2, 3]]}}
       ],
       "negative_cases": [
         {"id": "multi-use-conv", "input": {"ops": ["conv2d", "bias_add", "relu"], "uses": [2, 1], "channels": 16, "bias": [16]}, "expect": {"matches": []}},
-        {"id": "bias-mismatch", "input": {"ops": ["conv2d", "bias_add", "relu"], "uses": [1, 1], "channels": 16, "bias": [8]}, "expect": {"matches": []}}
+        {"id": "bias-mismatch", "input": {"ops": ["conv2d", "bias_add", "relu"], "uses": [1, 1], "channels": 16, "bias": [8]}, "expect": {"matches": []}},
+        {"id": "multi-use-bias", "input": {"ops": ["conv2d", "bias_add", "relu"], "uses": [1, 2], "channels": 16, "bias": [16]}, "expect": {"matches": []}},
+        {"id": "rank-two-bias", "input": {"ops": ["conv2d", "bias_add", "relu"], "uses": [1, 1], "channels": 16, "bias": [1, 16]}, "expect": {"matches": []}},
+        {"id": "wrong-activation", "input": {"ops": ["conv2d", "bias_add", "sigmoid"], "uses": [1, 1], "channels": 16, "bias": [16]}, "expect": {"matches": []}}
       ],
       "oracle": {"phases": ["build", "semantic"], "comparison": "exact-json"}
     },

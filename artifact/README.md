@@ -44,11 +44,12 @@ python3 artifact/validate_extension_specs.py
 
 `run_extension_task.py` executes candidate code against the shared contract.
 The native tasks include `ana-broadcast-shape`, `ana-storage-cost`,
-`ana-numeric-range`, `emit-storage-plan`, and `emit-target-capability`.
+`ana-numeric-range`, `ana-fusion-match`, `emit-storage-plan`, and
+`emit-target-capability`.
 Each task directory under `extensions/` contains reference implementations for
 Joggle, MLIR, and xDSL; the shared `starter.*` files contain their empty entry
-points. Joggle reads the request from function metadata; MLIR and xDSL
-read the same request from a builtin module's dictionary attribute. The driver
+points. Attribute-analysis tasks read a request from function metadata in
+Joggle or a builtin module dictionary in MLIR and xDSL. The driver
 only parses the input and calls the candidate. Shape analysis runs in native
 extension code, and expected outputs remain in the external oracle.
 
@@ -69,10 +70,14 @@ and the starter must fail. Reports contain per-case process output and exact
 oracle comparisons. They are task-validation records, not agent trajectories.
 Candidate code from an agent runs inside its isolated execution environment.
 
-The five Joggle references pass all 32 native oracle cases, including numeric
-range propagation through binary64 compiler metadata. The MLIR and xDSL
-references also cover these five task families. The shared contract retains
-fractional and negative inputs.
+The attribute tasks include numeric range propagation through binary64 compiler
+metadata, with fractional and negative inputs. `ana-fusion-match` instead
+receives a real typed SSA call graph in all three systems, with no request
+dictionary. Its eight cases exercise NCHW/NHWC layout, an interleaved unrelated
+call, extra consumers on either fusion edge, bias rank and channel mismatch,
+and an unmatched activation. The extension reads tensor types, defining
+operations, and use lists through each framework's native APIs. Match positions
+refer to the actual call sequence, not a precomputed input descriptor.
 Emission oracles also require byte-identical outputs across repeated runs.
 These reference checks validate task execution, not agent completion rates.
 

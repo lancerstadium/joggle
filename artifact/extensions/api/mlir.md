@@ -12,7 +12,8 @@ llvm::json::Object analyze(mlir::ModuleOp module) {
 }
 ```
 
-The test driver parses a builtin module with a `study.request` dictionary attribute.
+For attribute-request tasks, the driver parses a builtin module with a
+`study.request` dictionary attribute.
 Read that native IR attribute with:
 
 ```cpp
@@ -36,3 +37,28 @@ The driver links the extension with MLIRParser, MLIRIR, and MLIRSupport, then
 calls `analyze` and compares its JSON result to the task's expected result.
 Return semantic rejection as the error dictionary specified by the task,
 rather than aborting the process. Do not change the driver or fixtures.
+
+## Native graph analysis
+
+For `ana-fusion-match`, the registered `func` dialect represents real typed
+calls, not a `study.request` dictionary. The function `subject` has a string
+attribute `layout` (`NCHW` or `NHWC`). Callee symbols include `conv2d`,
+`bias_add`, and `relu`; other calls may also occur.
+
+```cpp
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+auto subject = module.lookupSymbol<mlir::func::FuncOp>("subject");
+for (auto call : subject.getBody().front().getOps<mlir::func::CallOp>()) {
+  auto callee = call.getCallee();
+  auto producer = call.getOperand(0).getDefiningOp<mlir::func::CallOp>();
+  auto singleUse = call.getResult(0).hasOneUse();
+  auto type = llvm::dyn_cast<mlir::RankedTensorType>(call.getResult(0).getType());
+}
+```
+
+Check a defining operation before dereferencing it; block arguments have none.
+Tensor types expose `getRank()` and `getDimSize(axis)`. Report each match as
+indices into the subject's `func.call` sequence, excluding its return.
+Uses include every actual operand occurrence and returns. The driver also
+links `MLIRFuncDialect`.

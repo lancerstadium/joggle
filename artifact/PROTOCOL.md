@@ -39,8 +39,8 @@ not pooled into a single ranking:
 | Efficient | TVM, ONNX-MLIR, IREE | TorchInductor with original PyTorch models; Exo/Halide operator edits |
 | End-to-end | ONNX Runtime, TVM, ONNX-MLIR, IREE | TorchInductor with original models; Exo/Halide operator subset |
 
-TVM execution is implemented in the shared external-baseline collector. Other
-new adapters remain to be implemented and validated. Existing release gates
+TVM and ONNX-MLIR execution are implemented in the shared external-baseline
+collector. Other new adapters remain to be implemented and validated. Existing release gates
 cover the original population; they do not certify the expanded comparison.
 New formal populations must be frozen before measurement, including the
 task-system applicability matrix. Existing input and model specifications

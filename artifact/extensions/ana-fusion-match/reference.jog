@@ -1,0 +1,40 @@
+mod extension
+use base
+use ir
+
+fn position(calls: list<Op>, target: Op) -> int {
+  for i in 0..len(calls) {
+    if calls[i] == target { return i }
+  }
+  return -1
+}
+
+fn analyze(m: Mod) -> dict {
+  let subject = ir.find(m, "subject")
+  let calls = ir.ops(subject, ["call"])
+  var axis = 1
+  if str(ir.meta(subject, "layout")) == "NHWC" { axis = 3 }
+  var matches: list = []
+  for relu in calls {
+    if ir.callee(relu) == "relu" && len(ir.args(relu)) == 1 {
+      let bias = ir.def(ir.args(relu)[0])
+      if ir.live(bias) && ir.callee(bias) == "bias_add" && len(ir.args(bias)) == 2 {
+        let conv = ir.def(ir.args(bias)[0])
+        if ir.live(conv) && ir.callee(conv) == "conv2d" {
+          if len(ir.users(ir.outs(conv)[0])) == 1 && len(ir.users(ir.outs(bias)[0])) == 1 {
+            let output_type = ir.type(ir.outs(conv)[0])
+            let bias_type = ir.type(ir.args(bias)[1])
+            let shape = args(args(output_type)[1])
+            let bias_shape = args(args(bias_type)[1])
+            if len(shape) == 4 && len(bias_shape) == 1 && int(shape[axis]) == int(bias_shape[0]) {
+              matches += [[position(calls, conv), position(calls, bias), position(calls, relu)]]
+            }
+          }
+        }
+      }
+    }
+  }
+  var result: dict = {}
+  result["matches"] = matches
+  return result
+}

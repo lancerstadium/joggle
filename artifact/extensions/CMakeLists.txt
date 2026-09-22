@@ -10,4 +10,4 @@ target_include_directories(extension-oracle SYSTEM PRIVATE
   ${MLIR_INCLUDE_DIRS} ${LLVM_INCLUDE_DIRS})
 separate_arguments(EXTENSION_LLVM_DEFINITIONS NATIVE_COMMAND "${LLVM_DEFINITIONS}")
 target_compile_options(extension-oracle PRIVATE ${EXTENSION_LLVM_DEFINITIONS})
-target_link_libraries(extension-oracle PRIVATE MLIRParser MLIRIR MLIRSupport)
+target_link_libraries(extension-oracle PRIVATE MLIRParser MLIRIR MLIRSupport MLIRFuncDialect)
