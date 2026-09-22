@@ -1922,6 +1922,9 @@ bool Mod::expand(const Env& env, Op call, Fn callee,
     }
     if (mapped)
       continue;
+    if (!detail::materializable_generic(generic.type(), value, context))
+      return reject("expanded generic parameter is not representable as a value",
+                    call.loc());
     if (generic.type().name() == "int") {
       const auto number = integer(value);
       if (!number)
@@ -2110,8 +2113,10 @@ bool Mod::expand(const Env& env, Op call, Fn callee,
     const detail::ValData& boundary_data =
         store.vals[call_outs[index].id_].data;
     const Attr::Dict& boundary = boundary_data.meta;
-    const std::unordered_set<std::uint32_t> related =
-        detail::family(store, replacements[index]);
+    // Most call results carry no boundary metadata; no family walk is needed.
+    const std::unordered_set<std::uint32_t> related = boundary.empty()
+        ? std::unordered_set<std::uint32_t>{}
+        : detail::family(store, replacements[index]);
     for (const auto& [key, value] : boundary) {
       for (const std::uint32_t id : related) {
         const auto found = store.vals[id].data.meta.find(key);
@@ -3308,6 +3313,25 @@ int Mod::print_diags(std::FILE* file) const {
 }  // namespace joggle
 
 namespace joggle::detail {
+
+bool materializable_generic(const Ty& type, const Ty& value,
+                            std::span<const Val> context) {
+  const auto outer = [&](const Ty& item) {
+    return std::any_of(context.begin(), context.end(), [&](Val parameter) {
+      return item.args().empty() && item.name() == parameter.name();
+    });
+  };
+  if (outer(value))
+    return true;
+  if (type.name() == "int")
+    return integer(value).has_value();
+  if (type.name() != "list" || value.name() != "[]")
+    return false;
+  for (const Ty& item : value.args())
+    if (!outer(item) && !integer(item))
+      return false;
+  return true;
+}
 
 void rebuild_uses(Store& store) {
   for (auto& value : store.vals)

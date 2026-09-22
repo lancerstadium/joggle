@@ -345,6 +345,8 @@ Fn resolve_overload(std::span<const Fn> candidates,
                     std::span<const Val> context = {},
                     std::vector<Ty>* generics = nullptr,
                     std::span<const Ty> expected_returns = {});
+bool materializable_generic(const Ty& type, const Ty& value,
+                            std::span<const Val> context);
 
 }  // namespace joggle::detail
 

@@ -636,6 +636,45 @@ fn value_alias_probe(m: Mod) -> bool {
          int(fields_before["value"]) == 1 && int(fields["value"]) == 2
 }
 
+fn value_lifetime_probe(m: Mod) -> bool {
+  var fields: dict = {}
+  for i in 0..32 {
+    let key = text(i)
+    assert(!base.has(fields, key), "read before dict update")
+    fields[key] = i
+  }
+  let snapshot = fields
+  for i in 0..32 {
+    assert(int(fields[text(i)]) == i, "loop dict value")
+  }
+  fields["0"] = 100
+  assert(int(snapshot["0"]) == 0, "dict snapshot was mutated")
+
+  let repeated = [1, 2]
+  assert(repeated + repeated == [1, 2, 1, 2], "repeated operand was moved")
+  let captured = [3, 4]
+  var total = 0
+  for i in 0..3 {
+    // The captured list is read again on every iteration and after the loop.
+    if i < 2 { total += captured[0] } else { total += captured[1] }
+  }
+  assert(total == 10 && captured == [3, 4], "nested capture was moved")
+  var items = [1, 2]
+  for item in items { items += [item + 2] }
+  var nested: dict = {}
+  for i in 0..32 {
+    let previous = nested
+    if i % 2 == 0 {
+      nested[text(i)] = i
+    } else {
+      nested[text(i)] = -i
+    }
+    assert(!base.has(previous, text(i)), "branch changed a live snapshot")
+  }
+  return items == [1, 2, 3, 4] && int(fields["0"]) == 100 &&
+         int(nested["30"]) == 30 && int(nested["31"]) == -31
+}
+
 fn numel_probe(m: Mod) -> bool {
   return tensor.numel<[2, 3, 4]>() == 24
 }

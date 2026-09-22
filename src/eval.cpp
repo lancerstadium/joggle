@@ -1562,6 +1562,28 @@ private:
           define(value, block_index);
     }
 
+    // Release a value at its last local use, not only when it has one user.
+    // Otherwise a read followed by an update retains the old register and
+    // forces a complete copy of a growing dict/list on every iteration.
+    // Captures stay borrowed: a nested block may execute more than once.
+    std::vector<std::uint32_t> last_users(slots.size(), 0);
+    std::vector<bool> captured(slots.size(), false);
+    for (std::size_t block_index = 0; block_index < blocks.size();
+         ++block_index) {
+      for (Op op : block_ops(blocks[block_index])) {
+        for (Val value : op_args(op)) {
+          const ValueKey key{value.store_, value.id_};
+          const auto found = slots.find(key);
+          if (found == slots.end())
+            return nullptr;
+          if (scopes.at(key) != block_index)
+            captured[found->second] = true;
+          else
+            last_users[found->second] = op.id_;
+        }
+      }
+    }
+
     for (std::size_t block_index = 0; block_index < blocks.size();
          ++block_index) {
       PlanBlock& target = plan->blks[block_index];
@@ -1599,11 +1621,13 @@ private:
           if (found == slots.end())
             return nullptr;
           instruction.args.push_back(found->second);
-          const auto& users = value.store_->vals[value.id_].data.users;
           const auto scope = scopes.find(ValueKey{value.store_, value.id_});
           instruction.moves.push_back(
               scope != scopes.end() && scope->second == block_index &&
-              users.size() == 1 && users.front() == op.id_);
+              !captured[found->second] &&
+              last_users[found->second] == op.id_ &&
+              std::count(instruction.operands.begin(),
+                         instruction.operands.end(), value) == 1);
         }
         if (op.kind() == Op::Kind::call &&
             instruction.call.symbol.starts_with("operator ") &&
@@ -1741,6 +1765,14 @@ private:
       for (std::size_t index = 0; index < args.size(); ++index)
         window[block.args[index]] = std::move(args[index]);
 
+    const auto release_block = [&]() {
+      for (const auto slot : block.args)
+        window[slot] = Item{};
+      for (const auto& op : block.ops)
+        for (const auto slot : op.outs)
+          window[slot] = Item{};
+    };
+
     for (PlanOp& instruction : block.ops) {
 #if defined(JOGGLE_EVAL_COUNTERS)
       if (counters_) [[unlikely]]
@@ -1853,6 +1885,8 @@ private:
         if (kind == Op::Kind::ret ||
             yield_target.kind == YieldTarget::Kind::flow) {
           Items inputs = plan_values(window, instruction);
+          if (kind == Op::Kind::yield)
+            release_block();
           return {kind == Op::Kind::ret ? FlowKind::ret : FlowKind::yield,
                   std::move(inputs)};
         }
@@ -1878,6 +1912,9 @@ private:
             window[yield_target.slots[index]] =
                 plan_value(window, instruction, index);
         }
+        // Yielded values now belong to the parent or loop-carried state.
+        // Dead locals must not keep snapshots alive across later iterations.
+        release_block();
         return {FlowKind::yield, {}};
       }
       if (kind == Op::Kind::branch) {

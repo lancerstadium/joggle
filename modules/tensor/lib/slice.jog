@@ -113,7 +113,7 @@ fn slice_offset(
           if start < 0 { start = 0 }
           if start > source[dim] { start = source[dim] }
         } else {
-          if start < -1 { start = -1 }
+          if start < 0 { start = 0 }
           if start >= source[dim] { start = source[dim] - 1 }
         }
       }
@@ -164,7 +164,7 @@ fn slice_offset<
           if start < 0 { start = 0 }
           if start > S[dim] { start = S[dim] }
         } else {
-          if start < -1 { start = -1 }
+          if start < 0 { start = 0 }
           if start >= S[dim] { start = S[dim] - 1 }
         }
       }
@@ -241,8 +241,8 @@ local fn slice_runtime<
           last += extent
         }
       }
-      if first < -index(1) {
-        first = -index(1)
+      if first < index(0) {
+        first = index(0)
       }
       if first > high {
         first = high
@@ -396,7 +396,7 @@ fn sliced(
         }
       } else {
         let high = extent - 1
-        if first < -1 { first = -1 }
+        if first < 0 { first = 0 }
         if first > high { first = high }
         if last < -1 { last = -1 }
         if last > high { last = high }

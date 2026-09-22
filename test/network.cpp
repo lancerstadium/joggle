@@ -1455,7 +1455,7 @@ int main(int argc, char** argv) {
            SliceExtentCase{5, 4, 0, -2, 2},
            SliceExtentCase{5, 0, 4, -1, 0},
            SliceExtentCase{5, max_index, min_index, -2, 3},
-           SliceExtentCase{5, -9, min_index, -1, 0},
+           SliceExtentCase{5, -9, min_index, -1, 1},
            SliceExtentCase{0, -1, min_index, -1, 0},
            SliceExtentCase{5, 4, min_index, min_index, 1},
            SliceExtentCase{5, 0, max_index, max_index, 1}}) {

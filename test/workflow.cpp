@@ -2077,6 +2077,37 @@ int main(int argc, char** argv) {
     CHECK(joggle::structurally_equal(partial, scripted));
   }
 
+  // A runtime dimension is not an integer generic value. Skipping it must
+  // preserve the graph, still expand later calls, and retry after refinement.
+  joggle::Mod partial_shapes;
+  CHECK(joggle::parse(env,
+      "mod partial.shapes\nuse tensor\n"
+      "fn extent<S: list<int>>(x: tensor<i32, S>) -> int { return S[0] }\n"
+      "fn main(x: tensor<i32, [_]>, y: tensor<i32, [4]>) -> int {\n"
+      "  let a = extent(x)\n  let b = extent(y)\n  return a + b\n}\n",
+      partial_shapes, "partial-shapes.jog"));
+  std::vector<joggle::Op> shape_calls;
+  std::vector<joggle::Fn> shape_bodies;
+  for (joggle::Op op : partial_shapes.find_fn("main").ops())
+    if (op.callee() == "extent") {
+      shape_calls.push_back(op);
+      shape_bodies.push_back(env.resolve(partial_shapes, op));
+    }
+  CHECK(shape_calls.size() == 2);
+  CHECK(env.expand(partial_shapes, shape_calls, shape_bodies, true));
+  CHECK(shape_calls[0] && !shape_calls[1]);
+  CHECK(partial_shapes.verify(env));
+  const auto shape_revision = partial_shapes.revision();
+  CHECK(!env.expand(partial_shapes, std::span(shape_calls).first(1),
+                    std::span(shape_bodies).first(1), true));
+  CHECK(partial_shapes.revision() == shape_revision);
+  CHECK(partial_shapes.diags().empty());
+  CHECK(partial_shapes.type(partial_shapes.find_fn("main").params()[0],
+                            joggle::Ty("tensor<i32, [3]>")));
+  CHECK(env.expand(partial_shapes, std::span(shape_calls).first(1),
+                   std::span(shape_bodies).first(1), true));
+  CHECK(!shape_calls[0] && partial_shapes.verify(env));
+
   joggle::Mod bounds_refresh;
   CHECK(joggle::parse(env,
       "mod bounds.refresh\nfn main() -> i32 {\n"
@@ -5202,6 +5233,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "script.collection_update_probe",
                     overload_execution));
   CHECK(joggle::run(env, "script.value_alias_probe", overload_execution));
+  CHECK(joggle::run(env, "script.value_lifetime_probe", overload_execution));
   CHECK(joggle::run(env, "script.numel_probe", overload_execution));
   CHECK(joggle::run(env, "script.make_pair", overload_execution));
   CHECK(joggle::print(overload_execution)

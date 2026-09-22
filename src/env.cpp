@@ -835,6 +835,41 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
   if (calls.empty())
     return false;
   if (best_effort && calls.size() == implementations.size()) {
+    // An unresolved runtime generic cannot be materialized by expansion.
+    // Detect it without snapshotting or cloning the program. Dynamic-shape
+    // calls can be numerous, and are reconsidered after later type changes.
+    std::vector<Op> eligible;
+    std::vector<Fn> eligible_bodies;
+    for (std::size_t index = 0; index < calls.size(); ++index) {
+      const Op call = calls[index];
+      const Fn body = implementations[index];
+      if (!call || !body)
+        continue;
+      const Ty applied{std::string(call.callee())};
+      std::vector<Ty> inputs, expected, bindings;
+      for (Val value : call.args())
+        inputs.push_back(value.type());
+      for (Val value : call.outs())
+        expected.push_back(value.type());
+      const auto context = call.blk().fn().generics();
+      const std::array candidates{body};
+      if (!detail::resolve_overload(candidates, inputs, applied.args(), nullptr,
+                                    nullptr, context, &bindings, expected))
+        continue;
+      const auto generics = body.generics();
+      bool materializable = generics.size() == bindings.size();
+      for (std::size_t i = 0; materializable && i < generics.size(); ++i)
+        if (!generics[i].users().empty() &&
+            !detail::materializable_generic(generics[i].type(), bindings[i],
+                                            context))
+          materializable = false;
+      if (materializable) {
+        eligible.push_back(call);
+        eligible_bodies.push_back(body);
+      }
+    }
+    if (eligible.empty())
+      return false;
     // Try the common case as one transaction. Isolate refusals by bisecting
     // failed batches: a bad call must neither block later calls nor leave a
     // partially cloned body behind. Successful sub-batches share the snapshot
@@ -852,7 +887,7 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
       const bool right = self(self, pending.subspan(middle), bodies.subspan(middle));
       return left || right;
     };
-    return attempt(attempt, calls, implementations);
+    return attempt(attempt, eligible, eligible_bodies);
   }
   detail::Store backup = mod.impl_->store;
   const auto rollback = [&]() {

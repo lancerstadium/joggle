@@ -62,5 +62,11 @@ int main(void) {
                        forward_limits, result, &rows, &columns);
   if (rows != 1 || columns != 1 || result[0] != 0)
     return 5;
+  const int64_t backward_limits[2] = {INT64_MIN, INT64_MIN};
+  const int64_t backward_steps[2] = {-1, -1};
+  dynamic_slice_c_main(input, backward_limits, backward_limits, axes,
+                       backward_steps, result, &rows, &columns);
+  if (rows != 1 || columns != 1 || result[0] != 0)
+    return 6;
   return 0;
 }

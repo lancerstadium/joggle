@@ -1,4 +1,6 @@
 #include "joggle/joggle.h"
+#include "../src/detail.h"
+#include "../src/value.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -17,6 +19,73 @@
   } while (false)
 
 namespace {
+
+// Compare local family discovery with the independent whole-store union-find
+// across nested control flow, shared yields, dead controls, and unused values.
+bool local_families() {
+  using namespace joggle::detail;
+  for (int variant = 0; variant != 4; ++variant) {
+    Store store;
+    store.vals.resize(18);
+    for (auto& slot : store.vals) {
+      slot.live = true;
+      slot.data.fn = 0;
+    }
+    store.fns.resize(1);
+    store.fns[0].live = true;
+    store.fns[0].data.blks = {0, 1, 2};
+    store.blks.resize(3);
+    for (auto& slot : store.blks) {
+      slot.live = true;
+      slot.data.fn = 0;
+    }
+    store.ops.resize(5);
+    for (auto& slot : store.ops) slot.live = true;
+    auto& loop = store.ops[0].data;
+    loop.kind = joggle::Op::Kind::loop;
+    loop.iter_names = {"i", "j"};
+    loop.carried_count = 2;
+    loop.args = {0, 1, 2, 3};
+    loop.outs = {4, 5};
+    loop.blks = {0};
+    auto& branch = store.ops[1].data;
+    branch.kind = joggle::Op::Kind::branch;
+    branch.carried_count = 2;
+    branch.args = {16, 8, 9};
+    branch.outs = {14, 15};
+    branch.blks = {1, 2};
+    for (const auto op : {2, 3, 4})
+      store.ops[op].data.kind = joggle::Op::Kind::yield;
+    store.blks[0].data.parent_op = 0;
+    store.blks[0].data.args = {6, 7, 8, 9};
+    store.blks[0].data.ops = {1, 3};
+    store.blks[1].data.parent_op = 1;
+    store.blks[1].data.args = {10, 11};
+    store.blks[1].data.ops = {2};
+    store.blks[2].data.parent_op = 1;
+    store.blks[2].data.args = {12, 13};
+    store.blks[2].data.ops = {4};
+    store.ops[2].data.blk = 1;
+    store.ops[2].data.args = {10, 11};
+    store.ops[3].data.blk = 0;
+    store.ops[3].data.args = {14, 15};
+    store.ops[4].data.blk = 2;
+    store.ops[4].data.args = {12, 13};
+    for (const auto id : {4, 5}) store.vals[id].data.def = 0;
+    for (const auto id : {14, 15}) store.vals[id].data.def = 1;
+    for (int id = 6; id <= 13; ++id)
+      store.vals[id].data.kind = ValKind::blk_arg;
+    if (variant == 1) store.ops[2].data.args = {11, 11};
+    if (variant == 2) store.ops[4].data.args = {2, 13};
+    if (variant == 3) store.ops[1].live = false;
+    rebuild_uses(store);
+    ValFamilies reference(store);
+    for (std::uint32_t id = 0; id < store.vals.size(); ++id)
+      if (family(store, id) != reference.members(id))
+        return false;
+  }
+  return true;
+}
 
 class Random {
 public:
@@ -242,6 +311,7 @@ bool edit(joggle::Env& env, joggle::Mod& mod, Random& random,
 }  // namespace
 
 int main(int argc, char** argv) {
+  CHECK(local_families());
   CHECK(argc == 2);
   joggle::Env env;
   env.path(argv[1]);
