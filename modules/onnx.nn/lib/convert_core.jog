@@ -318,7 +318,7 @@ local fn fill_if_arm(
   if base.kind(info) != "dict" || !base.has(info, "inputs") ||
      !base.has(info, "captures") || base.int(info["inputs"]) != 0 ||
      base.kind(info["captures"]) != "list" ||
-     len(ir.blks(source)) != 1 {
+     len(ir.blks(source)) == 0 {
     return false
   }
   let params = ir.params(source)

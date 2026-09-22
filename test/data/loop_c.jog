@@ -18,6 +18,43 @@ fn reshape(x: tensor<i32, [2, 3]>, requested: tensor<i64, [2]>)
   return onnx.Reshape(x, requested)
 }
 
+// An ONNX Loop may contain an If whose branch already has structured control
+// flow. Function block enumeration includes those nested blocks.
+fn nested_scan(start: tensor<i32, []>, condition: tensor<bool, []>,
+               delta: tensor<i32, []>, limit: tensor<i32, []>)
+    -> (tensor<i32, []>, tensor<i32, [_]>) {
+  let trip: tensor<i64, []> = hex"0400000000000000"
+  [onnx: {body: {fn: "nested_body", inputs: 3, captures: [3, 4]}}]
+  let final, history = onnx.Loop(trip, condition, start, delta, limit)
+  return final, history
+}
+
+fn nested_body(iteration: tensor<i64, []>, keep_going: tensor<bool, []>,
+               previous: tensor<i32, []>, delta: tensor<i32, []>,
+               limit: tensor<i32, []>)
+    -> (tensor<bool, []>, tensor<i32, []>, tensor<i32, []>) {
+  let advance = onnx.Less(previous, limit)
+  [onnx: {then_branch: {fn: "nested_then", inputs: 0, captures: [1, 2]},
+          else_branch: {fn: "nested_else", inputs: 0, captures: [1]}}]
+  let current = onnx.If(advance, previous, delta)
+  return keep_going, current, current
+}
+
+fn nested_then(previous: tensor<i32, []>, delta: tensor<i32, []>)
+    -> tensor<i32, []> {
+  var current = previous
+  if delta[index(0)] > i32(0) {
+    current = onnx.Add(previous, delta)
+  } else {
+    current = onnx.Sub(previous, delta)
+  }
+  return current
+}
+
+fn nested_else(previous: tensor<i32, []>) -> tensor<i32, []> {
+  return previous
+}
+
 fn reshape_empty(x: tensor<i32, [0, 3]>, requested: tensor<i64, [2]>)
     -> tensor<i32, [_, _]> {
   [onnx: {allowzero: 1}]

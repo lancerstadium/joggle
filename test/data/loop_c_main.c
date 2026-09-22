@@ -4,6 +4,9 @@
 void loop_c_scan(const int32_t* start, const bool* condition,
                  const int32_t* delta, const int32_t* limit,
                  int32_t* final, int32_t* history, int64_t* history_dim_0);
+void loop_c_nested_scan(const int32_t* start, const bool* condition,
+                        const int32_t* delta, const int32_t* limit,
+                        int32_t* final, int32_t* history, int64_t* history_dim_0);
 void loop_c_reshape(const int32_t* x, const int64_t* requested,
                     int32_t* result, int64_t* dim_0, int64_t* dim_1);
 void loop_c_reshape_empty(const int32_t* x, const int64_t* requested,
@@ -57,6 +60,20 @@ int main(int argc, char** argv) {
   loop_c_scan(&start, &condition, &delta, &limit, &final, history, &length);
   if (final != start || length != 0)
     return 4;
+  for (int sign = -1; sign <= 1; sign += 2) {
+    const int32_t step = sign * delta;
+    condition = true;
+    loop_c_nested_scan(&start, &condition, &step, &limit,
+                       &final, history, &length);
+    if (final != 8 || length != 4 || history[0] != 5 ||
+        history[1] != 8 || history[2] != 8 || history[3] != 8)
+      return 17;
+  }
+  condition = false;
+  loop_c_nested_scan(&start, &condition, &delta, &limit,
+                     &final, history, &length);
+  if (final != start || length != 0)
+    return 18;
   const int32_t input[6] = {1, 2, 3, 4, 5, 6};
   int32_t result[6] = {0};
   int64_t rows = -1, cols = -1;

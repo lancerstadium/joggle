@@ -67,7 +67,7 @@ local fn convert_loop(m: Mod, op: Op) -> bool {
   let params = ir.params(body)
   let bodies = ir.blks(body)
   if input_count < 2 || len(inputs) < input_count ||
-     len(params) != input_count + len(captures) || len(bodies) != 1 {
+     len(params) != input_count + len(captures) || len(bodies) == 0 {
     return false
   }
   let body_ops = ir.ops(bodies[0])
