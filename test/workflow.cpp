@@ -5354,6 +5354,90 @@ int main(int argc, char** argv) {
   CHECK(joggle::print(folded_controls).find("var total: int = 10") !=
         std::string::npos);
 
+  // Ranges are compact IR values, not literal lists to eagerly materialize.
+  // A folding budget must leave a valid runtime loop intact, including when
+  // both its bounds and its carried initial value are compile-time constants.
+  for (const std::string_view bounds : {
+           "0..1000001", "-1000001..1",
+           "-9223372036854775807..9223372036854775807"}) {
+    for (const std::string_view initial : {"x", "0"}) {
+      joggle::Mod large_range;
+      const std::string source =
+          "mod large_range\nfn work(x: int) -> int {\n"
+          "  var total: int = " + std::string(initial) + "\n"
+          "  for i in " + std::string(bounds) + " { total += 1 }\n"
+          "  return total\n}\n";
+      CHECK(joggle::parse(env, source, large_range, "large-range.jog"));
+      CHECK(large_range.verify(env));
+      CHECK(joggle::run(env, "opt.fold", large_range));
+      CHECK(large_range.verify(env));
+      CHECK(env.diags().empty());
+      const auto ops = large_range.ops();
+      CHECK(std::count_if(ops.begin(), ops.end(), [](joggle::Op op) {
+              return op.kind() == joggle::Op::Kind::loop;
+            }) == 1);
+    }
+  }
+
+  // A range limit reached inside an interpreted nested body also abandons only
+  // that optional fold. A later independent small loop still folds normally.
+  joggle::Mod nested_large_range;
+  CHECK(joggle::parse(env,
+      "mod nested_large_range\nfn work() -> int {\n"
+      "  var total: int = 0\n"
+      "  for i in 0..2 {\n"
+      "    for j in 0..1000001 + i { total += 1 }\n"
+      "  }\n  return total\n}\n"
+      "fn small() -> int {\n  var total: int = 0\n"
+      "  for i in 0..3 { total += 2 }\n  return total\n}\n",
+      nested_large_range, "nested-large-range.jog"));
+  CHECK(nested_large_range.verify(env));
+  CHECK(joggle::run(env, "opt.fold", nested_large_range));
+  CHECK(nested_large_range.verify(env));
+  CHECK(env.diags().empty());
+  const auto nested_range_ops = nested_large_range.ops();
+  CHECK(std::count_if(nested_range_ops.begin(), nested_range_ops.end(),
+                     [](joggle::Op op) {
+                       return op.kind() == joggle::Op::Kind::loop;
+                     }) == 2);
+  CHECK(joggle::print(nested_large_range).find("var total: int = 6") !=
+        std::string::npos);
+
+  for (const std::string_view bounds : {"4..4", "4..1"}) {
+    joggle::Mod empty_range;
+    CHECK(joggle::parse(env,
+        "mod empty_range\nfn work() -> int {\n"
+        "  var total: int = 7\n  for i in " + std::string(bounds) +
+        " { total += 100 }\n  return total\n}\n",
+        empty_range, "empty-range.jog"));
+    CHECK(empty_range.verify(env));
+    CHECK(joggle::run(env, "script.fold_controls", empty_range));
+    CHECK(empty_range.verify(env));
+    CHECK(env.diags().empty());
+    CHECK(joggle::print(empty_range).find("var total: int = 7") !=
+          std::string::npos);
+    for (joggle::Op op : empty_range.ops())
+      CHECK(op.kind() != joggle::Op::Kind::loop);
+  }
+
+  // Required metaprogram execution retains its resource error after a skipped
+  // optional fold. Descending ranges have the same empty iteration semantics
+  // as generated ascending runtime loops.
+  CHECK(joggle::run(env, "script.range_after_fold", nested_large_range,
+                   std::vector<joggle::Attr>{
+                         joggle::Attr(std::int64_t{4}),
+                         joggle::Attr(std::int64_t{1}),
+                         joggle::Attr(std::int64_t{0})}));
+  CHECK(!joggle::run(env, "script.range_after_fold", nested_large_range,
+                    std::vector<joggle::Attr>{
+                          joggle::Attr(std::int64_t{0}),
+                          joggle::Attr(std::int64_t{1000001}),
+                          joggle::Attr(std::int64_t{1000001})}));
+  CHECK(!env.diags().empty());
+  CHECK(env.diags().front().message.find("compile-time range") !=
+        std::string::npos);
+  env.clear_diags();
+
   // A constant control region is only evaluable if every call is supported.
   // Runtime numeric conversions must survive this optional folding attempt.
   joggle::Mod runtime_cast_controls;

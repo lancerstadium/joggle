@@ -150,7 +150,9 @@ if(emitted_header MATCHES "open_offset")
 endif()
 if(NOT emitted_header MATCHES "open_carry" OR
    NOT emitted_header MATCHES "open_add" OR
-   NOT emitted_header MATCHES "open_sigmoid")
+   NOT emitted_header MATCHES "open_sigmoid" OR
+   NOT emitted_header MATCHES "open_large_range" OR
+   NOT emitted_header MATCHES "open_empty_range")
   message(FATAL_ERROR
           "prepared C header omitted a marked entry:\n${emitted_header}")
 endif()
@@ -159,7 +161,7 @@ joggle_run("C API query failed"
   OUTPUT_VARIABLE api
   ERROR_VARIABLE error)
 string(JSON api_count LENGTH "${api}")
-if(NOT api_count EQUAL 3)
+if(NOT api_count EQUAL 5)
   message(FATAL_ERROR "C API query reported ${api_count} entries:\n${api}")
 endif()
 string(JSON add_name GET "${api}" 1 name)

@@ -1,6 +1,8 @@
 #include <math.h>
 
 int main(void) {
+  if (open_large_range(7) != 1000008 || open_empty_range(7) != 7)
+    return 4;
   const float a[4] = {1.0f, 2.0f, 3.0f, 4.0f};
   const float b[4] = {5.0f, 6.0f, 7.0f, 8.0f};
   const float expected[4] = {6.0f, 8.0f, 10.0f, 12.0f};

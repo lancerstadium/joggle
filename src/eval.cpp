@@ -235,6 +235,23 @@ std::optional<std::int64_t> integer(const Item& item) {
   return value ? value->integer() : std::nullopt;
 }
 
+constexpr std::uint64_t max_range_items = 1000000;
+
+std::optional<std::uint64_t> range_size(std::span<const Item> args) {
+  if (args.size() != 2)
+    return std::nullopt;
+  const auto first = integer(args[0]);
+  const auto last = integer(args[1]);
+  if (!first || !last)
+    return std::nullopt;
+  // Ascending half-open ranges are empty when the end precedes the start,
+  // matching the structured runtime loop emitted by backends. Unsigned
+  // subtraction also handles intervals spanning the signed integer domain.
+  return *last <= *first ? std::uint64_t{0}
+                        : static_cast<std::uint64_t>(*last) -
+                              static_cast<std::uint64_t>(*first);
+}
+
 std::optional<double> real(const Item& item) {
   const Attr* value = as<Attr>(item);
   if (!value)
@@ -1355,6 +1372,19 @@ private:
     if (!failed_) {
       failed_ = true;
       error_(std::move(message), std::move(loc));
+    }
+  }
+
+  template <typename Action>
+  auto optional_fold(Action&& action) {
+    const bool previous = std::exchange(folding_, true);
+    try {
+      auto result = action();
+      folding_ = previous;
+      return result;
+    } catch (...) {
+      folding_ = previous;
+      throw;
     }
   }
 
@@ -2908,16 +2938,17 @@ private:
     if (code == OperatorCode::range && args.size() == 2) {
       const auto first = integer(args[0]);
       const auto last = integer(args[1]);
-      const std::uint64_t size = first && last && *last >= *first
-                                     ? static_cast<std::uint64_t>(*last) -
-                                           static_cast<std::uint64_t>(*first)
-                                     : 1000001;
-      if (!first || !last || size > 1000000) {
+      const auto size = range_size(args);
+      // Optional folding can stop even inside a nested interpreted body. A
+      // required metaprogram call still reports the materialization limit.
+      if (size && *size > max_range_items && folding_)
+        return std::nullopt;
+      if (!size || *size > max_range_items) {
         fail("compile-time range is invalid or too large", loc);
         return std::nullopt;
       }
       Items out;
-      out.reserve(static_cast<std::size_t>(size));
+      out.reserve(static_cast<std::size_t>(*size));
       for (std::int64_t value = *first; value < *last; ++value)
         out.emplace_back(Attr(value));
       return single(Item(std::move(out)), single_result);
@@ -3428,6 +3459,12 @@ private:
         !env_.accepts(op, fn))
       return std::nullopt;
 
+    // Neither an iterable range nor a list is installed by replace_folded.
+    // Evaluate these only when a scalar consumer actually needs their value.
+    const std::string_view result_type = op_outs(op).front().type().name();
+    if (result_type == "range" || result_type == "list")
+      return std::nullopt;
+
     Items args;
     std::unordered_set<ValueKey, ValueHash> visiting;
     for (Val value : op_args(op)) {
@@ -3523,6 +3560,8 @@ private:
         std::any_of(outputs.begin(), outputs.end(),
                     [&](Val value) { return !scalar(value.type()); }))
       return std::nullopt;
+    if (!foldable_structure(mod, op, allowed))
+      return std::nullopt;
     const std::size_t carried = inputs.size() - outputs.size();
     for (std::size_t index = 0; index < inputs.size(); ++index) {
       auto item = static_value(mod, inputs[index], visiting, allowed,
@@ -3531,8 +3570,6 @@ private:
         return std::nullopt;
       args.push_back(std::move(*item));
     }
-    if (!foldable_structure(mod, op, allowed))
-      return std::nullopt;
     Frame frame;
     for (std::size_t index = 0; index < inputs.size(); ++index)
       put(frame, inputs[index], args[index]);
@@ -3675,7 +3712,8 @@ private:
     for (Op op : ops) {
       if (!op.valid())
         continue;
-      auto values = fold_structure(mod, op, allowed);
+      auto values = optional_fold(
+          [&] { return fold_structure(mod, op, allowed); });
       if (failed_)
         return rollback();
       if (!values)
@@ -4680,7 +4718,8 @@ private:
             std::find(allowed->begin(), allowed->end(), target) ==
                 allowed->end())
           continue;
-        auto value = fold_value(**mod, op, target);
+        auto value = optional_fold(
+            [&] { return fold_value(**mod, op, target); });
         if (value)
           folded.push_back({op, std::move(*value)});
         if (failed_)
@@ -4700,7 +4739,8 @@ private:
           ops.push_back(*op);
           fns.push_back(*fn);
         } else if (auto allowed = handles<Fn>(args[2])) {
-          auto values = fold_structure(**mod, *op, *allowed);
+          auto values = optional_fold(
+              [&] { return fold_structure(**mod, *op, *allowed); });
           if (failed_)
             return std::nullopt;
           if (!values)
@@ -4746,7 +4786,8 @@ private:
       std::vector<Folded> folded;
       folded.reserve(ops.size());
       for (std::size_t index = 0; index < ops.size(); ++index) {
-        auto value = fold_value(**mod, ops[index], fns[index]);
+        auto value = optional_fold(
+            [&] { return fold_value(**mod, ops[index], fns[index]); });
         if (value)
           folded.push_back({ops[index], std::move(*value)});
         if (failed_)
@@ -5071,6 +5112,7 @@ private:
   std::map<std::string, std::uint64_t, std::less<>> calls_;
   std::map<std::string, std::uint64_t, std::less<>> cached_;
   bool failed_ = false;
+  bool folding_ = false;
 };
 
 }  // namespace joggle::detail

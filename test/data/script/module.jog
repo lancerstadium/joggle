@@ -1290,6 +1290,14 @@ fn fold_controls(m: Mod) -> bool {
   return ir.fold(m, controls, ir.fns("base"))
 }
 
+fn range_after_fold(m: Mod, first: int, last: int, expected: int) -> bool {
+  opt.fold(m)
+  var count = 0
+  for i in first..last { count += 1 }
+  assert(count == expected, "required range iteration count differs")
+  return false
+}
+
 fn reject_mixed_fold(m: Mod) -> bool {
   return ir.fold(m, ir.ops(m), ir.fns("base"))
 }

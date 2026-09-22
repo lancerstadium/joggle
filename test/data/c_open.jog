@@ -32,3 +32,17 @@ fn sigmoid(
 ) -> tensor<f32, [4]> {
   return nn.sigmoid(x)
 }
+
+[entry]
+fn large_range(seed: i64) -> i64 {
+  var value = seed
+  for i in 0..1000001 { value += i64(1) }
+  return value
+}
+
+[entry]
+fn empty_range(seed: i64) -> i64 {
+  var value = seed
+  for i in 4..1 { value += i64(1) }
+  return value
+}

@@ -128,6 +128,39 @@ fn project_cleanup(m: Mod) -> bool {
 }
 ```
 
+### Folding keeps large ranges structured
+
+`opt.fold` evaluates scalar expressions and supported constant control regions.
+A range remains a pair of bounds in the IR; folding its consumers does not
+require installing a literal list in the graph.
+
+```jog
+mod accumulation
+
+fn accumulate(seed: int) -> int {
+  var total = seed
+  for i in 0..1000001 { total += 1 }
+  return total
+}
+```
+
+After `joggle run opt.fold accumulation.jog -M build/modules`, the loop remains
+in the output. Its runtime result is `seed + 1000001`. The same range remains
+structured when the initial value is constant: exceeding a folding resource
+limit does not reject the runtime program.
+
+| Context | Range behavior |
+| --- | --- |
+| Runtime graph | Keep bounds and a loop body for backend lowering |
+| Optional scalar/control folding | Skip a fold requiring more than 1,000,000 range elements |
+| Required metaprogram execution | Report an error when range materialization exceeds that limit |
+| Ascending range with end at or below start | Iterate zero times |
+
+The optional-fold limit also applies to ranges reached inside nested constant
+control flow. Small independent regions can still fold after a larger region
+is skipped. This materialization limit counts range elements, not total
+interpreter instructions or total iterations across a nested loop nest.
+
 ### Health before and after a stage
 
 ```console
