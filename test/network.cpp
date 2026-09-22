@@ -963,6 +963,10 @@ int main(int argc, char** argv) {
     if (op.callee() != "operator <" && op.callee() != "operator ==" &&
         op.callee() != "operator >")
       continue;
+    // Extrema expansion also introduces scalar loop/control comparisons.
+    // Only the three tensor relations below require body expansion here.
+    if (op.outs().empty() || op.outs()[0].type().name() != "tensor")
+      continue;
     const joggle::Fn fn = env.resolve(broadcast_relations, op);
     CHECK(fn && env.expand(broadcast_relations, op, fn));
     ++comparisons;

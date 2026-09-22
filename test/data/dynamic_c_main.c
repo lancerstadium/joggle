@@ -2,6 +2,11 @@
 #include <stdbool.h>
 #include <math.h>
 
+void dynamic_c_extrema_pair(const float* x, const float* y, int64_t nx, int64_t ny,
+                            bool take_min, float* out, int64_t* size);
+void dynamic_c_extrema_rows(const int32_t* x, const int32_t* y, int64_t rows,
+                            int32_t* out, int64_t* size);
+
 void dynamic_c_compare_prefix(const float* x, int64_t count, bool* out, int64_t* size);
 void dynamic_c_compare_pair(const float* x, const float* y, int64_t nx, int64_t ny,
                              bool* out, int64_t* size);
@@ -31,6 +36,13 @@ void dynamic_c_tile_bounded(const int32_t* x, bool twice, int32_t* result,
 
 int main(int argc, char** argv) {
   if (argc == 2) {
+    if (argv[1][0] == 'e') {
+      const float x[4] = {1, 2, 3, 4};
+      float out[4] = {0};
+      int64_t size = -1;
+      dynamic_c_extrema_pair(x, x, 2, 3, false, out, &size);
+      return 0;
+    }
     if (argv[1][0] == 'd') {
       const float x[4] = {1, 2, 3, 4};
       bool out[4] = {false};
@@ -48,6 +60,28 @@ int main(int argc, char** argv) {
   }
   const float values[4] = {-1, 0, 2, NAN};
   const float zeros[4] = {0, 0, 0, 0};
+  const float extrema_values[4] = {-INFINITY, INFINITY, -2, NAN};
+  for (int mode = 0; mode < 2; ++mode) {
+    for (int order = 0; order < 3; ++order) {
+      for (int64_t n = 0; n <= 4; ++n) {
+        const float* a = order == 1 ? zeros : extrema_values;
+        const float* b = order == 1 ? extrema_values : zeros;
+        const int64_t na = order == 1 ? 1 : n;
+        const int64_t nb = order == 0 ? 1 : n;
+        float output[5] = {99, 99, 99, 99, 99};
+        int64_t size = -1;
+        dynamic_c_extrema_pair(a, b, na, nb, mode != 0, output, &size);
+        if (size != n || output[n] != 99) return 35;
+        for (int64_t i = 0; i < n; ++i) {
+          float v = extrema_values[i];
+          float wanted = mode ? (v < 0 ? v : 0) : (v > 0 ? v : 0);
+          if (isnan(v)) {
+            if (!isnan(output[i])) return 36;
+          } else if (output[i] != wanted) return 37;
+        }
+      }
+    }
+  }
   for (int64_t n = 0; n <= 4; ++n) {
     bool output[6] = {true, true, true, true, true, true};
     int64_t size = -1;
@@ -71,6 +105,13 @@ int main(int argc, char** argv) {
   }
   const int32_t matrix[6] = {0, 1, 2, 3, 4, 5}, row[3] = {1, 4, 5};
   for (int64_t n = 0; n <= 2; ++n) {
+    int32_t maximum[7] = {-99, -99, -99, -99, -99, -99, -99};
+    int64_t maximum_rows = -1;
+    dynamic_c_extrema_rows(matrix, row, n, maximum, &maximum_rows);
+    if (maximum_rows != n || maximum[n * 3] != -99) return 38;
+    for (int64_t i = 0; i < n * 3; ++i)
+      if (maximum[i] != (matrix[i] > row[i % 3] ? matrix[i] : row[i % 3]))
+        return 39;
     bool output[7] = {true, true, true, true, true, true, true};
     int64_t size = -1;
     dynamic_c_compare_rows(matrix, row, n, output, &size);

@@ -88,6 +88,54 @@ fn broadcast_shape(left: list<Ty>, right: list<Ty>) -> list<Ty> {
   return out
 }
 
+// Runtime extents and zero strides describe broadcasting without materializing
+// expanded input tensors. Rank is specialized; extents may remain dynamic.
+fn broadcast_layout<
+  A: Ty, B: Ty, L: list<int>, R: list<int>, P: int, Q: int, D: int
+>(a: tensor<A, L>, b: tensor<B, R>)
+    -> (tensor<index, [D]>, tensor<index, [D]>, tensor<index, [D]>, index) {
+  assert(D >= P && D >= Q, "tensor broadcast result rank is too small")
+  var shape = tensor<index, [D]>(index(1))
+  var left_strides = tensor<index, [D]>(index(0))
+  var right_strides = tensor<index, [D]>(index(0))
+  var left_size = index(1)
+  var right_size = index(1)
+  var count = index(1)
+  [stage: "shape"]
+  for reverse in 0..D {
+    let axis = D - reverse - 1
+    var left = index(1)
+    var right = index(1)
+    if axis >= D - P { left = dim(a, index(axis - (D - P))) }
+    if axis >= D - Q { right = dim(b, index(axis - (D - Q))) }
+    assert(left >= index(0) && right >= index(0),
+           "tensor broadcast extent is negative")
+    assert(left == right || left == index(1) || right == index(1),
+           "tensor broadcast shapes are incompatible")
+    var extent = left
+    if left == index(1) { extent = right }
+    shape[axis] = extent
+    if left != index(1) { left_strides[axis] = left_size }
+    if right != index(1) { right_strides[axis] = right_size }
+    assert(i64(left_size) <= i64(9223372036854775807) /
+             (i64(left) + i64(left == index(0))) &&
+           i64(right_size) <= i64(9223372036854775807) /
+             (i64(right) + i64(right == index(0))) &&
+           i64(count) <= i64(9223372036854775807) /
+             (i64(extent) + i64(extent == index(0))),
+           "tensor broadcast size overflows")
+    let next_left = i64(left_size) * i64(left)
+    let next_right = i64(right_size) * i64(right)
+    let next_count = i64(count) * i64(extent)
+    left_size = index(next_left)
+    right_size = index(next_right)
+    count = index(next_count)
+    assert(i64(left_size) == next_left && i64(right_size) == next_right &&
+           i64(count) == next_count, "tensor broadcast index range overflows")
+  }
+  return shape, left_strides, right_strides, count
+}
+
 fn broadcast_offset(
   from: list<int>, to: list<int>, linear: int
 ) -> int {

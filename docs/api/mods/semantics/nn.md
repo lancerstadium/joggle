@@ -53,6 +53,38 @@ fn gated<E: Ty, S: list<int>>(
 }
 ```
 
+### Runtime broadcasting for extrema
+
+`maximum` and `minimum` align input dimensions from the trailing axis. Equal
+extents match; an extent of one expands to the other extent. The same rule
+applies to runtime `_` dimensions, including an empty extent. The implementation
+reads the original inputs with zero strides on expanded axes instead of
+materializing broadcast copies.
+
+```jog
+fn row_maximum(x: tensor<i32, [2, 3]>, floor: tensor<i32, [3]>, rows: index)
+    -> tensor<i32, [_, 3]> {
+  var shape = tensor<index, [2]>(index(3))
+  shape[0] = rows
+  let prefix: tensor<i32, [_, 3]> = tensor.view(x, shape)
+  return nn.maximum(prefix, floor)
+}
+```
+
+For `x = [[0, 1, 2], [3, 4, 5]]` and `floor = [1, 4, 5]`:
+
+| `rows` | Result | Shape |
+| ---: | --- | --- |
+| 0 | `[]` | `[0, 3]` |
+| 1 | `[[1, 4, 5]]` | `[1, 3]` |
+| 2 | `[[1, 4, 5], [3, 4, 5]]` | `[2, 3]` |
+
+Here `rows` must lie between zero and two, within the source storage capacity.
+Incompatible runtime extents are rejected before the element loop. Floating
+extrema propagate a NaN from either operand; integer extrema use ordered
+comparison without floating-point classification. Empty outputs perform no
+element reads or writes.
+
 ## Convolution
 
 The general overload makes layout explicit:

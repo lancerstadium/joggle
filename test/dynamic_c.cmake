@@ -55,3 +55,8 @@ joggle_run("incompatible dynamic comparison shapes were accepted"
   COMMAND "${program}" "d" EXPECT_FAIL ERROR_VARIABLE failure)
 joggle_expect("incompatible comparison did not reach shape validation"
   TEXT "${failure}" MATCHES "[Aa]ssertion")
+
+joggle_run("incompatible dynamic extrema shapes were accepted"
+  COMMAND "${program}" "e" EXPECT_FAIL ERROR_VARIABLE failure)
+joggle_expect("incompatible extrema did not reach shape validation"
+  TEXT "${failure}" MATCHES "[Aa]ssertion")

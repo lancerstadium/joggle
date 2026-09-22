@@ -58,6 +58,7 @@ internally, so loops carry the new state explicitly.
 | Family | Purpose |
 | --- | --- |
 | `broadcastable`, `broadcast_shape`, `broadcast_offset` | prove/map broadcasting |
+| `broadcast_layout` | runtime extents, paired input strides, and output count |
 | `permutation`, `permuted`, `permute` | axis validation and transpose |
 | `inserted`, `replaced`, `concatenated`, `concat` | derive result shapes |
 | `tiled`, `tile_offset`, `tile` | repetition semantics |
@@ -73,6 +74,13 @@ fn transpose<T: Ty, M: int, N: int>(
 ```
 
 ## Comparisons with runtime broadcasting
+
+`broadcast_layout<A, B, L, R, P, Q, D>(a, b)` is shared by tensor comparisons
+and NN extrema. Set `P = len<L>`, `Q = len<R>`, and `D` to the result rank.
+It returns `(shape, left_strides, right_strides, count)`: the first three
+values are `tensor<index, [D]>`, and `count` is an `index`. Expanded axes have
+zero input stride. Rank is specialized while dimensions may remain runtime
+values; dimension compatibility and size overflow are checked before indexing.
 
 Tensor `==`, `<`, and `>` return Boolean tensors. Their shapes are aligned
 from the trailing axis: two extents must be equal or one must be one. An

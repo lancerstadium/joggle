@@ -110,22 +110,20 @@ fn div<
   return a / b
 }
 
+local fn unordered<E: Ty>(value: E) -> bool { return false }
+local fn unordered(value: f32) -> bool { return value != value }
+local fn unordered(value: f64) -> bool { return value != value }
+
 fn maximum<E: Ty>(left: E, right: E) -> E {
   var out = right
-  if left != left || (right == right && left > right) {
-    out = left
-  }
+  if unordered(left) || (!unordered(right) && left > right) { out = left }
   return out
 }
 
 fn maximum<E: Ty, S: list<int>>(
   left: tensor<E, S>, right: tensor<E, S>
 ) -> tensor<E, S> {
-  var out = tensor<E, S>(E(0))
-  for i in 0..tensor.numel<S>() {
-    out[i] = maximum(left[i], right[i])
-  }
-  return out
+  return extrema_runtime<E, S, S, S, len<S>, 0>(left, right)
 }
 
 fn maximum<
@@ -133,27 +131,19 @@ fn maximum<
 >(
   left: tensor<E, L>, right: tensor<E, R>
 ) -> tensor<E, Y> {
-  let a: tensor<E, Y> = tensor.broadcast(left)
-  let b: tensor<E, Y> = tensor.broadcast(right)
-  return maximum(a, b)
+  return extrema_runtime<E, L, R, Y, len<Y>, 0>(left, right)
 }
 
 fn minimum<E: Ty>(left: E, right: E) -> E {
   var out = right
-  if left != left || (right == right && left < right) {
-    out = left
-  }
+  if unordered(left) || (!unordered(right) && left < right) { out = left }
   return out
 }
 
 fn minimum<E: Ty, S: list<int>>(
   left: tensor<E, S>, right: tensor<E, S>
 ) -> tensor<E, S> {
-  var out = tensor<E, S>(E(0))
-  for i in 0..tensor.numel<S>() {
-    out[i] = minimum(left[i], right[i])
-  }
-  return out
+  return extrema_runtime<E, S, S, S, len<S>, 1>(left, right)
 }
 
 fn minimum<
@@ -161,9 +151,32 @@ fn minimum<
 >(
   left: tensor<E, L>, right: tensor<E, R>
 ) -> tensor<E, Y> {
-  let a: tensor<E, Y> = tensor.broadcast(left)
-  let b: tensor<E, Y> = tensor.broadcast(right)
-  return minimum(a, b)
+  return extrema_runtime<E, L, R, Y, len<Y>, 1>(left, right)
+}
+
+local fn extrema_runtime<
+  E: Ty, L: list<int>, R: list<int>, Y: list<int>, D: int, Mode: int
+>(a: tensor<E, L>, b: tensor<E, R>) -> tensor<E, Y> {
+  let shape, left_strides, right_strides, count =
+    tensor.broadcast_layout<E, E, L, R, len<L>, len<R>, D>(a, b)
+  var out: tensor<E, Y> = tensor.make(E(0), shape)
+  for linear in index(0)..count {
+    var remaining = linear
+    var left = index(0)
+    var right = index(0)
+    [stage: "shape"]
+    for reverse in 0..D {
+      let axis = D - reverse - 1
+      let coordinate = remaining % shape[axis]
+      remaining /= shape[axis]
+      left += coordinate * left_strides[axis]
+      right += coordinate * right_strides[axis]
+    }
+    var value = maximum(a[left], b[right])
+    if Mode == 1 { value = minimum(a[left], b[right]) }
+    out[linear] = value
+  }
+  return tensor.view<E, index, Y, Y, D>(out, shape)
 }
 
 fn pow<E: Ty, S: list<int>>(
