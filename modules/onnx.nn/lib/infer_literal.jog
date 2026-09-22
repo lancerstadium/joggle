@@ -299,6 +299,30 @@ local fn const_ints(value: Val) -> list<int> {
     return out
   }
 
+  // Concatenated rank-one integer controls are common shape/repeat vectors.
+  if (callee == "onnx.Concat" || callee == "tensor.concat") && count >= 0 &&
+     tensor.valid(ir.type(value)) && len(tensor.dims(ir.type(value))) == 1 {
+    var axis = base.get(attrs(producer), "axis", 0)
+    var parts = inputs
+    if callee == "tensor.concat" {
+      if len(inputs) != 3 || !ir.is_const(inputs[2]) { return [] }
+      axis = ir.constant(inputs[2])
+      parts = [inputs[0], inputs[1]]
+    }
+    if axis != 0 && axis != -1 { return [] }
+    var out: list<int> = []
+    for part in parts {
+      if !tensor.valid(ir.type(part)) || len(tensor.dims(ir.type(part))) != 1 {
+        return []
+      }
+      let values = const_ints(part)
+      if len(values) != static_count(ir.type(part)) { return [] }
+      out += values
+    }
+    if len(out) == count { return out }
+    return []
+  }
+
   if (callee == "tensor.shape" || callee == "onnx.Shape") && len(inputs) == 1 {
     if callee == "onnx.Shape" &&
        (base.has(attrs(producer), "start") || base.has(attrs(producer), "end")) {

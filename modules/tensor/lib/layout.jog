@@ -1,24 +1,67 @@
-fn concat<E: Ty, L: list<int>, R: list<int>, Y: list<int>>(
+local fn concat_runtime<
+  E: Ty, L: list<int>, R: list<int>, Y: list<int>, N: int, P: int, Q: int
+>(
   left: tensor<E, L>, right: tensor<E, R>, axis: int
 ) -> tensor<E, Y> {
-  var inner = 1
-  for dim in axis + 1..len(Y) {
-    inner *= Y[dim]
+  assert(N > 0 && P == N && Q == N, "tensor.concat ranks must match")
+  var selected = axis
+  if selected < 0 { selected += N }
+  assert(selected >= 0 && selected < N, "tensor.concat axis is out of range")
+  var shape = tensor<index, [N]>(index(0))
+  var inner = index(1)
+  var count = index(1)
+  var left_width = index(0)
+  var right_width = index(0)
+  [stage: "shape"]
+  for item in 0..N {
+    let a = dim(left, index(item))
+    let b = dim(right, index(item))
+    assert(a >= index(0) && b >= index(0), "tensor.concat extent is negative")
+    var extent = a
+    if item == selected {
+      assert(a <= index(9223372036854775807) - b, "tensor.concat extent overflows")
+      extent = a + b
+      left_width = a
+      right_width = b
+    } else {
+      assert(a == b, "tensor.concat non-concatenated axes must match")
+    }
+    shape[item] = extent
+    assert(extent == index(0) || count <= index(9223372036854775807) / extent,
+           "tensor.concat size overflows")
+    count *= extent
+    if item > selected {
+      assert(extent == index(0) || inner <= index(9223372036854775807) / extent,
+             "tensor.concat stride overflows")
+      inner *= extent
+    }
   }
-  var out = tensor<E, Y>(E(0))
-  for i in 0..numel<Y>() {
-    let coordinate = (i / inner) % Y[axis]
-    let group = i / (Y[axis] * inner)
+  var out: tensor<E, Y> = make(E(0), shape)
+  [stage: "shape"]
+  for item in 0..N {
+    assert(dim(out, index(item)) == shape[item],
+           "tensor.concat result disagrees with its declared shape")
+  }
+  let width = left_width + right_width
+  for i in index(0)..count {
+    let coordinate = (i / inner) % width
+    let group = i / (width * inner)
     let offset = i % inner
-    if coordinate < L[axis] {
-      out[i] = left[(group * L[axis] + coordinate) * inner + offset]
+    if coordinate < left_width {
+      out[i] = left[(group * left_width + coordinate) * inner + offset]
     } else {
       out[i] = right[
-        (group * R[axis] + coordinate - L[axis]) * inner + offset
+        (group * right_width + coordinate - left_width) * inner + offset
       ]
     }
   }
-  return out
+  return view(out, shape)
+}
+
+fn concat<E: Ty, L: list<int>, R: list<int>, Y: list<int>>(
+  left: tensor<E, L>, right: tensor<E, R>, axis: int
+) -> tensor<E, Y> {
+  return concat_runtime<E, L, R, Y, len<L>, len<R>, len<Y>>(left, right, axis)
 }
 
 fn one_hot<E: Ty, S: list<int>, Y: list<int>>(
@@ -164,4 +207,3 @@ fn permute<E: Ty, S: list<int>, T: list<int>>(
   }
   return out
 }
-

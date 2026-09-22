@@ -49,6 +49,30 @@ int main(int argc, char** argv) {
         std::string::npos);
   env.clear_diags();
 
+  // A backing allocation bounds one open view axis only when all remaining
+  // axes are positive and fixed. Narrowing and overflowing shape arithmetic
+  // must not turn an unknown allocation into an accepted finite capacity.
+  for (const auto& item : std::vector<std::vector<std::string>>{
+           {"[_, _]", "2", "tensor.dim(view, index(0))"},
+           {"[_, 0]", "2", "tensor.dim(view, index(0))"},
+           {"[_]", "1", "index(i8(tensor.dim(view, index(0))))"},
+           {"[_]", "1", "tensor.dim(view, index(0)) * index(9223372036854775807)"}}) {
+    joggle::Mod unbounded;
+    const std::string source = "mod capacity_guard\nuse tensor\n"
+        "fn main(x: tensor<i32, [300]>, shape: tensor<index, [" + item[1] + "]>)"
+        " -> tensor<i32, [_]> {\n"
+        " let view: tensor<i32, " + item[0] + "> = tensor.view(x, shape)\n"
+        " let length = " + item[2] + "\n"
+        " let requested = tensor<index, [1]>(length)\n"
+        " return tensor.make(i32(0), requested)\n}\n";
+    CHECK(joggle::parse(env, source, unbounded, "capacity-guard.jog"));
+    CHECK(!joggle::run(env, "c.prepare", unbounded));
+    CHECK(!env.diags().empty());
+    CHECK(env.diags().back().message.find("unsupported call remains: tensor.make") !=
+          std::string::npos);
+    env.clear_diags();
+  }
+
   constexpr std::string_view legal_source =
       "mod legal.network\n"
       "use nn\n"

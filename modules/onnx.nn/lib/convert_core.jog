@@ -15,6 +15,22 @@ local fn mapped(value: Val, old: list<Val>, next: list<Val>) -> Val {
   return value
 }
 
+local fn shape_tensor(m: Mod, before: Op, values: list<int>) -> Val {
+  let type = tensor.type(ty("i64"), [len(values)])
+  let zero = ir.constant(m, before, 0, ty("i64"))
+  var result = ir.call(m, before, "tensor.tensor", [zero], type)
+  assert(ir.live(result) && ir.rename(m, result, "shape_control_", 0),
+         "onnx.nn: could not materialize shape control")
+  for i in 0..len(values) {
+    let at = ir.constant(m, before, i, ty("index"))
+    let value = ir.constant(m, before, values[i], ty("i64"))
+    result = ir.call(m, before, "tensor.operator []=", [result, at, value], type)
+    assert(ir.live(result) && ir.rename(m, result, "shape_control_", i + 1),
+           "onnx.nn: could not materialize shape element")
+  }
+  return result
+}
+
 local fn scalar(m: Mod, before: Op, value: Val) -> Val {
   let type = ir.type(value)
   assert(tensor.valid(type) && len(tensor.dims(type)) == 0,

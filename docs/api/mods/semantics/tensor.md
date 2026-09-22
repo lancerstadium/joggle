@@ -138,6 +138,25 @@ extents describe the selected shape. A zero repeat produces an empty axis.
 Negative repeats, dimension/product overflow, and disagreement with a fixed
 result shape are rejected before the copy loop.
 
+## Concatenation
+
+`concat(left, right, axis)` joins equal-rank tensors along one axis. Negative
+axes count from the end. All other runtime extents must agree.
+
+```jog
+fn join_columns(left: tensor<i32, [2, 2]>, right: tensor<i32, [2, 1]>)
+    -> tensor<i32, [2, 3]> {
+  return tensor.concat(left, right, -1)
+}
+```
+
+For `left = [[1, 2], [3, 4]]` and `right = [[5], [6]]`, the result is
+`[[1, 2, 5], [3, 4, 6]]`. The implementation reads extents with `tensor.dim`,
+builds the destination shape, and copies each axis segment in row-major order.
+The same implementation accepts dynamic extents when their storage capacities
+are bounded. Empty segments contribute no elements; invalid axes, mismatched
+non-concatenated dimensions, and overflowing sizes are rejected.
+
 ## Elementwise and broadcasting
 
 ```jog

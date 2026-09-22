@@ -1,5 +1,6 @@
 mod loop_c
 use onnx
+use tensor
 
 fn scan(start: tensor<i32, []>, condition: tensor<bool, []>,
         delta: tensor<i32, []>, limit: tensor<i32, []>)
@@ -27,6 +28,23 @@ fn reshape_empty(x: tensor<i32, [0, 3]>, requested: tensor<i64, [2]>)
 fn reshape_rank(x: tensor<i32, [6]>, requested: tensor<i64, [3]>)
     -> tensor<i32, [_, _, _]> {
   return onnx.Reshape(x, requested)
+}
+
+fn shape_pipeline(x: tensor<i32, [4]>, full: bool) -> tensor<i32, [_, 6]> {
+  var length = index(2)
+  if full { length = index(4) }
+  let source_shape = tensor<index, [1]>(length)
+  let source: tensor<i32, [_]> = tensor.view(x, source_shape)
+  let column: tensor<i64, [2]> = hex"ffffffffffffffff0100000000000000"
+  let matrix = onnx.Reshape(source, column)
+  let once: tensor<i64, [1]> = hex"0100000000000000"
+  let thrice: tensor<i64, [1]> = hex"0300000000000000"
+  [onnx: {axis: -1}]
+  let repeats = onnx.Concat(once, thrice)
+  let tiled = onnx.Tile(matrix, repeats)
+  [onnx: {axis: -1}]
+  let joined = onnx.Concat(tiled, tiled)
+  return joined
 }
 
 fn body(iteration: tensor<i64, []>, keep_going: tensor<bool, []>,

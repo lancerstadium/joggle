@@ -96,6 +96,18 @@ maximum storage requirement. `capacity(m, value)` returns that storage shape.
 It does not rewrite `ir.type(value)` and must not be used as the logical result
 shape seen by callers.
 
+A view keeps its backing allocation across rank changes. For example, a
+four-element buffer viewed as `[_, 1]` bounds the open axis by four. Repeating
+its second axis three times gives capacity `[4, 3]`; concatenating two such
+results on that axis gives `[4, 6]`. Runtime extents still distinguish a
+two-row result from a four-row result.
+
+The open-axis bound requires every other logical axis to be fixed and
+positive. Neither `[_, _]` nor `[_, 0]` determines an axis bound from the
+allocation size alone. Shape additions and products are checked for overflow,
+and narrowing integer casts propagate bounds only when the complete source
+interval fits the destination type.
+
 ### Reuse versus aliasing
 
 Two values can share a slot only when their live ranges do not overlap and

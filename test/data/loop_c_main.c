@@ -11,6 +11,8 @@ void loop_c_reshape_empty(const int32_t* x, const int64_t* requested,
 void loop_c_reshape_rank(const int32_t* x, const int64_t* requested,
                          int32_t* result, int64_t* dim_0, int64_t* dim_1,
                          int64_t* dim_2);
+void loop_c_shape_pipeline(const int32_t* x, bool full, int32_t* result,
+                           int64_t* rows);
 
 int main(int argc, char** argv) {
   if (argc == 2) {
@@ -70,5 +72,16 @@ int main(int argc, char** argv) {
   for (int i = 0; i < 6; ++i)
     if (result[i] != input[i])
       return 9;
+  const int32_t vector[4] = {2, 4, 6, 8};
+  int32_t pipeline[24] = {0};
+  for (int full = 0; full < 2; ++full) {
+    loop_c_shape_pipeline(vector, full != 0, pipeline, &rows);
+    if (rows != (full ? 4 : 2))
+      return 10;
+    for (int r = 0; r < rows; ++r)
+      for (int c = 0; c < 6; ++c)
+        if (pipeline[r * 6 + c] != vector[r])
+          return 11;
+  }
   return 0;
 }

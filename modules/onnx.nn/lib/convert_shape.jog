@@ -438,7 +438,8 @@ local fn convert_tile(m: Mod, op: Op) -> bool {
     return false
   }
   if !tensor.static(input) || !tensor.static(result) {
-    return convert_call(m, op, "tensor.tile")
+    return convert_call(m, op, "tensor.tile",
+                        [inputs[0], shape_tensor(m, op, repeats)])
   }
   return convert_call(m, op, "tensor.tile", [inputs[0]])
 }

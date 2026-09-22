@@ -23,7 +23,9 @@ local fn elements(shape: list<int>) -> int {
   return out
 }
 
-local fn interval(m: Mod, value: Val, known: dict) -> list<int> {
+local fn interval(m: Mod, value: Val, known: dict, seen: list<Val>) -> list<int> {
+  for prior in seen { if prior == value { return [] } }
+  let next = seen + [value]
   let inferred = bounds.get(known, value)
   if len(inferred) == 2 {
     return inferred
@@ -37,13 +39,67 @@ local fn interval(m: Mod, value: Val, known: dict) -> list<int> {
      len(ir.args(cast)) == 1 &&
      (ir.callee(cast) == base.name(ir.type(value)) ||
       ir.target(m, cast) == "base." + base.name(ir.type(value))) {
-    return interval(m, ir.args(cast)[0], known)
+    let source = interval(m, ir.args(cast)[0], known, next)
+    if len(source) != 2 { return [] }
+    let name = base.name(ir.type(value))
+    if name == "int" || name == "index" || name == "i64" { return source }
+    let lows = {bool: 0, i8: -128, i16: -32768, i32: -2147483648,
+                u8: 0, u16: 0, u32: 0, u64: 0}
+    let highs = {bool: 1, i8: 127, i16: 32767, i32: 2147483647,
+                 u8: 255, u16: 65535, u32: 4294967295,
+                 u64: 9223372036854775807}
+    if base.has(lows, name) && source[0] >= base.int(lows[name]) &&
+       source[1] <= base.int(highs[name]) { return source }
+    return []
+  }
+  if !ir.live(cast) || ir.kind(cast) != "call" { return [] }
+  let inputs = ir.args(cast)
+  let target = ir.target(m, cast)
+  if target == "base.copy" && len(inputs) == 1 {
+    return interval(m, inputs[0], known, next)
+  }
+  if target == "tensor.dim" && len(inputs) == 2 {
+    let axis = interval(m, inputs[1], known, next)
+    let dims = tensor.dims(ir.type(inputs[0]))
+    if len(axis) != 2 || axis[0] != axis[1] ||
+       axis[0] < 0 || axis[0] >= len(dims) { return [] }
+    if base.kind(dims[axis[0]]) == "int" {
+      return [base.int(dims[axis[0]]), base.int(dims[axis[0]])]
+    }
+    // A rank-changing view retains its physical allocation. One open axis
+    // is bounded by that allocation only when every other extent is positive
+    // and fixed; an empty or another open axis cannot justify this bound.
+    var factor = 1
+    for i in 0..len(dims) {
+      if i != axis[0] {
+        if base.kind(dims[i]) != "int" || base.int(dims[i]) <= 0 ||
+           factor > 9223372036854775807 / base.int(dims[i]) { return [] }
+        factor *= base.int(dims[i])
+      }
+    }
+    let storage = capacity_guarded(m, inputs[0], next)
+    if len(storage) == 0 { return [] }
+    let size = elements(storage)
+    if size < 0 { return [] }
+    return [0, size / factor]
+  }
+  if (target == "base.operator *" || target == "base.operator +") &&
+     len(inputs) == 2 {
+    let a = interval(m, inputs[0], known, next)
+    let b = interval(m, inputs[1], known, next)
+    if len(a) != 2 || len(b) != 2 || a[0] < 0 || b[0] < 0 { return [] }
+    if target == "base.operator +" {
+      if a[1] > 9223372036854775807 - b[1] { return [] }
+      return [a[0] + b[0], a[1] + b[1]]
+    }
+    if b[1] != 0 && a[1] > 9223372036854775807 / b[1] { return [] }
+    return [a[0] * b[0], a[1] * b[1]]
   }
   return []
 }
 
 local fn shape_values(
-  m: Mod, shape: Val, known: dict
+  m: Mod, shape: Val, known: dict, seen: list<Val>
 ) -> list<Val> {
   let type = ir.type(shape)
   if !tensor.valid(type) || !tensor.static(type) ||
@@ -68,8 +124,8 @@ local fn shape_values(
       ir.callee(source) != "operator []=") || len(inputs) != 3 {
     return []
   }
-  var out = shape_values(m, inputs[0], known)
-  let index = interval(m, inputs[1], known)
+  var out = shape_values(m, inputs[0], known, seen)
+  let index = interval(m, inputs[1], known, seen)
   if len(out) != count || len(index) != 2 || index[0] != index[1] ||
      index[0] < 0 || index[0] >= count {
     return []
@@ -79,7 +135,7 @@ local fn shape_values(
 }
 
 local fn capacity_with(
-  m: Mod, value: Val, known: dict
+  m: Mod, value: Val, known: dict, seen: list<Val>
 ) -> list<int> {
   let type = ir.type(value)
   if !tensor.valid(type) {
@@ -94,14 +150,14 @@ local fn capacity_with(
       ir.callee(source) != "tensor.make") || len(ir.args(source)) != 2 {
     return []
   }
-  let values = shape_values(m, ir.args(source)[1], known)
+  let values = shape_values(m, ir.args(source)[1], known, seen)
   let dims = tensor.dims(type)
   if len(values) != len(dims) {
     return []
   }
   var out: list<int> = []
   for axis in 0..len(dims) {
-    let extent = interval(m, values[axis], known)
+    let extent = interval(m, values[axis], known, seen)
     if len(extent) != 2 || extent[0] < 0 || extent[1] < extent[0] {
       return []
     }
@@ -121,7 +177,9 @@ local fn capacity_with(
   return out
 }
 
-fn capacity(m: Mod, value: Val) -> list<int> {
+local fn capacity_guarded(m: Mod, value: Val, seen: list<Val>) -> list<int> {
+  for prior in seen { if prior == value { return [] } }
+  let next = seen + [value]
   if ir.has(value, "mem.capacity") {
     var recorded: list<int> = []
     for extent in ir.meta(value, "mem.capacity") {
@@ -133,7 +191,7 @@ fn capacity(m: Mod, value: Val) -> list<int> {
   if ir.live(source) && ir.kind(source) == "call" &&
      (ir.target(m, source) == "tensor.view" ||
       ir.callee(source) == "tensor.view") && len(ir.args(source)) == 2 {
-    return capacity(m, ir.args(source)[0])
+    return capacity_guarded(m, ir.args(source)[0], next)
   }
   if ir.live(source) && ir.kind(source) == "call" &&
      (ir.target(m, source) == "base.copy" ||
@@ -141,7 +199,7 @@ fn capacity(m: Mod, value: Val) -> list<int> {
       ir.callee(source) == "base.copy" ||
       ir.callee(source) == "tensor.write") &&
      len(ir.args(source)) != 0 {
-    return capacity(m, ir.args(source)[0])
+    return capacity_guarded(m, ir.args(source)[0], next)
   }
   // A concrete storage shape needs no interval analysis. Keep view/copy
   // provenance above this shortcut so their backing capacity is preserved.
@@ -150,20 +208,24 @@ fn capacity(m: Mod, value: Val) -> list<int> {
     return tensor.shape(type)
   }
   let known = bounds.infer(m)
-  let direct = capacity_with(m, value, known)
+  let direct = capacity_with(m, value, known, next)
   if len(direct) != 0 || !ir.live(source) || ir.name(value) == "" {
     return direct
   }
   let fn = ir.owner(ir.blk(source))
   for candidate in ir.vals(fn) {
     if ir.name(candidate) == ir.name(value) {
-      let inherited = capacity_with(m, candidate, known)
+      let inherited = capacity_with(m, candidate, known, next)
       if len(inherited) != 0 {
         return inherited
       }
     }
   }
   return []
+}
+
+fn capacity(m: Mod, value: Val) -> list<int> {
+  return capacity_guarded(m, value, [])
 }
 
 fn bound(m: Mod) -> bool {
@@ -177,7 +239,7 @@ fn bound(m: Mod) -> bool {
                   (ir.target(m, source) == "tensor.make" ||
                    ir.callee(source) == "tensor.make")
       if owns {
-        let shape = capacity_with(m, value, known)
+        let shape = capacity_with(m, value, known, [value])
         if len(shape) != 0 && ir.name(value) != "" {
           desired[ir.name(value)] = shape
         }
