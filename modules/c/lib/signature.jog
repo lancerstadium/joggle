@@ -473,16 +473,20 @@ local fn definition_prefix(
   return out
 }
 
+local fn storage_prefix(fn: Fn) -> str {
+  if ir.has(fn, "c.place") {
+    let place = str(ir.meta(fn, "c.place"))
+    assert(place == "static", "c: unsupported storage placement " + place)
+    return "static "
+  }
+  return ""
+}
+
 local fn definition_storage(
   m: Mod, fn: Fn, blob: str, data_fns: list<Fn>, config: dict, offsets: dict
 ) -> str {
   var memory = ""
-  var storage = ""
-  if ir.has(fn, "c.place") {
-    let place = str(ir.meta(fn, "c.place"))
-    assert(place == "static", "c: unsupported storage placement " + place)
-    storage = "static "
-  }
+  let storage = storage_prefix(fn)
   for slot in 0..mem.slots(fn) {
     if uses_slot(m, fn, slot) {
       let type = mem.type(fn, slot)

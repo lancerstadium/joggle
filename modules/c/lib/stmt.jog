@@ -54,6 +54,7 @@ local fn call(
               expr(m, inputs[0], blob, data_fns, config) + ");\n"
     if ir.name(outputs[0]) != "" {
       out += indent + lhs(op, outputs[0], config) + " = true;\n"
+      out += indent + "(void)" + val(outputs[0]) + ";\n"
     }
     return out
   }
@@ -84,7 +85,8 @@ local fn call(
       if !mem.planned(output) && !reuses(op) {
         let target = direct_result(output, direct, results)
         if target == "" {
-          out += indent + scalar(tensor.elem(ir.type(output)), config) + " " +
+          out += indent + storage_prefix(ir.owner(ir.blk(op))) +
+                 scalar(tensor.elem(ir.type(output)), config) + " " +
                  val(output) + "[" + text(allocation_count(m, inputs[0])) + "];\n"
         } else {
           out += indent + scalar(tensor.elem(ir.type(output)), config) + "* " +
@@ -95,6 +97,7 @@ local fn call(
              "(" + logical_count(m, inputs[0]) + ") * " +
              text(width(tensor.elem(ir.type(output)), config)) + ");\n"
     }
+    out += bind_extents(m, op, output, inputs[0], false, depth, config)
     var access: list<Val> = [output]
     for i in 1..len(inputs) - 1 {
       access += [inputs[i]]
@@ -187,7 +190,8 @@ local fn call(
         if !mem.planned(output) {
           let target = direct_result(output, direct, results)
           if target == "" {
-            out += indent + scalar(tensor.elem(type), config) + " " +
+            out += indent + storage_prefix(ir.owner(ir.blk(op))) +
+                   scalar(tensor.elem(type), config) + " " +
                    val(output) + "[" +
                    text(allocation_count(m, output)) + "];\n"
           } else {
@@ -225,7 +229,8 @@ local fn call(
     if !reuses(op) && !mem.planned(output) {
       let target = direct_result(output, direct, results)
       if target == "" {
-        out = indent + scalar(tensor.elem(type), config) + " " + val(output) +
+        out = indent + storage_prefix(ir.owner(ir.blk(op))) +
+              scalar(tensor.elem(type), config) + " " + val(output) +
               "[" + text(allocation_count(m, output)) + "];\n"
       } else {
         if returned_only(output) {
@@ -293,7 +298,10 @@ local fn ret(
                ") " + output + "[" + iterator + "] = " + val(value) + "[" +
                iterator + "];\n"
       }
-      let dims = tensor.dims(ir.type(value))
+      // The exported signature can be less specific than its returned value.
+      // Populate every ABI extent, including axes proved constant in the body.
+      let owner: Fn = ir.owner(ir.blk(op))
+      let dims = tensor.dims(ir.returns(owner)[i])
       for axis in 0..len(dims) {
         if base.kind(dims[axis]) != "int" {
           out += indent + "*" + output + "_dim_" + text(axis) + " = " +

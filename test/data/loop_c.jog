@@ -47,6 +47,27 @@ fn shape_pipeline(x: tensor<i32, [4]>, full: bool) -> tensor<i32, [_, 6]> {
   return joined
 }
 
+fn cast_view(x: tensor<i32, [4]>, nonempty: bool) -> tensor<f32, [1, _, 1]> {
+  var length = index(0)
+  if nonempty { length = index(4) }
+  let source_shape = tensor<index, [1]>(length)
+  let source: tensor<i32, [_]> = tensor.view(x, source_shape)
+  [onnx: {axes: [-1, 0]}]
+  let expanded = onnx.Unsqueeze(source)
+  [onnx: {to: 1}]
+  let converted = onnx.Cast(expanded)
+  let copied = base.copy(converted)
+  return copied
+}
+
+fn squeeze_view(x: tensor<i32, [4]>, requested: tensor<index, [3]>)
+    -> tensor<i32, [_]> {
+  let source: tensor<i32, [_, _, 1]> = tensor.view(x, requested)
+  [onnx: {axes: [-1, 0]}]
+  let squeezed = onnx.Squeeze(source)
+  return squeezed
+}
+
 fn body(iteration: tensor<i64, []>, keep_going: tensor<bool, []>,
         previous: tensor<i32, []>, delta: tensor<i32, []>,
         limit: tensor<i32, []>)

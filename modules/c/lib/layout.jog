@@ -22,10 +22,16 @@ local fn storage_count(m: Mod, value: Val) -> int {
 }
 
 local fn allocation_count(m: Mod, value: Val) -> int {
+  var size = 0
   if tensor.static(ir.type(value)) {
-    return count(ir.type(value))
+    size = count(ir.type(value))
+  } else {
+    size = storage_count(m, value)
   }
-  return storage_count(m, value)
+  // C arrays require a positive bound, even for a logically empty tensor.
+  // Element counts and copy lengths continue to use the logical size.
+  if size == 0 { return 1 }
+  return size
 }
 
 local fn extent(m: Mod, value: Val, axis: int) -> str {
@@ -50,6 +56,31 @@ local fn logical_count(m: Mod, value: Val) -> str {
   var out = "1"
   for axis in 0..len(dims) {
     out = "(" + out + " * " + extent(m, value, axis) + ")"
+  }
+  return out
+}
+
+local fn bind_extents(
+  m: Mod, op: Op, output: Val, source: Val, shape: bool, depth: int, config: dict
+) -> str {
+  var out = ""
+  let dims = tensor.dims(ir.type(output))
+  for axis in 0..len(dims) {
+    if base.kind(dims[axis]) != "int" {
+      let name = val(output) + "_dim_" + text(axis)
+      var value = ""
+      if shape {
+        value = val(source) + "[" + text(axis) + "]"
+      } else {
+        value = extent(m, source, axis)
+      }
+      if name != value {
+        var declaration = ""
+        if !reuses(op) { declaration = index_type(config) + " " }
+        out += pad(depth) + declaration + name + " = " + value + ";\n"
+        out += pad(depth) + "(void)" + name + ";\n"
+      }
+    }
   }
   return out
 }
@@ -104,8 +135,9 @@ local fn tensor_new(
   if !reuses(op) && !mem.planned(output) {
     let target = direct_result(output, direct, results)
     if target == "" {
-      out = indent + scalar(tensor.elem(type), config) + " " + val(output) +
-            "[" + text(n) + "];\n"
+      out = indent + storage_prefix(ir.owner(ir.blk(op))) +
+            scalar(tensor.elem(type), config) + " " + val(output) +
+            "[" + text(allocation_count(m, output)) + "];\n"
     } else {
       out = indent + scalar(tensor.elem(type), config) + "* " + val(output) +
             " = " + target + ";\n"
@@ -145,7 +177,8 @@ local fn tensor_make(
     if storage == 0 {
       storage = 1
     }
-    out = indent + scalar(tensor.elem(ir.type(output)), config) + " " +
+    out = indent + storage_prefix(ir.owner(ir.blk(op))) +
+          scalar(tensor.elem(ir.type(output)), config) + " " +
           val(output) + "[" + text(storage) + "];\n"
   }
   if !ir.has(op, "mem.fill") || ir.meta(op, "mem.fill") != false {
@@ -153,7 +186,7 @@ local fn tensor_make(
            " i = 0; i < " + text(n) + "; ++i) " + val(output) +
            "[i] = " + expr(m, inputs[0], blob, data_fns, config) + ";\n"
   }
-  return out
+  return out + bind_extents(m, op, output, inputs[1], true, depth, config)
 }
 
 local fn readonly_storage(m: Mod, value: Val) -> bool {
@@ -174,14 +207,15 @@ local fn tensor_view(
   assert(len(outputs) == 1 && len(inputs) == 2,
          "c: tensor.view requires data and shape")
   let output = outputs[0]
-  if len(ir.users(output)) == 0 || reuses(op) ||
-     val(output) == val(inputs[0]) {
+  if len(ir.users(output)) == 0 {
     return ""
   }
+  let dimensions = bind_extents(m, op, output, inputs[1], true, depth, config)
+  if reuses(op) || val(output) == val(inputs[0]) { return dimensions }
   var qualifier = ""
   if readonly_storage(m, inputs[0]) { qualifier = "const " }
   return pad(depth) + qualifier + scalar(tensor.elem(ir.type(output)), config) + "* " +
-         val(output) + " = " + val(inputs[0]) + ";\n"
+         val(output) + " = " + val(inputs[0]) + ";\n" + dimensions
 }
 
 local fn payload_data(op: Op) -> Attr {
@@ -253,7 +287,8 @@ local fn tensor_constant(
   }
   var out = ""
   if !reuses(op) && !mem.planned(output) {
-    out = indent + scalar(tensor.elem(type), config) + " " + val(output) + "[" +
+    out = indent + storage_prefix(ir.owner(ir.blk(op))) +
+          scalar(tensor.elem(type), config) + " " + val(output) + "[" +
           text(storage) + "];\n"
   }
   if bytes == 0 {

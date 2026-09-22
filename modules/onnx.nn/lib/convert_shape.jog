@@ -54,6 +54,57 @@ local fn convert_reshape_view(m: Mod, op: Op, expected: Ty) -> bool {
       return false
     }
   }
+  if !tensor.static(expected) || !tensor.static(ir.type(inputs[0])) {
+    let source = tensor.dims(ir.type(inputs[0]))
+    let unsqueeze = ir.target(m, op) == "onnx.Unsqueeze"
+    let rank = len(tensor.dims(expected))
+    var raw = axes(op)
+    if !unsqueeze && len(raw) == 0 {
+      for axis in 0..len(source) {
+        if base.kind(source[axis]) != "int" { return false }
+        if source[axis] == ty(1) { raw += [axis] }
+      }
+    }
+    var normalized: list<int> = []
+    var limit = len(source)
+    if unsqueeze { limit = rank }
+    for axis in raw {
+      var selected = axis
+      if selected < 0 { selected += limit }
+      normalized += [selected]
+    }
+    let shape_type = tensor.type(ty("index"), [rank])
+    let one = ir.constant(m, op, 1, ty("index"))
+    var shape = ir.call(m, op, "tensor.tensor", [one], shape_type)
+    assert(ir.live(shape) && ir.rename(m, shape, "view_shape_", 0),
+           "onnx.nn: could not create view shape")
+    var source_axis = 0
+    var destination_axis = 0
+    for axis in 0..limit {
+      var selected = false
+      for candidate in normalized { if candidate == axis { selected = true } }
+      var extent = one
+      if !unsqueeze || !selected {
+        let at = ir.constant(m, op, source_axis, ty("index"))
+        extent = ir.call(m, op, "tensor.dim", [inputs[0], at], ty("index"))
+        source_axis += 1
+      }
+      if !unsqueeze && selected {
+        let equal = ir.call(m, op, "base.operator ==", [extent, one], ty("bool"))
+        let message = ir.constant(m, op, "onnx.Squeeze axis must have extent one", ty("str"))
+        let checked = ir.call(m, op, "base.assert", [equal, message], ty("bool"))
+        assert(ir.live(checked) && ir.rename(m, checked, "squeeze_check_", axis),
+               "onnx.nn: could not validate squeezed axis")
+      } else {
+        let at = ir.constant(m, op, destination_axis, ty("index"))
+        shape = ir.call(m, op, "tensor.operator []=", [shape, at, extent], shape_type)
+        destination_axis += 1
+        assert(ir.live(shape) && ir.rename(m, shape, "view_shape_", destination_axis),
+               "onnx.nn: could not update view shape")
+      }
+    }
+    return convert_call(m, op, "tensor.view", [inputs[0], shape])
+  }
   let values: list<Val> = [inputs[0]]
   return convert_call(m, op, "tensor.reshape", values)
 }

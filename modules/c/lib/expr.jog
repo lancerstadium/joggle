@@ -271,7 +271,8 @@ local fn copy(
     if !reuses(op) && !mem.planned(output) {
       let target = direct_result(output, direct, results)
       if target == "" {
-        out = indent + scalar(tensor.elem(type), config) + " " + val(output) +
+        out = indent + storage_prefix(ir.owner(ir.blk(op))) +
+              scalar(tensor.elem(type), config) + " " + val(output) +
               "[" + text(allocation_count(m, output)) + "];\n"
       } else {
         out = indent + scalar(tensor.elem(type), config) + "* " + val(output) +
@@ -283,23 +284,13 @@ local fn copy(
       if tensor.static(type) {
         copied = text(count(type))
       } else {
-        var capacity = mem.capacity(m, input)
-        var bounded = input
-        if len(capacity) != len(tensor.dims(type)) {
-          capacity = mem.capacity(m, output)
-          bounded = output
-        }
-        if len(capacity) == len(tensor.dims(type)) {
-          copied = text(storage_count(m, bounded))
-        } else {
-          copied = logical_count(m, input)
-        }
+        copied = logical_count(m, input)
       }
       out += indent + "memcpy(" + val(output) + ", " + val(input) + ", " +
              "(" + copied + ") * " +
              text(width(tensor.elem(type), config)) + ");\n"
     }
-    return out
+    return out + bind_extents(m, op, output, input, false, depth, config)
   }
   return indent + lhs(op, output, config) + " = " +
          expr(m, input, blob, data_fns, config) + ";\n"

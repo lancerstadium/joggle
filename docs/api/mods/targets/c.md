@@ -88,6 +88,12 @@ fn entry(x: tensor<f32, [4]>) -> tensor<f32, [4]> {
 `c.restrict` proves eligible private calls; `c.place` controls storage scope.
 Do not add `noalias` as a speculative speed hint.
 
+`c.place(m, "static")` places all function-owned tensor buffers in static
+storage, including reuse slots, constant materializations, and standalone
+temporary results. It leaves borrowed pointers and scalar locals unchanged.
+This explicit policy avoids large tensor allocations on the call stack;
+calls sharing these buffers must be serialized.
+
 ## Dynamic shapes and data
 
 Dynamic axes use adjacent extent parameters. A result may expose logical `_`
@@ -99,6 +105,12 @@ A view can change logical rank without changing its backing storage. In
 allocation's shape; their ranks may differ. `elements` and `bytes` describe the
 available output buffer size. Runtime result dimensions are returned through
 the adjacent extent parameters, not inferred from the capacity shape.
+
+The generated code carries dynamic extents alongside data through views,
+copies, indexed updates, and loop state. A value copy transfers its logical
+elements and extents; a backing allocation's spare capacity is not part of the
+logical result. Empty tensors retain zero logical elements while local C
+arrays reserve at least one storage element for standard-conforming declarations.
 
 ## Complete input/output path
 

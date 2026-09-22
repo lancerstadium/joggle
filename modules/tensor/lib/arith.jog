@@ -1,11 +1,29 @@
+local fn cast_runtime<A: Ty, B: Ty, S: list<int>, R: int>(
+  x: tensor<A, S>
+) -> tensor<B, S> {
+  var shape = tensor<index, [R]>(index(0))
+  var count = index(1)
+  [stage: "shape"]
+  for axis in 0..R {
+    let extent = dim(x, index(axis))
+    assert(extent >= index(0), "tensor.cast extent is negative")
+    assert(count <= index(9223372036854775807) /
+             (extent + index(extent == index(0))),
+           "tensor.cast size overflows")
+    shape[axis] = extent
+    count *= extent
+  }
+  var out: tensor<B, S> = make(B(0), shape)
+  for i in index(0)..count {
+    out[i] = B(x[i])
+  }
+  return view(out, shape)
+}
+
 fn cast<A: Ty, B: Ty, S: list<int>>(
   x: tensor<A, S>
 ) -> tensor<B, S> {
-  var out = tensor<B, S>(B(0))
-  for i in 0..numel<S>() {
-    out[i] = B(x[i])
-  }
-  return out
+  return cast_runtime<A, B, S, len<S>>(x)
 }
 
 fn fill<E: Ty, S: list<int>>(
@@ -113,4 +131,3 @@ fn ><
   let right: tensor<E, Y> = broadcast(b)
   return left > right
 }
-

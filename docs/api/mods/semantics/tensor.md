@@ -159,6 +159,12 @@ non-concatenated dimensions, and overflowing sizes are rejected.
 
 ## Elementwise and broadcasting
 
+`cast` converts each logical element and preserves runtime extents. For
+example, a bounded `tensor<i32, [1, _, 1]>` with logical shape `[1, 4, 1]`
+becomes a `tensor<f32, [1, _, 1]>` with the same shape and four converted
+values. If the open axis is zero, the result is empty and the conversion loop
+performs no element access.
+
 ```jog
 fn add_bias<T: Ty, M: int, N: int>(
   x: tensor<T, [M, N]>,

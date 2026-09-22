@@ -2,6 +2,7 @@
 #include <stdbool.h>
 
 void dynamic_c_prefix(int32_t* result, int64_t* result_dim_0);
+void dynamic_c_static_result(const int32_t* x, int32_t* result, int64_t* length);
 int32_t dynamic_c_sum(const int32_t* x, int64_t x_dim_0);
 void dynamic_c_gather_last(const int32_t* x, int64_t x_dim_0, int32_t* result);
 void dynamic_c_gather_middle(const int32_t* x, int64_t x_dim_1,
@@ -28,6 +29,10 @@ int main(int argc, char** argv) {
   }
   int32_t result[8] = {0};
   int64_t rows = -1;
+  const int32_t fixed[3] = {7, 8, 9};
+  dynamic_c_static_result(fixed, result, &rows);
+  if (rows != 3 || result[0] != 7 || result[1] != 8 || result[2] != 9)
+    return 15;
   dynamic_c_prefix(result, &rows);
   if (rows != 3)
     return 1;

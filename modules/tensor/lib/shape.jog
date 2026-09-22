@@ -328,7 +328,8 @@ local fn reshape_runtime<
   for axis in 0..P {
     let extent = dim(x, index(axis))
     assert(extent >= index(0), "tensor.reshape input extent is negative")
-    assert(extent == index(0) || total <= index(9223372036854775807) / extent,
+    assert(total <= index(9223372036854775807) /
+             (extent + index(extent == index(0))),
            "tensor.reshape input size overflows")
     total *= extent
   }

@@ -13,6 +13,10 @@ void loop_c_reshape_rank(const int32_t* x, const int64_t* requested,
                          int64_t* dim_2);
 void loop_c_shape_pipeline(const int32_t* x, bool full, int32_t* result,
                            int64_t* rows);
+void loop_c_cast_view(const int32_t* x, bool nonempty, float* result,
+                      int64_t* length);
+void loop_c_squeeze_view(const int32_t* x, const int64_t* shape,
+                         int32_t* result, int64_t* length);
 
 int main(int argc, char** argv) {
   if (argc == 2) {
@@ -22,6 +26,11 @@ int main(int argc, char** argv) {
     const int64_t invalid[6][2] = {
         {-1, -1}, {4, 2}, {-1, 4}, {INT64_MAX, 2}, {-2, 3}, {0, -1}};
     const int selected = argv[1][0] - 'a';
+    if (selected == 6) {
+      const int64_t bad_squeeze[3] = {2, 2, 1};
+      loop_c_squeeze_view(input, bad_squeeze, result, &rows);
+      return 0;
+    }
     if (selected < 0 || selected >= 6)
       return 0;
     if (selected == 5)
@@ -83,5 +92,22 @@ int main(int argc, char** argv) {
         if (pipeline[r * 6 + c] != vector[r])
           return 11;
   }
+  float converted[4] = {-1, -1, -1, -1};
+  loop_c_cast_view(vector, false, converted, &length);
+  if (length != 0 || converted[0] != -1)
+    return 12;
+  loop_c_cast_view(vector, true, converted, &length);
+  if (length != 4)
+    return 13;
+  for (int i = 0; i < 4; ++i)
+    if (converted[i] != (float)vector[i])
+      return 14;
+  const int64_t squeeze_shape[3] = {1, 4, 1};
+  loop_c_squeeze_view(vector, squeeze_shape, result, &length);
+  if (length != 4)
+    return 15;
+  for (int i = 0; i < 4; ++i)
+    if (result[i] != vector[i])
+      return 16;
   return 0;
 }

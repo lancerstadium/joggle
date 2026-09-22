@@ -1,6 +1,10 @@
 mod dynamic_c
 use tensor
 
+fn static_result(x: tensor<i32, [3]>) -> tensor<i32, [_]> {
+  return x
+}
+
 fn prefix() -> tensor<i32, [_, 2]> {
   let rows: index = index(3)
 

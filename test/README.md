@@ -78,7 +78,7 @@ diagnostic handling.
 | Write a mod | `cli-module`, `example-*`, `install-consumer` |
 | Import ONNX | `onnx-codec`, configured `model` tests |
 | Emit C | label `c`, especially `c-execution` and `mem-safety` |
-| ONNX loop conversion | `onnx-zoo-mobilenet-contract` checks graph/round-trip types; `loop-c-execution` checks carried state, scan order, early stopping, zero iterations, and a bounded reshape → Tile → concat chain through generated C |
+| ONNX loop conversion | `onnx-zoo-mobilenet-contract` checks graph/round-trip types; `loop-c-execution` checks carried state, scan order, early stopping, zero iterations, and bounded reshape → Tile → concat and Unsqueeze → Cast → copy chains through generated C |
 | Dynamic tensors | `dynamic-c-execution` checks runtime extents, gather, shape queries, and value-preserving tensor updates |
 
 `tutorial-smoke` additionally runs the exact public path across these rows. It
