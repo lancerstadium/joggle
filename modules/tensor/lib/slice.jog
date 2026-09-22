@@ -1,27 +1,46 @@
-fn gather<E: Ty, D: list<int>, S: list<int>, Y: list<int>>(
+local fn gather_runtime<
+  E: Ty, D: list<int>, S: list<int>, Y: list<int>, R: int, Q: int
+>(
   data: tensor<E, D>, indices: tensor<index, S>, axis: int
 ) -> tensor<E, Y> {
+  var selected_axis = axis
+  if selected_axis < 0 { selected_axis += R }
+  assert(selected_axis >= 0 && selected_axis < R,
+         "tensor.gather axis is out of range")
   var inner = 1
-  for dim in axis + 1..len(D) {
-    inner *= D[dim]
+  for axis_index in selected_axis + 1..R {
+    inner *= int(dim(data, index(axis_index)))
   }
   var outer = 1
-  for dim in 0..axis {
-    outer *= D[dim]
+  for axis_index in 0..selected_axis {
+    outer *= int(dim(data, index(axis_index)))
   }
-  let count = numel<S>()
+  let extent = int(dim(data, index(selected_axis)))
+  var count = 1
+  [stage: "shape"]
+  for axis_index in 0..Q {
+    count *= int(dim(indices, index(axis_index)))
+  }
   var out = tensor<E, Y>(E(0))
   for group in 0..outer, item in 0..count, offset in 0..inner {
     var selected = indices[item]
     if selected < 0 {
-      selected += D[axis]
+      selected += extent
     }
+    assert(selected >= 0 && selected < extent,
+           "tensor.gather index is out of range")
     let source =
-      (group * D[axis] + selected) * inner + offset
+      (group * extent + selected) * inner + offset
     let target = (group * count + item) * inner + offset
     out[target] = data[source]
   }
   return out
+}
+
+fn gather<E: Ty, D: list<int>, S: list<int>, Y: list<int>>(
+  data: tensor<E, D>, indices: tensor<index, S>, axis: int
+) -> tensor<E, Y> {
+  return gather_runtime<E, D, S, Y, len<D>, len<S>>(data, indices, axis)
 }
 
 // Deterministic selection along one logical axis.  Scanning candidates in

@@ -323,9 +323,9 @@ fn shape<E: Ty, S: list<int>, R: int>(
   x: tensor<E, S>
 ) -> tensor<i64, [R]> {
   var out = tensor<i64, [R]>(i64(0))
+  [stage: "shape"]
   for axis in 0..R {
-    out[axis] = i64(S[axis])
+    out[axis] = i64(dim(x, index(axis)))
   }
   return out
 }
-

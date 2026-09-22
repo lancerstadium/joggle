@@ -397,6 +397,9 @@ local fn prepare_with(m: Mod, config: dict) -> bool {
                       " (target " + ir.target(m, source) + ")"
           }
         }
+        for index in 1..len(inputs) {
+          detail += ", input " + text(index) + " " + text(ir.type(inputs[index]))
+        }
         assert(false, detail)
       }
     }

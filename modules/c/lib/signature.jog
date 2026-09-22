@@ -456,8 +456,20 @@ local fn definition_prefix(
 ) -> str {
   let bodies = ir.blks(fn)
   assert(len(bodies) >= 1, "c: function has no body")
-  return linkage(m, fn) +
-         signature(m, fn, blob, data_fns, config, true) + " {\n"
+  var out = linkage(m, fn) +
+            signature(m, fn, blob, data_fns, config, true) + " {\n"
+  for param in ir.params(fn) {
+    var data_read = false
+    for user in ir.users(param) {
+      if ir.kind(user) != "call" || ir.target(m, user) != "tensor.dim" {
+        data_read = true
+      }
+    }
+    // Dimension queries consume the explicit extent parameters, not the data
+    // pointer. Keep that intentional ABI erasure warning-free in strict C.
+    if !data_read { out += pad(1) + "(void)" + val(param) + ";\n" }
+  }
+  return out
 }
 
 local fn definition_storage(

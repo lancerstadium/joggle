@@ -26,3 +26,23 @@ fn sum(x: tensor<i32, [_, 2]>) -> i32 {
   }
   return total
 }
+
+fn gather_last(x: tensor<i32, [_, 2]>) -> tensor<i32, [1, 2]> {
+  let indices = tensor<index, [1]>(index(-1))
+  return tensor.gather(x, indices, -2)
+}
+
+fn gather_middle(
+  x: tensor<i32, [2, _, 2]>, indices: tensor<index, [_]>
+) -> tensor<i32, [2, 2, 2]> {
+  return tensor.gather(x, indices, 1)
+}
+
+fn gather_scalar(x: tensor<i32, [_, 2]>) -> tensor<i32, [2]> {
+  let index = tensor<index, []>(index(-1))
+  return tensor.gather(x, index, 0)
+}
+
+fn shape(x: tensor<i32, [_, 2]>) -> tensor<i64, [2]> {
+  return tensor.shape(x)
+}
