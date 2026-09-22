@@ -1,5 +1,6 @@
 mod bounded
 use base
+use tensor
 
 fn kernel() -> int {
   var out = 0
@@ -27,4 +28,22 @@ fn overflow() -> i64 {
   let wrapped = top + i64(1)
   let product = top * i64(2)
   return wrapped
+}
+
+fn shape_vector(flag: bool, at: index) -> index {
+  var factor = index(0)
+  if flag { factor = index(2) }
+  var shape = tensor<index, [2]>(index(7))
+  shape[0] = factor
+  let bounded_element = shape[0]
+  let untouched_element = shape[1]
+  shape[at] = index(99)
+  let uncertain_element = shape[0]
+  return bounded_element + untouched_element + uncertain_element
+}
+
+fn partial_shape(x: tensor<i32, [_, 3]>) -> index {
+  let fixed_extent = tensor.dim(x, index(1))
+  let unknown_extent = tensor.dim(x, index(0))
+  return fixed_extent + unknown_extent
 }

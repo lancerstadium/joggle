@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdbool.h>
 
 void dynamic_c_prefix(int32_t* result, int64_t* result_dim_0);
 int32_t dynamic_c_sum(const int32_t* x, int64_t x_dim_0);
@@ -10,8 +11,21 @@ void dynamic_c_gather_scalar(const int32_t* x, int64_t x_dim_0, int32_t* result)
 void dynamic_c_gather_i32(const int32_t* x, int64_t x_dim_0, int32_t* result);
 void dynamic_c_shape(const int32_t* x, int64_t x_dim_0, int64_t* result);
 void dynamic_c_updated(const int32_t* x, int32_t* result);
+void dynamic_c_tile(const int32_t* x, const int64_t* repeats, int32_t* result);
+void dynamic_c_tile_empty(const int32_t* x, const int64_t* repeats, int32_t* result);
+void dynamic_c_tile_bounded(const int32_t* x, bool twice, int32_t* result,
+                            int64_t* rows, int64_t* cols);
 
-int main(void) {
+int main(int argc, char** argv) {
+  if (argc == 2) {
+    const int32_t input[6] = {0, 1, 2, 3, 4, 5};
+    const int64_t invalid[3][2] = {{-1, 2}, {INT64_MAX, 2}, {1, 2}};
+    const int selected = argv[1][0] - 'a';
+    int32_t output[24] = {0};
+    if (selected >= 0 && selected < 3)
+      dynamic_c_tile(input, invalid[selected], output);
+    return 0;
+  }
   int32_t result[8] = {0};
   int64_t rows = -1;
   dynamic_c_prefix(result, &rows);
@@ -54,5 +68,26 @@ int main(void) {
   if (original[0] != 2 || original[1] != 3 || original[2] != 4 ||
       updated[0] != 2 || updated[1] != 9 || updated[2] != 4)
     return 10;
+  const int64_t repeats[2] = {2, 2}, empty_repeats[2] = {0, 2};
+  int32_t tiled[24] = {0};
+  dynamic_c_tile(input, repeats, tiled);
+  for (int r = 0; r < 4; ++r)
+    for (int c = 0; c < 6; ++c)
+      if (tiled[r * 6 + c] != input[(r % 2) * 3 + c % 3])
+        return 11;
+  tiled[0] = -1;
+  dynamic_c_tile_empty(input, empty_repeats, tiled);
+  if (tiled[0] != -1)
+    return 12;
+  for (int factor = 1; factor <= 2; ++factor) {
+    int64_t tile_rows = -1, tile_cols = -1;
+    dynamic_c_tile_bounded(input, factor == 2, tiled, &tile_rows, &tile_cols);
+    if (tile_rows != 2 * factor || tile_cols != 3 * factor)
+      return 13;
+    for (int r = 0; r < tile_rows; ++r)
+      for (int c = 0; c < tile_cols; ++c)
+        if (tiled[r * tile_cols + c] != input[(r % 2) * 3 + c % 3])
+          return 14;
+  }
   return 0;
 }

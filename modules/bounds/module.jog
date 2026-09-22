@@ -229,12 +229,49 @@ local fn base_call(m: Mod, op: Op) -> str {
   return name
 }
 
+// Shape vectors built from scalar expressions retain their element intervals.
+// Do not guess through parameters, unknown indices, or unsupported producers.
+local fn vector_element(m: Mod, value: Val, at: int, known: dict) -> list<int> {
+  let type = ir.type(value)
+  if !tensor.valid(type) || !integer(tensor.elem(type)) { return [] }
+  let dims = tensor.dims(type)
+  if len(dims) != 1 || base.kind(dims[0]) != "int" ||
+     at < 0 || at >= base.int(dims[0]) { return [] }
+  let source = ir.def(value)
+  if !ir.live(source) || ir.kind(source) != "call" { return [] }
+  let inputs = ir.args(source)
+  let target = ir.target(m, source)
+  if target == "tensor.tensor" && len(inputs) == 1 {
+    return get(known, inputs[0])
+  }
+  if target == "base.copy" && len(inputs) == 1 {
+    return vector_element(m, inputs[0], at, known)
+  }
+  if target == "tensor.operator []=" && len(inputs) == 3 {
+    let index = get(known, inputs[1])
+    if len(index) != 2 { return [] }
+    if index[0] == at && index[1] == at { return get(known, inputs[2]) }
+    if index[1] < at || index[0] > at {
+      return vector_element(m, inputs[0], at, known)
+    }
+  }
+  return []
+}
+
 local fn result(m: Mod, op: Op, known: dict) -> list<int> {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
     return []
   }
   let inputs = ir.args(op)
+  if ir.target(m, op) == "tensor.operator []" && len(inputs) == 2 &&
+     integer(ir.type(outputs[0])) {
+    let at = get(known, inputs[1])
+    if len(at) == 2 && at[0] == at[1] {
+      return vector_element(m, inputs[0], at[0], known)
+    }
+    return []
+  }
   if ir.target(m, op) == "tensor.dim" && len(inputs) == 2 {
     let source = ir.type(inputs[0])
     var axis = get(known, inputs[1])
@@ -247,11 +284,14 @@ local fn result(m: Mod, op: Op, known: dict) -> list<int> {
         axis = [exact, exact]
       }
     }
-    if tensor.valid(source) && tensor.static(source) && len(axis) == 2 &&
+    if tensor.valid(source) && len(axis) == 2 &&
        axis[0] == axis[1] && axis[0] >= 0 &&
-       axis[0] < len(tensor.shape(source)) {
-      let extent = tensor.shape(source)[axis[0]]
-      return [extent, extent]
+       axis[0] < len(tensor.dims(source)) {
+      let dim = tensor.dims(source)[axis[0]]
+      if base.kind(dim) == "int" {
+        let extent = base.int(dim)
+        return [extent, extent]
+      }
     }
     return []
   }

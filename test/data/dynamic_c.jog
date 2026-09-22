@@ -56,3 +56,23 @@ fn updated(x: tensor<i32, [3]>) -> tensor<i32, [3]> {
   let y: tensor<i32, [3]> = tensor.[]=(x, index(1), i32(9))
   return y
 }
+
+fn tile(x: tensor<i32, [2, 3]>, repeats: tensor<i64, [2]>)
+    -> tensor<i32, [4, 6]> {
+  return tensor.tile(x, repeats)
+}
+
+fn tile_empty(x: tensor<i32, [2, 3]>, repeats: tensor<i64, [2]>)
+    -> tensor<i32, [0, 6]> {
+  return tensor.tile(x, repeats)
+}
+
+fn tile_bounded(x: tensor<i32, [2, 3]>, twice: bool)
+    -> tensor<i32, [_, _]> {
+  var factor = index(1)
+  if twice { factor = index(2) }
+  var repeats = tensor<index, [2]>(index(1))
+  repeats[0] = factor
+  repeats[1] = factor
+  return tensor.tile(x, repeats)
+}

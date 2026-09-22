@@ -23,6 +23,19 @@ if(NOT output MATCHES
   message(FATAL_ERROR "unexpected integer bounds report:\n${output}")
 endif()
 
+joggle_expect("shape-vector interval was lost"
+  TEXT "${output}" MATCHES
+  "\"hi\": 2, \"lo\": 0, \"name\": \"bounded_element\"")
+joggle_expect("unchanged shape-vector element was lost"
+  TEXT "${output}" MATCHES
+  "\"hi\": 7, \"lo\": 7, \"name\": \"untouched_element\"")
+joggle_expect("static axis of a partially dynamic tensor was lost"
+  TEXT "${output}" MATCHES
+  "\"hi\": 3, \"lo\": 3, \"name\": \"fixed_extent\"")
+if(output MATCHES "\"name\": \"uncertain_element\"|\"name\": \"unknown_extent\"")
+  message(FATAL_ERROR "bounds guessed through an unknown store or extent")
+endif()
+
 joggle_run("bounds folding failed"
   COMMAND "${TOOL}" run bounds.fold "${FOLD_MODEL}" -M "${MODULES}"
   OUTPUT_FILE "${bounded}"

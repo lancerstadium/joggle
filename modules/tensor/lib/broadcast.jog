@@ -228,11 +228,55 @@ fn tile<E: Ty, S: list<int>, T: list<int>>(
   return out
 }
 
-fn tile<
-  E: Ty, S: list<int>, T: list<int>, I: Ty, N: int
+local fn tile_runtime<
+  E: Ty, S: list<int>, T: list<int>, I: Ty, N: int, P: int, R: int
 >(
   x: tensor<E, S>, repeats: tensor<I, [N]>
 ) -> tensor<E, T> {
-  return tile(x)
+  assert(N == P && N == R, "tensor.tile ranks must match")
+  var source_shape = tensor<index, [N]>(index(0))
+  var result_shape = tensor<index, [N]>(index(0))
+  var count = index(1)
+  [stage: "shape"]
+  for axis in 0..N {
+    let source = dim(x, index(axis))
+    let repeat = index(repeats[axis])
+    assert(source >= index(0) && repeat >= index(0),
+           "tensor.tile extents and repeats must be nonnegative")
+    assert(repeat == index(0) || source <= index(9223372036854775807) / repeat,
+           "tensor.tile extent overflows")
+    let extent = source * repeat
+    assert(extent == index(0) || count <= index(9223372036854775807) / extent,
+           "tensor.tile size overflows")
+    source_shape[axis] = source
+    result_shape[axis] = extent
+    count *= extent
+  }
+  var out: tensor<E, T> = make(E(0), result_shape)
+  [stage: "shape"]
+  for axis in 0..N {
+    assert(dim(out, index(axis)) == result_shape[axis],
+           "tensor.tile result disagrees with its declared shape")
+  }
+  for linear in index(0)..count {
+    var source = index(0)
+    var source_stride = index(1)
+    var result_stride = index(1)
+    [stage: "shape"]
+    for reverse in 0..N {
+      let axis = N - reverse - 1
+      let coordinate = linear / result_stride % result_shape[axis]
+      source += coordinate % source_shape[axis] * source_stride
+      source_stride *= source_shape[axis]
+      result_stride *= result_shape[axis]
+    }
+    out[linear] = x[source]
+  }
+  return view(out, result_shape)
 }
 
+fn tile<E: Ty, S: list<int>, T: list<int>, I: Ty, N: int>(
+  x: tensor<E, S>, repeats: tensor<I, [N]>
+) -> tensor<E, T> {
+  return tile_runtime<E, S, T, I, N, len<S>, len<T>>(x, repeats)
+}

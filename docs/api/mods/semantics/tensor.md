@@ -107,6 +107,37 @@ preserves linear element order and does not allocate a second data buffer.
 The C target retains the input's read-only qualifier for borrowed input views;
 make a value copy before modifying the result.
 
+## Runtime repetition
+
+The two-argument `tile` reads every axis of its repeats tensor. The result may
+have dynamic extents; C preparation uses the shape expressions' upper bounds
+to size its storage.
+
+```jog
+fn repeat_grid(x: tensor<i32, [2, 3]>, twice: bool)
+    -> tensor<i32, [_, _]> {
+  var factor = index(1)
+  if twice { factor = index(2) }
+  var repeats = tensor<index, [2]>(factor)
+  return tensor.tile(x, repeats)
+}
+```
+
+For `x = [[1, 2, 3], [4, 5, 6]]`, `twice = false` produces the same `[2, 3]`
+values. `twice = true` produces shape `[4, 6]`:
+
+```text
+1 2 3 1 2 3
+4 5 6 4 5 6
+1 2 3 1 2 3
+4 5 6 4 5 6
+```
+
+The allocation holds at most 24 elements in both cases, while the returned
+extents describe the selected shape. A zero repeat produces an empty axis.
+Negative repeats, dimension/product overflow, and disagreement with a fixed
+result shape are rejected before the copy loop.
+
 ## Elementwise and broadcasting
 
 ```jog

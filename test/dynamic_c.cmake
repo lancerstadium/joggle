@@ -23,6 +23,30 @@ macro(c_pipeline_checks)
   joggle_expect("dynamic C input extents are not explicit"
     FILE "${source}" MATCHES
     "int32_t dynamic_c_sum\\(const int32_t\\* x, int64_t x_dim_0\\)")
+  string(JSON api_count LENGTH "${api}")
+  math(EXPR api_last "${api_count} - 1")
+  set(found_tile OFF)
+  foreach(entry RANGE 0 ${api_last})
+    string(JSON symbol GET "${api}" ${entry} name)
+    if(symbol STREQUAL "dynamic_c_tile_bounded")
+      set(found_tile ON)
+      string(JSON elements GET "${api}" ${entry} results 0 elements)
+      string(JSON dynamic GET "${api}" ${entry} results 0 dynamic)
+      if(NOT elements EQUAL 24 OR NOT dynamic)
+        message(FATAL_ERROR "dynamic Tile lost its proved 24-element capacity")
+      endif()
+    endif()
+  endforeach()
+  if(NOT found_tile)
+    message(FATAL_ERROR "dynamic Tile is absent from the C API")
+  endif()
 endmacro()
 
 include("${CMAKE_CURRENT_LIST_DIR}/c_pipeline.cmake")
+
+foreach(repeats_case a b c)
+  joggle_run("invalid tile repeats ${repeats_case} were accepted"
+    COMMAND "${program}" "${repeats_case}" EXPECT_FAIL ERROR_VARIABLE failure)
+  joggle_expect("invalid tile repeats did not reach validation"
+    TEXT "${failure}" MATCHES "[Aa]ssertion")
+endforeach()
