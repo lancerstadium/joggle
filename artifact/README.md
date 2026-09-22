@@ -276,6 +276,11 @@ their CSV and run record when the selected cases finish. Both retain failed
 cases explicitly, with diagnostics in the run record or failure log.
 Only steady-state execution is repeated. A smoke run uses three iterations;
 the release population uses the 100 iterations frozen in the manifest.
+The numerical oracle runs in a fresh process after timing and exchanges typed
+arrays through a temporary archive. Candidate runtimes and the semantic ORT
+session therefore do not share process-local state. Run records identify this
+boundary as `correctness_execution: isolated-process`; graph optimization,
+input bytes, and numerical tolerances remain fixed by the shared protocol.
 
 The operator display uses three columns and two rows of compact panels at
 single-column manuscript width, with four operators per family. Every panel

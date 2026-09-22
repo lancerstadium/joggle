@@ -3,12 +3,15 @@
 import json
 import os
 import copy
+import argparse
+import hashlib
 import importlib.util
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 import numpy as np
@@ -16,13 +19,54 @@ import onnx
 from onnx import helper, numpy_helper
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "artifact"))
-from run_baseline_benchmarks import compare_outputs, ort_session, run_json
+from run_baseline_benchmarks import compare_outputs, isolated_reference, ort_session, run_json
 from run_joggle_benchmarks import checkpoint_protocol, make_harness, Unsupported
 from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_semantic_oracle_uses_a_separate_process_and_named_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            values = np.array([1.5, -2.0], dtype=np.float32)
+            data = values.tobytes()
+            (root / "x.bin").write_bytes(data)
+            (root / "index.json").write_text(json.dumps({"cases": [{
+                "id": "isolation", "tensors": [{"name": "x", "path": "x.bin",
+                    "sha256": hashlib.sha256(data).hexdigest()}]}]}))
+            spec = {"measurement": {"threads": 1,
+                "reference_execution_mode": "ORT_SEQUENTIAL",
+                "reference_graph_optimization": "ORT_ENABLE_ALL",
+                "reference_provider": "CPUExecutionProvider"},
+                "operator_cases": [{"id": "isolation", "inputs": [
+                    {"name": "x", "dtype": "float32", "shape": [2]}]}],
+                "model_cases": []}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec))
+            graph = helper.make_graph([
+                helper.make_node("Identity", ["x"], ["float_out"]),
+                helper.make_node("Cast", ["x"], ["integer_out"], to=onnx.TensorProto.INT64),
+            ], "isolation", [helper.make_tensor_value_info("x", onnx.TensorProto.FLOAT, [2])], [
+                helper.make_tensor_value_info("float_out", onnx.TensorProto.FLOAT, [2]),
+                helper.make_tensor_value_info("integer_out", onnx.TensorProto.INT64, [2]),
+            ])
+            model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+            model.ir_version = 9
+            model_path = root / "model.onnx"
+            onnx.save(model, model_path)
+            args = argparse.Namespace(spec=spec_path, inputs=root, case_id="isolation",
+                                      model=model_path, case_timeout=30)
+            with patch("run_baseline_benchmarks.ort_session",
+                       side_effect=AssertionError("oracle must not run in candidate process")):
+                actual = isolated_reference(args, ["integer_out", "float_out"])
+                with self.assertRaises(ValueError):
+                    isolated_reference(args, ["missing"])
+            self.assertEqual(actual[0].dtype, np.dtype("int64"))
+            self.assertEqual(actual[1].dtype, np.dtype("float32"))
+            np.testing.assert_array_equal(actual[0], np.array([1, -2], dtype=np.int64))
+            np.testing.assert_array_equal(actual[1], values)
+
     def test_external_worker_reports_errors_and_reaps_timeout(self):
         self.assertEqual(run_json([sys.executable, "-c", 'print("log"); print(\'{"ok": true}\')']),
                          {"ok": True})

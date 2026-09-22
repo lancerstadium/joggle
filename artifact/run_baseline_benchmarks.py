@@ -13,6 +13,7 @@ import random
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -142,12 +143,38 @@ def output_digest(names: list[str], outputs: list[np.ndarray]) -> str:
     return digest.hexdigest()
 
 
+def isolated_reference(args: argparse.Namespace, names: list[str]) -> list[np.ndarray]:
+    """Keep the semantic session out of the candidate runtime's process."""
+    with tempfile.TemporaryDirectory(prefix="joggle-oracle-") as directory:
+        output = Path(directory) / "outputs.npz"
+        argv = [sys.executable, str(Path(__file__).resolve()), "--worker", "oracle",
+                "--spec", str(args.spec), "--inputs", str(args.inputs),
+                "--case-id", args.case_id, "--model", str(args.model),
+                "--output", str(output)]
+        # Inherit the candidate worker's process group so the outer timeout
+        # also reaps this child. The oracle itself launches no descendants.
+        result = subprocess.run(argv, capture_output=True, text=True, check=True,
+                                timeout=args.case_timeout, env={**os.environ, **THREAD_ENV})
+        record = json.loads(result.stdout.strip().splitlines()[-1])
+        reference_names = record["names"]
+        if len(set(reference_names)) != len(reference_names) or set(reference_names) != set(names):
+            raise ValueError("oracle output names differ from candidate outputs")
+        with np.load(output, allow_pickle=False) as arrays:
+            return [arrays[f"arr_{reference_names.index(name)}"] for name in names]
+
+
 def worker(args: argparse.Namespace) -> int:
     # Library initialization is outside every reported boundary.
     import onnxruntime  # noqa: F401
 
     measurement, _, feeds = load_case(args.spec, args.inputs, args.case_id)
     model = args.model.read_bytes()
+    if args.worker == "oracle":
+        session = ort_session(model, measurement, semantic=True)
+        names = [item.name for item in session.get_outputs()]
+        np.savez(args.output, *session.run(names, feeds))
+        print(json.dumps({"names": names, "pid": os.getpid()}))
+        return 0
     stages_ns = {}
     if args.backend in {"tvm", "onnx-mlir"}:
         from benchmark_backends import ONNXMLIRRunner, TVMRunner
@@ -185,8 +212,7 @@ def worker(args: argparse.Namespace) -> int:
         spec = json.loads(args.spec.read_text())
         case = next(case for case in spec["operator_cases"] + spec["model_cases"]
                     if case["id"] == args.case_id)
-        semantic_session = ort_session(model, measurement, semantic=True)
-        comparison = compare_outputs(outputs, semantic_session.run(names, feeds),
+        comparison = compare_outputs(outputs, isolated_reference(args, names),
                                      case["rtol"], case["atol"])
         print(json.dumps({
             "latencies_ns": latencies,
@@ -436,6 +462,7 @@ def main(args: argparse.Namespace) -> int:
         "graph_optimization": (measurement["reference_graph_optimization"] if args.backend == "onnxruntime"
                                else "O3" if args.backend == "onnx-mlir" else "default"),
         "correctness_oracle": correctness_oracle_record(),
+        "correctness_execution": "isolated-process",
         "correctness_failures": correctness_failures,
         "execution_failures": execution_failures,
         "preparation_ns": preparation,
@@ -470,7 +497,7 @@ def main(args: argparse.Namespace) -> int:
 def parse_args() -> argparse.Namespace:
     root = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser()
-    parser.add_argument("--worker", choices=("execute",))
+    parser.add_argument("--worker", choices=("execute", "oracle"))
     parser.add_argument("--backend", choices=("onnxruntime", "tvm", "onnx-mlir"), default="onnxruntime")
     parser.add_argument("--onnx-mlir", type=Path, help="path to the ONNX-MLIR compiler executable")
     parser.add_argument("--target-json", default='{"kind":"llvm","num-cores":1}')
@@ -507,6 +534,8 @@ def parse_args() -> argparse.Namespace:
             parser.error("worker mode requires one --case-id and --model")
         if args.iterations <= 0 or args.warmups < 0 or args.batch <= 0:
             parser.error("worker counts must be positive, with non-negative warmups")
+        if args.worker == "oracle" and not args.output:
+            parser.error("oracle worker requires --output")
         args.case_id = args.case_id[0]
     else:
         if not args.group or not args.output:
