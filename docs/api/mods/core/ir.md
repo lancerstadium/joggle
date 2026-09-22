@@ -65,6 +65,13 @@ resolves it later; it is safer for persistent tooling than emitted text.
 Other identity queries include `live`, `key`, `kind`, `form`, `callee`, and
 `target`.
 
+`key(fn/op/value)` returns the slot id of a live handle. Within one mod and
+one handle kind, keys distinguish objects even when their names are equal:
+two overloads have distinct function keys. Renaming preserves the key.
+Keys are local to a store, not persistent identifiers across parsing or
+rollback. Keep handles for liveness checks; do not use a key alone to retain
+an erased object. Tables spanning mods must also identify the owning mod.
+
 ## Types and metadata
 
 ```jog

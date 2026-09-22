@@ -88,6 +88,18 @@ operation still traverses its containing block's order vector, so block size
 also matters. Nested blocks and their slot generations are invalidated as
 part of the same edit.
 
+Function erasure checks callers against the function's overload set before
+resolving argument types. That candidate test is cached by call spelling for
+the edit, so unrelated calls do not repeat overload unification. Resolved and
+deferred callers still prevent erasure. Removed operands are detached from
+their recorded use lists; unrelated values do not need a use-list rebuild.
+
+The C mod counts resolved calls once when choosing frequently used bodies and
+once when pruning templates. Counts distinguish overloads by function key
+and owner. When a template is erased, its outgoing references are subtracted
+before later templates are considered. This preserves the original cleanup
+order without resolving every call again for every template.
+
 ### Cloning and binding names
 
 Cloning appends nodes and attaches their operand edges to existing use lists.

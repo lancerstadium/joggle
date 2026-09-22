@@ -277,19 +277,29 @@ fn outlineable(
   return ir.live(impl) && len(ir.blks(impl)) != 0
 }
 
+// Slot keys distinguish overloads; the qualified symbol distinguishes stores.
+local fn function_key(fn: Fn) -> str {
+  return ir.symbol(fn) + ":" + text(ir.key(fn))
+}
+
+local fn call_counts(m: Mod) -> dict {
+  var counts: dict = {}
+  for op in ir.ops(m, ["call"]) {
+    let target = ir.resolve(m, op)
+    if ir.live(target) {
+      let key = function_key(target)
+      counts[key] = int(base.get(counts, key, 0)) + 1
+    }
+  }
+  return counts
+}
+
 local fn frequent_impls(
-  m: Mod, impls: list<Fn>, min_uses: int
+  counts: dict, impls: list<Fn>, min_uses: int
 ) -> list<Fn> {
   var out: list<Fn> = []
-  let calls = ir.ops(m, ["call"])
   for impl in impls {
-    var uses = 0
-    for op in calls {
-      if ir.live(op) && ir.resolve(m, op) == impl {
-        uses += 1
-      }
-    }
-    if uses >= min_uses {
+    if int(base.get(counts, function_key(impl), 0)) >= min_uses {
       out += [impl]
     }
   }
@@ -298,17 +308,26 @@ local fn frequent_impls(
 
 local fn prune_templates(m: Mod) -> bool {
   var changed = false
+  var counts = call_counts(m)
   let functions = ir.fns(m)
   for fn in functions {
     if ir.live(fn) && ir.local(fn) && len(ir.generics(fn)) != 0 {
-      var used = false
-      for op in ir.ops(m, ["call"]) {
-        if ir.live(op) && ir.resolve(m, op) == fn {
-          used = true
+      if int(base.get(counts, function_key(fn), 0)) == 0 {
+        // Retire outgoing references with the body. Later templates observe
+        // the same live callers as a fresh whole-program scan would observe.
+        var outgoing: list<str> = []
+        for op in ir.ops(fn, ["call"]) {
+          let target = ir.resolve(m, op)
+          if ir.live(target) {
+            outgoing += [function_key(target)]
+          }
         }
-      }
-      if !used {
-        changed = ir.erase(m, fn) || changed
+        if ir.erase(m, fn) {
+          changed = true
+          for key in outgoing {
+            counts[key] = int(counts[key]) - 1
+          }
+        }
       }
     }
   }
@@ -329,8 +348,9 @@ local fn prepare_with(m: Mod, config: dict) -> bool {
   let outline_uses = base.get(config, "outline_uses", 4)
   assert(base.kind(outline_uses) == "int" && outline_uses >= 1,
          "c: outline_uses must be a positive integer")
-  let tensor_impls = frequent_impls(m, ir.fns("tensor"), outline_uses)
-  let nn_impls = frequent_impls(m, ir.fns("nn"), outline_uses)
+  let counts = call_counts(m)
+  let tensor_impls = frequent_impls(counts, ir.fns("tensor"), outline_uses)
+  let nn_impls = frequent_impls(counts, ir.fns("nn"), outline_uses)
   var changed = opt.instantiate(m, tensor_impls, outline, config)
   changed = opt.instantiate(m, nn_impls, outline, config) || changed
   // A public implementation may call generic private helpers captured with its

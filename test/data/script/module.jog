@@ -9,6 +9,14 @@ use onnx.nn
 use bounds
 use mem
 
+fn function_keys(m: Mod) -> list<int> {
+  var keys: list<int> = []
+  for fn in ir.fns(m) {
+    keys += [ir.key(fn)]
+  }
+  return keys
+}
+
 fn capacity_index_probe(m: Mod) -> bool {
   let main_ops = ir.ops(ir.find(m, "main"))
   let result = ir.args(main_ops[len(main_ops) - 1])[0]

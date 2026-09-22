@@ -4288,6 +4288,9 @@ private:
       if (const auto* fn = as<Fn>(args[0]))
         return single(Item(Attr(fn->local())), single_result);
     } else if (name == "key" && args.size() == 1) {
+      if (const auto* fn = as<Fn>(args[0]); fn && *fn)
+        return single(Item(Attr(static_cast<std::int64_t>(fn->id_))),
+                      single_result);
       if (const auto* op = as<Op>(args[0]); op && *op)
         return single(Item(Attr(static_cast<std::int64_t>(op->id_))),
                       single_result);

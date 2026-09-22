@@ -717,6 +717,26 @@ int main(int argc, char** argv) {
   }
   CHECK(network_cpp.verify(env));
   CHECK(env.load("script"));
+  joggle::Mod keyed_functions;
+  CHECK(joggle::parse(env, function_edit_source, keyed_functions,
+                      "function-keys.jog"));
+  CHECK(keyed_functions.verify(env));
+  joggle::Attr function_keys_before;
+  CHECK(joggle::query(env, "script.function_keys", keyed_functions,
+                      function_keys_before));
+  CHECK(function_keys_before.list() && function_keys_before.list()->size() == 4);
+  std::set<std::int64_t> function_key_set;
+  for (const joggle::Attr& key : *function_keys_before.list()) {
+    CHECK(key.integer());
+    CHECK(function_key_set.insert(*key.integer()).second);
+  }
+  CHECK(keyed_functions.rename(env, keyed_functions.find_fn("helper"),
+                               "renamed"));
+  CHECK(keyed_functions.find_fns("renamed").size() == 2);
+  joggle::Attr function_keys_after;
+  CHECK(joggle::query(env, "script.function_keys", keyed_functions,
+                      function_keys_after));
+  CHECK(function_keys_before == function_keys_after);
   for (joggle::Fn fn : env.fns("script"))
     CHECK(fn.name() != "hidden" && !fn.local());
   bool nested_path = false;
@@ -5441,6 +5461,24 @@ int main(int argc, char** argv) {
                       dynamic_specialized_c));
   CHECK(dynamic_specialized_c.string() &&
         dynamic_specialized_c.string()->find("for (") != std::string::npos);
+
+  // Template cleanup keeps overload identities separate and retires the
+  // outgoing calls of a removed body before visiting the next template.
+  joggle::Mod template_cleanup;
+  CHECK(joggle::parse(env,
+      "mod template_cleanup\n"
+      "local fn unused<T: Ty>(x: T) -> T { return tail<T>(x) }\n"
+      "local fn tail<T: Ty>(x: T) -> T { return x }\n"
+      "local fn tail<T: Ty>(x: T, y: T) -> T { return y }\n"
+      "fn main(x: i32) -> i32 { return x }\n",
+      template_cleanup, "template-cleanup.jog"));
+  CHECK(joggle::run(env, "c.prepare", template_cleanup));
+  CHECK(template_cleanup.verify(env));
+  CHECK(template_cleanup.fns().size() == 1);
+  CHECK(template_cleanup.find_fn("main"));
+  const std::string prepared_cleanup = joggle::print(template_cleanup);
+  CHECK(joggle::run(env, "c.prepare", template_cleanup));
+  CHECK(joggle::print(template_cleanup) == prepared_cleanup);
 
   constexpr std::string_view generic_entry_source =
       "mod generic_entry\n"

@@ -2855,6 +2855,9 @@ bool Mod::erase(const Env& env, Fn fn) {
   if (!fn.valid() || fn.store_ != &store)
     return reject("erase requires a live function in this module");
 
+  // Resolve overloads only for symbols that can name this function. Most
+  // calls belong to unrelated families; cache that test per spelling.
+  std::unordered_map<std::string, bool> potential_callers;
   for (std::uint32_t id = 0; id < store.ops.size(); ++id) {
     if (!store.ops[id].live || store.ops[id].data.kind != Op::Kind::call)
       continue;
@@ -2863,19 +2866,27 @@ bool Mod::erase(const Env& env, Fn fn) {
         store.blks[blk].data.fn == fn.id_)
       continue;
     const Op call(&store, id, store.ops[id].generation);
+    auto [candidate, inserted] =
+        potential_callers.try_emplace(std::string(call.callee()), false);
+    if (inserted) {
+      const Ty applied{candidate->first};
+      const std::string_view symbol =
+          applied.args().empty() ? std::string_view(candidate->first)
+                                 : applied.name();
+      const std::vector<Fn> candidates = env.resolve_fns(*this, symbol);
+      candidate->second =
+          std::find(candidates.begin(), candidates.end(), fn) !=
+          candidates.end();
+    }
+    if (!candidate->second)
+      continue;
     const Fn resolved = env.resolve(*this, call);
     if (resolved == fn)
       return reject("cannot erase a function with live callers", call.loc());
     if (resolved)
       continue;
-    const Ty applied{std::string(call.callee())};
-    const std::string_view symbol =
-        applied.args().empty() ? call.callee() : applied.name();
-    const std::vector<Fn> candidates = env.resolve_fns(*this, symbol);
-    if (std::find(candidates.begin(), candidates.end(), fn) !=
-        candidates.end())
-      return reject("cannot erase a function with a deferred caller",
-                    call.loc());
+    return reject("cannot erase a function with a deferred caller",
+                  call.loc());
   }
 
   const detail::FnData& data = store.fns[fn.id_].data;
@@ -2921,6 +2932,8 @@ bool Mod::erase(const Env& env, Fn fn) {
     ++store.blks[blk].generation;
   }
   for (const std::uint32_t op : ops) {
+    for (const std::uint32_t argument : store.ops[op].data.args)
+      remove_user(store, argument, op);
     store.ops[op].live = false;
     ++store.ops[op].generation;
   }
@@ -2930,7 +2943,6 @@ bool Mod::erase(const Env& env, Fn fn) {
   }
   store.fns[fn.id_].live = false;
   ++store.fns[fn.id_].generation;
-  detail::rebuild_uses(store);
   touch(store);
   return true;
 }

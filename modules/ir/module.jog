@@ -53,6 +53,7 @@ fn bound(f: Fn, name: str) -> bool;
 fn local(f: Fn) -> bool;
 fn key(op: Op) -> int;
 fn key(v: Val) -> int;
+fn key(f: Fn) -> int;
 fn type(v: Val) -> Ty;
 fn type(m: Mod) -> bool;
 fn type(m: Mod, v: Val, type: Ty) -> bool;
