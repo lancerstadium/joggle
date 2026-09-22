@@ -1455,17 +1455,17 @@ int main(int argc, char** argv) {
     CHECK(target.verify(env));
 
     const std::string original_code = joggle::print(c_code);
-    std::size_t expose_calls = 0;
+    std::size_t legalize_calls = 0;
     bool specialized = false;
     for (joggle::Op op :
          c_code.find_fn("derived_prepare_prepare_with").ops()) {
       if (op.kind() != joggle::Op::Kind::call ||
-          op.callee() != "opt.expose")
+          op.callee() != "opt.legalize")
         continue;
-      if (++expose_calls == 2)
+      if (++legalize_calls == 2)
         specialized = c_code.replace(op, joggle::Attr(false));
     }
-    CHECK(expose_calls == 2 && specialized && c_code.verify(env));
+    CHECK(legalize_calls == 2 && specialized && c_code.verify(env));
     CHECK(joggle::print(c_code) != original_code);
     joggle::Mod optimized_target;
     CHECK(joggle::parse(env, source_model, optimized_target,

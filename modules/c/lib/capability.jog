@@ -328,14 +328,20 @@ local fn prepare_with(m: Mod, config: dict) -> bool {
   // lexical closure.  Specialize those owned helpers after their callers have
   // been materialized so no symbolic tensor type crosses into C lowering.
   changed = opt.instantiate(m, ir.fns(m), outline, config) || changed
-  // Exposure can inline a body into many call sites, so the operation count
+  // Legalization can inline a body into many call sites, so the operation count
   // after the first fixed point can be much larger than the input count. Size
   // each convergence budget from the graph consumed by that invocation.
-  changed = opt.expose(m, accept, config, len(ir.ops(m)) + 1) || changed
+  changed = opt.legalize(m, accept, config, len(ir.ops(m)) + 1) || changed
   if ir.type(m) {
     changed = true
   }
-  if opt.expose(m, accept, config, len(ir.ops(m)) + 1) {
+  // Type propagation makes structural constants visible. Canonicalize once at
+  // that boundary, then continue legalization without rescanning the complete
+  // graph after every expansion round.
+  if opt.fold(m) {
+    changed = true
+  }
+  if opt.legalize(m, accept, config, len(ir.ops(m)) + 1) {
     changed = true
   }
   // The last expansion round can expose structural constants such as

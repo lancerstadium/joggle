@@ -73,6 +73,26 @@ def stage_run(
     return run_file(command, following, timeout)
 
 
+def sequence_run(
+    tool: Path, modules: Path, current: Path, following: Path,
+    functions: list[str], timing: Path, timeout: float,
+) -> tuple[int, dict[str, int]]:
+    wall_ns = run_file(
+        [tool, "run", *functions, current, "--timing", timing, "-M", modules],
+        following, timeout,
+    )
+    profile = json.loads(timing.read_text(encoding="utf-8"))
+    steps = profile.get("steps")
+    if not isinstance(steps, list) or [step.get("function") for step in steps] != functions:
+        raise SystemExit("lowering timing report does not match the requested sequence")
+    measured = {step["function"]: int(step["total_ns"]) for step in steps}
+    internal_ns = sum(measured.values())
+    if internal_ns > wall_ns:
+        raise SystemExit("lowering timing report exceeds subprocess wall time")
+    measured["driver"] = wall_ns - internal_ns
+    return wall_ns, measured
+
+
 def rebuild(
     args: argparse.Namespace, model: Path, inputs: list[dict[str, object]], work: Path,
 ) -> tuple[dict[str, int], int, int, str]:
@@ -91,31 +111,33 @@ def rebuild(
         following, args.stage_timeout,
     )
     current = following
-    following = work / "02-convert.jog"
-    timings["infer_convert"] += stage_run(
+    following = work / "02-prepared.jog"
+    _wall_ns, measured = sequence_run(
         args.joggle, args.builtin_mods, current, following,
-        ["onnx.nn.infer", "onnx.nn.convert"], args.stage_timeout,
+        [
+            "onnx.nn.infer", "onnx.nn.convert", "c.prepare",
+        ],
+        work / "02-lowering-timing.json", args.stage_timeout,
     )
-    current = following
-    following = work / "03-c-prepare.jog"
-    timings["c_prepare"] = stage_run(
-        args.joggle, args.builtin_mods, current, following,
-        ["c.prepare"], args.stage_timeout,
+    timings["infer_convert"] += (
+        measured["driver"] + measured["onnx.nn.infer"] +
+        measured["onnx.nn.convert"]
     )
+    timings["c_prepare"] = measured["c.prepare"]
     current = following
-    following = work / "04-scalar.jog"
+    following = work / "03-scalar.jog"
     timings["scalar_lowering"] = stage_run(
         args.joggle, args.builtin_mods, current, following,
         ["tile.scalarize"], args.stage_timeout,
     )
     current = following
-    following = work / "05-storage.jog"
+    following = work / "04-storage.jog"
     timings["storage_plan"] = stage_run(
         args.joggle, args.builtin_mods, current, following,
         ["mem.plan", "c.noalias"], args.stage_timeout,
     )
     current = following
-    following = work / "06-place.jog"
+    following = work / "05-place.jog"
     timings["storage_place"] = stage_run(
         args.joggle, args.builtin_mods, current, following,
         ["c.place"], args.stage_timeout, ['"static"'],

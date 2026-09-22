@@ -106,6 +106,15 @@ establish the absolute cost represented by the normalized matched stages; they
 do not enter UpdateRatio or WorkRatio. Their output digest is SHA-256 over the
 emitted C header and source separated by one zero byte.
 
+Inference, conversion, and preparation run as one in-process sequence.
+Per-function timing splits that sequence into the reported stages; process
+startup, loading, initial verification, transaction setup, and serialization
+are charged to inference and conversion. Scalar lowering, storage planning
+(including no-alias analysis), and placement use materialized boundaries.
+Their timings include subprocess overhead and graph loading and writing.
+Production timings describe this collector's complete wall time, with the
+frontier check, summary query, and host C compilation excluded.
+
 - Model index: `manifests/reactive-models.csv`
 - CSV: `templates/figure-06-update.csv`
 - Validator: `validate_reactive.py`
