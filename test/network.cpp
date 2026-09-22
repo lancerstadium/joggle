@@ -409,6 +409,23 @@ int main(int argc, char** argv) {
   CHECK(instance_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(instance, instance_roundtrip));
 
+  // Existing names, including gaps in numeric suffixes, remain untouched.
+  std::string reserved_source(instance_source);
+  reserved_source.insert(reserved_source.find("fn generic"),
+      "local fn kernel_scale(x: i32) -> i32 { return x }\n"
+      "local fn kernel_scale_2(x: i32) -> i32 { return x }\n"
+      "local fn kernel_scale_4(x: i32) -> i32 { return x }\n");
+  joggle::Mod reserved_instance;
+  CHECK(joggle::parse(env, reserved_source, reserved_instance,
+                      "reserved-instance-network.jog"));
+  CHECK(joggle::run(env, "script.instantiate_scale", reserved_instance));
+  CHECK(reserved_instance.verify(env));
+  std::set<std::string> reserved_names;
+  for (joggle::Fn fn : reserved_instance.fns())
+    if (fn.meta("opt.instance"))
+      reserved_names.emplace(fn.name());
+  CHECK(reserved_names == std::set<std::string>({"kernel_scale_3", "kernel_scale_5"}));
+
   joggle::Mod selected_instance;
   CHECK(joggle::parse(env, instance_source, selected_instance,
                       "selected-instance-network.jog"));

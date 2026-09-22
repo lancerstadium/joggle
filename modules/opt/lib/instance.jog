@@ -94,26 +94,23 @@ local fn instance_key(
 
 local fn instance_name(m: Mod, template: Fn) -> str {
   let stem = base.ident(base.replace(ir.name(template), ".", "_"))
-  var out = stem
+  var occupied: dict = {}
   for fn in ir.fns(m) {
-    if ir.name(fn) == stem {
-      out = ""
-    }
+    occupied[ir.name(fn)] = true
   }
-  for attempt in 2..len(ir.fns(m)) + 3 {
+  if !base.has(occupied, stem) {
+    return stem
+  }
+  // Reserve the first free suffix without rescanning every function for
+  // every candidate, including candidates after a name has already been found.
+  for attempt in 2..len(occupied) + 2 {
     let candidate = stem + "_" + text(attempt)
-    var taken = false
-    for fn in ir.fns(m) {
-      if ir.name(fn) == candidate {
-        taken = true
-      }
-    }
-    if out == "" && !taken {
-      out = candidate
+    if !base.has(occupied, candidate) {
+      return candidate
     }
   }
-  assert(out != "", "opt.instantiate could not reserve an instance name")
-  return out
+  assert(false, "opt.instantiate could not reserve an instance name")
+  return stem
 }
 
 local fn instantiate_with(
@@ -176,4 +173,3 @@ local fn instantiate_with(
   changed = ir.trim(m) || changed
   return changed
 }
-
