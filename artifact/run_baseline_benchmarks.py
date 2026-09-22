@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect ONNX Runtime steady-state rows for Figure 7."""
+"""Collect external CPU baselines with a shared ONNX correctness oracle."""
 
 from __future__ import annotations
 
@@ -32,6 +32,7 @@ THREAD_ENV = {
     "MKL_NUM_THREADS": "1",
     "VECLIB_MAXIMUM_THREADS": "1",
     "NUMEXPR_NUM_THREADS": "1",
+    "TVM_NUM_THREADS": "1",
 }
 
 # Correctness follows the submitted graph, independently of the optimized
@@ -146,20 +147,35 @@ def worker(args: argparse.Namespace) -> int:
 
     measurement, _, feeds = load_case(args.spec, args.inputs, args.case_id)
     model = args.model.read_bytes()
-    session = ort_session(model, measurement)
-
-    names = [item.name for item in session.get_outputs()]
+    stages_ns = {}
+    if args.backend == "tvm":
+        from benchmark_backends import TVMRunner
+        runner = TVMRunner(model, feeds, json.loads(args.target_json), measurement["threads"])
+        names = runner.names
+        invoke = runner.invoke
+        get_outputs = runner.outputs
+        stages_ns = runner.stages_ns
+    else:
+        session = ort_session(model, measurement)
+        names = [item.name for item in session.get_outputs()]
+        outputs = []
+        def invoke():
+            nonlocal outputs
+            outputs = session.run(names, feeds)
+        def get_outputs():
+            return outputs
     for _ in range(args.warmups):
-        session.run(names, feeds)
+        invoke()
     if args.worker == "execute":
         latencies = []
         outputs = []
         for _ in range(args.iterations):
             started = time.perf_counter_ns()
             for _ in range(args.batch):
-                outputs = session.run(names, feeds)
+                invoke()
             elapsed = time.perf_counter_ns() - started
             latencies.append(max(1, elapsed // args.batch))
+        outputs = get_outputs()
         spec = json.loads(args.spec.read_text())
         case = next(case for case in spec["operator_cases"] + spec["model_cases"]
                     if case["id"] == args.case_id)
@@ -169,6 +185,7 @@ def worker(args: argparse.Namespace) -> int:
         print(json.dumps({
             "latencies_ns": latencies,
             "output_digest": output_digest(names, outputs),
+            "preparation_ns": stages_ns,
             **comparison,
         }))
         return 0
@@ -187,13 +204,14 @@ def command(
         "--case-id", case_id, "--model", str(model),
         "--iterations", str(iterations), "--warmups", str(warmups),
         "--batch", str(batch),
+        "--backend", args.backend, "--target-json", args.target_json,
     ]
 
 
-def run_json(argv: list[str]) -> dict[str, Any]:
+def run_json(argv: list[str], timeout: float = 1200) -> dict[str, Any]:
     environment = {**os.environ, **THREAD_ENV}
     result = subprocess.run(
-        argv, check=True, capture_output=True, text=True, env=environment
+        argv, check=True, capture_output=True, text=True, env=environment, timeout=timeout
     )
     return json.loads(result.stdout.strip().splitlines()[-1])
 
@@ -237,6 +255,9 @@ def row(header: list[str], common: dict[str, Any], **values: Any) -> dict[str, A
 
 def main(args: argparse.Namespace) -> int:
     repo = Path(__file__).resolve().parent.parent
+    source_paths = [Path(__file__).resolve(),
+                    Path(__file__).resolve().with_name("benchmark_backends.py")]
+    collector_sources = {path.name: sha256(path.read_bytes()) for path in source_paths}
     revision, dirty = git_state(repo)
     if dirty and not args.allow_dirty:
         raise SystemExit("refusing to benchmark a dirty tree; commit or pass --allow-dirty")
@@ -265,7 +286,14 @@ def main(args: argparse.Namespace) -> int:
         raise SystemExit("onnxruntime is required") from error
     if ort.get_available_providers().count(measurement["reference_provider"]) != 1:
         raise SystemExit(f"missing provider {measurement['reference_provider']}")
-    system_revision = f"onnxruntime-{ort.__version__}"
+    backend = {"system": "ONNX Runtime CPU EP", "variant": "onnxruntime",
+               "system_revision": f"onnxruntime-{ort.__version__}"}
+    if args.backend == "tvm":
+        from benchmark_backends import tvm_identity
+        backend = tvm_identity(json.loads(args.target_json))
+        if backend["source_dirty"] and not args.allow_dirty:
+            raise SystemExit("refusing a modified external compiler; use a clean baseline checkout")
+    system_revision = backend["system_revision"]
     template_name = ("benchmark-operators.csv" if args.group == "operators"
                      else "benchmark-models.csv")
     with (repo / "artifact" / "templates" / template_name).open(newline="") as stream:
@@ -289,6 +317,8 @@ def main(args: argparse.Namespace) -> int:
 
     rows = []
     correctness_failures = []
+    execution_failures = []
+    preparation = {}
     model_files = []
     for case in cases:
         case_id = case["id"]
@@ -304,9 +334,9 @@ def main(args: argparse.Namespace) -> int:
         model_files.append({"id": case_id, "sha256": model_hash})
         common = {
             "case_spec_sha256": spec_hash,
-            "system": "ONNX Runtime CPU EP",
+            "system": backend["system"],
             "system_revision": system_revision,
-            "variant": "onnxruntime",
+            "variant": backend["variant"],
             "supported": "true",
             "reason": "",
             "input_digest": input_records[case_id]["input_digest"],
@@ -315,11 +345,23 @@ def main(args: argparse.Namespace) -> int:
             common.update(case_id=case_id, family=case["family"])
         else:
             common.update(model=case_id, model_hash=case["sha256"])
-        payload = run_json(command(
-            args, "execute", case_id, model,
-            iterations=execute_count, warmups=warmups,
-            batch=measurement["execution_batches"][case_id],
-        ))
+        try:
+            payload = run_json(command(
+                args, "execute", case_id, model,
+                iterations=execute_count, warmups=warmups,
+                batch=measurement["execution_batches"][case_id],
+            ), args.case_timeout)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            reason = "timeout" if isinstance(error, subprocess.TimeoutExpired) else "backend-error"
+            detail = error.stderr or ""
+            if isinstance(detail, bytes):
+                detail = detail.decode(errors="replace")
+            execution_failures.append({"id": case_id, "reason": reason, "stderr": detail})
+            rows.append(row(header, common, supported="false",
+                            reason="unsupported:" + reason, seed=args.seed))
+            print(f"{case_id}: {reason}", flush=True)
+            continue
+        preparation[case_id] = payload.get("preparation_ns", {})
         if not payload["correct"]:
             correctness_failures.append({
                 "id": case_id, "reason": payload["reason"],
@@ -344,10 +386,13 @@ def main(args: argparse.Namespace) -> int:
         writer = csv.DictWriter(stream, fieldnames=header)
         writer.writeheader()
         writer.writerows(rows)
+    sources_unchanged = all(sha256(path.read_bytes()) == collector_sources[path.name]
+                            for path in source_paths)
     record = {
         "schema_version": 1,
         "created_utc": datetime.now(timezone.utc).isoformat(),
-        "release_eligible": not args.smoke and not dirty,
+        "release_eligible": (not args.smoke and not dirty
+                             and not backend.get("source_dirty") and sources_unchanged),
         "group": args.group,
         "cases": [case["id"] for case in cases],
         "model_files": model_files,
@@ -356,12 +401,18 @@ def main(args: argparse.Namespace) -> int:
         "input_index_sha256": sha256((args.inputs / "index.json").read_bytes()),
         "git_revision": revision,
         "git_dirty": dirty,
+        "collector_sources": collector_sources,
+        "collector_sources_unchanged": sources_unchanged,
         "system_revision": system_revision,
-        "provider": measurement["reference_provider"],
-        "graph_optimization": measurement["reference_graph_optimization"],
+        "backend": backend,
+        "provider": measurement["reference_provider"] if args.backend == "onnxruntime" else "llvm-cpu",
+        "graph_optimization": measurement["reference_graph_optimization"] if args.backend == "onnxruntime" else "default",
         "correctness_oracle": correctness_oracle_record(),
         "correctness_failures": correctness_failures,
-        "execution_mode": measurement["reference_execution_mode"],
+        "execution_failures": execution_failures,
+        "preparation_ns": preparation,
+        "execution_mode": (measurement["reference_execution_mode"]
+                           if args.backend == "onnxruntime" else "stateful-vm"),
         "threads": measurement["threads"],
         "execution_iterations": execute_count,
         "warmups": warmups,
@@ -382,7 +433,7 @@ def main(args: argparse.Namespace) -> int:
         "command": sys.argv,
     }
     record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
-    print(f"wrote {len(rows)} ONNX Runtime rows to {args.output}")
+    print(f"wrote {len(rows)} {backend['system']} rows to {args.output}")
     print(f"wrote run record to {record_path}")
     return 0
 
@@ -391,6 +442,9 @@ def parse_args() -> argparse.Namespace:
     root = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser()
     parser.add_argument("--worker", choices=("execute",))
+    parser.add_argument("--backend", choices=("onnxruntime", "tvm"), default="onnxruntime")
+    parser.add_argument("--target-json", default='{"kind":"llvm","num-cores":1}')
+    parser.add_argument("--case-timeout", type=float, default=1200)
     parser.add_argument("--spec", type=Path,
                         default=root / "manifests" / "benchmark-cases.json")
     parser.add_argument("--inputs", type=Path, required=True)
@@ -408,6 +462,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
     args = parser.parse_args()
+    try:
+        target = json.loads(args.target_json)
+    except json.JSONDecodeError:
+        parser.error("--target-json must be a JSON object")
+    if not isinstance(target, dict) or target.get("kind") != "llvm":
+        parser.error("--target-json must describe an LLVM CPU target")
+    if args.case_timeout <= 0:
+        parser.error("--case-timeout must be positive")
     if args.worker:
         if not args.model or not args.case_id or len(args.case_id) != 1:
             parser.error("worker mode requires one --case-id and --model")

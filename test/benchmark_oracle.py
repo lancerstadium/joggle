@@ -1,6 +1,7 @@
 """Numerical-oracle regressions; run with NumPy, ONNX, and ONNX Runtime."""
 
 import json
+import importlib.util
 import shutil
 import subprocess
 import sys
@@ -13,8 +14,9 @@ import onnx
 from onnx import helper, numpy_helper
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "artifact"))
-from run_onnxruntime_benchmarks import compare_outputs, ort_session
+from run_baseline_benchmarks import compare_outputs, ort_session
 from run_joggle_benchmarks import checkpoint_protocol, make_harness, Unsupported
+from benchmark_backends import TVMRunner, tvm_identity
 
 
 class BenchmarkOracleTests(unittest.TestCase):
@@ -130,6 +132,42 @@ class BenchmarkOracleTests(unittest.TestCase):
         checked = compare_outputs(actual, result, 0, 0)
         self.assertEqual(checked["correct"], np.array_equal(actual[0], result[0]))
         self.assertEqual(measurement["reference_graph_optimization"], "ORT_ENABLE_ALL")
+
+
+@unittest.skipUnless(importlib.util.find_spec("tvm"), "TVM is not installed")
+class TVMIntegrationTests(unittest.TestCase):
+    def test_identity_is_serializable_and_rejects_non_cpu_targets(self):
+        identity = tvm_identity({"kind": "llvm", "num-cores": 1})
+        json.dumps(identity)
+        self.assertEqual(identity["variant"], "tvm-relax-llvm")
+        self.assertTrue(identity["libraries"])
+        with self.assertRaises(ValueError):
+            tvm_identity({"kind": "cuda"})
+
+    def test_named_dynamic_inputs_and_multiple_outputs(self):
+        shape = ["N", 3]
+        graph = helper.make_graph([
+            helper.make_node("Add", ["x.0", "offset"], ["sum"]),
+            helper.make_node("Relu", ["sum"], ["positive"]),
+        ], "multi-output", [
+            helper.make_tensor_value_info("x.0", onnx.TensorProto.FLOAT, shape),
+            helper.make_tensor_value_info("offset", onnx.TensorProto.FLOAT, [3]),
+        ], [
+            helper.make_tensor_value_info("positive", onnx.TensorProto.FLOAT, shape),
+            helper.make_tensor_value_info("sum", onnx.TensorProto.FLOAT, shape),
+        ])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 12)])
+        model.ir_version = 10
+        feeds = {"offset": np.array([1, -1, 2], np.float32),
+                 "x.0": np.arange(-3, 3, dtype=np.float32).reshape(2, 3)}
+        runner = TVMRunner(model.SerializeToString(), feeds, {"kind": "llvm", "num-cores": 1}, 1)
+        expected = feeds["x.0"] + feeds["offset"]
+        for _ in range(2):
+            runner.invoke()
+            actual = runner.outputs()
+            self.assertTrue(compare_outputs(actual, [np.maximum(expected, 0), expected], 0, 0)["correct"])
+        self.assertEqual(runner.names, ["positive", "sum"])
+        self.assertEqual(set(runner.stages_ns), {"import", "compile", "bind"})
 
 
 if __name__ == "__main__":

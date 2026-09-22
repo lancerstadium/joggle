@@ -179,14 +179,41 @@ python3 artifact/run_joggle_benchmarks.py \
   --joggle build/joggle --builtin-mods build/modules \
   --output .cache/artifact/operators-joggle-opt.csv
 
-python3 artifact/run_onnxruntime_benchmarks.py \
+python3 artifact/run_baseline_benchmarks.py --backend onnxruntime \
   --group operators \
   --inputs .cache/artifact/benchmark-inputs \
   --operator-models .cache/artifact/operator-models \
   --output .cache/artifact/operators-ort.csv
 ```
 
-Repeat the Joggle command for `joggle-unoptimized`; repeat all three variants
+The same external-baseline collector also imports ONNX through TVM Relax and
+compiles it with the default LLVM CPU pipeline:
+
+```sh
+python3 artifact/run_baseline_benchmarks.py --backend tvm \
+  --group operators \
+  --inputs .cache/artifact/benchmark-inputs \
+  --operator-models .cache/artifact/operator-models \
+  --target-json '{"kind":"llvm","num-cores":1}' \
+  --output .cache/artifact/operators-tvm.csv
+```
+
+Install TVM and ONNX Runtime in this collector's environment. For a source
+build, set `PYTHONPATH` to its `python/` directory and `TVM_LIBRARY_PATH` to the
+directory containing its shared libraries. The run record captures the TVM
+source revision and dirty state, loaded library hashes, FFI version, resolved
+target, and default untuned pipeline. Inputs are bound before measurement;
+output copies and the common semantic oracle run after measurement. Import,
+compilation, and input binding are recorded separately as preparation
+diagnostics, not as responsive-update measurements. CPU execution is
+synchronous, and TVM's thread pool is fixed to the manifest's thread count.
+
+Use `--smoke` to validate integration before formal timing. Smoke records are
+not release eligible. Run backends sequentially on an otherwise idle host.
+TVM rows currently use the raw benchmark schema; the existing three-variant
+figure assembler does not yet accept them.
+
+Repeat the Joggle command for `joggle-unoptimized`; repeat the variants
 with `--group models --model-root .cache/onnx-zoo`. Then assemble the one figure
 file:
 
@@ -206,7 +233,9 @@ python3 artifact/validate_figure.py 7 \
   .cache/artifact/figure-07-performance.csv
 ```
 
-Collectors checkpoint complete cases and record unsupported cases explicitly.
+The Joggle collector checkpoints complete cases. External baselines publish
+their CSV and run record when the selected cases finish. Both retain failed
+cases explicitly, with diagnostics in the run record or failure log.
 Only steady-state execution is repeated. A smoke run uses three iterations;
 the release population uses the 100 iterations frozen in the manifest.
 
@@ -231,8 +260,8 @@ python3 artifact/figures/figure_07_performance.py \
 snapshots, including operator-only data. Their merge record has
 `complete: false`; the complete release still requires the full model matrix.
 The main-text operator figure and summary, and the detailed table in Appendix A,
-use revision `83aa8d4fc72d` and the
-`figure-07-operators-83aa8d4.csv` snapshot. Its 7,200 rows cover all 24 operators,
+use revision `5a71fe55a3be` and the
+`figure-07-operators-5a71fe5.csv` snapshot. Its 7,200 rows cover all 24 operators,
 both Joggle paths, and ONNX Runtime; it contains no model measurements.
 
 The authoring exports in `paper/data/` contain separate operator and model

@@ -22,7 +22,7 @@ import numpy as np
 
 from joggle_entry import signature_command
 
-from run_onnxruntime_benchmarks import (
+from run_baseline_benchmarks import (
     NUMPY_DTYPES,
     THREAD_ENV,
     compare_outputs,
@@ -282,7 +282,7 @@ int main(int argc, char **argv) {{
 def oracle(
     model: Path, measurement: dict[str, Any], feeds: dict[str, np.ndarray]
 ) -> list[tuple[str, np.ndarray]]:
-    from run_onnxruntime_benchmarks import ort_session
+    from run_baseline_benchmarks import ort_session
 
     session = ort_session(model.read_bytes(), measurement, semantic=True)
     names = [item.name for item in session.get_outputs()]

@@ -25,6 +25,46 @@ unsupported cases as coverage observations; exclude them from latency ratios.
 Every timed output must pass its semantic or numerical oracle. Form ratios
 within a subject before aggregating across subjects.
 
+## External comparator expansion
+
+The matrix above describes the existing collector and validator contracts.
+The expanded comparison separates full compiler-extension tasks from
+operator-scheduling subsets. The following systems are assigned by task,
+not pooled into a single ranking:
+
+| Claim | Full-task comparators | Focused subsets |
+| --- | --- | --- |
+| Convenient | MLIR, xDSL, TVM | Exo 2 and Halide scheduling; Triton on matched GPU hardware |
+| Controllable | MLIR, xDSL, TVM | Cross-stage ONNX-MLIR or IREE extension patches |
+| Efficient | TVM, ONNX-MLIR, IREE | TorchInductor with original PyTorch models; Exo/Halide operator edits |
+| End-to-end | ONNX Runtime, TVM, ONNX-MLIR, IREE | TorchInductor with original models; Exo/Halide operator subset |
+
+TVM execution is implemented in the shared external-baseline collector. Other
+new adapters remain to be implemented and validated. Existing release gates
+cover the original population; they do not certify the expanded comparison.
+New formal populations must be frozen before measurement, including the
+task-system applicability matrix. Existing input and model specifications
+remain unchanged so their bytes and hashes stay paired across systems.
+
+For extension completion, compare full tasks separately from the scheduling
+subset. Report executable success at fixed budgets and time/token completion
+curves. Do not rank languages by raw token perplexity. For change footprint,
+validate each functional patch before counting files, interfaces, ownership
+zones, and registration sites; implementation-line counts are secondary.
+
+The main update experiment must compile and execute complete edited models.
+Distinguish model-graph edits, optimization-policy edits, and compiler-source
+edits. Never compare a graph edit in one system against a toolchain rebuild in
+another. Keep native caching and pass reuse enabled, and measure the same
+edit-to-executable boundary. Report absolute update time, its paired full-build
+ratio, and stage costs. Metadata propagation and one-shot TVM preparation
+diagnostics do not establish responsive compilation performance.
+
+Keep internal ablations subordinate to external comparisons. Main figures
+show the important measurements and coverage; appendices contain per-case
+detail. Repeated runs quantify measurement variation, while different tasks,
+models, edit sites, and systems provide workload coverage.
+
 ## Figure 4 · agent extension completion
 
 The suite has four tasks in each of six extension families: definition,
@@ -75,9 +115,9 @@ markers alone do not satisfy the contract.
 For early, middle, and late edit sites, the experiment applies matched metadata
 and value-type edits to an affected or unrelated location. `full` reruns all
 five stages. For Joggle, `update` uses revision and dependency selection. For
-MLIR and xDSL, `update` is the native complete pass path after the edit because
-their public execution models do not retain per-call observations across this
-pipeline. Every numerator is paired with an independent complete rerun from
+MLIR and xDSL, the adapter must document native invalidation and reuse behavior
+rather than assume that every edit requires a complete pass rerun. Every
+numerator is paired with an independent complete rerun from
 the same edited input. The Cartesian matrix is 15 models x 3 systems x 3 sites
 x 2 edit classes x 2 scopes x 2 policies x 100 iterations = 108,000 rows. The
 release validator rejects a missing or additional cell. The primary
@@ -167,7 +207,7 @@ release path.
 - Cases and measurement controls: `manifests/benchmark-cases.json`
 - Collector schemas: `templates/benchmark-operators.csv`, `benchmark-models.csv`
 - Figure CSV: `templates/figure-07-performance.csv`
-- Collectors: `run_joggle_benchmarks.py`, `run_onnxruntime_benchmarks.py`
+- Collectors: `run_joggle_benchmarks.py`, `run_baseline_benchmarks.py`
 - Assembler: `merge_benchmark_rows.py`
 - Plot: `figures/figure_07_performance.py`
 
