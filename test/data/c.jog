@@ -47,6 +47,15 @@ fn power(x: f64, y: f64) -> f64 {
   return math.pow(x, y)
 }
 
+fn tensor_power(
+  x: tensor<f32, [2, 3]>, y: tensor<f32, [1]>
+) -> tensor<f32, [2, 3]> {
+  let a: tensor<f32, [2, 3]> = nn.pow(x, y)
+  let b: tensor<f32, [2, 3]> = nn.pow(a, y)
+  let c: tensor<f32, [2, 3]> = nn.pow(b, y)
+  return nn.pow(c, y)
+}
+
 fn nearest(x: f64) -> f64 {
   return math.round_even(x)
 }
@@ -204,6 +213,10 @@ fn broadcast_scalar(
   x: tensor<f32, []>
 ) -> tensor<f32, [2, 3]> {
   return tensor.broadcast(x)
+}
+
+fn cast_scalar(x: tensor<i32, []>) -> tensor<f32, []> {
+  return tensor.cast(x)
 }
 
 fn broadcast_identity(

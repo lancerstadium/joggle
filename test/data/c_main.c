@@ -5,6 +5,21 @@
 #include <stdint.h>
 
 int main(void) {
+  const int32_t scalar_integer[1] = {-17};
+  float scalar_cast[1] = {0.0f};
+  kernel_cast_scalar(scalar_integer, scalar_cast);
+  if (scalar_cast[0] != -17.0f)
+    return 90;
+
+  const float power_input[6] = {-3, -2, -1, 0, 1, 2};
+  const float exponent[1] = {2};
+  const float power_expected[6] = {43046721, 65536, 1, 0, 1, 65536};
+  float power_output[6] = {0};
+  kernel_tensor_power(power_input, exponent, power_output);
+  for (size_t i = 0; i < 6; ++i)
+    if (power_output[i] != power_expected[i])
+      return 91;
+
   float weights[2] = {0.0f, 0.0f};
   kernel_weights(weights);
   if (weights[0] != 1.0f || weights[1] != 2.0f)

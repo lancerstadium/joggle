@@ -12,3 +12,9 @@ fn linear(
 ) -> tensor<f32, [1, 1, 3, 3]> {
   return nn.resize2d(x, sizes, [0, 1, 2, 3], "linear")
 }
+
+fn nearest_scales(
+  x: tensor<f32, [1, 1, 2, 2]>, scales: tensor<f32, [4]>
+) -> tensor<f32, [1, 1, 4, 4]> {
+  return nn.resize2d(x, scales, [0, 1, 2, 3])
+}

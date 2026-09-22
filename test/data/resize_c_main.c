@@ -2,6 +2,7 @@
 
 void resize_c_nearest(const float* x, const int64_t* sizes, float* result);
 void resize_c_linear(const float* x, const int64_t* sizes, float* result);
+void resize_c_nearest_scales(const float* x, const float* scales, float* result);
 
 static int close(float left, float right) {
   float error = left - right;
@@ -23,6 +24,13 @@ int main(void) {
   for (int i = 0; i < 16; ++i)
     if (!close(nearest[i], nearest_expected[i]))
       return 1;
+
+  const float scales[4] = {1.0f, 1.0f, 2.0f, 2.0f};
+  float scaled[16] = {0.0f};
+  resize_c_nearest_scales(input, scales, scaled);
+  for (int i = 0; i < 16; ++i)
+    if (!close(scaled[i], nearest_expected[i]))
+      return 3;
 
   const int64_t linear_sizes[4] = {1, 1, 3, 3};
   const float linear_expected[9] = {

@@ -245,6 +245,13 @@ local fn outline_constant(value: Val) -> bool {
 fn outlineable(
   m: Mod, op: Op, impl: Fn, config: dict
 ) -> bool {
+  // Outlining shares the resolved implementation; it does not select a new
+  // algorithm. A frequency-filtered overload set can omit a more specific
+  // body, so matching against that subset alone can select a broadcasting
+  // wrapper again inside its own instance.
+  if ir.resolve(m, op) != impl {
+    return false
+  }
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
     return false

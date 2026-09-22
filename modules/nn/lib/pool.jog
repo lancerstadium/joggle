@@ -192,12 +192,22 @@ fn resize2d<
   let c_size = tensor.extent(Y, axes, 1)
   let h_size = tensor.extent(Y, axes, 2)
   let w_size = tensor.extent(Y, axes, 3)
+  var source_shape = tensor<index, [4]>(index(0))
+  [stage: "shape"]
+  for axis in 0..4 {
+    source_shape[index(axis)] = tensor.dim(x, index(axis))
+  }
   var out = tensor<E, Y>(E(0))
   for n in 0..n_size, c in 0..c_size,
       h in 0..h_size, w in 0..w_size {
-    let source_h = int(f32(h) / scales[2])
-    let source_w = int(f32(w) / scales[3])
-    let source = tensor.offset(X, axes, [n, c, source_h, source_w])
+    let source_h = index(f32(h) / scales[index(2)])
+    let source_w = index(f32(w) / scales[index(3)])
+    var coords = tensor<index, [4]>(index(0))
+    coords[index(axes[0])] = index(n)
+    coords[index(axes[1])] = index(c)
+    coords[index(axes[2])] = source_h
+    coords[index(axes[3])] = source_w
+    let source = tensor.offset(source_shape, coords)
     let target = tensor.offset(Y, axes, [n, c, h, w])
     out[target] = x[source]
   }
@@ -270,4 +280,3 @@ fn resize2d<
   }
   return out
 }
-
