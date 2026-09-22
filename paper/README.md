@@ -17,7 +17,7 @@ stages whose recorded inputs may have changed. We evaluate this design with
 held-out extension tasks, matched cross-system feature patches, controlled
 edits over a pinned model corpus, and operator- and model-level artifact
 measurements. The experiments connect one programmable surface to executable
-completion, mod ownership to patch footprint, and affected graph scope to
+completion, mod ownership to patch footprint, and dependency-selected work to
 update cost.
 
 ## 1. Introduction
@@ -106,8 +106,9 @@ This design yields three contributions:
    publication, dependency, and change boundaries across compilation stages.
    This boundary is orthogonal to hierarchical program IR.
 3. **Dependency-directed updates.** Revisions, dependency indices, and cached
-   execution plans restrict re-execution to affected graph regions and stages
-   under transactional publication.
+   execution plans restrict re-execution to compiler calls and stages whose
+   recorded observations overlap published edits, under transactional
+   publication.
 
 The evaluation assigns one evidence stream to each contribution. Held-out
 extensions measure predictability and executable task success. Matched feature
@@ -588,10 +589,10 @@ Only outputs that pass the relevant correctness oracle enter an aggregate.
 
 | Property | Comparison | Primary evidence |
 | --- | --- | --- |
-| Convenient | Joggle, MLIR, and xDSL on 24 matched extensions | agent success within budget |
-| Controllable | The same systems on 12 matched patches | files, lines, zones, declarations |
-| Efficient | The same systems on 15 model-derived DAGs | normalized update latency and revisited work |
-| End-to-end | Joggle base/optimized and ONNX Runtime on 24 operators and 15 models | correctness coverage and steady-state latency |
+| Convenient | 3 systems; 24 tasks | completion, tokens |
+| Controllable | 3 systems; 12 patches | files, lines, zones |
+| Efficient | 3 systems; 15 models | latency, visited work |
+| End-to-end | 2 Joggle paths + ORT | correctness, latency |
 
 *Table 1: Evaluation matrix. Every comparison fixes revisions, inputs, and its
 correctness oracle before measurement.*
@@ -638,9 +639,9 @@ must parse, type-check, build, and pass the semantic oracle without manual
 repair. We macro-average success over tasks and resample tasks within each
 family. For successful trajectories, secondary measures are completion tokens,
 tool calls, edit attempts, and wall time. Failed trajectories retain their
-first terminal phase---parse, type, build, semantic oracle, or budget. A
-reference-solution log-perplexity sweep appears only as a supplementary
-interface-predictability diagnostic.
+first terminal phase---parse, type, build, semantic oracle, or budget. As a
+supplementary interface-predictability diagnostic, we also report the
+perplexity of each passing reference solution.
 
 <!-- FIGURE 4 PLAN — Full-width, three compact panels fed by one CSV and one
 plotting script. (a) task-macro agent success at two demonstrations, grouped by
@@ -692,22 +693,22 @@ cross_zone_edges,oracle_passed. -->
 
 ### 4.4 Reactive Update Cost
 
-The update experiment compares the three systems, not only Joggle policies.
-Each pinned ONNX subject is decoded once into a system-neutral typed topology
-that preserves operation kinds, values, types, and def--use edges. The three
-adapters materialize this topology in their native graph representation and
-run the same five logical stages: analysis, canonicalization, target
-selection, memory planning, and artifact-manifest construction. Canonical
-digests after every stage establish equivalent results.
+The update experiment measures the interval from a committed edit to a verified
+artifact. Each pinned ONNX subject is decoded once into a typed graph that
+preserves operation kinds, values, types, and def--use edges. A matched adapter
+for Joggle, MLIR, and xDSL then performs analysis, canonicalization, target
+selection, storage planning, and deterministic artifact construction. These
+are executable stages rather than graph annotations: every stage consumes its
+predecessor's result, and the final artifact is checked against a canonical
+digest and structural verifier.
 
-A case changes operation metadata or a result type at a preselected early,
-middle, or late site. The edit targets either the downstream affected cone or
-an unrelated entity in the same function. The complete Cartesian matrix has
-108,000 timing rows: 15 models, three systems, three sites, two edit classes,
-two scopes, two paths, and 100 iterations. Every system first performs a full
-rerun. Joggle then performs a reactive update; MLIR and xDSL use their standard
-public pass pipelines after the edit. The primary endpoint normalizes each
-update to its own system's full rerun,
+A case changes an operation attribute or result type at a preselected early,
+middle, or late site. For each edit, the harness also selects a control entity
+outside the affected cone. Every system first executes the complete five-stage
+path. Joggle then applies the edit through its revision and dependency index;
+MLIR and xDSL execute their native public pass paths from the same typed input
+state. The primary endpoint normalizes an update to that system's complete
+rerun,
 
 $$
 UpdateRatio_s = \frac{T_{update,s}}{T_{full,s}},
@@ -716,20 +717,27 @@ WorkRatio_s = \frac{V_{update,s}}{V_{full,s}},
 $$
 
 where $V$ counts graph entities visited by the five stages. This pairing keeps
-language and runtime differences out of the headline comparison. Absolute
-edit-to-result latency remains visible as a secondary measure. All paths begin
-from the same logical graph state, apply the same edit, and must produce the
-same final digest.
+implementation-language cost out of the headline comparison. Absolute
+edit-to-artifact latency remains visible.
 
-<!-- FIGURE 6 PLAN — Full-width external comparison fed by one CSV and one
-plotting script. (a) Fifteen model rows show per-system UpdateRatio for Joggle,
-MLIR, and xDSL; every system's Full reference is 1. (b) The aligned WorkRatio
-panel reports visited/total graph entities for the same cases. (c) Absolute
-edit-to-result latency remains a compact log-scale panel. CSV:
-figure-06-update.csv. Raw columns: system,system_revision,subject,
-subject_hash,total_ops,affected_ops,edit_class,edit_scope,edit_site,policy,
-iteration,wall_ns,visited_ops,executed_stages,total_stages,output_digest,
-correct,seed. -->
+A second panel follows the same edits through Joggle's production lowering
+path. It retains the source mod, invalidates derived lowering results whose
+recorded inputs overlap the edit, rebuilds those results, plans storage, and
+emits C. This panel reports absolute latency, rebuilt functions, visited graph
+entities, emitted bytes, and artifact correctness. It prevents savings in a
+lightweight common adapter from standing in for savings in the compiler's real
+artifact path. Both panels start from the same logical state and accept a row
+only when the updated result matches its full-rerun oracle.
+
+<!-- FIGURE 6 PLAN — Full-width, dense three-panel result. (a) Fifteen model
+rows show per-system UpdateRatio on the matched executable stages; every
+system's complete rerun is 1. (b) Aligned WorkRatio rows show visited/total
+entities. (c) Joggle's production path shows absolute edit-to-C latency and
+rebuilt-function count for the same edits. CSV: figure-06-update.csv. Raw
+columns: path,system,system_revision,subject,subject_hash,total_ops,
+affected_ops,edit_class,edit_scope,edit_site,policy,iteration,wall_ns,
+visited_ops,rebuilt_functions,executed_stages,total_stages,artifact_bytes,
+output_digest,correct,seed. -->
 
 ### 4.5 End-to-End Performance
 
@@ -745,13 +753,6 @@ The main measure is steady-state execution latency after ten warm-ups and 100
 measurements. Unsupported pairs remain as coverage outcomes instead of
 disappearing from the accepted set. Operator and model results share one figure
 and one CSV, with up to 11,700 timed rows.
-
-Across subjects supported by both Joggle paths, the frozen optimization pack
-improves geometric-mean latency by $2.09\times$ for operators and $3.06\times$
-for models. The optimized path supports 21 of 24 operators and 8 of 15 models.
-Over those supported sets, its artifacts take $5.14\times$ and $12.58\times$
-the latency of ONNX Runtime, respectively. The current end-to-end limits are
-generated CPU code quality and incomplete lowering coverage.
 
 <!-- FIGURE 7 PLAN — One full-width performance figure fed by one CSV and one
 plotting script. Left: 24 operators grouped by six families, showing Joggle
@@ -921,26 +922,3 @@ boundary in which it evolves, and selective work after it changes. The
 evaluation tests these properties through executable extension completion,
 paired patch footprint, and reactive update cost while measuring generated
 artifacts independently.
-
-## Appendix A. Supplementary Results
-
-| Operator family | Supported | Joggle base / ORT | Joggle opt / ORT |
-| --- | ---: | ---: | ---: |
-| Elementwise | 4/4 | 0.84 | 0.71 |
-| Reduction | 3/4 | 8.49 | 8.49 |
-| Matmul | 3/4 | 116.65 | 7.61 |
-| Convolution | 4/4 | 26.20 | 19.71 |
-| Quantization | 3/4 | 4.73 | 2.35 |
-| Fusion | 4/4 | 20.66 | 8.90 |
-
-*Table A1: Operator latency relative to ONNX Runtime. Values are geometric
-means over supported operators; lower is better.*
-
-| Model outcome | Base | Optimized |
-| --- | ---: | ---: |
-| Correct execution | 8 | 8 |
-| Unsupported in `c.prepare` | 4 | 4 |
-| Numerical oracle failure | 2 | 2 |
-| `c.prepare` timeout | 1 | 1 |
-
-*Table A2: Model coverage outcomes for each Joggle path.*

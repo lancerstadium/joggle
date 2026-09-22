@@ -13,17 +13,17 @@ relevant correctness oracle enter an aggregate.
   \caption{Evaluation matrix. Every comparison fixes revisions, inputs, and
   its correctness oracle before measurement.}
   \label{tab:evaluation}
-  \small
-  \setlength{\tabcolsep}{3pt}
+  \footnotesize
+  \setlength{\tabcolsep}{4pt}
   \renewcommand{\arraystretch}{1.08}
-  \begin{tabular}{@{}p{0.19\columnwidth}p{0.37\columnwidth}p{0.36\columnwidth}@{}}
+  \begin{tabular}{@{}lll@{}}
     \toprule
     Property & Comparison & Primary evidence \\
     \midrule
-    Convenient & Joggle/MLIR/xDSL; 24 extensions & agent success within budget \\
-    Controllable & same systems; 12 matched patches & files, lines, zones, declarations \\
-    Efficient & same systems; 15 model DAGs & normalized latency and revisited work \\
-    End-to-end & Joggle base/optimized; ONNX Runtime & correctness and latency \\
+    Convenient & 3 systems; 24 tasks & completion, tokens \\
+    Controllable & 3 systems; 12 patches & files, lines, zones \\
+    Efficient & 3 systems; 15 models & latency, visited work \\
+    End-to-end & 2 paths + ORT & correctness, latency \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -72,8 +72,8 @@ repair. We macro-average success over tasks and resample tasks within each
 family. For successful trajectories, secondary measures are completion tokens,
 tool calls, edit attempts, and wall time. Failed trajectories retain their
 first terminal phase---parse, type, build, semantic oracle, or budget. A
-reference-solution log-perplexity sweep appears only as a supplementary
-interface-predictability diagnostic.
+As a supplementary interface-predictability diagnostic, we also report the
+perplexity of each passing reference solution.
 
 \subsection{Change Footprint and Ownership}
 \label{sec:eval-controllable}
@@ -104,22 +104,22 @@ separate.
 \subsection{Reactive Update Cost}
 \label{sec:eval-efficient}
 
-The update experiment compares the three systems, not only Joggle policies.
-Each pinned ONNX subject is decoded once into a system-neutral typed topology
-that preserves operation kinds, values, types, and def--use edges. The three
-adapters materialize this topology in their native graph representation and run
-the same five logical stages: analysis, canonicalization, target selection,
-memory planning, and artifact-manifest construction. Canonical digests after
-every stage establish equivalent results.
+The update experiment measures the interval from a committed edit to a verified
+artifact. Each pinned ONNX subject is decoded once into a typed graph that
+preserves operation kinds, values, types, and def--use edges. A matched adapter
+for Joggle, MLIR, and xDSL then performs analysis, canonicalization, target
+selection, storage planning, and deterministic artifact construction. These
+are executable stages rather than graph annotations: every stage consumes its
+predecessor's result, and the final artifact is checked against a canonical
+digest and structural verifier.
 
-A case changes operation metadata or a result type at a preselected early,
-middle, or late site. The edit targets either the downstream affected cone or
-an unrelated entity in the same function. The complete Cartesian matrix has
-108,000 timing rows: 15 models, three systems, three sites, two edit classes,
-two scopes, two paths, and 100 iterations. Every system first performs a full
-rerun. Joggle then performs a reactive update; MLIR and xDSL use their standard
-public pass pipelines after the edit. The primary endpoint normalizes each
-update to its own system's full rerun,
+A case changes an operation attribute or result type at a preselected early,
+middle, or late site. For each edit, the harness also selects a control entity
+outside the affected cone. Every system first executes the complete five-stage
+path. Joggle then applies the edit through its revision and dependency index;
+MLIR and xDSL execute their native public pass paths from the same typed input
+state. The primary endpoint normalizes an update to that system's complete
+rerun,
 \[
   \operatorname{UpdateRatio}_s = \frac{T_{\mathrm{update},s}}
                                       {T_{\mathrm{full},s}},
@@ -128,10 +128,17 @@ update to its own system's full rerun,
                                     {V_{\mathrm{full},s}},
 \]
 where $V$ counts graph entities visited by the five stages. This pairing keeps
-language and runtime differences out of the headline comparison. Absolute
-edit-to-result latency remains visible as a secondary measure. All paths begin
-from the same logical graph state, apply the same edit, and must produce the
-same final digest.
+implementation-language cost out of the headline comparison. Absolute
+edit-to-artifact latency remains visible.
+
+A second panel follows the same edits through Joggle's production lowering
+path. It retains the source mod, invalidates derived lowering results whose
+recorded inputs overlap the edit, rebuilds those results, plans storage, and
+emits C. This panel reports absolute latency, rebuilt functions, visited graph
+entities, emitted bytes, and artifact correctness. It prevents savings in a
+lightweight common adapter from standing in for savings in the compiler's real
+artifact path. Both panels start from the same logical state and accept a row
+only when the updated result matches its full-rerun oracle.
 
 \subsection{End-to-End Performance}
 \label{sec:eval-artifacts}
@@ -148,13 +155,6 @@ The main measure is steady-state execution latency after ten warm-ups and 100
 measurements. Unsupported pairs remain as coverage outcomes instead of
 disappearing from the accepted set. Operator and model results share one figure
 and one CSV, with up to 11,700 timed rows.
-
-Across subjects supported by both Joggle paths, the frozen optimization pack
-improves geometric-mean latency by $2.09\times$ for operators and $3.06\times$
-for models. The optimized path supports 21 of 24 operators and 8 of 15 models.
-Over those supported sets, its artifacts take $5.14\times$ and $12.58\times$
-the latency of ONNX Runtime, respectively. The current end-to-end limits are
-generated CPU code quality and incomplete lowering coverage.
 
 Together, generation characterizes the extension surface, patch footprint its
 ownership boundary, the cross-system update study its responsiveness, and the

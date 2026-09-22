@@ -81,8 +81,8 @@ hierarchical program IR.
 
 \paragraph{Dependency-directed updates.}
 Revisions, dependency indices, and cached execution plans restrict
-re-execution to affected graph regions and stages under transactional
-publication.
+re-execution to compiler calls and stages whose recorded observations overlap
+published edits, under transactional publication.
 
 The evaluation assigns one evidence stream to each contribution. Held-out
 extensions measure predictability and executable task success. Matched feature
