@@ -110,12 +110,29 @@ deep-copy the graph.
 | Edit | Typical rollback material |
 | --- | --- |
 | set/unset metadata | target, id, previous dictionary/value |
-| rename/type/retarget | structural store state as required |
+| retarget to a visible function | validate first, then commit; no per-call store copy |
+| retarget that adds a package dependency | snapshot before adding the dependency |
+| rename/type | structural store state as required |
 | insert/clone/erase/move | structural snapshot |
 | failed final verify | restore store plus revision state |
 
 The timing profile records whether a structural snapshot occurred and its
 duration. That evidence is necessary before optimizing transaction code.
+
+### Call retargeting
+
+`Mod::retarget(env, call, target)` first resolves the exact function, checks
+argument dominance, and checks result compatibility. If the target is local
+or already visible through `use`, this preflight does not mutate the graph.
+Only a passing edit changes the callee and, when requested, its arguments.
+Repeating the same edit leaves revisions unchanged.
+
+An external target may require a new `use` edge. That path snapshots before
+adding the edge: a later signature rejection restores both the dependency
+list and the graph's revisions, while retaining the diagnostic. A surrounding
+`run` transaction still provides its own rollback boundary. Avoiding a nested
+snapshot for every already-visible target is particularly important when
+expansion retargets many calls inside a large graph.
 
 ## Memory growth and handle stability
 
