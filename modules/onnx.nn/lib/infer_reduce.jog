@@ -108,6 +108,9 @@ local fn loop_type(m: Mod, op: Op) -> bool {
   if carried > len(outputs) {
     return changed
   }
+  let exact = loop_exact_trip(
+    params, returned, args, inputs, base.get(info, "captures", [])
+  )
   var types: list<Ty> = []
   for i in 0..len(outputs) {
     var type = ir.type(returned[i + 1])
@@ -115,8 +118,10 @@ local fn loop_type(m: Mod, op: Op) -> bool {
       return changed
     }
     if i >= carried {
+      var leading = ty("_")
+      if len(exact) == 1 { leading = ty(exact[0]) }
       type = shaped(
-        tensor.elem(type), [ty("_")] + tensor.dims(type)
+        tensor.elem(type), [leading] + tensor.dims(type)
       )
     }
     types += [type]

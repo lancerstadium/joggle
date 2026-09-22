@@ -7,6 +7,8 @@ void loop_c_scan(const int32_t* start, const bool* condition,
 void loop_c_nested_scan(const int32_t* start, const bool* condition,
                         const int32_t* delta, const int32_t* limit,
                         int32_t* final, int32_t* history, int64_t* history_dim_0);
+void loop_c_bounded_scan(const int32_t* x, const bool* condition,
+                         int32_t* final, int32_t* history, int64_t* length);
 void loop_c_reshape(const int32_t* x, const int64_t* requested,
                     int32_t* result, int64_t* dim_0, int64_t* dim_1);
 void loop_c_reshape_empty(const int32_t* x, const int64_t* requested,
@@ -75,6 +77,14 @@ int main(int argc, char** argv) {
   if (final != start || length != 0)
     return 18;
   const int32_t input[6] = {1, 2, 3, 4, 5, 6};
+  condition = true;
+  loop_c_bounded_scan(input, &condition, &final, history, &length);
+  if (final != 5 || length != 2 || history[0] != 3 || history[1] != 5)
+    return 19;
+  condition = false;
+  loop_c_bounded_scan(input, &condition, &final, history, &length);
+  if (final != 1 || length != 0)
+    return 20;
   int32_t result[6] = {0};
   int64_t rows = -1, cols = -1;
   const int64_t shapes[3][2] = {{3, 2}, {-1, 2}, {0, -1}};

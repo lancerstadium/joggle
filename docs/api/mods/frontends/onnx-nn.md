@@ -109,6 +109,35 @@ Inference refines result types while retaining ONNX operator identity.
 
 ## Conversion input and output
 
+### Condition-terminated scans
+
+An ONNX `Loop` has both a maximum trip count and a continuation condition.
+The bridge recognizes nonnegative scalar counter recurrences of the form
+`next = current + step; continue = next < limit`, with a positive constant
+step and a constant or shape-derived limit. It bounds the iteration count by
+the original trip cap and `max(1, ceil((limit - start) / step))`. The initial
+condition still determines whether the first iteration executes.
+
+| Input condition | Proven iteration bound | Scan leading dimension |
+| --- | --- | --- |
+| runtime Boolean | counter bound | runtime length, bounded capacity |
+| constant true | counter bound | exact iteration count |
+| constant false, or zero trip cap | zero | zero |
+
+For example, a counter starting at `1`, advancing by `2`, and continuing
+while the updated counter is less than `5` produces scan values `[3, 5]`.
+Its maximum storage length is two even when the ONNX trip cap is `INT64_MAX`.
+A false initial condition produces an empty scan and preserves the starting
+carried value. A trip cap of one produces only `[3]`.
+
+Counter casts must preserve all values through the final update. The analysis
+checks integer overflow and floating-point exactness before shortening a bound.
+Exact scan lengths feed ordinary shape inference in downstream operators;
+runtime conditions retain dynamic output extents. Loop bodies and `If` arms
+can contain nested structured control flow.
+
+### Operator conversion
+
 After conversion:
 
 ```jog

@@ -100,6 +100,7 @@ local fn convert_loop(m: Mod, op: Op) -> bool {
     }
   }
   var scan_types: list<Ty> = []
+  let exact = loop_exact_trip(params, returned, inputs, input_count, captures)
   for i in 0..scan_count {
     let output_type = ir.type(outputs[carried_count + i])
     let sample_type = ir.type(returned[1 + carried_count + i])
@@ -109,11 +110,14 @@ local fn convert_loop(m: Mod, op: Op) -> bool {
     }
     let dims = tensor.dims(output_type)
     if len(dims) != len(tensor.dims(sample_type)) + 1 ||
-       len(dims) == 0 || dims[0] != ty("_") {
+       len(dims) == 0 {
       return false
     }
+    var leading = ty("_")
+    if len(exact) == 1 { leading = ty(exact[0]) }
+    if dims[0] != ty("_") && dims[0] != leading { return false }
     let expected = shaped(
-      tensor.elem(sample_type), [ty("_")] + tensor.dims(sample_type)
+      tensor.elem(sample_type), [leading] + tensor.dims(sample_type)
     )
     if !compatible_shape(output_type, expected) {
       return false
@@ -133,6 +137,13 @@ local fn convert_loop(m: Mod, op: Op) -> bool {
   var trip_index = trip
   if ir.type(trip) != ty("index") {
     trip_index = ir.call(m, op, "index", [trip], ty("index"))
+  }
+  var bounded = exact
+  if len(bounded) == 0 {
+    bounded = loop_trip_bound(params, returned, inputs, input_count, captures)
+  }
+  if len(bounded) == 1 {
+    trip_index = ir.constant(m, op, bounded[0], ty("index"))
   }
   let begin = ir.constant(m, op, 0, ty("index"))
   let range = ir.call(

@@ -1,0 +1,147 @@
+// Recognize a scalar counter recurrence without executing the loop body.
+// Casts are unwrapped structurally here and checked for exactness below.
+local fn counter_source(value: Val) -> Val {
+  let op = ir.def(value)
+  if ir.live(op) && ir.kind(op) == "call" {
+    let name = ir.callee(op)
+    let args = ir.args(op)
+    if len(args) == 1 && (name == "onnx.Identity" || name == "base.copy" ||
+        name == "onnx.Cast" || name == "tensor.cast") {
+      return counter_source(args[0])
+    }
+  }
+  return value
+}
+
+local fn counter_exact(value: Val, lo: int, hi: int) -> bool {
+  let type = ir.type(value)
+  if !tensor.valid(type) || len(tensor.dims(type)) != 0 || lo < 0 || hi < lo {
+    return false
+  }
+  let elem = tensor.elem(type)
+  if elem != ty("i32") && elem != ty("i64") &&
+     elem != ty("f32") && elem != ty("f64") { return false }
+  if (elem == ty("i32") && hi > 2147483647) ||
+     (elem == ty("f32") && hi > 16777216) ||
+     (elem == ty("f64") && hi > 9007199254740992) { return false }
+  let op = ir.def(value)
+  if ir.live(op) && ir.kind(op) == "call" {
+    let name = ir.callee(op)
+    let args = ir.args(op)
+    if len(args) == 1 && (name == "onnx.Identity" || name == "base.copy" ||
+        name == "onnx.Cast" || name == "tensor.cast") {
+      return counter_exact(args[0], lo, hi)
+    }
+  }
+  return true
+}
+
+local fn captured_value(
+  value: Val, params: list<Val>, inputs: list<Val>,
+  first: int, captures: Attr
+) -> Val {
+  for i in 0..len(captures) {
+    if value == params[first + i] {
+      let at = base.int(captures[i])
+      if at >= 0 && at < len(inputs) { return inputs[at] }
+    }
+  }
+  return value
+}
+
+local fn loop_trip_bound(
+  params: list<Val>, returned: list<Val>, inputs: list<Val>,
+  first: int, captures: Attr
+) -> list<int> {
+  let trip = const_ints(inputs[0])
+  if len(trip) != 1 || trip[0] < 0 { return [] }
+  let test = ir.def(counter_source(returned[0]))
+  if !ir.live(test) || ir.kind(test) != "call" ||
+     (ir.callee(test) != "onnx.Less" && ir.callee(test) != "operator <") {
+    return []
+  }
+  let compared = ir.args(test)
+  if len(compared) != 2 { return [] }
+  let next = counter_source(compared[0])
+  let update = ir.def(next)
+  if !ir.live(update) || ir.kind(update) != "call" ||
+     (ir.callee(update) != "onnx.Add" && ir.callee(update) != "nn.add") {
+    return []
+  }
+  let args = ir.args(update)
+  if len(args) != 2 { return [] }
+  let limit_source = counter_source(compared[1])
+  let limit = const_ints(captured_value(limit_source, params, inputs, first, captures))
+  if len(limit) != 1 || limit[0] < 0 ||
+     !counter_exact(compared[1], limit[0], limit[0]) { return [] }
+  for i in 2..first {
+    if counter_source(returned[i - 1]) == next {
+      for side in 0..2 {
+        if counter_source(args[side]) == params[i] {
+          let start = const_ints(inputs[i])
+          let step_source = counter_source(args[1 - side])
+          let step = const_ints(captured_value(step_source, params, inputs, first, captures))
+          if len(start) != 1 || len(step) != 1 || start[0] < 0 || step[0] <= 0 {
+            return []
+          }
+          // The body runs once when the incoming condition is true, even if
+          // the initial counter already meets the outgoing stop condition.
+          var count = 1
+          if limit[0] > start[0] {
+            let distance = limit[0] - start[0]
+            count = distance / step[0]
+            if distance % step[0] != 0 { count += 1 }
+          }
+          if count > trip[0] { count = trip[0] }
+          if count > (9223372036854775807 - start[0]) / step[0] { return [] }
+          let last = start[0] + count * step[0]
+          if !counter_exact(args[side], start[0], last) ||
+             !counter_exact(args[1 - side], step[0], step[0]) ||
+             !counter_exact(returned[i - 1], start[0], last) ||
+             !counter_exact(compared[0], start[0], last) { return [] }
+          return [count]
+        }
+      }
+    }
+  }
+  return []
+}
+
+local fn loop_initial_condition(value: Val) -> list<int> {
+  let source = counter_source(value)
+  let op = ir.def(source)
+  if !ir.live(op) { return [] }
+  if ir.type(source) == ty("tensor<bool, []>") {
+    let data = tensor_data(op)
+    if base.kind(data) == "bytes" && base.size(data) == 1 {
+      if base.byte(data, 0) == 0 { return [0] }
+      return [1]
+    }
+  }
+  if ir.callee(op) == "onnx.Less" || ir.callee(op) == "operator <" {
+    let args = ir.args(op)
+    if len(args) == 2 {
+      let a = const_ints(args[0])
+      let b = const_ints(args[1])
+      if len(a) == 1 && len(b) == 1 {
+        if a[0] < b[0] { return [1] }
+        return [0]
+      }
+    }
+  }
+  return []
+}
+
+local fn loop_exact_trip(
+  params: list<Val>, returned: list<Val>, inputs: list<Val>,
+  first: int, captures: Attr
+) -> list<int> {
+  if len(inputs) < 2 || first < 2 || len(params) != first + len(captures) ||
+     len(returned) < first - 1 { return [] }
+  let trip = const_ints(inputs[0])
+  if len(trip) == 1 && trip[0] == 0 { return [0] }
+  let initial = loop_initial_condition(inputs[1])
+  if len(initial) != 1 { return [] }
+  if initial[0] == 0 { return [0] }
+  return loop_trip_bound(params, returned, inputs, first, captures)
+}

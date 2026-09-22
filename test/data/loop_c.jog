@@ -55,6 +55,34 @@ fn nested_else(previous: tensor<i32, []>) -> tensor<i32, []> {
   return previous
 }
 
+// A condition-terminated scan uses a huge maximum trip count, but its
+// shape-derived limit and exact counter recurrence prove a two-row capacity.
+fn bounded_scan(x: tensor<i32, [5]>, condition: tensor<bool, []>)
+    -> (tensor<i32, []>, tensor<i32, [_]>) {
+  let trip: tensor<i64, []> = hex"ffffffffffffff7f"
+  let start: tensor<i32, []> = hex"01000000"
+  let step: tensor<i32, []> = hex"02000000"
+  let shape = onnx.Shape(x)
+  [onnx: {axes: [0]}]
+  let limit = onnx.Squeeze(shape)
+  [onnx: {body: {fn: "bounded_body", inputs: 3, captures: [3, 4]}}]
+  let final, history = onnx.Loop(trip, condition, start, step, limit)
+  return final, history
+}
+
+fn bounded_body(iteration: tensor<i64, []>, keep_going: tensor<bool, []>,
+                previous: tensor<i32, []>, step: tensor<i32, []>,
+                limit: tensor<i64, []>)
+    -> (tensor<bool, []>, tensor<i32, []>, tensor<i32, []>) {
+  let current = onnx.Add(previous, step)
+  [onnx: {to: 1}]
+  let as_float = onnx.Cast(current)
+  [onnx: {to: 1}]
+  let stop = onnx.Cast(limit)
+  let next = onnx.Less(as_float, stop)
+  return next, current, current
+}
+
 fn reshape_empty(x: tensor<i32, [0, 3]>, requested: tensor<i64, [2]>)
     -> tensor<i32, [_, _]> {
   [onnx: {allowzero: 1}]

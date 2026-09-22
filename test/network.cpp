@@ -1498,6 +1498,116 @@ int main(int argc, char** argv) {
         CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [2]>"));
   }
 
+  // Counter-derived loop bounds preserve the trip cap and the mandatory first
+  // active iteration. Rounding, overflow and non-increasing recurrences must
+  // not acquire a shorter bound.
+  const auto scalar_hex = [](std::int64_t value, int bytes) {
+    constexpr char digits[] = "0123456789abcdef";
+    std::string result;
+    const auto bits = static_cast<std::uint64_t>(value);
+    for (int byte = 0; byte < bytes; ++byte) {
+      const auto part = (bits >> (byte * 8)) & 255;
+      result += digits[part >> 4];
+      result += digits[part & 15];
+    }
+    return result;
+  };
+  const auto unlimited = std::numeric_limits<std::int64_t>::max();
+  for (const auto& item : std::vector<std::vector<std::int64_t>>{
+           {1, 2, 5, unlimited, 2}, {1, 2, 6, unlimited, 3},
+           {6, 2, 5, unlimited, 1}, {1, 2, 5, 1, 1}, {1, 2, 5, 0, 0},
+           {1, 0, 5, unlimited, -1}, {1, -1, 5, unlimited, -1},
+           {-1, 2, 5, unlimited, -1},
+           {16777215, 1, 16777216, unlimited, 1},
+           {16777216, 1, 16777217, unlimited, -1},
+           {2147483647, 1, 5, unlimited, -1}}) {
+    const std::string source = "mod bounded\nuse onnx\n"
+        "fn main(condition: tensor<bool, []>) -> (tensor<i32, []>, tensor<i32, [_]>) {\n"
+        " let trip: tensor<i64, []> = hex\"" + scalar_hex(item[3], 8) + "\"\n"
+        " let start: tensor<i32, []> = hex\"" + scalar_hex(item[0], 4) + "\"\n"
+        " let step: tensor<i32, []> = hex\"" + scalar_hex(item[1], 4) + "\"\n"
+        " let limit: tensor<i32, []> = hex\"" + scalar_hex(item[2], 4) + "\"\n"
+        " [onnx: {body: {fn: \"body\", inputs: 3, captures: [3, 4]}}]\n"
+        " let final, history = onnx.Loop(trip, condition, start, step, limit)\n"
+        " return final, history\n}\n"
+        "fn body(i: tensor<i64, []>, c: tensor<bool, []>, p: tensor<i32, []>,"
+        " step: tensor<i32, []>, limit: tensor<i32, []>)"
+        " -> (tensor<bool, []>, tensor<i32, []>, tensor<i32, []>) {\n"
+        " let next = onnx.Add(step, p)\n"
+        " [onnx: {to: 1}]\n let a = onnx.Cast(next)\n"
+        " [onnx: {to: 1}]\n let b = onnx.Cast(limit)\n"
+        " let active = onnx.Less(a, b)\n return active, next, next\n}\n";
+    joggle::Mod bounded;
+    CHECK(joggle::parse(env, source, bounded, "bounded-loop.jog"));
+    CHECK(joggle::run(env, "onnx.nn.convert", bounded));
+    CHECK(bounded.verify(env));
+    std::size_t bounded_loops = 0;
+    for (joggle::Op op : bounded.ops()) {
+      if (op.kind() != joggle::Op::Kind::loop)
+        continue;
+      ++bounded_loops;
+      const joggle::Attr end = op.args()[0].def().args()[1].constant();
+      if (item[4] < 0)
+        CHECK(!end.integer());
+      else
+        CHECK(end.integer() == item[4]);
+    }
+    CHECK(bounded_loops == 1);
+    if (item[4] >= 0) {
+      for (const bool active : {false, true}) {
+        std::string exact_source(source);
+        const std::string parameter = "condition: tensor<bool, []>";
+        exact_source.erase(exact_source.find(parameter), parameter.size());
+        exact_source.insert(exact_source.find("{\n") + 2,
+            std::string(" let condition: tensor<bool, []> = hex\"") +
+            (active ? "01" : "00") + "\"\n");
+        joggle::Mod exact;
+        CHECK(joggle::parse(env, exact_source, exact, "exact-loop.jog"));
+        CHECK(joggle::run(env, "onnx.nn.infer", exact));
+        const joggle::Ty expected("tensor<i32, [" +
+            std::to_string(active ? item[4] : 0) + "]>");
+        for (joggle::Op op : exact.ops())
+          if (op.callee() == "onnx.Loop")
+            CHECK(op.outs()[1].type() == expected);
+        CHECK(joggle::run(env, "onnx.nn.convert", exact));
+        CHECK(exact.verify(env));
+        CHECK(joggle::run(env, "c.prepare", exact));
+        CHECK(exact.verify(env));
+      }
+    }
+  }
+
+  // Gather followed by Cast retains exact shape-control values in both source
+  // and converted IR. Out-of-range indices and unsupported axes stay unknown.
+  for (const std::string callee : {"onnx.Gather", "tensor.gather"}) {
+    for (const auto& item : std::vector<std::vector<std::int64_t>>{
+             {0, 2, 5}, {-1, -1, 5}, {0, 0, 2},
+             {0, 3, -1}, {0, -4, -1}, {1, 0, -1}}) {
+      const std::string source = "mod gather_shape\nuse onnx\nuse tensor\n"
+          "fn main(x: tensor<f32, [2, 3, 5]>) -> tensor<i32, [1]> {\n"
+          " let shape: tensor<i64, [3]> = onnx.Shape(x)\n"
+          " let index: tensor<i64, [1]> = hex\"" + scalar_hex(item[1], 8) + "\"\n"
+          " [onnx: {axis: " + std::to_string(item[0]) + "}]\n"
+          " let selected: tensor<i64, [1]> = " + callee + "(shape, index" +
+          (callee == "tensor.gather" ? ", " + std::to_string(item[0]) : "") + ")\n"
+          " [onnx: {to: 6}]\n"
+          " let result: tensor<i32, [1]> = onnx.Cast(selected)\n"
+          " return result\n}\n";
+      joggle::Mod gather;
+      CHECK(joggle::parse(env, source, gather, "gather-shape.jog"));
+      joggle::Attr result;
+      CHECK(joggle::query(env, "script.shape_control_terms", gather, result));
+      CHECK(result.list() && result.list()->size() == 1);
+      if (result.list()->front().string() !=
+          (item[2] < 0 ? "_" : std::to_string(item[2])))
+        std::fprintf(stderr, "gather %s axis %lld index %lld: %s\n",
+                     callee.c_str(), static_cast<long long>(item[0]),
+                     static_cast<long long>(item[1]), joggle::print(result).c_str());
+      CHECK(result.list()->front().string() ==
+            (item[2] < 0 ? "_" : std::to_string(item[2])));
+    }
+  }
+
   // Integral shape controls can traverse real-valued operators without losing
   // their exact value. Fractional, non-finite and lossy casts stay dynamic.
   for (const auto& item : std::vector<std::vector<std::string>>{

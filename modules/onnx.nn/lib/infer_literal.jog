@@ -249,6 +249,9 @@ local fn exact_arithmetic(op: str, a: int, b: int) -> list<int> {
 }
 
 local fn const_ints(value: Val) -> list<int> {
+  if ir.is_const(value) && base.kind(ir.constant(value)) == "int" {
+    return [base.int(ir.constant(value))]
+  }
   let literal = literal_ints(value)
   if len(literal) != 0 {
     return literal
@@ -260,6 +263,14 @@ local fn const_ints(value: Val) -> list<int> {
   let callee = ir.callee(producer)
   let inputs = ir.args(producer)
   let count = static_count(ir.type(value))
+  if callee == "operator -" && len(inputs) == 1 &&
+     (ir.type(value) == ty("int") || ir.type(value) == ty("index")) {
+    let operand = const_ints(inputs[0])
+    if len(operand) == 1 && operand[0] != -9223372036854775807 - 1 {
+      return [0 - operand[0]]
+    }
+    return []
+  }
 
   // Integer shape controls often pass through Cast before Slice/Reshape.
   // Preserve their values only when the conversion is lossless; a narrowing
@@ -338,6 +349,34 @@ local fn const_ints(value: Val) -> list<int> {
         return []
       }
       out += [int(dim)]
+    }
+    return out
+  }
+
+  // Shape vectors can be reordered or indexed before a cast/reshape. Preserve
+  // exact selected values, including ONNX negative indices, across that chain.
+  if (callee == "onnx.Gather" || callee == "tensor.gather") &&
+     len(inputs) >= 2 && tensor.valid(ir.type(inputs[0])) &&
+     len(tensor.dims(ir.type(inputs[0]))) == 1 && count >= 0 {
+    var axis = base.get(attrs(producer), "axis", 0)
+    if callee == "tensor.gather" {
+      if len(inputs) != 3 { return [] }
+      let selected = const_ints(inputs[2])
+      if len(selected) != 1 { return [] }
+      axis = selected[0]
+    }
+    if axis != 0 && axis != -1 { return [] }
+    let data = const_ints(inputs[0])
+    let indices = const_ints(inputs[1])
+    if len(data) != static_count(ir.type(inputs[0])) || len(indices) != count {
+      return []
+    }
+    var out: list<int> = []
+    for raw in indices {
+      var at = raw
+      if at < 0 { at += len(data) }
+      if at < 0 || at >= len(data) { return [] }
+      out += [data[at]]
     }
     return out
   }
