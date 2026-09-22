@@ -2805,10 +2805,16 @@ bool Mod::erase(std::span<const Op> roots) {
                       store.ops[store.vals[value].data.def].data.loc);
     }
   }
-  for (auto& slot : store.blks) {
-    if (!slot.live)
-      continue;
-    auto& order = slot.data.ops;
+  // Every operation records its containing block. Only these block orders
+  // can contain erased ids; unrelated functions and blocks need no scan.
+  std::vector<std::uint32_t> parents;
+  parents.reserve(ops.size());
+  for (const std::uint32_t id : ops)
+    parents.push_back(store.ops[id].data.blk);
+  std::sort(parents.begin(), parents.end());
+  parents.erase(std::unique(parents.begin(), parents.end()), parents.end());
+  for (const std::uint32_t parent : parents) {
+    auto& order = store.blks[parent].data.ops;
     order.erase(std::remove_if(order.begin(), order.end(),
                                [&](std::uint32_t id) {
                                  return ops.contains(id);

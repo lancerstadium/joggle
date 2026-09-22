@@ -2816,6 +2816,26 @@ int main(int argc, char** argv) {
   CHECK(indexed_replace.replace(replace_from, replace_to));
   CHECK(indexed_replace.revision() == after_indexed_replace);
 
+  joggle::Mod indexed_erase;
+  CHECK(joggle::parse(env,
+      "mod indexed_erase\n"
+      "fn left(x: i32) -> i32 { let dead = first(x); return x }\n"
+      "fn right(x: i32) -> i32 { let dead = second(x); return x }\n"
+      "fn kept(x: i32) -> i32 { return first(x) }\n",
+      indexed_erase, "indexed-erase.jog"));
+  const auto left_ops = indexed_erase.find_fn("left").body().ops();
+  const auto right_ops = indexed_erase.find_fn("right").body().ops();
+  const auto kept_ops = indexed_erase.find_fn("kept").body().ops();
+  const std::array erased_roots{left_ops[0], right_ops[0]};
+  CHECK(indexed_erase.erase(erased_roots));
+  CHECK(!left_ops[0].valid() && !right_ops[0].valid());
+  CHECK(indexed_erase.find_fn("left").body().ops().size() == 1);
+  CHECK(indexed_erase.find_fn("right").body().ops().size() == 1);
+  CHECK(indexed_erase.find_fn("kept").body().ops() == kept_ops);
+  CHECK(indexed_erase.find_fn("left").params()[0].users().size() == 1);
+  CHECK(indexed_erase.find_fn("right").params()[0].users().size() == 1);
+  CHECK(indexed_erase.verify(env));
+
   joggle::Mod cloned_loop;
   constexpr std::string_view loop_source =
       "mod looped\n"

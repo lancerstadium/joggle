@@ -81,6 +81,13 @@ discover replacement
 `rebuild_uses` exists as a repair/reconstruction boundary for structural work;
 it should not become the default cost of a small edit.
 
+Erasure collects the removed subtree and rejects values with surviving
+external users before mutation. Each operation's parent-block id identifies
+the block orders to update; unrelated blocks are not scanned. Removing one
+operation still traverses its containing block's order vector, so block size
+also matters. Nested blocks and their slot generations are invalidated as
+part of the same edit.
+
 ### Cloning and binding names
 
 Cloning appends nodes and attaches their operand edges to existing use lists.
