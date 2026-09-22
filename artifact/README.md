@@ -69,10 +69,10 @@ and the starter must fail. Reports contain per-case process output and exact
 oracle comparisons. They are task-validation records, not agent trajectories.
 Candidate code from an agent runs inside its isolated execution environment.
 
-The current references pass every oracle in all three systems for broadcast
-shape, storage cost, storage planning, and target capability. Numeric range
-passes in MLIR and xDSL; Joggle currently rejects its floating-point comparison
-in the evaluator. The shared contract retains fractional and negative inputs.
+The five Joggle references pass all 32 native oracle cases, including numeric
+range propagation through binary64 compiler metadata. The MLIR and xDSL
+references also cover these five task families. The shared contract retains
+fractional and negative inputs.
 Emission oracles also require byte-identical outputs across repeated runs.
 These reference checks validate task execution, not agent completion rates.
 
