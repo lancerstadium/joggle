@@ -53,29 +53,33 @@ usually track whole pass results, so a small edit can repeat conversions and
 analyses whose observations remain valid. These are programmability,
 organization, and update-efficiency problems, respectively.
 
-Figure 1 states the paper's argument as three vertical chains. Each column
-connects a development problem to one Joggle mechanism and one measurable
-outcome. This 3×3 mapping also aligns the evaluation with the design: held-out
-extension tasks measure predictability and executable completion, paired
-patches measure change footprint, and controlled edits measure update latency
-and executed work.
+Figure 1 connects each development problem to a Joggle mechanism and its
+evaluation endpoint. Extension tasks measure executable completion and agent
+effort; paired patches measure change footprint; controlled edits measure
+update latency and executed work. Together, these comparisons link the
+extension interface, ownership boundary, and execution model to their effects
+on compiler development.
 
 <!-- FIGURE 1 PROMPT — A dense two-column 3×3 systems-paper argument map. The
 columns are PROGRAMMABILITY, ORGANIZATION, and UPDATE; the rows are CHALLENGE,
 JOGGLE DESIGN, and OUTCOME. Each column reads top to bottom with no cross-column
 arrows. Programmability: fragmented Semantics/Analysis/Transform/Convert/Emit
-mechanisms → Unified metaprogramming using `fn optimize(m: Mod)`, one language,
+mechanisms → Unified metaprogramming using typed compiler functions, one language,
 one call model, one value model, and `Ty Attr Mod Fn Op Val` → CONVENIENT with
-`agent success ↑` and `tokens/tool calls ↓`. Organization: one feature scattered across hierarchical
+`task success` and `tokens · tool calls`. Organization: one feature scattered across hierarchical
 IR, pass registry, build target, conversion, and backend → Graph-level mod
 boundary with `mod quant`, `use tensor`, own/publish/version/change tabs, and an
-app→quant→tensor use graph → CONTROLLABLE with `files Δ ↓` and `LoC Δ ↓`.
-Update: local edit causing A→B→C→D rerun → Reactive re-execution over an
+app→quant→tensor use graph → CONTROLLABLE with `files · lines` and `ownership
+zones`; depict a feature patch as filename bars without invented source code.
+Update: local edit at B causing suffix B→C→D rerun → Reactive re-execution over an
 affected subgraph using revisions, dependency index `D/W`, and cached execution
-plan → EFFICIENT with `p50 / p95 ↓` and `visited nodes ↓`. Use compact technical
+plan → EFFICIENT with `p50 · p95`, `visited work`, and `edit-to-artifact`.
+Use a changed→execute / unchanged→reuse ledger instead of synthetic curves.
+The outcome row names measured endpoints without displaying invented results.
+Use compact technical
 glyphs, thin dark connectors, white background, restrained blue/teal/lavender,
 and coral only for changed state. Use only the named Joggle constructs; omit
-step numbers, numbered circles, red numeric labels, gradients, shadows, and
+source snippets, line numbers, numbered circles, red numeric labels, gradients, shadows, and
 decorative people. -->
 
 *Figure 1: Joggle maps three extension challenges to system mechanisms and
@@ -769,8 +773,8 @@ table. Operator and model results share one figure and one CSV, with up to
 11,700 timed rows.
 
 For the pinned operator configuration in Appendix A, all 24 operators pass the
-numerical oracle in both Joggle paths. The optimization pack reduces geometric
-mean latency by 1.81× relative to the base path. Relative to ONNX Runtime, the
+numerical oracle in both Joggle paths. The optimization pack achieves a
+geometric mean speedup of 1.81× over the base path. Relative to ONNX Runtime, the
 base and optimized latency ratios are 9.08× and 5.02×, respectively; the
 optimized path is faster on three operators. The effect varies across
 operators: the 256×256 matrix multiply improves by 12.83× over the base path,
