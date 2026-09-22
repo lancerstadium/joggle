@@ -691,13 +691,15 @@ if(JOGGLE_BUILD_TESTS)
         HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/nonzero_c_main.c
         ROOT=${CMAKE_CURRENT_BINARY_DIR}/nonzero-c-test
     )
-    joggle_script_test(dynamic-slice-c-execution dynamic_slice_c.cmake
-      DEFINES
-        CC=${JOGGLE_TEST_C_COMPILER}
-        MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/dynamic_slice_c.jog
-        HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/dynamic_slice_c_main.c
-        ROOT=${CMAKE_CURRENT_BINARY_DIR}/dynamic-slice-c-test
-    )
+    if(JOGGLE_BUILD_ONNX)
+      joggle_script_test(dynamic-slice-c-execution dynamic_slice_c.cmake
+        DEFINES
+          CC=${JOGGLE_TEST_C_COMPILER}
+          MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/dynamic_slice_c.jog
+          HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/dynamic_slice_c_main.c
+          ROOT=${CMAKE_CURRENT_BINARY_DIR}/dynamic-slice-c-test
+      )
+    endif()
     joggle_script_test(range-c-execution range_c.cmake
       DEFINES
         CC=${JOGGLE_TEST_C_COMPILER}
