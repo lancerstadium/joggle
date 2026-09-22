@@ -5,6 +5,8 @@ void dynamic_slice_c_main(
     const int64_t* axes, const int64_t* steps, int32_t* result,
     int64_t* result_dim_0, int64_t* result_dim_1);
 void dynamic_slice_c_reverse(const int32_t* x, int32_t* result);
+void dynamic_slice_c_prefix(const int32_t* x, int64_t rows, int32_t* result,
+                            int64_t* result_dim_0);
 
 static int check(const int32_t* actual, const int32_t* expected,
                  int64_t count) {
@@ -68,5 +70,18 @@ int main(void) {
                        backward_steps, result, &rows, &columns);
   if (rows != 1 || columns != 1 || result[0] != 0)
     return 6;
+  for (int64_t n = 0; n <= 4; ++n) {
+    for (int64_t i = 0; i < 20; ++i)
+      result[i] = -99;
+    dynamic_slice_c_prefix(input, n, result, &rows);
+    if (rows != n)
+      return 7;
+    for (int64_t i = 0; i < n; ++i)
+      if (result[2 * i] != input[5 * i + 1] ||
+          result[2 * i + 1] != input[5 * i + 3])
+        return 8;
+    if (result[2 * n] != -99)
+      return 9;
+  }
   return 0;
 }

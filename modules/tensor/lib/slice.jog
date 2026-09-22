@@ -304,7 +304,9 @@ local fn slice_runtime<
     result_shape[axis] = count
   }
 
-  var out: tensor<E, Y> = make(E(0), source_shape)
+  // Storage is bounded by the source shape; the returned view carries the
+  // smaller logical result shape, including any statically known dimensions.
+  var out: tensor<E, S> = make(E(0), source_shape)
   var count = index(1)
   for axis in 0..R {
     count *= result_shape[axis]

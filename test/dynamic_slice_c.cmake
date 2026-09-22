@@ -1,4 +1,5 @@
 set(NAME "dynamic Slice")
+set(CONVERT TRUE)
 
 macro(c_pipeline_checks)
   joggle_expect("dynamic Slice C capacity metadata"

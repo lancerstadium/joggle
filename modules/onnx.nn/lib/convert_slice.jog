@@ -18,7 +18,11 @@ local fn convert_slice(m: Mod, op: Op) -> bool {
   let expected = tensor.sliced(
     tensor.dims(input), starts, ends, selected, steps
   )
-  if len(expected) != 0 && tensor.dims(output) == expected {
+  // The list form reconstructs coordinates from static source/result shapes
+  // and omits ends. Constant controls alone do not establish those shapes:
+  // dynamic inputs must retain ends for runtime clipping and extent inference.
+  if tensor.static(input) && tensor.static(output) &&
+     len(expected) != 0 && tensor.dims(output) == expected {
     var values: list<Val> = [inputs[0]]
     values += [ints(m, op, starts)]
     values += [ints(m, op, selected)]
