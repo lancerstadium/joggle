@@ -714,8 +714,32 @@ fn value_lifetime_probe(m: Mod) -> bool {
     }
     assert(!base.has(previous, text(i)), "branch changed a live snapshot")
   }
+  var inspected: dict = {}
+  for i in 0..128 {
+    // These nested reads finish before the update. They must not retain a
+    // snapshot of the growing dictionary across that update.
+    for repeat in 0..2 {
+      if i > 0 {
+        assert(int(inspected[text(i - 1)]) == i - 1,
+               "nested read before dict update")
+      }
+    }
+    inspected[text(i)] = i
+  }
+  let old = inspected
+  inspected["0"] = -1
+  // A later nested read keeps the old binding live, even if another alias
+  // has already been updated in the same parent block.
+  for repeat in 0..2 {
+    if repeat == 0 {
+      assert(int(old["0"]) == 0, "later nested read lost its snapshot")
+    } else {
+      assert(int(inspected["0"]) == -1, "updated dict lost its value")
+    }
+  }
   return items == [1, 2, 3, 4] && int(fields["0"]) == 100 &&
-         int(nested["30"]) == 30 && int(nested["31"]) == -31
+         int(nested["30"]) == 30 && int(nested["31"]) == -31 &&
+         len(inspected) == 128 && int(inspected["127"]) == 127
 }
 
 fn numel_probe(m: Mod) -> bool {

@@ -1540,6 +1540,7 @@ private:
 
     std::unordered_map<ValueKey, std::size_t, ValueHash> slots;
     std::unordered_map<ValueKey, std::size_t, ValueHash> scopes;
+    std::unordered_map<std::uint32_t, std::size_t> positions;
     const auto define = [&](Val value, std::size_t scope) {
       const ValueKey key{value.store_, value.id_};
       const auto found = slots.find(key);
@@ -1558,17 +1559,22 @@ private:
          ++block_index) {
       for (Val value : block_args(blocks[block_index]))
         define(value, block_index);
-      for (Op op : block_ops(blocks[block_index]))
+      std::size_t position = 0;
+      for (Op op : block_ops(blocks[block_index])) {
+        positions.emplace(op.id_, ++position);
         for (Val value : op_outs(op))
           define(value, block_index);
+      }
     }
 
     // Release a value at its last local use, not only when it has one user.
     // Otherwise a read followed by an update retains the old register and
     // forces a complete copy of a growing dict/list on every iteration.
-    // Captures stay borrowed: a nested block may execute more than once.
+    // A nested read borrows through its enclosing operation, not through the
+    // rest of the defining block. Keep the borrow during all loop iterations,
+    // then allow a later local use to consume the value.
     std::vector<std::uint32_t> last_users(slots.size(), 0);
-    std::vector<bool> captured(slots.size(), false);
+    std::vector<std::size_t> last_borrows(slots.size(), 0);
     for (std::size_t block_index = 0; block_index < blocks.size();
          ++block_index) {
       for (Op op : block_ops(blocks[block_index])) {
@@ -1577,9 +1583,19 @@ private:
           const auto found = slots.find(key);
           if (found == slots.end())
             return nullptr;
-          if (scopes.at(key) != block_index)
-            captured[found->second] = true;
-          else
+          const std::size_t scope = scopes.at(key);
+          if (scope != block_index) {
+            std::uint32_t block = blocks[block_index].id_;
+            std::uint32_t owner = detail::none;
+            while (block != blocks[scope].id_) {
+              owner = fn.store_->blks[block].data.parent_op;
+              if (owner == detail::none)
+                return nullptr;
+              block = fn.store_->ops[owner].data.blk;
+            }
+            last_borrows[found->second] = std::max(
+                last_borrows[found->second], positions.at(owner));
+          } else
             last_users[found->second] = op.id_;
         }
       }
@@ -1625,7 +1641,7 @@ private:
           const auto scope = scopes.find(ValueKey{value.store_, value.id_});
           instruction.moves.push_back(
               scope != scopes.end() && scope->second == block_index &&
-              !captured[found->second] &&
+              last_borrows[found->second] < positions.at(op.id_) &&
               last_users[found->second] == op.id_ &&
               std::count(instruction.operands.begin(),
                          instruction.operands.end(), value) == 1);
