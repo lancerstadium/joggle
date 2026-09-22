@@ -3010,6 +3010,40 @@ int main(int argc, char** argv) {
   CHECK(binding_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(cloned_binding, binding_roundtrip));
 
+  // Batch cloning must keep name views stable while the value arena grows.
+  // Short names exercise inline string storage; pre-existing suffixes and
+  // repeated batches exercise collisions with both old and newly copied names.
+  joggle::Mod cloned_names;
+  std::string names_source =
+      "mod cloned_names\nfn compute(x: i32) -> i32 {\n";
+  for (int i = 0; i < 256; ++i) {
+    const std::string name = "v" + std::to_string(i);
+    names_source += "let " + name + " = first(x)\n";
+    names_source += "let " + name + "_1 = first(x)\n";
+  }
+  names_source += "return x\n}\n";
+  CHECK(joggle::parse(env, names_source, cloned_names, "cloned-names.jog"));
+  const auto names_ops = cloned_names.find_fn("compute").body().ops();
+  const std::span<const joggle::Op> names_body(names_ops.data(),
+                                             names_ops.size() - 1);
+  std::set<std::string> binding_names;
+  for (const auto op : names_body)
+    CHECK(binding_names.insert(std::string(op.outs().front().name())).second);
+  for (int batch = 0; batch < 4; ++batch) {
+    const auto copies = cloned_names.clone(names_body, names_ops.back());
+    CHECK(copies.size() == names_body.size());
+    for (const auto op : copies) {
+      CHECK(op.args().front() == cloned_names.find_fn("compute").params()[0]);
+      CHECK(binding_names.insert(std::string(op.outs().front().name())).second);
+    }
+    CHECK(cloned_names.verify(env));
+  }
+  joggle::Mod names_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(cloned_names), names_roundtrip,
+                      "cloned-names-roundtrip.jog"));
+  CHECK(names_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(cloned_names, names_roundtrip));
+
   joggle::Mod scheduled;
   constexpr std::string_view schedule_source =
       "mod scheduled\n"

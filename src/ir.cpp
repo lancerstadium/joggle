@@ -1088,13 +1088,22 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
 
   std::unordered_set<std::uint32_t> subtree_ops;
   std::unordered_set<std::uint32_t> subtree_values;
+  std::size_t cloned_values = 0;
+  bool needs_fresh_names = false;
   const auto collect = [&](const auto& self, Op op) -> void {
     subtree_ops.insert(op.id_);
-    for (Val value : op.outs())
+    for (Val value : op.outs()) {
       subtree_values.insert(value.id_);
+      ++cloned_values;
+      needs_fresh_names = needs_fresh_names ||
+          (roots.contains(op.id_) && !value.name().empty() &&
+           (op.form() == Op::Form::let || op.form() == Op::Form::var));
+    }
     for (Blk blk : op.blks()) {
-      for (Val value : blk.args())
+      for (Val value : blk.args()) {
         subtree_values.insert(value.id_);
+        ++cloned_values;
+      }
       for (Op child : blk.ops())
         self(self, child);
     }
@@ -1160,10 +1169,29 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
                                    before.id_);
   if (insertion == store.blks[destination].data.ops.end())
     return reject("clone insertion point is not in its Blk", before.loc());
-  std::unordered_set<std::string> used_names;
-  for (const auto& slot : store.vals)
-    if (slot.live && !slot.data.name.empty())
-      used_names.insert(slot.data.name);
+  std::unordered_set<std::string_view> used_names;
+  if (needs_fresh_names) {
+    // The old value names are immutable during this append-only operation.
+    // Reserve every new value before taking views, including repeated visits
+    // when source subtrees overlap. Geometric growth avoids reallocating the
+    // whole value arena on each small clone.
+    if (cloned_values > store.vals.max_size() - store.vals.size())
+      return reject("clone exceeds the value arena capacity", before.loc());
+    const std::size_t required = store.vals.size() + cloned_values;
+    if (required > store.vals.capacity()) {
+      const std::size_t capacity = store.vals.capacity();
+      const std::size_t growth = std::min(capacity / 2,
+                                        store.vals.max_size() - capacity);
+      store.vals.reserve(std::max(required, capacity + growth));
+    }
+    used_names.reserve(store.vals.size());
+    for (const auto& slot : store.vals)
+      if (slot.live && !slot.data.name.empty())
+        used_names.insert(slot.data.name);
+  }
+  // Newly chosen names need ownership: the lexical mapping below is copied
+  // and restored when entering nested blocks.
+  std::unordered_set<std::string> fresh_names;
   std::unordered_map<std::string, std::string> copied_names;
   const auto copy_name = [&](std::string_view source_name) {
     if (source_name.empty())
@@ -1172,9 +1200,11 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
     if (found != copied_names.end())
       return found->second;
     std::string candidate(source_name);
-    for (std::size_t suffix = 1; used_names.contains(candidate); ++suffix)
+    for (std::size_t suffix = 1;
+         used_names.contains(candidate) || fresh_names.contains(candidate);
+         ++suffix)
       candidate = std::string(source_name) + '_' + std::to_string(suffix);
-    used_names.insert(candidate);
+    fresh_names.insert(candidate);
     copied_names.emplace(std::string(source_name), candidate);
     return candidate;
   };
