@@ -25,13 +25,36 @@ from run_baseline_benchmarks import compare_outputs, isolated_reference, ort_ses
 from run_joggle_benchmarks import compiler_identity, checkpoint_protocol, make_harness, Unsupported
 from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
-from run_extension_task import execute, fusion_fixture, graph_fixture, sandbox_policy, equivalent
+from run_extension_task import (execute, fusion_fixture, graph_fixture, sandbox_policy,
+                                equivalent, rewrite_graph, graph_manifest, rewrite_numerics)
 from run_extension_agent import public_case_ids, tool_feedback, response_usage, final_checks
 import run_extension_agent
 from merge_benchmark_rows import audited_input
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_rewrite_oracle_uses_post_ir_and_preserves_signed_zero(self):
+        root = Path(__file__).resolve().parents[1] / "artifact"
+        task = next(t for t in json.loads((root / "manifests/extension-specs.json").read_text())["tasks"]
+                    if t["id"] == "rew-add-zero")
+        for case in task["positive_cases"] + task["negative_cases"]:
+            with self.subTest(case=case["id"]):
+                before = graph_manifest(rewrite_graph(case["input"]))
+                after = graph_manifest(rewrite_graph(case["input"], case["expect"]["eliminate"]))
+                self.assertTrue(rewrite_numerics(after, before,
+                    case["input"].get("no_signed_zeros", False))["passed"])
+                if case["expect"]["eliminate"]:
+                    self.assertFalse(equivalent(before, after, False, {}))
+                for system in ("Joggle", "MLIR", "xDSL"):
+                    fixture = graph_fixture(rewrite_graph(case["input"]), system)
+                    self.assertNotIn("request", fixture)
+                    self.assertNotIn("eliminate", fixture)
+        strict = next(c for c in task["negative_cases"] if c["id"] == "strict-positive-zero")
+        original = graph_manifest(rewrite_graph(strict["input"]))
+        illegal = graph_manifest(rewrite_graph(strict["input"], True))
+        self.assertFalse(rewrite_numerics(illegal, original, False)["passed"])
+        self.assertTrue(rewrite_numerics(illegal, original, True)["passed"])
+
     @unittest.skipUnless(importlib.util.find_spec("xdsl"), "xDSL is unavailable")
     def test_manifest_fixtures_use_verified_native_ssa(self):
         from xdsl.context import Context

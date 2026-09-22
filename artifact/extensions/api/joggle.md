@@ -1,4 +1,28 @@
-# Joggle analysis extension interface
+# Joggle extension interface
+
+## Native rewrite entry point
+
+For rewrite tasks, use `fn transform(m: Mod) -> bool`, returning whether the
+mod changed. The driver runs this entry, reparses its printed IR, and queries
+the resulting graph in a separate process. Returning a report is not a rewrite.
+
+`rew-add-zero` supplies a `subject` function with typed tensor SSA calls to
+`splat()` and `add(a, b)`. `splat` has a scalar `value` metadata attribute;
+`add` has Boolean `no_signed_zeros` metadata. These are the same small tensor
+dialect and operation semantics in all three systems. There is no `request`
+attribute. Input and output types may differ because `add` broadcasts.
+
+Use `ir.def(value)`, `ir.args(op)`, `ir.outs(op)`, `ir.type(value)`, and
+`ir.meta(op)` to inspect the pattern. Tensor element types are
+`args(ir.type(value))[0]`. `ir.replace(m, old_value, new_value)` redirects SSA
+uses; `ir.erase(m, op)` removes an unused operation. `ir.users(value)` includes
+returns. Iterate a snapshot of `ir.ops(ir.find(m, "subject"), ["call"])` and
+check `ir.live` before inspecting handles that a prior rewrite may have erased.
+`base.real(attr)` reads a numeric attribute; `base.text(attr)` preserves the
+minus sign of floating negative zero. The oracle checks the final graph,
+constant liveness, result types, numerical outputs, and signed-zero behavior.
+
+## Analysis entry point
 
 Edit the supplied `module.jog`. Its public entry point is:
 

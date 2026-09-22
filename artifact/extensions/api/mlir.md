@@ -1,4 +1,6 @@
-# MLIR analysis extension interface
+# MLIR extension interface
+
+## Analysis entry point
 
 Edit the supplied C++ implementation. Its public entry point is:
 
@@ -78,3 +80,24 @@ and `isDynamicDim(axis)`. Types print into `llvm::raw_string_ostream`.
 provide scalar values; integer attributes of type `i1` represent Booleans.
 `ArrayAttr` is iterable. LLVM JSON arrays retain insertion order, allowing the
 contract's sorted attribute-pair array and ordered graph references.
+
+## Native rewrite entry point
+
+For rewrite tasks implement `void transform(mlir::ModuleOp module)`. The driver
+verifies and prints the modified module; a separate process parses that output
+and observes its SSA graph. Do not return a JSON description of a rewrite.
+
+`rew-add-zero` supplies `func.func @subject` with tensor-typed `func.call`
+operations named `splat` and `add`, representing the same small tensor dialect
+used by all systems. A splat carries scalar `value` (`IntegerAttr` or
+`FloatAttr`); add carries Boolean `no_signed_zeros`. There is no request map.
+Calls refer to private declarations and use native SSA def-use chains.
+
+Find the function with `module.lookupSymbol<mlir::func::FuncOp>("subject")`.
+Use `getOperand`, `getResult`, `getDefiningOp<mlir::func::CallOp>`, and
+`RankedTensorType::getElementType` to inspect it. `result.replaceAllUsesWith(v)`
+redirects users, `op.erase()` removes an operation, and `value.use_empty()`
+checks liveness. Use `llvm::make_early_inc_range` or snapshot handles while
+erasing. `FloatAttr::getValue()` returns an APFloat with `isZero()` and
+`isNegative()`. The observer checks structure, types, live constants, and
+numerical results including strict signed-zero behavior.

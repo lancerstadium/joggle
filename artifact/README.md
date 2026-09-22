@@ -44,8 +44,8 @@ python3 artifact/validate_extension_specs.py
 
 `run_extension_task.py` executes candidate code against the shared contract.
 The native tasks include `ana-broadcast-shape`, `ana-storage-cost`,
-`ana-numeric-range`, `ana-fusion-match`, `emit-storage-plan`, and
-`emit-target-capability`, and `emit-graph-manifest`.
+`ana-numeric-range`, `ana-fusion-match`, `emit-storage-plan`,
+`emit-target-capability`, `emit-graph-manifest`, and `rew-add-zero`.
 Each task directory under `extensions/` contains reference implementations for
 Joggle, MLIR, and xDSL; the shared `starter.*` files contain their empty entry
 points. Attribute-analysis tasks read a request from function metadata in
@@ -88,6 +88,24 @@ tensors, ordered mixed attributes, and identity graphs. The expected manifests
 are stored only in the oracle contract; native fixtures contain no request
 dictionary or expected output. Every case checks the full manifest and repeats
 emission to check byte stability.
+
+`rew-add-zero` requires a native in-place rewrite. Its `rewrite-starter.*`
+files expose `transform` rather than `analyze`. The three reference extensions
+modify a common small tensor dialect represented by typed SSA calls, with
+scalar splat attributes and explicit floating-point `no_signed_zeros` flags.
+Nine cases cover both operand sides, scalar splats, shared constants, rank-zero
+tensors, nonzero constants, signed zero, and shape-changing broadcasts.
+
+The candidate process emits IR, not an answer dictionary. A second process
+parses that IR and extracts types, operands, constants, and returns. The oracle
+compares the full resulting graph and evaluates the original and rewritten
+graphs on three input sets. Strict floating cases compare output bits; explicit
+no-signed-zeros cases compare numerical values. No-op starters pass the four
+preservation cases but fail all five required rewrites and the complete task.
+Reports retain transformed IR, independent observations, and numerical bits.
+NumPy evaluates these small graphs; xDSL is the common post-IR observer for
+MLIR and xDSL output. Run the oracle with the pinned experiment interpreter,
+or supply its path with `--xdsl-python` when using the MLIR provider.
 
 ### Local agent execution
 

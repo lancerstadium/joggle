@@ -1,4 +1,6 @@
-# xDSL analysis extension interface
+# xDSL extension interface
+
+## Analysis entry point
 
 Edit the supplied Python implementation. Its public entry point is:
 
@@ -75,3 +77,24 @@ tensors have an empty shape. `StringAttr.data`, `FloatAttr.value.data`, and
 `IntegerAttr.value.data` expose scalar attributes. Integer attributes with
 `value.type.width.data == 1` are Booleans. `ArrayAttr` is iterable. Sort user
 attribute names when constructing the contract's attribute-pair array.
+
+## Native rewrite entry point
+
+For rewrite tasks implement `transform(module)` and mutate the supplied module.
+The driver verifies and prints it; a separate process reparses the result and
+observes the SSA graph. A returned dictionary is not a rewrite.
+
+`rew-add-zero` supplies a `FuncOp` named `subject` containing tensor-typed
+`CallOp` instances named `splat` and `add`. This small tensor dialect has the
+same semantics in all systems. Splat has scalar `value` metadata (`IntegerAttr`
+or `FloatAttr`); add has Boolean `no_signed_zeros` metadata (an i1 IntegerAttr).
+There is no request map. Calls use private declarations and native SSA values.
+
+Access `subject.body.block.ops`, `op.arguments`, `op.res`, and
+`op.callee.root_reference.data`; a result's `owner` identifies its definition.
+Tensor types expose `element_type` and `get_shape()`. A result supports
+`replace_all_uses_with(value)`; its block supports `erase_op(op)`. Snapshot
+`list(block.ops)` when erasing. `value.uses` includes return uses. Attribute
+payloads are at `attr.value.data`; `math.copysign(1, value)` distinguishes
+floating negative zero. Final checks cover structure, types, constant liveness,
+numerical outputs, and strict signed-zero behavior.

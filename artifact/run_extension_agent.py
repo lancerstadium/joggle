@@ -14,7 +14,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from run_extension_task import ROOT, SUPPORTED_TASKS, digest
+from run_extension_task import ROOT, SUPPORTED_TASKS, REWRITE_TASKS, digest
 
 
 ACTIONS, TOKENS = 30, 32000
@@ -164,11 +164,16 @@ def main() -> int:
     task = tasks[args.task]
     card = ROOT / "extensions/api" / (CARD_NAMES[args.system] + ".md")
     suffix = SUFFIXES[args.system]
-    starter = ROOT / "extensions" / ("starter." + suffix)
+    starter = ROOT / "extensions" / (
+        ("rewrite-starter." if args.task in REWRITE_TASKS else "starter.") + suffix)
     source_identity = {str(path.relative_to(ROOT)): digest(path) for path in (
         Path(__file__).resolve(), ROOT / "run_extension_task.py", spec_path, card, starter,
         ROOT / "extensions/CMakeLists.txt", ROOT / "extensions/mlir-driver.cpp",
         ROOT / "extensions/xdsl-driver.py")}
+    if args.task in REWRITE_TASKS:
+        for path in (ROOT / "extensions/emit-graph-manifest/reference.jog",
+                     ROOT / "extensions/emit-graph-manifest/reference.py"):
+            source_identity[str(path.relative_to(ROOT))] = digest(path)
     demos = []
     for name in args.demo:
         source = ROOT / "extensions" / name / ("reference." + suffix)
@@ -310,7 +315,7 @@ def main() -> int:
     gates = bool(final and all(step["exit_code"] == 0 for step in final["setup"]) and any(
         case["exit_code"] == 0 and not case["decode_error"] for case in final["cases"]))
     patch_text = "".join(difflib.unified_diff(starter.read_text().splitlines(keepends=True),
-        candidate.read_text().splitlines(keepends=True), fromfile="starter." + suffix,
+        candidate.read_text().splitlines(keepends=True), fromfile=starter.name,
         tofile="candidate." + suffix))
     (root / "candidate.patch").write_text(patch_text)
     payload = {"schema": "extension-agent-trajectory/v1", "model": installed[0],

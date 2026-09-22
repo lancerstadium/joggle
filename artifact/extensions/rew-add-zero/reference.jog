@@ -1,0 +1,40 @@
+mod extension
+use base
+use ir
+
+local fn simplify(m: Mod, op: Op) -> bool {
+  if !ir.live(op) || ir.callee(op) != "add" { return false }
+  let operands = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(operands) != 2 || len(outputs) != 1 { return false }
+  for side in 0..2 {
+    let constant = ir.def(operands[side])
+    let other = operands[1 - side]
+    if ir.live(constant) && ir.callee(constant) == "splat" &&
+       ir.type(other) == ir.type(outputs[0]) &&
+       args(ir.type(operands[side]))[0] == args(ir.type(other))[0] {
+      let value = base.get(ir.meta(constant), "value")
+      let floating = text(args(ir.type(other))[0]) == "f32"
+      let spelling = text(value)
+      let negative = base.replace(spelling, "-", "") != spelling
+      let allowed = !floating ||
+          (base.get(ir.meta(op), "no_signed_zeros", false) == true && !negative)
+      if (kind(value) == "int" || kind(value) == "f64") &&
+         real(value) == real(0) && allowed {
+        ir.replace(m, outputs[0], other)
+        ir.erase(m, op)
+        if len(ir.users(operands[side])) == 0 { ir.erase(m, constant) }
+        return true
+      }
+    }
+  }
+  return false
+}
+
+fn transform(m: Mod) -> bool {
+  var changed = false
+  for op in ir.ops(ir.find(m, "subject"), ["call"]) {
+    changed = simplify(m, op) || changed
+  }
+  return changed
+}

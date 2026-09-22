@@ -10,7 +10,13 @@ from xdsl.parser import Parser
 
 
 def main() -> None:
-    implementation, input_path = map(Path, sys.argv[1:])
+    inspect = sys.argv[1] == "--inspect"
+    if inspect:
+        implementation = Path(__file__).parent / "emit-graph-manifest/reference.py"
+        input_path = Path(sys.argv[2])
+    else:
+        implementation, input_path = map(Path, sys.argv[1:3])
+    rewrite = not inspect and sys.argv[3:] == ["--rewrite"]
     # Execute exactly the submitted bytes rather than a timestamp-keyed .pyc
     # left by a previous candidate with the same filename and size.
     candidate = ModuleType("candidate")
@@ -22,7 +28,20 @@ def main() -> None:
     context.load_dialect(Func)
     module = Parser(context, input_path.read_text()).parse_module()
     module.verify()
-    print(json.dumps(candidate.analyze(module), sort_keys=True, allow_nan=False))
+    if rewrite:
+        from xdsl.printer import Printer
+        candidate.transform(module)
+        module.verify()
+        Printer().print_op(module)
+    else:
+        if inspect:
+            from xdsl.dialects.func import CallOp, FuncOp, ReturnOp
+            subject = next(op for op in module.ops
+                           if isinstance(op, FuncOp) and op.sym_name.data == "subject")
+            if len(subject.body.blocks) != 1 or any(
+                    not isinstance(op, (CallOp, ReturnOp)) for op in subject.body.block.ops):
+                raise ValueError("rewrite result contains unsupported control or operations")
+        print(json.dumps(candidate.analyze(module), sort_keys=True, allow_nan=False))
 
 
 if __name__ == "__main__":

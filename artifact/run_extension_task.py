@@ -24,7 +24,89 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SUPPORTED_TASKS = {"ana-broadcast-shape", "ana-storage-cost", "ana-numeric-range",
                    "ana-fusion-match", "emit-storage-plan", "emit-target-capability",
-                   "emit-graph-manifest"}
+                   "emit-graph-manifest", "rew-add-zero"}
+
+REWRITE_TASKS = {"rew-add-zero"}
+
+
+def rewrite_graph(request: dict, eliminate: bool = False) -> dict:
+    """Build the tensor-dialect fixture; the extension sees native SSA, not this map."""
+    element, shape = request["element"], request["shape"]
+    constant_shape = request.get("constant_shape", shape)
+    rank = max(len(shape), len(constant_shape))
+    a = [1] * (rank - len(shape)) + shape
+    b = [1] * (rank - len(constant_shape)) + constant_shape
+    if any(x != y and x != 1 and y != 1 for x, y in zip(a, b)):
+        raise ValueError("incompatible fixture broadcast")
+    result_shape = [y if x == 1 else x for x, y in zip(a, b)]
+    operand = {"name": "x", "element": element, "shape": shape}
+    constant = {"op": "splat", "inputs": [],
+                "results": [{"name": "zero", "element": element, "shape": constant_shape}],
+                "attrs": {"value": request["constant"]}}
+    add = {"op": "add", "inputs": ["x", "zero"] if request["side"] == "rhs" else ["zero", "x"],
+           "results": [{"name": "sum", "element": element, "shape": result_shape}],
+           "attrs": {"no_signed_zeros": request.get("no_signed_zeros", False)}}
+    shared = request.get("return_constant", False)
+    nodes = ([constant] if shared else []) if eliminate else [constant, add]
+    return {"inputs": [operand], "nodes": nodes,
+            "outputs": (["x"] if eliminate else ["sum"]) + (["zero"] if shared else [])}
+
+
+def graph_manifest(graph: dict) -> dict:
+    ids = {}
+    def define(value: dict) -> dict:
+        key = f"v{len(ids)}"
+        ids[value["name"]] = key
+        return {"id": key, "type": {"element": value["element"], "shape": value["shape"]}}
+    inputs = [define(value) for value in graph["inputs"]]
+    nodes = []
+    for node in graph["nodes"]:
+        operands = [ids[name] for name in node["inputs"]]
+        results = [define(value) for value in node["results"]]
+        nodes.append({"id": f"n{len(nodes)}", "op": node["op"], "inputs": operands,
+                      "results": results, "attrs": sorted(map(list, node.get("attrs", {}).items()))})
+    return {"schema_version": 1, "inputs": inputs, "nodes": nodes,
+            "outputs": [ids[name] for name in graph["outputs"]]}
+
+
+def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool) -> dict:
+    """Interpret the independently observed post-IR, including strict zero bits."""
+    import numpy as np
+    dtypes = {"f32": np.float32, "i32": np.int32, "i64": np.int64}
+    def evaluate(graph: dict, sample: list[float]) -> list:
+        values = {}
+        for value in graph["inputs"]:
+            ty = value["type"]
+            count = math.prod(ty["shape"])
+            values[value["id"]] = np.resize(np.asarray(sample, dtype=dtypes[ty["element"]]), count).reshape(ty["shape"])
+        for node in graph["nodes"]:
+            if len(node["results"]) != 1:
+                raise ValueError("rewrite oracle requires one result per fixture operation")
+            result = node["results"][0]
+            ty = result["type"]
+            attrs = dict(node["attrs"])
+            if node["op"] == "splat" and not node["inputs"]:
+                value = np.full(ty["shape"], attrs["value"], dtype=dtypes[ty["element"]])
+            elif node["op"] == "add" and len(node["inputs"]) == 2:
+                a, b = (values[key] for key in node["inputs"])
+                value = np.add(a, b, dtype=dtypes[ty["element"]])
+            else:
+                raise ValueError("unsupported operation in rewrite result")
+            if list(value.shape) != ty["shape"]:
+                raise ValueError("rewrite result has the wrong runtime shape")
+            values[result["id"]] = value
+        return [values[key] for key in graph["outputs"]]
+    cases = []
+    for sample in ([-0.0, 0.0, 1.0, -1.0], [-17, 23, 255, -1024], [0, 0, 0, 0]):
+        before, after = evaluate(original, sample), evaluate(actual, sample)
+        passed = len(before) == len(after)
+        for a, b in zip(before, after):
+            passed = passed and a.shape == b.shape and a.dtype == b.dtype
+            passed = passed and (bool(np.array_equal(a, b)) if no_signed_zeros else a.tobytes() == b.tobytes())
+        cases.append({"input": sample, "passed": passed,
+                      "before_bits": [value.tobytes().hex() for value in before],
+                      "after_bits": [value.tobytes().hex() for value in after]})
+    return {"passed": all(case["passed"] for case in cases), "cases": cases}
 
 
 def digest(path: Path) -> str:
@@ -202,6 +284,7 @@ def sandbox_policy(args: argparse.Namespace, work: Path) -> str:
         roots.append(args.xdsl_python.absolute().parent.parent.resolve())
     literals = [args.source.resolve(), ROOT / "extensions/CMakeLists.txt",
                 ROOT / "extensions/mlir-driver.cpp", ROOT / "extensions/xdsl-driver.py",
+                ROOT / "extensions/emit-graph-manifest/reference.py",
                 Path("/"), Path("/dev/null"), Path("/dev/random"), Path("/dev/urandom")]
     read_rules = [f"(subpath {json.dumps(str(path.resolve()))})" for path in roots]
     read_rules += [f"(literal {json.dumps(str(path))})" for path in literals]
@@ -296,12 +379,16 @@ def main() -> int:
     spec = json.loads(spec_path.read_text())
     spec_hash = digest(spec_path)
     task = next(task for task in spec["tasks"] if task["id"] == args.task)
+    rewriting = args.task in REWRITE_TASKS
     all_cases = task["positive_cases"] + task["negative_cases"]
     if not set(args.case).issubset({case["id"] for case in all_cases}):
         parser.error("--case names a fixture outside the selected task")
     source_hash = digest(args.source)
     harness_files = [Path(__file__).resolve(), ROOT / "extensions/CMakeLists.txt",
                      ROOT / "extensions/mlir-driver.cpp", ROOT / "extensions/xdsl-driver.py"]
+    if rewriting:
+        harness_files += [ROOT / "extensions/emit-graph-manifest/reference.jog",
+                          ROOT / "extensions/emit-graph-manifest/reference.py"]
     record = {"schema": "extension-task-oracle/v1", "task": args.task,
               "system": args.system, "source": str(args.source),
               "source_sha256": source_hash, "task_spec_sha256": spec_hash,
@@ -309,6 +396,10 @@ def main() -> int:
                                  for path in harness_files},
               "setup": [], "cases": [], "passed": False}
     record["complete_task"] = not args.case
+    if rewriting:
+        import numpy as np
+        record["numerical_oracle"] = {"numpy_version": np.__version__,
+                                      "comparison": "bitwise-except-explicit-nsz"}
     with tempfile.TemporaryDirectory(prefix="task-", dir=args.build_root) as directory:
         work = Path(directory).resolve()
         scratch = work / "tmp"
@@ -316,15 +407,31 @@ def main() -> int:
         policy = sandbox_policy(args, work) if args.isolate else None
         record["execution_isolation"] = {"kind": "macos-seatbelt" if policy else "none",
                                          "policy": policy}
+        if rewriting and args.system != "Joggle":
+            observer_identity = execute([args.xdsl_python or sys.executable, "-c",
+                "import importlib.metadata,json,sys; print(json.dumps({'python':sys.version,"
+                "'xdsl':importlib.metadata.version('xdsl')}))"], args.timeout, policy, scratch)
+            record["setup"].append(observer_identity)
+            if observer_identity["exit_code"] == 0:
+                record["observer_identity"] = json.loads(observer_identity["stdout"])
         if args.system == "Joggle":
             mod = work / "mods/extension"
             mod.mkdir(parents=True)
             shutil.copyfile(args.source, mod / "module.jog")
-            command = [args.joggle, "query", "extension.analyze"]
+            command = [args.joggle, "run", "extension.transform"] if rewriting else [args.joggle, "query", "extension.analyze"]
             flags = ["-M", args.builtin_mods, "-M", work / "mods"]
+            if rewriting:
+                observer = work / "mods/observer"
+                observer.mkdir()
+                observer.joinpath("module.jog").write_text(
+                    (ROOT / "extensions/emit-graph-manifest/reference.jog").read_text().replace(
+                        "mod extension\n", "mod observer\n", 1).replace(
+                        "for op in ir.ops(subject) {",
+                        'for op in ir.ops(subject) {\n    assert(ir.kind(op) == "call" || '
+                        'ir.kind(op) == "return", "rewrite result contains unsupported control or operations")'))
         elif args.system == "xDSL":
             command = [args.xdsl_python, ROOT / "extensions/xdsl-driver.py", args.source]
-            flags = []
+            flags = ["--rewrite"] if rewriting else []
         else:
             # A candidate must never inherit another candidate's executable.
             # Hash-separated builds also avoid timestamp-resolution races when
@@ -333,12 +440,14 @@ def main() -> int:
                 "source": str(args.source), "sha256": source_hash,
                 "harness": record["harness_sha256"],
                 "mlir_dir": str(args.mlir_dir.resolve()),
+                "rewrite": rewriting,
             }).encode()).hexdigest()
             build = (work / "build" if args.isolate else
                      args.build_root.resolve() / "mlir" / build_key)
             for argv in (["cmake", "-S", ROOT / "extensions", "-B", build,
                           f"-DMLIR_DIR={args.mlir_dir.resolve()}",
-                          f"-DEXTENSION_SOURCE={args.source}", "-DCMAKE_BUILD_TYPE=Release"],
+                          f"-DEXTENSION_SOURCE={args.source}",
+                          f"-DEXTENSION_REWRITE={'ON' if rewriting else 'OFF'}", "-DCMAKE_BUILD_TYPE=Release"],
                          ["cmake", "--build", build, "--parallel", "1"]):
                 step = execute(argv, args.timeout, policy, scratch)
                 record["setup"].append(step)
@@ -353,7 +462,9 @@ def main() -> int:
                 if args.case and case["id"] not in args.case:
                     continue
                 path = work / ("input.jog" if args.system == "Joggle" else "input.mlir")
-                if args.task == "ana-fusion-match":
+                if rewriting:
+                    source = graph_fixture(rewrite_graph(case["input"]), args.system)
+                elif args.task == "ana-fusion-match":
                     source = fusion_fixture(case["input"], args.system)
                 elif args.task == "emit-graph-manifest":
                     source = graph_fixture(case["input"], args.system)
@@ -366,19 +477,43 @@ def main() -> int:
                 step = execute([*command, path, *flags], args.timeout, policy, scratch)
                 actual = None
                 error = ""
-                if step["exit_code"] == 0:
+                observation = None
+                numerics = None
+                checked_step = step
+                if rewriting and step["exit_code"] == 0:
+                    transformed = work / ("transformed.jog" if args.system == "Joggle" else "transformed.mlir")
+                    transformed.write_text(step["stdout"])
+                    if args.system == "Joggle":
+                        inspect = [args.joggle, "query", "observer.analyze", transformed, *flags]
+                    else:
+                        inspect = [args.xdsl_python or sys.executable, ROOT / "extensions/xdsl-driver.py",
+                                   "--inspect", transformed]
+                    observation = execute(inspect, args.timeout, policy, scratch)
+                    checked_step = observation
+                    if observation["exit_code"] != 0:
+                        error = "post-rewrite IR observation failed: " + observation["stderr"][-6000:]
+                if checked_step["exit_code"] == 0:
                     try:
-                        actual = json.loads(step["stdout"], parse_constant=invalid_constant)
+                        actual = json.loads(checked_step["stdout"], parse_constant=invalid_constant)
                         canonical(actual)
                     except ValueError as failure:
                         actual = None
                         error = str(failure)
                 # Numeric tasks use the shared tolerance only for numbers;
                 # object keys, sequence lengths, Booleans, and errors stay exact.
-                expected = expected_result(args.task, case)
-                passed = (step["exit_code"] == 0 and not error and
+                expected = (graph_manifest(rewrite_graph(case["input"], case["expect"]["eliminate"]))
+                            if rewriting else expected_result(args.task, case))
+                passed = (step["exit_code"] == 0 and checked_step["exit_code"] == 0 and not error and
                           equivalent(actual, expected, task["oracle"]["comparison"] == "numerical",
                                      spec["comparison_policy"]))
+                if rewriting and passed:
+                    try:
+                        numerics = rewrite_numerics(actual, graph_manifest(rewrite_graph(case["input"])),
+                                                    case["input"].get("no_signed_zeros", False))
+                        passed = numerics["passed"]
+                    except (ValueError, KeyError, TypeError) as failure:
+                        passed = False
+                        error = str(failure)
                 repeat = None
                 if task["family"] == "emission" and step["exit_code"] == 0:
                     repeat = execute([*command, path, *flags], args.timeout, policy, scratch)
@@ -387,6 +522,7 @@ def main() -> int:
                                         "expected": expected, "actual": actual,
                                         "expected_sha256": hashlib.sha256(canonical(expected).encode()).hexdigest(),
                                         "passed": passed, "repeat": repeat,
+                                        "observation": observation, "numerics": numerics,
                                         "decode_error": error, **step})
         record["passed"] = (setup_ok and bool(record["cases"]) and
                             all(case["passed"] for case in record["cases"]) and

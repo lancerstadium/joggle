@@ -163,14 +163,17 @@
       "required_roles": ["rewrite"],
       "contract": "Replace integer add(x, zero) or add(zero, x) by x when zero is a same-element-type scalar or splat constant and replacement preserves the result shape. For floating add with positive zero, require explicit no_signed_zeros semantics; otherwise preserve the operation. Leave negative-zero constants unchanged. Floating fixtures use finite inputs under round-to-nearest-ties-to-even with unobserved FP exceptions. Remove a matched constant only when it has no remaining uses.",
       "positive_cases": [
-        {"id": "rhs-f32-nsz", "input": {"graph": "return add(arg0:tensor<4xf32>, splat(0.0))", "no_signed_zeros": true}, "expect": {"graph": "return arg0"}},
-        {"id": "lhs-i32", "input": {"graph": "return add(splat(0:i32), arg0:tensor<2x3xi32>)"}, "expect": {"graph": "return arg0"}}
+        {"id": "rhs-f32-nsz", "input": {"element": "f32", "shape": [4], "constant": 0.0, "side": "rhs", "no_signed_zeros": true}, "expect": {"eliminate": true}},
+        {"id": "lhs-i32", "input": {"element": "i32", "shape": [2, 3], "constant": 0, "side": "lhs"}, "expect": {"eliminate": true}},
+        {"id": "shared-zero", "input": {"element": "i32", "shape": [4], "constant": 0, "side": "rhs", "return_constant": true}, "expect": {"eliminate": true}},
+        {"id": "scalar-i64", "input": {"element": "i64", "shape": [], "constant": 0, "side": "rhs"}, "expect": {"eliminate": true}},
+        {"id": "scalar-splat", "input": {"element": "i32", "shape": [2, 3], "constant_shape": [], "constant": 0, "side": "rhs"}, "expect": {"eliminate": true}}
       ],
       "negative_cases": [
-        {"id": "nonzero", "input": {"graph": "return add(arg0:tensor<4xf32>, splat(0.001))"}, "expect": {"graph": "unchanged"}},
-        {"id": "negative-zero-constant", "input": {"graph": "return add(arg0:tensor<4xf32>, splat(-0.0))"}, "expect": {"graph": "unchanged"}},
-        {"id": "strict-positive-zero", "input": {"graph": "return add(arg0:tensor<4xf32>, splat(0.0))", "no_signed_zeros": false, "values": [-0.0, 0.0, 1.0, -1.0]}, "expect": {"graph": "unchanged", "output_bits_hex": ["00000000", "00000000", "3f800000", "bf800000"]}},
-        {"id": "broadcast-changes-shape", "input": {"graph": "return add(arg0:tensor<1xi32>, splat(0:i32,tensor<4xi32>))"}, "expect": {"graph": "unchanged"}}
+        {"id": "nonzero", "input": {"element": "f32", "shape": [4], "constant": 0.001, "side": "rhs", "no_signed_zeros": true}, "expect": {"eliminate": false}},
+        {"id": "negative-zero-constant", "input": {"element": "f32", "shape": [4], "constant": -0.0, "side": "rhs", "no_signed_zeros": true}, "expect": {"eliminate": false}},
+        {"id": "strict-positive-zero", "input": {"element": "f32", "shape": [4], "constant": 0.0, "side": "rhs", "no_signed_zeros": false}, "expect": {"eliminate": false}},
+        {"id": "broadcast-changes-shape", "input": {"element": "i32", "shape": [1], "constant_shape": [4], "constant": 0, "side": "rhs"}, "expect": {"eliminate": false}}
       ],
       "oracle": {"phases": ["build", "semantic"], "comparison": "canonical-graph"}
     },
