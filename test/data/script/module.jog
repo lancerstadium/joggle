@@ -1298,6 +1298,43 @@ fn range_after_fold(m: Mod, first: int, last: int, expected: int) -> bool {
   return false
 }
 
+local fn range_head(values: range) -> int {
+  for value in values { return value }
+  return 99
+}
+
+[memo]
+local fn range_memo_head(values: range) -> int {
+  return range_head(values)
+}
+
+fn lazy_range_probe(m: Mod) -> bool {
+  // Huge ranges must be constant-space, including copies, calls, memo keys,
+  // nested Cartesian iteration, early returns, and signed-domain endpoints.
+  let huge = base. ..(-9223372036854775807, 9223372036854775807)
+  let copied = base.copy(huge)
+  assert(range_head(copied) == -9223372036854775807, "range copy failed")
+  assert(range_memo_head(huge) == -9223372036854775807, "range memo miss")
+  assert(range_memo_head(huge) == -9223372036854775807, "range memo hit")
+  assert(range_memo_head(base. ..(7, 9223372036854775807)) == 7, "range memo key alias")
+  assert(base. ..(4, 1) == base. ..(9, 9), "empty range equality differs")
+  assert(base. ..(1, 4) != base. ..(2, 5), "distinct ranges compare equal")
+  var count = 0
+  var sum = 0
+  for i in 9223372036854775805..9223372036854775807 { count += 1 }
+  assert(count == 2, "range endpoint overflow")
+  for i in -2..1, j in [3, 4] { sum += i * j }
+  assert(sum == -21, "range/list Cartesian iteration differs")
+  for i in huge, j in 3..9223372036854775807 {
+    return i == -9223372036854775807 && j == 3
+  }
+  return false
+}
+
+fn range_export(m: Mod, first: int, last: int) -> range {
+  return base. ..(first, last)
+}
+
 fn reject_mixed_fold(m: Mod) -> bool {
   return ir.fold(m, ir.ops(m), ir.fns("base"))
 }

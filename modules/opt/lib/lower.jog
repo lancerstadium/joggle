@@ -27,18 +27,14 @@ local fn legalize_with(
 ) -> bool {
   assert(limit >= 0, "opt.legalize limit must not be negative")
   var changed = false
-  var again = true
-  var exceeded = false
   for round in 0..(limit + 1) {
-    if again {
-      again = expand_with(m, accept, arg, configured)
-      changed = again || changed
-      if round == limit && again {
-        exceeded = true
-      }
+    let again = expand_with(m, accept, arg, configured)
+    changed = again || changed
+    if !again {
+      return changed
     }
+    assert(round < limit, "opt.legalize did not converge within its limit")
   }
-  assert(!exceeded, "opt.legalize did not converge within its limit")
   return changed
 }
 
@@ -47,25 +43,19 @@ local fn expose_with(
 ) -> bool {
   assert(limit >= 0, "opt.expose limit must not be negative")
   var changed = false
-  var again = true
-  var exceeded = false
   for round in 0..(limit + 1) {
-    if again {
-      let before = ir.revision(m)
-      fold(m)
-      copy(m)
-      dce(m, [])
-      // fold/copy/dce each process the current graph in one invocation. Only
-      // successful inlining can expose a new call layer that needs another
-      // round; using the aggregate revision here can loop on canonicalization
-      // churn even when no further call is expandable.
-      again = expand_with(m, accept, arg, configured)
-      changed = ir.revision(m) != before || changed
-      if round == limit && again {
-        exceeded = true
-      }
+    let before = ir.revision(m)
+    fold(m)
+    copy(m)
+    dce(m, [])
+    // Only successful inlining can expose another call layer. Canonicalization
+    // alone does not require an additional exposure round.
+    let again = expand_with(m, accept, arg, configured)
+    changed = ir.revision(m) != before || changed
+    if !again {
+      return changed
     }
+    assert(round < limit, "opt.expose did not converge within its limit")
   }
-  assert(!exceeded, "opt.expose did not converge within its limit")
   return changed
 }

@@ -5420,25 +5420,37 @@ int main(int argc, char** argv) {
       CHECK(op.kind() != joggle::Op::Kind::loop);
   }
 
-  // Required metaprogram execution retains its resource error after a skipped
-  // optional fold. Descending ranges have the same empty iteration semantics
-  // as generated ascending runtime loops.
+  // Required execution iterates beyond the optional-folding limit without
+  // allocating an Item per index. Descending ranges remain empty.
   CHECK(joggle::run(env, "script.range_after_fold", nested_large_range,
                    std::vector<joggle::Attr>{
                          joggle::Attr(std::int64_t{4}),
                          joggle::Attr(std::int64_t{1}),
                          joggle::Attr(std::int64_t{0})}));
-  CHECK(!joggle::run(env, "script.range_after_fold", nested_large_range,
+  CHECK(joggle::run(env, "script.range_after_fold", nested_large_range,
                     std::vector<joggle::Attr>{
                           joggle::Attr(std::int64_t{0}),
                           joggle::Attr(std::int64_t{1000001}),
                           joggle::Attr(std::int64_t{1000001})}));
+  CHECK(env.diags().empty());
+  joggle::Attr lazy_range_result;
+  CHECK(joggle::query(env, "script.lazy_range_probe", nested_large_range,
+                     lazy_range_result));
+  CHECK(lazy_range_result.boolean() == true);
+  CHECK(joggle::query(env, "script.range_export", nested_large_range,
+                     lazy_range_result,
+                     std::vector<joggle::Attr>{joggle::Attr(std::int64_t{-1}),
+                                               joggle::Attr(std::int64_t{2})}));
+  CHECK(lazy_range_result.list());
+  CHECK(lazy_range_result.list()->size() == 3);
+  CHECK((*lazy_range_result.list())[0].integer() == -1);
+  CHECK((*lazy_range_result.list())[2].integer() == 1);
+  CHECK(!joggle::query(env, "script.range_export", nested_large_range,
+                      lazy_range_result,
+                      std::vector<joggle::Attr>{joggle::Attr(std::int64_t{0}),
+                           joggle::Attr(std::int64_t{1000001})}));
   CHECK(!env.diags().empty());
-  CHECK(env.diags().front().message.find("compile-time range") !=
-        std::string::npos);
-  CHECK(env.diags().front().message.find("0..1000001") !=
-        std::string::npos);
-  CHECK(env.diags().front().message.find("materialization limit 1000000") !=
+  CHECK(env.diags().front().message.find("not representable as Attr") !=
         std::string::npos);
   env.clear_diags();
 

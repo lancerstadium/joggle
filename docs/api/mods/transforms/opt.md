@@ -153,13 +153,21 @@ limit does not reject the runtime program.
 | --- | --- |
 | Runtime graph | Keep bounds and a loop body for backend lowering |
 | Optional scalar/control folding | Skip a fold requiring more than 1,000,000 range elements |
-| Required metaprogram execution | Report an error when range materialization exceeds that limit |
+| Required metaprogram execution | Store two bounds and produce each index on demand |
+| Export a range as an attribute list | Materialize at most 1,000,000 elements |
 | Ascending range with end at or below start | Iterate zero times |
 
 The optional-fold limit also applies to ranges reached inside nested constant
 control flow. Small independent regions can still fold after a larger region
-is skipped. This materialization limit counts range elements, not total
+is skipped. This folding limit counts range elements, not total
 interpreter instructions or total iterations across a nested loop nest.
+
+Required metaprograms can iterate larger ranges without allocating a list of
+indices. Copying a range, passing it to a function, and computing its memo key
+all use the bounds. A return from a loop stops iteration immediately. The
+iteration cost still grows with the number of executed iterations; only the
+range storage is constant-space. Convergent legalization and exposure passes
+return as soon as no further expansion occurs.
 
 ### Health before and after a stage
 

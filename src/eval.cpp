@@ -24,10 +24,23 @@ struct List;
 struct Item;
 using Items = std::vector<Item>;
 
+// The existing `range` value stores bounds, not one boxed value per index.
+struct Range {
+  std::int64_t first;
+  std::int64_t last;
+
+  std::uint64_t size() const {
+    return static_cast<std::uint64_t>(last) -
+           static_cast<std::uint64_t>(first);
+  }
+};
+
+constexpr std::uint64_t max_range_items = 1000000;
+
 struct Item {
   using Data =
       std::variant<std::monostate, std::shared_ptr<Attr>, Ty, Mod*, Fn, Blk,
-                   Op, Val, std::shared_ptr<List>>;
+                   Op, Val, std::shared_ptr<List>, Range>;
   Data data;
 
   Item() = default;
@@ -38,6 +51,7 @@ struct Item {
   Item(Blk value) : data(value) {}
   Item(Op value) : data(value) {}
   Item(Val value) : data(value) {}
+  Item(Range value) : data(value) {}
   Item(Items value);
 };
 
@@ -126,9 +140,31 @@ const List* list_data(const Item& item) {
   return value && *value ? value->get() : nullptr;
 }
 
+template <typename Action>
+void each_item(const Item& source, Action&& action) {
+  if (const auto* range = as<Range>(source)) {
+    for (std::int64_t value = range->first; value < range->last; ++value)
+      if (!action(Item(Attr(value))))
+        return;
+  } else if (const Items* items = list(source)) {
+    for (const Item& item : *items)
+      if (!action(item))
+        return;
+  }
+}
+
 std::optional<Attr> attribute(const Item& item) {
   if (const auto* value = as<Attr>(item))
     return *value;
+  if (const auto* range = as<Range>(item)) {
+    if (range->size() > max_range_items)
+      return std::nullopt;
+    Attr::List out;
+    out.reserve(static_cast<std::size_t>(range->size()));
+    for (std::int64_t value = range->first; value < range->last; ++value)
+      out.emplace_back(value);
+    return Attr(std::move(out));
+  }
   const Items* values = list(item);
   if (!values)
     return std::nullopt;
@@ -235,8 +271,6 @@ std::optional<std::int64_t> integer(const Item& item) {
   return value ? value->integer() : std::nullopt;
 }
 
-constexpr std::uint64_t max_range_items = 1000000;
-
 std::optional<std::uint64_t> range_size(std::span<const Item> args) {
   if (args.size() != 2)
     return std::nullopt;
@@ -313,6 +347,8 @@ Ty runtime_type(const Item& item) {
     return Ty("Op");
   if (as<Val>(item))
     return Ty("Val");
+  if (as<Range>(item))
+    return Ty("range");
   if (const List* value = list_data(item)) {
     const std::array<Ty, 1> args{value->element};
     return Ty("list", args);
@@ -349,6 +385,8 @@ bool runtime_type_is(const Item& item, const Ty& expected,
     return expected.text() == "Op";
   if (as<Val>(item))
     return expected.text() == "Val";
+  if (as<Range>(item))
+    return expected.text() == "range";
   if (const List* value = list_data(item)) {
     if (value->element.text() == "_" && declared.name() == "list")
       return expected == declared;
@@ -422,6 +460,11 @@ bool same(const Item& left, const Item& right) {
     return *value == *as<Op>(right);
   if (const auto* value = as<Val>(left))
     return *value == *as<Val>(right);
+  if (const auto* value = as<Range>(left)) {
+    const auto* other = as<Range>(right);
+    return value->size() == other->size() &&
+           (value->size() == 0 || value->first == other->first);
+  }
   if (const Items* values = list(left)) {
     const Items* other = list(right);
     return other && values->size() == other->size() &&
@@ -1309,6 +1352,13 @@ private:
       return handle(6, value->store_, value->id_, value->generation_);
     if (const auto* value = as<Val>(item))
       return handle(7, value->store_, value->id_, value->generation_);
+    if (const auto* value = as<Range>(item)) {
+      hash_combine(seed, 9);
+      hash_combine(seed, std::hash<std::uint64_t>{}(value->size()));
+      if (value->size() != 0)
+        hash_combine(seed, std::hash<std::int64_t>{}(value->first));
+      return true;
+    }
     if (const Items* values = list(item)) {
       hash_combine(seed, 8);
       hash_combine(seed, values->size());
@@ -2032,11 +2082,11 @@ private:
                instruction.op.loc());
           return {FlowKind::fail, {}};
         }
-        std::vector<const Items*> sources;
+        std::vector<const Item*> sources;
         sources.reserve(iter_count);
         for (std::size_t index = 0; index < iter_count; ++index) {
-          const Items* source = list(window[instruction.args[index]]);
-          if (!source) {
+          const Item* source = &window[instruction.args[index]];
+          if (!list(*source) && !as<Range>(*source)) {
             fail("compile-time loop source is not iterable",
                  instruction.op.loc());
             return {FlowKind::fail, {}};
@@ -2055,13 +2105,12 @@ private:
           if (escaped.kind != FlowKind::next)
             return;
           if (depth != sources.size()) {
-            for (const Item& item : *sources[depth]) {
+            each_item(*sources[depth], [&](const Item& item) {
               indices.push_back(item);
               self(self, depth + 1);
               indices.pop_back();
-              if (escaped.kind != FlowKind::next)
-                return;
-            }
+              return escaped.kind == FlowKind::next;
+            });
             return;
           }
 #if defined(JOGGLE_EVAL_COUNTERS)
@@ -2551,10 +2600,10 @@ private:
       fail("compile-time loop source count is inconsistent", op.loc());
       return {FlowKind::fail, {}};
     }
-    std::vector<const Items*> sources;
+    std::vector<const Item*> sources;
     for (std::size_t index = 0; index < iter_count; ++index) {
-      const Items* source = list(args[index]);
-      if (!source) {
+      const Item* source = &args[index];
+      if (!list(*source) && !as<Range>(*source)) {
         fail("compile-time loop source is not iterable", op.loc());
         return {FlowKind::fail, {}};
       }
@@ -2571,13 +2620,12 @@ private:
       if (escaped.kind != FlowKind::next)
         return;
       if (depth != sources.size()) {
-        for (const Item& item : *sources[depth]) {
+        each_item(*sources[depth], [&](const Item& item) {
           indices.push_back(item);
           visit(depth + 1);
           indices.pop_back();
-          if (escaped.kind != FlowKind::next)
-            return;
-        }
+          return escaped.kind == FlowKind::next;
+        });
         return;
       }
       Items blk_args = indices;
@@ -2791,6 +2839,10 @@ private:
       return std::nullopt;
     }
     if (target.external() && target.module() == "base" &&
+        target.name().starts_with("operator "))
+      return operation(target.name().substr(9), args.mutable_view(), loc,
+                       single_result);
+    if (target.external() && target.module() == "base" &&
         fundamental(target.name())) {
 #if defined(JOGGLE_EVAL_COUNTERS)
       if (planned && counters_) [[unlikely]]
@@ -2939,24 +2991,15 @@ private:
       const auto first = integer(args[0]);
       const auto last = integer(args[1]);
       const auto size = range_size(args);
-      // Optional folding can stop even inside a nested interpreted body. A
-      // required metaprogram call still reports the materialization limit.
+      // Optional folding can stop even inside a nested interpreted body.
+      // Required execution iterates the same compact bounds on demand.
       if (size && *size > max_range_items && folding_)
         return std::nullopt;
-      if (!size || *size > max_range_items) {
-        const std::string bounds = first && last
-            ? std::to_string(*first) + ".." + std::to_string(*last)
-            : "non-integer bounds";
-        fail("compile-time range is invalid or too large: " + bounds +
-                 " (materialization limit " +
-                 std::to_string(max_range_items) + ")", loc);
+      if (!size) {
+        fail("compile-time range requires integer bounds", loc);
         return std::nullopt;
       }
-      Items out;
-      out.reserve(static_cast<std::size_t>(*size));
-      for (std::int64_t value = *first; value < *last; ++value)
-        out.emplace_back(Attr(value));
-      return single(Item(std::move(out)), single_result);
+      return single(Item(Range{*first, std::max(*first, *last)}), single_result);
     }
     if ((code == OperatorCode::equal || code == OperatorCode::not_equal) &&
         args.size() == 2) {
