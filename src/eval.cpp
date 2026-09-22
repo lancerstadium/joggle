@@ -3361,8 +3361,15 @@ private:
     if (!op || op.kind() != Op::Kind::call)
       return false;
     const std::string_view name = op.callee();
-    if (name == "base.copy" || name == "base.list" || name == "i64")
+    if (name == "base.copy" || name == "base.list")
       return true;
+    if (name == "i64") {
+      // The evaluator's integer passthrough does not implement boolean or
+      // floating-point conversion. Leave those calls in the graph instead of
+      // treating an unsupported evaluation as a compiler error.
+      const auto& args = op_args(op);
+      return args.size() == 1 && detail::integer_type(args.front().type().name());
+    }
     const Fn target = env_.resolve(mod, op);
     if (name.starts_with("operator "))
       return foldable_operator(op) &&

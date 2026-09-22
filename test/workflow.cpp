@@ -5290,6 +5290,25 @@ int main(int argc, char** argv) {
   CHECK(joggle::print(folded_controls).find("var total: int = 10") !=
         std::string::npos);
 
+  // A constant control region is only evaluable if every call is supported.
+  // Runtime numeric conversions must survive this optional folding attempt.
+  joggle::Mod runtime_cast_controls;
+  CHECK(joggle::parse(env,
+      "mod runtime_cast_controls\nuse base\n"
+      "fn work() -> i64 {\n"
+      "  var total = i64(0)\n"
+      "  for i in 0..2 { total += i64(i == 0) }\n"
+      "  return total\n}\n", runtime_cast_controls, "runtime-cast-controls.jog"));
+  CHECK(runtime_cast_controls.verify(env));
+  CHECK(joggle::run(env, "script.fold_controls", runtime_cast_controls));
+  CHECK(runtime_cast_controls.verify(env));
+  CHECK(joggle::print(runtime_cast_controls).find("i64(") != std::string::npos);
+  const auto runtime_cast_ops = runtime_cast_controls.ops();
+  CHECK(std::any_of(runtime_cast_ops.begin(),
+                    runtime_cast_ops.end(), [](joggle::Op op) {
+                      return op.kind() == joggle::Op::Kind::loop;
+                    }));
+
   joggle::Mod rejected_controls;
   CHECK(joggle::parse(env, folded_controls_source, rejected_controls,
                       "rejected-controls.jog"));
