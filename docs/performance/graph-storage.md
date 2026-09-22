@@ -58,9 +58,16 @@ still own vectors/strings where the graph is genuinely variable arity.
 `ValData.users` records operation ids. Edits update this relation rather than
 rescanning the whole graph for every `users()` request.
 
-For replacing one value used `U` times, the desired cost is proportional to
-the affected uses plus validation, not to all `N` operations. Batch
-replacement validates ownership/arity once and avoids repeated setup.
+Batch replacement validates ownership, types, replacement chains, and
+dominance before changing operands. It snapshots the recorded users, sorts
+and deduplicates their operation ids, then visits only those operations.
+Repeated operands still contribute separate entries to the use lists.
+
+For `U` recorded uses and `A` operands across the selected operations, user
+selection costs `O(U log U)` and operand rewriting costs `O(A)`, in addition
+to validation and use-list maintenance. The rewrite no longer scans all `N`
+operations. Dominance checks and updates to a high-fanout value's use list
+remain separate costs.
 
 ```text
 discover replacement
@@ -73,6 +80,27 @@ discover replacement
 
 `rebuild_uses` exists as a repair/reconstruction boundary for structural work;
 it should not become the default cost of a small edit.
+
+### Cloning and binding names
+
+Cloning appends nodes and attaches their operand edges to existing use lists.
+It preserves nested lexical bindings and chooses fresh names for declarations
+copied into the destination scope. Two paths keep that work separate:
+
+| Clone contents | Name handling |
+| --- | --- |
+| No root `let` or `var` binding | No global name collection |
+| Named root declarations | Collect views of live names; own only newly chosen names |
+
+Before collecting name views, the clone counts new values, including block
+arguments, and reserves the value arena. Existing names then remain stable
+while new values are appended, including short strings stored inside their
+slots. Arena capacity grows geometrically rather than by exactly one clone.
+
+The declaration path still scans existing value slots to preserve global
+collision checking. It avoids copying their strings; it does not make fresh
+name selection constant-time. Public graph handles remain stable because
+they store ids rather than addresses into the value arena.
 
 ## Revision granularity
 
