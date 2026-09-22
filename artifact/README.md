@@ -86,8 +86,15 @@ python3 artifact/run_reactive.py \
   --output .cache/artifact/update-joggle.csv \
   --build-root .cache/artifact/update-joggle-build
 
+python3 artifact/run_joggle_lowering_profile.py \
+  --model-root .cache/onnx-zoo \
+  --joggle build/joggle \
+  --builtin-mods build/modules \
+  --output .cache/artifact/update-joggle-production.csv
+
 python3 artifact/merge_update_rows.py \
   .cache/artifact/update-joggle.csv \
+  .cache/artifact/update-joggle-production.csv \
   .cache/artifact/update-mlir.csv \
   .cache/artifact/update-xdsl.csv \
   --output .cache/artifact/figure-06-update.csv

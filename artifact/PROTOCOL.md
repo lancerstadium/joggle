@@ -12,8 +12,8 @@ increase the number of independent tasks, patches, or models.
 | 7 | End-to-end performance | Joggle base/opt, ONNX Runtime | 24 operators and 15 models | steady-state latency and correct coverage |
 
 The complete release contains 2,880 Figure 4 trajectories, 36 Figure 5 patch
-rows, 108,000 matched-stage Figure 6 timing rows plus the production-lowering
-calibration, and up to 11,700 Figure 7 timing rows. Repeated rows estimate each
+rows, 108,000 matched-stage Figure 6 timing rows plus 1,050 production-lowering
+stage rows, and up to 11,700 Figure 7 timing rows. Repeated rows estimate each
 independent task, patch, operator, or model; they are never treated as
 additional independent subjects.
 
@@ -90,12 +90,18 @@ measurements are:
 
 Absolute edit-to-result latency remains visible. Internal scheduler policies
 are implementation diagnostics and do not enter the paper comparison.
+Each adapter serializes the selected artifact slice in graph order and reports
+the lowercase FNV-1a-64 digest of that canonical byte stream. Paired policies
+and all three systems must produce the same digest for a case.
 
 A calibration panel measures Joggle's production path on the same 15 models.
 It reports decoding, inference and conversion, `c.prepare`, storage planning,
-C emission, graph size, emitted bytes, and correctness for a complete rebuild.
-These rows establish the absolute cost represented by the normalized matched
-stages; they do not enter UpdateRatio or WorkRatio.
+scalar lowering, storage placement, C emission, graph size, emitted bytes, and
+correctness for a complete rebuild. Each model runs one warm-up and ten measured
+rebuilds, producing seven stage rows per rebuild. These rows establish the
+absolute cost represented by the normalized matched stages; they do not enter
+UpdateRatio or WorkRatio. Their output digest is SHA-256 over the emitted C
+header and source separated by one zero byte.
 
 - Model index: `manifests/reactive-models.csv`
 - CSV: `templates/figure-06-update.csv`

@@ -24,6 +24,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("inputs", type=Path, nargs="+")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--allow-partial", action="store_true")
     args = parser.parse_args()
     record_path = args.output.with_suffix(".json")
     if args.output.exists() or record_path.exists():
@@ -48,9 +49,9 @@ def main() -> int:
                         "record": str(provider_record.resolve()),
                         "record_sha256": sha256(provider_record)})
     rows.sort(key=lambda row: (
-        row["subject"], row["system"], row["edit_class"],
+        row["path"], row["subject"], row["system"], row["edit_class"],
         row["edit_scope"], row["edit_site"], row["policy"],
-        int(row["iteration"]), int(row["seed"]),
+        row["stage"], int(row["iteration"]), int(row["seed"]),
     ))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     handle, temporary = tempfile.mkstemp(prefix=f".{args.output.name}.", dir=args.output.parent)
@@ -59,15 +60,18 @@ def main() -> int:
         with temporary_path.open("w", newline="", encoding="utf-8") as stream:
             writer = csv.DictWriter(stream, fieldnames=header)
             writer.writeheader(); writer.writerows(rows)
-        subprocess.run([sys.executable, str(root / "validate_reactive.py"),
-                        str(temporary_path)], check=True)
+        validation = [sys.executable, str(root / "validate_reactive.py"),
+                      str(temporary_path)]
+        if args.allow_partial:
+            validation.append("--allow-partial")
+        subprocess.run(validation, check=True)
         temporary_path.replace(args.output)
     finally:
         temporary_path.unlink(missing_ok=True)
     payload = {"schema": "update-assembly/v1",
                "created_utc": datetime.now(timezone.utc).isoformat(),
                "inputs": records, "output_sha256": sha256(args.output),
-               "rows": len(rows)}
+               "rows": len(rows), "partial": args.allow_partial}
     with record_path.open("w", encoding="utf-8") as stream:
         stream.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
         stream.flush(); os.fsync(stream.fileno())

@@ -106,14 +106,17 @@ def append_csv(source: Path, output: Path, write_header: bool) -> bool:
             if policy not in {"full", "update"}:
                 continue
             writer.writerow({
+                "path": "matched",
                 "system": "Joggle", "system_revision": row["system_revision"],
                 "subject": row["subject"], "subject_hash": row["subject_hash"],
                 "total_ops": row["total_ops"], "affected_ops": row["affected_ops"],
                 "edit_class": row["edit_class"], "edit_scope": row["edit_scope"],
-                "edit_site": row["edit_site"], "policy": policy,
+                "edit_site": row["edit_site"].split(":", 1)[0], "policy": policy,
+                "stage": "all",
                 "iteration": row["iteration"], "wall_ns": row["wall_ns"],
                 "visited_ops": row["evaluated_ops"],
                 "executed_stages": row["executed_stages"], "total_stages": row["stages"],
+                "artifact_bytes": 0,
                 "output_digest": row["output_digest"], "correct": row["correct"],
                 "seed": row["seed"],
             })

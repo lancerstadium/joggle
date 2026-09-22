@@ -724,10 +724,11 @@ edit-to-artifact latency remains visible.
 
 A second panel calibrates these update ratios against Joggle's production
 lowering path. For the same models it reports the time spent in decoding,
-inference and conversion, `c.prepare`, storage planning, and C emission,
-together with graph size, emitted bytes, and artifact correctness. These full
-path measurements do not enter $UpdateRatio$; they establish the absolute work
-represented by a complete artifact rebuild. Both panels accept a row only when
+inference and conversion, `c.prepare`, scalar lowering, storage planning and
+placement, and C emission, together with graph size, emitted bytes, and
+artifact correctness. These full-path measurements do not enter $UpdateRatio$;
+they establish the absolute work represented by a complete artifact rebuild.
+Both panels accept a row only when
 its result matches the corresponding full-rerun oracle.
 
 <!-- FIGURE 6 PLAN — Full-width, dense three-panel result. (a) Fifteen model
