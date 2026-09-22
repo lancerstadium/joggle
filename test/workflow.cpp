@@ -5479,6 +5479,46 @@ int main(int argc, char** argv) {
       "  return parent\n}\n", sibling_scopes, "sibling-scopes.jog"));
   CHECK(sibling_scopes.verify(env));
 
+  std::string capture_source =
+      "mod many.captures\nfn main(flag: bool) -> int {\n";
+  for (int i = 0; i < 128; ++i)
+    capture_source += " var unused" + std::to_string(i) + " = 0\n";
+  for (int i = 0; i < 128; ++i)
+    capture_source += " var v" + std::to_string(i) + " = " +
+                      std::to_string(i) + "\n";
+  capture_source += " var result = 0\n for i in 0..2 {\n if flag {\n";
+  for (int i = 0; i < 128; ++i)
+    capture_source += " result += v" + std::to_string(i) + "\n";
+  capture_source += " }\n }\n return result\n}\n";
+  joggle::Mod many_captures;
+  CHECK(joggle::parse(env, capture_source, many_captures, "many-captures.jog"));
+  CHECK(many_captures.verify(env));
+  for (joggle::Op op : many_captures.ops()) {
+    if (op.kind() == joggle::Op::Kind::loop ||
+        op.kind() == joggle::Op::Kind::branch) {
+      CHECK(op.outs().size() == 1);
+      CHECK(op.args().size() == 2);
+    }
+  }
+  joggle::Mod captures_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(many_captures), captures_roundtrip,
+                      "many-captures-roundtrip.jog"));
+  CHECK(captures_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(many_captures, captures_roundtrip));
+
+  joggle::Mod else_capture;
+  CHECK(joggle::parse(env,
+      "mod else.capture\nfn main(flag: bool) -> int {\n"
+      " var result = 0\n"
+      " if flag { let text = \"} {\" } else {\n"
+      "   for i in 0..3 { result += i }\n"
+      " }\n return result\n}\n", else_capture, "else-capture.jog"));
+  CHECK(else_capture.verify(env));
+  for (joggle::Op op : else_capture.ops())
+    if (op.kind() == joggle::Op::Kind::branch ||
+        op.kind() == joggle::Op::Kind::loop)
+      CHECK(op.outs().size() == 1);
+
   joggle::Mod immutable;
   CHECK(!joggle::parse(env,
                        "mod bad\nfn f(x: i32) -> i32 {\n"

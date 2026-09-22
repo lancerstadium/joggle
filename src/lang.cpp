@@ -7,6 +7,7 @@
 #include <exception>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace joggle {
@@ -634,25 +635,57 @@ private:
     return !(nested && at_end()) || fail("unterminated Blk");
   }
 
-  std::vector<std::pair<std::string, Binding>> carried(const Scope& scope) {
+  std::vector<std::pair<std::string, Binding>> carried(const Scope& scope,
+                                                     bool include_else) {
+    // A binding absent from the entire region cannot be read or assigned.
+    // This conservative token filter includes nested regions, metadata and
+    // shadowed names; precise mutation pruning still happens after parsing.
+    // Avoid constructing thousands of unused block arguments at every loop.
+    std::unordered_set<std::string_view> mentioned;
+    std::size_t cursor = pos_;
+    const auto scan = [&]() {
+      if (cursor >= tokens_.size() || tokens_[cursor].kind != Tk::symbol ||
+          tokens_[cursor].text != "{")
+        return false;
+      std::size_t depth = 0;
+      while (cursor < tokens_.size()) {
+        const Token& token = tokens_[cursor++];
+        if (token.kind == Tk::name)
+          mentioned.insert(token.text);
+        if (token.kind != Tk::symbol)
+          continue;
+        if (token.text == "{")
+          ++depth;
+        if (token.text == "}" && --depth == 0)
+          return true;
+      }
+      return false;
+    };
+    bool complete = scan();
+    if (complete && include_else && cursor < tokens_.size() &&
+        tokens_[cursor].kind == Tk::name && tokens_[cursor].text == "else") {
+      ++cursor;
+      complete = scan();
+    }
     std::vector<std::pair<std::string, Binding>> out;
     for (const auto& item : scope)
-      if (item.second.mutable_value)
+      if (item.second.mutable_value && (!complete || mentioned.contains(item.first)))
         out.push_back(item);
     std::sort(out.begin(), out.end(),
               [](const auto& a, const auto& b) { return a.first < b.first; });
     return out;
   }
 
-  void replace_in(std::uint32_t blk, std::uint32_t old_value,
-                  std::uint32_t new_value) {
+  void replace_in(
+      std::uint32_t blk,
+      const std::unordered_map<std::uint32_t, std::uint32_t>& replacements) {
     for (const std::uint32_t id : store_.blks[blk].data.ops) {
       detail::OpData& op = store_.ops[id].data;
       for (std::uint32_t& arg : op.args)
-        if (arg == old_value)
-          arg = new_value;
+        if (const auto found = replacements.find(arg); found != replacements.end())
+          arg = found->second;
       for (const std::uint32_t child : op.blks)
-        replace_in(child, old_value, new_value);
+        replace_in(child, replacements);
     }
   }
 
@@ -687,10 +720,16 @@ private:
     for (const std::uint32_t blk : op.blks) {
       detail::BlkData& body = store_.blks[blk].data;
       const std::vector<std::uint32_t> old_args = body.args;
+      // All discarded block arguments refer to outer seeds. Substitute them
+      // together instead of walking the complete subtree once per capture.
+      std::unordered_map<std::uint32_t, std::uint32_t> replacements;
+      replacements.reserve(count);
       for (std::size_t index = 0; index < count; ++index)
         if (!keep[index])
-          replace_in(blk, old_args[iterators + index],
-                     op.args[inputs + index]);
+          replacements.emplace(old_args[iterators + index],
+                               op.args[inputs + index]);
+      if (!replacements.empty())
+        replace_in(blk, replacements);
 
       std::vector<std::uint32_t> next_args(old_args.begin(),
                                            old_args.begin() + iterators);
@@ -762,7 +801,7 @@ private:
       data.args.push_back(source);
     } while (match(","));
 
-    auto captures = carried(scope);
+    auto captures = carried(scope, false);
     data.carried_count = captures.size();
     std::vector<std::pair<std::string, Ty>> results;
     for (const auto& [name, binding] : captures) {
@@ -828,7 +867,7 @@ private:
     if (condition == detail::none)
       return false;
     data.args.push_back(condition);
-    auto captures = carried(scope);
+    auto captures = carried(scope, true);
     data.carried_count = captures.size();
     std::vector<std::pair<std::string, Ty>> results;
     for (const auto& [name, binding] : captures) {
