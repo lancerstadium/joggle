@@ -97,7 +97,7 @@ copied into the destination scope. Two paths keep that work separate:
 | Clone contents | Name handling |
 | --- | --- |
 | No root `let` or `var` binding | No global name collection |
-| Named root declarations | Collect views of live names; own only newly chosen names |
+| Named root declarations | Collect matching name families; own only newly chosen names |
 
 Before collecting name views, the clone counts new values, including block
 arguments, and reserves the value arena. Existing names then remain stable
@@ -105,8 +105,10 @@ while new values are appended, including short strings stored inside their
 slots. Arena capacity grows geometrically rather than by exactly one clone.
 
 The declaration path still scans existing value slots to preserve global
-collision checking. It avoids copying their strings; it does not make fresh
-name selection constant-time. Public graph handles remain stable because
+collision checking. Its temporary set retains only a copied binding's exact
+name and suffixed variants, rather than allocating entries for unrelated
+names. It avoids copying their strings; it does not make fresh name selection
+constant-time. Public graph handles remain stable because
 they store ids rather than addresses into the value arena.
 
 ## Revision granularity

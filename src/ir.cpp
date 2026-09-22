@@ -1184,10 +1184,24 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
                                         store.vals.max_size() - capacity);
       store.vals.reserve(std::max(required, capacity + growth));
     }
-    used_names.reserve(store.vals.size());
-    for (const auto& slot : store.vals)
-      if (slot.live && !slot.data.name.empty())
-        used_names.insert(slot.data.name);
+    // Only a copied declaration's name and its suffixed variants can collide
+    // with copy_name below. Do not allocate hash nodes for unrelated names.
+    std::unordered_set<std::string_view> requested_names;
+    for (Op source : sources)
+      if (source.form() == Op::Form::let || source.form() == Op::Form::var)
+        for (Val value : source.outs())
+          if (!value.name().empty())
+            requested_names.insert(value.name());
+    for (const auto& slot : store.vals) {
+      if (!slot.live || slot.data.name.empty())
+        continue;
+      const std::string_view name = slot.data.name;
+      const auto separator = name.rfind('_');
+      if (requested_names.contains(name) ||
+          (separator != std::string_view::npos &&
+           requested_names.contains(name.substr(0, separator))))
+        used_names.insert(name);
+    }
   }
   // Newly chosen names need ownership: the lexical mapping below is copied
   // and restored when entering nested blocks.

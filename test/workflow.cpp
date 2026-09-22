@@ -3076,7 +3076,9 @@ int main(int argc, char** argv) {
     names_source += "let " + name + " = first(x)\n";
     names_source += "let " + name + "_1 = first(x)\n";
   }
-  names_source += "return x\n}\n";
+  names_source += "return x\n}\n"
+                  "fn occupied(x: i32) -> i32 {\n"
+                  "  let v0_2 = first(x)\n  return v0_2\n}\n";
   CHECK(joggle::parse(env, names_source, cloned_names, "cloned-names.jog"));
   const auto names_ops = cloned_names.find_fn("compute").body().ops();
   const std::span<const joggle::Op> names_body(names_ops.data(),
@@ -3087,6 +3089,8 @@ int main(int argc, char** argv) {
   for (int batch = 0; batch < 4; ++batch) {
     const auto copies = cloned_names.clone(names_body, names_ops.back());
     CHECK(copies.size() == names_body.size());
+    CHECK(copies[0].outs().front().name() == "v0_" + std::to_string(batch + 3));
+    CHECK(copies[1].outs().front().name() == "v0_1_" + std::to_string(batch + 1));
     for (const auto op : copies) {
       CHECK(op.args().front() == cloned_names.find_fn("compute").params()[0]);
       CHECK(binding_names.insert(std::string(op.outs().front().name())).second);
