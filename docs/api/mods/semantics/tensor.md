@@ -75,8 +75,8 @@ fn transpose<T: Ty, M: int, N: int>(
 
 ## Comparisons with runtime broadcasting
 
-`broadcast_layout<A, B, L, R, P, Q, D>(a, b)` is shared by tensor comparisons
-and NN extrema. Set `P = len<L>`, `Q = len<R>`, and `D` to the result rank.
+`broadcast_layout<A, B, L, R, P, Q, D>(a, b)` is shared by tensor comparisons,
+NN arithmetic, and NN extrema. Set `P = len<L>`, `Q = len<R>`, and `D` to the result rank.
 It returns `(shape, left_strides, right_strides, count)`: the first three
 values are `tensor<index, [D]>`, and `count` is an `index`. Expanded axes have
 zero input stride. Rank is specialized while dimensions may remain runtime
@@ -235,8 +235,10 @@ fn add_bias<T: Ty, M: int, N: int>(
 }
 ```
 
-Same-shape overloads preserve `S`; broadcast overloads infer a result shape
-`Y` from two structural shapes.
+Tensor arithmetic operators preserve the same shape `S`. For NN arithmetic
+with broadcasting and runtime extents, use `nn.add`, `nn.sub`, `nn.mul`, and
+`nn.div`; their [dynamic examples](nn.md#runtime-broadcasting-for-arithmetic)
+show direct input indexing without expanded tensor copies.
 
 ## MatMul
 

@@ -1,7 +1,54 @@
+// Specialize rank and scalar operation; keep logical extents as runtime values.
+// Zero strides reuse broadcast input elements without allocating expanded copies.
+local fn arithmetic_runtime<
+  E: Ty, L: list<int>, R: list<int>, Y: list<int>,
+  P: int, Q: int, D: int, Mode: int
+>(a: tensor<E, L>, b: tensor<E, R>) -> tensor<E, Y> {
+  let shape, left_strides, right_strides, count =
+    tensor.broadcast_layout<E, E, L, R, P, Q, D>(a, b)
+  var out: tensor<E, Y> = tensor.make(E(0), shape)
+  for linear in index(0)..count {
+    var remaining = linear
+    var left = index(0)
+    var right = index(0)
+    [stage: "shape"]
+    for reverse in 0..D {
+      let axis = D - reverse - 1
+      let coordinate = remaining % shape[axis]
+      remaining /= shape[axis]
+      left += coordinate * left_strides[axis]
+      right += coordinate * right_strides[axis]
+    }
+    var value = E(0)
+    if Mode == 0 { value = a[left] + b[right] }
+    if Mode == 1 { value = a[left] - b[right] }
+    if Mode == 2 { value = a[left] * b[right] }
+    if Mode == 3 { value = a[left] / b[right] }
+    out[linear] = value
+  }
+  return tensor.view<E, index, Y, Y, D>(out, shape)
+}
+
+fn add<E: Ty>(left: tensor<E, []>, right: tensor<E, []>) -> tensor<E, []> {
+  return tensor<E, []>(left[0] + right[0])
+}
+
+fn sub<E: Ty>(left: tensor<E, []>, right: tensor<E, []>) -> tensor<E, []> {
+  return tensor<E, []>(left[0] - right[0])
+}
+
+fn mul<E: Ty>(left: tensor<E, []>, right: tensor<E, []>) -> tensor<E, []> {
+  return tensor<E, []>(left[0] * right[0])
+}
+
+fn div<E: Ty>(left: tensor<E, []>, right: tensor<E, []>) -> tensor<E, []> {
+  return tensor<E, []>(left[0] / right[0])
+}
+
 fn add<E: Ty, S: list<int>>(
   left: tensor<E, S>, right: tensor<E, S>
 ) -> tensor<E, S> {
-  return left + right
+  return arithmetic_runtime<E, S, S, S, len<S>, len<S>, len<S>, 0>(left, right)
 }
 
 fn add<
@@ -9,15 +56,13 @@ fn add<
 >(
   left: tensor<E, L>, right: tensor<E, R>
 ) -> tensor<E, Y> {
-  let a: tensor<E, Y> = tensor.broadcast(left)
-  let b: tensor<E, Y> = tensor.broadcast(right)
-  return a + b
+  return arithmetic_runtime<E, L, R, Y, len<L>, len<R>, len<Y>, 0>(left, right)
 }
 
 fn add<E: Ty, S: list<int>>(
   left: tensor<E, S>, right: tensor<E, S>, activation: str
 ) -> tensor<E, S> {
-  return activate(left + right, activation)
+  return activate(add(left, right), activation)
 }
 
 fn add<
@@ -25,15 +70,14 @@ fn add<
 >(
   left: tensor<E, L>, right: tensor<E, R>, activation: str
 ) -> tensor<E, Y> {
-  let a: tensor<E, Y> = tensor.broadcast(left)
-  let b: tensor<E, Y> = tensor.broadcast(right)
-  return activate(a + b, activation)
+  let out: tensor<E, Y> = add(left, right)
+  return activate(out, activation)
 }
 
 fn sub<E: Ty, S: list<int>>(
   left: tensor<E, S>, right: tensor<E, S>
 ) -> tensor<E, S> {
-  return left - right
+  return arithmetic_runtime<E, S, S, S, len<S>, len<S>, len<S>, 1>(left, right)
 }
 
 fn sub<
@@ -41,15 +85,13 @@ fn sub<
 >(
   left: tensor<E, L>, right: tensor<E, R>
 ) -> tensor<E, Y> {
-  let a: tensor<E, Y> = tensor.broadcast(left)
-  let b: tensor<E, Y> = tensor.broadcast(right)
-  return a - b
+  return arithmetic_runtime<E, L, R, Y, len<L>, len<R>, len<Y>, 1>(left, right)
 }
 
 fn sub<E: Ty, S: list<int>>(
   left: tensor<E, S>, right: tensor<E, S>, activation: str
 ) -> tensor<E, S> {
-  return activate(left - right, activation)
+  return activate(sub(left, right), activation)
 }
 
 fn sub<
@@ -57,15 +99,14 @@ fn sub<
 >(
   left: tensor<E, L>, right: tensor<E, R>, activation: str
 ) -> tensor<E, Y> {
-  let a: tensor<E, Y> = tensor.broadcast(left)
-  let b: tensor<E, Y> = tensor.broadcast(right)
-  return activate(a - b, activation)
+  let out: tensor<E, Y> = sub(left, right)
+  return activate(out, activation)
 }
 
 fn mul<E: Ty, S: list<int>>(
   left: tensor<E, S>, right: tensor<E, S>
 ) -> tensor<E, S> {
-  return left * right
+  return arithmetic_runtime<E, S, S, S, len<S>, len<S>, len<S>, 2>(left, right)
 }
 
 fn mul<
@@ -73,15 +114,13 @@ fn mul<
 >(
   left: tensor<E, L>, right: tensor<E, R>
 ) -> tensor<E, Y> {
-  let a: tensor<E, Y> = tensor.broadcast(left)
-  let b: tensor<E, Y> = tensor.broadcast(right)
-  return a * b
+  return arithmetic_runtime<E, L, R, Y, len<L>, len<R>, len<Y>, 2>(left, right)
 }
 
 fn mul<E: Ty, S: list<int>>(
   left: tensor<E, S>, right: tensor<E, S>, activation: str
 ) -> tensor<E, S> {
-  return activate(left * right, activation)
+  return activate(mul(left, right), activation)
 }
 
 fn mul<
@@ -89,15 +128,14 @@ fn mul<
 >(
   left: tensor<E, L>, right: tensor<E, R>, activation: str
 ) -> tensor<E, Y> {
-  let a: tensor<E, Y> = tensor.broadcast(left)
-  let b: tensor<E, Y> = tensor.broadcast(right)
-  return activate(a * b, activation)
+  let out: tensor<E, Y> = mul(left, right)
+  return activate(out, activation)
 }
 
 fn div<E: Ty, S: list<int>>(
   left: tensor<E, S>, right: tensor<E, S>
 ) -> tensor<E, S> {
-  return left / right
+  return arithmetic_runtime<E, S, S, S, len<S>, len<S>, len<S>, 3>(left, right)
 }
 
 fn div<
@@ -105,9 +143,7 @@ fn div<
 >(
   left: tensor<E, L>, right: tensor<E, R>
 ) -> tensor<E, Y> {
-  let a: tensor<E, Y> = tensor.broadcast(left)
-  let b: tensor<E, Y> = tensor.broadcast(right)
-  return a / b
+  return arithmetic_runtime<E, L, R, Y, len<L>, len<R>, len<Y>, 3>(left, right)
 }
 
 local fn unordered<E: Ty>(value: E) -> bool { return false }

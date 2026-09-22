@@ -245,7 +245,21 @@ local fn describe(op: Op) -> str {
 }
 
 fn prepare(m: Mod) -> bool {
-  let changed = opt.expose(m, ir.find("vm.accepts"), len(ir.ops(m)) + 1)
+  var changed = false
+  var again = true
+  let limit = len(ir.ops(m)) + 1
+  for round in 0..(limit + 1) {
+    if again {
+      let before = ir.revision(m)
+      opt.fold(m)
+      opt.copy(m)
+      opt.dce(m, [])
+      select_arithmetic(m)
+      again = opt.expand(m, ir.find("vm.accepts"))
+      changed = ir.revision(m) != before || changed
+      assert(round != limit || !again, "vm: preparation did not converge")
+    }
+  }
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" {
       assert(accepts(m, op),

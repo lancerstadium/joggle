@@ -242,6 +242,41 @@ int main(int argc, char** argv) {
                       truth_steps));
   CHECK(integers(result) == std::vector<std::int64_t>{1});
 
+  joggle::Mod broadcast_model;
+  CHECK(joggle::parse(env,
+      "mod broadcast_vm\nuse nn\n"
+      "fn helper(a: tensor<i64, [2, 1]>, b: tensor<i64, [1, 3]>) -> tensor<i64, [2, 3]> {\n"
+      " return nn.add(a, b, \"NONE\")\n}\n"
+      "fn add(a: tensor<i64, [2, 1]>, b: tensor<i64, [1, 3]>) -> tensor<i64, [2, 3]> {\n"
+      " return helper(a, b)\n}\n"
+      "fn sub(a: tensor<i64, [2, 1]>, b: tensor<i64, [1, 3]>) -> tensor<i64, [2, 3]> {\n"
+      " return nn.sub(a, b)\n}\n"
+      "fn mul(a: tensor<i64, [2, 1]>, b: tensor<i64, [1, 3]>) -> tensor<i64, [2, 3]> {\n"
+      " return nn.mul(a, b)\n}\n"
+      "fn div(a: tensor<i64, [2, 1]>, b: tensor<i64, [1, 3]>) -> tensor<i64, [2, 3]> {\n"
+      " return nn.div(a, b)\n}\n",
+      broadcast_model, "broadcast-vm.jog"));
+  CHECK(broadcast_model.verify(env));
+  if (!joggle::run(env, "vm.prepare", broadcast_model))
+    return env.print_diags(stderr);
+  const std::string prepared_broadcast = joggle::print(broadcast_model);
+  CHECK(joggle::run(env, "vm.prepare", broadcast_model));
+  CHECK(joggle::print(broadcast_model) == prepared_broadcast);
+  const std::vector<std::vector<std::int64_t>> broadcast_results{
+      {3, 4, 6, 9, 10, 12}, {1, 0, -2, 7, 6, 4},
+      {2, 4, 8, 8, 16, 32}, {2, 1, 0, 8, 4, 2}};
+  const std::vector<std::string> broadcast_entries{"add", "sub", "mul", "div"};
+  for (std::size_t i = 0; i < broadcast_entries.size(); ++i) {
+    joggle::Attr broadcast_image;
+    const std::vector<joggle::Attr> selected{joggle::Attr(broadcast_entries[i])};
+    if (!joggle::query(env, "vm.image", broadcast_model, broadcast_image, selected))
+      return env.print_diags(stderr);
+    std::int64_t steps = 0;
+    CHECK(execute(env, std::string(*broadcast_image.string()), broadcast_entries[i],
+                  {2, 8, 1, 2, 4}, result, steps));
+    CHECK(integers(result) == broadcast_results[i]);
+  }
+
   std::ifstream tensor_input(argv[2]);
   CHECK(tensor_input);
   std::ostringstream tensor_source;

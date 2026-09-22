@@ -772,22 +772,15 @@ int main(int argc, char** argv) {
   const joggle::Fn add_fn = env.resolve(broadcast, add);
   CHECK(add_fn && env.expand(broadcast, add, add_fn));
   CHECK(broadcast.verify(env));
-  std::vector<joggle::Op> copies;
-  for (joggle::Op op : broadcast.ops())
-    if (op.callee() == "tensor.broadcast")
-      copies.push_back(op);
-  CHECK(copies.size() == 2);
-  for (joggle::Op op : copies) {
-    const joggle::Fn callee = env.resolve(broadcast, op);
-    CHECK(callee && env.expand(broadcast, op, callee));
-  }
+  CHECK(count(broadcast, "tensor.broadcast") == 0);
+  CHECK(joggle::run(env, "c.prepare", broadcast));
   CHECK(broadcast.verify(env));
   std::size_t loops = 0;
   for (joggle::Op op : broadcast.ops()) {
     CHECK(op.callee() != "nn.add" && op.callee() != "tensor.broadcast");
     loops += op.kind() == joggle::Op::Kind::loop ? 1 : 0;
   }
-  CHECK(loops == 4);
+  CHECK(loops == 1);
   joggle::Mod broadcast_roundtrip;
   CHECK(joggle::parse(env, joggle::print(broadcast), broadcast_roundtrip,
                       "broadcast-roundtrip.jog"));

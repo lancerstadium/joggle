@@ -44,6 +44,11 @@ endmacro()
 
 include("${CMAKE_CURRENT_LIST_DIR}/c_pipeline.cmake")
 
+joggle_run("incompatible arithmetic shapes were accepted"
+  COMMAND "${program}" f EXPECT_FAIL ERROR_VARIABLE failure)
+joggle_expect("incompatible arithmetic did not reach shape validation"
+  TEXT "${failure}" MATCHES "[Aa]ssertion")
+
 foreach(repeats_case a b c)
   joggle_run("invalid tile repeats ${repeats_case} were accepted"
     COMMAND "${program}" "${repeats_case}" EXPECT_FAIL ERROR_VARIABLE failure)

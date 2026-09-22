@@ -2,6 +2,11 @@
 #include <stdbool.h>
 #include <math.h>
 
+void dynamic_c_arithmetic_pair(const float* x, const float* y, int64_t nx, int64_t ny,
+                               int64_t operation, float* out, int64_t* size);
+void dynamic_c_arithmetic_grid(const int32_t* x, const int32_t* y, int64_t rows, int64_t cols,
+                               int64_t operation, int32_t* out, int64_t* out_rows, int64_t* out_cols);
+
 void dynamic_c_extrema_pair(const float* x, const float* y, int64_t nx, int64_t ny,
                             bool take_min, float* out, int64_t* size);
 void dynamic_c_extrema_rows(const int32_t* x, const int32_t* y, int64_t rows,
@@ -36,6 +41,13 @@ void dynamic_c_tile_bounded(const int32_t* x, bool twice, int32_t* result,
 
 int main(int argc, char** argv) {
   if (argc == 2) {
+    if (argv[1][0] == 'f') {
+      const float x[4] = {1, 2, 3, 4};
+      float out[4] = {0};
+      int64_t size = -1;
+      dynamic_c_arithmetic_pair(x, x, 2, 3, 0, out, &size);
+      return 0;
+    }
     if (argv[1][0] == 'e') {
       const float x[4] = {1, 2, 3, 4};
       float out[4] = {0};
@@ -57,6 +69,45 @@ int main(int argc, char** argv) {
     if (selected >= 0 && selected < 3)
       dynamic_c_tile(input, invalid[selected], output);
     return 0;
+  }
+  const float arithmetic_x[4] = {-2, 0, 3, 8};
+  const float arithmetic_y[4] = {2, -4, 1, 2};
+  for (int64_t operation = 0; operation < 4; ++operation) {
+    for (int order = 0; order < 3; ++order) {
+      for (int64_t n = 0; n <= 4; ++n) {
+        const int64_t nx = order == 1 ? 1 : n;
+        const int64_t ny = order == 0 ? 1 : n;
+        float output[5] = {99, 99, 99, 99, 99};
+        int64_t size = -1;
+        dynamic_c_arithmetic_pair(arithmetic_x, arithmetic_y, nx, ny,
+                                  operation, output, &size);
+        if (size != n || output[n] != 99) return 38;
+        for (int64_t i = 0; i < n; ++i) {
+          const float a = arithmetic_x[nx == 1 ? 0 : i];
+          const float b = arithmetic_y[ny == 1 ? 0 : i];
+          const float wanted = operation == 0 ? a + b : operation == 1 ? a - b :
+                               operation == 2 ? a * b : a / b;
+          if (output[i] != wanted) return 39;
+        }
+      }
+    }
+    for (int64_t rows = 0; rows <= 2; ++rows) {
+      for (int64_t cols = 0; cols <= 3; ++cols) {
+        const int32_t a[2] = {2, 8};
+        const int32_t b[3] = {1, 2, 4};
+        int32_t output[7] = {99, 99, 99, 99, 99, 99, 99};
+        int64_t out_rows = -1, out_cols = -1;
+        dynamic_c_arithmetic_grid(a, b, rows, cols, operation, output, &out_rows, &out_cols);
+        if (out_rows != rows || out_cols != cols || output[rows * cols] != 99) return 40;
+        for (int64_t i = 0; i < rows; ++i) {
+          for (int64_t j = 0; j < cols; ++j) {
+            const int32_t wanted = operation == 0 ? a[i] + b[j] : operation == 1 ? a[i] - b[j] :
+                                   operation == 2 ? a[i] * b[j] : a[i] / b[j];
+            if (output[i * cols + j] != wanted) return 41;
+          }
+        }
+      }
+    }
   }
   const float values[4] = {-1, 0, 2, NAN};
   const float zeros[4] = {0, 0, 0, 0};

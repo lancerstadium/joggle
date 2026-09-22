@@ -81,28 +81,32 @@ fn bias<E: Ty, S: list<int>, B: list<int>>(
 fn activate<E: Ty, S: list<int>>(
   x: tensor<E, S>, kind: str
 ) -> tensor<E, S> {
-  var out = tensor<E, S>(E(0))
-  for i in 0..tensor.numel<S>() {
-    var value = x[i]
-    if kind == "RELU" || kind == "RELU6" {
-      if value < E(0) {
-        value = E(0)
+  var out = x
+  if kind != "NONE" {
+    var activated = tensor<E, S>(E(0))
+    for i in 0..tensor.numel<S>() {
+      var value = x[i]
+      if kind == "RELU" || kind == "RELU6" {
+        if value < E(0) {
+          value = E(0)
+        }
       }
+      if kind == "RELU6" {
+        if value > E(6) {
+          value = E(6)
+        }
+      }
+      if kind == "RELU_N1_TO_1" {
+        if value < E(-1) {
+          value = E(-1)
+        }
+        if value > E(1) {
+          value = E(1)
+        }
+      }
+      activated[i] = value
     }
-    if kind == "RELU6" {
-      if value > E(6) {
-        value = E(6)
-      }
-    }
-    if kind == "RELU_N1_TO_1" {
-      if value < E(-1) {
-        value = E(-1)
-      }
-      if value > E(1) {
-        value = E(1)
-      }
-    }
-    out[i] = value
+    out = activated
   }
   return out
 }
@@ -159,4 +163,3 @@ fn same_pad(
   }
   return [top, left, ph - top, pw - left]
 }
-

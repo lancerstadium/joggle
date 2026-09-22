@@ -43,6 +43,12 @@ Other public activation/scalar families include `tanh`, `sigmoid`, `sqrt`,
 `add`, `sub`, `mul`, `div`, `maximum`, `minimum`, `pow`, comparisons, and
 `where` have same-shape and broadcast forms.
 
+`add`, `sub`, `mul`, and `div` share a runtime broadcast implementation. Extents
+and zero-stride indexing determine the shared output shape, including `_`
+dimensions; no expanded input tensors are materialized. For example,
+`nn.add` maps shapes `[2, 1]` and `[1, 3]` to `[2, 3]`. The same expression
+with runtime extents `[0, 1]` and `[1, 3]` produces an empty `[0, 3]` result.
+
 ```jog
 fn gated<E: Ty, S: list<int>>(
   condition: tensor<bool, S>,
@@ -52,6 +58,40 @@ fn gated<E: Ty, S: list<int>>(
   return nn.where(condition, left, right)
 }
 ```
+
+### Runtime broadcasting for arithmetic
+
+The four arithmetic functions specialize rank and scalar operation while
+reading logical extents from their inputs. A scalar-to-scalar operation uses
+the scalar body directly, without constructing a broadcast layout. `NONE`
+activation returns the arithmetic result without another allocation or copy.
+
+```jog
+fn outer_sum(x: tensor<i32, [2, 1]>, y: tensor<i32, [1, 3]>,
+             rows: index, cols: index) -> tensor<i32, [_, _]> {
+  var xs = tensor<index, [2]>(index(1))
+  var ys = tensor<index, [2]>(index(1))
+  xs[0] = rows
+  ys[1] = cols
+  let a: tensor<i32, [_, 1]> = tensor.view(x, xs)
+  let b: tensor<i32, [1, _]> = tensor.view(y, ys)
+  return nn.add(a, b)
+}
+```
+
+For `x = [[2], [8]]` and `y = [[1, 2, 4]]`, with `rows` in `[0, 2]`
+and `cols` in `[0, 3]`:
+
+| `rows`, `cols` | Result | Logical shape |
+| --- | --- | --- |
+| `2, 3` | `[[3, 4, 6], [9, 10, 12]]` | `[2, 3]` |
+| `1, 2` | `[[3, 4]]` | `[1, 2]` |
+| `0, 3` | `[]` | `[0, 3]` |
+| `2, 0` | `[[], []]` | `[2, 0]` |
+
+Empty results perform no element access. Incompatible extents are rejected
+before the element loop; integer division retains the element type's scalar
+division semantics.
 
 ### Runtime broadcasting for extrema
 

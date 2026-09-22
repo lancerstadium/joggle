@@ -1,0 +1,59 @@
+// The VM stores fixed-size tensors. Select its static loop body before
+// generic expansion exposes runtime shape/storage operations.
+fn arithmetic<E: Ty, L: list<int>, R: list<int>, Y: list<int>>(
+  a: tensor<E, L>, b: tensor<E, R>, operation: int
+) -> tensor<E, Y> {
+  var out = tensor<E, Y>(E(0))
+  for i in 0..tensor.numel<Y>() {
+    let left = tensor.broadcast_offset(L, Y, i)
+    let right = tensor.broadcast_offset(R, Y, i)
+    var value = E(0)
+    if operation == 0 { value = a[left] + b[right] }
+    if operation == 1 { value = a[left] - b[right] }
+    if operation == 2 { value = a[left] * b[right] }
+    if operation == 3 { value = a[left] / b[right] }
+    out[i] = value
+  }
+  return out
+}
+
+local fn select_arithmetic(m: Mod) -> bool {
+  var changed = false
+  for op in ir.ops(m, ["call"]) {
+    if ir.live(op) && len(ir.meta(op)) == 0 {
+      let target = ir.target(m, op)
+      var operation = -1
+      if target == "nn.add" { operation = 0 }
+      if target == "nn.sub" { operation = 1 }
+      if target == "nn.mul" { operation = 2 }
+      if target == "nn.div" { operation = 3 }
+      let inputs = ir.args(op)
+      let outputs = ir.outs(op)
+      if operation >= 0 && (len(inputs) == 2 || len(inputs) == 3) && len(outputs) == 1 {
+        let left = ir.type(inputs[0])
+        let right = ir.type(inputs[1])
+        let result = ir.type(outputs[0])
+        if tensor.static(left) && tensor.static(right) && tensor.static(result) {
+          let l = tensor.shape(left)
+          let r = tensor.shape(right)
+          let y = tensor.shape(result)
+          assert(tensor.broadcastable(l, y) && tensor.broadcastable(r, y) &&
+                 tensor.broadcast_shape(l, r) == y,
+                 "vm: arithmetic broadcast shape is incompatible")
+          ir.use(m, "vm")
+          let mode = ir.constant(m, op, operation, ty("int"))
+          if len(inputs) == 2 {
+            assert(ir.retarget(m, op, "vm.arithmetic", [inputs[0], inputs[1], mode]),
+                   "vm: could not select static arithmetic")
+          } else {
+            let value = ir.call(m, op, "vm.arithmetic", [inputs[0], inputs[1], mode], result)
+            assert(ir.live(value) && ir.retarget(m, op, "nn.activate", [value, inputs[2]]),
+                   "vm: could not select activated arithmetic")
+          }
+          changed = true
+        }
+      }
+    }
+  }
+  return changed
+}

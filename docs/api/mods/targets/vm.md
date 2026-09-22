@@ -84,6 +84,22 @@ expansion/rewriting to expose supported primitives. `image` serializes only
 after preparation; `run` knows the image format but never receives `Mod`, `Op`,
 or `Val` handles.
 
+### Static NN arithmetic
+
+The VM represents fixed-size tensors. During preparation it selects
+`vm.arithmetic` for statically shaped `nn.add`, `nn.sub`, `nn.mul`, and
+`nn.div`, checking their broadcast shape before expansion. The selected body
+computes source offsets directly; it does not require runtime shape arrays or
+expanded input copies. Selection runs at each expansion round, so NN calls
+inside user-defined helper functions follow the same path.
+
+For inputs `[[2], [8]]` and `[[1, 2, 4]]`, addition produces
+`[[3, 4, 6], [9, 10, 12]]`; integer division produces
+`[[2, 1, 0], [8, 4, 2]]`. Activation-bearing arithmetic calls retain the
+activation after this target-specific selection. Dynamic tensor storage is
+outside the VM's fixed-size representation and is not converted to a guessed
+static extent.
+
 ## Failure guide
 
 | Symptom | Layer | Correction |
