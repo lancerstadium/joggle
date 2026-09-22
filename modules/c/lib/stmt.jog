@@ -73,15 +73,34 @@ local fn call(
   if name == "operator []=" {
     assert(len(outputs) == 1 && len(inputs) >= 3,
            "c: invalid tensor store")
-    if !runtime_storage(m, inputs[0]) {
+    let output = outputs[0]
+    if !runtime_storage(m, output) {
       return ""
     }
-    var access: list<Val> = [inputs[0]]
+    var out = ""
+    // An expression store returns a new tensor value. Only an assignment to
+    // the same storage can omit the copy of the unchanged elements.
+    if val(output) != val(inputs[0]) {
+      if !mem.planned(output) && !reuses(op) {
+        let target = direct_result(output, direct, results)
+        if target == "" {
+          out += indent + scalar(tensor.elem(ir.type(output)), config) + " " +
+                 val(output) + "[" + text(allocation_count(m, inputs[0])) + "];\n"
+        } else {
+          out += indent + scalar(tensor.elem(ir.type(output)), config) + "* " +
+                 val(output) + " = " + target + ";\n"
+        }
+      }
+      out += indent + "memcpy(" + val(output) + ", " + val(inputs[0]) + ", " +
+             "(" + logical_count(m, inputs[0]) + ") * " +
+             text(width(tensor.elem(ir.type(output)), config)) + ");\n"
+    }
+    var access: list<Val> = [output]
     for i in 1..len(inputs) - 1 {
       access += [inputs[i]]
     }
-    var out = indent +
-              index(m, inputs[0], access, blob, data_fns, config) + " = " +
+    out += indent +
+              index(m, output, access, blob, data_fns, config) + " = " +
               expr(m, inputs[len(inputs) - 1], blob, data_fns, config) + ";\n"
     if shape_operand(m, outputs[0]) {
       out += indent + "(void)" + val(outputs[0]) + ";\n"

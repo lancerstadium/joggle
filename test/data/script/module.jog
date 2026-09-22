@@ -8,6 +8,15 @@ use tile
 use onnx.nn
 use bounds
 
+fn shape_control_terms(m: Mod) -> list<str> {
+  let ops = ir.ops(ir.blks(ir.find(m, "main"))[0])
+  var result: list<str> = []
+  for term in onnx.nn.shape_terms(ir.args(ops[len(ops) - 1])[0]) {
+    result += [text(term)]
+  }
+  return result
+}
+
 fn bounds_refresh(m: Mod) -> bool {
   let first = bounds.infer(m)
   assert(bounds.infer(m) == first, "bounds cache changed without an edit")

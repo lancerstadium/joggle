@@ -18,14 +18,14 @@ fn shape_terms(value: Val) -> list<Ty> {
     return out
   }
   let inputs = ir.args(producer)
-  if ir.callee(producer) == "onnx.Shape" && len(inputs) == 1 {
+  if ir.callee(producer) == "onnx.Shape" && len(inputs) == 1 &&
+     !base.has(attrs(producer), "start") && !base.has(attrs(producer), "end") {
     let input = ir.type(inputs[0])
     if tensor.valid(input) {
       return tensor.dims(input)
     }
   }
-  if (ir.callee(producer) == "onnx.Cast" ||
-      ir.callee(producer) == "onnx.Identity" ||
+  if (ir.callee(producer) == "onnx.Identity" ||
       ir.callee(producer) == "onnx.Squeeze" ||
       ir.callee(producer) == "onnx.Unsqueeze") && len(inputs) >= 1 {
     return shape_terms(inputs[0])

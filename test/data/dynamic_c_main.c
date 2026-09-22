@@ -9,6 +9,7 @@ void dynamic_c_gather_middle(const int32_t* x, int64_t x_dim_1,
 void dynamic_c_gather_scalar(const int32_t* x, int64_t x_dim_0, int32_t* result);
 void dynamic_c_gather_i32(const int32_t* x, int64_t x_dim_0, int32_t* result);
 void dynamic_c_shape(const int32_t* x, int64_t x_dim_0, int64_t* result);
+void dynamic_c_updated(const int32_t* x, int32_t* result);
 
 int main(void) {
   int32_t result[8] = {0};
@@ -48,5 +49,10 @@ int main(void) {
   dynamic_c_gather_i32(input, 3, gathered);
   if (gathered[0] != 4 || gathered[1] != 5)
     return 9;
+  int32_t original[3] = {2, 3, 4}, updated[3] = {0};
+  dynamic_c_updated(original, updated);
+  if (original[0] != 2 || original[1] != 3 || original[2] != 4 ||
+      updated[0] != 2 || updated[1] != 9 || updated[2] != 4)
+    return 10;
   return 0;
 }

@@ -38,6 +38,17 @@ int main(int argc, char** argv) {
   CHECK(env.load("script"));
   CHECK(env.load("c"));
 
+  joggle::Mod unsupported_nullary;
+  CHECK(joggle::parse(env,
+      "mod unsupported_nullary\nfn value() -> str;\n"
+      "fn main() -> str { return value() }\n", unsupported_nullary,
+      "unsupported-nullary.jog"));
+  CHECK(!joggle::run(env, "c.prepare", unsupported_nullary));
+  CHECK(!env.diags().empty());
+  CHECK(env.diags().back().message.find("c: unsupported call remains: value") !=
+        std::string::npos);
+  env.clear_diags();
+
   constexpr std::string_view legal_source =
       "mod legal.network\n"
       "use nn\n"
@@ -1424,6 +1435,98 @@ int main(int argc, char** argv) {
       if (op.callee() == "onnx.Slice")
         CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [2]>"));
   }
+
+  // Integral shape controls can traverse real-valued operators without losing
+  // their exact value. Fractional, non-finite and lossy casts stay dynamic.
+  for (const auto& item : std::vector<std::vector<std::string>>{
+           {"f32", "00004040", "i64", "7", "3"},
+           {"f32", "000040c0", "i64", "7", "-3"},
+           {"f32", "00000080", "i64", "7", "0"},
+           {"f32", "00006040", "i64", "7", "_"},
+           {"f32", "0000c07f", "i64", "7", "_"},
+           {"f32", "0000807f", "i64", "7", "_"},
+           {"f64", "0000000000000840", "i64", "7", "3"},
+           {"f64", "00000000000008c0", "i64", "7", "-3"},
+           {"f64", "0000000000000c40", "i64", "7", "_"},
+           {"f64", "000000000000e043", "i64", "7", "_"},
+           {"i64", "0000000100000000", "f32", "1", "16777216"},
+           {"i64", "0100000100000000", "f32", "1", "_"}}) {
+    joggle::Mod control;
+    const std::string source = "mod shape_control\nuse onnx\n"
+        "fn main() -> tensor<" + item[2] + ", [1]> {\n"
+        " let x: tensor<" + item[0] + ", [1]> = hex\"" + item[1] + "\"\n"
+        " [onnx: {to: " + item[3] + "}]\n"
+        " let y: tensor<" + item[2] + ", [1]> = onnx.Cast(x)\n"
+        " return y\n}\n";
+    CHECK(joggle::parse(env, source, control, "shape-control.jog"));
+    joggle::Attr result;
+    CHECK(joggle::query(env, "script.shape_control_terms", control, result));
+    CHECK(result.list() && result.list()->size() == 1);
+    CHECK(result.list()->front().string() == item[4]);
+  }
+  joggle::Mod shape_chain;
+  CHECK(joggle::parse(env,
+      "mod shape_chain\nuse onnx\n"
+      "fn main(x: tensor<f32, [1, 13, 1]>) -> tensor<i64, [1]> {\n"
+      " let dims = onnx.Shape(x)\n"
+      " let first: tensor<i64, [1]> = hex\"0100000000000000\"\n"
+      " let last: tensor<i64, [1]> = hex\"0200000000000000\"\n"
+      " let selected = onnx.Slice(dims, first, last)\n"
+      " [onnx: {to: 1}]\n let value = onnx.Cast(selected)\n"
+      " let one: tensor<f32, [1]> = hex\"0000803f\"\n"
+      " let quotient = onnx.Div(value, one)\n"
+      " let ceiling = onnx.Ceil(quotient)\n"
+      " [onnx: {to: 7}]\n let result: tensor<i64, [1]> = onnx.Cast(ceiling)\n"
+      " return result\n}\n", shape_chain, "shape-chain.jog"));
+  CHECK(joggle::run(env, "onnx.nn.infer", shape_chain));
+  joggle::Attr shape_terms;
+  CHECK(joggle::query(env, "script.shape_control_terms", shape_chain, shape_terms));
+  CHECK(shape_terms.list() && shape_terms.list()->size() == 1);
+  CHECK(shape_terms.list()->front().string() == "13");
+  CHECK(joggle::run(env, "onnx.nn.convert", shape_chain));
+  CHECK(joggle::query(env, "script.shape_control_terms", shape_chain, shape_terms));
+  CHECK(shape_terms.list() && shape_terms.list()->size() == 1);
+  CHECK(shape_terms.list()->front().string() == "13");
+
+  // Shape arithmetic refuses overflow and fractional values rather than
+  // specializing a different computation from the runtime operators.
+  for (const auto& item : std::vector<std::vector<std::string>>{
+           {"Add", "i64", "0300000000000000", "feffffffffffffff", "1"},
+           {"Sub", "i64", "0300000000000000", "0500000000000000", "-2"},
+           {"Mul", "i64", "fdffffffffffffff", "0500000000000000", "-15"},
+           {"Div", "i64", "0600000000000000", "feffffffffffffff", "-3"},
+           {"Add", "i64", "ffffffffffffff7f", "0100000000000000", "_"},
+           {"Sub", "i64", "0000000000000080", "0100000000000000", "_"},
+           {"Mul", "i64", "0000000000000080", "ffffffffffffffff", "_"},
+           {"Div", "i64", "0000000000000080", "ffffffffffffffff", "_"},
+           {"Div", "i64", "0100000000000000", "0000000000000000", "_"},
+           {"Div", "f32", "00004040", "00000040", "_"},
+           {"Add", "f32", "0000804b", "0000803f", "_"},
+           {"Mul", "f32", "00004040", "00000040", "6"}}) {
+    joggle::Mod control;
+    const std::string source = "mod shape_arithmetic\nuse onnx\n"
+        "fn main() -> tensor<" + item[1] + ", [1]> {\n"
+        " let a: tensor<" + item[1] + ", [1]> = hex\"" + item[2] + "\"\n"
+        " let b: tensor<" + item[1] + ", [1]> = hex\"" + item[3] + "\"\n"
+        " return onnx." + item[0] + "(a, b)\n}\n";
+    CHECK(joggle::parse(env, source, control, "shape-arithmetic.jog"));
+    joggle::Attr result;
+    CHECK(joggle::query(env, "script.shape_control_terms", control, result));
+    CHECK(result.list() && result.list()->size() == 1);
+    CHECK(result.list()->front().string() == item[4]);
+  }
+  joggle::Mod sliced_shape;
+  CHECK(joggle::parse(env,
+      "mod sliced_shape\nuse onnx\n"
+      "fn main(x: tensor<f32, [2, 3, 4]>) -> tensor<i64, [1]> {\n"
+      " [onnx: {start: 1, end: 2}]\n"
+      " let y: tensor<i64, [1]> = onnx.Shape(x)\n return y\n}\n",
+      sliced_shape, "sliced-shape.jog"));
+  CHECK(joggle::run(env, "onnx.nn.infer", sliced_shape));
+  CHECK(sliced_shape.verify(env));
+  CHECK(joggle::query(env, "script.shape_control_terms", sliced_shape, shape_terms));
+  CHECK(shape_terms.list() && shape_terms.list()->size() == 1);
+  CHECK(shape_terms.list()->front().string() == "_");
 
   joggle::Mod narrowing_slice;
   CHECK(joggle::parse(env,

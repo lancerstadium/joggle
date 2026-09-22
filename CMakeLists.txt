@@ -641,6 +641,13 @@ if(JOGGLE_BUILD_TESTS)
         ROOT=${CMAKE_CURRENT_BINARY_DIR}/quant-c-test
     )
     if(JOGGLE_BUILD_ONNX)
+      joggle_script_test(loop-c-execution loop_c.cmake
+        DEFINES
+          CC=${JOGGLE_TEST_C_COMPILER}
+          MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/loop_c.jog
+          HARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/loop_c_main.c
+          ROOT=${CMAKE_CURRENT_BINARY_DIR}/loop-c-test
+      )
       joggle_script_test(qlinear-c-execution qlinear_c.cmake
         DEFINES
           CC=${JOGGLE_TEST_C_COMPILER}
@@ -1071,7 +1078,7 @@ if(JOGGLE_BUILD_TESTS)
     cli-diagnostics cli-emit cli-report cli-module
   )
   joggle_label(c
-    c-execution quant-c-execution qlinear-c-execution mem-execution
+    c-execution quant-c-execution qlinear-c-execution loop-c-execution mem-execution
     mem-safety dynamic-c-execution dynamic-slice-c-execution nms-c-execution
     nonzero-c-execution range-c-execution topk-c-execution resize-c-execution
     tile-execution sat-c-execution

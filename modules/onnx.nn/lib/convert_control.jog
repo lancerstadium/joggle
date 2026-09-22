@@ -213,6 +213,8 @@ local fn convert_loop(m: Mod, op: Op) -> bool {
   let iteration = ir.call(
     m, then_yield, "tensor.tensor", [iteration_i64], ir.type(params[0])
   )
+  assert(ir.live(iteration) && ir.rename(m, iteration, "loop_iteration_", 0),
+         "onnx.nn: could not create iteration tensor")
   old += [params[0], params[1]]
   next += [iteration, then_args[0]]
   for i in 0..carried_count {
@@ -267,7 +269,25 @@ local fn convert_loop(m: Mod, op: Op) -> bool {
   yielded += [ir.call(
     m, then_yield, "operator +", [written_at, one], ty("index")
   )]
-  if !ir.args(m, then_yield, yielded) ||
+  // Materialize all next-state values before updating any carried binding.
+  // In particular, a scan may read the previous value of a carried tensor.
+  // Explicit assignments preserve this parallel update through Jog printing.
+  for i in 0..len(yielded) {
+    if yielded[i] != then_args[i] && ir.name(yielded[i]) == "" {
+      assert(ir.rename(m, yielded[i], "loop_next_", i),
+             "onnx.nn: could not name loop next state")
+    }
+  }
+  var updated: list<Val> = []
+  for i in 0..len(yielded) {
+    var next_state = then_args[i]
+    if yielded[i] != then_args[i] {
+      next_state = ir.assign(m, then_yield, then_args[i], yielded[i])
+      assert(ir.live(next_state), "onnx.nn: could not update loop state")
+    }
+    updated += [next_state]
+  }
+  if !ir.args(m, then_yield, updated) ||
      !ir.args(m, loop_yield, ir.outs(branch)) {
     return false
   }

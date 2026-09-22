@@ -51,3 +51,8 @@ fn gather_i32(x: tensor<i32, [_, 2]>) -> tensor<i32, [1, 2]> {
 fn shape(x: tensor<i32, [_, 2]>) -> tensor<i64, [2]> {
   return tensor.shape(x)
 }
+
+fn updated(x: tensor<i32, [3]>) -> tensor<i32, [3]> {
+  let y: tensor<i32, [3]> = tensor.[]=(x, index(1), i32(9))
+  return y
+}

@@ -19,6 +19,12 @@ local fn scalar(m: Mod, before: Op, value: Val) -> Val {
   let type = ir.type(value)
   assert(tensor.valid(type) && len(tensor.dims(type)) == 0,
          "onnx.nn: scalar tensor expected")
+  if tensor.elem(type) == ty("i32") || tensor.elem(type) == ty("i64") {
+    let exact = const_ints(value)
+    if len(exact) == 1 {
+      return ir.constant(m, before, exact[0], tensor.elem(type))
+    }
+  }
   let zero = ir.constant(m, before, 0, ty("index"))
   return ir.call(
     m, before, "operator []", [value, zero], tensor.elem(type)
@@ -52,8 +58,7 @@ local fn shape_value(
     let updated = ir.call(
       m, before, "tensor.operator []=", [shape, at, extent], shape_type
     )
-    assert(ir.live(updated) &&
-           ir.rename(m, updated, "shape_", axis + 1),
+    assert(ir.live(updated) && ir.rename(m, updated, "shape_", axis + 1),
            "onnx.nn: could not update runtime shape")
     shape = updated
   }
@@ -67,6 +72,8 @@ local fn scan_shape(
   let shape_type = tensor.type(ty("index"), [rank])
   let zero = ir.constant(m, before, 0, ty("index"))
   var shape = ir.call(m, before, "tensor.tensor", [zero], shape_type)
+  assert(ir.live(shape) && ir.rename(m, shape, "scan_shape_", 0),
+         "onnx.nn: could not create scan shape")
   for axis in 0..rank {
     var extent = leading
     if axis != 0 {
@@ -76,9 +83,12 @@ local fn scan_shape(
       )
     }
     let at = ir.constant(m, before, axis, ty("index"))
-    shape = ir.call(
+    let updated = ir.call(
       m, before, "tensor.operator []=", [shape, at, extent], shape_type
     )
+    assert(ir.live(updated) && ir.rename(m, updated, "scan_shape_", axis + 1),
+           "onnx.nn: could not update scan shape")
+    shape = updated
   }
   return shape
 }
@@ -90,6 +100,8 @@ local fn trimmed_scan_shape(
   let shape_type = tensor.type(ty("index"), [rank])
   let zero = ir.constant(m, before, 0, ty("index"))
   var shape = ir.call(m, before, "tensor.tensor", [zero], shape_type)
+  assert(ir.live(shape) && ir.rename(m, shape, "scan_shape_", 0),
+         "onnx.nn: could not create trimmed scan shape")
   for axis in 0..rank {
     var extent = leading
     if axis != 0 {
@@ -99,9 +111,12 @@ local fn trimmed_scan_shape(
       )
     }
     let at = ir.constant(m, before, axis, ty("index"))
-    shape = ir.call(
+    let updated = ir.call(
       m, before, "tensor.operator []=", [shape, at, extent], shape_type
     )
+    assert(ir.live(updated) && ir.rename(m, updated, "scan_shape_", axis + 1),
+           "onnx.nn: could not trim scan shape")
+    shape = updated
   }
   return shape
 }

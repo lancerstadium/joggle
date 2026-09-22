@@ -25,6 +25,7 @@ fn write<E: Ty, S: list<int>, T: list<int>>(
 ) -> tensor<E, S> {
   var out = data
   var width = index(1)
+  [stage: "shape"]
   for axis in 0..len(T) {
     width *= dim(value, index(axis))
   }
@@ -52,4 +53,3 @@ fn line_offset(
   }
   return offset
 }
-

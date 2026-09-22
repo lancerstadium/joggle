@@ -39,6 +39,57 @@ local fn tensor_data(op: Op) -> Attr {
   return ir.meta(op)
 }
 
+// Decode only integral, finite IEEE values. Shape specialization must not
+// replace a rounded floating-point computation with integer arithmetic.
+local fn integral_real(data: Attr, offset: int, width: int) -> list<int> {
+  var fraction = 0
+  var exponent = 0
+  var sign = 0
+  var unit = 8388608
+  var bias = 150
+  var maximum = 255
+  if width == 4 {
+    fraction = base.byte(data, offset) + base.byte(data, offset + 1) * 256 +
+               (base.byte(data, offset + 2) % 128) * 65536
+    exponent = base.byte(data, offset + 2) / 128 +
+               (base.byte(data, offset + 3) % 128) * 2
+    sign = base.byte(data, offset + 3) / 128
+  } else {
+    var factor = 1
+    for i in 0..6 {
+      fraction += base.byte(data, offset + i) * factor
+      factor *= 256
+    }
+    fraction += (base.byte(data, offset + 6) % 16) * factor
+    exponent = base.byte(data, offset + 6) / 16 +
+               (base.byte(data, offset + 7) % 128) * 16
+    sign = base.byte(data, offset + 7) / 128
+    unit = 4503599627370496
+    bias = 1075
+    maximum = 2047
+  }
+  if exponent == 0 {
+    if fraction == 0 { return [0] }
+    return []
+  }
+  if exponent == maximum { return [] }
+  var value = unit + fraction
+  let shift = exponent - bias
+  if shift < 0 {
+    for i in 0..(0 - shift) {
+      if value % 2 != 0 { return [] }
+      value /= 2
+    }
+  } else {
+    for i in 0..shift {
+      if value > 9223372036854775807 / 2 { return [] }
+      value *= 2
+    }
+  }
+  if sign != 0 { value = 0 - value }
+  return [value]
+}
+
 local fn literal_ints(value: Val) -> list<int> {
   var out: list<int> = []
   let type = ir.type(value)
@@ -46,10 +97,12 @@ local fn literal_ints(value: Val) -> list<int> {
     return out
   }
   var width = 0
-  if tensor.elem(type) == ty("i32") {
+  let elem = tensor.elem(type)
+  let floating = elem == ty("f32") || elem == ty("f64")
+  if elem == ty("i32") || elem == ty("f32") {
     width = 4
   }
-  if tensor.elem(type) == ty("i64") {
+  if elem == ty("i64") || elem == ty("f64") {
     width = 8
   }
   if width == 0 {
@@ -66,8 +119,16 @@ local fn literal_ints(value: Val) -> list<int> {
   if base.size(data) % width != 0 {
     return out
   }
+  // Bound structural evaluation; large tensor constants remain data.
+  if floating && base.size(data) / width > 256 { return [] }
   for i in 0..base.size(data) / width {
-    out += [signed(data, i * width, width)]
+    if floating {
+      let exact = integral_real(data, i * width, width)
+      if len(exact) != 1 { return [] }
+      out += exact
+    } else {
+      out += [signed(data, i * width, width)]
+    }
   }
   return out
 }
@@ -162,6 +223,31 @@ local fn selected(values: list<int>, index: int, count: int) -> int {
   return values[index]
 }
 
+local fn exact_arithmetic(op: str, a: int, b: int) -> list<int> {
+  let low = -9223372036854775807 - 1
+  let high = 9223372036854775807
+  if op == "add" {
+    if (b > 0 && a > high - b) || (b < 0 && a < low - b) { return [] }
+    return [a + b]
+  }
+  if op == "sub" {
+    if (b > 0 && a < low + b) || (b < 0 && a > high + b) { return [] }
+    return [a - b]
+  }
+  if op == "div" {
+    if b == 0 || (a == low && b == -1) { return [] }
+    if a % b != 0 { return [] }
+    return [a / b]
+  }
+  if a > 0 {
+    if (b > 0 && a > high / b) || (b < 0 && b < low / a) { return [] }
+  }
+  if a < 0 {
+    if (b > 0 && a < low / b) || (b < 0 && a < high / b) { return [] }
+  }
+  return [a * b]
+}
+
 local fn const_ints(value: Val) -> list<int> {
   let literal = literal_ints(value)
   if len(literal) != 0 {
@@ -183,15 +269,20 @@ local fn const_ints(value: Val) -> list<int> {
      tensor.valid(ir.type(inputs[0])) {
     let source = tensor.elem(ir.type(inputs[0]))
     let target = tensor.elem(ir.type(value))
-    if (source == ty("i32") || source == ty("i64")) &&
-       (target == ty("i32") || target == ty("i64")) {
+    if (source == ty("i32") || source == ty("i64") ||
+        source == ty("f32") || source == ty("f64")) &&
+       (target == ty("i32") || target == ty("i64") ||
+        target == ty("f32") || target == ty("f64")) {
       let values = const_ints(inputs[0])
-      if target == ty("i32") {
-        for item in values {
-          if item < -2147483648 || item > 2147483647 {
-            return []
-          }
+      for item in values {
+        if target == ty("i32") && (item < -2147483648 || item > 2147483647) {
+          return []
         }
+        if target == ty("f32") && (item < -16777216 || item > 16777216) {
+          return []
+        }
+        if target == ty("f64") &&
+           (item < -9007199254740992 || item > 9007199254740992) { return [] }
       }
       return values
     }
@@ -208,7 +299,11 @@ local fn const_ints(value: Val) -> list<int> {
     return out
   }
 
-  if callee == "tensor.shape" && len(inputs) == 1 {
+  if (callee == "tensor.shape" || callee == "onnx.Shape") && len(inputs) == 1 {
+    if callee == "onnx.Shape" &&
+       (base.has(attrs(producer), "start") || base.has(attrs(producer), "end")) {
+      return []
+    }
     let input = ir.type(inputs[0])
     if !tensor.valid(input) {
       return []
@@ -219,6 +314,40 @@ local fn const_ints(value: Val) -> list<int> {
         return []
       }
       out += [int(dim)]
+    }
+    return out
+  }
+
+  if (callee == "onnx.Identity" || callee == "base.copy" ||
+      callee == "onnx.Reshape" || callee == "tensor.reshape" ||
+      callee == "onnx.Squeeze" || callee == "onnx.Unsqueeze" ||
+      callee == "onnx.Ceil" || callee == "nn.ceil" ||
+      callee == "onnx.Floor" || callee == "nn.floor") && len(inputs) >= 1 {
+    return const_ints(inputs[0])
+  }
+
+  if (callee == "onnx.Slice" || callee == "tensor.slice") &&
+     len(inputs) >= 1 && tensor.static(ir.type(inputs[0])) &&
+     tensor.static(ir.type(value)) {
+    let data = const_ints(inputs[0])
+    if len(data) != static_count(ir.type(inputs[0])) { return [] }
+    var starts = slice_starts(producer)
+    var axes = slice_axes(producer)
+    var steps = slice_steps(producer)
+    if callee == "tensor.slice" && len(inputs) == 4 {
+      starts = const_ints(inputs[1])
+      axes = const_ints(inputs[2])
+      steps = const_ints(inputs[3])
+    }
+    if len(starts) == 0 || len(starts) != len(axes) ||
+       len(starts) != len(steps) { return [] }
+    for step in steps { if step == 0 { return [] } }
+    var out: list<int> = []
+    for i in 0..count {
+      let at = tensor.slice_offset(tensor.shape(ir.type(inputs[0])),
+          tensor.shape(ir.type(value)), starts, axes, steps, i)
+      if at < 0 || at >= len(data) { return [] }
+      out += [data[at]]
     }
     return out
   }
@@ -256,8 +385,14 @@ local fn const_ints(value: Val) -> list<int> {
     return splat(signed(value_attr["data"], 0, width), count)
   }
 
-  if (callee == "onnx.Mul" || callee == "nn.mul" ||
-      callee == "base.operator *") && len(inputs) == 2 && count >= 0 {
+  var arithmetic = ""
+  if callee == "onnx.Mul" || callee == "nn.mul" || callee == "base.operator *" {
+    arithmetic = "mul"
+  }
+  if callee == "onnx.Add" || callee == "nn.add" { arithmetic = "add" }
+  if callee == "onnx.Sub" || callee == "nn.sub" { arithmetic = "sub" }
+  if callee == "onnx.Div" || callee == "nn.div" { arithmetic = "div" }
+  if arithmetic != "" && len(inputs) == 2 && count >= 0 {
     let left = const_ints(inputs[0])
     let right = const_ints(inputs[1])
     if (len(left) != 1 && len(left) != count) ||
@@ -266,7 +401,19 @@ local fn const_ints(value: Val) -> list<int> {
     }
     var out: list<int> = []
     for i in 0..count {
-      out += [selected(left, i, count) * selected(right, i, count)]
+      let exact = exact_arithmetic(arithmetic,
+          selected(left, i, count), selected(right, i, count))
+      if len(exact) != 1 { return [] }
+      let elem = tensor.elem(ir.type(value))
+      if elem == ty("i32") && (exact[0] < -2147483648 || exact[0] > 2147483647) {
+        return []
+      }
+      if elem == ty("f32") && (exact[0] < -16777216 || exact[0] > 16777216) {
+        return []
+      }
+      if elem == ty("f64") &&
+         (exact[0] < -9007199254740992 || exact[0] > 9007199254740992) { return [] }
+      out += exact
     }
     return out
   }

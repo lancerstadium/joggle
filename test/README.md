@@ -78,6 +78,8 @@ diagnostic handling.
 | Write a mod | `cli-module`, `example-*`, `install-consumer` |
 | Import ONNX | `onnx-codec`, configured `model` tests |
 | Emit C | label `c`, especially `c-execution` and `mem-safety` |
+| ONNX loop conversion | `onnx-zoo-mobilenet-contract` checks graph/round-trip types; `loop-c-execution` checks carried state, scan order, early stopping, and zero iterations through generated C |
+| Dynamic tensors | `dynamic-c-execution` checks runtime extents, gather, shape queries, and value-preserving tensor updates |
 
 `tutorial-smoke` additionally runs the exact public path across these rows. It
 does not replace the deeper gates; it prevents a documented command, fixture,

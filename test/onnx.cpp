@@ -490,6 +490,18 @@ int main(int argc, char** argv) {
     return converted_loop_roundtrip.print_diags(stderr);
   }
   CHECK(joggle::structurally_equal(loop_model, converted_loop_roundtrip));
+  CHECK(count_calls(converted_loop_roundtrip, "tensor.write") == 1);
+  CHECK(count_calls(converted_loop_roundtrip, "tensor.make") == 1);
+  CHECK(count_calls(converted_loop_roundtrip, "tensor.view") == 1);
+  CHECK(converted_loop_text.find("loop_count_0 =") != std::string::npos);
+  // Printed text equality alone cannot catch lost result-only type parameters.
+  for (joggle::Op op : converted_loop_roundtrip.ops())
+    if (op.callee() == "tensor.tensor") {
+      CHECK(op.outs().size() == 1);
+      const auto args = op.outs().front().type().args();
+      CHECK(args.size() == 2);
+      CHECK(args[1].text() == "[]" || args[1].text() == "[1]");
+    }
 
   const std::size_t convs = count_calls(model, "onnx.Conv");
   const std::size_t norms = count_calls(model, "onnx.BatchNormalization");

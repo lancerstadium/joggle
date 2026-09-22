@@ -18,7 +18,8 @@ local fn shape_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 ||
-     !tensor.valid(ir.type(inputs[0])) {
+     !tensor.valid(ir.type(inputs[0])) ||
+     base.has(attrs(op), "start") || base.has(attrs(op), "end") {
     return false
   }
   let rank = len(tensor.dims(ir.type(inputs[0])))
@@ -536,4 +537,3 @@ local fn transpose_type(m: Mod, op: Op) -> bool {
     )
   )
 }
-

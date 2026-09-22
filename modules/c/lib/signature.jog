@@ -384,10 +384,11 @@ local fn runtime_arg(m: Mod, op: Op, at: int) -> bool {
   }
   let target = ir.target(m, op)
   let name = call_name(m, op)
-  // A store defines the next version of its destination; it does not read the
-  // previous contents. Indices and the stored value remain ordinary reads.
+  // In-place stores do not read the previous contents. Expression stores copy
+  // the unchanged elements into their distinct result storage first.
   if name == "operator []=" && at == 0 {
-    return false
+    let outputs = ir.outs(op)
+    return len(outputs) != 1 || val(outputs[0]) != val(inputs[0])
   }
   // Static capacities and extents are already present in the prepared IR.
   // Their shape operands have no representation in emitted C.

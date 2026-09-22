@@ -121,7 +121,8 @@ local fn source_headers(
       }
     }
     if (blob == "" && payload(op)) ||
-       (ir.kind(op) == "call" && ir.callee(op) == "base.copy" &&
+       (ir.kind(op) == "call" &&
+        (ir.callee(op) == "base.copy" || call_name(m, op) == "operator []=") &&
         len(ir.outs(op)) == 1 && tensor.valid(ir.type(ir.outs(op)[0]))) {
       needs_string = true
     }
@@ -187,4 +188,3 @@ local fn header_with(m: Mod, blob: str, config: dict) -> str {
          declarations +
          "\n#ifdef __cplusplus\n}\n#endif\n"
 }
-
