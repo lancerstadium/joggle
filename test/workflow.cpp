@@ -4160,6 +4160,14 @@ int main(int argc, char** argv) {
   CHECK(!incompatible_result.diags().empty());
   CHECK(incompatible_result.diags().back().message.find(
             "does not accept the call signature") != std::string::npos);
+  incompatible_result.clear_diags();
+  CHECK(!incompatible_result.retarget(
+      env, source_call, incompatible_result.find_fn("implementation")));
+  CHECK(joggle::print(incompatible_result) == before_retarget);
+  CHECK(incompatible_result.revision() == before_retarget_revision);
+  CHECK(!incompatible_result.diags().empty());
+  incompatible_result.clear_diags();
+  CHECK(incompatible_result.verify(env));
 
   joggle::Mod explicit_match;
   CHECK(joggle::parse(env,

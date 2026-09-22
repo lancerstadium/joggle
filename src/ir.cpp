@@ -3269,11 +3269,17 @@ bool Mod::retarget(const Env& env, Op call, Fn target) {
 bool Mod::retarget(const Env& env, Op call, Fn target,
                    std::span<const Val> arguments) {
   auto& store = impl_->store;
-  detail::Store backup = store;
+  // Resolving a visible target is read-only; the string overload validates
+  // arguments and results before committing. Only a newly imported package
+  // needs rollback state. Copying the entire graph for every local retarget
+  // makes a batch of otherwise local edits quadratic in program size.
+  std::optional<detail::Store> backup;
   const auto rollback = [&]() {
-    std::vector<Diag> diagnostics = std::move(store.diags);
-    store = std::move(backup);
-    store.diags = std::move(diagnostics);
+    if (backup) {
+      std::vector<Diag> diagnostics = std::move(store.diags);
+      store = std::move(*backup);
+      store.diags = std::move(diagnostics);
+    }
     return false;
   };
   if (!call.valid() || call.store_ != &store ||
@@ -3287,12 +3293,14 @@ bool Mod::retarget(const Env& env, Op call, Fn target,
   if (target.store_ != &store) {
     symbol = std::string(target.module()) + "." + std::string(target.name());
     const std::vector<Fn> visible = env.resolve_fns(*this, symbol);
-    if (std::find(visible.begin(), visible.end(), target) == visible.end() &&
-        !use(env, std::string(target.module()))) {
-      detail::add_diag(store.diags,
-                       "retarget could not make the target module visible",
-                       call.loc());
-      return rollback();
+    if (std::find(visible.begin(), visible.end(), target) == visible.end()) {
+      backup.emplace(store);
+      if (!use(env, std::string(target.module()))) {
+        detail::add_diag(store.diags,
+                         "retarget could not make the target module visible",
+                         call.loc());
+        return rollback();
+      }
     }
   }
 

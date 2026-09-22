@@ -599,6 +599,23 @@ int main(int argc, char** argv) {
   CHECK(direct_external.retarget(env, direct_call, external_impl));
   CHECK(direct_call.callee() == "script.external_select.external");
   CHECK(direct_external.verify(env));
+  const auto direct_revision = direct_external.revision();
+  const auto direct_uses = direct_external.uses();
+  const auto direct_text = joggle::print(direct_external);
+  CHECK(direct_external.retarget(env, direct_call, external_impl));
+  CHECK(direct_external.revision() == direct_revision);
+  CHECK(direct_external.uses() == direct_uses);
+  CHECK(joggle::print(direct_external) == direct_text);
+  // The package is already visible: failed preflight must not mutate the
+  // graph, its dependency declarations, or its revision without a snapshot.
+  CHECK(!direct_external.retarget(
+      env, direct_call, env.find_fn("script.emit_wrong_type")));
+  CHECK(direct_external.revision() == direct_revision);
+  CHECK(direct_external.uses() == direct_uses);
+  CHECK(joggle::print(direct_external) == direct_text);
+  CHECK(!direct_external.diags().empty());
+  direct_external.clear_diags();
+  CHECK(direct_external.verify(env));
 
   joggle::Mod rejected_external;
   CHECK(joggle::parse(env, external_source, rejected_external,
