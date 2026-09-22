@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 #include <set>
 #include <string>
 #include <string_view>
@@ -1439,6 +1440,42 @@ int main(int argc, char** argv) {
   for (joggle::Op op : narrowing_slice.ops())
     if (op.callee() == "onnx.Slice")
       CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [_]>"));
+
+  // Reverse slices have static extents too. Keep the compile-time calculation
+  // valid at integer boundaries, where ceil-divide and negation can overflow.
+  struct SliceExtentCase {
+    int extent;
+    std::int64_t start, end, step;
+    int expected;
+  };
+  constexpr auto min_index = std::numeric_limits<std::int64_t>::min();
+  constexpr auto max_index = std::numeric_limits<std::int64_t>::max();
+  for (const auto& item : {
+           SliceExtentCase{4, -1, min_index, -1, 4},
+           SliceExtentCase{5, 4, 0, -2, 2},
+           SliceExtentCase{5, 0, 4, -1, 0},
+           SliceExtentCase{5, max_index, min_index, -2, 3},
+           SliceExtentCase{5, -9, min_index, -1, 0},
+           SliceExtentCase{0, -1, min_index, -1, 0},
+           SliceExtentCase{5, 4, min_index, min_index, 1},
+           SliceExtentCase{5, 0, max_index, max_index, 1}}) {
+    const std::string source =
+        "mod slice.extent\nuse onnx\n"
+        "fn main(x: tensor<f32, [" + std::to_string(item.extent) +
+        "]>) -> tensor<f32, [_]> {\n"
+        "  [onnx: {starts: [" + std::to_string(item.start) +
+        "], ends: [" + std::to_string(item.end) +
+        "], axes: [-1], steps: [" + std::to_string(item.step) + "]}]\n"
+        "  let y = onnx.Slice(x)\n  return y\n}\n";
+    joggle::Mod sliced;
+    CHECK(joggle::parse(env, source, sliced, "slice-extent.jog"));
+    CHECK(joggle::run(env, "onnx.nn.infer", sliced));
+    CHECK(sliced.verify(env));
+    for (joggle::Op op : sliced.ops())
+      if (op.callee() == "onnx.Slice")
+        CHECK(op.outs()[0].type() == joggle::Ty(
+            "tensor<f32, [" + std::to_string(item.expected) + "]>"));
+  }
 
   constexpr std::string_view resize_source =
       "mod resize.shape\n"

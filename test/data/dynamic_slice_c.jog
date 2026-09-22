@@ -8,3 +8,7 @@ fn main(
 ) -> tensor<i32, [_, _]> {
   return tensor.slice(x, starts, ends, axes, steps)
 }
+
+fn reverse(x: tensor<i32, [4, 5]>) -> tensor<i32, [4, 3]> {
+  return tensor.slice(x, [9223372036854775807, -1], [-2, -1], [-1, -2])
+}
