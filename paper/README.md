@@ -140,13 +140,13 @@ regenerate or alter the figure. -->
 *Figure 2: A compiler extension can span semantic definition, optimization,
 runtime support, and target deployment.*
 
-As a running example, consider introducing saturating arithmetic for a
-low-precision model. The feature begins with a parametric type and arithmetic
-semantics. It then needs a capability test, a transformation that selects the
-new operation, a storage policy, and one or more target implementations. The
-change is conceptually one feature, but its pieces occupy several stages in
-Figure 2. Later revisions—such as admitting another width or changing target
-selection—must preserve the same cross-stage agreement.
+Consider adding a fused convolution, bias addition, and activation. The
+extension defines the fused operator's semantics, checks shapes and uses,
+replaces a matching subgraph, selects a target implementation, and emits an
+artifact. These responsibilities span several stages in Figure 2. A later
+change to the supported layout or numeric type must preserve agreement among
+the legality test, transformation, and target implementation. Section 3 uses
+this operator extension to make the interfaces and ownership boundary concrete.
 
 Existing infrastructures offer rich extension points for these individual
 roles. The difficulty addressed here is their composition: a complete feature
@@ -276,34 +276,32 @@ or `Attr`. The result $R$ may itself be a handle, an ordinary value, structured
 data, text, or bytes. Handles retain graph ownership and lifetime; ordinary
 values remain independent of graph storage.
 
-Figure 3 follows a common operator extension. A convolution, bias addition, and
-activation form a fusible subgraph. One mod owns the fused operator's semantic
-contract together with typed functions for legality analysis, fusion, target
-conversion, and artifact generation. The functions exchange graph handles and
-owned values through the interface above; each role retains its own effect
-contract.
+Figure 3 follows the operator extension introduced in Section 2. The graph
+computes $y=\max(\operatorname{Conv}(x,w)+b,0)$. A legality function checks
+types, shapes, and intermediate uses; fusion replaces the matched operations
+with one semantic operation; conversion selects its target form. These graph
+states, $G_0$, $G_1$, and $G_2$, retain the same input/output contract. An
+emitter reads $G_2$ and returns the artifact. The extension's mod owns all five
+roles, which exchange graph handles and owned values through the same call
+interface.
 
-<!-- FIGURE 3 PROMPT — Dense single-column operator example organized as a
-continuous technical trace, not three presentation panels. A compact top strip
-pairs the typed `G0` graph `x,w → Conv; b → BiasAdd → ReLU → y` with the
-`conv_ext` mod table: `define`, `legal`, `fuse`, `convert`, and `emit`, their
-SEM/READ/WRITE roles, visibility, signatures, `use tensor`, and the shared
-`Mod Fn Op Val Attr` rail. The center is four tightly stacked code/IR cards:
-ANALYZE records type, shape, and use observations over `G0`; TRANSFORM replaces
-the match with `ConvBiasReLU` in `G1`; CONVERT creates `target.conv_relu` with
-layout, tile, and vector attributes in `G2`; EMIT produces artifact `A`.
-Side braces read `one language · call model · value model` and
-`G0 → G1 → G2 → A`. The bottom aligns before/edit/after type snippets with a
-five-row dependency ledger: `legal` and `fuse` DIRECT, `convert` and `emit`
-UPSTREAM, and an unrelated analysis REUSE. Show
-`Δ → D-index → {legal,fuse} → W-overlap → {convert,emit}` above the transaction
-line `select → execute → verify → commit`. Use small crisp type, thin charcoal
-rules, white background, restrained blue/teal/lavender groups, and coral only
-for edits and selected work. No large headings, numbered circles, decorative
-people, gradients, shadows, or imitation of the workflow figure. -->
+<!-- FIGURE 3 PROMPT — Original compact single-column scientific diagram,
+3.35 inches wide and approximately 2.6 inches high. Top: one conv_ext mod
+containing Semantics/Analysis/Transform/Convert/Emit columns, with
+define/legal/fuse/lower/emit and contract/read/write/write/read beneath them;
+use tensor and a common typed-functions/graph-handles/owned-values rail.
+Bottom: three aligned graph states. G0: x,w→Conv; b→BiasAdd; Conv→BiasAdd→ReLU→y,
+with a single-use match boundary. G1: x,w,b→ConvBiasReLU→y. G2:
+x,w,b→target.conv_relu→y. Left arrows: fuse·verify and lower·verify.
+An emit(read) arrow connects the G2 graph to an artifact glyph. Semantic
+contract: y=max(Conv(x,w)+b,0). These are schematic operator and role names.
+Thin charcoal connectors, white background, pale teal/blue/lavender;
+coral only for the match boundary. Compact readable labels, no numeric callouts,
+fake source code, cache-hit counts, or isolated output-type edits. -->
 
-*Figure 3: One operator extension uses a shared call model across roles and
-records the graph state that governs re-execution.*
+*Figure 3: A schematic fused-operator extension. One mod owns five compiler
+roles. Fusion and conversion publish verified graphs; emission reads the
+prepared graph and returns an artifact without changing it.*
 
 Joggle resolves a call from its qualified name, visible mods, explicit generic
 arguments, parameter types, and result context. The selected implementation
@@ -471,11 +469,12 @@ the final graph verifies. Failure rolls back graph mutations and revision
 state; it also discards the tentative records. Consequently, the next run
 cannot reuse dependencies derived from an unpublished graph.
 
-The ledger in Figure 3 makes this selection concrete. A type edit directly
-invalidates the legality and fusion stages that observed it. Because fusion
-may replace the matched subgraph, conversion is selected by overlap with that
-potential effect; artifact generation follows conversion for the same reason.
-An analysis with disjoint observations retains its previous result.
+For example, changing an operator's layout metadata invalidates a legality
+query that read that metadata. A scheduled transformation that observed the
+same property is selected directly. A later stage is selected when its inputs
+overlap the transformation's recorded output scope. A query over a disjoint
+function retains its result. Selection follows recorded observations and
+effects, including their function and structural granularity.
 
 Fine-grained observations reduce re-execution but add capture and validation
 work. For $K$ stages, incremental latency is approximately
@@ -603,7 +602,8 @@ framework. Each extension follows the system's documented path from a pinned
 revision. The update study imports one typed topology from each of 15
 SHA-256-pinned ONNX models and applies the same edit and five-stage compiler
 task in every system. Its primary ratios are formed against that system's own
-full rerun, separating update scope from implementation language. End-to-end
+full rerun and measure the fraction of rebuild cost retained after an edit.
+Absolute latency reports the combined cost of the runtime and selected work. End-to-end
 execution compares byte-identical inputs and numerical outputs with a pinned,
 single-thread ONNX Runtime CPU reference.
 
@@ -718,8 +718,10 @@ UpdateRatio_s = \frac{T_{update,s}}{T_{full,s}},
 WorkRatio_s = \frac{V_{update,s}}{V_{full,s}},
 $$
 
-where $V$ counts graph entities visited by the five stages. This pairing keeps
-implementation-language cost out of the headline comparison. Absolute
+where $V$ counts graph entities visited by the five stages. Ratios are formed
+within each edit case before aggregation. Attribute and type edits, and
+affected and unrelated scopes, retain separate summaries so inexpensive
+controls cannot obscure the cost of an affected update. Absolute
 edit-to-artifact latency remains visible.
 
 A second panel calibrates these update ratios against Joggle's production
@@ -728,15 +730,20 @@ fixed-shape entry specialization with inference and conversion, `c.prepare`,
 scalar lowering, storage planning and placement, and C emission, together with
 graph size, emitted bytes, and artifact correctness. Entry types come from the
 same pinned workloads used by the end-to-end experiment. These full-path
-measurements do not enter $UpdateRatio$; they establish the absolute work
-represented by a complete artifact rebuild. Both panels accept a row only when
-its result matches the corresponding full-rerun oracle.
+measurements report the collector's process and materialization costs alongside
+compiler work. Each generated artifact passes a C compilation check;
+the end-to-end experiment checks its numerical behavior. The complete-rebuild
+time is summed within each run before computing its median. Matched update
+results are checked against their corresponding independent full reruns.
 
 <!-- FIGURE 6 PLAN — Full-width, dense three-panel result. (a) Fifteen model
-rows show per-system UpdateRatio on the matched executable stages; every
-system's complete rerun is 1. (b) Aligned WorkRatio rows show visited/total
-entities. (c) Joggle's production path shows the full stage breakdown from
-decode to emitted C. CSV: figure-06-update.csv. Raw columns:
+rows show per-system UpdateRatio for affected attribute edits; every system's
+complete rerun is 1. Points are medians and segments show the interquartile
+range across paired cases. (b) Aligned WorkRatio rows retain true zero and
+ratios above one. (c) A numeric heatmap shows Joggle's production stages in
+seconds; the total cell is the median of within-run sums. Type edits and
+unrelated controls use separate appendix plots from the same script and CSV.
+CSV: figure-06-update.csv. Raw columns:
 path,system,system_revision,subject,subject_hash,total_ops,affected_ops,
 edit_class,edit_scope,edit_site,policy,stage,iteration,wall_ns,visited_ops,
 executed_stages,total_stages,artifact_bytes,output_digest,correct,seed. -->
@@ -753,15 +760,32 @@ byte-identical inputs and pass dtype-specific numerical oracles. Joggle fixes
 each entry signature from those inputs before either lowering pipeline begins.
 
 The main measure is steady-state execution latency after ten warm-ups and 100
-measurements. Unsupported pairs remain as coverage outcomes instead of
-disappearing from the accepted set. Operator and model results share one figure
-and one CSV, with up to 11,700 timed rows.
+measurements. Figure 7 shows every operator and model individually. A point
+marks its median latency divided by the ONNX Runtime median; a line extends
+to its 95th-percentile latency under the same denominator. The line describes
+timing variation, not a confidence interval. Values below one indicate faster
+execution. Unsuccessful pairs retain their row and contribute to the coverage
+table. Operator and model results share one figure and one CSV, with up to
+11,700 timed rows.
+
+For the pinned operator configuration in Appendix A, all 24 operators pass the
+numerical oracle in both Joggle paths. The optimization pack reduces geometric
+mean latency by 1.81× relative to the base path. Relative to ONNX Runtime, the
+base and optimized latency ratios are 9.08× and 5.02×, respectively; the
+optimized path is faster on three operators. The effect varies across
+operators: the 256×256 matrix multiply improves by 12.83× over the base path,
+whereas strided convolution regresses from 146.82× to 164.31× the reference
+latency. These per-operator differences locate the remaining generated-code
+costs and distinguish the effect of an optimization pack from compiler update
+responsiveness.
 
 <!-- FIGURE 7 PLAN — One full-width performance figure fed by one CSV and one
-plotting script. Left: 24 operators grouped by six families, showing Joggle
-base and optimized latency relative to ONNX Runtime, summarized within each
-operator family. Center: the same relative-latency view for all 15 models.
-Right: compact correct-coverage cells. CSV: figure-07-performance.csv. Columns:
+plotting script. Left: all 24 operators grouped by six families. Right top:
+all 15 models. Each subject has base/optimized median points and median-to-p95
+segments, normalized by its ONNX Runtime median. Both panels share limits;
+no subject is compressed into a family mean. Right bottom: correct-coverage
+counts for both Joggle variants and ONNX Runtime. Failed cases use × in a
+non-data margin; missing measurements use ?. CSV: figure-07-performance.csv. Columns:
 subject_kind,subject,subject_hash,family,system,system_revision,variant,
 supported,reason,iteration,calls_per_sample,latency_ns,max_abs_error,
 max_rel_error,input_digest,output_digest,correct,seed. -->
@@ -925,3 +949,41 @@ boundary in which it evolves, and selective work after it changes. The
 evaluation tests these properties through executable extension completion,
 paired patch footprint, and reactive update cost while measuring generated
 artifacts independently.
+
+## Appendix A. Operator Measurements
+
+| Operator | ORT (µs) | Base / ORT | Opt / ORT |
+| --- | ---: | ---: | ---: |
+| conv-depthwise | 39.95 | 3.81 | 4.66 |
+| conv-pointwise | 60.54 | 152.08 | 19.34 |
+| conv-stem | 178.33 | 4.28 | 8.58 |
+| conv-strided | 43.33 | 146.82 | 164.31 |
+| ew-affine-1k | 2.87 | 0.09 | 0.08 |
+| ew-broadcast-relu | 3.53 | 0.79 | 0.79 |
+| ew-chain-64k | 21.87 | 4.42 | 3.16 |
+| ew-select-16k | 8.13 | 1.27 | 1.24 |
+| fuse-add-relu | 13.10 | 2.71 | 4.98 |
+| fuse-conv-bias-relu | 307.00 | 86.18 | 41.68 |
+| fuse-matmul-bias-relu | 14.52 | 156.55 | 13.00 |
+| fuse-mul-add | 20.28 | 2.26 | 2.30 |
+| mm-batched | 11.25 | 65.84 | 66.53 |
+| mm-rectangular | 13.26 | 207.14 | 9.88 |
+| mm-square-256 | 30.98 | 332.02 | 25.87 |
+| mm-square-64 | 4.40 | 20.77 | 1.72 |
+| quant-conv | 26.27 | 9.10 | 10.02 |
+| quant-dynamic | 4.86 | 1.40 | 1.46 |
+| quant-matmul | 6.26 | 20.12 | 2.36 |
+| quant-qdq-tensor | 3.33 | 0.58 | 0.55 |
+| red-l2-last | 15.23 | 1.11 | 1.09 |
+| red-max-channel | 58.95 | 9.89 | 10.12 |
+| red-mean-spatial | 11.99 | 9.27 | 9.51 |
+| red-sum-row | 9.53 | 5.60 | 5.60 |
+| Geometric mean ratio | — | 9.08 | 5.02 |
+| Correct operators | 24/24 | 24/24 | 24/24 |
+
+*Table A1: Operator execution measurements. Joggle revision `83aa8d4fc72d`,
+Apple Clang 17.0.0 (`-O3 -DNDEBUG`), and ONNX Runtime 1.26.0 CPU with one thread
+and full graph optimization. Each entry uses ten warm-ups and 100 measured
+samples. Ratios divide unrounded per-operator medians; values below one
+indicate lower latency than ORT. All 72 subject/variant pairs pass the
+numerical oracle. The geometric mean covers all 24 operators.*

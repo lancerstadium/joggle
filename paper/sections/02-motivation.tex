@@ -25,13 +25,14 @@ through different APIs and maintained by different developers.
   \label{fig:workflow}
 \end{figure}
 
-As a running example, consider introducing saturating arithmetic for a
-low-precision model. The feature begins with a parametric type and arithmetic
-semantics. It then needs a capability test, a transformation that selects the
-new operation, a storage policy, and one or more target implementations. The
-change is conceptually one feature, but its pieces occupy several stages in
-Figure~\ref{fig:workflow}. Later revisions---such as admitting another width or
-changing target selection---must preserve the same cross-stage agreement.
+Consider adding a fused convolution, bias addition, and activation. The
+extension defines the fused operator's semantics, checks shapes and uses,
+replaces a matching subgraph, selects a target implementation, and emits an
+artifact. These responsibilities span several stages in
+Figure~\ref{fig:workflow}. A later change to the supported layout or numeric
+type must preserve agreement among the legality test, transformation, and
+target implementation. Section~\ref{sec:design} uses this operator extension
+to make the interfaces and ownership boundary concrete.
 
 Existing infrastructures offer rich extension points for these individual
 roles. The difficulty addressed here is their composition: a complete feature

@@ -63,24 +63,25 @@ itself be a handle, an ordinary value, structured data, text, or bytes. Handles
 retain graph ownership and lifetime; ordinary values remain independent of
 graph storage.
 
-A common operator extension illustrates these roles in
-Figure~\ref{fig:operator-extension}. A convolution, bias addition, and
-activation form a fusible subgraph. One mod owns the fused
-operator's semantic contract together with typed functions for legality
-analysis, fusion, target conversion, and artifact generation. The functions
-exchange graph handles and owned values through the interface above; each role
-retains its own effect contract.
+Figure~\ref{fig:operator-extension} follows the operator extension introduced
+in Section~\ref{sec:motivation}. The graph computes
+$y=\max(\operatorname{Conv}(x,w)+b,0)$. A legality function checks types,
+shapes, and intermediate uses; fusion replaces the matched operations with one
+semantic operation; conversion selects its target form. These graph states,
+$G_0$, $G_1$, and $G_2$, retain the same input/output contract. An emitter reads
+$G_2$ and returns the artifact. The extension's mod owns all five roles, which
+exchange graph handles and owned values through the same call interface.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-03-operator-extension.png}
-  \caption{One operator extension in Joggle. Five compiler roles share typed
-  calls; recorded observations and effects select work after a local edit.}
-  \Description{A typed convolution, bias, and activation graph is analyzed,
-  fused, converted to a target operation, and emitted by five functions in one
-  mod. The graph progresses through three verified states to an artifact. A
-  type edit directly selects legality and fusion, propagates through conversion
-  and emission, reuses an unrelated analysis, and commits transactionally.}
+  \caption{A schematic fused-operator extension. One mod owns five compiler
+  roles. Fusion and conversion publish verified graphs; emission reads the
+  prepared graph and returns an artifact without changing it.}
+  \Description{The conv\_ext mod uses tensor and owns semantic definition,
+  analysis, transformation, conversion, and emission. Three graph rows show
+  convolution, bias addition, and ReLU fused and lowered to a target operation.
+  Emission reads the final graph and returns an artifact.}
   \label{fig:operator-extension}
 \end{figure}
 
@@ -247,11 +248,12 @@ final graph verifies. Failure rolls back graph mutations and revision state; it
 also discards the tentative records. Consequently, the next run cannot reuse
 dependencies derived from an unpublished graph.
 
-In Figure~\ref{fig:operator-extension}, a type edit directly invalidates the
-legality and fusion stages that observed it. Because fusion may replace the
-matched subgraph, conversion is selected by overlap with that potential
-effect; artifact generation follows conversion for the same reason. An
-analysis with disjoint observations retains its previous result.
+For example, changing an operator's layout metadata invalidates a legality
+query that read that metadata. A scheduled transformation that observed the
+same property is selected directly. A later stage is selected when its inputs
+overlap the transformation's recorded output scope. A query over a disjoint
+function retains its result. Selection follows recorded observations and
+effects, including their function and structural granularity.
 
 Fine-grained observations reduce re-execution but add capture and validation
 work. For $K$ stages, incremental latency is approximately

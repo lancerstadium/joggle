@@ -73,9 +73,13 @@ def audited_input(path: Path) -> dict[str, object]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--operators", type=Path, nargs="+", required=True)
-    parser.add_argument("--models", type=Path, nargs="+", required=True)
+    parser.add_argument("--models", type=Path, nargs="+", default=[])
+    parser.add_argument("--allow-partial", action="store_true",
+                        help="Export an explicitly incomplete, validated measurement snapshot")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if not args.models and not args.allow_partial:
+        parser.error("--models is required for a complete Figure 7 release")
     if args.output.exists():
         raise SystemExit(f"refusing to replace {args.output}")
     record_path = args.output.with_suffix(".merge.json")
@@ -109,14 +113,17 @@ def main() -> int:
             writer = csv.DictWriter(stream, fieldnames=output_header)
             writer.writeheader()
             writer.writerows(rows)
-        subprocess.run([sys.executable, str(root / "validate_figure.py"), "7",
-                        str(temporary_path)], check=True)
+        command = [sys.executable, str(root / "validate_figure.py"), "7", str(temporary_path)]
+        if args.allow_partial:
+            command.append("--allow-partial")
+        subprocess.run(command, check=True)
         temporary_path.replace(args.output)
     finally:
         temporary_path.unlink(missing_ok=True)
 
     write_json(record_path, {
         "schema": "performance-merge/v1",
+        "complete": not args.allow_partial,
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "inputs": audited,
         "output": {"path": str(args.output.resolve()), "sha256": sha256(args.output)},

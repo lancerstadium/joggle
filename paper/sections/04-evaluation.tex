@@ -34,8 +34,9 @@ infrastructure, and xDSL, a Python-native SSA framework. Each extension follows
 the system's documented path from a pinned revision. The update study imports
 one typed topology from each of 15 SHA-256-pinned ONNX models and applies the
 same edit and five-stage compiler task in every system. Its primary ratios are
-formed against that system's own full rerun, separating update scope from
-implementation language. End-to-end execution compares byte-identical inputs
+formed against that system's own full rerun and measure the fraction of rebuild
+cost retained after an edit. Absolute latency reports the combined cost of the
+runtime and selected work. End-to-end execution compares byte-identical inputs
 and numerical outputs with a pinned, single-thread ONNX Runtime CPU reference.
 
 \paragraph{Correctness and measurement.}
@@ -129,8 +130,10 @@ rerun,
   \operatorname{WorkRatio}_s = \frac{V_{\mathrm{update},s}}
                                     {V_{\mathrm{full},s}},
 \]
-where $V$ counts graph entities visited by the five stages. This pairing keeps
-implementation-language cost out of the headline comparison. Absolute
+where $V$ counts graph entities visited by the five stages. Ratios are formed
+within each edit case before aggregation. Attribute and type edits, and
+affected and unrelated scopes, retain separate summaries so inexpensive
+controls cannot obscure the cost of an affected update. Absolute
 edit-to-artifact latency remains visible.
 
 A second panel calibrates these update ratios against Joggle's production
@@ -139,10 +142,12 @@ fixed-shape entry specialization with inference and conversion,
 \texttt{c.prepare}, scalar lowering, storage planning and placement, and C
 emission, together with graph size, emitted bytes, and artifact correctness.
 Entry types come from the same pinned workloads used by the end-to-end
-experiment. These full-path measurements do not enter \(
-\operatorname{UpdateRatio}\); they establish the absolute work represented by
-a complete artifact rebuild. Both panels accept a row only when its result
-matches the corresponding full-rerun oracle.
+experiment. These full-path measurements report the collector's process and
+materialization costs alongside compiler work. Each generated artifact passes
+a C compilation check; the end-to-end experiment checks its numerical behavior.
+The complete-rebuild time is summed within each run before computing its
+median. Matched update results are checked against their corresponding
+independent full reruns.
 
 \subsection{End-to-End Performance}
 \label{sec:eval-artifacts}
@@ -157,9 +162,25 @@ byte-identical inputs and pass dtype-specific numerical oracles. Joggle fixes
 each entry signature from those inputs before either lowering pipeline begins.
 
 The main measure is steady-state execution latency after ten warm-ups and 100
-measurements. Unsupported pairs remain as coverage outcomes instead of
-disappearing from the accepted set. Operator and model results share one figure
-and one CSV, with up to 11,700 timed rows.
+measurements. Figure~7 shows every operator and model individually. A point
+marks its median latency divided by the ONNX Runtime median; a line extends
+to its 95th-percentile latency under the same denominator. The line describes
+timing variation, not a confidence interval. Values below one indicate faster
+execution. Unsuccessful pairs retain their row and contribute to the coverage
+table. Operator and model results share one figure and one CSV, with up to
+11,700 timed rows.
+
+For the pinned operator configuration in Appendix~\ref{sec:operator-data},
+all 24 operators pass the numerical oracle in both Joggle paths. The
+optimization pack reduces geometric mean latency by $1.81\times$ relative to
+the base path. Relative to ONNX Runtime, the base and optimized latency ratios
+are $9.08\times$ and $5.02\times$, respectively; the optimized path is faster
+on three operators. The effect varies across operators: the $256\times256$
+matrix multiply improves by $12.83\times$ over the base path, whereas strided
+convolution regresses from $146.82\times$ to $164.31\times$ the reference
+latency. These per-operator differences locate the remaining generated-code
+costs and distinguish the effect of an optimization pack from compiler update
+responsiveness.
 
 Together, generation characterizes the extension surface, patch footprint its
 ownership boundary, the cross-system update study its responsiveness, and the

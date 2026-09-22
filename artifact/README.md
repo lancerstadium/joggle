@@ -110,6 +110,10 @@ The production and end-to-end collectors both derive the entry signature from
 `benchmark-cases.json`. `opt.signature` binds named shape parameters and
 refines anonymous input extents before ONNX conversion, so both figures compile
 the same fixed workload rather than separate model variants.
+The production collector batches inference, conversion, and preparation and
+uses the runtime timing report to split these stages. Scalar lowering, storage
+planning, and placement retain materialized boundaries; their wall times
+include loading and writing the intermediate graph.
 
 MLIR and xDSL adapters must implement the same edit, five logical stages,
 counters, and digest. The release gate rejects Figure 6 without the complete
@@ -159,6 +163,25 @@ python3 artifact/validate_figure.py 7 \
 Collectors checkpoint complete cases and record unsupported cases explicitly.
 Only steady-state execution is repeated. A smoke run uses three iterations;
 the release population uses the 100 iterations frozen in the manifest.
+
+Figure 7 retains one row per operator and model. Points show medians; segments
+extend to p95, with both divided by the same subject's ORT median. These
+segments show timing variation. Failed cases remain visible in the margin and
+coverage table. Export the plotted statistics alongside the PDF:
+
+```sh
+python3 artifact/figures/figure_07_performance.py \
+  .cache/artifact/figure-07-performance.csv \
+  --output .cache/artifact/figure-07-performance.pdf \
+  --summary .cache/artifact/figure-07-summary.csv
+```
+
+`merge_benchmark_rows.py --allow-partial` supports intermediate, hash-checked
+snapshots, including operator-only data. Their merge record has
+`complete: false`; the complete release still requires the full model matrix.
+The operator table in Appendix A uses revision `83aa8d4fc72d` and the
+`figure-07-operators-83aa8d4.csv` snapshot. Its 7,200 rows cover all 24 operators,
+both Joggle paths, and ONNX Runtime; it contains no model measurements.
 
 ## Render and release
 

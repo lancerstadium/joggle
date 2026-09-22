@@ -1,0 +1,54 @@
+\section{Operator Measurements}
+\label{sec:operator-data}
+
+\begin{table}[h]
+  \caption{Operator execution measurements. Joggle revision
+  \texttt{83aa8d4fc72d}, Apple Clang 17.0.0 (\texttt{-O3 -DNDEBUG}), and
+  ONNX Runtime 1.26.0 CPU with one thread and full graph optimization. Each
+  entry uses ten warm-ups and 100 measured samples. Ratios divide unrounded
+  per-operator medians; values below one indicate lower latency than ORT.
+  All 72 subject/variant pairs pass the numerical oracle. The geometric mean
+  covers all 24 operators.}
+  \label{tab:operator-data}
+  \centering
+  \small
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{@{}lrrr@{}}
+    \toprule
+    Operator & ORT ($\mu$s) & Base / ORT & Opt / ORT \\
+    \midrule
+    conv-depthwise & 39.95 & 3.81 & 4.66 \\
+    conv-pointwise & 60.54 & 152.08 & 19.34 \\
+    conv-stem & 178.33 & 4.28 & 8.58 \\
+    conv-strided & 43.33 & 146.82 & 164.31 \\
+    \midrule
+    ew-affine-1k & 2.87 & 0.09 & 0.08 \\
+    ew-broadcast-relu & 3.53 & 0.79 & 0.79 \\
+    ew-chain-64k & 21.87 & 4.42 & 3.16 \\
+    ew-select-16k & 8.13 & 1.27 & 1.24 \\
+    \midrule
+    fuse-add-relu & 13.10 & 2.71 & 4.98 \\
+    fuse-conv-bias-relu & 307.00 & 86.18 & 41.68 \\
+    fuse-matmul-bias-relu & 14.52 & 156.55 & 13.00 \\
+    fuse-mul-add & 20.28 & 2.26 & 2.30 \\
+    \midrule
+    mm-batched & 11.25 & 65.84 & 66.53 \\
+    mm-rectangular & 13.26 & 207.14 & 9.88 \\
+    mm-square-256 & 30.98 & 332.02 & 25.87 \\
+    mm-square-64 & 4.40 & 20.77 & 1.72 \\
+    \midrule
+    quant-conv & 26.27 & 9.10 & 10.02 \\
+    quant-dynamic & 4.86 & 1.40 & 1.46 \\
+    quant-matmul & 6.26 & 20.12 & 2.36 \\
+    quant-qdq-tensor & 3.33 & 0.58 & 0.55 \\
+    \midrule
+    red-l2-last & 15.23 & 1.11 & 1.09 \\
+    red-max-channel & 58.95 & 9.89 & 10.12 \\
+    red-mean-spatial & 11.99 & 9.27 & 9.51 \\
+    red-sum-row & 9.53 & 5.60 & 5.60 \\
+    \midrule
+    Geometric mean ratio & --- & 9.08 & 5.02 \\
+    Correct operators & 24/24 & 24/24 & 24/24 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
