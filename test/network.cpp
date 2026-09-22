@@ -88,6 +88,21 @@ int main(int argc, char** argv) {
     env.clear_diags();
   }
 
+  // A finite branch cannot supply a capacity for an unbounded alternative.
+  joggle::Mod unbounded_branch;
+  CHECK(joggle::parse(env,
+      "mod unbounded_branch\nuse tensor\n"
+      "fn main(n: index, choose: bool) -> tensor<i32, [_]> {\n"
+      " var count = index(4)\n if choose { count = n }\n"
+      " let shape = tensor<index, [1]>(count)\n"
+      " return tensor.make(i32(0), shape)\n}\n",
+      unbounded_branch, "unbounded-branch.jog"));
+  CHECK(!joggle::run(env, "c.prepare", unbounded_branch));
+  CHECK(!env.diags().empty());
+  CHECK(env.diags().back().message.find("unsupported call remains: tensor.make") !=
+        std::string::npos);
+  env.clear_diags();
+
   // Folded scalar assignments keep their scalar type after serialization.
   // In particular, an index variable must not become int before a tensor store.
   for (const std::string type : {"index", "i32", "f32"}) {
@@ -1586,7 +1601,8 @@ int main(int argc, char** argv) {
             CHECK(op.outs()[1].type() == expected);
         CHECK(joggle::run(env, "onnx.nn.convert", exact));
         CHECK(exact.verify(env));
-        CHECK(joggle::run(env, "c.prepare", exact));
+        if (!joggle::run(env, "c.prepare", exact))
+          return env.print_diags(stderr);
         CHECK(exact.verify(env));
       }
     }

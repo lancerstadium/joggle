@@ -72,6 +72,58 @@ fn transpose<T: Ty, M: int, N: int>(
 }
 ```
 
+## Comparisons with runtime broadcasting
+
+Tensor `==`, `<`, and `>` return Boolean tensors. Their shapes are aligned
+from the trailing axis: two extents must be equal or one must be one. An
+extent of one broadcasts to the other extent, including zero. This rule uses
+runtime dimensions when a type contains `_`.
+
+```jog
+fn positive_prefix(x: tensor<f32, [4]>, count: index) -> tensor<bool, [_]> {
+  let shape = tensor<index, [1]>(count)
+  let prefix: tensor<f32, [_]> = tensor.view(x, shape)
+  return prefix > tensor<f32, []>(f32(0))
+}
+```
+
+For `x = [-1, 0, 2, NaN]` and a valid prefix length:
+
+| `count` | Result shape | Result |
+| ---: | --- | --- |
+| 0 | `[0]` | `[]` |
+| 1 | `[1]` | `[false]` |
+| 3 | `[3]` | `[false, false, true]` |
+| 4 | `[4]` | `[false, false, true, false]` |
+
+Floating-point comparisons follow scalar semantics: equality and ordered
+comparisons with NaN are false. The empty result has no element reads or
+writes. A zero-dimensional tensor is a scalar, distinct from an empty tensor.
+
+Broadcasting also applies to multiple axes:
+
+```jog
+fn below_row(x: tensor<i32, [2, 3]>, threshold: tensor<i32, [1, 3]>,
+             rows: index) -> tensor<bool, [_, 3]> {
+  var shape = tensor<index, [2]>(index(3))
+  shape[0] = rows
+  let prefix: tensor<i32, [_, 3]> = tensor.view(x, shape)
+  return prefix < threshold
+}
+```
+
+With `x = [[0, 1, 2], [3, 4, 5]]`, `threshold = [[1, 4, 5]]`, and
+`rows = 2`, the output is `[[true, true, true], [false, false, false]]`.
+The implementation derives aligned extents and source strides, then indexes
+the original tensors directly. It does not allocate broadcasted copies of
+the inputs. Rank traversals are marked as shape work and specialized during
+preparation; element loops retain runtime bounds.
+
+For bounded C storage, the result capacity follows the input allocations and
+the merged shape bounds. Conditional extents require bounds for every
+reachable branch. Incompatible shapes, negative extents, and size overflow
+are rejected before the element loop.
+
 ## Reshape with runtime extents
 
 `reshape(x)` takes its complete destination shape from the result type.

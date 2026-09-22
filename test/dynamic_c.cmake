@@ -50,3 +50,8 @@ foreach(repeats_case a b c)
   joggle_expect("invalid tile repeats did not reach validation"
     TEXT "${failure}" MATCHES "[Aa]ssertion")
 endforeach()
+
+joggle_run("incompatible dynamic comparison shapes were accepted"
+  COMMAND "${program}" "d" EXPECT_FAIL ERROR_VARIABLE failure)
+joggle_expect("incompatible comparison did not reach shape validation"
+  TEXT "${failure}" MATCHES "[Aa]ssertion")

@@ -35,6 +35,43 @@ local fn interval(m: Mod, value: Val, known: dict, seen: list<Val>) -> list<int>
     return [exact, exact]
   }
   let cast = ir.def(value)
+  if ir.live(cast) && ir.kind(cast) == "branch" {
+    let outputs = ir.outs(cast)
+    var position = -1
+    for i in 0..len(outputs) { if outputs[i] == value { position = i } }
+    if position < 0 { return [] }
+    let inputs = ir.args(cast)
+    let condition = interval(m, inputs[0], known, next)
+    var selected = -1
+    if len(condition) == 2 && condition[0] == condition[1] {
+      selected = 0
+      if condition[0] == 0 { selected = 1 }
+    }
+    var out: list<int> = []
+    let bodies = ir.blks(cast)
+    for arm in 0..len(bodies) {
+      if selected < 0 || arm == selected {
+        let ops = ir.ops(bodies[arm])
+        if len(ops) == 0 { return [] }
+        let yielded = ir.args(ops[len(ops) - 1])
+        if position >= len(yielded) { return [] }
+        var source = yielded[position]
+        let args = ir.args(bodies[arm])
+        for i in 0..len(args) {
+          if source == args[i] { source = inputs[i + 1] }
+        }
+        let bound = interval(m, source, known, next)
+        if len(bound) != 2 { return [] }
+        if len(out) == 0 {
+          out = bound
+        } else {
+          if bound[0] < out[0] { out[0] = bound[0] }
+          if bound[1] > out[1] { out[1] = bound[1] }
+        }
+      }
+    }
+    return out
+  }
   if ir.live(cast) && ir.kind(cast) == "call" &&
      len(ir.args(cast)) == 1 &&
      (ir.callee(cast) == base.name(ir.type(value)) ||
