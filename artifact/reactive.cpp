@@ -325,6 +325,31 @@ struct Subject {
   bool generated = true;
 };
 
+std::string artifact_state(const Subject& subject) {
+  std::ostringstream out;
+  out << "root:" << subject.hot_value.type().text() << ':';
+  if (subject.hot_value.is_const())
+    out << joggle::print(subject.hot_value.constant());
+  if (const joggle::Attr* policy =
+          subject.hot.meta("artifact.input_revision"))
+    out << joggle::print(*policy);
+  out << '\n';
+  const std::array<joggle::Val, 1> roots{subject.hot_value};
+  for (const joggle::Op operation : subject.mod.affected(roots)) {
+    out << static_cast<unsigned>(operation.kind()) << ':' << operation.callee()
+        << ':' << operation.args().size() << ':';
+    for (const joggle::Val value : operation.outs()) {
+      out << value.type().text() << ',';
+      if (value.is_const())
+        out << joggle::print(value.constant()) << ',';
+    }
+    if (const joggle::Attr* artifact = operation.meta("artifact.artifact"))
+      out << joggle::print(*artifact);
+    out << '\n';
+  }
+  return out.str();
+}
+
 bool parse_model(const Config& config, Subject& subject) {
   std::ifstream input(config.input, std::ios::binary);
   if (!input)
@@ -588,7 +613,7 @@ bool benchmark(const Config& config, std::ofstream& output,
       subject.env.print_diags(stderr);
       subject.mod.print_diags(stderr);
     }
-    const std::string output_digest = digest(joggle::print(subject.mod));
+    const std::string output_digest = digest(artifact_state(subject));
     const std::string key = config.edit_class + ":" + std::string(scope) +
                             ":" + std::to_string(index);
     const auto [position, inserted] = expected.emplace(key, output_digest);

@@ -1,4 +1,5 @@
 mod artifact.reactive
+use base
 use ir
 
 local fn root(m: Mod, owner: str, index: int) -> Val {
@@ -12,42 +13,140 @@ local fn root(m: Mod, owner: str, index: int) -> Val {
   return values[0]
 }
 
-local fn annotate(
-  m: Mod, owner: str, index: int, key: str
-) -> bool {
+local fn result_types(op: Op) -> list<str> {
+  var out: list<str> = []
+  for value in ir.outs(op) {
+    out += [text(ir.type(value))]
+  }
+  return out
+}
+
+local fn use_count(op: Op) -> int {
+  var count = 0
+  for value in ir.outs(op) {
+    count += len(ir.users(value))
+  }
+  return count
+}
+
+local fn analyze_one(m: Mod, op: Op) -> bool {
+  // Reading the complete source metadata makes an attribute edit observable;
+  // the derived record itself contains only stage-relevant facts.
+  let source = ir.meta(op)
+  let source_fields = len(base.keys(source))
+  var out: dict = {}
+  out["kind"] = ir.kind(op)
+  out["form"] = ir.form(op)
+  out["callee"] = ir.callee(op)
+  out["inputs"] = len(ir.args(op))
+  out["outputs"] = len(ir.outs(op))
+  out["result_types"] = result_types(op)
+  out["users"] = use_count(op)
+  out["source_policy"] = ir.meta(op, "artifact.input_revision")
+  return ir.set(m, op, "artifact.analysis", out) || source_fields < 0
+}
+
+local fn canonicalize_one(m: Mod, op: Op) -> bool {
+  var out: dict = {}
+  out["analysis"] = ir.meta(op, "artifact.analysis")
+  out["operand_count"] = len(ir.args(op))
+  out["result_types"] = result_types(op)
+  return ir.set(m, op, "artifact.canonical", out)
+}
+
+local fn select_one(m: Mod, op: Op) -> bool {
+  var target = "control"
+  if ir.kind(op) == "constant" {
+    target = "constant"
+  } else {
+    if ir.kind(op) == "call" {
+      target = "scalar-call"
+      if len(ir.outs(op)) > 0 && use_count(op) > 1 {
+        target = "shared-call"
+      }
+    }
+  }
+  var out: dict = {}
+  out["canonical"] = ir.meta(op, "artifact.canonical")
+  out["implementation"] = target
+  return ir.set(m, op, "artifact.target", out)
+}
+
+local fn plan_one(m: Mod, op: Op) -> bool {
+  var out: dict = {}
+  out["target"] = ir.meta(op, "artifact.target")
+  out["inputs"] = len(ir.args(op))
+  out["outputs"] = len(ir.outs(op))
+  out["live_uses"] = use_count(op)
+  return ir.set(m, op, "artifact.plan", out)
+}
+
+local fn prepare_one(m: Mod, op: Op) -> bool {
+  var out: dict = {}
+  out["plan"] = ir.meta(op, "artifact.plan")
+  out["symbol"] = ir.callee(op)
+  out["result_types"] = result_types(op)
+  return ir.set(m, op, "artifact.artifact", out)
+}
+
+local fn analyze_affected(m: Mod, owner: str, index: int) -> bool {
   var changed = false
   for op in ir.affected([root(m, owner, index)]) {
-    changed = ir.set(m, op, key, true) || changed
+    changed = analyze_one(m, op) || changed
   }
   return changed
 }
 
-local fn annotate_all(m: Mod, owner: str, key: str) -> bool {
+local fn canonicalize_affected(m: Mod, owner: str, index: int) -> bool {
   var changed = false
-  for op in ir.ops(ir.find(m, owner)) {
-    changed = ir.set(m, op, key, true) || changed
+  for op in ir.affected([root(m, owner, index)]) {
+    changed = canonicalize_one(m, op) || changed
+  }
+  return changed
+}
+
+local fn select_affected(m: Mod, owner: str, index: int) -> bool {
+  var changed = false
+  for op in ir.affected([root(m, owner, index)]) {
+    changed = select_one(m, op) || changed
+  }
+  return changed
+}
+
+local fn plan_affected(m: Mod, owner: str, index: int) -> bool {
+  var changed = false
+  for op in ir.affected([root(m, owner, index)]) {
+    changed = plan_one(m, op) || changed
+  }
+  return changed
+}
+
+local fn prepare_affected(m: Mod, owner: str, index: int) -> bool {
+  var changed = false
+  for op in ir.affected([root(m, owner, index)]) {
+    changed = prepare_one(m, op) || changed
   }
   return changed
 }
 
 fn analyze(m: Mod, owner: str, index: int) -> bool {
-  return annotate(m, owner, index, "artifact.analysis")
+  return analyze_affected(m, owner, index)
 }
 
 fn canonicalize(m: Mod, owner: str, index: int) -> bool {
-  return annotate(m, owner, index, "artifact.canonical")
+  return canonicalize_affected(m, owner, index)
 }
 
 fn select(m: Mod, owner: str, index: int) -> bool {
-  return annotate(m, owner, index, "artifact.target")
+  return select_affected(m, owner, index)
 }
 
 fn plan(m: Mod, owner: str, index: int) -> bool {
-  return annotate(m, owner, index, "artifact.plan")
+  return plan_affected(m, owner, index)
 }
 
 fn prepare(m: Mod, owner: str, index: int) -> bool {
-  return annotate(m, owner, index, "artifact.artifact")
+  return prepare_affected(m, owner, index)
 }
 
 // Full-policy stages establish the same properties while deliberately walking
@@ -55,23 +154,43 @@ fn prepare(m: Mod, owner: str, index: int) -> bool {
 // every policy, then contrasts full rescans with dependency-selected local
 // calls after an edit.
 fn full_analyze(m: Mod, owner: str, index: int) -> bool {
-  return annotate_all(m, owner, "artifact.analysis") || index < 0
+  var changed = false
+  for op in ir.ops(ir.find(m, owner)) {
+    changed = analyze_one(m, op) || changed
+  }
+  return changed || index < 0
 }
 
 fn full_canonicalize(m: Mod, owner: str, index: int) -> bool {
-  return annotate_all(m, owner, "artifact.canonical") || index < 0
+  var changed = false
+  for op in ir.ops(ir.find(m, owner)) {
+    changed = canonicalize_one(m, op) || changed
+  }
+  return changed || index < 0
 }
 
 fn full_select(m: Mod, owner: str, index: int) -> bool {
-  return annotate_all(m, owner, "artifact.target") || index < 0
+  var changed = false
+  for op in ir.ops(ir.find(m, owner)) {
+    changed = select_one(m, op) || changed
+  }
+  return changed || index < 0
 }
 
 fn full_plan(m: Mod, owner: str, index: int) -> bool {
-  return annotate_all(m, owner, "artifact.plan") || index < 0
+  var changed = false
+  for op in ir.ops(ir.find(m, owner)) {
+    changed = plan_one(m, op) || changed
+  }
+  return changed || index < 0
 }
 
 fn full_prepare(m: Mod, owner: str, index: int) -> bool {
-  return annotate_all(m, owner, "artifact.artifact") || index < 0
+  var changed = false
+  for op in ir.ops(ir.find(m, owner)) {
+    changed = prepare_one(m, op) || changed
+  }
+  return changed || index < 0
 }
 
 // These wrappers produce the same graph while deliberately observing the

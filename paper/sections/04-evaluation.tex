@@ -71,8 +71,8 @@ must parse, type-check, build, and pass the semantic oracle without manual
 repair. We macro-average success over tasks and resample tasks within each
 family. For successful trajectories, secondary measures are completion tokens,
 tool calls, edit attempts, and wall time. Failed trajectories retain their
-first terminal phase---parse, type, build, semantic oracle, or budget. A
-As a supplementary interface-predictability diagnostic, we also report the
+first terminal phase---parse, type, build, semantic oracle, or budget. As a
+supplementary interface-predictability diagnostic, we also report the
 perplexity of each passing reference solution.
 
 \subsection{Change Footprint and Ownership}
@@ -116,9 +116,11 @@ digest and structural verifier.
 A case changes an operation attribute or result type at a preselected early,
 middle, or late site. For each edit, the harness also selects a control entity
 outside the affected cone. Every system first executes the complete five-stage
-path. Joggle then applies the edit through its revision and dependency index;
-MLIR and xDSL execute their native public pass paths from the same typed input
-state. The primary endpoint normalizes an update to that system's complete
+path. After an edit, Joggle selects calls through its revision and dependency
+index. MLIR and xDSL execute their native complete pass paths because their
+public execution models do not retain dependencies at this granularity. Each
+numerator is paired with an independent complete rerun from the same edited
+input. The primary endpoint normalizes the edit path to that system's complete
 rerun,
 \[
   \operatorname{UpdateRatio}_s = \frac{T_{\mathrm{update},s}}

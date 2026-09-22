@@ -705,9 +705,11 @@ digest and structural verifier.
 A case changes an operation attribute or result type at a preselected early,
 middle, or late site. For each edit, the harness also selects a control entity
 outside the affected cone. Every system first executes the complete five-stage
-path. Joggle then applies the edit through its revision and dependency index;
-MLIR and xDSL execute their native public pass paths from the same typed input
-state. The primary endpoint normalizes an update to that system's complete
+path. After an edit, Joggle selects calls through its revision and dependency
+index. MLIR and xDSL execute their native complete pass paths because their
+public execution models do not retain dependencies at this granularity. Each
+numerator is paired with an independent complete rerun from the same edited
+input. The primary endpoint normalizes the edit path to that system's complete
 rerun,
 
 $$

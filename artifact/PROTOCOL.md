@@ -11,10 +11,11 @@ increase the number of independent tasks, patches, or models.
 | 6 | Efficient update | Joggle, MLIR, xDSL | 15 model graphs | Update/Full time and visited work |
 | 7 | End-to-end performance | Joggle base/opt, ONNX Runtime | 24 operators and 15 models | steady-state latency and correct coverage |
 
-The complete release contains 2,880 Figure 4 trajectories, 36 Figure 5 patch rows,
-108,000 Figure 6 timing rows, and up to 11,700 Figure 7 timing rows. Repeated
-rows estimate each independent task, patch, operator, or model; they are never
-treated as additional independent subjects.
+The complete release contains 2,880 Figure 4 trajectories, 36 Figure 5 patch
+rows, 108,000 matched-stage Figure 6 timing rows plus the production-lowering
+calibration, and up to 11,700 Figure 7 timing rows. Repeated rows estimate each
+independent task, patch, operator, or model; they are never treated as
+additional independent subjects.
 
 ## Common controls
 
@@ -67,15 +68,20 @@ hash.
 Fifteen pinned ONNX models are decoded into a neutral typed graph that retains
 operation kinds, values, types, and def-use edges. An adapter materializes this
 graph in each system. Every system runs the same five logical stages: analysis,
-canonicalization, target selection, memory planning, and artifact-manifest
-construction.
+canonicalization, target selection, memory planning, and deterministic artifact
+construction. Each stage computes state consumed by its successor; metadata
+markers alone do not satisfy the contract.
 
 For early, middle, and late edit sites, the experiment applies matched metadata
 and value-type edits to an affected or unrelated location. `full` reruns all
-five stages. `update` uses the public incremental mechanism available in the
-system. The Cartesian matrix is 15 models x 3 systems x 3 sites x 2 edit
-classes x 2 scopes x 2 policies x 100 iterations = 108,000 rows. The release
-validator rejects a missing or additional cell. The primary measurements are:
+five stages. For Joggle, `update` uses revision and dependency selection. For
+MLIR and xDSL, `update` is the native complete pass path after the edit because
+their public execution models do not retain per-call observations across this
+pipeline. Every numerator is paired with an independent complete rerun from
+the same edited input. The Cartesian matrix is 15 models x 3 systems x 3 sites
+x 2 edit classes x 2 scopes x 2 policies x 100 iterations = 108,000 rows. The
+release validator rejects a missing or additional cell. The primary
+measurements are:
 
 \[
 \mathrm{UpdateRatio}_s=T_{\mathrm{update},s}/T_{\mathrm{full},s},\qquad
@@ -85,16 +91,21 @@ validator rejects a missing or additional cell. The primary measurements are:
 Absolute edit-to-result latency remains visible. Internal scheduler policies
 are implementation diagnostics and do not enter the paper comparison.
 
+A calibration panel measures Joggle's production path on the same 15 models.
+It reports decoding, inference and conversion, `c.prepare`, storage planning,
+C emission, graph size, emitted bytes, and correctness for a complete rebuild.
+These rows establish the absolute cost represented by the normalized matched
+stages; they do not enter UpdateRatio or WorkRatio.
+
 - Model index: `manifests/reactive-models.csv`
 - CSV: `templates/figure-06-update.csv`
 - Validator: `validate_reactive.py`
 - Assembler: `merge_update_rows.py`
 - Plot: `figures/figure_06_update.py`
 
-The Joggle adapter exists in `reactive.cpp` and `run_reactive.py`. MLIR and xDSL
-adapters remain to be implemented; Figure 6 is not release-ready until all
-three adapters emit `update-provider/v1` results and the assembler creates a
-hash-bound `update-assembly/v1` record.
+The release gate accepts Figure 6 only when Joggle, MLIR, and xDSL providers
+emit `update-provider/v1` results and the assembler creates a hash-bound
+`update-assembly/v1` record.
 
 ## Figure 7 · end-to-end performance
 
