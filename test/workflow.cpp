@@ -2649,6 +2649,17 @@ int main(int argc, char** argv) {
   const joggle::Op addition = duplicate_sum.body().ops()[0];
   const joggle::Op sum_return = duplicate_sum.body().ops()[1];
   CHECK(duplicate_sum.params()[0].users().size() == 2);
+  const std::array repeated_args{duplicate_sum.params()[0],
+                                 duplicate_sum.params()[0]};
+  const joggle::Val inserted = duplicate_uses.call(
+      addition, "operator +", repeated_args, joggle::Ty("i32"));
+  CHECK(inserted);
+  const auto inserted_users = duplicate_sum.params()[0].users();
+  CHECK(inserted_users.size() == 4);
+  CHECK(inserted_users[0] == addition && inserted_users[1] == addition);
+  CHECK(inserted_users[2] == inserted.def() && inserted_users[3] == inserted.def());
+  CHECK(duplicate_uses.erase(inserted.def()));
+  CHECK(duplicate_sum.params()[0].users().size() == 2);
   const joggle::Op duplicate_copy = duplicate_uses.clone(addition, sum_return);
   CHECK(duplicate_copy);
   CHECK(duplicate_sum.params()[0].users().size() == 4);

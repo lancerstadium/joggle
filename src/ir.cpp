@@ -683,7 +683,8 @@ Op Mod::call(Op before, std::string callee, std::span<const Val> args,
   }
   store.ops.push_back({std::move(op), 1, true});
   order.insert(position, op_id);
-  detail::rebuild_uses(store);
+  for (const std::uint32_t arg : store.ops[op_id].data.args)
+    add_user(store, arg, op_id);
   touch(store, store.blks[blk].data.fn);
   return Op(&store, op_id, store.ops[op_id].generation);
 }
