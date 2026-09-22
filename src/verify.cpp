@@ -1059,8 +1059,9 @@ void verify_bindings(detail::Store& store, std::uint32_t fn_id) {
   if (fn_id >= store.fns.size() || !store.fns[fn_id].live)
     return;
   const detail::FnData& fn = store.fns[fn_id].data;
-  std::set<std::string, std::less<>> visible;
-  std::set<std::string, std::less<>> declared;
+  using Bindings = std::set<std::string, std::less<>>;
+  Bindings visible;
+  Bindings declared;
   const auto declare = [&](std::uint32_t value, const Loc& loc) {
     if (value >= store.vals.size() || !store.vals[value].live)
       return;
@@ -1086,11 +1087,14 @@ void verify_bindings(detail::Store& store, std::uint32_t fn_id) {
 
   std::unordered_set<std::uint32_t> visited;
   const auto block = [&](const auto& self, std::uint32_t blk,
-                         std::set<std::string, std::less<>> scope,
-                         std::set<std::string, std::less<>> local) -> void {
+                         Bindings& scope, Bindings local) -> void {
     if (blk >= store.blks.size() || !store.blks[blk].live ||
         !visited.insert(blk).second)
       return;
+    // Nested regions share the visible set and undo only their additions.
+    // Copying all ancestor names at every region makes large expanded graphs
+    // quadratic in the number of bindings and nested blocks.
+    std::vector<Bindings::iterator> additions;
     for (const std::uint32_t op_id : store.blks[blk].data.ops) {
       if (op_id >= store.ops.size() || !store.ops[op_id].live)
         continue;
@@ -1098,8 +1102,8 @@ void verify_bindings(detail::Store& store, std::uint32_t fn_id) {
       for (std::size_t child_index = 0; child_index < op.blks.size();
            ++child_index) {
         const std::uint32_t child = op.blks[child_index];
-        std::set<std::string, std::less<>> child_scope = scope;
-        std::set<std::string, std::less<>> child_local;
+        Bindings child_local;
+        std::vector<Bindings::iterator> loop_bindings;
         if (op.kind == Op::Kind::loop) {
           for (std::size_t index = 0; index < op.iter_names.size(); ++index) {
             const std::string& name = op.iter_names[index];
@@ -1116,7 +1120,6 @@ void verify_bindings(detail::Store& store, std::uint32_t fn_id) {
                                "loop variable '" + name +
                                    "' is already visible",
                                op.loc);
-            child_scope.insert(name);
             if (child >= store.blks.size() || !store.blks[child].live ||
                 index >= store.blks[child].data.args.size())
               continue;
@@ -1128,8 +1131,15 @@ void verify_bindings(detail::Store& store, std::uint32_t fn_id) {
                                "loop variable and block argument names differ",
                                op.loc);
           }
+          for (const std::string& name : child_local) {
+            const auto [position, inserted] = scope.insert(name);
+            if (inserted)
+              loop_bindings.push_back(position);
+          }
         }
-        self(self, child, std::move(child_scope), std::move(child_local));
+        self(self, child, scope, std::move(child_local));
+        for (const auto position : loop_bindings)
+          scope.erase(position);
       }
       if (op.form != Op::Form::let && op.form != Op::Form::var)
         continue;
@@ -1147,12 +1157,16 @@ void verify_bindings(detail::Store& store, std::uint32_t fn_id) {
                            "binding '" + name +
                                "' is already declared in this scope",
                            op.loc);
-        scope.insert(name);
+        const auto [position, inserted] = scope.insert(name);
+        if (inserted)
+          additions.push_back(position);
       }
     }
+    for (const auto position : additions)
+      scope.erase(position);
   };
   if (!fn.blks.empty())
-    block(block, fn.blks.front(), std::move(visible), std::move(declared));
+    block(block, fn.blks.front(), visible, std::move(declared));
 }
 
 }  // namespace

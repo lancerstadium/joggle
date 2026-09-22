@@ -585,12 +585,23 @@ fn expose(m: Mod, accept: Fn, arg: Attr, limit: int) -> bool {
   return expose_with(m, accept, arg, true, limit)
 }
 
-fn candidates(m: Mod, op: Op, impls: list<Fn>) -> list<Fn> {
-  let symbol = ir.target(m, op)
+[memo]
+local fn named_impls(impls: list<Fn>, symbol: str) -> list<Fn> {
   var out: list<Fn> = []
   for impl in impls {
-    if (ir.name(impl) == symbol || ir.symbol(impl) == symbol) &&
-       ir.accepts(op, impl) {
+    if ir.name(impl) == symbol || ir.symbol(impl) == symbol {
+      out += [impl]
+    }
+  }
+  return out
+}
+
+fn candidates(m: Mod, op: Op, impls: list<Fn>) -> list<Fn> {
+  var out: list<Fn> = []
+  // Symbol selection depends on the implementation set, not on each call's
+  // argument types. Reuse that selection across repeated call signatures.
+  for impl in named_impls(impls, ir.target(m, op)) {
+    if ir.accepts(op, impl) {
       var seen = false
       for prior in out {
         seen = prior == impl || seen

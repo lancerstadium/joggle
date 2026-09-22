@@ -5466,6 +5466,19 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(nested_shadow,
                                    nested_shadow_roundtrip));
 
+  // Leaving a child region removes only its own names, not shadowed ancestor
+  // bindings; names introduced by a sibling are available for reuse.
+  joggle::Mod sibling_scopes;
+  CHECK(joggle::parse(env,
+      "mod sibling.scopes\nfn main(x: i32, flag: bool) -> i32 {\n"
+      "  let parent = x\n"
+      "  if flag { let parent = x + 1; let sibling = x }\n"
+      "  else { let sibling = x + 2 }\n"
+      "  for sibling in 0..2 { let local = sibling }\n"
+      "  for sibling in 0..2 { let local = sibling }\n"
+      "  return parent\n}\n", sibling_scopes, "sibling-scopes.jog"));
+  CHECK(sibling_scopes.verify(env));
+
   joggle::Mod immutable;
   CHECK(!joggle::parse(env,
                        "mod bad\nfn f(x: i32) -> i32 {\n"
