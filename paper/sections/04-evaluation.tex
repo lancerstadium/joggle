@@ -131,14 +131,14 @@ where $V$ counts graph entities visited by the five stages. This pairing keeps
 implementation-language cost out of the headline comparison. Absolute
 edit-to-artifact latency remains visible.
 
-A second panel follows the same edits through Joggle's production lowering
-path. It retains the source mod, invalidates derived lowering results whose
-recorded inputs overlap the edit, rebuilds those results, plans storage, and
-emits C. This panel reports absolute latency, rebuilt functions, visited graph
-entities, emitted bytes, and artifact correctness. It prevents savings in a
-lightweight common adapter from standing in for savings in the compiler's real
-artifact path. Both panels start from the same logical state and accept a row
-only when the updated result matches its full-rerun oracle.
+A second panel calibrates these update ratios against Joggle's production
+lowering path. For the same models it reports the time spent in decoding,
+inference and conversion, \texttt{c.prepare}, storage planning, and C emission,
+together with graph size, emitted bytes, and artifact correctness. These full
+path measurements do not enter \(
+\operatorname{UpdateRatio}\); they establish the absolute work represented by
+a complete artifact rebuild. Both panels accept a row only when its result
+matches the corresponding full-rerun oracle.
 
 \subsection{End-to-End Performance}
 \label{sec:eval-artifacts}

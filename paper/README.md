@@ -720,24 +720,22 @@ where $V$ counts graph entities visited by the five stages. This pairing keeps
 implementation-language cost out of the headline comparison. Absolute
 edit-to-artifact latency remains visible.
 
-A second panel follows the same edits through Joggle's production lowering
-path. It retains the source mod, invalidates derived lowering results whose
-recorded inputs overlap the edit, rebuilds those results, plans storage, and
-emits C. This panel reports absolute latency, rebuilt functions, visited graph
-entities, emitted bytes, and artifact correctness. It prevents savings in a
-lightweight common adapter from standing in for savings in the compiler's real
-artifact path. Both panels start from the same logical state and accept a row
-only when the updated result matches its full-rerun oracle.
+A second panel calibrates these update ratios against Joggle's production
+lowering path. For the same models it reports the time spent in decoding,
+inference and conversion, `c.prepare`, storage planning, and C emission,
+together with graph size, emitted bytes, and artifact correctness. These full
+path measurements do not enter $UpdateRatio$; they establish the absolute work
+represented by a complete artifact rebuild. Both panels accept a row only when
+its result matches the corresponding full-rerun oracle.
 
 <!-- FIGURE 6 PLAN — Full-width, dense three-panel result. (a) Fifteen model
 rows show per-system UpdateRatio on the matched executable stages; every
 system's complete rerun is 1. (b) Aligned WorkRatio rows show visited/total
-entities. (c) Joggle's production path shows absolute edit-to-C latency and
-rebuilt-function count for the same edits. CSV: figure-06-update.csv. Raw
-columns: path,system,system_revision,subject,subject_hash,total_ops,
-affected_ops,edit_class,edit_scope,edit_site,policy,iteration,wall_ns,
-visited_ops,rebuilt_functions,executed_stages,total_stages,artifact_bytes,
-output_digest,correct,seed. -->
+entities. (c) Joggle's production path shows the full stage breakdown from
+decode to emitted C. CSV: figure-06-update.csv. Raw columns:
+path,system,system_revision,subject,subject_hash,total_ops,affected_ops,
+edit_class,edit_scope,edit_site,policy,stage,iteration,wall_ns,visited_ops,
+executed_stages,total_stages,artifact_bytes,output_digest,correct,seed. -->
 
 ### 4.5 End-to-End Performance
 
