@@ -12,6 +12,8 @@ import argparse
 import hashlib
 import json
 import math
+import os
+import signal
 import shutil
 import subprocess
 import sys
@@ -131,12 +133,65 @@ def fusion_fixture(request: dict, system: str) -> str:
             f"{', '.join([ty] * len(returned))}\n  }}\n}}\n")
 
 
-def execute(command: list[str | Path], timeout: float) -> dict:
+def sandbox_policy(args: argparse.Namespace, work: Path) -> str:
+    """Grant native toolchains read access, with writes confined to this trial."""
+    if sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file():
+        raise ValueError("--isolate requires macOS sandbox-exec")
+    roots = [Path(p) for p in ("/System", "/usr", "/bin", "/sbin", "/opt/homebrew",
+                              "/Library/Developer", "/Library/Apple")]
+    roots += [work.resolve(), Path(sys.prefix).resolve(), *args.sandbox_read]
+    if args.joggle:
+        roots.append(args.joggle.resolve().parent)
+    if args.builtin_mods:
+        roots.append(args.builtin_mods.resolve())
+    if args.xdsl_python:
+        roots.append(args.xdsl_python.absolute().parent.parent.resolve())
+    literals = [args.source.resolve(), ROOT / "extensions/CMakeLists.txt",
+                ROOT / "extensions/mlir-driver.cpp", ROOT / "extensions/xdsl-driver.py",
+                Path("/"), Path("/dev/null"), Path("/dev/random"), Path("/dev/urandom")]
+    read_rules = [f"(subpath {json.dumps(str(path.resolve()))})" for path in roots]
+    read_rules += [f"(literal {json.dumps(str(path))})" for path in literals]
+    return ("(version 1)\n(deny default)\n"
+            "(allow process-exec process-fork sysctl-read file-read-metadata)\n"
+            "(allow mach-lookup (global-name \"com.apple.system.logger\"))\n"
+            "(allow file-read* " + " ".join(read_rules) + ")\n"
+            "(allow file-write* (subpath " + json.dumps(str(work.resolve())) + ") "
+            "(literal \"/dev/null\"))\n")
+
+
+def execute(command: list[str | Path], timeout: float, policy: str | None = None,
+            scratch: Path | None = None) -> dict:
     argv = list(map(str, command))
+    environment = None
+    if policy:
+        argv = ["/usr/bin/sandbox-exec", "-p", policy, *argv]
+        environment = {"PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin",
+                       "LANG": "C", "TMPDIR": str(scratch),
+                       "PYTHONDONTWRITEBYTECODE": "1", "PYTHONNOUSERSITE": "1"}
+        # Preserve the existing home path for tool discovery, without granting
+        # access to its contents or inheriting credentials from the environment.
+        if "HOME" in os.environ:
+            environment["HOME"] = os.environ["HOME"]
     try:
-        result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
-        return {"command": argv, "exit_code": result.returncode,
-                "stdout": result.stdout, "stderr": result.stderr, "timeout": False}
+        with subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              text=True, env=environment,
+                              cwd=scratch.parent if policy else None,
+                              start_new_session=True) as process:
+            try:
+                stdout, stderr = process.communicate(timeout=timeout)
+                return {"command": list(map(str, command)), "exit_code": process.returncode,
+                        "stdout": stdout, "stderr": stderr, "timeout": False}
+            finally:
+                # Also reap descendants after a successful parent exits.
+                # No candidate process may survive into the next fixture.
+                if os.name == "posix":
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                elif process.poll() is None:
+                    process.kill()
+                process.communicate()
     except subprocess.TimeoutExpired:
         return {"command": argv, "exit_code": None, "stdout": "",
                 "stderr": "task process exceeded timeout", "timeout": True}
@@ -148,6 +203,8 @@ def execute(command: list[str | Path], timeout: float) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task", choices=sorted(SUPPORTED_TASKS), required=True)
+    parser.add_argument("--case", action="append", default=[],
+                        help="run selected public fixtures; omitted for complete task scoring")
     parser.add_argument("--system", choices=("Joggle", "MLIR", "xDSL"), required=True)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -157,6 +214,10 @@ def main() -> int:
     parser.add_argument("--mlir-dir", type=Path)
     parser.add_argument("--xdsl-python", type=Path)
     parser.add_argument("--timeout", type=float, default=60)
+    parser.add_argument("--isolate", action="store_true",
+                        help="restrict native candidate processes to the trial workspace")
+    parser.add_argument("--sandbox-read", type=Path, action="append", default=[],
+                        help="additional read-only native toolchain directory")
     args = parser.parse_args()
     required = {"Joggle": (args.joggle, args.builtin_mods),
                 "MLIR": (args.mlir_dir,), "xDSL": (args.xdsl_python,)}[args.system]
@@ -164,7 +225,16 @@ def main() -> int:
         parser.error(f"missing native tool paths for {args.system}")
     if args.timeout <= 0:
         parser.error("timeout must be positive")
+    if args.isolate and sys.platform != "darwin":
+        parser.error("--isolate requires macOS sandbox-exec")
+    for path in args.sandbox_read:
+        if not path.is_dir() or path.resolve() in {Path("/"), Path.home(), ROOT.parent}:
+            parser.error("--sandbox-read requires a specific toolchain directory")
     args.source = args.source.resolve(strict=True)
+    for key in ("joggle", "builtin_mods", "xdsl_python"):
+        path = getattr(args, key)
+        if path is not None:
+            setattr(args, key, path.absolute())
     if args.output.exists():
         parser.error("refusing to replace an existing oracle report")
     args.build_root.mkdir(parents=True, exist_ok=True)
@@ -172,6 +242,9 @@ def main() -> int:
     spec = json.loads(spec_path.read_text())
     spec_hash = digest(spec_path)
     task = next(task for task in spec["tasks"] if task["id"] == args.task)
+    all_cases = task["positive_cases"] + task["negative_cases"]
+    if not set(args.case).issubset({case["id"] for case in all_cases}):
+        parser.error("--case names a fixture outside the selected task")
     source_hash = digest(args.source)
     harness_files = [Path(__file__).resolve(), ROOT / "extensions/CMakeLists.txt",
                      ROOT / "extensions/mlir-driver.cpp", ROOT / "extensions/xdsl-driver.py"]
@@ -181,8 +254,14 @@ def main() -> int:
               "harness_sha256": {str(path.relative_to(ROOT)): digest(path)
                                  for path in harness_files},
               "setup": [], "cases": [], "passed": False}
+    record["complete_task"] = not args.case
     with tempfile.TemporaryDirectory(prefix="task-", dir=args.build_root) as directory:
-        work = Path(directory)
+        work = Path(directory).resolve()
+        scratch = work / "tmp"
+        scratch.mkdir()
+        policy = sandbox_policy(args, work) if args.isolate else None
+        record["execution_isolation"] = {"kind": "macos-seatbelt" if policy else "none",
+                                         "policy": policy}
         if args.system == "Joggle":
             mod = work / "mods/extension"
             mod.mkdir(parents=True)
@@ -201,12 +280,13 @@ def main() -> int:
                 "harness": record["harness_sha256"],
                 "mlir_dir": str(args.mlir_dir.resolve()),
             }).encode()).hexdigest()
-            build = args.build_root.resolve() / "mlir" / build_key
+            build = (work / "build" if args.isolate else
+                     args.build_root.resolve() / "mlir" / build_key)
             for argv in (["cmake", "-S", ROOT / "extensions", "-B", build,
                           f"-DMLIR_DIR={args.mlir_dir.resolve()}",
                           f"-DEXTENSION_SOURCE={args.source}", "-DCMAKE_BUILD_TYPE=Release"],
                          ["cmake", "--build", build, "--parallel", "1"]):
-                step = execute(argv, args.timeout)
+                step = execute(argv, args.timeout, policy, scratch)
                 record["setup"].append(step)
                 if step["exit_code"] != 0:
                     break
@@ -215,7 +295,9 @@ def main() -> int:
                 record["executable_sha256"] = digest(command[0])
         setup_ok = all(step["exit_code"] == 0 for step in record["setup"])
         if setup_ok:
-            for case in task["positive_cases"] + task["negative_cases"]:
+            for case in all_cases:
+                if args.case and case["id"] not in args.case:
+                    continue
                 path = work / ("input.jog" if args.system == "Joggle" else "input.mlir")
                 if args.task == "ana-fusion-match":
                     source = fusion_fixture(case["input"], args.system)
@@ -225,7 +307,7 @@ def main() -> int:
                 else:
                     source = "module attributes {study.request = " + native_attr(case["input"]) + "} {}\n"
                 path.write_text(source)
-                step = execute([*command, path, *flags], args.timeout)
+                step = execute([*command, path, *flags], args.timeout, policy, scratch)
                 actual = None
                 error = ""
                 if step["exit_code"] == 0:
@@ -243,7 +325,7 @@ def main() -> int:
                                      spec["comparison_policy"]))
                 repeat = None
                 if task["family"] == "emission" and step["exit_code"] == 0:
-                    repeat = execute([*command, path, *flags], args.timeout)
+                    repeat = execute([*command, path, *flags], args.timeout, policy, scratch)
                     passed = passed and repeat["exit_code"] == 0 and repeat["stdout"] == step["stdout"]
                 record["cases"].append({"id": case["id"], "input": case["input"],
                                         "expected": expected, "actual": actual,

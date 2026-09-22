@@ -46,6 +46,7 @@ def main() -> int:
         payload = json.loads(provider.read_text(encoding="utf-8"))
         if (payload.get("schema") != "agent-provider/v1"
                 or payload.get("dirty")
+                or payload.get("release_eligible") is False
                 or payload.get("output_sha256") != sha256(path)):
             raise SystemExit(f"{path}: invalid agent-provider record")
         records.append({

@@ -81,9 +81,37 @@ refer to the actual call sequence, not a precomputed input descriptor.
 Emission oracles also require byte-identical outputs across repeated runs.
 These reference checks validate task execution, not agent completion rates.
 
-The 24-task native harness, demonstrations, and agent collector must be
-completed before collecting the full trajectory matrix. The assembler consumes
-those provider records:
+### Local agent execution
+
+`run_extension_agent.py` runs an installed Ollama model with four actions:
+`inspect`, `edit`, `test`, and `finish`. Each action and response is saved with
+token counts, candidate hashes, tool feedback, and the final patch. The public
+test action exposes the first positive and first negative fixture (when present).
+Final scoring executes the complete task after the trajectory ends; its results
+are not returned to the model.
+
+```sh
+python3 artifact/run_extension_agent.py \
+  --model qwen3.5:9b --system Joggle --task ana-fusion-match \
+  --seed 1701 --run 0 \
+  --joggle build/joggle --builtin-mods build/modules \
+  --output .cache/artifact/agent-joggle-fusion-1701
+```
+
+Native candidates run under macOS Seatbelt: toolchain files are read-only,
+writes are confined to the trial directory, network access is denied, and
+credentials are removed from the child environment. MLIR additionally needs
+`--sandbox-read /path/to/llvm-project` for its build-tree headers and libraries.
+The agent has no shell action. `--allow-dirty` marks an integration run against
+uncommitted harness changes; otherwise the collector requires a clean checkout.
+
+The current collector emits integration records with `release_eligible: false`.
+It records successful native execution but does not infer a failed compiler's
+parse/type/build phase from its exit code. Unmeasured phase fields and reference
+likelihoods remain empty. These records cannot enter the release assembler.
+The full matrix additionally requires the remaining 18 native task harnesses,
+phase-specific instrumentation, and the frozen demonstration sets. The
+assembler consumes complete provider records:
 
 ```sh
 python3 artifact/merge_agent_rows.py \

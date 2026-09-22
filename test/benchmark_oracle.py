@@ -9,6 +9,7 @@ import importlib.util
 import shutil
 import subprocess
 import sys
+import socket
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -23,10 +24,78 @@ from run_baseline_benchmarks import compare_outputs, isolated_reference, ort_ses
 from run_joggle_benchmarks import checkpoint_protocol, make_harness, Unsupported
 from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
-from run_extension_task import fusion_fixture
+from run_extension_task import execute, fusion_fixture, sandbox_policy
+from run_extension_agent import public_case_ids, tool_feedback
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_agent_assembler_rejects_integration_records(self):
+        artifact = Path(__file__).resolve().parents[1] / "artifact"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "result.csv"
+            source.write_bytes((artifact / "templates/figure-04-extension.csv").read_bytes())
+            source.with_suffix(".json").write_text(json.dumps({
+                "schema": "agent-provider/v1", "dirty": False, "release_eligible": False,
+                "output_sha256": hashlib.sha256(source.read_bytes()).hexdigest()}))
+            output = root / "release.csv"
+            result = subprocess.run([sys.executable, str(artifact / "merge_agent_rows.py"),
+                                     str(source), "--output", str(output)], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("invalid agent-provider record", result.stderr)
+            self.assertFalse(output.exists())
+
+    def test_agent_feedback_exposes_only_public_cases(self):
+        task = {"positive_cases": [{"id": "positive"}, {"id": "held-out-positive"}],
+                "negative_cases": [{"id": "negative"}, {"id": "held-out-negative"}]}
+        self.assertEqual(public_case_ids(task), ["positive", "negative"])
+        report = {"complete_task": False, "setup": [], "cases": [{
+            "id": "positive", "passed": False, "actual": {}, "expected": {"ok": True},
+            "exit_code": 0, "decode_error": "", "stderr": "", "command": ["private-path"]}]}
+        feedback = tool_feedback(report)
+        self.assertNotIn("command", feedback["cases"][0])
+        report["complete_task"] = True
+        with self.assertRaisesRegex(ValueError, "public-fixture"):
+            tool_feedback(report)
+
+    def test_extension_process_timeout_is_recorded(self):
+        report = execute([sys.executable, "-c", "import time; time.sleep(30)"], 0.1)
+        self.assertTrue(report["timeout"])
+        self.assertIsNone(report["exit_code"])
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS isolation test")
+    def test_candidate_sandbox_denies_private_files_network_and_inherited_secrets(self):
+        with tempfile.TemporaryDirectory() as directory, socket.socket() as listener:
+            root = Path(directory).resolve()
+            work = root / "work"
+            work.mkdir()
+            scratch = work / "tmp"
+            scratch.mkdir()
+            private = root / "private.txt"
+            private.write_text("not exposed to the candidate")
+            args = argparse.Namespace(sandbox_read=[], source=work / "candidate.py",
+                                      joggle=None, builtin_mods=None, xdsl_python=Path(sys.executable))
+            listener.bind(("127.0.0.1", 0))
+            listener.listen()
+            program = (
+                "import errno,json,os,socket\nfrom pathlib import Path\n"
+                "denied=[]\n"
+                f"p=Path({str(private)!r})\n"
+                "for action in [lambda:p.read_text(),lambda:p.write_text('changed'),"
+                f"lambda:socket.create_connection(('127.0.0.1',{listener.getsockname()[1]}),timeout=1)]:\n"
+                " try: action();denied.append(False)\n"
+                " except OSError as e: denied.append(e.errno in (errno.EPERM,errno.EACCES))\n"
+                "Path('allowed.txt').write_text('ok')\n"
+                "print(json.dumps({'denied':denied,'secret':os.getenv('JOGGLE_TEST_SECRET')}))\n"
+            )
+            with patch.dict(os.environ, {"JOGGLE_TEST_SECRET": "must-not-be-inherited"}):
+                report = execute([sys.executable, "-c", program], 10,
+                                 sandbox_policy(args, work), scratch)
+            self.assertEqual(report["exit_code"], 0, report)
+            self.assertEqual(json.loads(report["stdout"]), {"denied": [True, True, True], "secret": None})
+            self.assertEqual(private.read_text(), "not exposed to the candidate")
+            self.assertEqual((work / "allowed.txt").read_text(), "ok")
+
     @unittest.skipUnless(importlib.util.find_spec("xdsl"), "xDSL is unavailable")
     def test_fusion_fixture_uses_native_def_use_edges_and_tensor_types(self):
         from xdsl.context import Context
