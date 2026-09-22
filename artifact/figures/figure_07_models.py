@@ -135,7 +135,7 @@ def main() -> int:
     with plt.rc_context({"font.size": font, "savefig.bbox": None,
                          "axes.linewidth": 0.5, "legend.fontsize": font,
                          "xtick.labelsize": font, "ytick.labelsize": font}):
-        fig, axes = plt.subplots(2, 3, figsize=(3.35, 2.65 * max(1, font / 7)),
+        fig, axes = plt.subplots(2, 3, figsize=(3.35, 2.34 * max(1, font / 7)),
                                  sharey=True)
         panels = [
             ("Dense CNNs", [("densenet-12", "Dense"), ("googlenet-12", "Google"),
@@ -215,9 +215,9 @@ def main() -> int:
                    bbox_to_anchor=(0.5, 1.0))
         fig.text(0.012, 0.54, "Latency / ORT ↓ (log)", rotation=90,
                  va="center", fontsize=font - 0.5)
-        fig.text(0.12, 0.012, "×C  lowering   ×N  numerical check   n = 100", fontsize=font - 1.2)
-        fig.subplots_adjust(left=0.13, right=0.986, top=0.875, bottom=0.14,
-                            wspace=0.17, hspace=0.7)
+        fig.text(0.12, 0.018, "×C  lowering   ×N  numerical check   n = 100", fontsize=font - 1.2)
+        fig.subplots_adjust(left=0.13, right=0.986, top=0.875, bottom=0.17,
+                            wspace=0.17, hspace=0.78)
         save(fig, args.output)
         plt.close(fig)
     print(json.dumps(aggregate, indent=2))
