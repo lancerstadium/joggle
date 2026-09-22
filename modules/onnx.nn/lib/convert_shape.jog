@@ -369,6 +369,12 @@ local fn convert_reshape(m: Mod, op: Op) -> bool {
   if expected == ty("_") || ir.type(outputs[0]) != expected {
     return false
   }
+  if !tensor.static(ir.type(inputs[0])) || !tensor.static(expected) ||
+     len(const_ints(inputs[1])) != len(tensor.dims(expected)) {
+    let allowzero = ir.constant(m, op,
+        base.get(attrs(op), "allowzero", 0) == 1, ty("bool"))
+    return convert_call(m, op, "tensor.reshape", inputs + [allowzero])
+  }
   return convert_call(m, op, "tensor.reshape", [inputs[0]])
 }
 

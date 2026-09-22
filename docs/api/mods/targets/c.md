@@ -94,6 +94,12 @@ Dynamic axes use adjacent extent parameters. A result may expose logical `_`
 shape plus separate proved `mem.capacity`. External constant blobs use one
 explicit data argument only for functions that transitively need it.
 
+A view can change logical rank without changing its backing storage. In
+`c.api`, `shape` describes the logical axes, while `capacity` records the backing
+allocation's shape; their ranks may differ. `elements` and `bytes` describe the
+available output buffer size. Runtime result dimensions are returned through
+the adjacent extent parameters, not inferred from the capacity shape.
+
 ## Complete input/output path
 
 Input model:

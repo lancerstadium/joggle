@@ -72,6 +72,41 @@ fn transpose<T: Ty, M: int, N: int>(
 }
 ```
 
+## Reshape with runtime extents
+
+`reshape(x)` takes its complete destination shape from the result type.
+For runtime dimensions, pass a shape tensor and the zero-dimension policy:
+
+```jog
+fn reshape<E: Ty, S: list<int>, T: list<int>, I: Ty, R: int>(
+  x: tensor<E, S>, requested: tensor<I, [R]>, allowzero: bool
+) -> tensor<E, T>;
+
+fn regroup(x: tensor<i32, [2, 3]>, requested: tensor<i64, [2]>)
+    -> tensor<i32, [_, _]> {
+  return tensor.reshape(x, requested, false)
+}
+```
+
+For `x = [[1, 2, 3], [4, 5, 6]]`:
+
+| `requested` | Result shape | Result values |
+| --- | --- | --- |
+| `[3, 2]` | `[3, 2]` | `[[1, 2], [3, 4], [5, 6]]` |
+| `[-1, 2]` | `[3, 2]` | `[[1, 2], [3, 4], [5, 6]]` |
+| `[0, -1]` | `[2, 3]` | `[[1, 2, 3], [4, 5, 6]]` |
+
+One `-1` infers an extent from the element count. With `allowzero = false`,
+`0` copies the input extent at the same axis. With `allowzero = true`, `0`
+is an empty dimension: an input of shape `[0, 3]` can become `[3, 0]`.
+Two inferred axes, a non-divisible inferred size, negative extents other than
+`-1`, integer overflow, and a changed element count are rejected.
+
+The runtime overload constructs a checked shape and returns a view. It
+preserves linear element order and does not allocate a second data buffer.
+The C target retains the input's read-only qualifier for borrowed input views;
+make a value copy before modifying the result.
+
 ## Elementwise and broadcasting
 
 ```jog

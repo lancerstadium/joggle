@@ -319,6 +319,58 @@ fn reshape<E: Ty, S: list<int>, T: list<int>>(
   return out
 }
 
+local fn reshape_runtime<
+  E: Ty, S: list<int>, T: list<int>, I: Ty, R: int, P: int
+>(x: tensor<E, S>, requested: tensor<I, [R]>, allowzero: bool)
+    -> tensor<E, T> {
+  var total = index(1)
+  [stage: "shape"]
+  for axis in 0..P {
+    let extent = dim(x, index(axis))
+    assert(extent >= index(0), "tensor.reshape input extent is negative")
+    assert(extent == index(0) || total <= index(9223372036854775807) / extent,
+           "tensor.reshape input size overflows")
+    total *= extent
+  }
+  var shape = tensor<index, [R]>(index(0))
+  var known = index(1)
+  var inferred = -1
+  [stage: "shape"]
+  for axis in 0..R {
+    var extent = index(requested[axis])
+    if extent == index(0) && !allowzero {
+      assert(axis < P, "tensor.reshape copied axis is out of range")
+      // Keep rank-zero inputs free of invalid dimension queries, including
+      // queries in branches that runtime validation will reject.
+      if axis < P { extent = dim(x, index(axis)) }
+    }
+    if extent == index(-1) {
+      assert(inferred == -1, "tensor.reshape has multiple inferred axes")
+      inferred = axis
+    } else {
+      assert(extent >= index(0), "tensor.reshape extent is invalid")
+      assert(extent == index(0) || known <= index(9223372036854775807) / extent,
+             "tensor.reshape output size overflows")
+      known *= extent
+      shape[axis] = extent
+    }
+  }
+  if inferred >= 0 {
+    assert(known > index(0), "tensor.reshape cannot infer from a zero product")
+    assert(total % known == index(0), "tensor.reshape size is not divisible")
+    shape[inferred] = total / known
+  } else {
+    assert(total == known, "tensor.reshape changes the element count")
+  }
+  return view(x, shape)
+}
+
+fn reshape<E: Ty, S: list<int>, T: list<int>, I: Ty, R: int>(
+  x: tensor<E, S>, requested: tensor<I, [R]>, allowzero: bool
+) -> tensor<E, T> {
+  return reshape_runtime<E, S, T, I, R, len<S>>(x, requested, allowzero)
+}
+
 fn shape<E: Ty, S: list<int>, R: int>(
   x: tensor<E, S>
 ) -> tensor<i64, [R]> {

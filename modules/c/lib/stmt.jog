@@ -33,7 +33,7 @@ local fn call(
     return tensor_make(m, op, depth, blob, data_fns, config)
   }
   if resolved == "tensor.view" {
-    return tensor_view(op, depth, config)
+    return tensor_view(m, op, depth, config)
   }
   if resolved == "tensor.dim" {
     assert(len(inputs) == 2 && len(outputs) == 1,

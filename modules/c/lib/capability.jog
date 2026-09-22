@@ -172,12 +172,14 @@ local fn accepts_with(m: Mod, op: Op, config: dict) -> bool {
   if resolved == "tensor.view" {
     return len(inputs) == 2 && len(outputs) == 1 &&
            tensor.valid(ir.type(inputs[0])) &&
+           tensor.valid(ir.type(inputs[1])) &&
            tensor.valid(ir.type(outputs[0])) &&
            supported(ir.type(inputs[0]), config) &&
            supported(ir.type(outputs[0]), config) &&
            supported(ir.type(inputs[1]), config) &&
-           len(mem.capacity(m, outputs[0])) ==
-             len(tensor.dims(ir.type(outputs[0])))
+           tensor.elem(ir.type(inputs[0])) == tensor.elem(ir.type(outputs[0])) &&
+           tensor.dims(ir.type(inputs[1])) ==
+             [ty(len(tensor.dims(ir.type(outputs[0]))))]
   }
   if resolved == "tensor.dim" {
     return len(inputs) == 2 && len(outputs) == 1 &&

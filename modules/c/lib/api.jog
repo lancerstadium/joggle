@@ -21,7 +21,8 @@ local fn api_value(
       elements = count(type)
       storage = tensor.shape(type)
     } else {
-      if len(storage) == len(tensor.dims(type)) {
+      // A view may change rank while retaining its backing allocation.
+      if len(storage) != 0 {
         elements = 1
         for extent in storage {
           elements *= extent

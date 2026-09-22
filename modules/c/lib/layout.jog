@@ -9,7 +9,7 @@ local fn count(type: Ty) -> int {
 
 local fn storage_count(m: Mod, value: Val) -> int {
   let shape = mem.capacity(m, value)
-  assert(len(shape) == len(tensor.dims(ir.type(value))),
+  assert(len(shape) != 0 || len(tensor.dims(ir.type(value))) == 0,
          "c: dynamic tensor has no finite capacity: " + ir.name(value))
   var out = 1
   for extent in shape {
@@ -156,8 +156,18 @@ local fn tensor_make(
   return out
 }
 
+local fn readonly_storage(m: Mod, value: Val) -> bool {
+  let source = ir.def(value)
+  if !ir.live(source) || ir.kind(source) == "constant" { return true }
+  if ir.kind(source) == "call" && ir.target(m, source) == "tensor.view" &&
+     len(ir.args(source)) == 2 {
+    return readonly_storage(m, ir.args(source)[0])
+  }
+  return false
+}
+
 local fn tensor_view(
-  op: Op, depth: int, config: dict
+  m: Mod, op: Op, depth: int, config: dict
 ) -> str {
   let outputs = ir.outs(op)
   let inputs = ir.args(op)
@@ -168,7 +178,9 @@ local fn tensor_view(
      val(output) == val(inputs[0]) {
     return ""
   }
-  return pad(depth) + scalar(tensor.elem(ir.type(output)), config) + "* " +
+  var qualifier = ""
+  if readonly_storage(m, inputs[0]) { qualifier = "const " }
+  return pad(depth) + qualifier + scalar(tensor.elem(ir.type(output)), config) + "* " +
          val(output) + " = " + val(inputs[0]) + ";\n"
 }
 
