@@ -1,6 +1,8 @@
 """Numerical-oracle regressions; run with NumPy, ONNX, and ONNX Runtime."""
 
 import json
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -12,10 +14,49 @@ from onnx import helper, numpy_helper
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "artifact"))
 from run_onnxruntime_benchmarks import compare_outputs, ort_session
-from run_joggle_benchmarks import checkpoint_protocol
+from run_joggle_benchmarks import checkpoint_protocol, make_harness, Unsupported
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_dynamic_output_harness_uses_capacity_and_checks_extents(self):
+        compiler = shutil.which("cc")
+        if compiler is None:
+            self.skipTest("C compiler is unavailable")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            harness = root / "harness.c"
+            outputs = [("y", np.array([2, 4], dtype=np.float32))]
+            api = [{"name": "model_main", "params": [], "results": [
+                {"c": "float", "pointer": True, "shape": ["_"], "bytes": 16}
+            ]}]
+            make_harness(harness, [], {}, outputs, root, 1, api)
+            self.assertIn("calloc(1, 16)", harness.read_text())
+            (root / "model.h").write_text(
+                "#include <stdint.h>\n"
+                "static void model_main(float *out, int64_t *length) {\n"
+                " out[0] = 2; out[1] = 4; out[3] = 8; *length = LENGTH;\n}\n"
+            )
+            for length in (2, 1):
+                binary = root / f"run-{length}"
+                subprocess.run([compiler, "-std=c11", f"-DLENGTH={length}",
+                                str(harness), "-o", str(binary)], check=True,
+                               capture_output=True, text=True)
+                output = root / f"output-{length}"
+                output.mkdir()
+                run = subprocess.run([str(binary), "execute", "0", "1", str(output)],
+                                     capture_output=True, text=True)
+                if length == 2:
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    self.assertEqual((output / "output-0.bin").read_bytes(),
+                                     outputs[0][1].tobytes())
+                else:
+                    self.assertEqual(run.returncode, 6)
+                    self.assertIn("expected 2, got 1", run.stderr)
+                    self.assertFalse((output / "output-0.bin").exists())
+            api[0]["results"][0]["bytes"] = 4
+            with self.assertRaises(Unsupported):
+                make_harness(harness, [], {}, outputs, root, 1, api)
+
     def test_checkpoint_rejects_missing_or_changed_oracle(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "rows.csv"

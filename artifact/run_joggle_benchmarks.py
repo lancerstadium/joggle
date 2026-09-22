@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
 import csv
 import json
 import os
@@ -115,6 +116,10 @@ def prepare(
     header = work / "model.h"
     source = work / "model.c"
     run_to_file(
+        [args.joggle, "query", "c.api", current, "-M", args.builtin_mods],
+        work / "model-api.json", "c.api", args.stage_timeout,
+    )
+    run_to_file(
         [args.joggle, "emit", "c.header", current, "-M", args.builtin_mods],
         header, "c.header", args.stage_timeout,
     )
@@ -144,14 +149,25 @@ def c_string(value: Path) -> str:
 def make_harness(
     path: Path, inputs: list[dict[str, Any]], input_records: dict[str, dict[str, Any]],
     outputs: list[tuple[str, np.ndarray]], input_root: Path, batch: int,
+    api: list[dict[str, Any]],
 ) -> None:
+    entries = [entry for entry in api if entry["name"] == "model_main"]
+    if len(entries) != 1:
+        raise Unsupported("harness:entry-abi")
+    entry = entries[0]
+    if len(entry["params"]) != len(inputs) or len(entry["results"]) != len(outputs):
+        raise Unsupported("harness:arity")
     declarations = []
     loads = []
     frees = []
     arguments = []
+    shape_checks = []
     for index, tensor in enumerate(inputs):
         item = input_records[tensor["name"]]
         ctype = C_TYPES[tensor["dtype"]]
+        parameter = entry["params"][index]
+        if parameter["c"] != ctype or parameter["shape"] != tensor["shape"]:
+            raise Unsupported("harness:input-abi")
         name = f"input_{index}"
         declarations.append(f"  {ctype} *{name} = NULL;")
         loads.append(
@@ -165,11 +181,31 @@ def make_harness(
         if dtype not in C_TYPES:
             raise SystemExit(f"unsupported generated output dtype {dtype}")
         ctype = C_TYPES[dtype]
+        result = entry["results"][index]
+        shape = result["shape"]
+        capacity = result["bytes"]
+        if (result["c"] != ctype or not result["pointer"]
+                or len(shape) != value.ndim or not isinstance(capacity, int)
+                or capacity < value.nbytes):
+            raise Unsupported("harness:output-abi")
         name = f"output_{index}"
-        declarations.append(f"  {ctype} *{name} = calloc(1, {value.nbytes});")
+        declarations.append(f"  {ctype} *{name} = calloc(1, {max(1, capacity)});")
         loads.append(f"  if (!{name}) return 4;")
         frees.append(f"  free({name});")
         arguments.append(name)
+        for axis, extent in enumerate(shape):
+            if extent == "_":
+                dimension = f"{name}_dim_{axis}"
+                declarations.append(f"  int64_t {dimension} = -1;")
+                arguments.append(f"&{dimension}")
+                shape_checks.append(
+                    f"  if ({dimension} != {value.shape[axis]}) {{ "
+                    f'fprintf(stderr, "output {index} axis {axis}: expected '
+                    f'{value.shape[axis]}, got %lld\\n", (long long){dimension}); '
+                    "return 6; }"
+                )
+            elif extent != value.shape[axis]:
+                raise Unsupported("harness:output-shape")
     writes = [
         f"  if (!write_exact(output_dir, {index}, output_{index}, {value.nbytes})) return 5;"
         for index, (_, value) in enumerate(outputs)
@@ -233,6 +269,7 @@ int main(int argc, char **argv) {{
     for (long i = 0; i < iterations; ++i)
       printf("NS %llu\\n", (unsigned long long)elapsed[i]);
     free(elapsed);
+{chr(10).join(shape_checks)}
 {chr(10).join(writes)}
   }} else return 8;
 {chr(10).join(frees)}
@@ -447,7 +484,11 @@ def main(args: argparse.Namespace) -> int:
     if coverage_ids != {failure["id"] for failure in failures}:
         raise SystemExit("failure log differs from checkpoint coverage rows")
     model_files = []
-    with tempfile.TemporaryDirectory(prefix="joggle-generated-") as temporary:
+    if args.work_dir is not None:
+        args.work_dir.mkdir(parents=True, exist_ok=False)
+    workspace = (nullcontext(str(args.work_dir)) if args.work_dir is not None
+                 else tempfile.TemporaryDirectory(prefix="joggle-generated-"))
+    with workspace as temporary:
         root = Path(temporary)
         for case in cases:
             case_id = case["id"]
@@ -489,7 +530,8 @@ def main(args: argparse.Namespace) -> int:
                 tensor_records = {item["name"]: item for item in input_record["tensors"]}
                 batch = measurement["execution_batches"][case_id]
                 make_harness(
-                    harness, case["inputs"], tensor_records, expected, args.inputs, batch
+                    harness, case["inputs"], tensor_records, expected, args.inputs, batch,
+                    json.loads((header_file.parent / "model-api.json").read_text()),
                 )
                 harness_object = root / f"{case_id}-harness.o"
                 executable = root / f"{case_id}-run"
@@ -518,7 +560,7 @@ def main(args: argparse.Namespace) -> int:
                 except subprocess.TimeoutExpired as error:
                     raise Unsupported("execute:timeout", str(error)) from error
                 if result.returncode:
-                    raise Unsupported("execute", result.stderr)
+                    raise Unsupported("execute", f"exit={result.returncode}\n{result.stderr}")
                 latencies = [int(line.split()[1]) for line in result.stdout.splitlines()
                              if line.startswith("NS ")]
                 if len(latencies) != execute_count:
@@ -598,6 +640,8 @@ def parse_args() -> argparse.Namespace:
         help="resume an output CSV containing complete per-case checkpoints",
     )
     parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument("--work-dir", type=Path,
+                        help="retain generated code and harnesses in a new directory for diagnosis")
     args = parser.parse_args()
     if args.group == "operators" and not args.operator_models:
         parser.error("operator collection requires --operator-models")
