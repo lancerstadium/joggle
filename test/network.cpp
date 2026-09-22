@@ -73,6 +73,27 @@ int main(int argc, char** argv) {
     env.clear_diags();
   }
 
+  // Folded scalar assignments keep their scalar type after serialization.
+  // In particular, an index variable must not become int before a tensor store.
+  for (const std::string type : {"index", "i32", "f32"}) {
+    const std::string source = "mod typed_assignment\nuse tensor\n"
+        "fn main() -> tensor<" + type + ", [2]> {\n"
+        " var x = " + type + "(1)\n"
+        " x += " + type + "(2)\n"
+        " var result = tensor<" + type + ", [2]>(x)\n"
+        " x = " + type + "(4)\n"
+        " result[1] = x\n return result\n}\n";
+    joggle::Mod folded, reparsed;
+    CHECK(joggle::parse(env, source, folded, "typed-assignment.jog"));
+    CHECK(joggle::run(env, "opt.fold", folded));
+    CHECK(joggle::parse(env, joggle::print(folded), reparsed,
+                        "typed-assignment-roundtrip.jog"));
+    CHECK(reparsed.verify(env));
+    for (const auto op : reparsed.ops())
+      if (op.callee() == "operator []=")
+        CHECK(op.args().back().type().name() == type);
+  }
+
   constexpr std::string_view legal_source =
       "mod legal.network\n"
       "use nn\n"

@@ -296,21 +296,21 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
       } else if (op.form == Op::Form::assign) {
         out << name << " = ";
         if (op.kind == Op::Kind::constant)
-          out << attr_text(op.literal);
+          out << render_literal(store, result, op.literal);
         else if (!op.args.empty())
-          out << render_value(store, op.args.back());
+          out << render_value(store, op.args.back(), 0, false, true);
         else
           out << "<invalid>";
       } else if (op.form == Op::Form::compound) {
         if (op.kind == Op::Kind::constant) {
-          out << name << " = " << attr_text(op.literal);
+          out << name << " = " << render_literal(store, result, op.literal);
         } else if (!op.args.empty() &&
                    std::string_view(op.callee).starts_with("operator ")) {
           const std::string_view symbol(
               op.callee.data() + std::string_view("operator ").size(),
               op.callee.size() - std::string_view("operator ").size());
           out << name << ' ' << symbol << "= "
-              << render_value(store, op.args.back());
+              << render_value(store, op.args.back(), 0, false, true);
         } else {
           out << name << " = <invalid>";
         }
