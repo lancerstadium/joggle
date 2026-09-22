@@ -195,8 +195,26 @@ bool edit(joggle::Env& env, joggle::Mod& mod, Random& random,
       attempted = false;
       break;
     }
-    changed = static_cast<bool>(
-        mod.clone(source, body[random.index(body.size())]));
+    // Compare indexed clone naming against an independent live-value scan
+    // after arbitrary preceding edits, including rename and erase.
+    std::string expected_name;
+    const auto outputs = source.outs();
+    if ((source.form() == joggle::Op::Form::let ||
+         source.form() == joggle::Op::Form::var) &&
+        outputs.size() == 1 && !outputs[0].name().empty()) {
+      const std::string stem(outputs[0].name());
+      expected_name = stem;
+      const auto values = mod.vals();
+      for (std::size_t suffix = 1;
+           std::any_of(values.begin(), values.end(), [&](joggle::Val value) {
+             return value.name() == expected_name;
+           }); ++suffix)
+        expected_name = stem + '_' + std::to_string(suffix);
+    }
+    const auto copy = mod.clone(source, body[random.index(body.size())]);
+    changed = static_cast<bool>(copy);
+    if (copy && !expected_name.empty() && copy.outs()[0].name() != expected_name)
+      return false;
     break;
   }
   case 2: {
