@@ -49,6 +49,21 @@ int main(int argc, char** argv) {
         std::string::npos);
   env.clear_diags();
 
+  joggle::Mod indexed_capacity;
+  CHECK(joggle::parse(env,
+      "mod indexed_capacity\nuse tensor\n"
+      "fn main(choose: bool) -> tensor<f32, [_]> {\n"
+      " var count = index(2)\n if choose { count = index(3) }\n"
+      " let shape = tensor<index, [1]>(count)\n"
+      " var result: tensor<f32, [_]> = tensor.make(f32(0), shape)\n"
+      " result[index(0)] = f32(1)\n return result\n}\n"
+      "fn other() -> tensor<f32, [_]> {\n"
+      " let shape = tensor<index, [1]>(index(7))\n"
+      " var result: tensor<f32, [_]> = tensor.make(f32(0), shape)\n"
+      " result[index(0)] = f32(1)\n return result\n}\n",
+      indexed_capacity, "indexed-capacity.jog"));
+  CHECK(joggle::run(env, "script.capacity_index_probe", indexed_capacity));
+
   // A backing allocation bounds one open view axis only when all remaining
   // axes are positive and fixed. Narrowing and overflowing shape arithmetic
   // must not turn an unknown allocation into an accepted finite capacity.

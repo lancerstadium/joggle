@@ -101,6 +101,30 @@ containers where the plan shape is known.
 The executor still enforces language semantics: early return, short circuit,
 loop-carried values, and failure propagation are not optimized away.
 
+### Borrow lifetimes and collection updates
+
+Lists and dictionaries share storage until a write needs an independent value.
+The execution plan transfers storage at the last local use. A read in a nested
+region extends that lifetime through its enclosing branch or loop, including
+every loop iteration. Once the region finishes, a later local update can take
+ownership without copying the collection.
+
+```jog
+var fields: dict = {}
+for i in 0..128 {
+  for repeat in 0..2 {
+    if i > 0 { assert(int(fields[text(i - 1)]) == i - 1, "previous value") }
+  }
+  fields[text(i)] = i
+}
+```
+
+Here the nested reads finish before each dictionary update. Retaining their
+borrow until the outer block exits would copy a growing dictionary on every
+iteration. The plan instead records the enclosing operation of each nested
+use. Explicit snapshots that are read later still retain their original value;
+updating another alias follows copy-on-write semantics.
+
 ## Memoization
 
 `[memo]` functions use argument hashing plus observed store versions. Entries

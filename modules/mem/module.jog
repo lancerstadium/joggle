@@ -177,6 +177,24 @@ local fn capacity_with(
   return out
 }
 
+[memo]
+local fn function_values(fn: Fn) -> list<Val> {
+  return ir.vals(fn)
+}
+
+[memo]
+local fn value_names(fn: Fn) -> dict {
+  let values = function_values(fn)
+  var names: dict = {}
+  for index in 0..len(values) {
+    let name = ir.name(values[index])
+    if name != "" {
+      names[name] = base.get(names, name, []) + [index]
+    }
+  }
+  return names
+}
+
 local fn capacity_guarded(m: Mod, value: Val, seen: list<Val>) -> list<int> {
   for prior in seen { if prior == value { return [] } }
   let next = seen + [value]
@@ -213,12 +231,14 @@ local fn capacity_guarded(m: Mod, value: Val, seen: list<Val>) -> list<int> {
     return direct
   }
   let fn = ir.owner(ir.blk(source))
-  for candidate in ir.vals(fn) {
-    if ir.name(candidate) == ir.name(value) {
-      let inherited = capacity_with(m, candidate, known, next)
-      if len(inherited) != 0 {
-        return inherited
-      }
+  // Assignment versions share their printed name. Index them once per
+  // function revision instead of rescanning every value for each query.
+  let values = function_values(fn)
+  let names = value_names(fn)
+  for index in base.get(names, ir.name(value), []) {
+    let inherited = capacity_with(m, values[base.int(index)], known, next)
+    if len(inherited) != 0 {
+      return inherited
     }
   }
   return []

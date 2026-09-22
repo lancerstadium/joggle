@@ -80,6 +80,13 @@ Planning computes lifetimes and reuses compatible slots only where overlap is
 excluded. Unknown/unbounded capacity is not silently rounded to a fixed size.
 Replanning replaces derived metadata deterministically.
 
+Capacity queries follow allocation and view provenance. For assignment
+versions that inherit an allocation by name, `mem` builds a per-function name
+index and reuses it within the current evaluation. The index preserves value
+order and is invalidated by the owning store's revision. Repeated queries
+therefore inspect matching versions instead of rescanning every value in the
+function; the capacity proof itself is unchanged.
+
 ```mermaid
 flowchart TD
   V[live tensor values] --> C[prove capacity]

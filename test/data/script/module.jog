@@ -7,6 +7,27 @@ use tensor
 use tile
 use onnx.nn
 use bounds
+use mem
+
+fn capacity_index_probe(m: Mod) -> bool {
+  let main_ops = ir.ops(ir.find(m, "main"))
+  let result = ir.args(main_ops[len(main_ops) - 1])[0]
+  let other_ops = ir.ops(ir.find(m, "other"))
+  let other = ir.args(other_ops[len(other_ops) - 1])[0]
+  assert(mem.capacity(m, result) == [3], "assignment capacity was not inherited")
+  assert(mem.capacity(m, other) == [7], "capacity index crossed function owners")
+  assert(mem.capacity(m, result) == [3], "repeated capacity lookup changed")
+  for op in main_ops {
+    let outputs = ir.outs(op)
+    if ir.kind(op) == "constant" && len(outputs) == 1 &&
+       ir.constant(outputs[0]) == 3 {
+      ir.replace(m, op, 5)
+    }
+  }
+  assert(mem.capacity(m, result) == [5], "capacity index retained an old revision")
+  assert(mem.capacity(m, other) == [7], "unrelated capacity changed after edit")
+  return true
+}
 
 fn shape_control_terms(m: Mod) -> list<str> {
   let ops = ir.ops(ir.blks(ir.find(m, "main"))[0])
