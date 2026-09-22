@@ -96,20 +96,24 @@ copied into the destination scope. Two paths keep that work separate:
 
 | Clone contents | Name handling |
 | --- | --- |
-| No root `let` or `var` binding | No global name collection |
-| Named root declarations | Collect matching name families; own only newly chosen names |
+| No root `let` or `var` binding | No name-index lookup |
+| Named root declarations | Extend the index with newly appended values, then check candidates |
 
-Before collecting name views, the clone counts new values, including block
-arguments, and reserves the value arena. Existing names then remain stable
-while new values are appended, including short strings stored inside their
-slots. Arena capacity grows geometrically rather than by exactly one clone.
+The store owns a name-to-value-id index and a cursor recording the indexed
+prefix of the value arena. The first named clone indexes existing live values;
+later clones inspect only values appended since that cursor. Candidate names
+keep the same global collision rule and smallest available numeric suffix.
 
-The declaration path still scans existing value slots to preserve global
-collision checking. Its temporary set retains only a copied binding's exact
-name and suffixed variants, rather than allocating entries for unrelated
-names. It avoids copying their strings; it does not make fresh name selection
-constant-time. Public graph handles remain stable because
-they store ids rather than addresses into the value arena.
+Index entries contain ids, not views into movable strings. Lookup drops erased
+values lazily and checks the current name of each candidate slot. Renaming an
+already indexed value removes its old entry and adds its new entry. New values
+are picked up by the next index extension. Parsing resets the store; structural
+rollback restores the index together with its arena.
+
+This removes a full-arena scan from each repeated clone. Name indexing is
+linear in the values appended across those clones, while choosing a suffix
+still costs one lookup per occupied candidate. The remaining clone cost
+includes subtree traversal, operand validation, and node allocation.
 
 ## Revision granularity
 

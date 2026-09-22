@@ -285,6 +285,11 @@ struct Store {
   std::vector<Slot<ValData>> vals;
   std::vector<Diag> diags;
   std::unordered_map<std::string, std::vector<std::uint32_t>> symbols;
+  // Append-only value-name index for clone hygiene. Entries are ids, never
+  // pointers into the value arena. Lookups discard erased values lazily;
+  // rename updates entries for the already indexed prefix.
+  std::unordered_map<std::string, std::vector<std::uint32_t>> value_names;
+  std::size_t indexed_value_names = 0;
   mutable std::unordered_map<std::size_t, std::vector<QueryData>> queries;
   // Scratch marks for dependency-cone walks. Epochs avoid clearing an
   // operation-sized bitmap on every edit while keeping the public result

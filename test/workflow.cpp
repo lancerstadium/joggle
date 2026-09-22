@@ -3103,6 +3103,46 @@ int main(int argc, char** argv) {
   CHECK(names_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(cloned_names, names_roundtrip));
 
+  // Reusing the index must observe erasure, rename, and transaction rollback.
+  joggle::Mod indexed_names;
+  constexpr std::string_view indexed_names_source =
+      "mod indexed_names\n"
+      "fn compute(x: i32) -> i32 { let v = first(x); return v }\n"
+      "fn occupied(x: i32) -> i32 { let v_1 = first(x); return v_1 }\n";
+  CHECK(joggle::parse(env, indexed_names_source, indexed_names, "indexed-names.jog"));
+  const auto named_source = indexed_names.find_fn("compute").body().ops()[0];
+  const auto occupied_name = indexed_names.find_fn("occupied").body().ops()[0].outs()[0];
+  const auto erased_name = indexed_names.clone(named_source, named_source);
+  CHECK(erased_name && erased_name.outs()[0].name() == "v_2");
+  // Force the clone's new slot into the index before deleting it.
+  const auto next_name = indexed_names.clone(named_source, named_source);
+  CHECK(next_name && next_name.outs()[0].name() == "v_3");
+  CHECK(indexed_names.erase(erased_name));
+  CHECK(indexed_names.rename(occupied_name, "v_2"));
+  const auto reused_name = indexed_names.clone(named_source, named_source);
+  CHECK(reused_name && reused_name.outs()[0].name() == "v_1");
+  CHECK(indexed_names.verify(env));
+  const auto before_names_rollback = joggle::print(indexed_names);
+  const auto names_revision = indexed_names.revision();
+  CHECK(!joggle::run(env, "script.reject_named_clone", indexed_names));
+  CHECK(joggle::print(indexed_names) == before_names_rollback);
+  CHECK(indexed_names.revision() == names_revision);
+  indexed_names.clear_diags();
+  env.clear_diags();
+  const auto after_names_rollback = indexed_names.clone(named_source, named_source);
+  CHECK(after_names_rollback && after_names_rollback.outs()[0].name() == "v_4");
+  const auto after_names_indexed = indexed_names.clone(named_source, named_source);
+  CHECK(after_names_indexed && after_names_indexed.outs()[0].name() == "v_5");
+  CHECK(indexed_names.erase(after_names_rollback));
+  const auto reclaimed_name = indexed_names.clone(named_source, named_source);
+  CHECK(reclaimed_name && reclaimed_name.outs()[0].name() == "v_4");
+  CHECK(indexed_names.verify(env));
+  // Parsing into the same Mod starts a new arena and a new index.
+  CHECK(joggle::parse(env, indexed_names_source, indexed_names, "indexed-names-reparsed.jog"));
+  const auto reparsed_name = indexed_names.find_fn("compute").body().ops()[0];
+  CHECK(indexed_names.clone(reparsed_name, reparsed_name).outs()[0].name() == "v_2");
+  CHECK(indexed_names.verify(env));
+
   joggle::Mod scheduled;
   constexpr std::string_view schedule_source =
       "mod scheduled\n"

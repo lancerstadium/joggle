@@ -1088,13 +1088,11 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
 
   std::unordered_set<std::uint32_t> subtree_ops;
   std::unordered_set<std::uint32_t> subtree_values;
-  std::size_t cloned_values = 0;
   bool needs_fresh_names = false;
   const auto collect = [&](const auto& self, Op op) -> void {
     subtree_ops.insert(op.id_);
     for (Val value : op.outs()) {
       subtree_values.insert(value.id_);
-      ++cloned_values;
       needs_fresh_names = needs_fresh_names ||
           (roots.contains(op.id_) && !value.name().empty() &&
            (op.form() == Op::Form::let || op.form() == Op::Form::var));
@@ -1102,7 +1100,6 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
     for (Blk blk : op.blks()) {
       for (Val value : blk.args()) {
         subtree_values.insert(value.id_);
-        ++cloned_values;
       }
       for (Op child : blk.ops())
         self(self, child);
@@ -1169,40 +1166,31 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
                                    before.id_);
   if (insertion == store.blks[destination].data.ops.end())
     return reject("clone insertion point is not in its Blk", before.loc());
-  std::unordered_set<std::string_view> used_names;
   if (needs_fresh_names) {
-    // The old value names are immutable during this append-only operation.
-    // Reserve every new value before taking views, including repeated visits
-    // when source subtrees overlap. Geometric growth avoids reallocating the
-    // whole value arena on each small clone.
-    if (cloned_values > store.vals.max_size() - store.vals.size())
-      return reject("clone exceeds the value arena capacity", before.loc());
-    const std::size_t required = store.vals.size() + cloned_values;
-    if (required > store.vals.capacity()) {
-      const std::size_t capacity = store.vals.capacity();
-      const std::size_t growth = std::min(capacity / 2,
-                                        store.vals.max_size() - capacity);
-      store.vals.reserve(std::max(required, capacity + growth));
-    }
-    // Only a copied declaration's name and its suffixed variants can collide
-    // with copy_name below. Do not allocate hash nodes for unrelated names.
-    std::unordered_set<std::string_view> requested_names;
-    for (Op source : sources)
-      if (source.form() == Op::Form::let || source.form() == Op::Form::var)
-        for (Val value : source.outs())
-          if (!value.name().empty())
-            requested_names.insert(value.name());
-    for (const auto& slot : store.vals) {
-      if (!slot.live || slot.data.name.empty())
-        continue;
-      const std::string_view name = slot.data.name;
-      const auto separator = name.rfind('_');
-      if (requested_names.contains(name) ||
-          (separator != std::string_view::npos &&
-           requested_names.contains(name.substr(0, separator))))
-        used_names.insert(name);
+    // Scan only values appended since the last named clone. Copying or
+    // restoring the Store carries the index with its corresponding arena.
+    for (; store.indexed_value_names < store.vals.size();
+         ++store.indexed_value_names) {
+      const auto id = static_cast<std::uint32_t>(store.indexed_value_names);
+      const auto& slot = store.vals[id];
+      if (slot.live && !slot.data.name.empty())
+        store.value_names[slot.data.name].push_back(id);
     }
   }
+  const auto name_used = [&](const std::string& name) {
+    const auto found = store.value_names.find(name);
+    if (found == store.value_names.end())
+      return false;
+    auto& ids = found->second;
+    while (!ids.empty()) {
+      const auto& slot = store.vals[ids.back()];
+      if (slot.live && slot.data.name == name)
+        return true;
+      ids.pop_back();
+    }
+    store.value_names.erase(found);
+    return false;
+  };
   // Newly chosen names need ownership: the lexical mapping below is copied
   // and restored when entering nested blocks.
   std::unordered_set<std::string> fresh_names;
@@ -1215,7 +1203,7 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
       return found->second;
     std::string candidate(source_name);
     for (std::size_t suffix = 1;
-         used_names.contains(candidate) || fresh_names.contains(candidate);
+         name_used(candidate) || fresh_names.contains(candidate);
          ++suffix)
       candidate = std::string(source_name) + '_' + std::to_string(suffix);
     fresh_names.insert(candidate);
@@ -3191,6 +3179,17 @@ bool Mod::rename(Val value, std::string name) {
   bool changed = false;
   for (const std::uint32_t id : related) {
     detail::ValData& data = store.vals[id].data;
+    if (data.name != name && id < store.indexed_value_names) {
+      if (const auto found = store.value_names.find(data.name);
+          found != store.value_names.end()) {
+        auto& ids = found->second;
+        ids.erase(std::remove(ids.begin(), ids.end(), id), ids.end());
+        if (ids.empty())
+          store.value_names.erase(found);
+      }
+      if (!name.empty())
+        store.value_names[name].push_back(id);
+    }
     changed = data.name != name || changed;
     data.name = name;
     if (data.def == detail::none)

@@ -969,6 +969,18 @@ fn reject_internal_clone(m: Mod) -> bool {
   return false
 }
 
+fn reject_named_clone(m: Mod) -> bool {
+  for op in ir.ops(ir.find(m, "compute")) {
+    let outputs = ir.outs(op)
+    if len(outputs) == 1 && ir.name(outputs[0]) == "v" {
+      assert(ir.live(ir.clone(m, op, op)), "first clone failed")
+      assert(ir.live(ir.clone(m, op, op)), "second clone failed")
+      assert(false, "reject cloned names")
+    }
+  }
+  return false
+}
+
 fn split_first_loop(m: Mod, factor: int) -> bool {
   for op in ir.ops(m) {
     if ir.kind(op) == "loop" {
