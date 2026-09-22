@@ -70,28 +70,44 @@ fn gather<E: Ty, D: list<int>, S: list<int>, Y: list<int>>(
 // ascending index order and replacing only on a strict improvement gives the
 // ONNX tie rule (the lower index wins) without embedding source-format policy
 // in a backend.
-fn topk<E: Ty, S: list<int>, Y: list<int>>(
+local fn topk_runtime<E: Ty, S: list<int>, Y: list<int>, R: int, K: int>(
   x: tensor<E, S>, count_value: tensor<i64, [1]>, axis: int, largest: bool
 ) -> (tensor<E, Y>, tensor<i64, Y>) {
-  assert(axis >= 0 && axis < len(S), "tensor.topk axis is out of range")
-  let extent = index(S[axis])
+  assert(R == K, "tensor.topk result rank differs from input")
+  assert(axis >= 0 && axis < R, "tensor.topk axis is out of range")
+  let extent = dim(x, index(axis))
   let count = index(count_value[0])
   assert(count > index(0) && count <= extent,
          "tensor.topk count is out of range")
-  assert(len(Y) == len(S) && index(Y[axis]) == count,
-         "tensor.topk result shape does not match count")
-
   var outer = index(1)
   for dim_index in 0..axis {
-    outer *= index(S[dim_index])
+    outer *= dim(x, index(dim_index))
   }
   var inner = index(1)
-  for dim_index in axis + 1..len(S) {
-    inner *= index(S[dim_index])
+  for dim_index in axis + 1..R {
+    inner *= dim(x, index(dim_index))
   }
 
-  var values = tensor<E, Y>(E(0))
-  var indices = tensor<i64, Y>(i64(0))
+  var shape = tensor<index, [R]>(index(0))
+  var capacity_shape = tensor<index, [R]>(index(0))
+  [stage: "shape"]
+  for dim_index in 0..R {
+    capacity_shape[dim_index] = dim(x, index(dim_index))
+    shape[dim_index] = dim(x, index(dim_index))
+    if dim_index == axis { shape[dim_index] = count }
+  }
+  // K is runtime data. K <= extent bounds both result buffers by the input
+  // shape; views carry the selected extents independently of that capacity.
+  let value_storage: tensor<E, S> = make(E(0), capacity_shape)
+  let index_storage: tensor<i64, S> = make(i64(0), capacity_shape)
+  var values: tensor<E, Y> = view(value_storage, shape)
+  var indices: tensor<i64, Y> = view(index_storage, shape)
+  [stage: "shape"]
+  for dim_index in 0..R {
+    assert(dim(values, index(dim_index)) == shape[dim_index] &&
+           dim(indices, index(dim_index)) == shape[dim_index],
+           "tensor.topk result shape does not match count")
+  }
 
   for group in index(0)..outer, offset in index(0)..inner {
     for selected in index(0)..count {
@@ -128,6 +144,14 @@ fn topk<E: Ty, S: list<int>, Y: list<int>>(
       indices[target] = i64(best)
     }
   }
+  return values, indices
+}
+
+fn topk<E: Ty, S: list<int>, Y: list<int>>(
+  x: tensor<E, S>, count_value: tensor<i64, [1]>, axis: int, largest: bool
+) -> (tensor<E, Y>, tensor<i64, Y>) {
+  let values: tensor<E, Y>, indices: tensor<i64, Y> =
+      topk_runtime<E, S, Y, len<S>, len<Y>>(x, count_value, axis, largest)
   return values, indices
 }
 

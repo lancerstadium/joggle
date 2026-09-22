@@ -34,3 +34,39 @@ fn smallest() -> tensor<f32, [2, 2]> {
       indices: tensor<i64, [2, 2]> = tensor.topk(input(), k, 1, false)
   return values
 }
+
+// A runtime view and K must determine allocation, not unresolved type extents.
+fn dynamic(rows: index, count: i64, axis: int, largest: bool)
+    -> tensor<f32, [18]> {
+  var shape = tensor<index, [2]>(index(4))
+  shape[0] = rows
+  let data: tensor<f32, [_, 4]> = tensor.view(input(), shape)
+  let k = tensor<i64, [1]>(count)
+  let values: tensor<f32, [_, _]>,
+      indices: tensor<i64, [_, _]> = tensor.topk(data, k, axis, largest)
+  var result = tensor<f32, [18]>(f32(-99))
+  let height = tensor.dim(values, index(0))
+  let width = tensor.dim(values, index(1))
+  result[0] = f32(height)
+  result[1] = f32(width)
+  for i in index(0)..height * width {
+    result[index(2) + i] = values[i]
+    result[index(10) + i] = f32(indices[i])
+  }
+  return result
+}
+
+fn dynamic_vector(extent: index, count: i64) -> tensor<f32, [8]> {
+  let shape = tensor<index, [1]>(extent)
+  let data: tensor<f32, [_]> = tensor.view(input(), shape)
+  let k = tensor<i64, [1]>(count)
+  let values: tensor<f32, [_]>,
+      indices: tensor<i64, [_]> = tensor.topk(data, k, 0, true)
+  var result = tensor<f32, [8]>(f32(-99))
+  result[0] = f32(tensor.dim(values, index(0)))
+  for i in index(0)..index(count) {
+    result[index(1) + i] = values[i]
+    result[index(5) + i] = f32(indices[i])
+  }
+  return result
+}

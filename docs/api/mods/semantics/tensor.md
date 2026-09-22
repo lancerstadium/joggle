@@ -320,6 +320,27 @@ fn structural(type: Ty) -> list<Ty> {
 
 ### Runtime-shape indexing and layout
 
+`topk` accepts runtime dimensions and a runtime one-element `i64` count tensor.
+The axis must be nonnegative and below the input rank; the count must be
+positive and no greater than that axis's runtime extent. Both outputs have the
+input rank, with the selected axis replaced by the count. Equal values retain
+ascending source-index order.
+
+```jog
+fn best(x: tensor<f32, [_]>, k: tensor<i64, [1]>)
+    -> (tensor<f32, [_]>, tensor<i64, [_]>) {
+  let values: tensor<f32, [_]>, indices: tensor<i64, [_]> =
+      tensor.topk(x, k, 0, true)
+  return values, indices
+}
+```
+
+For input `[3, 7, 7, -1]` and count `[2]`, the values are `[7, 7]` and
+indices are `[1, 2]`. Allocation capacity and logical result shape are distinct:
+the checked count bounds the result by the input storage, while result views
+carry the selected extents. C lowering requires the input's allocation bound
+to be derivable from its type or backing storage, as for other dynamic tensors.
+
 `gather` and `permute` carry runtime dimensions into their result allocation.
 The result type records the rank and known extents; its `_` axes are populated
 from the input dimensions rather than replaced with a fixed size.
