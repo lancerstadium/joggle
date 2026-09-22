@@ -80,14 +80,17 @@
       "title": "Broadcast shape legality",
       "footprint": true,
       "required_roles": ["analysis"],
-      "contract": "Analyze NumPy-style trailing-dimension broadcast compatibility; each aligned pair is legal when equal or one, and the result takes the maximum extent.",
+      "contract": "Analyze NumPy-style trailing-dimension broadcast compatibility for non-negative extents, padding the shorter shape with leading ones. Each aligned pair is legal when equal or one; when one extent is one, select the other extent, including zero. Reject negative extents.",
       "positive_cases": [
         {"id": "rank-expand", "input": {"lhs": [2, 3, 1], "rhs": [4]}, "expect": {"legal": true, "shape": [2, 3, 4]}},
-        {"id": "two-sided-one", "input": {"lhs": [5, 1, 7], "rhs": [1, 6, 1]}, "expect": {"legal": true, "shape": [5, 6, 7]}}
+        {"id": "two-sided-one", "input": {"lhs": [5, 1, 7], "rhs": [1, 6, 1]}, "expect": {"legal": true, "shape": [5, 6, 7]}},
+        {"id": "empty-with-one", "input": {"lhs": [2, 0], "rhs": [1]}, "expect": {"legal": true, "shape": [2, 0]}},
+        {"id": "scalar", "input": {"lhs": [], "rhs": [2, 3]}, "expect": {"legal": true, "shape": [2, 3]}}
       ],
       "negative_cases": [
         {"id": "extent-conflict", "input": {"lhs": [2, 3], "rhs": [4, 3]}, "expect": {"legal": false, "conflict_axis_from_end": 1}},
-        {"id": "zero-rank-extent", "input": {"lhs": [2, 0], "rhs": [2, 3]}, "expect": {"legal": false, "conflict_axis_from_end": 0}}
+        {"id": "empty-conflict", "input": {"lhs": [2, 0], "rhs": [2, 3]}, "expect": {"legal": false, "conflict_axis_from_end": 0}},
+        {"id": "negative-extent", "input": {"lhs": [2, -1], "rhs": [1]}, "expect": {"error": "invalid-extent", "phase": "build"}}
       ],
       "oracle": {"phases": ["build", "semantic"], "comparison": "exact-json"}
     },
@@ -147,14 +150,16 @@
       "title": "Add-zero simplification",
       "footprint": true,
       "required_roles": ["rewrite"],
-      "contract": "Replace add(x, zero) or add(zero, x) by x only when zero is a scalar or splat constant exactly representable in the result element type; remove dead constants.",
+      "contract": "Replace integer add(x, zero) or add(zero, x) by x when zero is a same-element-type scalar or splat constant and replacement preserves the result shape. For floating add with positive zero, require explicit no_signed_zeros semantics; otherwise preserve the operation. Leave negative-zero constants unchanged. Floating fixtures use finite inputs under round-to-nearest-ties-to-even with unobserved FP exceptions. Remove a matched constant only when it has no remaining uses.",
       "positive_cases": [
-        {"id": "rhs-f32", "input": {"graph": "return add(arg0:tensor<4xf32>, splat(0.0))"}, "expect": {"graph": "return arg0"}},
+        {"id": "rhs-f32-nsz", "input": {"graph": "return add(arg0:tensor<4xf32>, splat(0.0))", "no_signed_zeros": true}, "expect": {"graph": "return arg0"}},
         {"id": "lhs-i32", "input": {"graph": "return add(splat(0:i32), arg0:tensor<2x3xi32>)"}, "expect": {"graph": "return arg0"}}
       ],
       "negative_cases": [
         {"id": "nonzero", "input": {"graph": "return add(arg0:tensor<4xf32>, splat(0.001))"}, "expect": {"graph": "unchanged"}},
-        {"id": "signed-zero", "input": {"graph": "return add(arg0:tensor<4xf32>, splat(-0.0))"}, "expect": {"graph": "unchanged"}}
+        {"id": "negative-zero-constant", "input": {"graph": "return add(arg0:tensor<4xf32>, splat(-0.0))"}, "expect": {"graph": "unchanged"}},
+        {"id": "strict-positive-zero", "input": {"graph": "return add(arg0:tensor<4xf32>, splat(0.0))", "no_signed_zeros": false, "values": [-0.0, 0.0, 1.0, -1.0]}, "expect": {"graph": "unchanged", "output_bits_hex": ["00000000", "00000000", "3f800000", "bf800000"]}},
+        {"id": "broadcast-changes-shape", "input": {"graph": "return add(arg0:tensor<1xi32>, splat(0:i32,tensor<4xi32>))"}, "expect": {"graph": "unchanged"}}
       ],
       "oracle": {"phases": ["build", "semantic"], "comparison": "canonical-graph"}
     },
