@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect the Joggle rows for the model-backed Figure 6 experiment."""
+"""Collect model-backed metadata-propagation diagnostics for Joggle."""
 
 from __future__ import annotations
 
@@ -94,6 +94,8 @@ def append_csv(source: Path, output: Path, write_header: bool) -> bool:
         rows = list(csv.DictReader(stream))
     if not rows:
         raise RuntimeError(f"empty result file: {source}")
+    if "visited_graph_ops" not in rows[0]:
+        raise RuntimeError(f"{source}: missing subject-operation traversal counter")
     template = Path(__file__).resolve().parent / "templates/figure-06-update.csv"
     with template.open(newline="", encoding="utf-8") as stream:
         header = next(csv.reader(stream))
@@ -114,7 +116,7 @@ def append_csv(source: Path, output: Path, write_header: bool) -> bool:
                 "edit_site": row["edit_site"].split(":", 1)[0], "policy": policy,
                 "stage": "all",
                 "iteration": row["iteration"], "wall_ns": row["wall_ns"],
-                "visited_ops": row["evaluated_ops"],
+                "visited_ops": row["visited_graph_ops"],
                 "executed_stages": row["executed_stages"], "total_stages": row["stages"],
                 "artifact_bytes": 0,
                 "output_digest": row["output_digest"], "correct": row["correct"],
@@ -311,6 +313,8 @@ def main() -> int:
     merged.replace(args.output)
     metadata = {
         "schema": "update-provider/v1",
+        "workload": "metadata-propagation/v1",
+        "visited_ops_unit": "subject-operation-visits",
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "revision": revision,
         "dirty": bool(status),

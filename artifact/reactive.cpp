@@ -621,6 +621,15 @@ bool benchmark(const Config& config, std::ofstream& output,
                          (inserted || position->second == output_digest);
     const Metrics measured =
         metrics(report, profile, reactive, config.stage_count);
+    // These diagnostic stages each traverse their selected operation list
+    // once and never change its topology. Count that traversal separately
+    // from evaluator instructions, outside the timed interval.
+    const std::array<joggle::Val, 1> roots{subject.hot_value};
+    const auto operations_per_stage = reactive
+        ? subject.mod.affected(roots).size()
+        : subject.mod.find_fn(subject.owner).ops().size();
+    const auto visited_graph_ops = operations_per_stage *
+        static_cast<std::size_t>(measured.executed_stages);
     output << "joggle," << csv(config.revision) << ',' << csv(subject.name) << ','
            << subject.source_hash << ',' << subject.total_ops << ','
            << subject.affected_ops << ',' << subject.fanout << ','
@@ -633,7 +642,8 @@ bool benchmark(const Config& config, std::ofstream& output,
            << measured.verify_ns << ',' << measured.executed_stages << ','
            << measured.reused_stages << ',' << measured.observed_ops << ','
            << measured.observed_values << ',' << measured.changed_functions
-           << ',' << measured.evaluated_ops << ',' << measured.plan_compiles
+           << ',' << measured.evaluated_ops << ',' << visited_graph_ops
+           << ',' << measured.plan_compiles
            << ',' << measured.plan_hits << ',' << measured.miss << ','
            << output_digest << ',' << (correct ? "true" : "false") << ','
            << config.seed << '\n';
@@ -667,7 +677,7 @@ int main(int argc, char** argv) {
             "policy,cache_state,iteration,wall_ns,select_ns,evaluate_ns,"
             "verify_ns,"
             "executed_stages,reused_stages,observed_ops,observed_values,"
-            "changed_functions,evaluated_ops,plan_compiles,plan_hits,"
+            "changed_functions,evaluated_ops,visited_graph_ops,plan_compiles,plan_hits,"
             "miss_reason,output_digest,correct,seed\n";
 
   std::map<std::string, std::string, std::less<>> expected;

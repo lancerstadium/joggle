@@ -20,6 +20,22 @@ def sha256(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def validate_provider(path: Path, rows: list[dict[str, str]]) -> Path:
+    record_path = path.with_suffix(".json")
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    if (record.get("schema") != "update-provider/v1" or record.get("dirty")
+            or record.get("output_sha256") != sha256(path)):
+        raise SystemExit(f"{path}: invalid provider record")
+    if any(row["path"] == "matched" for row in rows):
+        if record.get("workload") != "compiler-pipeline/v1":
+            raise SystemExit(f"{path}: matched results require a compiler pipeline, "
+                             "not metadata-propagation diagnostics")
+        if record.get("visited_ops_unit") != "subject-operation-visits":
+            raise SystemExit(f"{path}: visited_ops must count subject operations, "
+                             "not evaluator instructions")
+    return record_path
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("inputs", type=Path, nargs="+")
@@ -39,12 +55,9 @@ def main() -> int:
             reader = csv.DictReader(stream)
             if reader.fieldnames != header:
                 raise SystemExit(f"{path}: columns differ from Figure 6 schema")
-            rows.extend(reader)
-        provider_record = path.with_suffix(".json")
-        record = json.loads(provider_record.read_text(encoding="utf-8"))
-        if (record.get("schema") != "update-provider/v1" or record.get("dirty")
-                or record.get("output_sha256") != sha256(path)):
-            raise SystemExit(f"{path}: invalid provider record")
+            provider_rows = list(reader)
+        provider_record = validate_provider(path, provider_rows)
+        rows.extend(provider_rows)
         records.append({"path": str(path.resolve()), "sha256": sha256(path),
                         "record": str(provider_record.resolve()),
                         "record_sha256": sha256(provider_record)})

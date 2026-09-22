@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import os
@@ -13,6 +14,8 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from merge_update_rows import validate_provider
 
 FIGURES = {
     4: ("figure-04-extension.csv", "figure_04_extension.py"),
@@ -63,6 +66,10 @@ def validate_record(figure: int, csv_path: Path) -> Path:
             source_record = Path(item["record"])
             if item.get("record_sha256") != sha256(source_record):
                 fail(f"Figure {figure}: source record hash differs for {source_record}")
+        if figure == 6:
+            with path.open(newline="", encoding="utf-8") as stream:
+                provider_rows = list(csv.DictReader(stream))
+            validate_provider(path, provider_rows)
     return record_path
 
 

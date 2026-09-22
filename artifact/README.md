@@ -80,12 +80,6 @@ The shared CSV pairs `full` and `update` for Joggle, MLIR, and xDSL on all 15
 models.
 
 ```sh
-python3 artifact/run_reactive.py \
-  --model-manifest artifact/manifests/reactive-models.csv \
-  --model-root .cache/onnx-zoo \
-  --output .cache/artifact/update-joggle.csv \
-  --build-root .cache/artifact/update-joggle-build
-
 python3 artifact/run_joggle_lowering_profile.py \
   --model-root .cache/onnx-zoo \
   --joggle build/joggle \
@@ -117,7 +111,18 @@ include loading and writing the intermediate graph.
 
 MLIR and xDSL adapters must implement the same edit, five logical stages,
 counters, and digest. The release gate rejects Figure 6 without the complete
-`update-assembly/v1` provenance file.
+`update-assembly/v1` provenance file. Matched providers identify their workload
+as `compiler-pipeline/v1` and count `subject-operation-visits`.
+
+`run_reactive.py` currently runs a metadata-propagation diagnostic over model
+topologies. Its five stages construct derived dictionaries; they do not lower
+operators or allocate storage. Its provider record identifies
+`metadata-propagation/v1`, which the Figure 6 assembler and final release gate
+reject. Raw diagnostics keep evaluator instruction counts separate from graph
+visits. For this topology-preserving diagnostic, graph visits equal the
+traversed operation-list size times the number of executed stages; counting
+is outside the timed region. Older rows without that counter cannot be reused
+as graph-visit measurements.
 
 ## Figure 7
 

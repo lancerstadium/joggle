@@ -123,7 +123,13 @@ frontier check, summary query, and host C compilation excluded.
 
 The release gate accepts Figure 6 only when Joggle, MLIR, and xDSL providers
 emit `update-provider/v1` results and the assembler creates a hash-bound
-`update-assembly/v1` record.
+`update-assembly/v1` record. Matched providers additionally identify
+`workload: compiler-pipeline/v1` and
+`visited_ops_unit: subject-operation-visits`. Evaluator instruction counts
+and the existing `metadata-propagation/v1` diagnostic are not Figure 6
+compiler-work measurements. The assembler and release gate enforce this
+distinction; a provider declaration still requires source-level verification
+of its stages and counters.
 
 ## Figure 7 · end-to-end performance
 
