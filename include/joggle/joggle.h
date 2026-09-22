@@ -350,10 +350,10 @@ public:
   bool expand(Mod& mod, Op call, Fn implementation) const;
   /// Expand each call in place. When `best_effort` is false the batch is atomic:
   /// a call that cannot be expanded undoes the whole batch. When it is true the
-  /// expansions that succeeded are kept and the batch stops at the first refusal,
-  /// which pays the per-invocation costs -- a store snapshot and the clone of the
-  /// callee's local closure -- once per batch instead of once per call. Measured on
-  /// SSD-MobileNetV1 those two are three quarters of the cost of an invocation.
+  /// batch is split around refusals so later calls can still expand. Each failed
+  /// sub-batch is rolled back completely, including its speculative diagnostics;
+  /// successful sub-batches share snapshot and lexical-closure costs. Returns
+  /// true if at least one call expands. Mismatched vector sizes remain an error.
   bool expand(Mod& mod, std::span<const Op> calls,
               std::span<const Fn> implementations,
               bool best_effort = false) const;

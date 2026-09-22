@@ -834,6 +834,26 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
                  std::span<const Fn> implementations, bool best_effort) const {
   if (calls.empty())
     return false;
+  if (best_effort && calls.size() == implementations.size()) {
+    // Try the common case as one transaction. Isolate refusals by bisecting
+    // failed batches: a bad call must neither block later calls nor leave a
+    // partially cloned body behind. Successful sub-batches share the snapshot
+    // and lexical-closure materialization costs.
+    const auto attempt = [&](const auto& self, std::span<const Op> pending,
+                             std::span<const Fn> bodies) -> bool {
+      const std::size_t diagnostics = mod.impl_->store.diags.size();
+      if (expand(mod, pending, bodies, false))
+        return true;
+      mod.impl_->store.diags.resize(diagnostics);
+      if (pending.size() == 1)
+        return false;
+      const std::size_t middle = pending.size() / 2;
+      const bool left = self(self, pending.first(middle), bodies.first(middle));
+      const bool right = self(self, pending.subspan(middle), bodies.subspan(middle));
+      return left || right;
+    };
+    return attempt(attempt, calls, implementations);
+  }
   detail::Store backup = mod.impl_->store;
   const auto rollback = [&]() {
     std::vector<Diag> diagnostics = std::move(mod.impl_->store.diags);
@@ -1002,12 +1022,7 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
   for (std::size_t index = 0; index < calls.size(); ++index) {
     if (!mod.expand(*this, calls[index], implementations[index],
                     semantics[index], &created)) {
-      // Best effort keeps what succeeded so that a caller which would otherwise
-      // retry one call at a time does not repeat thousands of expansions and pay
-      // the snapshot and the closure clone for each of them.
-      if (!best_effort || expanded == 0)
-        return rollback();
-      break;
+      return rollback();
     }
     for (Op op : created) {
       if (op.kind() != Op::Kind::call)

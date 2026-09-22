@@ -143,6 +143,12 @@ fn capacity(m: Mod, value: Val) -> list<int> {
      len(ir.args(source)) != 0 {
     return capacity(m, ir.args(source)[0])
   }
+  // A concrete storage shape needs no interval analysis. Keep view/copy
+  // provenance above this shortcut so their backing capacity is preserved.
+  let type = ir.type(value)
+  if tensor.valid(type) && tensor.static(type) {
+    return tensor.shape(type)
+  }
   let known = bounds.infer(m)
   let direct = capacity_with(m, value, known)
   if len(direct) != 0 || !ir.live(source) || ir.name(value) == "" {

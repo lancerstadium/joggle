@@ -175,6 +175,28 @@ local fn const_ints(value: Val) -> list<int> {
   let inputs = ir.args(producer)
   let count = static_count(ir.type(value))
 
+  // Integer shape controls often pass through Cast before Slice/Reshape.
+  // Preserve their values only when the conversion is lossless; a narrowing
+  // overflow must remain a runtime cast, not a guessed shape constant.
+  if (callee == "onnx.Cast" || callee == "tensor.cast") &&
+     len(inputs) == 1 && tensor.valid(ir.type(value)) &&
+     tensor.valid(ir.type(inputs[0])) {
+    let source = tensor.elem(ir.type(inputs[0]))
+    let target = tensor.elem(ir.type(value))
+    if (source == ty("i32") || source == ty("i64")) &&
+       (target == ty("i32") || target == ty("i64")) {
+      let values = const_ints(inputs[0])
+      if target == ty("i32") {
+        for item in values {
+          if item < -2147483648 || item > 2147483647 {
+            return []
+          }
+        }
+      }
+      return values
+    }
+  }
+
   if callee == "base.list" {
     var out: list<int> = []
     for input in inputs {
@@ -447,4 +469,3 @@ local fn constant_shape_type(m: Mod, op: Op) -> bool {
   }
   return set_type(m, outputs[0], shaped(elem, shape))
 }
-

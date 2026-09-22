@@ -2023,6 +2023,68 @@ int main(int argc, char** argv) {
   batch_rollback.clear_diags();
   CHECK(batch_rollback.verify(env));
 
+  // Best-effort expansion must reach calls after a refusal, regardless of
+  // position. A late metadata conflict exercises rollback after body cloning.
+  for (int refused = 0; refused != 3; ++refused) {
+    const std::string source =
+        "mod batch.partial\n"
+        "fn body(x: i32) -> i32 {\n"
+        "  let [space: \"body\"] y = x + 1\n"
+        "  return y\n}\n"
+        "fn main(x: i32) -> i32 {\n" +
+        std::string(refused == 0 ? "  let [space: \"call\"] a = body(x)\n"
+                                 : "  let a = body(x)\n") +
+        (refused == 1 ? "  let [space: \"call\"] b = body(a)\n"
+                      : "  let b = body(a)\n") +
+        (refused == 2 ? "  let [space: \"call\"] c = body(b)\n"
+                      : "  let c = body(b)\n") +
+        "  return c\n}\n";
+    joggle::Mod partial;
+    CHECK(joggle::parse(env, source, partial, "batch-partial.jog"));
+    CHECK(partial.verify(env));
+    std::vector<joggle::Op> calls;
+    std::vector<joggle::Fn> bodies;
+    for (joggle::Op op : partial.find_fn("main").ops()) {
+      if (op.callee() == "body") {
+        calls.push_back(op);
+        bodies.push_back(env.resolve(partial, op));
+      }
+    }
+    CHECK(calls.size() == 3);
+    const auto revision = partial.revision();
+    CHECK(env.expand(partial, calls, bodies, true));
+    CHECK(partial.revision() == revision + 2);
+    CHECK(partial.diags().empty());
+    CHECK(partial.verify(env));
+    for (int index = 0; index != 3; ++index)
+      CHECK(static_cast<bool>(calls[index]) == (index == refused));
+    std::size_t adds = 0;
+    for (joggle::Op op : partial.find_fn("main").ops())
+      adds += op.callee() == "operator +";
+    CHECK(adds == 2);  // No dead clone from the refused expansion.
+    const std::string stable = joggle::print(partial);
+    const auto stable_revision = partial.revision();
+    const std::array<joggle::Op, 1> rejected{calls[refused]};
+    const std::array<joggle::Fn, 1> rejected_body{bodies[refused]};
+    CHECK(!env.expand(partial, rejected, rejected_body, true));
+    CHECK(joggle::print(partial) == stable);
+    CHECK(partial.revision() == stable_revision);
+    CHECK(partial.diags().empty());
+    joggle::Mod scripted;
+    CHECK(joggle::parse(env, source, scripted, "batch-scripted.jog"));
+    CHECK(joggle::run(env, "script.partial_expand", scripted));
+    CHECK(scripted.verify(env));
+    CHECK(joggle::structurally_equal(partial, scripted));
+  }
+
+  joggle::Mod bounds_refresh;
+  CHECK(joggle::parse(env,
+      "mod bounds.refresh\nfn main() -> i32 {\n"
+      "  let seed: i32 = 2\n  return seed\n}\n",
+      bounds_refresh, "bounds-refresh.jog"));
+  CHECK(joggle::run(env, "script.bounds_refresh", bounds_refresh));
+  CHECK(bounds_refresh.verify(env));
+
   joggle::Mod detached_implementation;
   CHECK(joggle::parse(env,
                       "mod detached.impl\n"

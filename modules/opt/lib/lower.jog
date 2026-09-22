@@ -17,14 +17,8 @@ local fn expand_with(
   if len(calls) == 0 {
     return false
   }
-  if ir.expand(m, calls, bodies) {
-    return true
-  }
-  // The batch is atomic and failed, so retry it best-effort: one invocation then
-  // covers every call that can be expanded, instead of one invocation per call.
-  // A store snapshot and the clone of the callee's local closure are three quarters
-  // of what an invocation costs, and retrying call by call pays both for every
-  // call. Whatever cannot be expanded is left for the next round.
+  // Expand atomically when possible; isolate refusals without blocking later
+  // calls or retaining an incomplete body from a failed expansion.
   return ir.expand_partial(m, calls, bodies, true)
 }
 

@@ -1400,6 +1400,46 @@ int main(int argc, char** argv) {
   CHECK(partial_call && partial_call.outs()[0].type() ==
                             joggle::Ty("tensor<f32, [N, 4, _, _]>"));
 
+  // Constant integer casts must not turn statically known Slice bounds into
+  // dynamic dimensions. Exercise both frontend and already-converted calls.
+  for (const std::string callee : {"onnx.Cast", "tensor.cast"}) {
+    const std::string source =
+        "mod cast.slice\nuse onnx\nuse tensor\n"
+        "fn main(x: tensor<f32, [4]>) -> tensor<f32, [_]> {\n"
+        "  let first: tensor<i32, [1]> = hex\"01000000\"\n"
+        "  let last: tensor<i32, [1]> = hex\"03000000\"\n"
+        "  [onnx: {to: 7}]\n"
+        "  let starts: tensor<i64, [1]> = " + callee + "(first)\n"
+        "  [onnx: {to: 7}]\n"
+        "  let ends: tensor<i64, [1]> = " + callee + "(last)\n"
+        "  let y: tensor<f32, [_]> = onnx.Slice(x, starts, ends)\n"
+        "  return y\n}\n";
+    joggle::Mod cast_slice;
+    CHECK(joggle::parse(env, source, cast_slice, "cast-slice.jog"));
+    CHECK(cast_slice.verify(env));
+    CHECK(joggle::run(env, "onnx.nn.infer", cast_slice));
+    CHECK(cast_slice.verify(env));
+    for (joggle::Op op : cast_slice.ops())
+      if (op.callee() == "onnx.Slice")
+        CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [2]>"));
+  }
+
+  joggle::Mod narrowing_slice;
+  CHECK(joggle::parse(env,
+      "mod narrowing.slice\nuse onnx\n"
+      "fn main(x: tensor<f32, [4]>) -> tensor<f32, [_]> {\n"
+      "  let wide: tensor<i64, [1]> = hex\"0000008000000000\"\n"
+      "  let ends: tensor<i32, [1]> = hex\"03000000\"\n"
+      "  [onnx: {to: 6}]\n"
+      "  let starts: tensor<i32, [1]> = onnx.Cast(wide)\n"
+      "  let y: tensor<f32, [_]> = onnx.Slice(x, starts, ends)\n"
+      "  return y\n}\n", narrowing_slice, "narrowing-slice.jog"));
+  CHECK(joggle::run(env, "onnx.nn.infer", narrowing_slice));
+  CHECK(narrowing_slice.verify(env));
+  for (joggle::Op op : narrowing_slice.ops())
+    if (op.callee() == "onnx.Slice")
+      CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [_]>"));
+
   constexpr std::string_view resize_source =
       "mod resize.shape\n"
       "use onnx\n"

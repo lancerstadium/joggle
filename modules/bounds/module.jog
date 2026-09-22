@@ -319,6 +319,7 @@ local fn result(m: Mod, op: Op, known: dict) -> list<int> {
   return []
 }
 
+[memo]
 fn infer(m: Mod) -> dict {
   var known: dict = {}
 
