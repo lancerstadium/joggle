@@ -54,7 +54,8 @@ python3 artifact/validate_extension_specs.py
 The native tasks include `ana-broadcast-shape`, `ana-storage-cost`,
 `ana-numeric-range`, `ana-fusion-match`, `emit-storage-plan`,
 `emit-target-capability`, `emit-graph-manifest`, `rew-add-zero`, and
-`rew-redundant-cast`, `rew-transpose-pair`, and `con-instruction-select`.
+`rew-redundant-cast`, `rew-transpose-pair`, `con-instruction-select`, and
+`con-gelu-expand`.
 Each task directory under `extensions/` contains reference implementations for
 Joggle, MLIR, and xDSL; the shared `starter.*` files contain their empty entry
 points. Attribute-analysis tasks read a request from function metadata in
@@ -142,6 +143,15 @@ post-conversion graph, preserved metadata, and tile order; the numerical oracle
 checks f32-accumulation semantics on five input sets. This task measures compiler
 extension correctness, not GPU instruction throughput.
 
+`con-gelu-expand` replaces a native GELU call with arithmetic and erf calls.
+Seven cases cover f32/f64 tensors, scalars, repeated output users, empty tensors,
+and rejected integer/half inputs. The oracle accepts equivalent target graphs
+without prescribing node order or parenthesization. It requires GELU removal,
+checks output types, and compares the independently observed graph against
+binary64 GELU semantics on seven input sets using the task's dtype-specific
+tolerances. An unchanged GELU call or an arithmetically incorrect expansion
+fails. Constant values remain explicit IR attributes, not driver-side answers.
+
 ### Local agent execution
 
 `run_extension_agent.py` runs an installed Ollama model with four actions:
@@ -184,7 +194,7 @@ The current collector emits integration records with `release_eligible: false`.
 It records successful native execution but does not infer a failed compiler's
 parse/type/build phase from its exit code. Unmeasured phase fields and reference
 likelihoods remain empty. These records cannot enter the release assembler.
-The full matrix additionally requires the remaining 13 native task harnesses,
+The full matrix additionally requires the remaining 12 native task harnesses,
 phase-specific instrumentation, and the frozen demonstration sets. The
 assembler consumes complete provider records:
 

@@ -27,7 +27,7 @@ from run_joggle_benchmarks import compiler_identity, checkpoint_protocol, make_h
 from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
 from run_extension_task import (execute, fusion_fixture, graph_fixture, sandbox_policy,
-                                equivalent, rewrite_graph, graph_manifest, rewrite_numerics)
+                                equivalent, rewrite_graph, graph_manifest, rewrite_numerics, gelu_structure)
 from run_extension_agent import public_case_ids, tool_feedback, response_usage, final_checks
 import run_extension_agent
 from merge_benchmark_rows import audited_input
@@ -130,6 +130,33 @@ class BenchmarkOracleTests(unittest.TestCase):
                 checked_native_build(lambda model, feeds: runner, b"edited", {}, names,
                                      [np.array([2], dtype=np.float32)], 0, 0)
             self.assertTrue(runner.closed)
+
+    def test_gelu_conversion_checks_semantics_without_fixed_node_order(self):
+        for element, tolerance in (("f32", (1e-5, 1e-6)), ("f64", (1e-12, 1e-12))):
+            source = rewrite_graph({"op": "gelu", "element": element, "shape": [5]})
+            original = graph_manifest(source)
+            nodes = []
+            def node(name, op, inputs, attrs=None):
+                nodes.append({"op": op, "inputs": inputs,
+                              "results": [{"name": name, "element": element, "shape": [5]}],
+                              "attrs": attrs or {}})
+            node("root", "splat", [], {"value": 2 ** 0.5})
+            node("scale", "div", ["x", "root"])
+            node("error", "erf", ["scale"])
+            node("one", "splat", [], {"value": 1.0})
+            node("sum", "add", ["error", "one"])
+            node("product", "mul", ["x", "sum"])
+            node("half", "splat", [], {"value": 0.5})
+            node("y", "mul", ["product", "half"])
+            graph = {"inputs": source["inputs"], "nodes": nodes, "outputs": ["y"]}
+            expanded = graph_manifest(graph)
+            self.assertTrue(gelu_structure(expanded, original))
+            self.assertTrue(rewrite_numerics(expanded, original, False, tolerance)["passed"])
+            self.assertFalse(gelu_structure(original, original))
+            graph["nodes"][-2]["attrs"]["value"] = 0.0
+            wrong = graph_manifest(graph)
+            self.assertTrue(gelu_structure(wrong, original))
+            self.assertFalse(rewrite_numerics(wrong, original, False, tolerance)["passed"])
 
     def test_instruction_selection_checks_target_constraints_and_tiles(self):
         root = Path(__file__).resolve().parents[1] / "artifact"

@@ -122,3 +122,9 @@ matching target `mma_m16n16k16` are declared. Inspect ranked operand/result
 types; `CallOp::setCallee` changes the target without replacing values.
 `Builder::getI64ArrayAttr` constructs the `tiles` metadata. Preserve other keys
 and every result user; negative or zero dimensions cannot select the target.
+
+For `con-gelu-expand`, target functions `splat`, `mul`, `div`, `add`, and `erf`
+are declared with the subject tensor type. Set `OpBuilder`'s insertion point
+before the source call and create typed `func::CallOp` operations. Attach a
+splat's `value` with `Builder::getF64FloatAttr`, replace all source result uses,
+and erase the old GELU call. Reject unsupported types before emitting IR.

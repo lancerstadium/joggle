@@ -246,13 +246,17 @@
       "title": "GELU decomposition",
       "footprint": true,
       "required_roles": ["conversion"],
-      "contract": "Convert exact GELU(x) into 0.5*x*(1+erf(x/sqrt(2))) using target arithmetic and erf operations; preserve shape and floating element type.",
+      "contract": "Replace native SSA gelu calls with 0.5*x*(1+erf(x/sqrt(2))), using declared splat, mul, div, add, and erf targets. splat carries a numeric value attribute. Preserve shape, floating element type, and every output user. Operation ordering and equivalent parenthesizations are unrestricted. Reject other element types with unsupported-element-type and no output IR. Numerical tolerances are rtol=1e-5, atol=1e-6 for f32 and rtol=atol=1e-12 for f64.",
       "positive_cases": [
-        {"id": "vector-f32", "input": {"op": "gelu", "type": "tensor<5xf32>", "values": [-3.0, -1.0, 0.0, 1.0, 3.0]}, "expect": {"forbidden_ops": ["gelu"], "required_ops": ["mul", "add", "erf"], "result_type": "tensor<5xf32>"}},
-        {"id": "matrix-f64", "input": {"op": "gelu", "type": "tensor<2x3xf64>", "values": [-2.0, -0.5, 0.0, 0.5, 1.0, 2.0]}, "expect": {"forbidden_ops": ["gelu"], "required_ops": ["mul", "add", "erf"], "result_type": "tensor<2x3xf64>"}}
+        {"id": "vector-f32", "input": {"op": "gelu", "element": "f32", "shape": [5]}, "expect": {"forbidden_ops": ["gelu"], "required_ops": ["erf"]}},
+        {"id": "matrix-f64", "input": {"op": "gelu", "element": "f64", "shape": [2, 3]}, "expect": {"forbidden_ops": ["gelu"], "required_ops": ["erf"]}},
+        {"id": "scalar-f32", "input": {"op": "gelu", "element": "f32", "shape": []}, "expect": {"forbidden_ops": ["gelu"], "required_ops": ["erf"]}},
+        {"id": "shared-output", "input": {"op": "gelu", "element": "f32", "shape": [2, 4], "shared_output": true}, "expect": {"forbidden_ops": ["gelu"], "required_ops": ["erf"]}},
+        {"id": "empty-tensor", "input": {"op": "gelu", "element": "f64", "shape": [0, 3]}, "expect": {"forbidden_ops": ["gelu"], "required_ops": ["erf"]}}
       ],
       "negative_cases": [
-        {"id": "integer-input", "input": {"op": "gelu", "type": "tensor<4xi32>"}, "expect": {"error": "unsupported-element-type", "phase": "type"}}
+        {"id": "integer-input", "input": {"op": "gelu", "element": "i32", "shape": [4]}, "expect": {"error": "unsupported-element-type", "phase": "type"}},
+        {"id": "half-input", "input": {"op": "gelu", "element": "f16", "shape": [4]}, "expect": {"error": "unsupported-element-type", "phase": "type"}}
       ],
       "oracle": {"phases": ["type", "build", "semantic"], "comparison": "numerical"}
     },

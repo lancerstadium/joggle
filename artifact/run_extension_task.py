@@ -25,9 +25,44 @@ ROOT = Path(__file__).resolve().parent
 SUPPORTED_TASKS = {"ana-broadcast-shape", "ana-storage-cost", "ana-numeric-range",
                    "ana-fusion-match", "emit-storage-plan", "emit-target-capability",
                    "emit-graph-manifest", "rew-add-zero", "rew-redundant-cast", "rew-transpose-pair",
-                   "con-instruction-select"}
+                   "con-instruction-select", "con-gelu-expand"}
 
-REWRITE_TASKS = {"rew-add-zero", "rew-redundant-cast", "rew-transpose-pair", "con-instruction-select"}
+REWRITE_TASKS = {"rew-add-zero", "rew-redundant-cast", "rew-transpose-pair", "con-instruction-select", "con-gelu-expand"}
+GELU_TOLERANCES = {"f32": (1e-5, 1e-6), "f64": (1e-12, 1e-12)}
+
+
+def gelu_graph(request: dict) -> dict:
+    value = {"name": "x", "element": request["element"], "shape": request["shape"]}
+    output = {**value, "name": "y"}
+    declarations = [{"op": name, "inputs": ["x"] * arity, "results": [output]}
+                    for name, arity in (("splat", 0), ("mul", 2), ("div", 2), ("add", 2), ("erf", 1))]
+    return {"inputs": [value], "declarations": declarations,
+            "nodes": [{"op": "gelu", "inputs": ["x"], "results": [output]}],
+            "outputs": ["y", "x", "y"] if request.get("shared_output") else ["y"]}
+
+
+def gelu_structure(actual: dict, original: dict) -> bool:
+    """Accept target graphs without fixing constant order or parenthesization."""
+    if not isinstance(actual, dict) or actual.get("inputs") != original["inputs"]:
+        return False
+    nodes = actual.get("nodes", [])
+    allowed = {"splat": 0, "mul": 2, "div": 2, "add": 2, "erf": 1}
+    if not nodes or not any(node.get("op") == "erf" for node in nodes):
+        return False
+    value_types = {value["id"]: value["type"] for value in actual["inputs"]}
+    for node in nodes:
+        if node.get("op") not in allowed or len(node.get("inputs", [])) != allowed[node["op"]]:
+            return False
+        if any(value not in value_types for value in node["inputs"]) or len(node.get("results", [])) != 1:
+            return False
+        for result in node["results"]:
+            if result["id"] in value_types:
+                return False
+            value_types[result["id"]] = result["type"]
+    original_types = {value["id"]: value["type"] for value in original["inputs"]}
+    original_types.update({value["id"]: value["type"] for node in original["nodes"] for value in node["results"]})
+    return ([value_types.get(value) for value in actual.get("outputs", [])] ==
+            [original_types[value] for value in original["outputs"]])
 
 
 def matmul_graph(request: dict, select: bool) -> dict:
@@ -100,6 +135,8 @@ def cast_graph(request: dict, eliminate: bool) -> dict:
 
 def rewrite_graph(request: dict, eliminate: bool = False) -> dict:
     """Build the tensor-dialect fixture; the extension sees native SSA, not this map."""
+    if request.get("op") == "gelu":
+        return gelu_graph(request)
     if "lhs" in request and "rhs" in request:
         return matmul_graph(request, eliminate)
     if "casts" in request:
@@ -144,7 +181,8 @@ def graph_manifest(graph: dict) -> dict:
             "outputs": [ids[name] for name in graph["outputs"]]}
 
 
-def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool) -> dict:
+def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool,
+                     tolerance: tuple[float, float] | None = None) -> dict:
     """Interpret the independently observed post-IR, including strict zero bits."""
     import numpy as np
     dtypes = {"f16": np.float16, "f32": np.float32, "f64": np.float64, "i8": np.int8,
@@ -166,6 +204,16 @@ def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool) -> dic
             elif node["op"] == "add" and len(node["inputs"]) == 2:
                 a, b = (values[key] for key in node["inputs"])
                 value = np.add(a, b, dtype=dtypes[ty["element"]])
+            elif node["op"] in {"mul", "div"} and len(node["inputs"]) == 2:
+                a, b = (values[key] for key in node["inputs"])
+                operation = np.multiply if node["op"] == "mul" else np.divide
+                value = operation(a, b, dtype=dtypes[ty["element"]])
+            elif node["op"] in {"gelu", "erf"} and len(node["inputs"]) == 1:
+                x = values[node["inputs"][0]].astype(np.float64)
+                erf = np.vectorize(math.erf, otypes=[np.float64])
+                value = (erf(x) if node["op"] == "erf" else
+                         0.5 * x * (1.0 + erf(x / math.sqrt(2.0))))
+                value = value.astype(dtypes[ty["element"]])
             elif node["op"].startswith("cast_") and len(node["inputs"]) == 1:
                 converted = values[node["inputs"][0]].astype(dtypes[ty["element"]])
                 value = np.broadcast_to(converted, ty["shape"])
@@ -188,13 +236,19 @@ def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool) -> dic
             values[result["id"]] = value
         return [values[key] for key in graph["outputs"]]
     cases = []
-    for sample in ([-0.0, 0.0, 1.0, -1.0], [-17, 23, 255, -1024],
-                   [0, 0, 0, 0], [0.1, -0.3, 1.5, -2.75], [-128, 127, 256, -257]):
+    samples = [[-0.0, 0.0, 1.0, -1.0], [-17, 23, 255, -1024],
+               [0, 0, 0, 0], [0.1, -0.3, 1.5, -2.75], [-128, 127, 256, -257]]
+    if tolerance is not None:
+        samples += [[-3, -1, 0, 1, 3], [-8, -4, -2, 0.5, 4]]
+    for sample in samples:
         before, after = evaluate(original, sample), evaluate(actual, sample)
         passed = len(before) == len(after)
         for a, b in zip(before, after):
             passed = passed and a.shape == b.shape and a.dtype == b.dtype
-            passed = passed and (bool(np.array_equal(a, b)) if no_signed_zeros else a.tobytes() == b.tobytes())
+            if tolerance is not None:
+                passed = passed and bool(np.allclose(a, b, rtol=tolerance[0], atol=tolerance[1], equal_nan=False))
+            else:
+                passed = passed and (bool(np.array_equal(a, b)) if no_signed_zeros else a.tobytes() == b.tobytes())
         cases.append({"input": sample, "passed": passed,
                       "before_bits": [value.tobytes().hex() for value in before],
                       "after_bits": [value.tobytes().hex() for value in after]})
@@ -495,6 +549,11 @@ def main() -> int:
         import numpy as np
         record["numerical_oracle"] = {"numpy_version": np.__version__,
                                       "comparison": "bitwise-except-explicit-nsz"}
+        if args.task == "con-gelu-expand":
+            record["numerical_oracle"].update({
+                "comparison": "allclose", "reference": "binary64-formula-cast-to-result-type",
+                "tolerances": {key: {"rtol": value[0], "atol": value[1]}
+                               for key, value in GELU_TOLERANCES.items()}})
     with tempfile.TemporaryDirectory(prefix="task-", dir=args.build_root) as directory:
         work = Path(directory).resolve()
         scratch = work / "tmp"
@@ -602,15 +661,20 @@ def main() -> int:
                         error = str(failure)
                 # Numeric tasks use the shared tolerance only for numbers;
                 # object keys, sequence lengths, Booleans, and errors stay exact.
-                expected = (graph_manifest(rewrite_graph(case["input"], case["expect"]["eliminate"]))
+                conversion = args.task == "con-gelu-expand"
+                expected = (case["expect"] if conversion else
+                            graph_manifest(rewrite_graph(case["input"], case["expect"]["eliminate"]))
                             if rewriting else expected_result(args.task, case))
+                original = graph_manifest(rewrite_graph(case["input"])) if rewriting else None
                 passed = (step["exit_code"] == 0 and checked_step["exit_code"] == 0 and not error and
-                          equivalent(actual, expected, task["oracle"]["comparison"] == "numerical",
-                                     spec["comparison_policy"]))
+                          (gelu_structure(actual, original) if conversion else
+                           equivalent(actual, expected, task["oracle"]["comparison"] == "numerical",
+                                      spec["comparison_policy"])))
                 if rewriting and passed:
                     try:
-                        numerics = rewrite_numerics(actual, graph_manifest(rewrite_graph(case["input"])),
-                                                    case["input"].get("no_signed_zeros", False))
+                        tolerance = GELU_TOLERANCES[case["input"]["element"]] if conversion else None
+                        numerics = rewrite_numerics(actual, original,
+                                                    case["input"].get("no_signed_zeros", False), tolerance)
                         passed = numerics["passed"]
                     except (ValueError, KeyError, TypeError) as failure:
                         passed = False

@@ -1,0 +1,40 @@
+mod extension
+use base
+use ir
+
+local fn splat(m: Mod, before: Op, type: Ty, value: Attr) -> Val {
+  let result = ir.call(m, before, ir.find(m, "splat"), [], type)
+  assert(ir.rename(m, result, "gelu_constant", ir.key(result)), "constant binding failed")
+  assert(ir.set(m, ir.def(result), "value", value), "constant metadata write failed")
+  assert(base.get(ir.meta(ir.def(result)), "value") == value, "constant metadata missing")
+  return result
+}
+
+fn transform(m: Mod) -> bool {
+  let ops = ir.ops(ir.find(m, "subject"), ["call"])
+  for op in ops {
+    if ir.callee(op) == "gelu" {
+      let element = text(args(ir.type(ir.args(op)[0]))[0])
+      assert(element == "f32" || element == "f64", "unsupported-element-type")
+    }
+  }
+  var changed = false
+  for op in ops {
+    if ir.callee(op) == "gelu" {
+      let x = ir.args(op)[0]
+      let type = ir.type(x)
+      let half = splat(m, op, type, 0.5)
+      let one = splat(m, op, type, 1.0)
+      let root = splat(m, op, type, 1.4142135623730951)
+      let scaled = ir.call(m, op, ir.find(m, "div"), [x, root], type)
+      let error = ir.call(m, op, ir.find(m, "erf"), [scaled], type)
+      let sum = ir.call(m, op, ir.find(m, "add"), [one, error], type)
+      let hx = ir.call(m, op, ir.find(m, "mul"), [half, x], type)
+      let result = ir.call(m, op, ir.find(m, "mul"), [hx, sum], type)
+      ir.replace(m, ir.outs(op)[0], result)
+      ir.erase(m, op)
+      changed = true
+    }
+  }
+  return changed
+}

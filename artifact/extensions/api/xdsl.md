@@ -119,3 +119,9 @@ matching target `mma_m16n16k16` are declared. Inspect ranked operand/result
 types; assign `op.properties["callee"] = SymbolRefAttr(name)` to retarget.
 Use `ArrayAttr` of `IntegerAttr(value, i64)` for `tiles` metadata. Preserve other
 keys and every result user; negative or zero dimensions cannot select the target.
+
+For `con-gelu-expand`, target functions `splat`, `mul`, `div`, `add`, and `erf`
+are declared with the subject tensor type. Construct `CallOp(name, operands,
+[result_type])`, attach `FloatAttr(value, 64)` as splat's `value` attribute, and
+use `block.insert_op_before(new_op, source_op)`. Replace all source result uses
+and erase the old GELU call. Reject unsupported types before emitting IR.

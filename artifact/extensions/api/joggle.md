@@ -44,6 +44,14 @@ with `args(args(type)[1])` and `int`; `ir.retarget(m, op, ir.find(m, name))`
 changes the callee while retaining operands and result users. Add metadata with
 `ir.set(m, op, "tiles", [m_tiles, n_tiles, k_tiles])` without dropping other keys.
 
+For `con-gelu-expand`, target functions `splat`, `mul`, `div`, `add`, and `erf`
+are declared with the subject tensor type. `ir.call(m, before, target, values,
+type)` inserts a typed call before the source operation. Before attaching
+metadata to a new unnamed result's defining operation, establish a source
+binding with `ir.rename(m, result, stem, ir.key(result))`. Check mutation return
+values; `ir.set(m, ir.def(result), "value", attr)` adds a splat constant.
+Redirect uses with `ir.replace`, then erase the old GELU operation.
+
 ## Analysis entry point
 
 Edit the supplied `module.jog`. Its public entry point is:
