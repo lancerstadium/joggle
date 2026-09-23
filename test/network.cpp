@@ -501,6 +501,30 @@ int main(int argc, char** argv) {
   CHECK(instance_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(instance, instance_roundtrip));
 
+  // A later invocation indexes serialized instances as well as newly bound
+  // ones. Repeated calls of both shapes must keep the original two bodies.
+  const joggle::Fn resumed_main = instance_roundtrip.find_fn("main");
+  CHECK(resumed_main);
+  const joggle::Op resumed_return = resumed_main.body().ops().back();
+  CHECK(resumed_return.kind() == joggle::Op::Kind::ret);
+  std::vector<joggle::Op> resumed_calls;
+  for (std::size_t i = 0; i < 48; ++i) {
+    const joggle::Val input = resumed_main.params()[i % 3];
+    const std::vector<joggle::Val> args{input};
+    const auto result = instance_roundtrip.call(
+        env, resumed_return, dynamic_instance_target, args, input.type());
+    CHECK(result);
+    resumed_calls.push_back(result.def());
+  }
+  CHECK(joggle::run(env, "script.instantiate_scale", instance_roundtrip));
+  CHECK(instance_roundtrip.verify(env));
+  std::set<std::string> resumed_names;
+  for (joggle::Fn fn : instance_roundtrip.fns())
+    if (fn.meta("opt.instance")) resumed_names.emplace(fn.name());
+  CHECK(resumed_names == instance_names);
+  for (joggle::Op op : resumed_calls)
+    CHECK(op && resumed_names.contains(std::string(op.callee())));
+
   // Existing names, including gaps in numeric suffixes, remain untouched.
   std::string reserved_source(instance_source);
   reserved_source.insert(reserved_source.find("fn generic"),

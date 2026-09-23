@@ -316,7 +316,7 @@ fn can_scalarize(m: Mod, source: Op) -> bool {
 fn scalarizable(m: Mod, budget: int) -> list<Op> {
   let before = ir.revision(m)
   var out: list<Op> = []
-  for op in ir.ops(m) {
+  for op in ir.ops(m, ["loop"]) {
     if can_scalarize(m, op, budget) {
       out += [op]
     }

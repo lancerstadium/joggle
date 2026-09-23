@@ -121,6 +121,19 @@ local fn instantiate_with(
   var changed = false
   var again = true
   var exceeded = false
+  // Selection policies cannot mutate the graph. Index the pre-existing
+  // instances once, then extend the index as this invocation binds bodies.
+  var instances: list<Fn> = []
+  var instance_index: dict = {}
+  for fn in ir.fns(m) {
+    if ir.local(fn) && ir.has(fn, "opt.instance") {
+      let encoded = text(ir.meta(fn, "opt.instance"))
+      if !base.has(instance_index, encoded) {
+        instance_index[encoded] = len(instances)
+        instances += [fn]
+      }
+    }
+  }
   for round in 0..(limit + 1) {
     if again {
       again = false
@@ -137,14 +150,12 @@ local fn instantiate_with(
               let args = ir.match(op, selected)
               let params = static_params(op)
               let key = instance_key(selected, args, op, params)
+              let encoded = text(key)
               var instance = selected
               var found = false
-              for fn in ir.fns(m) {
-                if !found && ir.local(fn) && ir.has(fn, "opt.instance") &&
-                   ir.meta(fn, "opt.instance") == key {
-                  instance = fn
-                  found = true
-                }
+              if base.has(instance_index, encoded) {
+                instance = instances[int(base.get(instance_index, encoded))]
+                found = ir.live(instance) && ir.meta(instance, "opt.instance") == key
               }
               if !found {
                 instance = ir.bind(
@@ -154,6 +165,8 @@ local fn instantiate_with(
                        "opt.instantiate could not bind an implementation")
                 assert(ir.set(m, instance, "opt.instance", key),
                        "opt.instantiate could not identify an instance")
+                instance_index[encoded] = len(instances)
+                instances += [instance]
               } else {
                 assert(ir.retarget(m, op, instance, dynamic_args(op, params)),
                        "opt.instantiate could not reuse an instance")

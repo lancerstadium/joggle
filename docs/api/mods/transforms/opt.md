@@ -109,6 +109,31 @@ flowchart TD
 A policy cannot nominate a function that was absent from the compatible list.
 That keeps profitability extensible without moving type safety into policy code.
 
+### Instance lookup
+
+`opt.instantiate(m, impls)` binds generic implementations into concrete local
+functions. Calls with the same specialization key reuse a body; calls with
+different shapes or bound constants produce separate bodies.
+
+| Key component | What it distinguishes |
+| --- | --- |
+| qualified function and signature | implementations and overloads |
+| applied generic arguments | concrete element types and shapes |
+| static argument positions, types, and values | bound constants |
+
+At the start of each invocation, `instantiate` indexes the existing local
+functions carrying `opt.instance` metadata. New bodies enter that index as
+they are created. Subsequent calls look up their key instead of enumerating
+all functions again. The lookup checks the stored key before retargeting.
+For example, 48 added calls alternating between two already-instantiated
+shapes continue to use the same two bodies, including after a print/parse
+round trip.
+
+The index lives only for the current invocation. Selection policies cannot
+mutate the graph, and the next invocation reconstructs the index from the
+current functions. This lookup optimization does not track changes to source
+implementation bodies or replace source-to-derived invalidation.
+
 ## Mechanism and limits
 
 Worklists re-check live operations after structural edits and stop at explicit
