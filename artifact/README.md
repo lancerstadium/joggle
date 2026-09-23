@@ -16,6 +16,14 @@ design is in [`PROTOCOL.md`](PROTOCOL.md). Raw measurements belong under
 The release path contains only the four claim-facing figures above. Figure 7
 combines operator and model results.
 
+The model companion display accepts matched native runs from Joggle, ORT,
+TVM, and ONNX-MLIR through `figure_07_models.py --models`. The base-path
+ablation is optional. Assembly checks each run's provenance, numerical oracle,
+input identity, thread controls, and complete model population before plotting.
+The common-set aggregate uses only models correct in every selected system;
+the per-model CSV retains absolute medians and p95 values even when the ORT
+reference fails validation. Operator and model figures share one canvas size.
+
 ## Build and inputs
 
 ```sh

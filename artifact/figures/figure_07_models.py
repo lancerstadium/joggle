@@ -25,14 +25,14 @@ from figure_07_performance import HATCHES, LABELS, MODEL_LABELS, VARIANTS, plot_
 
 ARTIFACT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ARTIFACT))
-from merge_benchmark_rows import audited_input, convert, header, sha256, write_json
+from merge_benchmark_rows import audited_input, audit_protocols, convert, header, sha256, write_json
 from validate_figure import performance
 
 
 def write_csv(path: Path, rows: list[dict[str, object]], fields: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=fields)
+        writer = csv.DictWriter(stream, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
@@ -46,18 +46,11 @@ def assemble(sources: list[Path], output: Path) -> None:
     if len(policies) != 1:
         raise ValueError("refusing to mix different numerical oracle policies")
     records = [json.loads(path.with_suffix(".run.json").read_text()) for path in sources]
+    spec_path = ARTIFACT / "manifests/benchmark-cases.json"
+    audit_protocols(sources, "models", json.loads(spec_path.read_text()), sha256(spec_path))
     shared = ("benchmark_spec_sha256", "input_index_sha256", "execution_iterations",
-              "execution_batches", "warmups", "seed", "thread_environment",
-              "host_controls", "model_files", "cases", "group")
-    for field in shared:
-        if any(record[field] != records[0][field] for record in records[1:]):
-            raise ValueError(f"incompatible native runs: {field}")
-    joggle = [record for record in records if record.get("variant") in VARIANTS]
-    if len(joggle) != 2 or {record["variant"] for record in joggle} != set(VARIANTS):
-        raise ValueError("one base and one optimized Joggle run are required")
-    for field in ("git_revision", "joggle_sha256", "compiler", "compile_flags"):
-        if joggle[0][field] != joggle[1][field]:
-            raise ValueError(f"unmatched Joggle variants: {field}")
+              "execution_batches", "warmups", "seed", "host_controls",
+              "model_files", "cases", "group")
     rows = [row for source in sources
             for row in convert(source, "model", header(ARTIFACT / "templates/benchmark-models.csv"))]
     rows.sort(key=lambda row: (row["subject"], row["variant"], int(row["iteration"] or -1)))
@@ -98,8 +91,8 @@ def validate(rows: list[dict[str, str]]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("csv", type=Path, help="Audited model source-data export")
-    parser.add_argument("--models", type=Path, nargs=3,
-                        help="Build source-data CSV from base, opt, and ORT native runs")
+    parser.add_argument("--models", type=Path, nargs="+",
+                        help="Build source-data CSV from matched native model runs; base is optional")
     parser.add_argument("--output", type=Path, default=Path("paper/figures/figure-07-models.pdf"))
     parser.add_argument("--summary", type=Path, default=Path("paper/data/figure-07-models-summary.csv"))
     parser.add_argument("--font-size", type=float, default=6.0)

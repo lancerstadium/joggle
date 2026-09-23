@@ -153,10 +153,11 @@ The final experiment quantifies the performance and coverage of code emitted
 through the programmable infrastructure. One matrix contains 24 fixed operator graphs---four each for
 elementwise chains, reductions, matrix multiplication, convolution,
 quantization, and fusion---and the same 15 model subjects. We compare Joggle's
-required lowering path, the same path plus its frozen optimization pack, and a
-pinned single-thread ONNX Runtime CPU reference. The operator comparison also
-includes TVM Relax's default LLVM CPU pipeline without tuning and ONNX-MLIR's
-LLVM pipeline at \texttt{-O3}, with parallelism and fast math disabled.
+optimized lowering path with a pinned single-thread ONNX Runtime CPU reference,
+TVM Relax's default LLVM CPU pipeline without tuning, and ONNX-MLIR's
+LLVM pipeline at \texttt{-O3}, with parallelism and fast math disabled. The operator
+study additionally measures Joggle's required lowering path without the
+optimization pack to isolate its effect.
 Each case uses byte-identical inputs; dtype-specific numerical oracles gate its timing results. Joggle fixes
 each entry signature from those inputs before either lowering pipeline begins.
 
@@ -224,32 +225,36 @@ the base path. These results distinguish optimization gains from
 cross-system kernel performance and complement the compiler update costs in
 Section~\ref{sec:eval-efficient}.
 
-Figure~\ref{fig:model-performance} extends the comparison to all 15 models.
-Both Joggle paths pass the numerical oracle on the same 11 models; ONNX Runtime
-passes all 15. SSD-MobileNet and TinyYOLOv3 stop during preparation, while
-EfficientNet INT8 and QDQ exceed the numerical tolerance. These four cases
-remain visible in the figure and do not enter latency aggregates.
+Figure~\ref{fig:model-performance} extends the external comparison to all 15
+models. Joggle passes the numerical oracle on 14 models, ORT on 13, and TVM and
+ONNX-MLIR on 11 each. Joggle executes both EfficientNet quantization variants
+and both TinyYOLO models; SSD-MobileNet stops during preparation. Correctness
+is checked against the unoptimized ONNX graph. ORT's optimized executions of
+MobileNetV2 and EfficientNet QDQ exceed the tolerance, so these two models have
+no ORT-normalized ratio even where another system produces a correct executable.
 
-Across the 11 jointly correct models, the optimization pack reduces latency by
-a geometric mean of $2.30\times$ relative to the base path. The corresponding
-latency ratios to ONNX Runtime are $48.52\times$ for the base path and
-$21.05\times$ for the optimized path. All 11 optimized models remain slower
-than ONNX Runtime. MobileNetV2 improves from 192.94 to 86.85\,ms, whereas XCiT
-changes from 3081.52 to 2955.53\,ms; the respective ONNX Runtime medians are
-6.02 and 36.24\,ms. The pack therefore accelerates MobileNetV2 by
-$2.22\times$ but XCiT by only $1.04\times$. The model breakdown separates
-these workload-dependent gains from the suite-wide aggregate.
+Eight models pass in all four systems. On this common set, geometric mean
+latency relative to ORT is $24.83\times$ for Joggle, $52.11\times$ for TVM, and
+$23.84\times$ for ONNX-MLIR. Thus Joggle runs $2.10\times$ faster than default
+TVM, while ONNX-MLIR runs $1.04\times$ faster than Joggle; ORT has the lowest
+aggregate latency. The per-family panels separate this execution comparison
+from coverage: a failed candidate is marked $\times$, and a correct candidate
+without a valid ORT reference is marked with a dash. Absolute medians and p95
+values for every correct candidate remain in the accompanying CSV.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-07-models.pdf}
   \caption{Model execution by family. Bars show median latency / ORT;
-  whiskers reach p95 over 100 samples. $\times$C/$\times$N mark
-  preparation/numerical failures. Panel (f) aggregates the 11 jointly correct models.}
-  \Description{Six boxed panels contain paired base and optimized bars:
-  five model groups cover all 15 subjects and one panel gives geometric means.
-  Four failed cases are marked explicitly. All 11 correct optimized models
-  are faster than the base path but slower than ONNX Runtime.}
+  whiskers reach p95 over 100 samples. $\times$ marks failed candidates; a dash
+  marks correct candidates without a valid ORT reference. Panel (f) aggregates
+  the eight models correct in all four systems. Correct coverage is 14/15 for
+  Joggle, 13/15 for ORT, and 11/15 each for TVM and ONNX-MLIR.}
+  \Description{Six boxed panels compare Joggle, TVM, and ONNX-MLIR with ORT:
+  five model groups cover all 15 subjects and one gives common-set geometric
+  means. Failed candidates and unavailable reference ratios have distinct
+  symbols. On the eight-model common set, Joggle is faster than TVM and slower
+  than ONNX-MLIR and ORT.}
   \label{fig:model-performance}
 \end{figure}
 

@@ -3,30 +3,29 @@
     "densenet-12",
     "googlenet-12",
     "mnist-8",
-    "mobilenetv2-7",
     "resnet18-v1-7",
     "shufflenet-v2-12",
-    "squeezenet1.0-13-qdq",
     "squeezenet1.1-7",
     "tinyyolov2-8",
-    "ultraface-rfb-320",
     "xcit-tiny-12-p8-224-opset17"
   ],
   "correct": {
-    "joggle-optimized": 11,
-    "joggle-unoptimized": 11,
-    "onnxruntime": 15
+    "joggle-optimized": 14,
+    "onnx-mlir-llvm": 11,
+    "onnxruntime": 13,
+    "tvm-relax-llvm": 11
   },
   "estimator": "median of 100 execution samples; whisker from median to p95",
   "failed_latency": "absent, not zero; no failed model included in the geometric mean",
-  "geometric_base_over_opt": 2.304782972188989,
+  "geometric_base_over_opt": null,
   "geometric_latency_over_ort": {
-    "joggle-optimized": 21.052514256574295,
-    "joggle-unoptimized": 48.521476380318376
+    "joggle-optimized": 24.83192576120602,
+    "onnx-mlir-llvm": 23.84164354262065,
+    "tvm-relax-llvm": 52.105697694459934
   },
-  "normalization": "each Joggle latency divided by same-model ORT median",
-  "paired_correct": 11,
+  "normalization": "each candidate latency divided by same-model ORT median",
+  "paired_correct": 8,
   "population": 15,
   "source_csv": "paper/data/figure-07-models.csv",
-  "source_sha256": "9492b7da2c580da7823b2a41cf568d0805a75be841ab88ffe79e13cf89372871"
+  "source_sha256": "1cfe11f01eba62d2a4f969b11e57864eb149fbdc702c9872237468885fe6c603"
 }

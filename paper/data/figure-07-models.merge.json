@@ -2,29 +2,59 @@
   "complete_model_population": true,
   "inputs": [
     {
-      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-joggle-base-40fc928.csv",
-      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-joggle-base-40fc928.run.json",
-      "record_sha256": "3eb5110c77b0c9eb1a8180955295f790a946162c1ed770f60f9103c63693a960",
-      "sha256": "c1772407ab295cdb6faddbf326486667d37c0762d3e1a9d5037cb7d8e5a15b1a"
+      "correctness_oracle": {
+        "graph_optimization": "ORT_DISABLE_ALL",
+        "provider": "CPUExecutionProvider",
+        "runtime": "onnxruntime-1.26.0",
+        "schema": "onnx-graph-semantics/v1"
+      },
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-joggle-optimized-38a426d.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-joggle-optimized-38a426d.run.json",
+      "record_sha256": "89c2ad5cfcea94bfb7d8f8fb3a0e074919d7d37c0ea2d1d6a7c8e643063f6087",
+      "sha256": "ca2165e4de24b6208923e2ffcecef6a37b7a7326d171a8d826fdef907b210b73"
     },
     {
-      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-joggle-opt-40fc928.csv",
-      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-joggle-opt-40fc928.run.json",
-      "record_sha256": "813b33124b04073b79c30786a59b55e0757437fe7dab3934810caf9919ac34a0",
-      "sha256": "71d59385cf9c11b6c9d6dc136d0d146b48d692d19ec0b9d0e7d908001e651d75"
+      "correctness_oracle": {
+        "graph_optimization": "ORT_DISABLE_ALL",
+        "provider": "CPUExecutionProvider",
+        "runtime": "onnxruntime-1.26.0",
+        "schema": "onnx-graph-semantics/v1"
+      },
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-ort-isolated.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-ort-isolated.run.json",
+      "record_sha256": "67e94449f63bfc50d8a6d57613df73d2011bde213c429c6f26ca800419013e8d",
+      "sha256": "4269c754260f6acbd05dcd0a0c3fbed89fd374874f50b35bc50ed44909bf8f4e"
     },
     {
-      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-ort-becdc24.csv",
-      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-ort-becdc24.run.json",
-      "record_sha256": "dbc623a8b8832bd2af67362b4f3a9c0c55062da2f9fa71b2468390b651d44ec6",
-      "sha256": "e47e2ae9c43cc1e7cbd1e98629efb08a40c457c33bda56496837a6e7fd7e10e9"
+      "correctness_oracle": {
+        "graph_optimization": "ORT_DISABLE_ALL",
+        "provider": "CPUExecutionProvider",
+        "runtime": "onnxruntime-1.26.0",
+        "schema": "onnx-graph-semantics/v1"
+      },
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-tvm-1ec6b62.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-tvm-1ec6b62.run.json",
+      "record_sha256": "cd9463658c43de84bf89bdf42419befea553f6084dad263eb8b8f74caff6f8dc",
+      "sha256": "f7c6ef8e90596b09745bacf60d0d8bff622b0beef59552f2b4e5fa2f6a196936"
+    },
+    {
+      "correctness_oracle": {
+        "graph_optimization": "ORT_DISABLE_ALL",
+        "provider": "CPUExecutionProvider",
+        "runtime": "onnxruntime-1.26.0",
+        "schema": "onnx-graph-semantics/v1"
+      },
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-onnx-mlir-90e606b.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-onnx-mlir-90e606b.run.json",
+      "record_sha256": "9bc8698a54de54137dd7871ace569825db64f3c4027615ef2e9856628a8fa0c4",
+      "sha256": "9a0ae0c9b8313ae6672b6925c3bb772e9bb69e0edb51ab1a214b211512e251e4"
     }
   ],
   "output": {
     "path": "paper/data/figure-07-models.csv",
-    "sha256": "9492b7da2c580da7823b2a41cf568d0805a75be841ab88ffe79e13cf89372871"
+    "sha256": "1cfe11f01eba62d2a4f969b11e57864eb149fbdc702c9872237468885fe6c603"
   },
-  "rows": 3708,
+  "rows": 4911,
   "schema": "model-performance-merge/v1",
   "shared_protocol": {
     "benchmark_spec_sha256": "2fa842e74a5cfcbf59217c4e1d85f7cf2fd11e09dc5ef429f8510965e0835d00",
@@ -133,18 +163,12 @@
       }
     ],
     "seed": 20260921,
-    "thread_environment": {
-      "MKL_NUM_THREADS": "1",
-      "NUMEXPR_NUM_THREADS": "1",
-      "OMP_NUM_THREADS": "1",
-      "OPENBLAS_NUM_THREADS": "1",
-      "VECLIB_MAXIMUM_THREADS": "1"
-    },
     "warmups": 10
   },
   "source_revisions": [
-    "40fc9288722d4f204fc0e0b32fa2c21691fb186e",
-    "40fc9288722d4f204fc0e0b32fa2c21691fb186e",
-    "becdc24d2f365edb6bd87bd0567cc3dde3a1d6a3"
+    "38a426da11b74b090681cc6ee8e668aa02646371",
+    "ef22c69a900f69f903caad0e6a8b0a2fd00569ac",
+    "1ec6b62ad26542a0230c77a9f9f1829df6e04a7f",
+    "90e606b6f80cb8167769260049b277453f9b0c2f"
   ]
 }
