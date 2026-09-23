@@ -42,6 +42,30 @@ local fn state_value(
 }
 
 [memo]
+local fn written_bindings(loop: Op) -> dict {
+  var names: dict = {}
+  for op in nested(loop) {
+    let form = ir.form(op)
+    if form == "assign" || form == "compound" || form == "index_assign" {
+      for value in ir.outs(op) {
+        if ir.name(value) != "" { names[ir.name(value)] = true }
+      }
+    }
+  }
+  return names
+}
+
+[memo]
+local fn mutable_declaration(loop: Op, op: Op) -> bool {
+  if ir.form(op) != "var" { return false }
+  let written = written_bindings(loop)
+  for value in ir.outs(op) {
+    if base.has(written, ir.name(value)) { return true }
+  }
+  return false
+}
+
+[memo]
 local fn address_only(
   m: Mod,
   loop: Op,
@@ -52,6 +76,9 @@ local fn address_only(
   // so this walk cannot traverse a structured backedge. Keeping the path out
   // of the memo key lets converging address chains share their answer.
   for user in ir.users(value) {
+    // A dead SSA initializer may still declare storage used by later writes.
+    // Retain its input chain as well as the declaration itself.
+    if mutable_declaration(loop, user) { return false }
     if !has_op(accesses, user) || !index_arg(m, user, value) {
       if ir.kind(user) != "call" || len(ir.outs(user)) == 0 ||
          len(base.keys(ir.meta(user))) != 0 {
@@ -73,7 +100,8 @@ local fn drop_address(
   m: Mod, loop: Op, op: Op, accesses: list<Op>
 ) -> bool {
   let outputs = ir.outs(op)
-  if len(outputs) == 0 || len(base.keys(ir.meta(op))) != 0 {
+  if len(outputs) == 0 || len(base.keys(ir.meta(op))) != 0 ||
+     mutable_declaration(loop, op) {
     return false
   }
   for output in outputs {

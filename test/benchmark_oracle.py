@@ -39,6 +39,43 @@ from merge_update_rows import production_rows, sha256 as file_sha256
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_resident_scalarization_preserves_mutable_index_declarations(self):
+        repo = Path(__file__).resolve().parents[1]
+        compiler = Path(os.environ.get("JOGGLE_RESIDENT_COMPILER", repo / "build/artifact/joggle-artifact-reactive"))
+        if not compiler.is_file() or not shutil.which("cc"):
+            self.skipTest("resident compiler and C compiler are required")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            variants = [(False, False), (False, True), (True, False), (True, True)]
+            sources = []
+            for i, (left, right) in enumerate(variants):
+                lhs = "[3, 2]" if left else "[2, 3]"
+                rhs = "[4, 3]" if right else "[3, 4]"
+                source = root / f"{i}.jog"
+                source.write_text(f"mod transpose\nuse tensor\n"
+                    f"fn main(a: tensor<f32, {lhs}>, b: tensor<f32, {rhs}>) -> tensor<f32, [2, 4]> {{\n"
+                    f"return tensor.matmul<f32, {lhs}, {rhs}, [2, 4]>(a,b,{str(left).lower()},{str(right).lower()},1.0)\n}}\n")
+                sources.append(source)
+            output = root / "compiled"
+            lowered = subprocess.run([str(compiler), "--compile-sequence", str(repo / "modules"),
+                                      str(output), *map(str, sources)], capture_output=True, text=True, timeout=30)
+            self.assertEqual(lowered.returncode, 0, lowered.stderr)
+            for i, (left, right) in enumerate(variants):
+                with self.subTest(transpose_a=left, transpose_b=right):
+                    harness = root / f"main{i}.c"
+                    harness.write_text("void transpose_main(const float*,const float*,float*);\n"
+                        "int main(void){float a[6]={1,-2,3,4,-5,6},b[12]={7,1,-3,2,5,-4,8,6,-2,9,3,4},out[8];"
+                        "for(int repeat=0;repeat<2;++repeat){transpose_main(a,b,out);"
+                        "for(int row=0;row<2;++row)for(int col=0;col<4;++col){float expected=0;"
+                        "for(int k=0;k<3;++k)expected+=a[" + ("k*2+row" if left else "row*3+k") +
+                        "]*b[" + ("col*3+k" if right else "k*4+col") +
+                        "];if(out[row*4+col]!=expected)return 1;}a[0]+=2;}return 0;}\n")
+                    compiled = subprocess.run([shutil.which("cc"), "-std=c11", "-Werror", "-O2",
+                        str(output / f"{i}.c"), str(harness), "-o", str(root / "run")],
+                        capture_output=True, text=True, timeout=30)
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    subprocess.run([str(root / "run")], check=True, timeout=10)
+
     @unittest.skipUnless(importlib.util.find_spec("xdsl"), "xDSL is required")
     def test_quantized_operation_native_construction_and_verifier(self):
         from io import StringIO
