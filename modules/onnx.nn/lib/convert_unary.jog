@@ -12,7 +12,7 @@ local fn convert_unary(m: Mod, op: Op, callee: str) -> bool {
 }
 
 [phase: "compute", on: [
-  "onnx.Relu", "onnx.Abs", "onnx.Sqrt", "onnx.Reciprocal",
+  "onnx.Relu", "onnx.Abs", "onnx.Neg", "onnx.Sqrt", "onnx.Reciprocal",
   "onnx.Cos", "onnx.Sin",
   "onnx.Tanh", "onnx.Exp", "onnx.Floor", "onnx.Log", "onnx.Erf",
   "onnx.Sigmoid", "onnx.Ceil", "onnx.Round"

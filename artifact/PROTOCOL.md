@@ -147,8 +147,8 @@ index, domain, and before/after operator names to the source model SHA-256.
 Both paths apply and validate that edit inside the measured boundary. Oracle
 outputs are prepared separately using the same deterministic edit. These samples
 do not yet define a prescribed edit population or paired repetitions.
-The production collector must add those components and the Joggle
-resident update path before these samples can support the main comparison.
+The production collector must add the population and paired repetitions before
+these samples can support the main comparison.
 
 `joggle-artifact-reactive --compile-sequence MODULES OUTDIR SOURCE...` supplies
 the resident Joggle lowering endpoint. Each source is a fresh, specialized Jog
@@ -159,6 +159,17 @@ an existing output directory. ONNX decoding, source edit application, entry
 specialization, host C compilation, and numerical validation are outside this
 endpoint and must be included by the end-to-end collector. This path measures
 resident-plan reuse, not restoration of source operations or subgraph reuse.
+
+The same worker now accepts `--backend joggle` with `--joggle`,
+`--joggle-server`, and `--builtin-mods`. It uses the native server's line-based
+request protocol to validate the first executable before requesting the second.
+Each measured build includes ONNX edit application, decoding and specialization,
+resident lowering and emission, shared-library compilation, input/output binding,
+execution, and comparison with separately generated reference tensors. Resident
+environment setup is recorded separately. The numerical check uses the same
+tolerances and oracle as the external workers. This worker adds the complete
+Joggle path, but a prescribed population, paired repetitions, and release
+provenance are still required before assembling Figure 6.
 
 ### Supporting matched-stage diagnostic
 

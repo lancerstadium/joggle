@@ -56,6 +56,7 @@ local fn unary_rules() -> list<list<str>> {
   return [
     ["onnx.Relu", "nn.relu"],
     ["onnx.Abs", "nn.abs"],
+    ["onnx.Neg", "nn.neg"],
     ["onnx.Sqrt", "nn.sqrt"],
     ["onnx.Cos", "nn.cos"],
     ["onnx.Sin", "nn.sin"],
@@ -72,7 +73,7 @@ local fn unary_rules() -> list<list<str>> {
 }
 
 [phase: "infer", on: [
-  "onnx.Relu", "onnx.Abs", "onnx.Dropout", "onnx.Sqrt", "onnx.Reciprocal",
+  "onnx.Relu", "onnx.Abs", "onnx.Neg", "onnx.Dropout", "onnx.Sqrt", "onnx.Reciprocal",
   "onnx.Cos", "onnx.Sin",
   "onnx.Tanh", "onnx.Exp", "onnx.Floor", "onnx.Log", "onnx.Erf",
   "onnx.Sigmoid", "onnx.Ceil", "onnx.Round",
@@ -114,4 +115,3 @@ local fn unary_shape_type(m: Mod, op: Op, squeeze: bool) -> bool {
   }
   return set_type(m, outputs[0], result)
 }
-

@@ -222,13 +222,18 @@ def checked_native_build(factory, model: bytes, feeds: dict, names: list[str],
 def production_update(args: argparse.Namespace) -> dict[str, Any]:
     """One full or resident-runtime rebuild; no synthetic incremental cache."""
     import onnx
-    from benchmark_backends import ONNXMLIRRunner, TVMRunner
+    from benchmark_backends import ONNXMLIRRunner, TVMRunner, JoggleCompiler, JoggleRunner
 
     measurement, _, feeds = load_case(args.spec, args.inputs, args.case_id)
     spec = json.loads(args.spec.read_text())
     case = next(c for c in spec["operator_cases"] + spec["model_cases"]
                 if c["id"] == args.case_id)
-    if args.backend == "tvm":
+    resident = None
+    if args.backend == "joggle":
+        factory = lambda model, inputs: JoggleRunner(model, inputs, resident,
+            args.joggle, args.builtin_mods, args.cc, args.case_timeout)
+        retained = "resident-env-and-evaluator-plans; fresh-source-graph"
+    elif args.backend == "tvm":
         import tvm  # Initialize libraries before either timing boundary.
         from tvm.relax.frontend.onnx import from_onnx  # noqa: F401
         factory = lambda model, inputs: TVMRunner(
@@ -239,7 +244,7 @@ def production_update(args: argparse.Namespace) -> dict[str, Any]:
             model, inputs, args.onnx_mlir, measurement["threads"])
         retained = "resident-host-runtime; fresh-native-compiler-subprocess"
     else:
-        raise ValueError("production update requires TVM or ONNX-MLIR")
+        raise ValueError("production update requires Joggle, TVM, or ONNX-MLIR")
     original = args.model.read_bytes()
     edit = json.loads(args.edit_json.read_text())
     # Generate the edited reference outside candidate timing. The identical
@@ -261,6 +266,10 @@ def production_update(args: argparse.Namespace) -> dict[str, Any]:
         return record
 
     try:
+        setup_started = time.perf_counter_ns()
+        if args.backend == "joggle":
+            resident = JoggleCompiler(args.joggle_server, args.builtin_mods, args.case_timeout)
+        setup_ns = time.perf_counter_ns() - setup_started
         initial = build(original, args.model) if args.worker == "update" else None
         with tempfile.TemporaryDirectory(prefix="joggle-edited-reference-") as directory:
             path = Path(directory) / "edited.onnx"
@@ -270,6 +279,7 @@ def production_update(args: argparse.Namespace) -> dict[str, Any]:
                 "policy": args.worker, "case_id": args.case_id,
                 "edit_delivery": "hash-bound-node-replacement",
                 "edit_sha256": sha256(json.dumps(edit, sort_keys=True).encode()),
+                "resident_setup_ns": setup_ns if resident is not None else None,
                 "retained_state": retained if initial else "fresh-worker",
                 "initial": initial, "replacement": result,
                 "oracle": correctness_oracle_record(),
@@ -278,6 +288,8 @@ def production_update(args: argparse.Namespace) -> dict[str, Any]:
         for runner in reversed(runners):
             if hasattr(runner, "close"):
                 runner.close()
+        if resident is not None:
+            resident.close()
 
 
 def worker(args: argparse.Namespace) -> int:
@@ -619,7 +631,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--worker", choices=("execute", "oracle", "update", "rebuild"))
     parser.add_argument("--edit-json", type=Path)
-    parser.add_argument("--backend", choices=("onnxruntime", "tvm", "onnx-mlir"), default="onnxruntime")
+    parser.add_argument("--backend", choices=("onnxruntime", "tvm", "onnx-mlir", "joggle"), default="onnxruntime")
+    parser.add_argument("--joggle", type=Path, default=root.parent / "build/joggle")
+    parser.add_argument("--joggle-server", type=Path,
+                        default=root.parent / "build/artifact/joggle-artifact-reactive")
+    parser.add_argument("--builtin-mods", type=Path, default=root.parent / "build/modules")
+    parser.add_argument("--cc", default="cc")
     parser.add_argument("--onnx-mlir", type=Path, help="path to the ONNX-MLIR compiler executable")
     parser.add_argument("--target-json", default='{"kind":"llvm","num-cores":1}')
     parser.add_argument("--case-timeout", type=float, default=1200)
@@ -640,6 +657,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
     args = parser.parse_args()
+    if args.backend == "joggle":
+        if args.worker not in {"update", "rebuild"}:
+            parser.error("resident Joggle backend requires an update or rebuild worker")
+        if not args.joggle.is_file() or not args.joggle_server.is_file() or not args.builtin_mods.is_dir():
+            parser.error("resident Joggle backend requires built tools and mods")
     if args.backend == "onnx-mlir" and (not args.onnx_mlir or not args.onnx_mlir.is_file()):
         parser.error("--backend onnx-mlir requires an existing --onnx-mlir executable")
     try:
@@ -658,7 +680,7 @@ def parse_args() -> argparse.Namespace:
         if args.worker == "oracle" and not args.output:
             parser.error("oracle worker requires --output")
         if args.worker in {"update", "rebuild"} and args.backend == "onnxruntime":
-            parser.error("production update workers require tvm or onnx-mlir")
+            parser.error("production update workers require joggle, tvm, or onnx-mlir")
         if args.worker in {"update", "rebuild"} and (not args.edit_json or not args.edit_json.is_file()):
             parser.error("production workers require an existing --edit-json")
         if args.edit_json and args.worker not in {"update", "rebuild"}:

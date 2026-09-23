@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import ctypes
 import hashlib
+import json
+import select
 import subprocess
 import tempfile
 import time
@@ -15,6 +17,164 @@ from pathlib import Path
 
 
 ONNX_MLIR_FLAGS = ("-O3", "--parallel=false", "--enable-fast-math=false", "--EmitLib")
+
+
+class JoggleCompiler:
+    """Resident native environment; each request lowers a fresh source graph."""
+
+    def __init__(self, server: Path, modules: Path, timeout: float):
+        self.timeout = timeout
+        self.errors = tempfile.TemporaryFile(mode="w+t")
+        self.process = None
+        try:
+            self.process = subprocess.Popen(
+                [str(server.resolve()), "--compile-server", str(modules.resolve())],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.errors,
+                text=True, bufsize=1)
+            if self.receive() != {"ready": True}:
+                raise RuntimeError("invalid resident compiler greeting")
+        except BaseException:
+            self.close()
+            raise
+
+    def receive(self):
+        if not select.select([self.process.stdout], [], [], self.timeout)[0]:
+            raise TimeoutError("resident compiler response timed out")
+        line = self.process.stdout.readline()
+        if not line:
+            self.errors.seek(0)
+            raise RuntimeError("resident compiler stopped: " + self.errors.read())
+        return json.loads(line)
+
+    def compile(self, source: Path, output: Path):
+        self.process.stdin.write(json.dumps({"source": str(source.resolve()),
+                                            "output": str(output.resolve())}) + "\n")
+        self.process.stdin.flush()
+        if self.receive().get("ok") is not True:
+            raise RuntimeError("resident compiler rejected source")
+
+    def close(self):
+        if self.process is not None:
+            try:
+                self.process.stdin.close()
+            except BrokenPipeError:
+                pass
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait()
+            self.process.stdout.close()
+            self.process = None
+        self.errors.close()
+
+
+class JoggleRunner:
+    def __init__(self, model: bytes, feeds: dict, compiler: JoggleCompiler,
+                 tool: Path, modules: Path, cc: str, timeout: float):
+        import numpy as np
+        import onnx
+        from joggle_entry import signature_command
+        from run_joggle_benchmarks import run_to_file
+
+        self._temporary = tempfile.TemporaryDirectory(prefix="joggle-native-update-")
+        self._lib = None
+        self._invoked = False
+        self.stages_ns = {}
+        try:
+            root = Path(self._temporary.name)
+            proto = onnx.load_model_from_string(model)
+            self.names = [item.name for item in proto.graph.output]
+            constants = {item.name for item in proto.graph.initializer}
+            inputs = [item.name for item in proto.graph.input if item.name not in constants]
+            if set(inputs) != set(feeds):
+                raise ValueError("input names differ from ONNX graph")
+            path = root / "model.onnx"
+            path.write_bytes(model)
+            started = time.perf_counter_ns()
+            run_to_file([tool, "read", "onnx.read", path, "-M", modules],
+                        root / "read.jog", "onnx.read", timeout)
+            signature = [{"dtype": feeds[name].dtype.name, "shape": list(feeds[name].shape)}
+                         for name in inputs]
+            run_to_file(signature_command(tool, root / "read.jog", modules, signature),
+                        root / "source.jog", "opt.signature", timeout)
+            self.stages_ns["decode_specialize"] = time.perf_counter_ns() - started
+            started = time.perf_counter_ns()
+            output = root / "compiled"
+            compiler.compile(root / "source.jog", output)
+            self.stages_ns["lower_emit"] = time.perf_counter_ns() - started
+            started = time.perf_counter_ns()
+            library = root / "model.so"
+            subprocess.run([cc, "-std=c11", "-O3", "-DNDEBUG", "-shared", "-fPIC",
+                            str(output / "0.c"), "-lm", "-o", str(library)],
+                           check=True, capture_output=True, timeout=timeout)
+            self.stages_ns["host_compile"] = time.perf_counter_ns() - started
+            started = time.perf_counter_ns()
+            api = json.loads((output / "0.api.json").read_text())
+            entries = [entry for entry in api if entry["name"] == "model_main"]
+            if len(entries) != 1:
+                raise ValueError("missing generated model_main ABI")
+            entry = entries[0]
+            if len(entry["params"]) != len(inputs) or len(entry["results"]) != len(self.names):
+                raise ValueError("generated ABI arity differs from ONNX graph")
+            dtypes = {"float": "float32", "double": "float64", "bool": "bool",
+                      **{f"{sign}int{bits}_t": f"{sign}int{bits}"
+                         for sign in ("", "u") for bits in (8, 16, 32, 64)}}
+            self._arrays, self._outputs, self._arguments, argument_types = [], [], [], []
+            for name, parameter in zip(inputs, entry["params"], strict=True):
+                array = np.ascontiguousarray(feeds[name])
+                if (not parameter["pointer"] or parameter["shape"] != list(array.shape)
+                        or dtypes.get(parameter["c"]) != array.dtype.name):
+                    raise ValueError("unsupported generated input ABI")
+                self._arrays.append(array)
+                self._arguments.append(array.ctypes.data)
+                argument_types.append(ctypes.c_void_p)
+            for result in entry["results"]:
+                dtype = np.dtype(dtypes[result["c"]])
+                size = result["bytes"]
+                if not result["pointer"] or type(size) is not int or size < 0 or size % dtype.itemsize:
+                    raise ValueError("unsupported generated output ABI")
+                array = np.zeros(max(1, size // dtype.itemsize), dtype=dtype)
+                self._arguments.append(array.ctypes.data)
+                argument_types.append(ctypes.c_void_p)
+                dims = []
+                for extent in result["shape"]:
+                    if extent == "_":
+                        extent = ctypes.c_int64(-1)
+                        self._arguments.append(ctypes.byref(extent))
+                        argument_types.append(ctypes.POINTER(ctypes.c_int64))
+                    dims.append(extent)
+                self._outputs.append((array, dims, size // dtype.itemsize))
+            self._lib = ctypes.CDLL(str(library))
+            self._entry = self._lib.model_main
+            self._entry.argtypes, self._entry.restype = argument_types, None
+            self.stages_ns["bind"] = time.perf_counter_ns() - started
+        except BaseException:
+            self.close()
+            raise
+
+    def invoke(self):
+        if self._lib is None:
+            raise RuntimeError("runner is closed")
+        self._entry(*self._arguments)
+        self._invoked = True
+
+    def outputs(self):
+        import math
+        if self._lib is None or not self._invoked:
+            raise RuntimeError("invoke a live runner before reading outputs")
+        values = []
+        for array, dims, capacity in self._outputs:
+            shape = tuple(dim.value if isinstance(dim, ctypes.c_int64) else dim for dim in dims)
+            if any(type(dim) is not int or dim < 0 for dim in shape) or math.prod(shape) > capacity:
+                raise ValueError("generated result shape exceeds allocated capacity")
+            values.append(array[:math.prod(shape)].reshape(shape).copy())
+        return values
+
+    def close(self):
+        self._lib = None
+        self._entry = None
+        self._temporary.cleanup()
 
 
 def onnx_mlir_identity(compiler: Path) -> dict:

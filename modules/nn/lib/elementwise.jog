@@ -297,6 +297,16 @@ fn where<
   return out
 }
 
+fn neg<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = -x[i]
+  }
+  return out
+}
+
 fn abs<E: Ty, S: list<int>>(
   x: tensor<E, S>
 ) -> tensor<E, S> {

@@ -456,6 +456,8 @@ class BenchmarkOracleTests(unittest.TestCase):
                 with self.assertRaises((ValueError, onnx.checker.ValidationError)):
                     apply_model_edit(model_path.read_bytes(), {**edit, **changes})
             backends = []
+            if (Path(__file__).resolve().parents[1] / "build/artifact/joggle-artifact-reactive").is_file():
+                backends.append(["--backend", "joggle"])
             if importlib.util.find_spec("tvm"):
                 backends.append(["--backend", "tvm"])
             if os.environ.get("ONNX_MLIR_BIN"):
@@ -467,8 +469,11 @@ class BenchmarkOracleTests(unittest.TestCase):
                               "artifact/run_baseline_benchmarks.py"), "--spec", str(spec_path),
                               "--inputs", str(root), "--case-id", "isolation", *backend,
                               "--model", str(model_path), "--edit-json", str(edit_path)]
-                    updated = run_json(common + ["--worker", "update"])
-                    rebuilt = run_json(common + ["--worker", "rebuild"])
+                    try:
+                        updated = run_json(common + ["--worker", "update"])
+                        rebuilt = run_json(common + ["--worker", "rebuild"])
+                    except subprocess.CalledProcessError as error:
+                        self.fail(error.stderr)
                     self.assertTrue(updated["initial"]["correct"])
                     self.assertTrue(updated["replacement"]["correct"])
                     self.assertIsNone(rebuilt["initial"])

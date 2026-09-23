@@ -43,6 +43,18 @@ Other public activation/scalar families include `tanh`, `sigmoid`, `sqrt`,
 `add`, `sub`, `mul`, `div`, `maximum`, `minimum`, `pow`, comparisons, and
 `where` have same-shape and broadcast forms.
 
+`neg` preserves a tensor's shape and applies scalar negation elementwise:
+
+```jog
+fn reverse_sign(x: tensor<f32, [3]>) -> tensor<f32, [3]> {
+  return nn.neg(x)
+}
+```
+
+For input `[1.5, -2.0, 4.0]`, this returns `[-1.5, 2.0, -4.0]`.
+The ONNX frontend maps `Neg` to this operation through the same unary
+shape-inference and conversion rules used by the other elementwise functions.
+
 `add`, `sub`, `mul`, and `div` share a runtime broadcast implementation. Extents
 and zero-stride indexing determine the shared output shape, including `_`
 dimensions; no expanded input tensors are materialized. For example,
