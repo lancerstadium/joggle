@@ -131,6 +131,31 @@ class BenchmarkOracleTests(unittest.TestCase):
                                      [np.array([2], dtype=np.float32)], 0, 0)
             self.assertTrue(runner.closed)
 
+    def test_instruction_selection_checks_target_constraints_and_tiles(self):
+        root = Path(__file__).resolve().parents[1] / "artifact"
+        task = next(t for t in json.loads((root / "manifests/extension-specs.json").read_text())["tasks"]
+                    if t["id"] == "con-instruction-select")
+        for case in task["positive_cases"] + task["negative_cases"]:
+            with self.subTest(case=case["id"]):
+                original = graph_manifest(rewrite_graph(case["input"]))
+                selected = graph_manifest(rewrite_graph(case["input"], True))
+                self.assertTrue(rewrite_numerics(original, original, False)["passed"])
+                if case["expect"]["eliminate"]:
+                    self.assertTrue(rewrite_numerics(selected, original, False)["passed"])
+                    self.assertNotEqual(original, selected)
+                    broken = copy.deepcopy(selected)
+                    broken["nodes"][0]["attrs"] = [["tiles", [0, 0, 0]]]
+                    with self.assertRaises(ValueError):
+                        rewrite_numerics(broken, original, False)
+                else:
+                    with self.assertRaises(ValueError):
+                        rewrite_numerics(selected, original, False)
+                for system in ("Joggle", "MLIR", "xDSL"):
+                    fixture = graph_fixture(rewrite_graph(case["input"]), system)
+                    self.assertIn("mma_m16n16k16", fixture)
+                    self.assertNotIn("tiles", fixture)
+                    self.assertNotIn("request", fixture)
+
     def test_transpose_rewrite_oracle_checks_permutations_not_shapes(self):
         root = Path(__file__).resolve().parents[1] / "artifact"
         task = next(t for t in json.loads((root / "manifests/extension-specs.json").read_text())["tasks"]

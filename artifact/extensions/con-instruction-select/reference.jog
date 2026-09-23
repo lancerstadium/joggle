@@ -1,0 +1,32 @@
+mod extension
+use base
+use ir
+
+fn transform(m: Mod) -> bool {
+  var changed = false
+  for op in ir.ops(ir.find(m, "subject"), ["call"]) {
+    if ir.callee(op) == "matmul" && len(ir.args(op)) == 2 && len(ir.outs(op)) == 1 {
+      let a = ir.type(ir.args(op)[0])
+      let b = ir.type(ir.args(op)[1])
+      let c = ir.type(ir.outs(op)[0])
+      if name(a) == "tensor" && name(b) == "tensor" && name(c) == "tensor" &&
+         text(args(a)[0]) == "f16" && text(args(b)[0]) == "f16" && text(args(c)[0]) == "f32" {
+        let x = args(args(a)[1])
+        let y = args(args(b)[1])
+        let z = args(args(c)[1])
+        if len(x) == 2 && len(y) == 2 && len(z) == 2 {
+          let rows = int(x[0])
+          let depth = int(x[1])
+          let cols = int(y[1])
+          if rows > 0 && depth > 0 && cols > 0 && rows % 16 == 0 && depth % 16 == 0 && cols % 16 == 0 &&
+             x[1] == y[0] && z[0] == x[0] && z[1] == y[1] {
+            assert(ir.retarget(m, op, ir.find(m, "mma_m16n16k16")), "retarget failed")
+            ir.set(m, op, "tiles", [rows / 16, cols / 16, depth / 16])
+            changed = true
+          }
+        }
+      }
+    }
+  }
+  return changed
+}

@@ -54,7 +54,7 @@ python3 artifact/validate_extension_specs.py
 The native tasks include `ana-broadcast-shape`, `ana-storage-cost`,
 `ana-numeric-range`, `ana-fusion-match`, `emit-storage-plan`,
 `emit-target-capability`, `emit-graph-manifest`, `rew-add-zero`, and
-`rew-redundant-cast`, and `rew-transpose-pair`.
+`rew-redundant-cast`, `rew-transpose-pair`, and `con-instruction-select`.
 Each task directory under `extensions/` contains reference implementations for
 Joggle, MLIR, and xDSL; the shared `starter.*` files contain their empty entry
 points. Attribute-analysis tasks read a request from function metadata in
@@ -134,6 +134,14 @@ independently parsed and checked structurally and bitwise on five input sets.
 Malformed permutations must produce the specified diagnostic and no output
 IR. A no-op starter fails all required eliminations and rejection cases.
 
+`con-instruction-select` retargets native matrix-product calls to a declared
+tiled target and attaches the selected tile counts. Ten cases cover single
+and multiple tiles, repeated result users, each ragged dimension, non-f16
+inputs, zero extents, and batched products. The observer checks the complete
+post-conversion graph, preserved metadata, and tile order; the numerical oracle
+checks f32-accumulation semantics on five input sets. This task measures compiler
+extension correctness, not GPU instruction throughput.
+
 ### Local agent execution
 
 `run_extension_agent.py` runs an installed Ollama model with four actions:
@@ -176,7 +184,7 @@ The current collector emits integration records with `release_eligible: false`.
 It records successful native execution but does not infer a failed compiler's
 parse/type/build phase from its exit code. Unmeasured phase fields and reference
 likelihoods remain empty. These records cannot enter the release assembler.
-The full matrix additionally requires the remaining 14 native task harnesses,
+The full matrix additionally requires the remaining 13 native task harnesses,
 phase-specific instrumentation, and the frozen demonstration sets. The
 assembler consumes complete provider records:
 

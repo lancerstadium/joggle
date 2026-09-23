@@ -113,3 +113,9 @@ encodes element type and source/result shapes. `op.attributes["perm"]` is an
 dimensions before rewriting, including rank-zero lists. Preserve shared inner
 results. Invalid permutations must raise `ValueError("invalid-permutation")`
 before the driver prints any transformed IR.
+
+`con-instruction-select` uses the same mutation entry. Both `matmul` and the
+matching target `mma_m16n16k16` are declared. Inspect ranked operand/result
+types; assign `op.properties["callee"] = SymbolRefAttr(name)` to retarget.
+Use `ArrayAttr` of `IntegerAttr(value, i64)` for `tiles` metadata. Preserve other
+keys and every result user; negative or zero dimensions cannot select the target.

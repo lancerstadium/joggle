@@ -116,3 +116,9 @@ returns permutation entries as `IntegerAttr`. Validate indices and tensor
 result dimensions before rewriting, including rank-zero lists. Preserve shared
 inner results. Invalid permutations must print `invalid-permutation` to stderr
 and exit with a positive status before emitting IR (for example via `std::exit`).
+
+`con-instruction-select` uses the same mutation entry. Both `matmul` and the
+matching target `mma_m16n16k16` are declared. Inspect ranked operand/result
+types; `CallOp::setCallee` changes the target without replacing values.
+`Builder::getI64ArrayAttr` constructs the `tiles` metadata. Preserve other keys
+and every result user; negative or zero dimensions cannot select the target.

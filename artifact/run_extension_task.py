@@ -24,9 +24,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SUPPORTED_TASKS = {"ana-broadcast-shape", "ana-storage-cost", "ana-numeric-range",
                    "ana-fusion-match", "emit-storage-plan", "emit-target-capability",
-                   "emit-graph-manifest", "rew-add-zero", "rew-redundant-cast", "rew-transpose-pair"}
+                   "emit-graph-manifest", "rew-add-zero", "rew-redundant-cast", "rew-transpose-pair",
+                   "con-instruction-select"}
 
-REWRITE_TASKS = {"rew-add-zero", "rew-redundant-cast", "rew-transpose-pair"}
+REWRITE_TASKS = {"rew-add-zero", "rew-redundant-cast", "rew-transpose-pair", "con-instruction-select"}
+
+
+def matmul_graph(request: dict, select: bool) -> dict:
+    element = request["type"]
+    a, b = request["lhs"], request["rhs"]
+    result = {"name": "y", "element": "f32", "shape": a[:-1] + [b[-1]]}
+    target = {"op": "mma_m16n16k16", "inputs": ["a", "b"], "results": [result]}
+    node = {"op": "mma_m16n16k16" if select else "matmul",
+            "inputs": ["a", "b"], "results": [result], "attrs": {"tag": "selection"}}
+    if select:
+        node["attrs"]["tiles"] = [a[-2] // 16, b[-1] // 16, a[-1] // 16]
+    return {"inputs": [{"name": "a", "element": element, "shape": a},
+                       {"name": "b", "element": element, "shape": b}],
+            "declarations": [target], "nodes": [node],
+            "outputs": ["y", "y"] if request.get("repeated_output") else ["y"]}
 
 
 def expected_rejection(step: dict, expected: dict) -> bool:
@@ -84,6 +100,8 @@ def cast_graph(request: dict, eliminate: bool) -> dict:
 
 def rewrite_graph(request: dict, eliminate: bool = False) -> dict:
     """Build the tensor-dialect fixture; the extension sees native SSA, not this map."""
+    if "lhs" in request and "rhs" in request:
+        return matmul_graph(request, eliminate)
     if "casts" in request:
         return cast_graph(request, eliminate)
     if "p" in request and "q" in request:
@@ -129,7 +147,7 @@ def graph_manifest(graph: dict) -> dict:
 def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool) -> dict:
     """Interpret the independently observed post-IR, including strict zero bits."""
     import numpy as np
-    dtypes = {"f32": np.float32, "f64": np.float64, "i8": np.int8,
+    dtypes = {"f16": np.float16, "f32": np.float32, "f64": np.float64, "i8": np.int8,
               "i16": np.int16, "i32": np.int32, "i64": np.int64}
     def evaluate(graph: dict, sample: list[float]) -> list:
         values = {}
@@ -153,6 +171,16 @@ def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool) -> dic
                 value = np.broadcast_to(converted, ty["shape"])
             elif node["op"].startswith("transpose_") and len(node["inputs"]) == 1:
                 value = np.transpose(values[node["inputs"][0]], attrs["perm"])
+            elif node["op"] in {"matmul", "mma_m16n16k16"} and len(node["inputs"]) == 2:
+                inputs = [values[key] for key in node["inputs"]]
+                a, b = (value.astype(np.float32) for value in inputs)
+                if node["op"] == "mma_m16n16k16":
+                    if (any(value.dtype != np.float16 for value in inputs) or
+                            a.ndim != 2 or b.ndim != 2 or a.shape[1] != b.shape[0] or
+                            any(d <= 0 or d % 16 for d in (*a.shape, b.shape[1])) or
+                            attrs.get("tiles") != [a.shape[0] // 16, b.shape[1] // 16, a.shape[1] // 16]):
+                        raise ValueError("invalid matrix instruction selection")
+                value = np.matmul(a, b)
             else:
                 raise ValueError("unsupported operation in rewrite result")
             if list(value.shape) != ty["shape"]:
@@ -293,7 +321,8 @@ def graph_fixture(request: dict, system: str) -> str:
 
     values = {value["name"]: tensor(value) for value in request["inputs"]}
     declarations, body = {}, []
-    for node in request["nodes"]:
+    extra = request.get("declarations", [])
+    for index, node in enumerate([*extra, *request["nodes"]]):
         operands = node["inputs"]
         inputs = [values[name] for name in operands]
         outputs = [tensor(value) for value in node["results"]]
@@ -301,6 +330,8 @@ def graph_fixture(request: dict, system: str) -> str:
         if node["op"] in declarations and declarations[node["op"]] != signature:
             raise ValueError("fixture symbols must have one function signature")
         declarations[node["op"]] = signature
+        if index < len(extra):
+            continue
         for result, ty in zip(node["results"], outputs, strict=True):
             if result["name"] in values:
                 raise ValueError("fixture result redefines an SSA name")

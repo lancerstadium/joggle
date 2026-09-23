@@ -38,6 +38,12 @@ Check permutation entries with `kind` and `int`, including rank-zero lists.
 Preserve an inner result with other users. Invalid permutations must fail with
 `assert(false, "invalid-permutation")` before emitting any transformed IR.
 
+`con-instruction-select` also uses `transform`. The subject contains `matmul`
+calls and a matching `mma_m16n16k16` declaration. Read tensor shape dimensions
+with `args(args(type)[1])` and `int`; `ir.retarget(m, op, ir.find(m, name))`
+changes the callee while retaining operands and result users. Add metadata with
+`ir.set(m, op, "tiles", [m_tiles, n_tiles, k_tiles])` without dropping other keys.
+
 ## Analysis entry point
 
 Edit the supplied `module.jog`. Its public entry point is:

@@ -294,14 +294,20 @@
       "title": "Matrix instruction selection",
       "footprint": false,
       "required_roles": ["conversion"],
-      "contract": "Select mma_m16n16k16 for rank-two f16 matrix multiplication when M, N, and K are positive multiples of 16; otherwise retain the generic matrix multiplication.",
+      "contract": "Retarget native SSA matmul calls to the declared mma_m16n16k16 target when both inputs are rank-two f16 tensors, the f32 result has shape [M,N], the inner dimensions agree, and M,N,K are positive multiples of 16. Add tiles=[M/16,N/16,K/16], preserving other attributes, operands, and all result users. Otherwise retain the original call. Both operations denote complete matrix products with f32 accumulation; the target denotes a tiled instruction schedule, not a single hardware instruction or a measured GPU kernel.",
       "positive_cases": [
-        {"id": "single-tile", "input": {"lhs": [16, 16], "rhs": [16, 16], "type": "f16"}, "expect": {"op": "mma_m16n16k16", "tiles": [1, 1, 1]}},
-        {"id": "multi-tile", "input": {"lhs": [32, 48], "rhs": [48, 64], "type": "f16"}, "expect": {"op": "mma_m16n16k16", "tiles": [2, 4, 3]}}
+        {"id": "single-tile", "input": {"lhs": [16, 16], "rhs": [16, 16], "type": "f16"}, "expect": {"eliminate": true}},
+        {"id": "multi-tile", "input": {"lhs": [32, 48], "rhs": [48, 64], "type": "f16"}, "expect": {"eliminate": true}},
+        {"id": "repeated-result", "input": {"lhs": [16, 32], "rhs": [32, 48], "type": "f16", "repeated_output": true}, "expect": {"eliminate": true}}
       ],
       "negative_cases": [
-        {"id": "ragged", "input": {"lhs": [17, 16], "rhs": [16, 16], "type": "f16"}, "expect": {"op": "matmul"}},
-        {"id": "wrong-type", "input": {"lhs": [16, 16], "rhs": [16, 16], "type": "f32"}, "expect": {"op": "matmul"}}
+        {"id": "ragged", "input": {"lhs": [17, 16], "rhs": [16, 16], "type": "f16"}, "expect": {"eliminate": false}},
+        {"id": "ragged-n", "input": {"lhs": [16, 16], "rhs": [16, 17], "type": "f16"}, "expect": {"eliminate": false}},
+        {"id": "ragged-k", "input": {"lhs": [16, 17], "rhs": [17, 16], "type": "f16"}, "expect": {"eliminate": false}},
+        {"id": "wrong-type", "input": {"lhs": [16, 16], "rhs": [16, 16], "type": "f32"}, "expect": {"eliminate": false}},
+        {"id": "zero-depth", "input": {"lhs": [16, 0], "rhs": [0, 16], "type": "f16"}, "expect": {"eliminate": false}},
+        {"id": "zero-rows", "input": {"lhs": [0, 16], "rhs": [16, 16], "type": "f16"}, "expect": {"eliminate": false}},
+        {"id": "batched", "input": {"lhs": [2, 16, 16], "rhs": [2, 16, 16], "type": "f16"}, "expect": {"eliminate": false}}
       ],
       "oracle": {"phases": ["type", "build", "semantic"], "comparison": "numerical"}
     },
