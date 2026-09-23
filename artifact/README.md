@@ -55,7 +55,7 @@ The native tasks include `ana-broadcast-shape`, `ana-storage-cost`,
 `ana-numeric-range`, `ana-fusion-match`, `emit-storage-plan`,
 `emit-target-capability`, `emit-graph-manifest`, `rew-add-zero`, and
 `rew-redundant-cast`, `rew-transpose-pair`, `con-instruction-select`, and
-`con-gelu-expand`.
+`con-gelu-expand`, and `con-quant-expand`.
 Each task directory under `extensions/` contains reference implementations for
 Joggle, MLIR, and xDSL; the shared `starter.*` files contain their empty entry
 points. Attribute-analysis tasks read a request from function metadata in
@@ -152,6 +152,15 @@ binary64 GELU semantics on seven input sets using the task's dtype-specific
 tolerances. An unchanged GELU call or an arithmetically incorrect expansion
 fails. Constant values remain explicit IR attributes, not driver-side answers.
 
+`con-quant-expand` replaces native qadd with dequantize, floating add, and
+quantize operations. Ten cases cover mixed scales, ties-to-even, odd output
+zero points, independent input zero points, both saturation limits, repeated
+outputs, scalars, and nonpositive scales. Target graphs are checked on five
+deterministic input pairs and the case's explicit values. The latter also have
+hand-specified integer answers in the task contract. Integer outputs must match
+exactly. Zero points are added after rounding, and source data are not embedded
+in the native IR presented to the candidate.
+
 ### Local agent execution
 
 `run_extension_agent.py` runs an installed Ollama model with four actions:
@@ -194,7 +203,7 @@ The current collector emits integration records with `release_eligible: false`.
 It records successful native execution but does not infer a failed compiler's
 parse/type/build phase from its exit code. Unmeasured phase fields and reference
 likelihoods remain empty. These records cannot enter the release assembler.
-The full matrix additionally requires the remaining 12 native task harnesses,
+The full matrix additionally requires the remaining 11 native task harnesses,
 phase-specific instrumentation, and the frozen demonstration sets. The
 assembler consumes complete provider records:
 

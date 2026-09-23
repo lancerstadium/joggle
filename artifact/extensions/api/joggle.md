@@ -52,6 +52,13 @@ binding with `ir.rename(m, result, stem, ir.key(result))`. Check mutation return
 values; `ir.set(m, ir.def(result), "value", attr)` adds a splat constant.
 Redirect uses with `ir.replace`, then erase the old GELU operation.
 
+For `con-quant-expand`, qadd metadata contains `lhs_scale`, `rhs_scale`,
+`output_scale`, and a three-element `zeros` list. Construct the intermediate
+type with `ty("tensor", [ty("f32"), args(output_type)[1]])`. The declared targets
+are `dequantize` (i8 to f32), `add` (f32), and `quantize` (f32 to i8).
+Bind new results before adding each conversion's `scale` and `zero` attributes.
+Preserve all output uses and reject nonpositive scales before mutation.
+
 ## Analysis entry point
 
 Edit the supplied `module.jog`. Its public entry point is:

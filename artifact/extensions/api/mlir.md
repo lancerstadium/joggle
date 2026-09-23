@@ -128,3 +128,9 @@ are declared with the subject tensor type. Set `OpBuilder`'s insertion point
 before the source call and create typed `func::CallOp` operations. Attach a
 splat's `value` with `Builder::getF64FloatAttr`, replace all source result uses,
 and erase the old GELU call. Reject unsupported types before emitting IR.
+
+For `con-quant-expand`, qadd attributes include three floating scales and the
+`zeros` array. Construct an intermediate `RankedTensorType` with f32 elements
+and the same shape. The supplied targets are `dequantize` (i8 to f32), `add`
+(f32), and `quantize` (f32 to i8). Copy each conversion's corresponding `scale`
+and `zero` attributes. Preserve result users and reject nonpositive scales.

@@ -27,7 +27,8 @@ from run_joggle_benchmarks import compiler_identity, checkpoint_protocol, make_h
 from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
 from run_extension_task import (execute, fusion_fixture, graph_fixture, sandbox_policy,
-                                equivalent, rewrite_graph, graph_manifest, rewrite_numerics, gelu_structure)
+                                equivalent, rewrite_graph, graph_manifest, rewrite_numerics, gelu_structure,
+                                quant_structure)
 from run_extension_agent import public_case_ids, tool_feedback, response_usage, final_checks
 import run_extension_agent
 from merge_benchmark_rows import audited_input
@@ -130,6 +131,40 @@ class BenchmarkOracleTests(unittest.TestCase):
                 checked_native_build(lambda model, feeds: runner, b"edited", {}, names,
                                      [np.array([2], dtype=np.float32)], 0, 0)
             self.assertTrue(runner.closed)
+
+    def test_quant_conversion_checks_rounding_zero_points_and_saturation(self):
+        root = Path(__file__).resolve().parents[1] / "artifact"
+        task = next(t for t in json.loads((root / "manifests/extension-specs.json").read_text())["tasks"]
+                    if t["id"] == "con-quant-expand")
+        for case in task["positive_cases"] + task["negative_cases"]:
+            request = case["input"]
+            source = rewrite_graph(request)
+            original = graph_manifest(source)
+            if "error" in case["expect"]:
+                with self.assertRaises(ValueError):
+                    rewrite_numerics(original, original, False)
+                continue
+            shape = source["inputs"][0]["shape"]
+            def node(name, op, inputs, element, attrs):
+                return {"op": op, "inputs": inputs, "attrs": attrs,
+                        "results": [{"name": name, "element": element, "shape": shape}]}
+            zeros = request["zeros"]
+            nodes = [node("l", "dequantize", ["a"], "f32", {"scale": request["lhs_scale"], "zero": zeros[0]}),
+                     node("r", "dequantize", ["b"], "f32", {"scale": request["rhs_scale"], "zero": zeros[1]}),
+                     node("s", "add", ["l", "r"], "f32", {}),
+                     node("y", "quantize", ["s"], "i8", {"scale": request["output_scale"], "zero": zeros[2]})]
+            graph = source | {"nodes": nodes}
+            expanded = graph_manifest(graph)
+            feeds = {"v0": request["lhs"], "v1": request["rhs"]}
+            self.assertTrue(quant_structure(expanded, original))
+            self.assertFalse(quant_structure(original, original))
+            report = rewrite_numerics(expanded, original, False, extra_feeds=feeds)
+            self.assertTrue(report["passed"], case["id"])
+            observed = np.frombuffer(bytes.fromhex(report["cases"][-1]["before_bits"][0]), dtype=np.int8)
+            self.assertEqual(observed.tolist(), case["expect"]["values"])
+            graph["nodes"][-1]["attrs"]["zero"] += 1
+            self.assertFalse(rewrite_numerics(graph_manifest(graph), original, False,
+                                            extra_feeds=feeds)["passed"], case["id"])
 
     def test_gelu_conversion_checks_semantics_without_fixed_node_order(self):
         for element, tolerance in (("f32", (1e-5, 1e-6)), ("f64", (1e-12, 1e-12))):

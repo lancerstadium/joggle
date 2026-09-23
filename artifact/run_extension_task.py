@@ -25,10 +25,25 @@ ROOT = Path(__file__).resolve().parent
 SUPPORTED_TASKS = {"ana-broadcast-shape", "ana-storage-cost", "ana-numeric-range",
                    "ana-fusion-match", "emit-storage-plan", "emit-target-capability",
                    "emit-graph-manifest", "rew-add-zero", "rew-redundant-cast", "rew-transpose-pair",
-                   "con-instruction-select", "con-gelu-expand"}
+                   "con-instruction-select", "con-gelu-expand", "con-quant-expand"}
 
-REWRITE_TASKS = {"rew-add-zero", "rew-redundant-cast", "rew-transpose-pair", "con-instruction-select", "con-gelu-expand"}
+REWRITE_TASKS = {"rew-add-zero", "rew-redundant-cast", "rew-transpose-pair", "con-instruction-select", "con-gelu-expand", "con-quant-expand"}
 GELU_TOLERANCES = {"f32": (1e-5, 1e-6), "f64": (1e-12, 1e-12)}
+
+
+def quant_graph(request: dict) -> dict:
+    shape = request.get("shape", [len(request.get("lhs", [0] * 4))])
+    a = {"name": "a", "element": "i8", "shape": shape}
+    b = {**a, "name": "b"}
+    y = {**a, "name": "y"}
+    floating = {**a, "element": "f32"}
+    attrs = {key: request[key] for key in ("lhs_scale", "rhs_scale", "output_scale", "zeros")}
+    return {"inputs": [a, b], "declarations": [
+        {"op": "dequantize", "parameter_types": [a], "results": [floating]},
+        {"op": "add", "parameter_types": [floating, floating], "results": [floating]},
+        {"op": "quantize", "parameter_types": [floating], "results": [y]}],
+        "nodes": [{"op": "qadd", "inputs": ["a", "b"], "results": [y], "attrs": attrs}],
+        "outputs": ["y", "a", "y"] if request.get("shared_output") else ["y"]}
 
 
 def gelu_graph(request: dict) -> dict:
@@ -41,13 +56,12 @@ def gelu_graph(request: dict) -> dict:
             "outputs": ["y", "x", "y"] if request.get("shared_output") else ["y"]}
 
 
-def gelu_structure(actual: dict, original: dict) -> bool:
+def conversion_structure(actual: dict, original: dict, allowed: dict, required: set) -> bool:
     """Accept target graphs without fixing constant order or parenthesization."""
     if not isinstance(actual, dict) or actual.get("inputs") != original["inputs"]:
         return False
     nodes = actual.get("nodes", [])
-    allowed = {"splat": 0, "mul": 2, "div": 2, "add": 2, "erf": 1}
-    if not nodes or not any(node.get("op") == "erf" for node in nodes):
+    if not nodes or not required.issubset({node.get("op") for node in nodes}):
         return False
     value_types = {value["id"]: value["type"] for value in actual["inputs"]}
     for node in nodes:
@@ -63,6 +77,16 @@ def gelu_structure(actual: dict, original: dict) -> bool:
     original_types.update({value["id"]: value["type"] for node in original["nodes"] for value in node["results"]})
     return ([value_types.get(value) for value in actual.get("outputs", [])] ==
             [original_types[value] for value in original["outputs"]])
+
+
+def gelu_structure(actual: dict, original: dict) -> bool:
+    return conversion_structure(actual, original,
+                                {"splat": 0, "mul": 2, "div": 2, "add": 2, "erf": 1}, {"erf"})
+
+
+def quant_structure(actual: dict, original: dict) -> bool:
+    return conversion_structure(actual, original, {"dequantize": 1, "add": 2, "quantize": 1},
+                                {"dequantize", "add", "quantize"})
 
 
 def matmul_graph(request: dict, select: bool) -> dict:
@@ -135,6 +159,8 @@ def cast_graph(request: dict, eliminate: bool) -> dict:
 
 def rewrite_graph(request: dict, eliminate: bool = False) -> dict:
     """Build the tensor-dialect fixture; the extension sees native SSA, not this map."""
+    if "lhs_scale" in request:
+        return quant_graph(request)
     if request.get("op") == "gelu":
         return gelu_graph(request)
     if "lhs" in request and "rhs" in request:
@@ -182,17 +208,19 @@ def graph_manifest(graph: dict) -> dict:
 
 
 def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool,
-                     tolerance: tuple[float, float] | None = None) -> dict:
+                     tolerance: tuple[float, float] | None = None,
+                     extra_feeds: dict | None = None) -> dict:
     """Interpret the independently observed post-IR, including strict zero bits."""
     import numpy as np
     dtypes = {"f16": np.float16, "f32": np.float32, "f64": np.float64, "i8": np.int8,
               "i16": np.int16, "i32": np.int32, "i64": np.int64}
     def evaluate(graph: dict, sample: list[float]) -> list:
         values = {}
-        for value in graph["inputs"]:
+        for index, value in enumerate(graph["inputs"]):
             ty = value["type"]
             count = math.prod(ty["shape"])
-            values[value["id"]] = np.resize(np.asarray(sample).astype(dtypes[ty["element"]]), count).reshape(ty["shape"])
+            items = sample[value["id"]] if isinstance(sample, dict) else np.roll(sample, index)
+            values[value["id"]] = np.resize(np.asarray(items).astype(dtypes[ty["element"]]), count).reshape(ty["shape"])
         for node in graph["nodes"]:
             if len(node["results"]) != 1:
                 raise ValueError("rewrite oracle requires one result per fixture operation")
@@ -201,6 +229,22 @@ def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool,
             attrs = dict(node["attrs"])
             if node["op"] == "splat" and not node["inputs"]:
                 value = np.full(ty["shape"], attrs["value"], dtype=dtypes[ty["element"]])
+            elif node["op"] in {"qadd", "dequantize", "quantize"}:
+                def scale(key):
+                    result = np.float32(attrs[key])
+                    if not np.isfinite(result) or result <= 0:
+                        raise ValueError("invalid-scale")
+                    return result
+                if node["op"] == "qadd":
+                    a, b = (values[key].astype(np.float32) for key in node["inputs"])
+                    zero_a, zero_b, zero_y = attrs["zeros"]
+                    real = (a - np.float32(zero_a)) * scale("lhs_scale") + (b - np.float32(zero_b)) * scale("rhs_scale")
+                    value = np.clip(np.rint(real / scale("output_scale")) + zero_y, -128, 127).astype(np.int8)
+                elif node["op"] == "dequantize":
+                    value = (values[node["inputs"][0]].astype(np.float32) - np.float32(attrs["zero"])) * scale("scale")
+                else:
+                    real = values[node["inputs"][0]].astype(np.float32)
+                    value = np.clip(np.rint(real / scale("scale")) + attrs["zero"], -128, 127).astype(np.int8)
             elif node["op"] == "add" and len(node["inputs"]) == 2:
                 a, b = (values[key] for key in node["inputs"])
                 value = np.add(a, b, dtype=dtypes[ty["element"]])
@@ -240,6 +284,8 @@ def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool,
                [0, 0, 0, 0], [0.1, -0.3, 1.5, -2.75], [-128, 127, 256, -257]]
     if tolerance is not None:
         samples += [[-3, -1, 0, 1, 3], [-8, -4, -2, 0.5, 4]]
+    if extra_feeds is not None:
+        samples.append(extra_feeds)
     for sample in samples:
         before, after = evaluate(original, sample), evaluate(actual, sample)
         passed = len(before) == len(after)
@@ -377,8 +423,9 @@ def graph_fixture(request: dict, system: str) -> str:
     declarations, body = {}, []
     extra = request.get("declarations", [])
     for index, node in enumerate([*extra, *request["nodes"]]):
-        operands = node["inputs"]
-        inputs = [values[name] for name in operands]
+        operands = node.get("inputs", [])
+        inputs = ([tensor(value) for value in node["parameter_types"]]
+                  if index < len(extra) and "parameter_types" in node else [values[name] for name in operands])
         outputs = [tensor(value) for value in node["results"]]
         signature = (inputs, outputs)
         if node["op"] in declarations and declarations[node["op"]] != signature:
@@ -661,20 +708,22 @@ def main() -> int:
                         error = str(failure)
                 # Numeric tasks use the shared tolerance only for numbers;
                 # object keys, sequence lengths, Booleans, and errors stay exact.
-                conversion = args.task == "con-gelu-expand"
+                conversion = args.task in {"con-gelu-expand", "con-quant-expand"}
                 expected = (case["expect"] if conversion else
                             graph_manifest(rewrite_graph(case["input"], case["expect"]["eliminate"]))
                             if rewriting else expected_result(args.task, case))
                 original = graph_manifest(rewrite_graph(case["input"])) if rewriting else None
                 passed = (step["exit_code"] == 0 and checked_step["exit_code"] == 0 and not error and
-                          (gelu_structure(actual, original) if conversion else
+                          ((gelu_structure(actual, original) if args.task == "con-gelu-expand" else
+                            quant_structure(actual, original)) if conversion else
                            equivalent(actual, expected, task["oracle"]["comparison"] == "numerical",
                                       spec["comparison_policy"])))
                 if rewriting and passed:
                     try:
-                        tolerance = GELU_TOLERANCES[case["input"]["element"]] if conversion else None
+                        tolerance = GELU_TOLERANCES[case["input"]["element"]] if args.task == "con-gelu-expand" else None
+                        feeds = {"v0": case["input"]["lhs"], "v1": case["input"]["rhs"]} if args.task == "con-quant-expand" else None
                         numerics = rewrite_numerics(actual, original,
-                                                    case["input"].get("no_signed_zeros", False), tolerance)
+                                                    case["input"].get("no_signed_zeros", False), tolerance, feeds)
                         passed = numerics["passed"]
                     except (ValueError, KeyError, TypeError) as failure:
                         passed = False

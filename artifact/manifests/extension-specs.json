@@ -266,13 +266,20 @@
       "title": "Quantized arithmetic expansion",
       "footprint": true,
       "required_roles": ["conversion"],
-      "contract": "Convert qadd into dequantize(lhs), dequantize(rhs), floating add, and quantize using round-to-nearest-ties-to-even plus i8 saturation.",
+      "contract": "Convert native i8 tensor qadd calls into two dequantize calls, f32 add, and quantize. qadd carries lhs_scale, rhs_scale, output_scale and zeros=[lhs_zero,rhs_zero,output_zero]; the target dequantize/quantize calls carry scale and zero. Use f32 arithmetic, dequantize(q)=(q-zero)*scale, and quantize(x)=clip(round_ties_even(x/scale)+zero,-128,127). Preserve tensor shape and all result users. Reject nonpositive scales with invalid-scale and no output IR. Target declarations are provided; no request dictionary is present in the native graph.",
       "positive_cases": [
         {"id": "same-scale", "input": {"lhs": [-3, 0, 5, 120], "rhs": [2, 1, -8, 120], "lhs_scale": 0.5, "rhs_scale": 0.5, "output_scale": 0.5, "zeros": [0, 0, 0]}, "expect": {"values": [-1, 1, -3, 127], "required_ops": ["dequantize", "add", "quantize"]}},
-        {"id": "mixed-scale", "input": {"lhs": [1, 2, -4, 8], "rhs": [2, -2, 4, -4], "lhs_scale": 0.5, "rhs_scale": 0.25, "output_scale": 0.25, "zeros": [0, 0, 0]}, "expect": {"values": [4, 2, -4, 12], "required_ops": ["dequantize", "add", "quantize"]}}
+        {"id": "mixed-scale", "input": {"lhs": [1, 2, -4, 8], "rhs": [2, -2, 4, -4], "lhs_scale": 0.5, "rhs_scale": 0.25, "output_scale": 0.25, "zeros": [0, 0, 0]}, "expect": {"values": [4, 2, -4, 12], "required_ops": ["dequantize", "add", "quantize"]}},
+        {"id": "ties-even", "input": {"lhs": [-3, -1, 1, 3], "rhs": [0, 0, 0, 0], "lhs_scale": 0.5, "rhs_scale": 0.5, "output_scale": 1.0, "zeros": [0, 0, 0]}, "expect": {"values": [-2, 0, 0, 2]}},
+        {"id": "odd-output-zero", "input": {"lhs": [-3, -1, 1, 3], "rhs": [0, 0, 0, 0], "lhs_scale": 0.5, "rhs_scale": 0.5, "output_scale": 1.0, "zeros": [0, 0, 1]}, "expect": {"values": [-1, 1, 1, 3]}},
+        {"id": "nonzero-input-zeros", "input": {"lhs": [1, 2, -4, 8], "rhs": [2, -2, 4, -4], "lhs_scale": 0.5, "rhs_scale": 0.25, "output_scale": 0.25, "zeros": [2, -3, 5]}, "expect": {"values": [8, 6, 0, 16]}},
+        {"id": "saturation", "input": {"lhs": [-128, 127, -128, 127], "rhs": [-128, 127, 127, -128], "lhs_scale": 1.0, "rhs_scale": 1.0, "output_scale": 0.5, "zeros": [0, 0, 0], "shared_output": true}, "expect": {"values": [-128, 127, -2, -2]}},
+        {"id": "scalar", "input": {"lhs": [3], "rhs": [-2], "shape": [], "lhs_scale": 0.5, "rhs_scale": 0.25, "output_scale": 0.25, "zeros": [0, 0, 0]}, "expect": {"values": [4]}}
       ],
       "negative_cases": [
-        {"id": "negative-scale", "input": {"lhs_scale": -0.5, "rhs_scale": 0.5, "output_scale": 0.5}, "expect": {"error": "invalid-scale", "phase": "build"}}
+        {"id": "negative-scale", "input": {"lhs_scale": -0.5, "rhs_scale": 0.5, "output_scale": 0.5, "zeros": [0, 0, 0]}, "expect": {"error": "invalid-scale", "phase": "build"}},
+        {"id": "zero-output-scale", "input": {"lhs_scale": 0.5, "rhs_scale": 0.5, "output_scale": 0.0, "zeros": [0, 0, 0]}, "expect": {"error": "invalid-scale", "phase": "build"}},
+        {"id": "negative-rhs-scale", "input": {"lhs_scale": 0.5, "rhs_scale": -0.5, "output_scale": 0.5, "zeros": [0, 0, 0]}, "expect": {"error": "invalid-scale", "phase": "build"}}
       ],
       "oracle": {"phases": ["type", "build", "semantic"], "comparison": "numerical"}
     },

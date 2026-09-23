@@ -1,0 +1,43 @@
+mod extension
+use base
+use ir
+
+local fn attributes(m: Mod, result: Val, scale: Attr, zero: Attr) -> bool {
+  assert(ir.rename(m, result, "quant_value", ir.key(result)), "binding failed")
+  assert(ir.set(m, ir.def(result), "scale", scale), "scale write failed")
+  assert(ir.set(m, ir.def(result), "zero", zero), "zero write failed")
+  return true
+}
+
+fn transform(m: Mod) -> bool {
+  let ops = ir.ops(ir.find(m, "subject"), ["call"])
+  for op in ops {
+    if ir.callee(op) == "qadd" {
+      let meta = ir.meta(op)
+      for key in ["lhs_scale", "rhs_scale", "output_scale"] {
+        assert(real(base.get(meta, key)) > real(0), "invalid-scale")
+      }
+    }
+  }
+  var changed = false
+  for op in ops {
+    if ir.callee(op) == "qadd" {
+      let meta = ir.meta(op)
+      let zeros = base.get(meta, "zeros")
+      let input = ir.args(op)
+      let output = ir.outs(op)[0]
+      let floating = ty("tensor", [ty("f32"), args(ir.type(output))[1]])
+      let left = ir.call(m, op, ir.find(m, "dequantize"), [input[0]], floating)
+      attributes(m, left, base.get(meta, "lhs_scale"), zeros[0])
+      let right = ir.call(m, op, ir.find(m, "dequantize"), [input[1]], floating)
+      attributes(m, right, base.get(meta, "rhs_scale"), zeros[1])
+      let sum = ir.call(m, op, ir.find(m, "add"), [left, right], floating)
+      let result = ir.call(m, op, ir.find(m, "quantize"), [sum], ir.type(output))
+      attributes(m, result, base.get(meta, "output_scale"), zeros[2])
+      ir.replace(m, output, result)
+      ir.erase(m, op)
+      changed = true
+    }
+  }
+  return changed
+}

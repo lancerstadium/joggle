@@ -125,3 +125,9 @@ are declared with the subject tensor type. Construct `CallOp(name, operands,
 [result_type])`, attach `FloatAttr(value, 64)` as splat's `value` attribute, and
 use `block.insert_op_before(new_op, source_op)`. Replace all source result uses
 and erase the old GELU call. Reject unsupported types before emitting IR.
+
+For `con-quant-expand`, qadd attributes include three floating scales and the
+`zeros` array. Construct intermediate `TensorType(f32, shape)` values. Supplied
+targets are `dequantize` (i8 to f32), `add` (f32), and `quantize` (f32 to i8).
+Copy each conversion's corresponding `scale` and `zero` attributes. Preserve
+result users and reject nonpositive scales before mutation.
