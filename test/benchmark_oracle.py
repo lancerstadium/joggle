@@ -34,6 +34,47 @@ from merge_benchmark_rows import audited_input
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    @unittest.skipUnless((Path(__file__).resolve().parents[1] /
+                          "build/artifact/joggle-artifact-reactive").is_file() and shutil.which("cc"),
+                         "resident compiler and C compiler are required")
+    def test_resident_lowering_keeps_fresh_sources_and_matches_full_rebuild(self):
+        repo = Path(__file__).resolve().parents[1]
+        tool = repo / "build/artifact/joggle-artifact-reactive"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            before, after = root / "before.jog", root / "after.jog"
+            for path, value in ((before, 1), (after, 2)):
+                path.write_text(f"mod resident\nfn main(x: f32) -> f32 {{ return x + f32({value}) }}\n")
+            original_sources = (before.read_bytes(), after.read_bytes())
+            command = [str(tool), "--compile-sequence", str(repo / "build/modules")]
+            warm, full = root / "warm", root / "full"
+            subprocess.run(command + [str(warm), str(before), str(after), str(before)],
+                           check=True, capture_output=True, text=True, timeout=60)
+            subprocess.run(command + [str(full), str(after)], check=True,
+                           capture_output=True, text=True, timeout=60)
+            self.assertEqual(original_sources, (before.read_bytes(), after.read_bytes()))
+            for suffix in (".c", ".h", ".api.json"):
+                self.assertEqual((warm / ("1" + suffix)).read_bytes(),
+                                 (full / ("0" + suffix)).read_bytes())
+                self.assertEqual((warm / ("0" + suffix)).read_bytes(),
+                                 (warm / ("2" + suffix)).read_bytes())
+            harness = root / "main.c"
+            harness.write_text("float resident_main(float);\n"
+                               "int main(void) { return resident_main(3.0f) != EXPECTED; }\n")
+            for index, expected in enumerate((4, 5, 4)):
+                timing = json.loads((warm / f"{index}.timing.json").read_text())
+                self.assertEqual(timing["wall_ns"], sum(timing[key] for key in
+                                 ("parse_ns", "lower_ns", "emit_ns")))
+                binary = root / f"run-{index}"
+                subprocess.run([shutil.which("cc"), "-std=c11", "-O3", f"-DEXPECTED={expected}",
+                                str(warm / f"{index}.c"), str(harness), "-o", str(binary)],
+                               check=True, capture_output=True, timeout=60)
+                subprocess.run([str(binary)], check=True, timeout=10)
+            rejected = subprocess.run(command + [str(warm), str(after)],
+                                      capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("refusing to replace", rejected.stderr)
+
     def test_checked_build_rejects_stale_outputs_and_releases_runner(self):
         class Runner:
             names = ["y"]

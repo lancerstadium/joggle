@@ -655,7 +655,98 @@ bool benchmark(const Config& config, std::ofstream& output,
 
 }  // namespace
 
+// Compile fresh source graphs in a resident environment. This endpoint keeps
+// native evaluator plans, not previously lowered graphs or synthetic caches.
+// ONNX decoding and entry specialization precede this endpoint; host compile
+// and numerical validation follow it in the production collector.
+int compile_sequence(int argc, char** argv) {
+  if (argc < 5) {
+    std::cerr << "usage: joggle-artifact-reactive --compile-sequence MODULES OUTDIR SOURCE...\n";
+    return 2;
+  }
+  const std::filesystem::path directory(argv[3]);
+  if (std::filesystem::exists(directory)) {
+    std::cerr << "refusing to replace an existing output directory\n";
+    return 2;
+  }
+  std::filesystem::create_directories(directory);
+  joggle::Env env;
+  env.path(argv[2]);
+  for (const std::string_view module : {"onnx.nn", "c", "tile", "mem"}) {
+    if (!env.load(module)) {
+      env.print_diags(stderr);
+      return 1;
+    }
+  }
+  for (int index = 4; index < argc; ++index) {
+    const auto begin = Clock::now();
+    std::ifstream input(argv[index], std::ios::binary);
+    if (!input) {
+      std::cerr << "cannot read source: " << argv[index] << '\n';
+      return 1;
+    }
+    const std::string text((std::istreambuf_iterator<char>(input)), {});
+    joggle::Mod mod;
+    if (!joggle::parse(env, text, mod, argv[index])) {
+      env.print_diags(stderr);
+      return 1;
+    }
+    const auto parsed = Clock::now();
+    constexpr std::array<std::string_view, 6> pipeline{
+        "onnx.nn.infer", "onnx.nn.convert", "c.prepare", "tile.scalarize",
+        "mem.plan", "c.noalias"};
+    joggle::Attr profile;
+    if (!joggle::run(env, pipeline, mod, {}, nullptr, &profile)) {
+      env.print_diags(stderr);
+      return 1;
+    }
+    const std::array<joggle::Attr, 1> placement{joggle::Attr("static")};
+    if (!joggle::run(env, "c.place", mod, placement)) {
+      env.print_diags(stderr);
+      return 1;
+    }
+    joggle::Attr frontier;
+    if (!joggle::query(env, "c.frontier", mod, frontier) ||
+        !frontier.list() || !frontier.list()->empty()) {
+      env.print_diags(stderr);
+      std::cerr << "production source retains an unsupported C frontier\n";
+      return 1;
+    }
+    const auto lowered = Clock::now();
+    const std::string prefix = std::to_string(index - 4);
+    for (const auto& [function, suffix] :
+         std::array<std::pair<std::string_view, std::string_view>, 3>{{
+             {"c.source", ".c"}, {"c.header", ".h"}, {"c.api", ".api.json"}}}) {
+      joggle::Attr result;
+      if (!joggle::query(env, function, mod, result)) {
+        env.print_diags(stderr);
+        return 1;
+      }
+      std::ofstream file(directory / (prefix + std::string(suffix)), std::ios::binary);
+      if (result.string()) file << *result.string();
+      else file << joggle::print(result);
+      if (!file) return 1;
+    }
+    const auto end = Clock::now();
+    const auto ns = [](auto duration) {
+      return std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+    };
+    std::ofstream timing(directory / (prefix + ".timing.json"));
+    timing << "{\"schema\":\"resident-lowering/v1\",\"sequence\":" << index - 4
+           << ",\"parse_ns\":" << ns(parsed - begin)
+           << ",\"lower_ns\":" << ns(lowered - parsed)
+           << ",\"emit_ns\":" << ns(end - lowered)
+           << ",\"wall_ns\":" << ns(end - begin) << "}\n";
+    std::ofstream detail(directory / (prefix + ".profile.attr"));
+    detail << joggle::print(profile);
+    if (!timing || !detail) return 1;
+  }
+  return 0;
+}
+
 int main(int argc, char** argv) {
+  if (argc > 1 && std::string_view(argv[1]) == "--compile-sequence")
+    return compile_sequence(argc, argv);
   Config config;
   if (!parse_args(argc, argv, config))
     return usage();

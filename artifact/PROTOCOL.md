@@ -150,6 +150,16 @@ do not yet define a prescribed edit population or paired repetitions.
 The production collector must add those components and the Joggle
 resident update path before these samples can support the main comparison.
 
+`joggle-artifact-reactive --compile-sequence MODULES OUTDIR SOURCE...` supplies
+the resident Joggle lowering endpoint. Each source is a fresh, specialized Jog
+graph; the environment retains loaded mods and evaluator plans across sources.
+The endpoint runs the unoptimized production passes and emits C, its header,
+ABI metadata, and parse/lower/emit timings per source. It refuses to overwrite
+an existing output directory. ONNX decoding, source edit application, entry
+specialization, host C compilation, and numerical validation are outside this
+endpoint and must be included by the end-to-end collector. This path measures
+resident-plan reuse, not restoration of source operations or subgraph reuse.
+
 ### Supporting matched-stage diagnostic
 
 Fifteen pinned ONNX models are decoded into a neutral typed graph that retains
