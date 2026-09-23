@@ -22,22 +22,19 @@ relevant correctness oracle enter an aggregate.
     \midrule
     Convenient & 3 systems; 24 tasks & completion, tokens \\
     Controllable & 3 systems; 12 patches & files, lines, zones \\
-    Efficient & 3 systems; 15 models & latency, visited work \\
+    Efficient & 3 systems; 15 models & update time, reuse \\
     End-to-end & 4 systems & correctness, latency \\
     \bottomrule
   \end{tabular}
 \end{table}
 
 \paragraph{Subjects and controls.}
-The first three studies compare Joggle with MLIR, a mature multi-level compiler
-infrastructure, and xDSL, a Python-native SSA framework. Each extension follows
-the system's documented path from a pinned revision. The update study imports
-one typed topology from each of 15 SHA-256-pinned ONNX models and applies the
-same edit and five-stage compiler task in every system. Its primary ratios are
-formed against that system's own full rerun and measure the fraction of rebuild
-cost retained after an edit. Absolute latency reports the combined cost of the
-runtime and selected work. End-to-end execution compares byte-identical inputs
-and numerical outputs with a pinned, single-thread ONNX Runtime CPU reference.
+Extension and ownership comparisons use Joggle, MLIR, and xDSL. Each extension
+follows its system's native API at a pinned revision. The production update
+protocol instead targets Joggle, TVM, and ONNX-MLIR: its endpoint is an
+executable for the edited model, not an analysis summary. It shares the 15
+pinned ONNX subjects and fixed inputs with the end-to-end comparison.
+End-to-end execution also includes ONNX Runtime.
 
 \paragraph{Correctness and measurement.}
 Compiler-extension tasks use build-and-test oracles; graph transformations use
@@ -125,49 +122,29 @@ separate.
 \subsection{Reactive Update Cost}
 \label{sec:eval-efficient}
 
-The update experiment measures the interval from a committed edit to a verified
-artifact. Each pinned ONNX subject is decoded once into a typed graph that
-preserves operation kinds, values, types, and def--use edges. A matched adapter
-for Joggle, MLIR, and xDSL then performs analysis, canonicalization, target
-selection, storage planning, and deterministic artifact construction. These
-are executable stages rather than graph annotations: every stage consumes its
-predecessor's result, and the final artifact is checked against a canonical
-digest and structural verifier.
+The production update endpoint is a replacement executable for a changed
+model. Its timing boundary starts when the edit is applied to a previously
+compiled model and ends after the replacement passes numerical validation
+against the edited model's reference outputs.
+Cold construction of reusable compiler state is measured separately.
 
-A case changes an operation attribute or result type at a preselected early,
-middle, or late site. For each edit, the harness also selects a control entity
-outside the affected cone. Every system first executes the complete five-stage
-path. After an edit, Joggle selects calls through its revision and dependency
-index. MLIR and xDSL execute their native complete pass paths because their
-public execution models do not retain dependencies at this granularity. Each
-numerator is paired with an independent complete rerun from the same edited
-input. The primary endpoint normalizes the edit path to that system's complete
-rerun,
+For system $s$ and edit $e$, the paired update ratio is
+
 \[
-  \operatorname{UpdateRatio}_s = \frac{T_{\mathrm{update},s}}
-                                      {T_{\mathrm{full},s}},
-  \qquad
-  \operatorname{WorkRatio}_s = \frac{V_{\mathrm{update},s}}
-                                    {V_{\mathrm{full},s}},
+\operatorname{UpdateRatio}_{s,e}=\frac{T_{\mathrm{update},s,e}}{T_{\mathrm{full},s,e}}.
 \]
-where $V$ counts graph entities visited by the five stages. Ratios are formed
-within each edit case before aggregation. Attribute and type edits, and
-affected and unrelated scopes, retain separate summaries so inexpensive
-controls cannot obscure the cost of an affected update. Absolute
-edit-to-artifact latency remains visible.
 
-A second panel calibrates these update ratios against Joggle's production
-lowering path. For the same models it reports the time spent in decoding,
-fixed-shape entry specialization with inference and conversion,
-\texttt{c.prepare}, scalar lowering, storage planning and placement, and C
-emission, together with graph size, emitted bytes, and artifact correctness.
-Entry types come from the same pinned workloads used by the end-to-end
-experiment. These full-path measurements report the collector's process and
-materialization costs alongside compiler work. Each generated artifact passes
-a C compilation check; the end-to-end experiment checks its numerical behavior.
-The complete-rebuild time is summed within each run before computing its
-median. Matched update results are checked against their corresponding
-independent full reruns.
+The denominator is a complete rebuild of the same edited model under the same
+optimization policy. Absolute update latency permits cross-system comparison;
+the ratio quantifies reuse within one system. Both measurements are necessary:
+a small ratio alone does not establish a shorter development cycle.
+
+The protocol separates model-graph, optimization-policy, and compiler-source
+edits. Each case fixes the edit location and semantics, input tensors, and
+correctness tolerance. Native caches remain enabled, with retained state and
+invalidation recorded for each path. Coverage counts the cases that produce
+correct replacement executables. Stage timings explain the total cost rather
+than replacing it with an isolated propagation measurement.
 
 \subsection{End-to-End Performance}
 \label{sec:eval-artifacts}

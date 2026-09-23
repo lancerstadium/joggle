@@ -641,22 +641,18 @@ Only outputs that pass the relevant correctness oracle enter an aggregate.
 | --- | --- | --- |
 | Convenient | 3 systems; 24 tasks | completion, tokens |
 | Controllable | 3 systems; 12 patches | files, lines, zones |
-| Efficient | 3 systems; 15 models | latency, visited work |
+| Efficient | 3 systems; 15 models | update time, reuse |
 | End-to-end | 4 systems | correctness, latency |
 
 *Table 1: Evaluation matrix. Every comparison fixes revisions, inputs, and its
 correctness oracle before measurement.*
 
-**Subjects and controls.** The first three studies compare Joggle with MLIR, a
-mature multi-level compiler infrastructure, and xDSL, a Python-native SSA
-framework. Each extension follows the system's documented path from a pinned
-revision. The update study imports one typed topology from each of 15
-SHA-256-pinned ONNX models and applies the same edit and five-stage compiler
-task in every system. Its primary ratios are formed against that system's own
-full rerun and measure the fraction of rebuild cost retained after an edit.
-Absolute latency reports the combined cost of the runtime and selected work. End-to-end
-execution compares byte-identical inputs and numerical outputs with a pinned,
-single-thread ONNX Runtime CPU reference.
+**Subjects and controls.** Extension and ownership comparisons use Joggle,
+MLIR, and xDSL. Each extension follows its system's native API at a pinned
+revision. The production update protocol instead targets Joggle, TVM, and
+ONNX-MLIR: its endpoint is an executable for the edited model, not an analysis
+summary. It shares the 15 pinned ONNX subjects and fixed inputs with the
+end-to-end comparison. End-to-end execution also includes ONNX Runtime.
 
 **Correctness and measurement.** Compiler-extension tasks use build-and-test
 oracles; graph transformations use verification and canonical structural
@@ -682,11 +678,11 @@ serif math labels and monospace annotations. Independent source glyphs for
 specification, graph G, tensor X and revision/hash. Four compact rows:
 (a) native function/type specification → Joggle/MLIR/xDSL → budgeted code/oracle
 repair loop → pass/tokens; (b) feature patch hunks and package dependency
-boundaries → (F,L,Z,R); (c) same edited G forks into update/full execution,
-matching five-node topology, highlight two affected nodes versus all five,
-artifact-equivalence check → Tu/Tf and Vu/Vf; (d) same X forks into
-base/opt/ORT, numerical comparison → median/p95 and correct/total. Brace only
-the first three rows with Joggle/MLIR/xDSL. Bottom success/failure branches
+boundaries → (F,L,Z,R); (c) same edited G forks into update/full compilation,
+replacement executables and output-tensor check → Tu and Tu/Tf;
+(d) same X forks into Joggle/ORT/TVM/ONNX-MLIR, numerical comparison →
+median/p95 and correct/total. Label extension and ownership rows
+Joggle/MLIR/xDSL; label update row Joggle/TVM/ONNX-MLIR. Success/failure branches
 both retain CSV records. This is a protocol, not numerical results. No
 fabricated bar charts, percentages, prose boxes, large headers or gradients. -->
 
@@ -769,60 +765,37 @@ cross_zone_edges,oracle_passed. -->
 
 ### 4.4 Reactive Update Cost
 
-The update experiment measures the interval from a committed edit to a verified
-artifact. Each pinned ONNX subject is decoded once into a typed graph that
-preserves operation kinds, values, types, and def--use edges. A matched adapter
-for Joggle, MLIR, and xDSL then performs analysis, canonicalization, target
-selection, storage planning, and deterministic artifact construction. These
-are executable stages rather than graph annotations: every stage consumes its
-predecessor's result, and the final artifact is checked against a canonical
-digest and structural verifier.
+The production update endpoint is a replacement executable for a changed
+model. Its timing boundary starts when the edit is applied to a previously
+compiled model and ends after the replacement passes numerical validation
+against the edited model's reference outputs.
+Cold construction of reusable compiler state is measured separately.
 
-A case changes an operation attribute or result type at a preselected early,
-middle, or late site. For each edit, the harness also selects a control entity
-outside the affected cone. Every system first executes the complete five-stage
-path. After an edit, Joggle selects calls through its revision and dependency
-index. MLIR and xDSL execute their native complete pass paths because their
-public execution models do not retain dependencies at this granularity. Each
-numerator is paired with an independent complete rerun from the same edited
-input. The primary endpoint normalizes the edit path to that system's complete
-rerun,
+For system $s$ and edit $e$, the paired update ratio is
 
 $$
-UpdateRatio_s = \frac{T_{update,s}}{T_{full,s}},
-\qquad
-WorkRatio_s = \frac{V_{update,s}}{V_{full,s}},
+UpdateRatio_{s,e}=\frac{T_{update,s,e}}{T_{full,s,e}}.
 $$
 
-where $V$ counts graph entities visited by the five stages. Ratios are formed
-within each edit case before aggregation. Attribute and type edits, and
-affected and unrelated scopes, retain separate summaries so inexpensive
-controls cannot obscure the cost of an affected update. Absolute
-edit-to-artifact latency remains visible.
+The denominator is a complete rebuild of the same edited model under the same
+optimization policy. Absolute update latency permits cross-system comparison;
+the ratio quantifies reuse within one system. Both measurements are necessary:
+a small ratio alone does not establish a shorter development cycle.
 
-A second panel calibrates these update ratios against Joggle's production
-lowering path. For the same models it reports the time spent in decoding,
-fixed-shape entry specialization with inference and conversion, `c.prepare`,
-scalar lowering, storage planning and placement, and C emission, together with
-graph size, emitted bytes, and artifact correctness. Entry types come from the
-same pinned workloads used by the end-to-end experiment. These full-path
-measurements report the collector's process and materialization costs alongside
-compiler work. Each generated artifact passes a C compilation check;
-the end-to-end experiment checks its numerical behavior. The complete-rebuild
-time is summed within each run before computing its median. Matched update
-results are checked against their corresponding independent full reruns.
+The protocol separates model-graph, optimization-policy, and compiler-source
+edits. Each case fixes the edit location and semantics, input tensors, and
+correctness tolerance. Native caches remain enabled, with retained state and
+invalidation recorded for each path. Coverage counts the cases that produce
+correct replacement executables. Stage timings explain the total cost rather
+than replacing it with an isolated propagation measurement.
 
-<!-- FIGURE 6 PLAN — Full-width, dense three-panel result. (a) Fifteen model
-rows show per-system UpdateRatio for affected attribute edits; every system's
-complete rerun is 1. Points are medians and segments show the interquartile
-range across paired cases. (b) Aligned WorkRatio rows retain true zero and
-ratios above one. (c) A numeric heatmap shows Joggle's production stages in
-seconds; the total cell is the median of within-run sums. Type edits and
-unrelated controls use separate appendix plots from the same script and CSV.
-CSV: figure-06-update.csv. Raw columns:
-path,system,system_revision,subject,subject_hash,total_ops,affected_ops,
-edit_class,edit_scope,edit_site,policy,stage,iteration,wall_ns,visited_ops,
-executed_stages,total_stages,artifact_bytes,output_digest,correct,seed. -->
+<!-- FIGURE 6 PROMPT — Production update results only. Compact aligned panels:
+absolute edit-to-executable latency by model and system; paired Update/Full
+ratios; breakdown of the same measured update paths. Separate graph, policy,
+and compiler-source edits. Shared model order, boxed axes, small inward ticks,
+and one legend. Use measured, numerically verified replacement executables;
+show unsupported coverage without assigning zero latency. Matched-stage
+diagnostic timings are not production update results. -->
 
 ### 4.5 End-to-End Performance
 
