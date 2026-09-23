@@ -14,7 +14,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from run_extension_task import ROOT, SUPPORTED_TASKS, REWRITE_TASKS, digest
+from run_extension_task import ROOT, SUPPORTED_TASKS, REWRITE_TASKS, digest, case_completed
 
 
 ACTIONS, TOKENS = 30, 32000
@@ -69,7 +69,7 @@ def final_checks(oracle, identity_check) -> tuple[dict | None, bool, list[str]]:
                 raise ValueError("invalid final oracle case record")
         if report["passed"] and (not report["cases"] or
                 any(step["exit_code"] != 0 for step in report["setup"]) or
-                any(case["exit_code"] != 0 or case["decode_error"] or
+                any(not case_completed(case) or case["decode_error"] or
                     case.get("passed") is not True for case in report["cases"])):
             raise ValueError("inconsistent final oracle success")
         final = report
@@ -313,7 +313,7 @@ def main() -> int:
     elif stop == "submitted":
         stop = "build" if any(step["exit_code"] != 0 for step in final["setup"]) else "semantic"
     gates = bool(final and all(step["exit_code"] == 0 for step in final["setup"]) and any(
-        case["exit_code"] == 0 and not case["decode_error"] for case in final["cases"]))
+        case_completed(case) for case in final["cases"]))
     patch_text = "".join(difflib.unified_diff(starter.read_text().splitlines(keepends=True),
         candidate.read_text().splitlines(keepends=True), fromfile=starter.name,
         tofile="candidate." + suffix))

@@ -222,14 +222,21 @@
       "title": "Inverse transpose cancellation",
       "footprint": false,
       "required_roles": ["rewrite"],
-      "contract": "Replace transpose(transpose(x,p),q) by x exactly when q is the inverse permutation of p; require each permutation to contain every rank index once.",
+      "contract": "Replace transpose(transpose(x,p),q) by x exactly when q is the inverse permutation of p. Operate on native SSA transpose calls with perm array attributes and ranked tensor types. Validate permutations and result shapes before rewriting; reject invalid permutations with diagnostic invalid-permutation and no transformed IR. Preserve a shared inner transpose and all output ordering. Do not simplify a single transpose.",
       "positive_cases": [
-        {"id": "rank-four", "input": {"shape": [1, 3, 8, 16], "p": [0, 2, 3, 1], "q": [0, 3, 1, 2]}, "expect": {"graph": "return arg0"}},
-        {"id": "self-inverse", "input": {"shape": [2, 5, 7], "p": [2, 1, 0], "q": [2, 1, 0]}, "expect": {"graph": "return arg0"}}
+        {"id": "rank-four", "input": {"shape": [1, 3, 8, 16], "p": [0, 2, 3, 1], "q": [0, 3, 1, 2]}, "expect": {"eliminate": true}},
+        {"id": "self-inverse", "input": {"shape": [2, 5, 7], "p": [2, 1, 0], "q": [2, 1, 0]}, "expect": {"eliminate": true}},
+        {"id": "shared-intermediate", "input": {"shape": [2, 3], "p": [1, 0], "q": [1, 0], "return_intermediate": true}, "expect": {"eliminate": true}},
+        {"id": "rank-zero", "input": {"shape": [], "p": [], "q": []}, "expect": {"eliminate": true}},
+        {"id": "integer", "input": {"element": "i32", "shape": [3, 5], "p": [1, 0], "q": [1, 0]}, "expect": {"eliminate": true}},
+        {"id": "empty-tensor", "input": {"shape": [0, 3], "p": [1, 0], "q": [1, 0]}, "expect": {"eliminate": true}}
       ],
       "negative_cases": [
-        {"id": "not-inverse", "input": {"shape": [2, 5, 7], "p": [1, 2, 0], "q": [1, 2, 0]}, "expect": {"graph": "unchanged"}},
-        {"id": "invalid-permutation", "input": {"shape": [2, 5, 7], "p": [0, 0, 2], "q": [0, 1, 2]}, "expect": {"error": "invalid-permutation", "phase": "build"}}
+        {"id": "not-inverse", "input": {"shape": [2, 5, 7], "p": [1, 2, 0], "q": [1, 2, 0]}, "expect": {"eliminate": false}},
+        {"id": "equal-dimensions", "input": {"shape": [3, 3, 3], "p": [1, 2, 0], "q": [1, 2, 0]}, "expect": {"eliminate": false}},
+        {"id": "invalid-permutation", "input": {"shape": [2, 5, 7], "p": [0, 0, 2], "q": [0, 1, 2]}, "expect": {"error": "invalid-permutation", "phase": "build"}},
+        {"id": "out-of-range", "input": {"shape": [2, 3], "p": [0, 2], "q": [0, 1]}, "expect": {"error": "invalid-permutation", "phase": "build"}},
+        {"id": "wrong-rank", "input": {"shape": [2, 3], "p": [0, 1], "q": [0]}, "expect": {"error": "invalid-permutation", "phase": "build"}}
       ],
       "oracle": {"phases": ["build", "semantic"], "comparison": "canonical-graph"}
     },

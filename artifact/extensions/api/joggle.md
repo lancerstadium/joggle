@@ -31,6 +31,13 @@ The oracle preserves shared inner results, signed-zero bits, and non-integral
 floating inputs. Narrowing, mixed float/integer, and shape-changing cases must
 retain their operations.
 
+For `rew-transpose-pair`, unary callees have names beginning `transpose_`;
+the suffix encodes element type and source/result shapes. Read the `perm`
+list from operation metadata, and tensor dimensions with `args(args(type)[1])`.
+Check permutation entries with `kind` and `int`, including rank-zero lists.
+Preserve an inner result with other users. Invalid permutations must fail with
+`assert(false, "invalid-permutation")` before emitting any transformed IR.
+
 ## Analysis entry point
 
 Edit the supplied `module.jog`. Its public entry point is:

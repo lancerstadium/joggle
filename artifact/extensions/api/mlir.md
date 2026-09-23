@@ -109,3 +109,10 @@ compares shapes, `IntegerType::getWidth()` reads integer width, and `Type`
 provides `isF32()`/`isF64()`. Compare full original and final types before
 replacement and preserve an inner cast that has other users. Scoring includes
 integer wraparound, non-integral floats, precision loss, and signed-zero bits.
+
+For `rew-transpose-pair`, unary callees begin with `transpose_`; their suffix
+encodes element type and source/result shapes. `getAttrOfType<ArrayAttr>("perm")`
+returns permutation entries as `IntegerAttr`. Validate indices and tensor
+result dimensions before rewriting, including rank-zero lists. Preserve shared
+inner results. Invalid permutations must print `invalid-permutation` to stderr
+and exit with a positive status before emitting IR (for example via `std::exit`).

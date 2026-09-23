@@ -54,7 +54,7 @@ python3 artifact/validate_extension_specs.py
 The native tasks include `ana-broadcast-shape`, `ana-storage-cost`,
 `ana-numeric-range`, `ana-fusion-match`, `emit-storage-plan`,
 `emit-target-capability`, `emit-graph-manifest`, `rew-add-zero`, and
-`rew-redundant-cast`.
+`rew-redundant-cast`, and `rew-transpose-pair`.
 Each task directory under `extensions/` contains reference implementations for
 Joggle, MLIR, and xDSL; the shared `starter.*` files contain their empty entry
 points. Attribute-analysis tasks read a request from function metadata in
@@ -124,6 +124,16 @@ fractional values, and integer wraparound boundaries. Required rewrites and
 required preservation each account for five cases; a no-op does not pass the
 task. Reference results validate these oracles, not an agent's success rate.
 
+`rew-transpose-pair` cancels inverse permutations on native SSA calls. Typed
+callee names encode the element type and source/result shapes so all three
+systems use the same monomorphic signatures; `perm` attributes carry the
+actual permutations. Eleven cases cover rank-four and self-inverse pairs,
+shared intermediates, rank-zero and empty tensors, integers, non-inverse pairs
+including equal dimensions, and malformed permutations. Valid results are
+independently parsed and checked structurally and bitwise on five input sets.
+Malformed permutations must produce the specified diagnostic and no output
+IR. A no-op starter fails all required eliminations and rejection cases.
+
 ### Local agent execution
 
 `run_extension_agent.py` runs an installed Ollama model with four actions:
@@ -160,7 +170,7 @@ The current collector emits integration records with `release_eligible: false`.
 It records successful native execution but does not infer a failed compiler's
 parse/type/build phase from its exit code. Unmeasured phase fields and reference
 likelihoods remain empty. These records cannot enter the release assembler.
-The full matrix additionally requires the remaining 17 native task harnesses,
+The full matrix additionally requires the remaining 14 native task harnesses,
 phase-specific instrumentation, and the frozen demonstration sets. The
 assembler consumes complete provider records:
 

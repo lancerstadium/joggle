@@ -106,3 +106,10 @@ result. `type.get_shape()` compares shapes, `str(type.element_type)` yields
 the element spelling, and `IntegerType.width.data` gives integer width. Preserve
 an inner cast when its result has other uses. Scoring includes integer
 wraparound, non-integral floating inputs, precision loss, and signed-zero bits.
+
+For `rew-transpose-pair`, unary callees begin with `transpose_`; the suffix
+encodes element type and source/result shapes. `op.attributes["perm"]` is an
+`ArrayAttr` of `IntegerAttr` entries. Validate indices and tensor result
+dimensions before rewriting, including rank-zero lists. Preserve shared inner
+results. Invalid permutations must raise `ValueError("invalid-permutation")`
+before the driver prints any transformed IR.

@@ -131,6 +131,27 @@ class BenchmarkOracleTests(unittest.TestCase):
                                      [np.array([2], dtype=np.float32)], 0, 0)
             self.assertTrue(runner.closed)
 
+    def test_transpose_rewrite_oracle_checks_permutations_not_shapes(self):
+        root = Path(__file__).resolve().parents[1] / "artifact"
+        task = next(t for t in json.loads((root / "manifests/extension-specs.json").read_text())["tasks"]
+                    if t["id"] == "rew-transpose-pair")
+        for case in task["positive_cases"] + task["negative_cases"]:
+            with self.subTest(case=case["id"]):
+                original = graph_manifest(rewrite_graph(case["input"]))
+                simplified = graph_manifest(rewrite_graph(case["input"], True))
+                if "error" in case["expect"]:
+                    with self.assertRaises(ValueError):
+                        rewrite_numerics(original, original, False)
+                    continue
+                self.assertEqual(rewrite_numerics(simplified, original, False)["passed"],
+                                 case["expect"]["eliminate"])
+                self.assertTrue(rewrite_numerics(original, original, False)["passed"])
+                if case["input"].get("return_intermediate"):
+                    self.assertEqual(len(simplified["nodes"]), 1)
+                    self.assertEqual(len(simplified["outputs"]), 2)
+                for system in ("Joggle", "MLIR", "xDSL"):
+                    self.assertNotIn("request", graph_fixture(rewrite_graph(case["input"]), system))
+
     def test_cast_rewrite_oracle_rejects_lossy_shortcuts(self):
         root = Path(__file__).resolve().parents[1] / "artifact"
         task = next(t for t in json.loads((root / "manifests/extension-specs.json").read_text())["tasks"]
@@ -292,6 +313,24 @@ class BenchmarkOracleTests(unittest.TestCase):
                 final, stable, errors = final_checks(lambda *a, **k: report, lambda: True)
                 self.assertIsNone(final)
                 self.assertTrue(stable)
+                self.assertTrue(errors)
+
+    def test_agent_final_checks_accept_only_expected_rejections(self):
+        case = {"exit_code": 5, "decode_error": "", "passed": True,
+                "expected": {"error": "invalid-permutation", "phase": "build"},
+                "stdout": "", "stderr": "invalid-permutation\n", "timeout": False}
+        report = {"passed": True, "setup": [], "cases": [case]}
+        final, stable, errors = final_checks(lambda *a, **k: report, lambda: True)
+        self.assertIs(final, report)
+        self.assertTrue(stable)
+        self.assertEqual(errors, [])
+        for change in ({"exit_code": 0}, {"exit_code": -9}, {"timeout": True},
+                       {"stderr": "unrelated error"}, {"stdout": "module {}"},
+                       {"expected": {"error": ""}}, {"passed": False}):
+            invalid = report | {"cases": [case | change]}
+            with self.subTest(change=change):
+                final, _, errors = final_checks(lambda *a, **k: invalid, lambda: True)
+                self.assertIsNone(final)
                 self.assertTrue(errors)
 
     def test_benchmark_assembly_rejects_changed_compiler_identity(self):

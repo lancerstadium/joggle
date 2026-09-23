@@ -1,0 +1,56 @@
+mod extension
+use base
+use ir
+
+local fn is_transpose(op: Op) -> bool {
+  return ir.live(op) && ir.kind(op) == "call" &&
+         base.replace(ir.callee(op), "transpose_", "") != ir.callee(op)
+}
+
+local fn check(op: Op) -> bool {
+  if !is_transpose(op) { return false }
+  assert(len(ir.args(op)) == 1 && len(ir.outs(op)) == 1, "invalid-permutation")
+  let source = ir.type(ir.args(op)[0])
+  let target = ir.type(ir.outs(op)[0])
+  assert(name(source) == "tensor" && name(target) == "tensor", "invalid-permutation")
+  let shape = args(args(source)[1])
+  let result = args(args(target)[1])
+  let p = base.get(ir.meta(op), "perm")
+  assert(kind(p) == "list" && len(p) == len(shape) && len(result) == len(shape), "invalid-permutation")
+  assert(args(source)[0] == args(target)[0], "invalid-permutation")
+  var seen: dict = {}
+  for i in 0..len(p) {
+    assert(kind(p[i]) == "int", "invalid-permutation")
+    let axis = int(p[i])
+    assert(axis >= 0 && axis < len(shape), "invalid-permutation")
+    assert(!has(seen, text(axis)), "invalid-permutation")
+    seen[text(axis)] = true
+    assert(result[i] == shape[axis], "invalid-permutation")
+  }
+  return true
+}
+
+fn transform(m: Mod) -> bool {
+  let ops = ir.ops(ir.find(m, "subject"), ["call"])
+  for op in ops { check(op) }
+  var changed = false
+  for op in ops {
+    if is_transpose(op) {
+      let input = ir.args(op)[0]
+      let inner = ir.def(input)
+      if is_transpose(inner) {
+        let p = base.get(ir.meta(inner), "perm")
+        let q = base.get(ir.meta(op), "perm")
+        var inverse = true
+        for i in 0..len(q) { inverse = inverse && int(p[int(q[i])]) == i }
+        if inverse {
+          ir.replace(m, ir.outs(op)[0], ir.args(inner)[0])
+          ir.erase(m, op)
+          if len(ir.users(input)) == 0 { ir.erase(m, inner) }
+          changed = true
+        }
+      }
+    }
+  }
+  return changed
+}

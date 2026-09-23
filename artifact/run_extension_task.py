@@ -24,9 +24,46 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SUPPORTED_TASKS = {"ana-broadcast-shape", "ana-storage-cost", "ana-numeric-range",
                    "ana-fusion-match", "emit-storage-plan", "emit-target-capability",
-                   "emit-graph-manifest", "rew-add-zero", "rew-redundant-cast"}
+                   "emit-graph-manifest", "rew-add-zero", "rew-redundant-cast", "rew-transpose-pair"}
 
-REWRITE_TASKS = {"rew-add-zero", "rew-redundant-cast"}
+REWRITE_TASKS = {"rew-add-zero", "rew-redundant-cast", "rew-transpose-pair"}
+
+
+def expected_rejection(step: dict, expected: dict) -> bool:
+    diagnostic = expected.get("error")
+    code = step.get("exit_code")
+    return (isinstance(diagnostic, str) and bool(diagnostic) and
+            type(code) is int and code > 0 and step.get("timeout") is False and
+            not step.get("stdout", "").strip() and diagnostic in step.get("stderr", ""))
+
+
+def case_completed(case: dict) -> bool:
+    expected = case.get("expected", {})
+    if isinstance(expected, dict) and "error" in expected:
+        return expected_rejection(case, expected)
+    return case.get("exit_code") == 0 and not case.get("decode_error")
+
+
+def transpose_graph(request: dict, eliminate: bool) -> dict:
+    shape, element = request["shape"], request.get("element", "f32")
+    operand = {"name": "x", "element": element, "shape": shape}
+    nodes, source = [], "x"
+    for index, permutation in enumerate((request["p"], request["q"])):
+        source_shape = shape
+        # Invalid permutations remain native SSA fixtures for candidate-side
+        # validation. They have no numerical interpretation.
+        if sorted(permutation) == list(range(len(shape))):
+            shape = [shape[i] for i in permutation]
+        result = f"transpose{index}"
+        tag = lambda dims: "x".join(map(str, dims)) or "scalar"
+        nodes.append({"op": f"transpose_{element}_{tag(source_shape)}_to_{tag(shape)}", "inputs": [source],
+                      "results": [{"name": result, "element": element, "shape": shape}],
+                      "attrs": {"perm": permutation}})
+        source = result
+    shared = request.get("return_intermediate", False)
+    return {"inputs": [operand],
+            "nodes": (nodes[:1] if shared else []) if eliminate else nodes,
+            "outputs": (["x"] if eliminate else [source]) + (["transpose0"] if shared else [])}
 
 
 def cast_graph(request: dict, eliminate: bool) -> dict:
@@ -49,6 +86,8 @@ def rewrite_graph(request: dict, eliminate: bool = False) -> dict:
     """Build the tensor-dialect fixture; the extension sees native SSA, not this map."""
     if "casts" in request:
         return cast_graph(request, eliminate)
+    if "p" in request and "q" in request:
+        return transpose_graph(request, eliminate)
     element, shape = request["element"], request["shape"]
     constant_shape = request.get("constant_shape", shape)
     rank = max(len(shape), len(constant_shape))
@@ -112,6 +151,8 @@ def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool) -> dic
             elif node["op"].startswith("cast_") and len(node["inputs"]) == 1:
                 converted = values[node["inputs"][0]].astype(dtypes[ty["element"]])
                 value = np.broadcast_to(converted, ty["shape"])
+            elif node["op"].startswith("transpose_") and len(node["inputs"]) == 1:
+                value = np.transpose(values[node["inputs"][0]], attrs["perm"])
             else:
                 raise ValueError("unsupported operation in rewrite result")
             if list(value.shape) != ty["shape"]:
@@ -498,6 +539,12 @@ def main() -> int:
                     source = "module attributes {study.request = " + native_attr(case["input"]) + "} {}\n"
                 path.write_text(source)
                 step = execute([*command, path, *flags], args.timeout, policy, scratch)
+                if rewriting and "error" in case["expect"]:
+                    passed = expected_rejection(step, case["expect"])
+                    record["cases"].append({"id": case["id"], "input": case["input"],
+                                            "expected": case["expect"], "passed": passed,
+                                            "actual": None, "decode_error": "", **step})
+                    continue
                 actual = None
                 error = ""
                 observation = None
