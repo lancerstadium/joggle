@@ -25,10 +25,52 @@ ROOT = Path(__file__).resolve().parent
 SUPPORTED_TASKS = {"ana-broadcast-shape", "ana-storage-cost", "ana-numeric-range",
                    "ana-fusion-match", "emit-storage-plan", "emit-target-capability",
                    "emit-graph-manifest", "rew-add-zero", "rew-redundant-cast", "rew-transpose-pair",
-                   "con-instruction-select", "con-gelu-expand", "con-quant-expand"}
+                   "con-instruction-select", "con-gelu-expand", "con-quant-expand", "con-layout-legalize"}
 
-REWRITE_TASKS = {"rew-add-zero", "rew-redundant-cast", "rew-transpose-pair", "con-instruction-select", "con-gelu-expand", "con-quant-expand"}
+REWRITE_TASKS = {"rew-add-zero", "rew-redundant-cast", "rew-transpose-pair", "con-instruction-select", "con-gelu-expand", "con-quant-expand", "con-layout-legalize"}
 GELU_TOLERANCES = {"f32": (1e-5, 1e-6), "f64": (1e-12, 1e-12)}
+
+
+def layout_graph(request: dict) -> dict:
+    x, w = request["input"], request["weight"]
+    stride, pad, dilation = request.get("stride", [1, 1]), request.get("pad", [0] * 4), request.get("dilation", [1, 1])
+    y = [x[0], (x[1] + pad[0] + pad[2] - dilation[0] * (w[0] - 1) - 1) // stride[0] + 1,
+         (x[2] + pad[1] + pad[3] - dilation[1] * (w[1] - 1) - 1) // stride[1] + 1, w[3]]
+    def value(name, shape):
+        return {"name": name, "element": "f32", "shape": shape}
+    inputs = [value("x", x), value("w", w)]
+    nx, nw, ny = [x[i] for i in [0, 3, 1, 2]], [w[i] for i in [3, 2, 0, 1]], [y[i] for i in [0, 3, 1, 2]]
+    declarations = [{"op": name, "parameter_types": [value("p", dims) for dims in args],
+                     "results": [value("r", out)]} for name, args, out in (
+                         ("transpose_input", [x], nx), ("transpose_weight", [w], nw),
+                         ("conv2d_nchw", [nx, nw], ny), ("transpose_output", [ny], y))]
+    return {"inputs": inputs, "declarations": declarations,
+            "nodes": [{"op": "conv2d_nhwc", "inputs": ["x", "w"], "results": [value("y", y)],
+                       "attrs": {"stride": stride, "pad": pad, "dilation": dilation}}],
+            "outputs": ["y", "x", "y"] if request.get("shared_output") else ["y"]}
+
+
+def convolution_nhwc(x, w, attrs):
+    """Scalar spatial reference shared by the two explicit layout semantics."""
+    import numpy as np
+    if x.shape[3] != w.shape[2]:
+        raise ValueError("channel-mismatch")
+    sh, sw = attrs["stride"]
+    dh, dw = attrs["dilation"]
+    top, left, bottom, right = attrs["pad"]
+    height = (x.shape[1] + top + bottom - dh * (w.shape[0] - 1) - 1) // sh + 1
+    width = (x.shape[2] + left + right - dw * (w.shape[1] - 1) - 1) // sw + 1
+    result = np.zeros((x.shape[0], height, width, w.shape[3]), dtype=np.float32)
+    for h in range(height):
+        for v in range(width):
+            for kh in range(w.shape[0]):
+                ih = h * sh + kh * dh - top
+                for kw in range(w.shape[1]):
+                    iw = v * sw + kw * dw - left
+                    if 0 <= ih < x.shape[1] and 0 <= iw < x.shape[2]:
+                        for c in range(x.shape[3]):
+                            result[:, h, v, :] += x[:, ih, iw, c, None] * w[kh, kw, c, :]
+    return result
 
 
 def quant_graph(request: dict) -> dict:
@@ -87,6 +129,11 @@ def gelu_structure(actual: dict, original: dict) -> bool:
 def quant_structure(actual: dict, original: dict) -> bool:
     return conversion_structure(actual, original, {"dequantize": 1, "add": 2, "quantize": 1},
                                 {"dequantize", "add", "quantize"})
+
+
+def layout_structure(actual: dict, original: dict) -> bool:
+    operations = {"transpose_input": 1, "transpose_weight": 1, "conv2d_nchw": 2, "transpose_output": 1}
+    return conversion_structure(actual, original, operations, set(operations))
 
 
 def matmul_graph(request: dict, select: bool) -> dict:
@@ -159,6 +206,8 @@ def cast_graph(request: dict, eliminate: bool) -> dict:
 
 def rewrite_graph(request: dict, eliminate: bool = False) -> dict:
     """Build the tensor-dialect fixture; the extension sees native SSA, not this map."""
+    if "weight" in request and "input" in request:
+        return layout_graph(request)
     if "lhs_scale" in request:
         return quant_graph(request)
     if request.get("op") == "gelu":
@@ -263,6 +312,12 @@ def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool,
                 value = np.broadcast_to(converted, ty["shape"])
             elif node["op"].startswith("transpose_") and len(node["inputs"]) == 1:
                 value = np.transpose(values[node["inputs"][0]], attrs["perm"])
+            elif node["op"] in {"conv2d_nhwc", "conv2d_nchw"}:
+                x, w = (values[key] for key in node["inputs"])
+                if node["op"] == "conv2d_nchw":
+                    value = convolution_nhwc(x.transpose(0, 2, 3, 1), w.transpose(2, 3, 1, 0), attrs).transpose(0, 3, 1, 2)
+                else:
+                    value = convolution_nhwc(x, w, attrs)
             elif node["op"] in {"matmul", "mma_m16n16k16"} and len(node["inputs"]) == 2:
                 inputs = [values[key] for key in node["inputs"]]
                 a, b = (value.astype(np.float32) for value in inputs)
@@ -284,6 +339,11 @@ def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool,
                [0, 0, 0, 0], [0.1, -0.3, 1.5, -2.75], [-128, 127, 256, -257]]
     if tolerance is not None:
         samples += [[-3, -1, 0, 1, 3], [-8, -4, -2, 0.5, 4]]
+    if any(node["op"] == "conv2d_nhwc" for node in original["nodes"]):
+        # Short repeating patterns can be invariant under a wrong spatial transpose.
+        rng = np.random.Generator(np.random.PCG64(731))
+        samples.append({value["id"]: rng.uniform(-1, 1, math.prod(value["type"]["shape"])).tolist()
+                        for value in original["inputs"]})
     if extra_feeds is not None:
         samples.append(extra_feeds)
     for sample in samples:
@@ -708,14 +768,15 @@ def main() -> int:
                         error = str(failure)
                 # Numeric tasks use the shared tolerance only for numbers;
                 # object keys, sequence lengths, Booleans, and errors stay exact.
-                conversion = args.task in {"con-gelu-expand", "con-quant-expand"}
+                conversion_check = {"con-gelu-expand": gelu_structure, "con-quant-expand": quant_structure,
+                                    "con-layout-legalize": layout_structure}.get(args.task)
+                conversion = conversion_check is not None
                 expected = (case["expect"] if conversion else
                             graph_manifest(rewrite_graph(case["input"], case["expect"]["eliminate"]))
                             if rewriting else expected_result(args.task, case))
                 original = graph_manifest(rewrite_graph(case["input"])) if rewriting else None
                 passed = (step["exit_code"] == 0 and checked_step["exit_code"] == 0 and not error and
-                          ((gelu_structure(actual, original) if args.task == "con-gelu-expand" else
-                            quant_structure(actual, original)) if conversion else
+                          (conversion_check(actual, original) if conversion else
                            equivalent(actual, expected, task["oracle"]["comparison"] == "numerical",
                                       spec["comparison_policy"])))
                 if rewriting and passed:

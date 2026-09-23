@@ -1,0 +1,48 @@
+mod extension
+use base
+use ir
+
+local fn permuted(type: Ty, p: list<int>) -> Ty {
+  let shape = args(args(type)[1])
+  var result: list<Ty> = []
+  for i in p { result += [shape[i]] }
+  return ty(name(type), [args(type)[0], ty(name(args(type)[1]), result)])
+}
+
+local fn transpose(m: Mod, before: Op, name: str, input: Val, p: list<int>) -> Val {
+  let result = ir.call(m, before, ir.find(m, name), [input], permuted(ir.type(input), p))
+  assert(ir.rename(m, result, "layout_value", ir.key(result)), "binding failed")
+  assert(ir.set(m, ir.def(result), "perm", p), "permutation write failed")
+  return result
+}
+
+fn transform(m: Mod) -> bool {
+  let ops = ir.ops(ir.find(m, "subject"), ["call"])
+  for op in ops {
+    if ir.callee(op) == "conv2d_nhwc" {
+      let input = ir.args(op)
+      let x = args(args(ir.type(input[0]))[1])
+      let w = args(args(ir.type(input[1]))[1])
+      assert(x[3] == w[2], "channel-mismatch")
+    }
+  }
+  var changed = false
+  for op in ops {
+    if ir.callee(op) == "conv2d_nhwc" {
+      let input = ir.args(op)
+      let x = transpose(m, op, "transpose_input", input[0], [0, 3, 1, 2])
+      let w = transpose(m, op, "transpose_weight", input[1], [3, 2, 0, 1])
+      let old = ir.outs(op)[0]
+      let conv = ir.call(m, op, ir.find(m, "conv2d_nchw"), [x, w], permuted(ir.type(old), [0, 3, 1, 2]))
+      assert(ir.rename(m, conv, "layout_conv", ir.key(conv)), "binding failed")
+      for key in ["stride", "pad", "dilation"] {
+        assert(ir.set(m, ir.def(conv), key, base.get(ir.meta(op), key)), "attribute write failed")
+      }
+      let result = transpose(m, op, "transpose_output", conv, [0, 2, 3, 1])
+      ir.replace(m, old, result)
+      ir.erase(m, op)
+      changed = true
+    }
+  }
+  return changed
+}

@@ -59,6 +59,15 @@ are `dequantize` (i8 to f32), `add` (f32), and `quantize` (f32 to i8).
 Bind new results before adding each conversion's `scale` and `zero` attributes.
 Preserve all output uses and reject nonpositive scales before mutation.
 
+For `con-layout-legalize`, the source is NHWC/HWIO convolution. The targets
+`transpose_input`, `transpose_weight`, `conv2d_nchw`, and `transpose_output`
+have declared signatures. Read dimensions from `args(args(type)[1])`; when
+constructing a permuted tensor, preserve the shape constructor with
+`ty(name(args(type)[1]), permuted_dimensions)`. Transpose calls carry `perm`;
+the convolution carries `stride`, `pad`, and `dilation`. Padding order is
+top, left, bottom, right. Bind new results before setting attributes and
+preserve all users, including repeated outputs.
+
 ## Analysis entry point
 
 Edit the supplied `module.jog`. Its public entry point is:

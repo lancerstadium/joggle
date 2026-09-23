@@ -28,7 +28,7 @@ from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tv
 from validate_figure import performance
 from run_extension_task import (execute, fusion_fixture, graph_fixture, sandbox_policy,
                                 equivalent, rewrite_graph, graph_manifest, rewrite_numerics, gelu_structure,
-                                quant_structure)
+                                quant_structure, convolution_nhwc, layout_structure)
 from run_extension_agent import public_case_ids, tool_feedback, response_usage, final_checks
 import run_extension_agent
 from merge_benchmark_rows import audited_input
@@ -131,6 +131,66 @@ class BenchmarkOracleTests(unittest.TestCase):
                 checked_native_build(lambda model, feeds: runner, b"edited", {}, names,
                                      [np.array([2], dtype=np.float32)], 0, 0)
             self.assertTrue(runner.closed)
+
+    def test_layout_conversion_rejects_wrong_padding_and_permutation(self):
+        source = rewrite_graph({"input": [1, 4, 4, 2], "weight": [3, 3, 2, 3],
+                                "pad": [1, 0, 0, 1], "shared_output": True})
+        original = graph_manifest(source)
+        names = ("tx", "tw", "c", "y")
+        operands = (["x"], ["w"], ["tx", "tw"], ["c"])
+        attrs = ({"perm": [0, 3, 1, 2]}, {"perm": [3, 2, 0, 1]},
+                 source["nodes"][0]["attrs"], {"perm": [0, 2, 3, 1]})
+        graph = copy.deepcopy(source)
+        graph["nodes"] = [{"op": declaration["op"], "inputs": inputs,
+                           "attrs": copy.deepcopy(meta),
+                           "results": [dict(declaration["results"][0], name=name)]}
+                          for declaration, name, inputs, meta in
+                          zip(source["declarations"], names, operands, attrs)]
+        observed = graph_manifest(graph)
+        self.assertTrue(layout_structure(observed, original))
+        self.assertTrue(rewrite_numerics(observed, original, False)["passed"])
+        self.assertFalse(layout_structure(original, original))
+        # Both mutations preserve tensor shapes, so numerical checks must reject them.
+        for index, key, value in ((2, "pad", [0, 1, 1, 0]),
+                                  (1, "perm", [3, 2, 1, 0])):
+            wrong = copy.deepcopy(graph)
+            wrong["nodes"][index]["attrs"][key] = value
+            self.assertFalse(rewrite_numerics(graph_manifest(wrong), original, False)["passed"])
+
+    def test_layout_convolution_matches_independent_onnx_execution(self):
+        root = Path(__file__).resolve().parents[1] / "artifact"
+        task = next(t for t in json.loads((root / "manifests/extension-specs.json").read_text())["tasks"]
+                    if t["id"] == "con-layout-legalize")
+        import onnxruntime as ort
+        rng = np.random.default_rng(731)
+        for case in task["positive_cases"]:
+            request = case["input"]
+            graph = rewrite_graph(request)
+            shape = graph["nodes"][0]["results"][0]["shape"]
+            self.assertEqual(shape, case["expect"]["output"])
+            attrs = graph["nodes"][0]["attrs"]
+            x = rng.normal(size=request["input"]).astype(np.float32)
+            w = rng.normal(size=request["weight"]).astype(np.float32)
+            nx, nw = x.transpose(0, 3, 1, 2), w.transpose(3, 2, 0, 1)
+            ny = [shape[i] for i in (0, 3, 1, 2)]
+            model = helper.make_model(helper.make_graph([
+                helper.make_node("Conv", ["x", "w"], ["y"], strides=attrs["stride"],
+                                 pads=attrs["pad"], dilations=attrs["dilation"])], "layout",
+                [helper.make_tensor_value_info("x", onnx.TensorProto.FLOAT, nx.shape),
+                 helper.make_tensor_value_info("w", onnx.TensorProto.FLOAT, nw.shape)],
+                [helper.make_tensor_value_info("y", onnx.TensorProto.FLOAT, ny)]),
+                opset_imports=[helper.make_opsetid("", 18)], ir_version=10)
+            session = ort.InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+            expected = session.run(None, {"x": nx, "w": nw})[0].transpose(0, 2, 3, 1)
+            observed = convolution_nhwc(x, w, attrs)
+            self.assertEqual(list(observed.shape), shape, case["id"])
+            np.testing.assert_allclose(observed, expected, rtol=1e-4, atol=1e-5,
+                                       err_msg=case["id"])
+        x = np.arange(1, 7, dtype=np.float32).reshape(1, 2, 3, 1)
+        w = np.array([1, 2], dtype=np.float32).reshape(1, 2, 1, 1)
+        np.testing.assert_array_equal(convolution_nhwc(x, w,
+            {"stride": [1, 1], "pad": [0, 0, 0, 0], "dilation": [1, 1]}),
+            np.array([5, 8, 14, 17], dtype=np.float32).reshape(1, 2, 2, 1))
 
     def test_quant_conversion_checks_rounding_zero_points_and_saturation(self):
         root = Path(__file__).resolve().parents[1] / "artifact"

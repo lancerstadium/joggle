@@ -289,10 +289,14 @@
       "title": "Layout legalization",
       "footprint": false,
       "required_roles": ["conversion"],
-      "contract": "Legalize an NHWC Conv2D for an NCHW-only target by transposing input and output and mapping HWIO weights to OIHW; retain stride, dilation, and spatial padding.",
+      "contract": "Replace native f32 conv2d_nhwc calls with transpose_input, transpose_weight, conv2d_nchw, and transpose_output calls. Map NHWC inputs to NCHW, HWIO weights to OIHW, and NCHW outputs back to NHWC; each transpose carries a perm array. Preserve stride=[height,width], dilation=[height,width], and pad=[top,left,bottom,right] attributes. Use cross-correlation without kernel reversal. Preserve result types and all users. Reject mismatched input/weight channels with channel-mismatch and no output IR. Target signatures are declared in the fixture; dimensions and attributes must be read from native SSA.",
       "positive_cases": [
-        {"id": "unit-stride", "input": {"input": [1, 8, 16, 3], "weight": [3, 3, 3, 4], "stride": [1, 1], "pad": [1, 1, 1, 1]}, "expect": {"ops": ["transpose", "conv2d_nchw", "transpose"], "internal_input": [1, 3, 8, 16], "internal_weight": [4, 3, 3, 3], "output": [1, 8, 16, 4]}},
-        {"id": "strided", "input": {"input": [2, 9, 9, 8], "weight": [3, 3, 8, 16], "stride": [2, 2], "pad": [0, 0, 0, 0]}, "expect": {"ops": ["transpose", "conv2d_nchw", "transpose"], "internal_input": [2, 8, 9, 9], "internal_weight": [16, 8, 3, 3], "output": [2, 4, 4, 16]}}
+        {"id": "unit-stride", "input": {"input": [1, 8, 16, 3], "weight": [3, 3, 3, 4], "stride": [1, 1], "pad": [1, 1, 1, 1]}, "expect": {"ops": ["transpose_input", "transpose_weight", "conv2d_nchw", "transpose_output"], "internal_input": [1, 3, 8, 16], "internal_weight": [4, 3, 3, 3], "output": [1, 8, 16, 4]}},
+        {"id": "strided", "input": {"input": [2, 9, 9, 8], "weight": [3, 3, 8, 16], "stride": [2, 2], "pad": [0, 0, 0, 0]}, "expect": {"internal_input": [2, 8, 9, 9], "internal_weight": [16, 8, 3, 3], "output": [2, 4, 4, 16]}},
+        {"id": "asymmetric-pad", "input": {"input": [1, 5, 7, 2], "weight": [2, 3, 2, 3], "stride": [1, 2], "pad": [1, 2, 0, 1]}, "expect": {"output": [1, 5, 4, 3]}},
+        {"id": "dilated", "input": {"input": [1, 7, 9, 2], "weight": [2, 3, 2, 4], "stride": [2, 1], "pad": [1, 0, 0, 2], "dilation": [2, 2]}, "expect": {"output": [1, 3, 7, 4]}},
+        {"id": "pointwise", "input": {"input": [2, 3, 5, 2], "weight": [1, 1, 2, 3], "stride": [1, 1], "pad": [0, 0, 0, 0], "shared_output": true}, "expect": {"output": [2, 3, 5, 3]}},
+        {"id": "single-channel", "input": {"input": [1, 4, 6, 1], "weight": [3, 2, 1, 2], "stride": [1, 1], "pad": [0, 0, 0, 0]}, "expect": {"output": [1, 2, 5, 2]}}
       ],
       "negative_cases": [
         {"id": "channel-mismatch", "input": {"input": [1, 8, 8, 3], "weight": [3, 3, 4, 8]}, "expect": {"error": "channel-mismatch", "phase": "type"}}

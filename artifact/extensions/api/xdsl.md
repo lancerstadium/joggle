@@ -131,3 +131,11 @@ For `con-quant-expand`, qadd attributes include three floating scales and the
 targets are `dequantize` (i8 to f32), `add` (f32), and `quantize` (f32 to i8).
 Copy each conversion's corresponding `scale` and `zero` attributes. Preserve
 result users and reject nonpositive scales before mutation.
+
+For `con-layout-legalize`, construct permuted `TensorType(element, shape)`
+values for NHWC to NCHW and HWIO to OIHW. Declared targets are
+`transpose_input`, `transpose_weight`, `conv2d_nchw`, and `transpose_output`.
+Transpose `perm` attributes use `ArrayAttr` of `IntegerAttr` values. Copy
+`stride`, `pad`, and `dilation` to the convolution; padding order is top,
+left, bottom, right. Transpose the result back to NHWC and replace every
+source result use. Reject mismatched input/weight channels before mutation.
