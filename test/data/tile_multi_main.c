@@ -17,7 +17,7 @@ int main(void) {
       1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f,
       0.5f, 1.5f, -0.5f, 2.5f, 7.0f, -2.0f, 1.0f, 3.0f,
       -5.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-  const float expected[6] = {11.0f, 0.0f, 5.0f, 10.0f, 0.0f, 0.0f};
+  const float expected[6] = {11.0f, 0.0f, 13.0f, 22.0f, 15.0f, 21.0f};
   float reduced[6] = {0.0f};
   tile_multi_reduce(x, reduced);
   for (int i = 0; i < 6; ++i)

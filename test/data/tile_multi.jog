@@ -21,8 +21,13 @@ fn chain(
 fn reduce(x: tensor<f32, [2, 3, 4]>) -> tensor<f32, [2, 3]> {
   var sum = tensor<f32, [2, 3]>(f32(0))
   for i in 0..2, j in 0..3, k in 0..4 {
-    let index = i * 3 + j
-    sum[index] = sum[index] + x[index * 4 + k]
+    let row = i * 3
+    let left = row + j
+    let right = row + j
+    let index = (left + right) / 2
+    // Shared address chains also feed scalar data. Scalarization must keep
+    // this use even when it rebuilds the indexed accesses from affine forms.
+    sum[index] = sum[index] + x[index * 4 + k] + f32(index)
   }
   var out = tensor<f32, [2, 3]>(f32(0))
   for row in 0..2, column in 0..3 {

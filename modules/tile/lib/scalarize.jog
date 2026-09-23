@@ -46,13 +46,11 @@ local fn address_only(
   m: Mod,
   loop: Op,
   value: Val,
-  accesses: list<Op>,
-  seen: list<Val>
+  accesses: list<Op>
 ) -> bool {
-  if known(value, seen) {
-    return true
-  }
-  let next_seen = seen + [value]
+  // Only follow SSA call results. A loop/branch/yield user is rejected below,
+  // so this walk cannot traverse a structured backedge. Keeping the path out
+  // of the memo key lets converging address chains share their answer.
   for user in ir.users(value) {
     if !has_op(accesses, user) || !index_arg(m, user, value) {
       if ir.kind(user) != "call" || len(ir.outs(user)) == 0 ||
@@ -61,7 +59,7 @@ local fn address_only(
       }
       for output in ir.outs(user) {
         if len(affine(m, loop, output)) == 0 ||
-           !address_only(m, loop, output, accesses, next_seen) {
+           !address_only(m, loop, output, accesses) {
           return false
         }
       }
@@ -80,7 +78,7 @@ local fn drop_address(
   }
   for output in outputs {
     if len(affine(m, loop, output)) == 0 ||
-       !address_only(m, loop, output, accesses, []) {
+       !address_only(m, loop, output, accesses) {
       return false
     }
   }
@@ -383,7 +381,8 @@ local fn rebuild_scalar_block(
   axis_values: list<Val>,
   load: Op,
   store: Op,
-  accesses: list<Op>
+  accesses: list<Op>,
+  dropped: list<Op>
 ) -> Val {
   let target_ops = ir.ops(target)
   let terminator = target_ops[len(target_ops) - 1]
@@ -437,7 +436,7 @@ local fn rebuild_scalar_block(
               old_values, next_values,
               state_values + source_args, scalar_values + target_args,
               axis_values,
-              load, store, accesses
+              load, store, accesses, dropped
             )
             let arm_ops = ir.ops(target_arms[arm])
             let yield = arm_ops[len(arm_ops) - 1]
@@ -447,7 +446,7 @@ local fn rebuild_scalar_block(
           state_values += ir.outs(op)
           scalar_values += ir.outs(branch)
         } else {
-          if !drop_address(m, loop, op, accesses) {
+          if !has_op(dropped, op) {
             var clone_old = old_values
             var clone_next = next_values
             if has_op(accesses, op) {
@@ -518,6 +517,14 @@ fn scalarize(m: Mod, source: Op, budget: int) -> Op {
   let load_args = ir.args(load)
   let store_args = ir.args(store)
   let accesses = indexed_ops(m, source)
+  // Analyze the source while it is unchanged. Building destination loops
+  // must not repeatedly invalidate the same source address queries.
+  var dropped: list<Op> = []
+  for op in nested(source) {
+    if drop_address(m, source, op, accesses) {
+      dropped += [op]
+    }
+  }
 
   var outer_names: list<str> = []
   var outer_sources: list<Val> = []
@@ -631,7 +638,7 @@ fn scalarize(m: Mod, source: Op, budget: int) -> Op {
     final += [rebuild_scalar_block(
       m, source, body, inner_body, old, next,
       [body_args[axes]], [inner_args[len(reduction) + lane]],
-      axis_values, load, store, accesses
+      axis_values, load, store, accesses, dropped
     )]
   }
   assert(ir.args(m, inner_yield, final),

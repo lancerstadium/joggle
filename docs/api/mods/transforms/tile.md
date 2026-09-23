@@ -84,6 +84,15 @@ Legality uses static ranges, affine addresses, carried-state roles, injectivity,
 and relative reduction order. Unsupported forms remain unchanged. Target cost
 is intentionally not guessed; external policies consume the evidence.
 
+Scalarization separates source analysis from destination construction. Before
+creating replacement loops, it identifies address-only computations that can
+be rebuilt from affine forms. This query follows SSA call-result users and
+rejects structured-control-flow users; converging address chains therefore
+share memoized answers without including the traversal path in the key.
+Reconstruction consults the resulting operation set. An index also used as
+scalar data, such as `f32(index)` in an accumulation, remains available in the
+rebuilt body rather than being removed with address-only computations.
+
 See the complete [locality-policy example](../../../examples/locality.md).
 
 ## Before and after a split
