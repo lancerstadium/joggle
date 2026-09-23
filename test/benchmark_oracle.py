@@ -39,6 +39,62 @@ from merge_update_rows import production_rows, sha256 as file_sha256
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    @unittest.skipUnless(importlib.util.find_spec("xdsl"), "xDSL is required")
+    def test_quantized_operation_native_construction_and_verifier(self):
+        from io import StringIO
+        from xdsl.context import Context
+        from xdsl.dialects.builtin import Builtin, FloatAttr, IntegerAttr, TensorType, f64, i8, i16, i32, i64
+        from xdsl.dialects.func import Func
+        from xdsl.ir import Block
+        from xdsl.parser import Parser
+        from xdsl.printer import Printer
+        from xdsl.utils.exceptions import VerifyException
+        path = Path(__file__).resolve().parents[1] / "artifact/extensions/def-quantized-op/reference.py"
+        namespace = {"__name__": "quantized_operation_reference"}
+        exec(compile(path.read_bytes(), str(path), "exec"), namespace)
+        operation = namespace["QAdd"]
+        attrs = {name: FloatAttr(value, f64) for name, value in
+                 (("lhs_scale", 0.5), ("rhs_scale", 0.25), ("output_scale", 0.125))}
+        attrs.update({name: IntegerAttr(value, i32) for name, value in
+                      (("lhs_zero", -3), ("rhs_zero", 2), ("output_zero", 1))})
+        context = Context(); context.load_dialect(Builtin); context.load_dialect(Func); namespace["register"](context)
+        for shape in ([4], [2, 3], [], [0, 3]):
+            type = TensorType(i8, shape)
+            block = Block(arg_types=[type, type])
+            op = operation.construct(*block.args, attrs)
+            op.verify()
+            self.assertEqual(op.result.type, type)
+        text = ('builtin.module { func.func @subject(%a: tensor<4xi8>, %b: tensor<4xi8>) -> tensor<4xi8> { '
+                '%r = "extension.qadd"(%a, %b) {lhs_scale = 5.0e-1 : f64, '
+                'rhs_scale = 2.5e-1 : f64, output_scale = 1.25e-1 : f64, '
+                'lhs_zero = -3 : i32, rhs_zero = 2 : i32, output_zero = 1 : i32} '
+                ': (tensor<4xi8>, tensor<4xi8>) -> tensor<4xi8> func.return %r : tensor<4xi8> } }')
+        module = Parser(context, text).parse_module(); module.verify()
+        stream = StringIO(); Printer(stream=stream).print_op(module)
+        reparsed = Parser(context, stream.getvalue()).parse_module(); reparsed.verify()
+        qadd = list(next(iter(reparsed.ops)).body.block.ops)[0]
+        self.assertIsInstance(qadd, operation)
+        self.assertEqual(qadd.attributes, attrs)
+        for field in ("lhs_scale", "rhs_scale", "output_scale"):
+            for value in (0.0, -0.25, float("inf"), float("nan")):
+                block = Block(arg_types=[TensorType(i8, [4])] * 2)
+                bad = attrs | {field: FloatAttr(value, f64)}
+                with self.subTest(field=field, value=value), self.assertRaisesRegex(VerifyException, "invalid-scale"):
+                    operation.construct(*block.args, bad).verify()
+        for lhs, rhs, result, error in (
+                (TensorType(i8, [2, 3]), TensorType(i8, [3, 2]), None, "shape-mismatch"),
+                (TensorType(i16, [4]), TensorType(i16, [4]), None, "operand-type-mismatch"),
+                (TensorType(i8, [4]), TensorType(i8, [4]), TensorType(i8, [5]), "shape-mismatch")):
+            block = Block(arg_types=[lhs, rhs])
+            op = operation.construct(*block.args, attrs)
+            if result is not None:
+                op = operation.create(operands=block.args, result_types=[result], attributes=attrs)
+            with self.assertRaisesRegex(VerifyException, error): op.verify()
+        for field in ("lhs_zero", "rhs_zero", "output_zero"):
+            block = Block(arg_types=[TensorType(i8, [4])] * 2)
+            with self.assertRaisesRegex(VerifyException, "invalid-zero-point"):
+                operation.construct(*block.args, attrs | {field: IntegerAttr(0, i64)}).verify()
+
     def test_production_worker_timeout_accounts_for_original_build(self):
         self.assertEqual(production_worker_timeout("rebuild", 180), 180)
         self.assertEqual(production_worker_timeout("update", 180), 360)
