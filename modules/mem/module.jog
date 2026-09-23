@@ -292,6 +292,8 @@ fn bound(m: Mod) -> bool {
   var changed = false
   for fn in ir.fns(m) {
     var desired: dict = {}
+    var owners: dict = {}
+    var rejected: dict = {}
     for value in ir.vals(fn) {
       let source = ir.def(value)
       let owns = ir.live(source) && ir.kind(source) == "call" &&
@@ -299,14 +301,43 @@ fn bound(m: Mod) -> bool {
                    ir.callee(source) == "tensor.make")
       if owns {
         let shape = capacity_with(m, value, known, [value])
-        if len(shape) != 0 && ir.name(value) != "" {
-          desired[ir.name(value)] = shape
+        let name = ir.name(value)
+        if name != "" {
+          // Value metadata belongs to a source binding, including its carried
+          // SSA values. Distinct allocations cannot share one certificate.
+          if base.has(owners, name) || len(shape) == 0 {
+            rejected[name] = true
+          }
+          owners[name] = ir.key(value)
+          if len(shape) != 0 { desired[name] = shape }
+        }
+      }
+    }
+    for value in ir.params(fn) {
+      rejected[ir.name(value)] = true
+    }
+    for value in ir.vals(fn) {
+      let name = ir.name(value)
+      if base.has(owners, name) && ir.key(value) != base.int(owners[name]) {
+        let source = ir.def(value)
+        if ir.live(source) && ir.kind(source) == "call" {
+          let target = ir.target(m, source)
+          let inputs = ir.args(source)
+          let preserves = target == "base.copy" || target == "tensor.write" ||
+                            target == "tensor.operator []="
+          if !preserves || len(inputs) == 0 {
+            rejected[name] = true
+          } else {
+            if ir.name(storage_root(m, inputs[0], [])) != name {
+              rejected[name] = true
+            }
+          }
         }
       }
     }
     for value in ir.vals(fn) {
       let name = ir.name(value)
-      if name != "" && base.has(desired, name) {
+      if name != "" && base.has(desired, name) && !base.has(rejected, name) {
         changed = ir.set(
           m, value, "mem.capacity", desired[name]
         ) || changed

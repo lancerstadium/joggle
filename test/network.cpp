@@ -104,6 +104,26 @@ int main(int argc, char** argv) {
         " }\n return result\n}\n", rebound, "rebound.jog"));
     CHECK(joggle::query(env, "script.return_capacity", rebound, capacity));
     CHECK(capacity.list() && capacity.list()->empty());
+    CHECK(joggle::run(env, "mem.bound", rebound));
+    CHECK(joggle::query(env, "script.return_capacity", rebound, capacity));
+    CHECK(capacity.list() && capacity.list()->empty());
+  }
+
+  // A carried binding can also be rebound to an external allocation. Remove
+  // an old binding-wide certificate rather than lending it to the new buffer.
+  for (const std::string& control : {std::string("if choose"), std::string("for i in 0..2")}) {
+    joggle::Mod borrowed;
+    CHECK(joggle::parse(env,
+        "mod borrowed\nuse tensor\n"
+        "fn main(input: tensor<f32, [_]>, choose: bool) -> tensor<f32, [_]> {\n"
+        " let shape = tensor<index, [1]>(index(3))\n"
+        " var [mem.capacity: [3]] result: tensor<f32, [_]> = tensor.make(f32(0), shape)\n" +
+        control + " { result = input }\n return result\n}\n",
+        borrowed, "borrowed-capacity.jog"));
+    CHECK(joggle::run(env, "mem.bound", borrowed));
+    CHECK(joggle::query(env, "script.return_capacity", borrowed, capacity));
+    CHECK(capacity.list() && capacity.list()->empty());
+    for (joggle::Val value : borrowed.vals()) CHECK(!value.meta("mem.capacity"));
   }
 
   // A backing allocation bounds one open view axis only when all remaining

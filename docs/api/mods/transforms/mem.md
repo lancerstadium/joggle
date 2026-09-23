@@ -88,6 +88,14 @@ allocation. Nested regions use the same rule. Printed variable names do not
 participate in the proof: renaming a value leaves its capacity unchanged, and
 assigning a new buffer to the same variable does not inherit the old bound.
 
+`bound` publishes this evidence as binding-wide `mem.capacity` metadata.
+Unlike a query on one SSA value, that annotation also reaches the binding's
+loop-carried and branch-merged values. Before publishing it, `bound` checks
+that the binding contains one allocation and only storage-preserving updates.
+Rebinding to another allocation or an external tensor removes the certificate;
+an earlier bound is not retained across that change. Element writes to the
+original allocation remain supported.
+
 This distinction matters for a dynamic `topk` followed by a tensor cast. TopK's
 logical length is K, while its checked storage bound comes from the input.
 Selection loops update elements without changing that allocation. The cast
