@@ -30,14 +30,35 @@ local fn label(value: Val) -> str {
 }
 
 [memo]
-local fn val(value: Val) -> str {
+local fn storage_value(value: Val) -> Val {
   if mem.planned(value) {
-    let type = ir.type(value)
+    return value
+  }
+  // An indexed assignment advances the SSA value of the same mutable
+  // binding. Its C lvalue remains the input's storage, including a planned
+  // slot established before the assignment. Do not require a print/reparse
+  // cycle to propagate the declaration's metadata onto every SSA version.
+  let definition = ir.def(value)
+  if ir.live(definition) && ir.form(definition) == "index_assign" {
+    let inputs = ir.args(definition)
+    if len(inputs) != 0 && ir.name(value) != "" &&
+       ir.name(value) == ir.name(inputs[0]) {
+      return storage_value(inputs[0])
+    }
+  }
+  return value
+}
+
+[memo]
+local fn val(value: Val) -> str {
+  let storage = storage_value(value)
+  if mem.planned(storage) {
+    let type = ir.type(storage)
     assert(tensor.valid(type), "c: planned value must be a tensor")
     return "slot_" + c_name(base.name(tensor.elem(type))) + "_" +
-           text(mem.slot(value))
+           text(mem.slot(storage))
   }
-  return label(value)
+  return label(storage)
 }
 
 [memo]
@@ -101,4 +122,3 @@ local fn binding_header(fn: Fn) -> str {
   assert(base.kind(name) == "str", "c: binding header must be a string")
   return base.str(name)
 }
-

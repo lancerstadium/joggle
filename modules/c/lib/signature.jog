@@ -429,7 +429,7 @@ local fn uses_slot(m: Mod, fn: Fn, slot: int) -> bool {
   for op in ir.ops(fn) {
     let inputs = ir.args(op)
     for at in 0..len(inputs) {
-      let value = inputs[at]
+      let value = storage_value(inputs[at])
       if mem.planned(value) && mem.slot(value) == slot &&
          runtime_arg(m, op, at) {
         return true

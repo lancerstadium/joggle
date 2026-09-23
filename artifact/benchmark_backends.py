@@ -105,9 +105,12 @@ class JoggleRunner:
             self.stages_ns["lower_emit"] = time.perf_counter_ns() - started
             started = time.perf_counter_ns()
             library = root / "model.so"
-            subprocess.run([cc, "-std=c11", "-O3", "-DNDEBUG", "-shared", "-fPIC",
-                            str(output / "0.c"), "-lm", "-o", str(library)],
-                           check=True, capture_output=True, timeout=timeout)
+            compiled = subprocess.run([cc, "-std=c11", "-O3", "-DNDEBUG", "-shared", "-fPIC",
+                                       str(output / "0.c"), "-lm", "-o", str(library)],
+                                      capture_output=True, text=True, timeout=timeout)
+            if compiled.returncode:
+                raise RuntimeError(f"Joggle host compilation failed (exit {compiled.returncode}):\n"
+                                   f"{compiled.stdout}\n{compiled.stderr}")
             self.stages_ns["host_compile"] = time.perf_counter_ns() - started
             started = time.perf_counter_ns()
             api = json.loads((output / "0.api.json").read_text())

@@ -25,7 +25,7 @@ from run_baseline_benchmarks import compare_outputs, isolated_reference, ort_ses
 from run_baseline_benchmarks import checked_native_build, apply_model_edit, production_update
 from run_baseline_benchmarks import production_sample_row, correctness_oracle_record, command as baseline_command
 from run_joggle_benchmarks import compiler_identity, checkpoint_protocol, make_harness, Unsupported
-from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tvm_identity
+from benchmark_backends import ONNXMLIRRunner, TVMRunner, JoggleRunner, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
 from run_extension_task import (execute, fusion_fixture, graph_fixture, sandbox_policy,
                                 equivalent, rewrite_graph, graph_manifest, rewrite_numerics, gelu_structure,
@@ -37,6 +37,53 @@ from merge_benchmark_rows import audited_input
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_joggle_host_compile_failure_keeps_compiler_diagnostics(self):
+        x = helper.make_tensor_value_info("x", onnx.TensorProto.FLOAT, [1])
+        model = helper.make_model(helper.make_graph([], "identity", [x], [x])).SerializeToString()
+        compiler = type("Compiler", (), {"compile": lambda self, source, output: None})()
+        result = subprocess.CompletedProcess(["cc"], 1, "", "error: undeclared storage binding")
+        with patch("run_joggle_benchmarks.run_to_file"), patch("benchmark_backends.subprocess.run", return_value=result):
+            with self.assertRaisesRegex(RuntimeError, "undeclared storage binding"):
+                JoggleRunner(model, {"x": np.zeros(1, dtype=np.float32)}, compiler,
+                             Path("tool"), Path("mods"), "cc", 10)
+
+    @unittest.skipUnless((Path(__file__).resolve().parents[1] /
+                          "build/artifact/joggle-artifact-reactive").is_file() and shutil.which("cc"),
+                         "resident compiler and C compiler are required")
+    def test_resident_index_updates_keep_the_planned_storage_binding(self):
+        repo = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "input.jog"
+            source.write_text("""mod resident_storage
+use tensor
+fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {
+  var shape = tensor<index, [4]>(index(0))
+  shape[0] = index(1)
+  shape[1] = index(2)
+  shape[2] = index(3)
+  shape[3] = index(4)
+  var result = tensor<f32, [4]>(f32(0))
+  for i in 0..4 { result[i] = x[i] + f32(shape[i]) }
+  return result
+}
+""")
+            output = root / "compiled"
+            subprocess.run([str(repo / "build/artifact/joggle-artifact-reactive"), "--compile-sequence",
+                            str(repo / "build/modules"), str(output), str(source)],
+                           check=True, capture_output=True, text=True, timeout=30)
+            harness = root / "main.c"
+            harness.write_text("void resident_storage_main(const float*,float*);\n"
+                               "int main(void){float x[4]={-1,-2,-3,-4},y[4];"
+                               "resident_storage_main(x,y);for(int i=0;i<4;++i)if(y[i]!=0)return 1;"
+                               "for(int i=0;i<4;++i)x[i]=0;resident_storage_main(x,y);"
+                               "for(int i=0;i<4;++i)if(y[i]!=i+1)return 2;return 0;}\n")
+            compiled = subprocess.run([shutil.which("cc"), "-std=c11", "-O3", str(output / "0.c"),
+                            str(harness), "-o", str(root / "run")],
+                           capture_output=True, text=True, timeout=30)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr + "\n" + (output / "0.c").read_text())
+            subprocess.run([str(root / "run")], check=True, timeout=10)
+
     def test_production_sample_requires_matching_edit_protocol_and_boundaries(self):
         case = {"case_id": "model", "edit": {"model_sha256": "a" * 64},
                 "replacement_sha256": "b" * 64}
