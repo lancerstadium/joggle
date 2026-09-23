@@ -34,6 +34,40 @@ from merge_benchmark_rows import audited_input
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "Matplotlib is required")
+    def test_performance_plot_external_variants_and_missing_reference(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "artifact/figures"))
+        from figure_07_performance import summarize, plot_variants, HATCHES
+        from common import COLORS
+        # Synthetic plotting fixtures, never exported as experiment data.
+        rows = [{"subject_kind": "operator", "subject": "op", "family": "elementwise",
+                 "variant": variant, "system_revision": "revision", "subject_hash": "a" * 64,
+                 "input_digest": "b" * 64, "supported": "true", "correct": "true",
+                 "reason": "", "iteration": str(i), "latency_ns": str(value)}
+                for variant in ("joggle-optimized", "tvm-relax-llvm", "onnx-mlir-llvm", "onnxruntime")
+                for i, value in enumerate((10, 20))]
+        summary = summarize(rows)
+        candidates = plot_variants(summary)
+        self.assertEqual(candidates, ("joggle-optimized", "tvm-relax-llvm", "onnx-mlir-llvm"))
+        self.assertTrue(all(v in COLORS and v in HATCHES for v in candidates))
+        self.assertTrue(all(row["latency_over_ort"] == 1 for row in summary))
+        # A correct candidate with an invalid ORT reference has no ratio,
+        # rather than a zero latency or a failed candidate status.
+        for row in rows:
+            if row["variant"] == "onnxruntime":
+                row["correct"] = "false"
+                row["reason"] = "numerical"
+        summary = summarize(rows)
+        self.assertTrue(all(row["latency_over_ort"] == "" for row in summary))
+        self.assertEqual(sum(row["correct"] for row in summary), 3)
+        for field in ("family", "reason", "input_digest"):
+            invalid = copy.deepcopy(rows)
+            invalid[0][field] = "different"
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                summarize(invalid)
+        with self.assertRaises(ValueError):
+            plot_variants([dict(summary[0], variant="unknown"), summary[-1]])
+
     @unittest.skipUnless((Path(__file__).resolve().parents[1] /
                           "build/artifact/joggle-artifact-reactive").is_file() and shutil.which("cc"),
                          "resident compiler and C compiler are required")

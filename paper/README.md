@@ -810,13 +810,15 @@ LLVM pipeline at `-O3`, with parallelism and fast math disabled.
 Each case uses byte-identical inputs; dtype-specific numerical oracles gate its timing results. Joggle fixes
 each entry signature from those inputs before either lowering pipeline begins.
 
-The main measure is steady-state execution latency after ten warm-ups and 100
-measurements. The performance figure groups the 24 operators into six compact
-panels with shared logarithmic axes. Each bar extends from parity to a
-per-operator median divided by its ONNX Runtime median; the upper whisker reaches p95 under the
-same denominator. The dashed line marks equal latency. Values below one
-indicate faster execution. Whiskers describe timing variation. Model results
-use the same normalization, and unsuccessful cases contribute to coverage.
+We report median steady-state execution latency from 100 measurements after
+ten warm-ups. The performance figure groups all 24 operators into six panels
+with shared logarithmic axes. Each latency is divided by the same-case ORT
+median: a ratio below one means faster execution, and a ratio above one means
+slower execution. Bars extend from parity to the median ratio; whiskers reach
+p95 using the same denominator. Thus, whiskers show timing spread, not
+confidence intervals. The model figure uses the same encoding. Cases that
+fail compilation or numerical validation remain in the coverage denominator
+but contribute no latency ratio.
 
 <!-- PERFORMANCE FIGURE PROMPT — Render from measured CSV using
 artifact/figures/figure_07_performance.py. Compact single-column figure with

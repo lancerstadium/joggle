@@ -407,11 +407,40 @@ python3 artifact/figures/figure_07_models.py \
   --summary paper/data/figure-07-models-summary.csv
 ```
 
-The model companion uses the same boxed three-column, two-row bar layout.
+Both plotting scripts use a 3.35 × 2.34 inch authoring canvas for six panels,
+with the same default 6 pt font and boxed three-column, two-row layout.
+The shared series encodings cover Joggle base/opt, TVM, and ONNX-MLIR;
+ORT supplies the reference line. A cross-system source may omit the base
+ablation, but it must retain the complete model population for every included
+system. The aggregate uses the intersection of correct cases across all
+included systems. The summary JSON records that population explicitly.
+
+For an audited combined operator/model export, produce companion previews
+without changing the manuscript's selected measurement snapshot:
+
+```sh
+python3 artifact/figures/figure_07_performance.py PATH/combined.csv \
+  --kind operator --output PATH/preview/operators.pdf \
+  --summary PATH/preview/operators.csv
+python3 artifact/figures/figure_07_models.py PATH/combined.csv \
+  --output PATH/preview/models.pdf --summary PATH/preview/models.csv
+```
+
+The source CSV and its merge record retain individual samples, compiler
+identities, and input hashes. Exported summary CSVs retain absolute medians,
+p95, normalized values, sample counts, and failure reasons. A cross marks an
+invalid candidate; a dash marks a correct candidate without a valid ORT
+reference (or an empty aggregate); a question mark marks an absent entry.
+None is encoded as a zero latency. Axis limits include both medians and p95,
+including values below parity. Whiskers show timing spread, not confidence
+intervals. Change the manuscript's figures, captions, and numeric results
+together when selecting a new measurement snapshot.
+
+The existing manuscript snapshot has the following model population:
 Five panels group all 15 models; the sixth shows the geometric means of the
 11 jointly correct models. Bars show medians and whiskers extend to p95;
-the aggregate has no timing whisker. `×C` and `×N` distinguish preparation
-and numerical failures. Absolute milliseconds remain in the exported summary
+the aggregate has no timing whisker. Failure reasons remain in the summary
+CSV. Absolute milliseconds remain in the exported summary
 CSV and the main-text model discussion. Small authoring fonts are configurable; final submission typography
 must be checked against the venue's figure-text requirements.
 

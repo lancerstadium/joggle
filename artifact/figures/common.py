@@ -23,7 +23,11 @@ COLORS = {
     "joggle-optimized": "#087E8B",
     "onnxruntime": "#E07A2D",
     "tvm-relax-llvm": "#E07A2D",
+    "onnx-mlir-llvm": "#2E5AAC",
 }
+
+# Shared physical size for the six-panel operator and model authoring views.
+PERFORMANCE_SIZE = (3.35, 2.34)
 
 
 def configure() -> None:

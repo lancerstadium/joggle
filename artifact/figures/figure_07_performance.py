@@ -15,13 +15,14 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 from matplotlib.ticker import LogLocator, NullFormatter
 
-from common import COLORS, configure, number, read_rows, save, truth
+from common import COLORS, PERFORMANCE_SIZE, configure, number, read_rows, save, truth
 
 VARIANTS = ("joggle-unoptimized", "joggle-optimized")
-PLOT_VARIANTS = (*VARIANTS, "tvm-relax-llvm")
+PLOT_VARIANTS = (*VARIANTS, "tvm-relax-llvm", "onnx-mlir-llvm")
 LABELS = {"joggle-unoptimized": "Joggle base", "joggle-optimized": "Joggle opt",
-          "tvm-relax-llvm": "TVM"}
-HATCHES = {"joggle-unoptimized": "///", "joggle-optimized": None, "tvm-relax-llvm": ".."}
+          "tvm-relax-llvm": "TVM", "onnx-mlir-llvm": "ONNX-MLIR"}
+HATCHES = {"joggle-unoptimized": "///", "joggle-optimized": None,
+           "tvm-relax-llvm": "..", "onnx-mlir-llvm": "\\\\"}
 FAMILIES = ("elementwise", "reduction", "matmul", "convolution", "quantization", "fusion")
 FAMILY_LABELS = ("Elementwise", "Reductions", "Matmul", "Convolution", "Quantization", "Fusion")
 MODEL_LABELS = {
@@ -48,7 +49,7 @@ def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
     summary = []
     for (kind, subject, variant), sample in sorted(groups.items()):
         signatures = {(r["subject_hash"], r["system_revision"], r["input_digest"],
-                       r["supported"], r["correct"]) for r in sample}
+                       r["supported"], r["correct"], r["family"], r["reason"]) for r in sample}
         if len(signatures) != 1:
             raise ValueError(f"mixed workload/revision/status for {subject}/{variant}")
         correct = truth(sample[0]["supported"]) and all(truth(r["correct"]) for r in sample)
@@ -75,19 +76,7 @@ def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
     return summary
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("csv", type=Path)
-    parser.add_argument("--output", type=Path, default=Path("figure-07-performance.pdf"))
-    parser.add_argument("--summary", type=Path, help="Export displayed medians, p95s, and ratios")
-    parser.add_argument("--font-size", type=float, default=6.0,
-                        help="Authoring font size in points")
-    args = parser.parse_args()
-    rows = read_rows(args.csv, {
-        "subject_kind", "subject", "family", "variant", "supported", "reason",
-        "latency_ns", "correct", "iteration", "subject_hash", "system_revision", "input_digest",
-    })
-    summary = summarize(rows)
+def plot_variants(summary: list[dict[str, object]]) -> tuple[str, ...]:
     present = {row["variant"] for row in summary}
     unknown = present - {*PLOT_VARIANTS, "onnxruntime"}
     if unknown:
@@ -95,6 +84,27 @@ def main() -> int:
     variants = tuple(variant for variant in PLOT_VARIANTS if variant in present)
     if not variants or "onnxruntime" not in present:
         raise ValueError("comparison requires candidate measurements and the ORT reference")
+    return variants
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("csv", type=Path)
+    parser.add_argument("--output", type=Path, default=Path("figure-07-performance.pdf"))
+    parser.add_argument("--summary", type=Path, help="Export displayed medians, p95s, and ratios")
+    parser.add_argument("--kind", choices=("operator", "model"),
+                        help="Select one population from a combined source-data CSV")
+    parser.add_argument("--font-size", type=float, default=6.0,
+                        help="Authoring font size in points")
+    args = parser.parse_args()
+    rows = read_rows(args.csv, {
+        "subject_kind", "subject", "family", "variant", "supported", "reason",
+        "latency_ns", "correct", "iteration", "subject_hash", "system_revision", "input_digest",
+    })
+    if args.kind:
+        rows = [row for row in rows if row["subject_kind"] == args.kind]
+    summary = summarize(rows)
+    variants = plot_variants(summary)
     indexed = {(r["subject_kind"], r["subject"], r["variant"]): r for r in summary}
     family = {(r["subject_kind"], r["subject"]): r["family"] for r in summary}
     rank = {value: i for i, value in enumerate(FAMILIES)}
@@ -103,8 +113,8 @@ def main() -> int:
                 for kind in ("operator", "model")}
     configure()
     font = args.font_size
-    if font <= 0:
-        raise ValueError("font size must be positive")
+    if not np.isfinite(font) or font < 3:
+        raise ValueError("font size must be finite and at least 3 points")
     plt.rcParams.update({"font.size": font, "legend.fontsize": font,
                          "savefig.bbox": None})
     panels = [("operator", label, [s for s in subjects["operator"] if family["operator", s] == name])
@@ -117,7 +127,8 @@ def main() -> int:
         raise ValueError("no recognized operator families or model subjects")
     ncols = 3
     nrows = (len(panels) + ncols - 1) // ncols
-    fig, axes = plt.subplots(nrows, ncols, figsize=(3.35, (0.99 * nrows + 0.36) * max(1, font / 6)),
+    fig, axes = plt.subplots(nrows, ncols,
+                             figsize=(PERFORMANCE_SIZE[0], PERFORMANCE_SIZE[1] * nrows / 2),
                              squeeze=False, sharey=True)
     finite = [float(r[k]) for r in summary if r["variant"] in variants
               for k in ("latency_over_ort", "p95_over_ort_median") if r[k] != ""]
@@ -137,7 +148,8 @@ def main() -> int:
                     ax.errorbar(i + offset, value, yerr=[[0], [max(0, tail - value)]],
                                 color="#27333D", lw=0.45, capsize=1, zorder=4)
                 else:
-                    ax.text(i + offset, 0.03, "×" if row else "?",
+                    mark = "?" if row is None else "–" if row["correct"] else "×"
+                    ax.text(i + offset, 0.03, mark,
                             transform=ax.get_xaxis_transform(), va="bottom", ha="center",
                             color=COLORS[variant], fontsize=font)
         ax.axhline(1, color="#565F69", ls="--", lw=0.6, zorder=4)
@@ -165,11 +177,12 @@ def main() -> int:
     handles = [Patch(facecolor=COLORS[v], edgecolor="#27333D", linewidth=0.35,
                       hatch=HATCHES[v], label=LABELS[v]) for v in variants]
     handles.append(Line2D([], [], color="#565F69", ls="--", lw=0.6, label="ORT = 1"))
-    fig.legend(handles=handles, loc="upper center", ncol=len(handles), frameon=False,
-               handlelength=1.2, columnspacing=0.8, bbox_to_anchor=(0.51, 1.015))
-    fig.text(0.01, 0.56, "Latency / ORT (log scale)", va="center", rotation=90, fontsize=font)
+    fig.legend(handles=handles, loc="upper center", ncol=min(3, len(handles)), frameon=False,
+               handlelength=1.2, columnspacing=0.8, bbox_to_anchor=(0.51, 1.005))
+    fig.text(0.01, 0.56, "Latency / ORT ↓ (log)", va="center", rotation=90, fontsize=font)
+    fig.text(0.125, 0.012, "Median → p95   × invalid   – ORT invalid   ? absent", fontsize=font - 1)
     fig.subplots_adjust(left=0.125, right=0.988, bottom=0.185,
-                        top=0.88, wspace=0.12, hspace=0.90)
+                        top=0.81 if len(handles) > 3 else 0.88, wspace=0.12, hspace=0.90)
     save(fig, args.output)
     if args.summary:
         args.summary.parent.mkdir(parents=True, exist_ok=True)
