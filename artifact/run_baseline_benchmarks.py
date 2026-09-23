@@ -7,6 +7,7 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 import os
 import platform
 import random
@@ -547,12 +548,25 @@ def production_sample_row(sample: dict, backend: str, policy: str, case: dict,
                   "compiler_identity_sha256": sha256(json.dumps(sample["compiler_identity"], sort_keys=True).encode())}
 
 
+def production_worker_timeout(policy: str, case_timeout: float,
+                              worker_timeout: float | None = None) -> float:
+    """Budget both builds in update workers; timing still covers only replacement."""
+    if policy not in {"update", "rebuild"}:
+        raise ValueError("invalid production policy")
+    for value in (case_timeout, worker_timeout):
+        if value is not None and (not math.isfinite(value) or value <= 0):
+            raise ValueError("timeouts must be finite and positive")
+    return worker_timeout if worker_timeout is not None else case_timeout * (2 if policy == "update" else 1)
+
+
 def collect_updates(args: argparse.Namespace) -> int:
     """Collect repeated, fresh-worker update/rebuild pairs without synthetic timings."""
     revision, dirty = git_state(Path(__file__).resolve().parent.parent)
     if dirty and not args.allow_dirty:
         raise ValueError("commit before production collection or use --allow-dirty for integration")
     cases = production_population(args)
+    timeouts = {policy: production_worker_timeout(policy, args.case_timeout, args.worker_timeout)
+                for policy in ("update", "rebuild")}
     all_models = {case["id"] for case in json.loads(args.spec.read_text())["model_cases"]}
     missing_models = sorted(all_models - {case["case_id"] for case in cases})
     record_path, raw_path = args.output.with_suffix(".json"), args.output.with_suffix(".samples.jsonl")
@@ -590,7 +604,7 @@ def collect_updates(args: argparse.Namespace) -> int:
                     argv = command(child, policy, case["case_id"], args.model_root / (case["case_id"] + ".onnx"))
                     sample = None
                     try:
-                        sample = run_json(argv, args.case_timeout)
+                        sample = run_json(argv, timeouts[policy])
                         measured = production_sample_row(sample, args.backend, policy, case,
                             fingerprints[str(args.spec.resolve())], fingerprints[str((args.inputs / "index.json").resolve())])
                         row.update(measured)
@@ -613,6 +627,7 @@ def collect_updates(args: argparse.Namespace) -> int:
               "population_sha256": sha256(args.edit_manifest.read_bytes()), "sources": fingerprints,
               "rows": count, "failures": failures, "stable": stable, "iterations": args.iterations,
               "selected_models": args.case_id, "seed": args.seed,
+              "timeouts_seconds": {"case": args.case_timeout, "worker": timeouts},
               "missing_models": missing_models,
               "output_sha256": sha256(args.output.read_bytes()), "raw_sha256": sha256(raw_path.read_bytes()),
               "partial": bool(args.case_id) or bool(missing_models) or args.smoke or args.iterations < 10,
@@ -829,6 +844,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--onnx-mlir", type=Path, help="path to the ONNX-MLIR compiler executable")
     parser.add_argument("--target-json", default='{"kind":"llvm","num-cores":1}')
     parser.add_argument("--case-timeout", type=float, default=1200)
+    parser.add_argument("--worker-timeout", type=float,
+                        help="total production worker limit; default is case-timeout per build (two for update)")
     parser.add_argument("--spec", type=Path,
                         default=root / "manifests" / "benchmark-cases.json")
     parser.add_argument("--inputs", type=Path, required=True)
@@ -859,8 +876,13 @@ def parse_args() -> argparse.Namespace:
         parser.error("--target-json must be a JSON object")
     if not isinstance(target, dict) or target.get("kind") != "llvm":
         parser.error("--target-json must describe an LLVM CPU target")
-    if args.case_timeout <= 0:
-        parser.error("--case-timeout must be positive")
+    if not math.isfinite(args.case_timeout) or args.case_timeout <= 0:
+        parser.error("--case-timeout must be finite and positive")
+    if args.worker_timeout is not None:
+        if not math.isfinite(args.worker_timeout) or args.worker_timeout <= 0:
+            parser.error("--worker-timeout must be finite and positive")
+        if args.group != "updates" or args.worker:
+            parser.error("--worker-timeout is only valid for production update collection")
     if args.worker:
         if not args.model or not args.case_id or len(args.case_id) != 1:
             parser.error("worker mode requires one --case-id and --model")

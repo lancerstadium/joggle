@@ -327,6 +327,15 @@ Pair order and model/edit/repetition order are randomized with the recorded
 seed. No compiler caches are cleared or synthesized. `--smoke --iterations 1`
 and optional `--case-id` filters mark integration runs as partial.
 
+Production collection gives an update worker twice the `--case-timeout`
+allowance because it builds and validates both the original and replacement;
+a rebuild worker builds only the replacement. `--worker-timeout` overrides
+the whole-worker limit for both policies. These process limits include untimed
+oracle/setup work and do not change the reported replacement interval. They
+are not per-build wall-time enforcement. Collection records retain both the
+case setting and effective policy-specific worker limits. A timeout is an
+infrastructure outcome, not a numerical mismatch.
+
 The frozen node-edit population selects the first, middle, and last eligible
 Relu/Add sites per model, deduplicating coincident sites. It contains 37 edits
 over 13 models: Relu becomes LeakyRelu and Add becomes Sub with the same

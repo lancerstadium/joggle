@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "artifact"))
 from run_baseline_benchmarks import compare_outputs, isolated_reference, ort_session, run_json
 from run_baseline_benchmarks import checked_native_build, apply_model_edit, production_update
 from run_baseline_benchmarks import production_sample_row, correctness_oracle_record, command as baseline_command
+from run_baseline_benchmarks import production_worker_timeout
 from run_joggle_benchmarks import compiler_identity, checkpoint_protocol, make_harness, Unsupported
 from benchmark_backends import ONNXMLIRRunner, TVMRunner, JoggleRunner, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
@@ -38,6 +39,20 @@ from merge_update_rows import production_rows, sha256 as file_sha256
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_production_worker_timeout_accounts_for_original_build(self):
+        self.assertEqual(production_worker_timeout("rebuild", 180), 180)
+        self.assertEqual(production_worker_timeout("update", 180), 360)
+        for policy in ("update", "rebuild"):
+            self.assertEqual(production_worker_timeout(policy, 180, 900), 900)
+            for bad in (0, -1, float("nan"), float("inf")):
+                with self.subTest(policy=policy, value=bad):
+                    with self.assertRaises(ValueError):
+                        production_worker_timeout(policy, bad)
+                    with self.assertRaises(ValueError):
+                        production_worker_timeout(policy, 180, bad)
+        with self.assertRaises(ValueError):
+            production_worker_timeout("execute", 180)
+
     def test_production_assembly_reconciles_raw_samples_and_pairs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
