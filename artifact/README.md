@@ -341,11 +341,21 @@ input index, benchmark specification, oracle, and timing boundaries. Mixed
 compiler identities invalidate a collection. These records are not Figure 6
 release artifacts until the cross-system assembly and population gates pass.
 
-`merge_update_rows.py`, `validate_reactive.py`, and `figure_06_update.py`
+`merge_update_rows.py --production --allow-partial` reconciles the production
+CSV with its hash-bound raw samples and collection record. Pass `--spec`,
+`--population`, `--inputs-dir`, and `--model-root` to identify the frozen
+protocol. The assembler checks edit/model/input identity, update/rebuild pairs,
+compiler revisions, timing boundaries, and failure records. Its output retains
+absolute nanosecond timings, retained state, and backend-specific
+`stage_<name>_ns` columns. Unreported stages stay empty, rather than becoming
+zero. Different backend stage names do not imply equivalent work boundaries.
+The assembled sample CSV is marked partial and is not a release result.
+
+`validate_reactive.py` and `figure_06_update.py`
 still consume the earlier stage-counter provider schema; they do not yet
 assemble `production-update-sample/v1`. Do not pass production samples through
-that schema or mix them with metadata diagnostics. Production CSV assembly
-and the Figure 6 rendering path remain to be connected.
+that schema or mix them with metadata diagnostics. The production CSV still
+needs its population release gate and Figure 6 rendering path.
 
 `run_reactive.py` currently runs a metadata-propagation diagnostic over model
 topologies. Its five stages construct derived dictionaries; they do not lower

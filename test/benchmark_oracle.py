@@ -34,9 +34,83 @@ from run_extension_task import (execute, fusion_fixture, graph_fixture, sandbox_
 from run_extension_agent import public_case_ids, tool_feedback, response_usage, final_checks
 import run_extension_agent
 from merge_benchmark_rows import audited_input
+from merge_update_rows import production_rows, sha256 as file_sha256
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_production_assembly_reconciles_raw_samples_and_pairs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            spec, index, population = [root / name for name in ("spec.json", "index.json", "population.json")]
+            for path in (spec, index, population):
+                path.write_text("{}")
+            case = {"case_id": "model", "edit_id": "edit", "edit": {"model_sha256": "a" * 64},
+                    "replacement_sha256": "b" * 64}
+            identity = {"backend": "tvm", "collector_dirty": False, "collector_revision": "revision"}
+            sample = {"schema": "production-update-sample/v1", "backend": "tvm", "policy": "update",
+                      "case_id": "model", "edit_sha256": hashlib.sha256(json.dumps(case["edit"], sort_keys=True).encode()).hexdigest(),
+                      "benchmark_spec_sha256": file_sha256(spec), "input_index_sha256": file_sha256(index),
+                      "identity_stable": True, "compiler_identity": identity, "final_compiler_identity": identity,
+                      "oracle": correctness_oracle_record(), "retained_state": "native caches",
+                      "initial": {"correct": True, "model_sha256": "a" * 64}, "input_digest": "c" * 64,
+                      "replacement": {"correct": True, "model_sha256": "b" * 64, "wall_ns": 10,
+                          "ready_ns": 8, "edit_ns": 1, "validation_ns": 2, "output_digest": "d" * 64,
+                          "stages_ns": {"compile": 6}}}
+            rows, raw = [], []
+            for order, policy in enumerate(("update", "rebuild")):
+                current = copy.deepcopy(sample)
+                current["policy"] = policy
+                if policy == "rebuild":
+                    current.update(initial=None, retained_state="fresh-worker")
+                key = dict(backend="tvm", case_id="model", edit_id="edit", iteration=0,
+                           policy=policy, order=order, seed=42)
+                rows.append(key | {"edit_sha256": current["edit_sha256"], "error": ""} |
+                            production_sample_row(current, "tvm", policy, case, file_sha256(spec), file_sha256(index)))
+                raw.append({"key": key, "sample": current})
+            output = root / "provider.csv"
+
+            def write_data(selected_rows, selected_raw):
+                with output.open("w", newline="") as stream:
+                    writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
+                    writer.writeheader(); writer.writerows(selected_rows)
+                output.with_suffix(".samples.jsonl").write_text("".join(json.dumps(r) + "\n" for r in selected_raw))
+                record = {"schema": "production-update-collection/v1", "dirty": False, "stable": True, "revision": "revision",
+                          "population_sha256": file_sha256(population), "output_sha256": file_sha256(output),
+                          "raw_sha256": file_sha256(output.with_suffix(".samples.jsonl")),
+                          "sources": {str(p.resolve()): file_sha256(p) for p in (spec, index, population)},
+                          "rows": len(selected_rows), "iterations": 1, "seed": 42,
+                          "failures": sum(r["correct"] == "false" for r in selected_rows)}
+                output.with_suffix(".json").write_text(json.dumps(record))
+
+            def check(selected_rows, selected_raw):
+                write_data(selected_rows, selected_raw)
+                return production_rows([output], [case], spec, index, population)[0]
+
+            self.assertEqual(len(check(rows, raw)), 2)
+            self.assertEqual(json.loads(check(rows, raw)[0]["stages_ns"]), {"compile": 6})
+            with self.assertRaisesRegex(ValueError, "incomplete"):
+                check(rows[:1], raw[:1])
+            wrong_rows = copy.deepcopy(rows); wrong_rows[0]["ready_ns"] = 9
+            with self.assertRaisesRegex(ValueError, "differs from worker"):
+                check(wrong_rows, raw)
+            wrong_raw = copy.deepcopy(raw); wrong_raw[0]["sample"]["replacement"]["stages_ns"]["compile"] = 9
+            with self.assertRaisesRegex(ValueError, "overlapping"):
+                check(rows, wrong_raw)
+            wrong_rows = copy.deepcopy(rows); wrong_raw = copy.deepcopy(raw)
+            wrong_rows[1]["input_digest"] = "e" * 64; wrong_raw[1]["sample"]["input_digest"] = "e" * 64
+            with self.assertRaisesRegex(ValueError, "different inputs"):
+                check(wrong_rows, wrong_raw)
+            wrong_rows = copy.deepcopy(rows); wrong_rows[0]["correct"] = "false"
+            with self.assertRaisesRegex(ValueError, "failure row"):
+                check(wrong_rows, raw)
+            failed = copy.deepcopy(rows)
+            for name in ("wall_ns", "ready_ns", "edit_ns", "validation_ns", "model_sha256", "input_digest",
+                         "output_digest", "compiler_identity_sha256"):
+                failed[0][name] = ""
+            failed[0].update(correct="false", error="compiler failed")
+            failed_raw = copy.deepcopy(raw); failed_raw[0]["sample"] = {"failure": "compiler failed"}
+            self.assertEqual(sum(r["correct"] == "false" for r in check(failed, failed_raw)), 1)
+
     def test_joggle_host_compile_failure_keeps_compiler_diagnostics(self):
         x = helper.make_tensor_value_info("x", onnx.TensorProto.FLOAT, [1])
         model = helper.make_model(helper.make_graph([], "identity", [x], [x])).SerializeToString()
