@@ -1,0 +1,13 @@
+mod extension
+use base
+use ir
+
+fn analyze(m: Mod) -> dict {
+  let request = ir.meta(ir.find(m, "subject"), "request")
+  var expression = "2.0f * x + 1.0f"
+  if str(get(request, "kernel")) == "relu" { expression = "x > 0.0f ? x : 0.0f" }
+  var result: dict = {}
+  result["symbol"] = "task_kernel"
+  result["source"] = "#include <stddef.h>\nvoid task_kernel(const float* input, float* output, size_t count) {\n  for (size_t i = 0; i < count; ++i) {\n    float x = input[i];\n    output[i] = " + expression + ";\n  }\n}\n"
+  return result
+}

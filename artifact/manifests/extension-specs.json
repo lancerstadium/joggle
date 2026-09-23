@@ -409,10 +409,15 @@
       "title": "Kernel wrapper artifact",
       "footprint": true,
       "required_roles": ["emission"],
-      "contract": "Emit a C99-callable wrapper for a contiguous f32 elementwise kernel with arguments (const float* input, float* output, size_t count); compile it with the pinned compiler and execute fixed vectors.",
+      "contract": "Read kernel from request metadata and emit JSON with exactly symbol=task_kernel and source containing a complete C99 translation unit. Export void task_kernel(const float* input, float* output, size_t count). Supported kernels are relu (x>0?x:+0, including negative zero mapped to positive zero) and 2*x+1 (f32 multiply then f32 add, without contraction). Handle arbitrary count, exact in-place operation, and count=0 with null pointers; do not modify nonaliased inputs or access outside count elements. Runtime vectors are not provided to the emitter. The oracle compiles the emitted C with its recorded host compiler and fixed separate driver, then checks exact f32 bits, input preservation, and output guards in separate-buffer and in-place modes.",
       "positive_cases": [
         {"id": "relu", "input": {"kernel": "relu", "values": [-2.0, -0.0, 1.5, 4.0]}, "expect": {"values": [0.0, 0.0, 1.5, 4.0], "symbol": "task_kernel"}},
-        {"id": "affine", "input": {"kernel": "2*x+1", "values": [-2.0, 0.0, 1.5, 4.0]}, "expect": {"values": [-3.0, 1.0, 4.0, 9.0], "symbol": "task_kernel"}}
+        {"id": "affine", "input": {"kernel": "2*x+1", "values": [-2.0, 0.0, 1.5, 4.0]}, "expect": {"values": [-3.0, 1.0, 4.0, 9.0], "symbol": "task_kernel"}},
+        {"id": "relu-tail", "input": {"kernel": "relu", "values": [-8.0, 0.25, -0.5, 7.0, 0.0, -0.0, 16.0]}, "expect": {"values": [0.0, 0.25, 0.0, 7.0, 0.0, 0.0, 16.0], "symbol": "task_kernel"}},
+        {"id": "affine-tail", "input": {"kernel": "2*x+1", "values": [-8.0, 0.25, -0.5, 7.0, 0.0, -0.0, 16.0]}, "expect": {"values": [-15.0, 1.5, 0.0, 15.0, 1.0, 1.0, 33.0], "symbol": "task_kernel"}},
+        {"id": "singleton", "input": {"kernel": "2*x+1", "values": [-0.75]}, "expect": {"values": [-0.5], "symbol": "task_kernel"}},
+        {"id": "empty-relu", "input": {"kernel": "relu", "values": []}, "expect": {"values": [], "symbol": "task_kernel"}},
+        {"id": "empty-affine", "input": {"kernel": "2*x+1", "values": []}, "expect": {"values": [], "symbol": "task_kernel"}}
       ],
       "negative_cases": [],
       "oracle": {"phases": ["build", "semantic"], "comparison": "compile-and-run"}

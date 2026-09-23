@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import csv
 import difflib
 import hashlib
@@ -127,14 +128,31 @@ def public_case_ids(task: dict) -> list[str]:
 def tool_feedback(report: dict) -> dict:
     if report.get("complete_task") is not False:
         raise ValueError("only public-fixture reports may enter model feedback")
+    def artifact_feedback(case):
+        result = case.get("numerics") or {}
+        if "build" not in result:
+            return {}
+        return {"artifact": {phase: {key: result[phase][key][-6000:] if key in ("stdout", "stderr")
+                                     else result[phase][key] for key in
+                                     ("exit_code", "stdout", "stderr", "timeout")}
+                             for phase in ("build", "run") if phase in result}}
     return {"build": [{"exit_code": item["exit_code"],
                        "stderr": item["stderr"][-6000:]} for item in report["setup"]],
             "cases": [{key: case[key] for key in ("id", "passed", "actual", "expected",
-                       "exit_code", "decode_error")} | {"stderr": case["stderr"][-6000:]}
+                       "exit_code", "decode_error")} | {"stderr": case["stderr"][-6000:]} | artifact_feedback(case)
                       for case in report["cases"]]}
 
 
 def native_identity(args: argparse.Namespace) -> dict:
+    identity = backend_identity(args)
+    if getattr(args, "task", None) == "emit-kernel-wrapper":
+        compiler = args.cc.resolve(strict=True)
+        identity["host_compiler"] = {"path": str(compiler), "sha256": digest(compiler),
+                                     "version": subprocess.check_output([str(compiler), "--version"], text=True)}
+    return identity
+
+
+def backend_identity(args: argparse.Namespace) -> dict:
     if args.system == "Joggle":
         return {"executable_sha256": digest(args.joggle),
                 "mods_sha256": hashlib.sha256(json.dumps([
@@ -167,6 +185,7 @@ def main() -> int:
     parser.add_argument("--builtin-mods", type=Path)
     parser.add_argument("--mlir-dir", type=Path)
     parser.add_argument("--xdsl-python", type=Path)
+    parser.add_argument("--cc", type=Path, default=Path(shutil.which("clang") or "/usr/bin/cc"))
     parser.add_argument("--sandbox-read", type=Path, action="append", default=[])
     parser.add_argument("--allow-dirty", action="store_true", help="integration only; never release eligible")
     args = parser.parse_args()
@@ -245,7 +264,7 @@ def main() -> int:
         argv = [sys.executable, str(ROOT / "run_extension_task.py"), "--isolate",
                 "--task", args.task, "--system", args.system, "--source", str(candidate),
                 "--output", str(output), "--build-root", str(root / "build")]
-        for key in ("joggle", "builtin_mods", "mlir_dir", "xdsl_python"):
+        for key in ("joggle", "builtin_mods", "mlir_dir", "xdsl_python", "cc"):
             value = getattr(args, key)
             if value:
                 argv.extend(["--" + key.replace("_", "-"), str(value.absolute())])

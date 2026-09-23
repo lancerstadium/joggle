@@ -76,6 +76,13 @@ before ReLU with `[input, weight, bias]`. Copy every convolution metadata key,
 redirect final uses, then erase ReLU, BiasAdd, and convolution in that order.
 Return from a helper to skip a nonmatching chain; Jog has no `continue`.
 
+For `emit-kernel-wrapper`, use the analysis entry point below to return a dict
+with exactly `symbol` and `source`. Read `kernel` from the subject's `request`
+metadata. Build the C99 translation unit with strings; export `task_kernel`
+with `(const float*, float*, size_t)` parameters. Runtime vectors are not in
+the metadata. The oracle compiles the source and checks independent-buffer,
+in-place, and zero-count calls, including positive-zero ReLU output.
+
 ## Analysis entry point
 
 Edit the supplied `module.jog`. Its public entry point is:

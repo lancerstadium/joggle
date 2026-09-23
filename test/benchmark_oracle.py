@@ -28,13 +28,38 @@ from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tv
 from validate_figure import performance
 from run_extension_task import (execute, fusion_fixture, graph_fixture, sandbox_policy,
                                 equivalent, rewrite_graph, graph_manifest, rewrite_numerics, gelu_structure,
-                                quant_structure, convolution_nhwc, layout_structure)
+                                quant_structure, convolution_nhwc, layout_structure, wrapper_execution)
 from run_extension_agent import public_case_ids, tool_feedback, response_usage, final_checks
 import run_extension_agent
 from merge_benchmark_rows import audited_input
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("clang"), "Clang is required")
+    def test_emitted_wrapper_is_compiled_and_runtime_mutants_are_rejected(self):
+        compiler = Path(shutil.which("clang")).resolve()
+        case = {"id": "wrapper", "input": {"values": [-2.0, -0.0, 1.5, 4.0]},
+                "expect": {"values": [0.0, 0.0, 1.5, 4.0]}}
+        valid = "for(size_t i=0;i<count;++i) output[i]=input[i]>0?input[i]:0.0f;"
+        variants = [(valid, True), ("", False),
+                    (valid + "output[count]=1;", False),
+                    (valid + "((float*)input)[0]=1;", False),
+                    ("for(size_t i=0;i<count;++i) output[i]=input[i]>=0?input[i]:0.0f;", False),
+                    ("not valid C", False)]
+        for body, passed in variants:
+            with self.subTest(body=body), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                actual = {"symbol": "task_kernel", "source": "#include <stddef.h>\n"
+                          "void task_kernel(const float* input,float* output,size_t count){" + body + "}"}
+                result = wrapper_execution(actual, case, root, compiler, 20, None, root)
+                self.assertEqual(result["passed"], passed)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            empty = {"id": "empty", "input": {"values": []}, "expect": {"values": []}}
+            actual = {"symbol": "task_kernel", "source": "#include <stddef.h>\n"
+                      "void task_kernel(const float* input,float* output,size_t count){" + valid + "}"}
+            self.assertTrue(wrapper_execution(actual, empty, root, compiler, 20, None, root)["passed"])
+
     @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "Matplotlib is required")
     def test_performance_plot_external_variants_and_missing_reference(self):
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "artifact/figures"))
@@ -625,6 +650,13 @@ class BenchmarkOracleTests(unittest.TestCase):
             "exit_code": 0, "decode_error": "", "stderr": "", "command": ["private-path"]}]}
         feedback = tool_feedback(report)
         self.assertNotIn("command", feedback["cases"][0])
+        report["cases"][0]["numerics"] = {"build": {
+            "exit_code": 1, "stdout": "", "stderr": "invalid generated C", "timeout": False,
+            "command": ["private-compiler-path"]}}
+        feedback = tool_feedback(report)
+        build = feedback["cases"][0]["artifact"]["build"]
+        self.assertEqual(build["stderr"], "invalid generated C")
+        self.assertNotIn("command", build)
         report["complete_task"] = True
         with self.assertRaisesRegex(ValueError, "public-fixture"):
             tool_feedback(report)

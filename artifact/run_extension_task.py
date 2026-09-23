@@ -14,6 +14,7 @@ import json
 import math
 import os
 import signal
+import struct
 import shutil
 import subprocess
 import sys
@@ -26,7 +27,7 @@ SUPPORTED_TASKS = {"ana-broadcast-shape", "ana-storage-cost", "ana-numeric-range
                    "ana-fusion-match", "emit-storage-plan", "emit-target-capability",
                    "emit-graph-manifest", "rew-add-zero", "rew-redundant-cast", "rew-transpose-pair",
                    "con-instruction-select", "con-gelu-expand", "con-quant-expand", "con-layout-legalize",
-                   "rew-conv-bias-relu"}
+                   "rew-conv-bias-relu", "emit-kernel-wrapper"}
 
 REWRITE_TASKS = {"rew-add-zero", "rew-redundant-cast", "rew-transpose-pair", "con-instruction-select", "con-gelu-expand", "con-quant-expand", "con-layout-legalize", "rew-conv-bias-relu"}
 GELU_TOLERANCES = {"f32": (1e-5, 1e-6), "f64": (1e-12, 1e-12)}
@@ -644,6 +645,66 @@ def execute(command: list[str | Path], timeout: float, policy: str | None = None
                 "stderr": str(failure), "timeout": False}
 
 
+WRAPPER_DRIVER = r'''
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+typedef char require_float32[sizeof(float) == 4 ? 1 : -1];
+void task_kernel(const float *, float *, size_t);
+static float value(uint32_t bits) { float x; memcpy(&x, &bits, 4); return x; }
+static uint32_t bits(float x) { uint32_t b; memcpy(&b, &x, 4); return b; }
+int main(int argc, char **argv) {
+  size_t n = (size_t)(argc - 1);
+  float *in = malloc((n + 2) * sizeof(float));
+  float *out = malloc((n + 2) * sizeof(float));
+  float *saved = malloc((n + 2) * sizeof(float));
+  if (!in || !out || !saved) return 2;
+  for (size_t i = 0; i < n + 2; ++i) in[i] = out[i] = value(0x7fc00123);
+  for (size_t i = 0; i < n; ++i) in[i + 1] = value((uint32_t)strtoul(argv[i + 1], NULL, 16));
+  memcpy(saved, in, (n + 2) * sizeof(float));
+  task_kernel(in + 1, out + 1, n);
+  if (memcmp(saved, in, (n + 2) * sizeof(float)) || bits(out[0]) != 0x7fc00123 ||
+      bits(out[n + 1]) != 0x7fc00123) return 3;
+  for (size_t i = 0; i < n; ++i) printf("%08x ", bits(out[i + 1]));
+  task_kernel(in + 1, in + 1, n);
+  if (bits(in[0]) != 0x7fc00123 || bits(in[n + 1]) != 0x7fc00123) return 4;
+  for (size_t i = 0; i < n; ++i) printf("%08x ", bits(in[i + 1]));
+  if (!n) task_kernel(NULL, NULL, 0);
+  free(in); free(out); free(saved);
+  return 0;
+}
+'''
+
+
+def wrapper_execution(actual: object, case: dict, work: Path, compiler: Path,
+                      timeout: float, policy: str | None, scratch: Path) -> dict:
+    """Compile emitted C separately from the fixed driver; compare observed f32 bits."""
+    if (not isinstance(actual, dict) or set(actual) != {"source", "symbol"}
+            or actual["symbol"] != "task_kernel" or not isinstance(actual["source"], str)):
+        return {"passed": False, "error": "expected source and task_kernel symbol"}
+    root = work / case["id"]
+    root.mkdir()
+    source, driver, binary = root / "kernel.c", root / "driver.c", root / "run"
+    source.write_text(actual["source"])
+    driver.write_text(WRAPPER_DRIVER)
+    build = execute([compiler, "-std=c99", "-O2", "-fno-fast-math", "-ffp-contract=off",
+                     source, driver, "-o", binary], timeout, policy, scratch)
+    result = {"passed": False, "source_sha256": digest(source),
+              "driver_sha256": digest(driver), "build": build}
+    if build["exit_code"] != 0:
+        return result
+    def hex32(value):
+        return f'{struct.unpack("<I", struct.pack("<f", value))[0]:08x}'
+    inputs = [hex32(value) for value in case["input"]["values"]]
+    expected = [hex32(value) for value in case["expect"]["values"]] * 2
+    run = execute([binary, *inputs], timeout, policy, scratch)
+    result.update({"executable_sha256": digest(binary), "run": run,
+                   "expected_bits": expected, "observed_bits": run["stdout"].split(),
+                   "passed": run["exit_code"] == 0 and run["stdout"].split() == expected})
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task", choices=sorted(SUPPORTED_TASKS), required=True)
@@ -657,6 +718,7 @@ def main() -> int:
     parser.add_argument("--builtin-mods", type=Path)
     parser.add_argument("--mlir-dir", type=Path)
     parser.add_argument("--xdsl-python", type=Path)
+    parser.add_argument("--cc", type=Path, default=Path(shutil.which("clang") or "/usr/bin/cc"))
     parser.add_argument("--timeout", type=float, default=60)
     parser.add_argument("--isolate", action="store_true",
                         help="restrict native candidate processes to the trial workspace")
@@ -703,6 +765,12 @@ def main() -> int:
                                  for path in harness_files},
               "setup": [], "cases": [], "passed": False}
     record["complete_task"] = not args.case
+    wrapper = args.task == "emit-kernel-wrapper"
+    if wrapper:
+        args.cc = args.cc.resolve(strict=True)
+        record["compiler_identity"] = {"path": str(args.cc), "sha256": digest(args.cc),
+                                       "version": execute([args.cc, "--version"], args.timeout)}
+        record["setup"].append(record["compiler_identity"]["version"])
     if rewriting:
         import numpy as np
         record["numerical_oracle"] = {"numpy_version": np.__version__,
@@ -774,6 +842,8 @@ def main() -> int:
                 if args.case and case["id"] not in args.case:
                     continue
                 path = work / ("input.jog" if args.system == "Joggle" else "input.mlir")
+                # Runtime test vectors are oracle inputs, not emitter metadata.
+                request = {"kernel": case["input"]["kernel"]} if wrapper else case["input"]
                 if rewriting:
                     source = graph_fixture(rewrite_graph(case["input"]), args.system)
                 elif args.task == "ana-fusion-match":
@@ -781,10 +851,10 @@ def main() -> int:
                 elif args.task == "emit-graph-manifest":
                     source = graph_fixture(case["input"], args.system)
                 elif args.system == "Joggle":
-                    source = ("mod fixture\n[request: " + json.dumps(case["input"]) +
+                    source = ("mod fixture\n[request: " + json.dumps(request) +
                               "]\nfn subject() -> int { return 0 }\n")
                 else:
-                    source = "module attributes {study.request = " + native_attr(case["input"]) + "} {}\n"
+                    source = "module attributes {study.request = " + native_attr(request) + "} {}\n"
                 path.write_text(source)
                 step = execute([*command, path, *flags], args.timeout, policy, scratch)
                 if rewriting and "error" in case["expect"]:
@@ -830,6 +900,9 @@ def main() -> int:
                           (conversion_check(actual, original) if conversion else
                            equivalent(actual, expected, task["oracle"]["comparison"] == "numerical",
                                       spec["comparison_policy"])))
+                if wrapper and step["exit_code"] == 0 and not error:
+                    numerics = wrapper_execution(actual, case, work, args.cc, args.timeout, policy, scratch)
+                    passed = numerics["passed"]
                 if rewriting and passed:
                     try:
                         tolerance = GELU_TOLERANCES[case["input"]["element"]] if args.task == "con-gelu-expand" else None
@@ -854,6 +927,7 @@ def main() -> int:
                             all(case["passed"] for case in record["cases"]) and
                             digest(args.source) == source_hash and
                             digest(spec_path) == spec_hash and
+                            (not wrapper or digest(args.cc) == record["compiler_identity"]["sha256"]) and
                             all(digest(ROOT / path) == value
                                 for path, value in record["harness_sha256"].items()))
     args.output.parent.mkdir(parents=True, exist_ok=True)

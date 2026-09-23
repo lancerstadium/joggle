@@ -147,3 +147,10 @@ bias axis. Insert `CallOp("fused_conv_bias_relu", [input, weight, bias],
 [result_type])` before ReLU, copying convolution attributes. The callee is a
 property rather than an entry in `.attributes`. Replace final uses, then
 erase ReLU, BiasAdd, and convolution in that order.
+
+For `emit-kernel-wrapper`, read `kernel` from the `study.request` DictionaryAttr
+and return exactly `symbol` and `source` dictionary entries. Source is a C99
+translation unit exporting `task_kernel` with `(const float*, float*, size_t)`
+arguments. Runtime vectors are not supplied to the emitter. The oracle compiles
+and executes independent-buffer, in-place, and zero-count calls, checking exact
+f32 bits and positive-zero ReLU output.

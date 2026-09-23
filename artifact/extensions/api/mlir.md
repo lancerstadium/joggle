@@ -149,3 +149,10 @@ results. Check rank-one channel bias and the layout's bias axis. Create the
 declared `fused_conv_bias_relu` with input, weight, bias operands. Copy all
 convolution attributes except `callee`, preserving the new target symbol.
 Replace final users, then erase ReLU, BiasAdd, and convolution.
+
+For `emit-kernel-wrapper`, read the `kernel` StringAttr from `study.request`
+and return an `llvm::json::Object` with exactly `symbol` and `source`. Source
+is a complete C99 translation unit exporting `task_kernel` with arguments
+`(const float*, float*, size_t)`. Runtime vectors are not supplied to the
+emitter. The oracle compiles and executes independent-buffer, in-place, and
+zero-count calls, checking exact f32 bits and positive-zero ReLU output.

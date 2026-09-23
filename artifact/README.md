@@ -56,7 +56,7 @@ The native tasks include `ana-broadcast-shape`, `ana-storage-cost`,
 `emit-target-capability`, `emit-graph-manifest`, `rew-add-zero`, and
 `rew-redundant-cast`, `rew-transpose-pair`, `con-instruction-select`, and
 `con-gelu-expand`, `con-quant-expand`, `con-layout-legalize`, and
-`rew-conv-bias-relu`.
+`rew-conv-bias-relu`, and `emit-kernel-wrapper`.
 Each task directory under `extensions/` contains reference implementations for
 Joggle, MLIR, and xDSL; the shared `starter.*` files contain their empty entry
 points. Attribute-analysis tasks read a request from function metadata in
@@ -180,6 +180,15 @@ bitwise f32 outputs on six input sets are checked. Fused semantics preserve
 the original convolution accumulation, then bias addition, then ReLU; this
 task measures extension correctness, not fused-kernel throughput.
 
+`emit-kernel-wrapper` emits a C99 source artifact from the kernel name, without
+seeing runtime vectors. Seven cases exercise ReLU and affine transforms with
+empty, singleton, and non-vector-multiple lengths. The oracle compiles each
+artifact with a separately generated fixed driver and the recorded `--cc`
+compiler (`-O2 -fno-fast-math -ffp-contract=off`). It checks exact f32 output
+bits in separate-buffer and in-place modes, input preservation, guard writes,
+and null-pointer handling at zero count. Repeated emission must be identical.
+Compiler/build/run diagnostics remain available in public agent feedback.
+
 ### Local agent execution
 
 `run_extension_agent.py` runs an installed Ollama model with four actions:
@@ -222,7 +231,7 @@ The current collector emits integration records with `release_eligible: false`.
 It records successful native execution but does not infer a failed compiler's
 parse/type/build phase from its exit code. Unmeasured phase fields and reference
 likelihoods remain empty. These records cannot enter the release assembler.
-The full matrix additionally requires the remaining 9 native task harnesses,
+The full matrix additionally requires the remaining 8 native task harnesses,
 phase-specific instrumentation, and the frozen demonstration sets. The
 assembler consumes complete provider records:
 
