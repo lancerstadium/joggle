@@ -2239,6 +2239,35 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "script.bounds_refresh", bounds_refresh));
   CHECK(bounds_refresh.verify(env));
 
+  // Dynamic range lengths need scalar-tensor reads and signed quotient
+  // intervals. Exercise both divisor signs, truncation, and unsafe divisors.
+  for (const auto& item : std::vector<std::vector<std::string>>{
+           {"-7", "8", "2", "3", "-3", "4"},
+           {"-7", "8", "-3", "-2", "-4", "3"},
+           {"1", "2", "3", "4", "0", "0"},
+           {"1", "8", "0", "2"},
+           {"1", "8", "-1", "1"},
+           {"-9223372036854775807 - 1", "-9223372036854775807 - 1", "-1", "-1"}}) {
+    joggle::Mod interval;
+    CHECK(joggle::parse(env,
+        "mod quotient_bounds\nuse tensor\n"
+        "fn main(a: bool, b: bool) -> i64 {\n"
+        " var x = i64(" + item[0] + ")\n if a { x = i64(" + item[1] + ") }\n"
+        " var y = i64(" + item[2] + ")\n if b { y = i64(" + item[3] + ") }\n"
+        " let scalar = tensor<i64, []>(x)\n return scalar[index(0)] / y\n}\n",
+        interval, "quotient-bounds.jog"));
+    joggle::Attr inferred;
+    CHECK(joggle::query(env, "script.return_bounds", interval, inferred));
+    CHECK(inferred.list());
+    if (item.size() == 4) {
+      CHECK(inferred.list()->empty());
+    } else {
+      CHECK(inferred.list()->size() == 2);
+      CHECK((*inferred.list())[0].integer() == std::stoll(item[4]));
+      CHECK((*inferred.list())[1].integer() == std::stoll(item[5]));
+    }
+  }
+
   joggle::Mod detached_implementation;
   CHECK(joggle::parse(env,
                       "mod detached.impl\n"

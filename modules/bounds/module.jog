@@ -142,6 +142,25 @@ local fn neg(value: list<int>) -> list<int> {
   return [0 - value[1], 0 - value[0]]
 }
 
+local fn quotient(left: list<int>, right: list<int>) -> list<int> {
+  if len(left) != 2 || len(right) != 2 ||
+     (right[0] <= 0 && right[1] >= 0) { return [] }
+  // Integer division truncates toward zero. With a fixed-sign divisor,
+  // endpoint pairs enclose the quotient; MIN / -1 must never be evaluated.
+  if left[0] == -9223372036854775807 - 1 &&
+     right[0] <= -1 && right[1] >= -1 { return [] }
+  var low = left[0] / right[0]
+  var high = low
+  for a in left {
+    for b in right {
+      let value = a / b
+      if value < low { low = value }
+      if value > high { high = value }
+    }
+  }
+  return [low, high]
+}
+
 local fn exact(value: bool) -> list<int> {
   if value {
     return [1, 1]
@@ -235,8 +254,12 @@ local fn vector_element(m: Mod, value: Val, at: int, known: dict) -> list<int> {
   let type = ir.type(value)
   if !tensor.valid(type) || !integer(tensor.elem(type)) { return [] }
   let dims = tensor.dims(type)
-  if len(dims) != 1 || base.kind(dims[0]) != "int" ||
-     at < 0 || at >= base.int(dims[0]) { return [] }
+  var count = 1
+  if len(dims) != 0 {
+    if len(dims) != 1 || base.kind(dims[0]) != "int" { return [] }
+    count = base.int(dims[0])
+  }
+  if at < 0 || at >= count { return [] }
   let source = ir.def(value)
   if !ir.live(source) || ir.kind(source) != "call" { return [] }
   let inputs = ir.args(source)
@@ -338,6 +361,13 @@ local fn result(m: Mod, op: Op, known: dict) -> list<int> {
     }
     if name == "operator *" {
       return mul(left, right)
+    }
+    if name == "operator /" {
+      let value = quotient(left, right)
+      let allowed = limits(type)
+      if len(value) == 2 && len(allowed) == 2 &&
+         value[0] >= allowed[0] && value[1] <= allowed[1] { return value }
+      return []
     }
     if name == "operator ==" || name == "operator !=" ||
        name == "operator <" || name == "operator <=" ||

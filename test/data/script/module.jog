@@ -22,6 +22,11 @@ fn return_capacity(m: Mod) -> list<int> {
   return mem.capacity(m, ir.args(ops[len(ops) - 1])[0])
 }
 
+fn return_bounds(m: Mod) -> list<int> {
+  let ops = ir.ops(ir.find(m, "main"))
+  return bounds.get(bounds.infer(m), ir.args(ops[len(ops) - 1])[0])
+}
+
 fn capacity_index_probe(m: Mod) -> bool {
   let main_ops = ir.ops(ir.find(m, "main"))
   let result = ir.args(main_ops[len(main_ops) - 1])[0]

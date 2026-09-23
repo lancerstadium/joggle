@@ -16,3 +16,13 @@ fn fractional() -> tensor<f32, [_]> {
   let out: tensor<f32, [_]> = tensor.range<3>(start, stop, step)
   return out
 }
+
+fn bounded(choose: bool) -> tensor<i32, [_]> {
+  var end = i32(2)
+  if choose { end = i32(7) }
+  let start = tensor<i32, []>(i32(0))
+  let stop = tensor<i32, []>(end)
+  let step = tensor<i32, []>(i32(2))
+  let out: tensor<i32, [_]> = tensor.range(start, stop, step)
+  return out
+}

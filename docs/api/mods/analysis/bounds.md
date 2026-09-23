@@ -94,19 +94,17 @@ cast and does not change `ir.type(value)`.
 
 ## Mechanism and limits
 
-Facts propagate through supported integer operations and structured control
-flow until stable. The transfer rule for each operation is monotone: it may
-discover a sound interval, intersect compatible evidence, or fall back to
-unknown, but it cannot invent a narrower interval without proof.
+`infer` seeds integer constants and traverses operations in structured order.
+Supported operations read facts already available for their operands; branch
+yields join the selected arms. Unsupported producers retain unknown bounds.
+The analysis does not iterate arbitrary loop-carried recurrences to a fixed point.
 
 ```mermaid
 flowchart TD
-  C[integer constants] --> W[worklist]
-  P[function parameters / loop facts] --> W
-  W --> T[operation transfer]
-  T --> N{new or tighter fact?}
-  N -->|yes| W
-  N -->|no| S[stable dictionary]
+  C[integer constants] --> W[structured traversal]
+  P[recognized induction ranges] --> W
+  W --> T[operation transfer / branch join]
+  T --> S[SSA-keyed dictionary]
   U[unsupported call] --> X[unknown]
   X --> S
 ```
@@ -114,6 +112,14 @@ flowchart TD
 Structured loops seed induction-variable ranges from recognized `range`
 inputs. Branch results are joined conservatively. Arithmetic uses checked
 interval operations so overflow cannot turn into an unsound proof.
+
+Integer division uses truncation toward zero. Endpoint pairs bound a quotient
+when the divisor interval excludes zero; a possible signed overflow also
+leaves the result unknown. For example, `[-7, 8] / [2, 3]` yields `[-3, 4]`,
+whereas division by `[-1, 1]` yields `[]`. Reads from a scalar tensor filled
+with a bounded integer preserve that interval, as do supported reads from
+one-dimensional shape vectors. This lets dynamic `tensor.range` lengths use
+the same analysis as other allocation sizes.
 
 ## Using bounds in a transform
 
