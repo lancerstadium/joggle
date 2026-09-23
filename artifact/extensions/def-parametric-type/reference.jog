@@ -1,0 +1,20 @@
+mod extension
+use base
+use ir
+
+local fn checked(width: int, frac: int) -> Ty {
+  assert(width >= 2 && width <= 32 && frac >= 0 && frac < width, "invalid-type-parameter")
+  return ty("fx", [ty(text(width)), ty(text(frac))])
+}
+
+fn fx<W: int, F: int>() -> Ty { return checked(W, F) }
+
+fn verify(m: Mod) -> bool {
+  for value in ir.params(ir.find(m, "subject")) {
+    let parameters = args(ir.type(value))
+    let width = int(parameters[0])
+    let frac = int(parameters[1])
+    checked(width, frac)
+  }
+  return false
+}

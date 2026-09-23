@@ -83,6 +83,22 @@ with `(const float*, float*, size_t)` parameters. Runtime vectors are not in
 the metadata. The oracle compiles the source and checks independent-buffer,
 in-place, and zero-count calls, including positive-zero ReLU output.
 
+## Type definition entry point
+
+For `def-parametric-type`, define callable `fn fx<W: int, F: int>() -> Ty`
+and `fn verify(m: Mod) -> bool`. Construct a structural type with
+`ty("fx", [ty(text(W)), ty(text(F))])`; check `2 <= W <= 32` and
+`0 <= F < W` before construction. Invalid parameters use
+`assert(condition, "invalid-type-parameter")`. A body-less declaration alone
+does not supply compile-time constructor execution.
+
+The fixture imports the extension, invokes the constructor through a fixed
+observer, and declares identity-function parameters/results of that type.
+The verifier reads `ir.params(ir.find(m, "subject"))`, checks their type
+arguments, and leaves the graph unchanged. Return `false` for no changes.
+Printed IR is reparsed and a fixed observer reports the parameter types.
+There is no `analyze` answer dictionary for definition tasks.
+
 ## Analysis entry point
 
 Edit the supplied `module.jog`. Its public entry point is:

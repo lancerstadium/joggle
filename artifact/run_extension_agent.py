@@ -16,7 +16,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from run_extension_task import ROOT, SUPPORTED_TASKS, REWRITE_TASKS, digest, case_completed
+from run_extension_task import ROOT, SUPPORTED_TASKS, REWRITE_TASKS, DEFINITION_TASKS, digest, case_completed
 
 
 ACTIONS, TOKENS = 30, 32000
@@ -220,7 +220,8 @@ def main() -> int:
     card = ROOT / "extensions/api" / (CARD_NAMES[args.system] + ".md")
     suffix = SUFFIXES[args.system]
     starter = ROOT / "extensions" / (
-        ("rewrite-starter." if args.task in REWRITE_TASKS else "starter.") + suffix)
+        ("definition-starter." if args.task in DEFINITION_TASKS else
+         "rewrite-starter." if args.task in REWRITE_TASKS else "starter.") + suffix)
     source_identity = {str(path.relative_to(ROOT)): digest(path) for path in (
         Path(__file__).resolve(), ROOT / "run_extension_task.py", spec_path, card, starter,
         ROOT / "extensions/CMakeLists.txt", ROOT / "extensions/mlir-driver.cpp",
@@ -229,6 +230,9 @@ def main() -> int:
         for path in (ROOT / "extensions/emit-graph-manifest/reference.jog",
                      ROOT / "extensions/emit-graph-manifest/reference.py"):
             source_identity[str(path.relative_to(ROOT))] = digest(path)
+    if args.task in DEFINITION_TASKS:
+        path = ROOT / "extensions/definition-observer.jog"
+        source_identity[str(path.relative_to(ROOT))] = digest(path)
     demos = []
     for name in args.demo:
         source = ROOT / "extensions" / name / ("reference." + suffix)

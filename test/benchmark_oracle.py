@@ -28,13 +28,60 @@ from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tv
 from validate_figure import performance
 from run_extension_task import (execute, fusion_fixture, graph_fixture, sandbox_policy,
                                 equivalent, rewrite_graph, graph_manifest, rewrite_numerics, gelu_structure,
-                                quant_structure, convolution_nhwc, layout_structure, wrapper_execution)
+                                quant_structure, convolution_nhwc, layout_structure, wrapper_execution,
+                                definition_fixture, definition_result)
 from run_extension_agent import public_case_ids, tool_feedback, response_usage, final_checks
 import run_extension_agent
 from merge_benchmark_rows import audited_input
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_native_definition_observation_requires_one_parametric_type(self):
+        for text in ("fx<8,3>", "!extension.fx<8, 3>"):
+            self.assertEqual(definition_result({"types": [text]}),
+                             {"canonical": "fx<8,3>", "storage_bits": 8})
+        for actual in ({}, {"types": True}, {"types": []}, {"types": [3]},
+                       {"types": ["i8"]}, {"types": ["fx<8,3>", "fx<16,7>"]}):
+            with self.subTest(actual=actual), self.assertRaises(ValueError):
+                definition_result(actual)
+
+    @unittest.skipUnless(importlib.util.find_spec("xdsl"), "xDSL is required")
+    def test_registered_fixed_point_type_roundtrip_and_bounds(self):
+        from io import StringIO
+        from xdsl.context import Context
+        from xdsl.dialects.builtin import Builtin
+        from xdsl.dialects.func import Func
+        from xdsl.parser import Parser
+        from xdsl.printer import Printer
+        from xdsl.utils.exceptions import VerifyException, ParseError
+        root = Path(__file__).resolve().parents[1] / "artifact"
+        path = root / "extensions/def-parametric-type/reference.py"
+        spec = importlib.util.spec_from_file_location("fixed_point_reference", path)
+        reference = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(reference)
+        task = next(t for t in json.loads((root / "manifests/extension-specs.json").read_text())["tasks"]
+                    if t["id"] == "def-parametric-type")
+        for case in task["positive_cases"] + task["negative_cases"]:
+            context = Context()
+            context.load_dialect(Builtin)
+            context.load_dialect(Func)
+            reference.register(context)
+            def parse():
+                module = Parser(context, definition_fixture(case["input"], "xDSL")).parse_module()
+                module.verify()
+                return module
+            if "error" in case["expect"]:
+                with self.assertRaisesRegex((VerifyException, ParseError), "invalid-type-parameter"):
+                    parse()
+                continue
+            module = parse()
+            output = StringIO()
+            Printer(stream=output).print_op(module)
+            reparsed = Parser(context, output.getvalue()).parse_module()
+            reparsed.verify()
+            argument = next(iter(reparsed.ops)).body.block.args[0]
+            self.assertEqual(definition_result({"types": [str(argument.type)]}), case["expect"])
+
     @unittest.skipUnless(shutil.which("clang"), "Clang is required")
     def test_emitted_wrapper_is_compiled_and_runtime_mutants_are_rejected(self):
         compiler = Path(shutil.which("clang")).resolve()

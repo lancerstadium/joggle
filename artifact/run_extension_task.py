@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import signal
 import struct
 import shutil
@@ -27,7 +28,32 @@ SUPPORTED_TASKS = {"ana-broadcast-shape", "ana-storage-cost", "ana-numeric-range
                    "ana-fusion-match", "emit-storage-plan", "emit-target-capability",
                    "emit-graph-manifest", "rew-add-zero", "rew-redundant-cast", "rew-transpose-pair",
                    "con-instruction-select", "con-gelu-expand", "con-quant-expand", "con-layout-legalize",
-                   "rew-conv-bias-relu", "emit-kernel-wrapper"}
+                   "rew-conv-bias-relu", "emit-kernel-wrapper", "def-parametric-type"}
+
+DEFINITION_TASKS = {"def-parametric-type"}
+
+
+def definition_fixture(request: dict, system: str) -> str:
+    type = f'fx<{request["width"]},{request["frac"]}>'
+    if system == "Joggle":
+        return (f"mod fixture\nuse base\nuse extension\n"
+                f"fn constructed(m: Mod) -> Ty {{ return {type}() }}\n"
+                f"fn subject(x: {type}) -> {type} {{ return x }}\n")
+    type = "!extension." + type
+    return f"module {{ func.func @subject(%x: {type}) -> {type} {{ func.return %x : {type} }} }}\n"
+
+
+def definition_result(actual: object) -> dict:
+    if (not isinstance(actual, dict) or set(actual) != {"types"}
+            or not isinstance(actual["types"], list) or len(actual["types"]) != 1
+            or not isinstance(actual["types"][0], str)):
+        raise ValueError("expected one native parameter type")
+    match = re.fullmatch(r"(?:!extension\.)?fx<(-?\d+),(-?\d+)>",
+                         re.sub(r"\s+", "", actual["types"][0]))
+    if not match:
+        raise ValueError("expected native fx type after round-trip")
+    width, frac = map(int, match.groups())
+    return {"canonical": f"fx<{width},{frac}>", "storage_bits": width}
 
 REWRITE_TASKS = {"rew-add-zero", "rew-redundant-cast", "rew-transpose-pair", "con-instruction-select", "con-gelu-expand", "con-quant-expand", "con-layout-legalize", "rew-conv-bias-relu"}
 GELU_TOLERANCES = {"f32": (1e-5, 1e-6), "f64": (1e-12, 1e-12)}
@@ -749,6 +775,7 @@ def main() -> int:
     spec_hash = digest(spec_path)
     task = next(task for task in spec["tasks"] if task["id"] == args.task)
     rewriting = args.task in REWRITE_TASKS
+    definition = args.task in DEFINITION_TASKS
     all_cases = task["positive_cases"] + task["negative_cases"]
     if not set(args.case).issubset({case["id"] for case in all_cases}):
         parser.error("--case names a fixture outside the selected task")
@@ -758,6 +785,8 @@ def main() -> int:
     if rewriting:
         harness_files += [ROOT / "extensions/emit-graph-manifest/reference.jog",
                           ROOT / "extensions/emit-graph-manifest/reference.py"]
+    if definition:
+        harness_files.append(ROOT / "extensions/definition-observer.jog")
     record = {"schema": "extension-task-oracle/v1", "task": args.task,
               "system": args.system, "source": str(args.source),
               "source_sha256": source_hash, "task_spec_sha256": spec_hash,
@@ -787,7 +816,7 @@ def main() -> int:
         policy = sandbox_policy(args, work) if args.isolate else None
         record["execution_isolation"] = {"kind": "macos-seatbelt" if policy else "none",
                                          "policy": policy}
-        if rewriting and args.system != "Joggle":
+        if (rewriting and args.system != "Joggle") or (definition and args.system == "xDSL"):
             observer_identity = execute([args.xdsl_python or sys.executable, "-c",
                 "import importlib.metadata,json,sys; print(json.dumps({'python':sys.version,"
                 "'xdsl':importlib.metadata.version('xdsl')}))"], args.timeout, policy, scratch)
@@ -798,8 +827,13 @@ def main() -> int:
             mod = work / "mods/extension"
             mod.mkdir(parents=True)
             shutil.copyfile(args.source, mod / "module.jog")
-            command = [args.joggle, "run", "extension.transform"] if rewriting else [args.joggle, "query", "extension.analyze"]
+            command = ([args.joggle, "run", "extension.verify"] if definition else
+                       [args.joggle, "run", "extension.transform"] if rewriting else [args.joggle, "query", "extension.analyze"])
             flags = ["-M", args.builtin_mods, "-M", work / "mods"]
+            if definition:
+                observer = work / "mods/observer"
+                observer.mkdir()
+                shutil.copyfile(ROOT / "extensions/definition-observer.jog", observer / "module.jog")
             if rewriting:
                 observer = work / "mods/observer"
                 observer.mkdir()
@@ -811,7 +845,7 @@ def main() -> int:
                         'ir.kind(op) == "return", "rewrite result contains unsupported control or operations")'))
         elif args.system == "xDSL":
             command = [args.xdsl_python, ROOT / "extensions/xdsl-driver.py", args.source]
-            flags = ["--rewrite"] if rewriting else []
+            flags = ["--definition"] if definition else ["--rewrite"] if rewriting else []
         else:
             # A candidate must never inherit another candidate's executable.
             # Hash-separated builds also avoid timestamp-resolution races when
@@ -821,13 +855,15 @@ def main() -> int:
                 "harness": record["harness_sha256"],
                 "mlir_dir": str(args.mlir_dir.resolve()),
                 "rewrite": rewriting,
+                "definition": definition,
             }).encode()).hexdigest()
             build = (work / "build" if args.isolate else
                      args.build_root.resolve() / "mlir" / build_key)
             for argv in (["cmake", "-S", ROOT / "extensions", "-B", build,
                           f"-DMLIR_DIR={args.mlir_dir.resolve()}",
                           f"-DEXTENSION_SOURCE={args.source}",
-                          f"-DEXTENSION_REWRITE={'ON' if rewriting else 'OFF'}", "-DCMAKE_BUILD_TYPE=Release"],
+                          f"-DEXTENSION_REWRITE={'ON' if rewriting else 'OFF'}",
+                          f"-DEXTENSION_DEFINITION={'ON' if definition else 'OFF'}", "-DCMAKE_BUILD_TYPE=Release"],
                          ["cmake", "--build", build, "--parallel", "1"]):
                 step = execute(argv, args.timeout, policy, scratch)
                 record["setup"].append(step)
@@ -844,7 +880,9 @@ def main() -> int:
                 path = work / ("input.jog" if args.system == "Joggle" else "input.mlir")
                 # Runtime test vectors are oracle inputs, not emitter metadata.
                 request = {"kernel": case["input"]["kernel"]} if wrapper else case["input"]
-                if rewriting:
+                if definition:
+                    source = definition_fixture(request, args.system)
+                elif rewriting:
                     source = graph_fixture(rewrite_graph(case["input"]), args.system)
                 elif args.task == "ana-fusion-match":
                     source = fusion_fixture(case["input"], args.system)
@@ -856,19 +894,24 @@ def main() -> int:
                 else:
                     source = "module attributes {study.request = " + native_attr(request) + "} {}\n"
                 path.write_text(source)
-                step = execute([*command, path, *flags], args.timeout, policy, scratch)
-                if rewriting and "error" in case["expect"]:
+                construction = None
+                if definition and args.system == "Joggle":
+                    construction = execute([args.joggle, "query", "observer.construct", path, *flags],
+                                           args.timeout, policy, scratch)
+                step = (construction if construction is not None and construction["exit_code"] != 0 else
+                        execute([*command, path, *flags], args.timeout, policy, scratch))
+                if (rewriting or definition) and "error" in case["expect"]:
                     passed = expected_rejection(step, case["expect"])
                     record["cases"].append({"id": case["id"], "input": case["input"],
                                             "expected": case["expect"], "passed": passed,
-                                            "actual": None, "decode_error": "", **step})
+                                            "actual": None, "decode_error": "", "construction": construction, **step})
                     continue
                 actual = None
                 error = ""
                 observation = None
                 numerics = None
                 checked_step = step
-                if rewriting and step["exit_code"] == 0:
+                if (rewriting or (definition and args.system == "Joggle")) and step["exit_code"] == 0:
                     transformed = work / ("transformed.jog" if args.system == "Joggle" else "transformed.mlir")
                     transformed.write_text(step["stdout"])
                     if args.system == "Joggle":
@@ -884,6 +927,8 @@ def main() -> int:
                     try:
                         actual = json.loads(checked_step["stdout"], parse_constant=invalid_constant)
                         canonical(actual)
+                        if definition:
+                            actual = definition_result(actual)
                     except ValueError as failure:
                         actual = None
                         error = str(failure)
@@ -922,6 +967,7 @@ def main() -> int:
                                         "expected_sha256": hashlib.sha256(canonical(expected).encode()).hexdigest(),
                                         "passed": passed, "repeat": repeat,
                                         "observation": observation, "numerics": numerics,
+                                        "construction": construction,
                                         "decode_error": error, **step})
         record["passed"] = (setup_ok and bool(record["cases"]) and
                             all(case["passed"] for case in record["cases"]) and

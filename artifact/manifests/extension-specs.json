@@ -13,14 +13,21 @@
       "title": "Parametric numeric type",
       "footprint": true,
       "required_roles": ["definition"],
-      "contract": "Define a signed fixed-point scalar fx<width,frac>; require 2 <= width <= 32 and 0 <= frac < width; preserve both parameters through construction and text round-trip.",
+      "contract": "Define a native signed fixed-point scalar fx<width,frac>; require 2 <= width <= 32 and 0 <= frac < width. Joggle declares a generic Ty constructor and exports verify(Mod)->bool to validate the imported fixture's parameter types; MLIR exports registerExtension(MLIRContext&) and xDSL exports register(context), installing a parsed, printed, verified extension.fx type. Native function arguments and returns use this type. Preserve both parameters through construction, printing and reparsing. Invalid parameters must fail with invalid-type-parameter and no output IR/JSON. A fixed observer reads round-tripped argument types; candidates do not return answer dictionaries. storage_bits denotes the logical width parameter, not a measured ABI allocation size.",
       "positive_cases": [
         {"id": "fx8-3", "input": {"type": "fx", "width": 8, "frac": 3}, "expect": {"canonical": "fx<8,3>", "storage_bits": 8}},
-        {"id": "fx16-7", "input": {"type": "fx", "width": 16, "frac": 7}, "expect": {"canonical": "fx<16,7>", "storage_bits": 16}}
+        {"id": "fx16-7", "input": {"type": "fx", "width": 16, "frac": 7}, "expect": {"canonical": "fx<16,7>", "storage_bits": 16}},
+        {"id": "minimum-integer", "input": {"type": "fx", "width": 2, "frac": 0}, "expect": {"canonical": "fx<2,0>", "storage_bits": 2}},
+        {"id": "minimum-fraction", "input": {"type": "fx", "width": 2, "frac": 1}, "expect": {"canonical": "fx<2,1>", "storage_bits": 2}},
+        {"id": "maximum-integer", "input": {"type": "fx", "width": 32, "frac": 0}, "expect": {"canonical": "fx<32,0>", "storage_bits": 32}},
+        {"id": "maximum-fraction", "input": {"type": "fx", "width": 32, "frac": 31}, "expect": {"canonical": "fx<32,31>", "storage_bits": 32}}
       ],
       "negative_cases": [
         {"id": "fraction-overflow", "input": {"type": "fx", "width": 8, "frac": 8}, "expect": {"error": "invalid-type-parameter", "phase": "type"}},
-        {"id": "width-too-small", "input": {"type": "fx", "width": 1, "frac": 0}, "expect": {"error": "invalid-type-parameter", "phase": "type"}}
+        {"id": "width-too-small", "input": {"type": "fx", "width": 1, "frac": 0}, "expect": {"error": "invalid-type-parameter", "phase": "type"}},
+        {"id": "width-too-large", "input": {"type": "fx", "width": 33, "frac": 0}, "expect": {"error": "invalid-type-parameter", "phase": "type"}},
+        {"id": "negative-width", "input": {"type": "fx", "width": -2, "frac": 0}, "expect": {"error": "invalid-type-parameter", "phase": "type"}},
+        {"id": "negative-fraction", "input": {"type": "fx", "width": 8, "frac": -1}, "expect": {"error": "invalid-type-parameter", "phase": "type"}}
       ],
       "oracle": {"phases": ["parse", "type", "build", "semantic"], "comparison": "exact-json"}
     },

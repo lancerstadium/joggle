@@ -1,0 +1,19 @@
+mod observer
+use base
+use ir
+
+fn construct(m: Mod) -> dict {
+  let type = ir.invoke<Ty>(m, ir.find(m, "constructed"))
+  assert(type == ir.type(ir.params(ir.find(m, "subject"))[0]), "constructor-type-mismatch")
+  var result: dict = {}
+  result["constructed"] = text(type)
+  return result
+}
+
+fn analyze(m: Mod) -> dict {
+  var types: list<str> = []
+  for value in ir.params(ir.find(m, "subject")) { types += [text(ir.type(value))] }
+  var result: dict = {}
+  result["types"] = types
+  return result
+}

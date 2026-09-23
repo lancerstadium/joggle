@@ -156,3 +156,18 @@ is a complete C99 translation unit exporting `task_kernel` with arguments
 `(const float*, float*, size_t)`. Runtime vectors are not supplied to the
 emitter. The oracle compiles and executes independent-buffer, in-place, and
 zero-count calls, checking exact f32 bits and positive-zero ReLU output.
+
+## Type definition entry point
+
+For `def-parametric-type`, export `void registerExtension(MLIRContext&)`.
+Register a dialect named `extension` containing `extension.fx` backed by
+`Type::TypeBase` and a storage key `(width, frac)`. Implement dialect
+`parseType`/`printType` for `!extension.fx<width,frac>`. Use `getChecked`
+and static `verifyInvariants` to enforce the parameter bounds and emit
+`invalid-type-parameter`. A hand-written method named only `verify` is not
+automatically called by the checked TypeBase constructor. Anonymous-namespace
+classes need `MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID`.
+
+The fixed driver registers the dialect before parsing, verifies the fixture,
+prints and reparses it, verifies again, and reports actual argument types.
+No candidate `analyze` function is called in definition mode.

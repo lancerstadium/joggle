@@ -154,3 +154,17 @@ translation unit exporting `task_kernel` with `(const float*, float*, size_t)`
 arguments. Runtime vectors are not supplied to the emitter. The oracle compiles
 and executes independent-buffer, in-place, and zero-count calls, checking exact
 f32 bits and positive-zero ReLU output.
+
+## Type definition entry point
+
+For `def-parametric-type`, export `register(context)`. Define an
+`@irdl_attr_definition` subclass of `ParametrizedAttribute, TypeAttribute`,
+named `extension.fx`, with `width: IntAttr` and `frac: IntAttr` parameters.
+Implement `parse_parameters` and `print_parameters` for `<width,frac>`;
+`verify` raises `VerifyException("invalid-type-parameter")` outside the
+allowed range. Register it with `context.load_dialect(Dialect("extension",
+[], [FixedPoint]))`.
+
+The fixed driver registers before parsing, verifies, prints and reparses,
+verifies again, and reads the actual argument types. Definition mode never
+calls candidate `analyze` or accepts an answer dictionary.

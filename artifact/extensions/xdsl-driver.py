@@ -17,6 +17,7 @@ def main() -> None:
     else:
         implementation, input_path = map(Path, sys.argv[1:3])
     rewrite = not inspect and sys.argv[3:] == ["--rewrite"]
+    definition = not inspect and sys.argv[3:] == ["--definition"]
     # Execute exactly the submitted bytes rather than a timestamp-keyed .pyc
     # left by a previous candidate with the same filename and size.
     candidate = ModuleType("candidate")
@@ -26,9 +27,21 @@ def main() -> None:
     context = Context()
     context.load_dialect(Builtin)
     context.load_dialect(Func)
+    if definition:
+        candidate.register(context)
     module = Parser(context, input_path.read_text()).parse_module()
     module.verify()
-    if rewrite:
+    if definition:
+        from io import StringIO
+        from xdsl.printer import Printer
+        from xdsl.dialects.func import FuncOp
+        output = StringIO()
+        Printer(stream=output).print_op(module)
+        module = Parser(context, output.getvalue()).parse_module()
+        module.verify()
+        subject = next(op for op in module.ops if isinstance(op, FuncOp) and op.sym_name.data == "subject")
+        print(json.dumps({"types": [str(value.type) for value in subject.body.block.args]}))
+    elif rewrite:
         from xdsl.printer import Printer
         candidate.transform(module)
         module.verify()
