@@ -411,7 +411,8 @@ def compiler_identity(args: argparse.Namespace) -> dict[str, Any]:
                    if path.is_file() and path.suffix in
                    {".jog", ".json", ".so", ".dylib", ".dll"}}
             for name, root in (("builtin", args.builtin_mods),
-                               ("extensions", args.extension_mods))
+                               ("extensions", getattr(args, "extension_mods", None)))
+            if root is not None
         },
     }
 

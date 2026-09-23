@@ -22,7 +22,7 @@ from onnx import helper, numpy_helper
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "artifact"))
 from run_baseline_benchmarks import compare_outputs, isolated_reference, ort_session, run_json
-from run_baseline_benchmarks import checked_native_build, apply_model_edit
+from run_baseline_benchmarks import checked_native_build, apply_model_edit, production_update
 from run_joggle_benchmarks import compiler_identity, checkpoint_protocol, make_harness, Unsupported
 from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
@@ -513,10 +513,28 @@ class BenchmarkOracleTests(unittest.TestCase):
                     self.assertIsNone(rebuilt["initial"])
                     self.assertGreater(updated["replacement"]["edit_ns"], 0)
                     self.assertEqual(updated["edit_sha256"], rebuilt["edit_sha256"])
+                    self.assertTrue(updated["identity_stable"] and rebuilt["identity_stable"])
+                    self.assertEqual(updated["compiler_identity"], updated["final_compiler_identity"])
+                    self.assertEqual(updated["compiler_identity"], rebuilt["compiler_identity"])
+                    self.assertEqual(updated["benchmark_spec_sha256"],
+                                     hashlib.sha256(spec_path.read_bytes()).hexdigest())
+                    self.assertEqual(updated["input_index_sha256"],
+                                     hashlib.sha256((root / "index.json").read_bytes()).hexdigest())
                     self.assertNotEqual(updated["initial"]["output_digest"],
                                         updated["replacement"]["output_digest"])
                     for field in ("model_sha256", "output_digest"):
                         self.assertEqual(updated["replacement"][field], rebuilt["replacement"][field])
+
+            repo = Path(__file__).resolve().parents[1]
+            if (repo / "build/artifact/joggle-artifact-reactive").is_file():
+                worker_args = argparse.Namespace(**vars(args), backend="joggle", worker="rebuild",
+                    joggle=repo / "build/joggle", builtin_mods=repo / "build/modules",
+                    joggle_server=repo / "build/artifact/joggle-artifact-reactive",
+                    cc="cc", edit_json=edit_path)
+                with patch("run_baseline_benchmarks.production_identity",
+                           side_effect=[{"compiler": "before"}, {"compiler": "after"}]), \
+                        self.assertRaisesRegex(ValueError, "compiler changed"):
+                    production_update(worker_args)
 
     def test_external_worker_reports_errors_and_reaps_timeout(self):
         self.assertEqual(run_json([sys.executable, "-c", 'print("log"); print(\'{"ok": true}\')']),

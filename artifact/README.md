@@ -193,43 +193,40 @@ python3 artifact/collect_footprint.py \
 
 ## Figure 6
 
-The shared CSV pairs `full` and `update` for Joggle, MLIR, and xDSL on all 15
-models.
+The production comparison uses Joggle, TVM, and ONNX-MLIR. Each worker applies
+a hash-bound ONNX node edit, builds a replacement executable, and checks its
+outputs against an isolated semantic oracle. `update` first builds the original
+model in the same worker; `rebuild` builds only the edited model in a fresh
+worker. Both start their measured interval before applying the edit and stop
+after numerical validation. Oracle generation is outside that interval.
 
 ```sh
-python3 artifact/run_joggle_lowering_profile.py \
-  --model-root .cache/onnx-zoo \
-  --joggle build/joggle \
-  --builtin-mods build/modules \
-  --output .cache/artifact/update-joggle-production.csv
-
-python3 artifact/merge_update_rows.py \
-  .cache/artifact/update-joggle.csv \
-  .cache/artifact/update-joggle-production.csv \
-  .cache/artifact/update-mlir.csv \
-  .cache/artifact/update-xdsl.csv \
-  --output .cache/artifact/figure-06-update.csv
-
-python3 artifact/validate_reactive.py \
-  .cache/artifact/figure-06-update.csv
-python3 artifact/figures/figure_06_update.py \
-  .cache/artifact/figure-06-update.csv \
-  --output .cache/artifact/figure-06-update.pdf
+cmake --build build --target joggle-artifact-reactive -j4
+python3 artifact/run_baseline_benchmarks.py \
+  --worker update --backend joggle \
+  --inputs PATH/inputs --case-id CASE \
+  --model PATH/model.onnx --edit-json PATH/edit.json
 ```
 
-The production and end-to-end collectors both derive the entry signature from
-`benchmark-cases.json`. `opt.signature` binds named shape parameters and
-refines anonymous input extents before ONNX conversion, so both figures compile
-the same fixed workload rather than separate model variants.
-The production collector batches inference, conversion, and preparation and
-uses the runtime timing report to split these stages. Scalar lowering, storage
-planning, and placement retain materialized boundaries; their wall times
-include loading and writing the intermediate graph.
+Repeat with `--worker rebuild`, or select `--backend tvm` /
+`--backend onnx-mlir` with the corresponding compiler configuration. The JSON
+sample records edit/input/output hashes, absolute wall time, executable-ready
+time, validation time, backend stages, and retained state. Joggle currently
+retains its environment and evaluator plans but parses a fresh source graph.
+Its entry signature is derived from the same fixed inputs as the end-to-end
+collector. Building first refreshes the copied mod files in `build/modules`.
 
-MLIR and xDSL adapters must implement the same edit, five logical stages,
-counters, and digest. The release gate rejects Figure 6 without the complete
-`update-assembly/v1` provenance file. Matched providers identify their workload
-as `compiler-pipeline/v1` and count `subject-operation-visits`.
+Each sample fingerprints the native compiler, collector sources, and protocol
+before and after measurement. Joggle also fingerprints the resident server,
+loaded mod files, and host C compiler. A changed fingerprint rejects the
+sample. Fingerprinting is outside the timed interval. A stable sample is a
+measurement record, not a completed repeated model/edit population.
+
+`merge_update_rows.py`, `validate_reactive.py`, and `figure_06_update.py`
+still consume the earlier stage-counter provider schema; they do not yet
+assemble `production-update-sample/v1`. Do not pass production samples through
+that schema or mix them with metadata diagnostics. The production population,
+repeated sampling, and Figure 6 assembly remain to be connected.
 
 `run_reactive.py` currently runs a metadata-propagation diagnostic over model
 topologies. Its five stages construct derived dictionaries; they do not lower

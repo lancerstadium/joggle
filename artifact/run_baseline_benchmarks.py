@@ -11,6 +11,7 @@ import os
 import platform
 import random
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -219,6 +220,33 @@ def checked_native_build(factory, model: bytes, feeds: dict, names: list[str],
         raise
 
 
+def production_identity(args: argparse.Namespace) -> dict[str, Any]:
+    """Fingerprint the compiler actually used by a production update worker."""
+    from benchmark_backends import tvm_identity, onnx_mlir_identity
+    if args.backend == "joggle":
+        from run_joggle_benchmarks import compiler_identity
+        backend = compiler_identity(args)
+        backend["server_sha256"] = sha256(args.joggle_server.read_bytes())
+        compiler = Path(shutil.which(args.cc) or args.cc).resolve(strict=True)
+        backend["host_compiler"] = {
+            "path": str(compiler), "sha256": sha256(compiler.read_bytes()),
+            "version": subprocess.run([str(compiler), "--version"], check=True,
+                                      capture_output=True, text=True).stdout.strip(),
+        }
+    elif args.backend == "tvm":
+        backend = tvm_identity(json.loads(args.target_json))
+    elif args.backend == "onnx-mlir":
+        backend = onnx_mlir_identity(args.onnx_mlir)
+    else:
+        raise ValueError("unsupported production compiler")
+    collector = Path(__file__).resolve().parent
+    revision, dirty = git_state(collector.parent)
+    return {"backend": backend, "collector_revision": revision, "collector_dirty": dirty,
+            "collector_sources": {
+        name: sha256((collector / name).read_bytes()) for name in
+        ("run_baseline_benchmarks.py", "benchmark_backends.py", "joggle_entry.py")}}
+
+
 def production_update(args: argparse.Namespace) -> dict[str, Any]:
     """One full or resident-runtime rebuild; no synthetic incremental cache."""
     import onnx
@@ -247,6 +275,9 @@ def production_update(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("production update requires Joggle, TVM, or ONNX-MLIR")
     original = args.model.read_bytes()
     edit = json.loads(args.edit_json.read_text())
+    identity = production_identity(args)
+    spec_hash = sha256(args.spec.read_bytes())
+    input_index_hash = sha256((args.inputs / "index.json").read_bytes())
     # Generate the edited reference outside candidate timing. The identical
     # hash-bound edit is applied again inside every measured build.
     replacement = apply_model_edit(original, edit)
@@ -275,12 +306,21 @@ def production_update(args: argparse.Namespace) -> dict[str, Any]:
             path = Path(directory) / "edited.onnx"
             path.write_bytes(replacement)
             result = build(replacement, path, edit)
+        final_identity = production_identity(args)
+        if final_identity != identity:
+            raise ValueError("production compiler changed during measurement")
+        if (sha256(args.spec.read_bytes()) != spec_hash or
+                sha256((args.inputs / "index.json").read_bytes()) != input_index_hash):
+            raise ValueError("production measurement protocol changed during measurement")
         return {"schema": "production-update-sample/v1", "backend": args.backend,
                 "policy": args.worker, "case_id": args.case_id,
                 "edit_delivery": "hash-bound-node-replacement",
                 "edit_sha256": sha256(json.dumps(edit, sort_keys=True).encode()),
                 "resident_setup_ns": setup_ns if resident is not None else None,
                 "retained_state": retained if initial else "fresh-worker",
+                "compiler_identity": identity, "final_compiler_identity": final_identity,
+                "identity_stable": True, "benchmark_spec_sha256": spec_hash,
+                "input_index_sha256": input_index_hash,
                 "initial": initial, "replacement": result,
                 "oracle": correctness_oracle_record(),
                 "input_digest": output_digest(list(feeds), list(feeds.values()))}
