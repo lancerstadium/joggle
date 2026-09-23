@@ -183,14 +183,20 @@
       "title": "Redundant conversion elimination",
       "footprint": true,
       "required_roles": ["rewrite"],
-      "contract": "Remove identity casts and cancel cast(cast(x,A to B),B to A) only for lossless pairs; keep narrowing, float-integer, and shape-changing conversions.",
+      "contract": "Remove identity casts and cancel cast(cast(x,A to B),B to A) only for lossless pairs: signed integer widening or finite f32 to f64 widening. Keep narrowing, float-integer, and shape-changing conversions. Types are i8/i16/i32/i64/f32/f64; floating casts use round-to-nearest-ties-to-even. Remove the inner cast only when it has no remaining users. Modify the subject's native SSA graph; cast_A_B calls identify element conversions and tensor result types specify shape.",
       "positive_cases": [
-        {"id": "identity", "input": {"graph": "return cast(arg0:tensor<4xf32> to tensor<4xf32>)"}, "expect": {"graph": "return arg0"}},
-        {"id": "lossless-roundtrip", "input": {"graph": "return cast(cast(arg0:tensor<4xi8> to tensor<4xi16>) to tensor<4xi8>)"}, "expect": {"graph": "return arg0"}}
+        {"id": "identity", "input": {"element": "f32", "shape": [4], "casts": ["f32"]}, "expect": {"eliminate": true}},
+        {"id": "lossless-roundtrip", "input": {"element": "i8", "shape": [4], "casts": ["i16", "i8"]}, "expect": {"eliminate": true}},
+        {"id": "wide-integer-roundtrip", "input": {"element": "i32", "shape": [2, 3], "casts": ["i64", "i32"]}, "expect": {"eliminate": true}},
+        {"id": "floating-roundtrip", "input": {"element": "f32", "shape": [4], "casts": ["f64", "f32"]}, "expect": {"eliminate": true}},
+        {"id": "shared-intermediate", "input": {"element": "i8", "shape": [4], "casts": ["i16", "i8"], "return_intermediate": true}, "expect": {"eliminate": true}}
       ],
       "negative_cases": [
-        {"id": "lossy-roundtrip", "input": {"graph": "return cast(cast(arg0:tensor<4xi16> to tensor<4xi8>) to tensor<4xi16>)"}, "expect": {"graph": "unchanged"}},
-        {"id": "float-int", "input": {"graph": "return cast(cast(arg0:tensor<4xf32> to tensor<4xi32>) to tensor<4xf32>)"}, "expect": {"graph": "unchanged"}}
+        {"id": "lossy-roundtrip", "input": {"element": "i16", "shape": [4], "casts": ["i8", "i16"]}, "expect": {"eliminate": false}},
+        {"id": "float-int", "input": {"element": "f32", "shape": [4], "casts": ["i32", "f32"]}, "expect": {"eliminate": false}},
+        {"id": "floating-narrowing", "input": {"element": "f64", "shape": [4], "casts": ["f32", "f64"]}, "expect": {"eliminate": false}},
+        {"id": "shape-change", "input": {"element": "f32", "shape": [1], "casts": ["f32"], "result_shape": [4]}, "expect": {"eliminate": false}},
+        {"id": "single-widening", "input": {"element": "i8", "shape": [], "casts": ["i16"]}, "expect": {"eliminate": false}}
       ],
       "oracle": {"phases": ["build", "semantic"], "comparison": "canonical-graph"}
     },

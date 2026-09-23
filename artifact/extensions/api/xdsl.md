@@ -98,3 +98,11 @@ Tensor types expose `element_type` and `get_shape()`. A result supports
 payloads are at `attr.value.data`; `math.copysign(1, value)` distinguishes
 floating negative zero. Final checks cover structure, types, constant liveness,
 numerical outputs, and strict signed-zero behavior.
+
+`rew-redundant-cast` uses the same rewrite entry with unary `cast_A_B`
+calls, such as `cast_i8_i16`. Tensor source/result types describe element types
+and shape; there is no request map. Compare full types before replacing a
+result. `type.get_shape()` compares shapes, `str(type.element_type)` yields
+the element spelling, and `IntegerType.width.data` gives integer width. Preserve
+an inner cast when its result has other uses. Scoring includes integer
+wraparound, non-integral floating inputs, precision loss, and signed-zero bits.

@@ -24,13 +24,31 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SUPPORTED_TASKS = {"ana-broadcast-shape", "ana-storage-cost", "ana-numeric-range",
                    "ana-fusion-match", "emit-storage-plan", "emit-target-capability",
-                   "emit-graph-manifest", "rew-add-zero"}
+                   "emit-graph-manifest", "rew-add-zero", "rew-redundant-cast"}
 
-REWRITE_TASKS = {"rew-add-zero"}
+REWRITE_TASKS = {"rew-add-zero", "rew-redundant-cast"}
+
+
+def cast_graph(request: dict, eliminate: bool) -> dict:
+    element, shape = request["element"], request["shape"]
+    operand = {"name": "x", "element": element, "shape": shape}
+    nodes, source = [], "x"
+    for index, result_element in enumerate(request["casts"]):
+        result = f"cast{index}"
+        nodes.append({"op": f"cast_{element}_{result_element}", "inputs": [source],
+                      "results": [{"name": result, "element": result_element,
+                                   "shape": request.get("result_shape", shape)}]})
+        element, source = result_element, result
+    shared = request.get("return_intermediate", False)
+    return {"inputs": [operand],
+            "nodes": (nodes[:1] if shared else []) if eliminate else nodes,
+            "outputs": (["x"] if eliminate else [source]) + (["cast0"] if shared else [])}
 
 
 def rewrite_graph(request: dict, eliminate: bool = False) -> dict:
     """Build the tensor-dialect fixture; the extension sees native SSA, not this map."""
+    if "casts" in request:
+        return cast_graph(request, eliminate)
     element, shape = request["element"], request["shape"]
     constant_shape = request.get("constant_shape", shape)
     rank = max(len(shape), len(constant_shape))
@@ -72,13 +90,14 @@ def graph_manifest(graph: dict) -> dict:
 def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool) -> dict:
     """Interpret the independently observed post-IR, including strict zero bits."""
     import numpy as np
-    dtypes = {"f32": np.float32, "i32": np.int32, "i64": np.int64}
+    dtypes = {"f32": np.float32, "f64": np.float64, "i8": np.int8,
+              "i16": np.int16, "i32": np.int32, "i64": np.int64}
     def evaluate(graph: dict, sample: list[float]) -> list:
         values = {}
         for value in graph["inputs"]:
             ty = value["type"]
             count = math.prod(ty["shape"])
-            values[value["id"]] = np.resize(np.asarray(sample, dtype=dtypes[ty["element"]]), count).reshape(ty["shape"])
+            values[value["id"]] = np.resize(np.asarray(sample).astype(dtypes[ty["element"]]), count).reshape(ty["shape"])
         for node in graph["nodes"]:
             if len(node["results"]) != 1:
                 raise ValueError("rewrite oracle requires one result per fixture operation")
@@ -90,6 +109,9 @@ def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool) -> dic
             elif node["op"] == "add" and len(node["inputs"]) == 2:
                 a, b = (values[key] for key in node["inputs"])
                 value = np.add(a, b, dtype=dtypes[ty["element"]])
+            elif node["op"].startswith("cast_") and len(node["inputs"]) == 1:
+                converted = values[node["inputs"][0]].astype(dtypes[ty["element"]])
+                value = np.broadcast_to(converted, ty["shape"])
             else:
                 raise ValueError("unsupported operation in rewrite result")
             if list(value.shape) != ty["shape"]:
@@ -97,7 +119,8 @@ def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool) -> dic
             values[result["id"]] = value
         return [values[key] for key in graph["outputs"]]
     cases = []
-    for sample in ([-0.0, 0.0, 1.0, -1.0], [-17, 23, 255, -1024], [0, 0, 0, 0]):
+    for sample in ([-0.0, 0.0, 1.0, -1.0], [-17, 23, 255, -1024],
+                   [0, 0, 0, 0], [0.1, -0.3, 1.5, -2.75], [-128, 127, 256, -257]):
         before, after = evaluate(original, sample), evaluate(actual, sample)
         passed = len(before) == len(after)
         for a, b in zip(before, after):

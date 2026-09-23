@@ -22,6 +22,15 @@ check `ir.live` before inspecting handles that a prior rewrite may have erased.
 minus sign of floating negative zero. The oracle checks the final graph,
 constant liveness, result types, numerical outputs, and signed-zero behavior.
 
+For `rew-redundant-cast`, the same rewrite entry receives typed unary
+`cast_A_B` calls, where A and B are element-type spellings such as `i8` and
+`i16`. Source and result tensor types carry the shapes. Casts have no request
+metadata. Inspect an inner conversion with `ir.def(ir.args(op)[0])`; compare
+full types before replacing values and compare `args(type)[1]` to check shape.
+The oracle preserves shared inner results, signed-zero bits, and non-integral
+floating inputs. Narrowing, mixed float/integer, and shape-changing cases must
+retain their operations.
+
 ## Analysis entry point
 
 Edit the supplied `module.jog`. Its public entry point is:

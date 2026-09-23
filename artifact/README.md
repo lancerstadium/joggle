@@ -45,7 +45,8 @@ python3 artifact/validate_extension_specs.py
 `run_extension_task.py` executes candidate code against the shared contract.
 The native tasks include `ana-broadcast-shape`, `ana-storage-cost`,
 `ana-numeric-range`, `ana-fusion-match`, `emit-storage-plan`,
-`emit-target-capability`, `emit-graph-manifest`, and `rew-add-zero`.
+`emit-target-capability`, `emit-graph-manifest`, `rew-add-zero`, and
+`rew-redundant-cast`.
 Each task directory under `extensions/` contains reference implementations for
 Joggle, MLIR, and xDSL; the shared `starter.*` files contain their empty entry
 points. Attribute-analysis tasks read a request from function metadata in
@@ -99,13 +100,21 @@ tensors, nonzero constants, signed zero, and shape-changing broadcasts.
 The candidate process emits IR, not an answer dictionary. A second process
 parses that IR and extracts types, operands, constants, and returns. The oracle
 compares the full resulting graph and evaluates the original and rewritten
-graphs on three input sets. Strict floating cases compare output bits; explicit
+graphs on five input sets. Strict floating cases compare output bits; explicit
 no-signed-zeros cases compare numerical values. No-op starters pass the four
 preservation cases but fail all five required rewrites and the complete task.
 Reports retain transformed IR, independent observations, and numerical bits.
 NumPy evaluates these small graphs; xDSL is the common post-IR observer for
 MLIR and xDSL output. Run the oracle with the pinned experiment interpreter,
 or supply its path with `--xdsl-python` when using the MLIR provider.
+
+`rew-redundant-cast` uses the same mutation and independent observation path.
+Ten fixtures cover identity, signed integer and finite floating-point widening
+round trips, shared intermediate users, narrowing, float/integer conversions,
+shape changes, and single widening casts. Input sets include signed zero,
+fractional values, and integer wraparound boundaries. Required rewrites and
+required preservation each account for five cases; a no-op does not pass the
+task. Reference results validate these oracles, not an agent's success rate.
 
 ### Local agent execution
 

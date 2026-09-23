@@ -1,0 +1,50 @@
+mod extension
+use base
+use ir
+
+local fn is_cast(op: Op) -> bool {
+  if !ir.live(op) || ir.kind(op) != "call" { return false }
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 { return false }
+  let source = ir.type(inputs[0])
+  let target = ir.type(outputs[0])
+  if name(source) != "tensor" || name(target) != "tensor" { return false }
+  return ir.callee(op) == "cast_" + text(args(source)[0]) + "_" + text(args(target)[0])
+}
+
+local fn lossless(source: Ty, target: Ty) -> bool {
+  if args(source)[1] != args(target)[1] { return false }
+  let a = text(args(source)[0])
+  let b = text(args(target)[0])
+  let bits = {i8: 8, i16: 16, i32: 32, i64: 64}
+  if has(bits, a) && has(bits, b) { return int(bits[b]) >= int(bits[a]) }
+  return a == "f32" && b == "f64"
+}
+
+fn transform(m: Mod) -> bool {
+  var changed = false
+  for op in ir.ops(ir.find(m, "subject"), ["call"]) {
+    if is_cast(op) {
+      let input = ir.args(op)[0]
+      let output = ir.outs(op)[0]
+      if ir.type(input) == ir.type(output) {
+        ir.replace(m, output, input)
+        ir.erase(m, op)
+        changed = true
+      } else {
+        let inner = ir.def(input)
+        if is_cast(inner) {
+          let original = ir.args(inner)[0]
+          if ir.type(original) == ir.type(output) && lossless(ir.type(original), ir.type(input)) {
+            ir.replace(m, output, original)
+            ir.erase(m, op)
+            if len(ir.users(input)) == 0 { ir.erase(m, inner) }
+            changed = true
+          }
+        }
+      }
+    }
+  }
+  return changed
+}

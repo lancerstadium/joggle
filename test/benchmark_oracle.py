@@ -33,6 +33,21 @@ from merge_benchmark_rows import audited_input
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_cast_rewrite_oracle_rejects_lossy_shortcuts(self):
+        root = Path(__file__).resolve().parents[1] / "artifact"
+        task = next(t for t in json.loads((root / "manifests/extension-specs.json").read_text())["tasks"]
+                    if t["id"] == "rew-redundant-cast")
+        for case in task["positive_cases"] + task["negative_cases"]:
+            with self.subTest(case=case["id"]):
+                original = graph_manifest(rewrite_graph(case["input"]))
+                simplified = graph_manifest(rewrite_graph(case["input"], True))
+                self.assertEqual(rewrite_numerics(simplified, original, False)["passed"],
+                                 case["expect"]["eliminate"])
+                if case["input"].get("return_intermediate"):
+                    self.assertEqual(len(simplified["nodes"]), 1)
+                    self.assertEqual(len(simplified["outputs"]), 2)
+                self.assertNotIn("request", graph_fixture(rewrite_graph(case["input"]), "Joggle"))
+
     def test_rewrite_oracle_uses_post_ir_and_preserves_signed_zero(self):
         root = Path(__file__).resolve().parents[1] / "artifact"
         task = next(t for t in json.loads((root / "manifests/extension-specs.json").read_text())["tasks"]

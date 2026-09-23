@@ -101,3 +101,11 @@ checks liveness. Use `llvm::make_early_inc_range` or snapshot handles while
 erasing. `FloatAttr::getValue()` returns an APFloat with `isZero()` and
 `isNegative()`. The observer checks structure, types, live constants, and
 numerical results including strict signed-zero behavior.
+
+`rew-redundant-cast` uses the same rewrite entry with unary `cast_A_B`
+calls (for example `cast_i8_i16`). Tensor operand/result types describe element
+types and shape; there is no request metadata. `RankedTensorType::getShape()`
+compares shapes, `IntegerType::getWidth()` reads integer width, and `Type`
+provides `isF32()`/`isF64()`. Compare full original and final types before
+replacement and preserve an inner cast that has other users. Scoring includes
+integer wraparound, non-integral floats, precision loss, and signed-zero bits.
