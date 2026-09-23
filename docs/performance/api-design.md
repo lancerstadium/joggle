@@ -68,6 +68,20 @@ bool ReactiveSchedule::run(Env&, Mod&,
 Convenience overloads are justified only when they preserve one obvious
 parameter order and do not duplicate implementation.
 
+## Local edit rollback
+
+`Mod::call(env, before, target, args, types)` preserves atomic failure without
+copying the whole graph for an already-visible target. It checkpoints arena
+lengths and revisions; a rejected call removes its newly added use edges and
+block entry, truncates its appended operations/results, and restores revisions.
+Existing graph handles and diagnostics remain available. Repeated parameters
+still contribute one user edge per call.
+
+If the target requires a new mod import, the operation retains a full snapshot:
+changing visibility affects resolution beyond the insertion function. This
+keeps the rollback scope aligned with the mutation scope and avoids a
+whole-graph copy for each ordinary call created during lowering.
+
 ## Why three small records remain
 
 The C++ surface still has `Loc`, `Diag`, and `Source`. They are not new compiler

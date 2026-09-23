@@ -342,6 +342,49 @@ int main(int argc, char** argv) {
   env.path(argv[1]);
   CHECK(env.load("base"));
 
+  // Rejected typed calls must roll back appended arenas, use edges, and
+  // revisions without disturbing pre-existing handles or subsequent calls.
+  joggle::Mod calls;
+  CHECK(joggle::parse(env,
+      "mod call_rollback\nuse base\n"
+      "fn pair(x: i32, y: i32) -> i32 { return x + y }\n"
+      "fn main(x: i32) -> i32 { return x }\n", calls, "calls.jog"));
+  CHECK(calls.verify(env));
+  const auto entry = calls.find_fn("main");
+  const auto target = calls.find_fn("pair");
+  const auto terminator = entry.body().ops().back();
+  const auto input = entry.params().front();
+  const std::vector<joggle::Val> repeated{input, input};
+  for (int attempt = 0; attempt < 12; ++attempt) {
+    const auto text = joggle::print(calls);
+    const auto revision = calls.revision();
+    const auto fn_revision = entry.revision();
+    const auto target_revision = target.revision();
+    const auto imports = calls.uses();
+    const auto users = input.users();
+    const auto ops = calls.ops();
+    const auto vals = calls.vals();
+    if (attempt % 3 == 0) {
+      CHECK(!calls.call(env, terminator, target, repeated, joggle::Ty("f32")));
+    } else if (attempt % 3 == 1) {
+      const std::vector<joggle::Val> incomplete{input};
+      CHECK(!calls.call(env, terminator, target, incomplete, joggle::Ty("i32")));
+    } else {
+      const std::vector<joggle::Ty> outputs{joggle::Ty("i32"), joggle::Ty("i32")};
+      CHECK(!calls.call(env, terminator, target, repeated, outputs));
+    }
+    CHECK(!calls.diags().empty());
+    CHECK(joggle::print(calls) == text && calls.revision() == revision);
+    CHECK(entry.revision() == fn_revision && input.users() == users);
+    CHECK(target.revision() == target_revision && calls.uses() == imports);
+    CHECK(calls.ops() == ops && calls.vals() == vals);
+    calls.clear_diags();
+    CHECK(calls.verify(env) && audit(calls));
+    const auto result = calls.call(env, terminator, target, repeated, joggle::Ty("i32"));
+    CHECK(result && env.resolve(calls, result.def()) == target);
+    CHECK(calls.verify(env) && audit(calls));
+  }
+
   constexpr std::string_view source =
       "mod edit_robustness\n"
       "use base\n"

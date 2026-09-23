@@ -700,11 +700,36 @@ Val Mod::call(Op before, std::string callee, std::span<const Val> args,
 Op Mod::call(const Env& env, Op before, Fn target,
              std::span<const Val> args, std::span<const Ty> types) {
   auto& store = impl_->store;
-  detail::Store backup = store;
+  const auto revision = store.revision;
+  const auto op_count = store.ops.size();
+  const auto val_count = store.vals.size();
+  const auto owner = before.valid() && before.store_ == &store
+                         ? fn_for_op(store, before.id_) : detail::none;
+  const auto owner_revision =
+      owner != detail::none ? store.fns[owner].data.revision : 0;
+  // A visible-target call only appends a call and its results. Importing a
+  // package can change every function's resolution, so retain the full
+  // transaction only for that path.
+  std::optional<detail::Store> backup;
   const auto rollback = [&]() {
-    std::vector<Diag> diagnostics = std::move(store.diags);
-    store = std::move(backup);
-    store.diags = std::move(diagnostics);
+    if (backup) {
+      std::vector<Diag> diagnostics = std::move(store.diags);
+      store = std::move(*backup);
+      store.diags = std::move(diagnostics);
+    } else {
+      for (std::size_t id = op_count; id < store.ops.size(); ++id) {
+        const auto& op = store.ops[id].data;
+        for (const auto argument : op.args)
+          remove_user(store, argument, static_cast<std::uint32_t>(id));
+        auto& order = store.blks[op.blk].data.ops;
+        std::erase(order, static_cast<std::uint32_t>(id));
+      }
+      store.ops.resize(op_count);
+      store.vals.resize(val_count);
+      store.revision = revision;
+      if (owner != detail::none)
+        store.fns[owner].data.revision = owner_revision;
+    }
     return Op{};
   };
   if (!target.valid()) {
@@ -716,9 +741,11 @@ Op Mod::call(const Env& env, Op before, Fn target,
     const std::string symbol = std::string(target.module()) + "." +
                                std::string(target.name());
     const std::vector<Fn> visible = env.resolve_fns(*this, symbol);
-    if (std::find(visible.begin(), visible.end(), target) == visible.end() &&
-        !use(env, std::string(target.module())))
-      return rollback();
+    if (std::find(visible.begin(), visible.end(), target) == visible.end()) {
+      backup.emplace(store);
+      if (!use(env, std::string(target.module())))
+        return rollback();
+    }
   }
 
   Op result = call(before, std::string(target.name()), args, types);
@@ -733,7 +760,7 @@ Op Mod::call(const Env& env, Op before, Fn target,
                      before.loc());
     return rollback();
   }
-  store.revision = backup.revision;
+  store.revision = revision;
   touch(store, fn_for_op(store, result.id_));
   return result;
 }
