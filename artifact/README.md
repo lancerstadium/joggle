@@ -310,11 +310,42 @@ loaded mod files, and host C compiler. A changed fingerprint rejects the
 sample. Fingerprinting is outside the timed interval. A stable sample is a
 measurement record, not a completed repeated model/edit population.
 
+Repeated production collection uses the same collector, without a separate
+benchmark script:
+
+```sh
+python3 artifact/run_baseline_benchmarks.py --group updates --backend joggle \
+  --inputs .cache/artifact/release-data/inputs --model-root .cache/onnx-zoo \
+  --edit-manifest artifact/manifests/production-node-edits.json \
+  --iterations 10 --output .cache/artifact/production-updates-joggle.csv
+```
+
+Select `--backend tvm` or `--backend onnx-mlir` with the same manifest and
+inputs for the external compilers. Each repetition launches a fresh worker
+for each policy; update retains the state created by its original-model build.
+Pair order and model/edit/repetition order are randomized with the recorded
+seed. No compiler caches are cleared or synthesized. `--smoke --iterations 1`
+and optional `--case-id` filters mark integration runs as partial.
+
+The frozen node-edit population selects the first, middle, and last eligible
+Relu/Add sites per model, deduplicating coincident sites. It contains 37 edits
+over 13 models: Relu becomes LeakyRelu and Add becomes Sub with the same
+operands. The two models without these sites are recorded as missing coverage;
+their quantized edit population remains to be added. Each edit is checked
+against the source-model hash and ONNX schema before workers start.
+
+Collection writes absolute timing CSV, full worker samples in `.samples.jsonl`,
+and a hash-bound `.json` record. Failed samples retain diagnostics and have no
+timing values. Successful samples must match the requested edit, edited model,
+input index, benchmark specification, oracle, and timing boundaries. Mixed
+compiler identities invalidate a collection. These records are not Figure 6
+release artifacts until the cross-system assembly and population gates pass.
+
 `merge_update_rows.py`, `validate_reactive.py`, and `figure_06_update.py`
 still consume the earlier stage-counter provider schema; they do not yet
 assemble `production-update-sample/v1`. Do not pass production samples through
-that schema or mix them with metadata diagnostics. The production population,
-repeated sampling, and Figure 6 assembly remain to be connected.
+that schema or mix them with metadata diagnostics. Production CSV assembly
+and the Figure 6 rendering path remain to be connected.
 
 `run_reactive.py` currently runs a metadata-propagation diagnostic over model
 topologies. Its five stages construct derived dictionaries; they do not lower

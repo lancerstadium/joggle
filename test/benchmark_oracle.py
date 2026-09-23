@@ -23,6 +23,7 @@ from onnx import helper, numpy_helper
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "artifact"))
 from run_baseline_benchmarks import compare_outputs, isolated_reference, ort_session, run_json
 from run_baseline_benchmarks import checked_native_build, apply_model_edit, production_update
+from run_baseline_benchmarks import production_sample_row, correctness_oracle_record, command as baseline_command
 from run_joggle_benchmarks import compiler_identity, checkpoint_protocol, make_harness, Unsupported
 from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
@@ -36,6 +37,44 @@ from merge_benchmark_rows import audited_input
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_production_sample_requires_matching_edit_protocol_and_boundaries(self):
+        case = {"case_id": "model", "edit": {"model_sha256": "a" * 64},
+                "replacement_sha256": "b" * 64}
+        identity = {"backend": "test"}
+        sample = {"schema": "production-update-sample/v1", "backend": "tvm", "policy": "update",
+                  "case_id": "model", "edit_sha256": hashlib.sha256(json.dumps(case["edit"], sort_keys=True).encode()).hexdigest(),
+                  "benchmark_spec_sha256": "s", "input_index_sha256": "i", "identity_stable": True,
+                  "compiler_identity": identity, "final_compiler_identity": identity,
+                  "oracle": correctness_oracle_record(), "retained_state": "native caches",
+                  "initial": {"correct": True, "model_sha256": "a" * 64}, "input_digest": "c" * 64,
+                  "replacement": {"correct": True, "model_sha256": "b" * 64,
+                                  "wall_ns": 10, "ready_ns": 8, "edit_ns": 1, "validation_ns": 2,
+                                  "output_digest": "d" * 64}}
+        self.assertEqual(production_sample_row(sample, "tvm", "update", case, "s", "i")["wall_ns"], 10)
+        for key, value in (("edit_sha256", "wrong"), ("benchmark_spec_sha256", "wrong"),
+                           ("initial", None), ("retained_state", "fresh-worker"),
+                           ("final_compiler_identity", {}), ("input_digest", "")):
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                production_sample_row(sample | {key: value}, "tvm", "update", case, "s", "i")
+        for key, value in (("wall_ns", 11), ("ready_ns", 0), ("edit_ns", 9),
+                           ("correct", False), ("model_sha256", "wrong"), ("output_digest", "")):
+            wrong = sample | {"replacement": sample["replacement"] | {key: value}}
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                production_sample_row(wrong, "tvm", "update", case, "s", "i")
+        fresh = sample | {"policy": "rebuild", "initial": None, "retained_state": "fresh-worker"}
+        self.assertEqual(production_sample_row(fresh, "tvm", "rebuild", case, "s", "i")["correct"], "true")
+
+    def test_production_worker_command_preserves_explicit_tool_configuration(self):
+        args = argparse.Namespace(spec=Path("spec"), inputs=Path("inputs"), backend="joggle",
+                                  target_json='{"kind":"llvm"}', onnx_mlir=None,
+                                  edit_json=Path("edit.json"), joggle=Path("custom/joggle"),
+                                  joggle_server=Path("custom/server"), builtin_mods=Path("custom/mods"),
+                                  cc="custom/clang", case_timeout=17)
+        argv = baseline_command(args, "update", "model", Path("model.onnx"))
+        for key in ("edit_json", "joggle", "joggle_server", "builtin_mods", "cc", "case_timeout"):
+            flag = "--" + key.replace("_", "-")
+            self.assertEqual(argv[argv.index(flag) + 1], str(getattr(args, key)))
+
     def test_native_definition_observation_requires_one_parametric_type(self):
         for text in ("fx<8,3>", "!extension.fx<8, 3>"):
             self.assertEqual(definition_result({"types": [text]}),

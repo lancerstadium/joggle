@@ -412,6 +412,9 @@ def command(
     ]
     if args.onnx_mlir:
         argv.extend(["--onnx-mlir", str(args.onnx_mlir)])
+    if kind in {"update", "rebuild"}:
+        for key in ("edit_json", "joggle", "joggle_server", "builtin_mods", "cc", "case_timeout"):
+            argv.extend(["--" + key.replace("_", "-"), str(getattr(args, key))])
     return argv
 
 
@@ -475,7 +478,152 @@ def row(header: list[str], common: dict[str, Any], **values: Any) -> dict[str, A
     return result
 
 
+def production_population(args: argparse.Namespace) -> list[dict]:
+    """Resolve a frozen edit population before any compiler worker starts."""
+    manifest = json.loads(args.edit_manifest.read_text())
+    if set(manifest) != {"schema", "cases"} or manifest["schema"] != "production-update-population/v1":
+        raise ValueError("invalid production population manifest")
+    spec = json.loads(args.spec.read_text())
+    models = {case["id"]: case for case in spec["model_cases"]}
+    if not manifest["cases"]:
+        raise ValueError("empty production population")
+    seen = set()
+    for case in manifest["cases"]:
+        if set(case) != {"case_id", "edit_id", "edit"}:
+            raise ValueError("population case requires case_id, edit_id, edit")
+        key = (case["case_id"], case["edit_id"])
+        if key in seen or case["case_id"] not in models or not case["edit_id"]:
+            raise ValueError("duplicate or unknown population case")
+        seen.add(key)
+        data = (args.model_root / (case["case_id"] + ".onnx")).read_bytes()
+        if sha256(data) != models[case["case_id"]]["sha256"]:
+            raise ValueError("population model differs from benchmark specification")
+        case["replacement_sha256"] = sha256(apply_model_edit(data, case["edit"]))
+        load_case(args.spec, args.inputs, case["case_id"])
+    selected = manifest["cases"]
+    if args.case_id:
+        requested = set(args.case_id)
+        if requested - {case["case_id"] for case in selected}:
+            raise ValueError("selected model is outside the edit population")
+        selected = [case for case in selected if case["case_id"] in requested]
+    return selected
+
+
+def production_sample_row(sample: dict, backend: str, policy: str, case: dict,
+                          spec_hash: str, index_hash: str) -> dict:
+    edit_hash = sha256(json.dumps(case["edit"], sort_keys=True).encode())
+    if (not isinstance(sample, dict) or sample.get("schema") != "production-update-sample/v1" or
+            sample.get("backend") != backend or sample.get("policy") != policy or
+            sample.get("case_id") != case["case_id"] or sample.get("edit_sha256") != edit_hash or
+            sample.get("benchmark_spec_sha256") != spec_hash or sample.get("input_index_sha256") != index_hash or
+            sample.get("identity_stable") is not True or not sample.get("compiler_identity") or
+            sample.get("compiler_identity") != sample.get("final_compiler_identity") or
+            sample.get("oracle") != correctness_oracle_record()):
+        raise ValueError("invalid production worker identity or protocol")
+    initial = sample.get("initial")
+    if policy == "update":
+        if (not isinstance(initial, dict) or initial.get("correct") is not True or
+                initial.get("model_sha256") != case["edit"]["model_sha256"] or
+                sample.get("retained_state") in (None, "fresh-worker")):
+            raise ValueError("update sample lacks a validated original build")
+    elif initial is not None or sample.get("retained_state") != "fresh-worker":
+        raise ValueError("rebuild sample is not a fresh worker")
+    result = sample.get("replacement")
+    if (not isinstance(result, dict) or result.get("correct") is not True or
+            result.get("model_sha256") != case["replacement_sha256"]):
+        raise ValueError("replacement model or correctness mismatch")
+    for key in ("wall_ns", "ready_ns", "edit_ns", "validation_ns"):
+        if type(result.get(key)) is not int or result[key] < 0:
+            raise ValueError("invalid production timing")
+    if (result["wall_ns"] <= 0 or result["ready_ns"] <= 0 or result["edit_ns"] > result["ready_ns"] or
+            result["wall_ns"] != result["ready_ns"] + result["validation_ns"]):
+        raise ValueError("inconsistent production timing boundary")
+    for digest in (result.get("output_digest"), sample.get("input_digest")):
+        if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise ValueError("missing production input or output digest")
+    row = {key: result[key] for key in
+           ("model_sha256", "wall_ns", "ready_ns", "edit_ns", "validation_ns", "output_digest")}
+    return row | {"input_digest": sample["input_digest"], "correct": "true",
+                  "compiler_identity_sha256": sha256(json.dumps(sample["compiler_identity"], sort_keys=True).encode())}
+
+
+def collect_updates(args: argparse.Namespace) -> int:
+    """Collect repeated, fresh-worker update/rebuild pairs without synthetic timings."""
+    revision, dirty = git_state(Path(__file__).resolve().parent.parent)
+    if dirty and not args.allow_dirty:
+        raise ValueError("commit before production collection or use --allow-dirty for integration")
+    cases = production_population(args)
+    all_models = {case["id"] for case in json.loads(args.spec.read_text())["model_cases"]}
+    missing_models = sorted(all_models - {case["case_id"] for case in cases})
+    record_path, raw_path = args.output.with_suffix(".json"), args.output.with_suffix(".samples.jsonl")
+    if any(path.exists() for path in (args.output, record_path, raw_path)):
+        raise ValueError("refusing to replace production collection outputs")
+    tracked = [args.spec, args.edit_manifest, args.inputs / "index.json", Path(__file__).resolve()]
+    fingerprints = {str(path.resolve()): sha256(path.read_bytes()) for path in tracked}
+    if json.loads((args.inputs / "index.json").read_text()).get("spec_sha256") != sha256(args.spec.read_bytes()):
+        raise ValueError("inputs use a different benchmark specification")
+    columns = ["backend", "case_id", "edit_id", "iteration", "policy", "order", "seed",
+               "edit_sha256", "model_sha256", "input_digest", "compiler_identity_sha256",
+               "wall_ns", "ready_ns", "edit_ns", "validation_ns", "output_digest", "correct", "error"]
+    jobs = [(case, iteration) for case in cases for iteration in range(args.iterations)]
+    rng = random.Random(args.seed)
+    rng.shuffle(jobs)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    count = failures = 0
+    compiler_identities = set()
+    with args.output.open("x", newline="") as stream, raw_path.open("x") as raw:
+        writer = csv.DictWriter(stream, fieldnames=columns, lineterminator="\n")
+        writer.writeheader()
+        with tempfile.TemporaryDirectory(prefix="production-edits-") as directory:
+            for case, iteration in jobs:
+                edit_path = Path(directory) / "edit.json"
+                edit_path.write_text(json.dumps(case["edit"], sort_keys=True) + "\n")
+                child = argparse.Namespace(**vars(args))
+                child.edit_json = edit_path
+                policies = ["update", "rebuild"]
+                rng.shuffle(policies)
+                for order, policy in enumerate(policies):
+                    row = {"backend": args.backend, "case_id": case["case_id"], "edit_id": case["edit_id"],
+                           "iteration": iteration, "policy": policy, "order": order, "seed": args.seed,
+                           "edit_sha256": sha256(json.dumps(case["edit"], sort_keys=True).encode()),
+                           "correct": "false", "error": ""}
+                    argv = command(child, policy, case["case_id"], args.model_root / (case["case_id"] + ".onnx"))
+                    sample = None
+                    try:
+                        sample = run_json(argv, args.case_timeout)
+                        measured = production_sample_row(sample, args.backend, policy, case,
+                            fingerprints[str(args.spec.resolve())], fingerprints[str((args.inputs / "index.json").resolve())])
+                        row.update(measured)
+                        compiler_identities.add(measured["compiler_identity_sha256"])
+                    except (subprocess.SubprocessError, ValueError, KeyError, OSError) as error:
+                        failures += 1
+                        row["error"] = f"{type(error).__name__}: {error}"
+                        sample = {"rejected_sample": sample, "failure": row["error"], "stdout": getattr(error, "stdout", ""),
+                                  "stderr": getattr(error, "stderr", "")}
+                    raw.write(json.dumps({"key": {key: row[key] for key in columns[:7]},
+                                          "sample": sample}, sort_keys=True) + "\n")
+                    raw.flush()
+                    writer.writerow(row)
+                    stream.flush()
+                    count += 1
+                    print(f"{args.backend}/{case['case_id']}/{case['edit_id']}/{iteration}/{policy}: {row['correct']}", flush=True)
+    stable = len(compiler_identities) <= 1 and all(sha256(Path(path).read_bytes()) == value for path, value in fingerprints.items())
+    record = {"schema": "production-update-collection/v1", "revision": revision, "dirty": dirty,
+              "created_utc": datetime.now(timezone.utc).isoformat(), "host": platform.platform(),
+              "population_sha256": sha256(args.edit_manifest.read_bytes()), "sources": fingerprints,
+              "rows": count, "failures": failures, "stable": stable, "iterations": args.iterations,
+              "selected_models": args.case_id, "seed": args.seed,
+              "missing_models": missing_models,
+              "output_sha256": sha256(args.output.read_bytes()), "raw_sha256": sha256(raw_path.read_bytes()),
+              "partial": bool(args.case_id) or bool(missing_models) or args.smoke or args.iterations < 10,
+              "release_eligible": False}
+    record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    return 0 if stable and not failures else 1
+
+
 def main(args: argparse.Namespace) -> int:
+    if args.group == "updates":
+        return collect_updates(args)
     repo = Path(__file__).resolve().parent.parent
     source_paths = [Path(__file__).resolve(),
                     Path(__file__).resolve().with_name("benchmark_backends.py")]
@@ -671,6 +819,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--worker", choices=("execute", "oracle", "update", "rebuild"))
     parser.add_argument("--edit-json", type=Path)
+    parser.add_argument("--edit-manifest", type=Path)
     parser.add_argument("--backend", choices=("onnxruntime", "tvm", "onnx-mlir", "joggle"), default="onnxruntime")
     parser.add_argument("--joggle", type=Path, default=root.parent / "build/joggle")
     parser.add_argument("--joggle-server", type=Path,
@@ -688,7 +837,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--iterations", type=int, default=1)
     parser.add_argument("--warmups", type=int, default=0)
     parser.add_argument("--batch", type=int, default=1)
-    parser.add_argument("--group", choices=("operators", "models"))
+    parser.add_argument("--group", choices=("operators", "models", "updates"))
     parser.add_argument("--operator-models", type=Path)
     parser.add_argument("--model-root", type=Path)
     parser.add_argument("--output", type=Path)
@@ -698,7 +847,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--allow-dirty", action="store_true")
     args = parser.parse_args()
     if args.backend == "joggle":
-        if args.worker not in {"update", "rebuild"}:
+        if args.worker not in {"update", "rebuild"} and args.group != "updates":
             parser.error("resident Joggle backend requires an update or rebuild worker")
         if not args.joggle.is_file() or not args.joggle_server.is_file() or not args.builtin_mods.is_dir():
             parser.error("resident Joggle backend requires built tools and mods")
@@ -731,8 +880,13 @@ def parse_args() -> argparse.Namespace:
             parser.error("collector mode requires --group and --output")
         if args.group == "operators" and not args.operator_models:
             parser.error("operator collection requires --operator-models")
-        if args.group == "models" and not args.model_root:
+        if args.group in {"models", "updates"} and not args.model_root:
             parser.error("model collection requires --model-root")
+        if args.group == "updates":
+            if not args.edit_manifest or not args.edit_manifest.is_file() or args.backend == "onnxruntime":
+                parser.error("update collection requires --edit-manifest and a production compiler backend")
+            if args.iterations <= 0 or (args.iterations < 10 and not args.smoke):
+                parser.error("update collection requires at least 10 repetitions, or --smoke")
     return args
 
 
