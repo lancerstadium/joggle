@@ -132,6 +132,22 @@ The external production adapters target TVM and ONNX-MLIR, with IREE added
 after adapter validation. The current metadata and matched-stage providers use
 different endpoints. Their records remain separate from the main comparison.
 
+The existing external collector also exposes `--worker update --model BEFORE
+--edited-model AFTER` and `--worker rebuild --model AFTER` for native adapter
+validation. Both require the existing input index, case ID, specification, and
+backend arguments. The update worker retains the original checked executable
+while compiling the replacement; the rebuild worker starts in a fresh process.
+TVM's native process caches are left untouched. ONNX-MLIR invokes a fresh native
+compiler subprocess for each build. Neither adapter claims subgraph reuse.
+
+These workers emit `production-update-sample/v1` JSON, not Figure 6 CSV rows.
+They record source/input hashes, output digests, initial validation, and separate
+ready/validation times. The supplied edited ONNX bytes and oracle outputs are
+prepared before the measured build boundary. Consequently these adapter samples
+do not yet include edit application, a prescribed edit population, or paired
+repetitions. The production collector must add those components and the Joggle
+resident update path before these samples can support the main comparison.
+
 ### Supporting matched-stage diagnostic
 
 Fifteen pinned ONNX models are decoded into a neutral typed graph that retains

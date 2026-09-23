@@ -163,10 +163,94 @@ def isolated_reference(args: argparse.Namespace, names: list[str]) -> list[np.nd
             return [arrays[f"arr_{reference_names.index(name)}"] for name in names]
 
 
+def checked_native_build(factory, model: bytes, feeds: dict, names: list[str],
+                         expected: list[np.ndarray], rtol: float, atol: float):
+    """Time construction through validation, excluding reference generation."""
+    started = time.perf_counter_ns()
+    runner = factory(model, feeds)
+    try:
+        ready = time.perf_counter_ns()
+        if runner.names != names:
+            raise ValueError("replacement output names or order changed")
+        runner.invoke()
+        outputs = runner.outputs()
+        comparison = compare_outputs(outputs, expected, rtol, atol)
+        if not comparison["correct"]:
+            raise ValueError(f"replacement executable failed numerical validation: {comparison}")
+        elapsed = time.perf_counter_ns() - started
+        return runner, {
+            "wall_ns": elapsed, "ready_ns": ready - started,
+            "validation_ns": elapsed - (ready - started),
+            "stages_ns": runner.stages_ns,
+            "model_sha256": sha256(model),
+            "output_digest": output_digest(names, outputs), **comparison,
+        }
+    except BaseException:
+        if hasattr(runner, "close"):
+            runner.close()
+        raise
+
+
+def production_update(args: argparse.Namespace) -> dict[str, Any]:
+    """One full or resident-runtime rebuild; no synthetic incremental cache."""
+    import onnx
+    from benchmark_backends import ONNXMLIRRunner, TVMRunner
+
+    measurement, _, feeds = load_case(args.spec, args.inputs, args.case_id)
+    spec = json.loads(args.spec.read_text())
+    case = next(c for c in spec["operator_cases"] + spec["model_cases"]
+                if c["id"] == args.case_id)
+    if args.backend == "tvm":
+        import tvm  # Initialize libraries before either timing boundary.
+        from tvm.relax.frontend.onnx import from_onnx  # noqa: F401
+        factory = lambda model, inputs: TVMRunner(
+            model, inputs, json.loads(args.target_json), measurement["threads"])
+        retained = "resident-tvm-runtime; native-process-caches-unmodified"
+    elif args.backend == "onnx-mlir":
+        factory = lambda model, inputs: ONNXMLIRRunner(
+            model, inputs, args.onnx_mlir, measurement["threads"])
+        retained = "resident-host-runtime; fresh-native-compiler-subprocess"
+    else:
+        raise ValueError("production update requires TVM or ONNX-MLIR")
+    original = args.model.read_bytes()
+    replacement = args.edited_model.read_bytes() if args.worker == "update" else original
+    if args.worker == "update" and replacement == original:
+        raise ValueError("update requires a changed serialized model")
+    runners = []
+
+    def build(model, path):
+        names = [out.name for out in onnx.load_model_from_string(model).graph.output]
+        oracle_args = argparse.Namespace(**vars(args))
+        oracle_args.model = path
+        expected = isolated_reference(oracle_args, names)
+        runner, record = checked_native_build(factory, model, feeds, names, expected,
+                                               case["rtol"], case["atol"])
+        runners.append(runner)
+        return record
+
+    try:
+        initial = build(original, args.model) if args.worker == "update" else None
+        result = build(replacement, args.edited_model if initial else args.model)
+        return {"schema": "production-update-sample/v1", "backend": args.backend,
+                "policy": args.worker, "case_id": args.case_id,
+                "edit_delivery": "replacement-onnx-bytes-preloaded",
+                "retained_state": retained if initial else "fresh-worker",
+                "initial": initial, "replacement": result,
+                "oracle": correctness_oracle_record(),
+                "input_digest": output_digest(list(feeds), list(feeds.values()))}
+    finally:
+        for runner in reversed(runners):
+            if hasattr(runner, "close"):
+                runner.close()
+
+
 def worker(args: argparse.Namespace) -> int:
     # Library initialization is outside every reported boundary.
     import onnxruntime  # noqa: F401
 
+    if args.worker in {"update", "rebuild"}:
+        print(json.dumps(production_update(args)))
+        return 0
     measurement, _, feeds = load_case(args.spec, args.inputs, args.case_id)
     model = args.model.read_bytes()
     if args.worker == "oracle":
@@ -497,7 +581,8 @@ def main(args: argparse.Namespace) -> int:
 def parse_args() -> argparse.Namespace:
     root = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser()
-    parser.add_argument("--worker", choices=("execute", "oracle"))
+    parser.add_argument("--worker", choices=("execute", "oracle", "update", "rebuild"))
+    parser.add_argument("--edited-model", type=Path)
     parser.add_argument("--backend", choices=("onnxruntime", "tvm", "onnx-mlir"), default="onnxruntime")
     parser.add_argument("--onnx-mlir", type=Path, help="path to the ONNX-MLIR compiler executable")
     parser.add_argument("--target-json", default='{"kind":"llvm","num-cores":1}')
@@ -536,6 +621,12 @@ def parse_args() -> argparse.Namespace:
             parser.error("worker counts must be positive, with non-negative warmups")
         if args.worker == "oracle" and not args.output:
             parser.error("oracle worker requires --output")
+        if args.worker in {"update", "rebuild"} and args.backend == "onnxruntime":
+            parser.error("production update workers require tvm or onnx-mlir")
+        if args.worker == "update" and (not args.edited_model or not args.edited_model.is_file()):
+            parser.error("update worker requires an existing --edited-model")
+        if args.edited_model and args.worker != "update":
+            parser.error("--edited-model is only valid for update workers")
         args.case_id = args.case_id[0]
     else:
         if not args.group or not args.output:

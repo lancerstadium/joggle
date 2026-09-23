@@ -22,6 +22,7 @@ from onnx import helper, numpy_helper
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "artifact"))
 from run_baseline_benchmarks import compare_outputs, isolated_reference, ort_session, run_json
+from run_baseline_benchmarks import checked_native_build
 from run_joggle_benchmarks import compiler_identity, checkpoint_protocol, make_harness, Unsupported
 from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
@@ -33,6 +34,28 @@ from merge_benchmark_rows import audited_input
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_checked_build_rejects_stale_outputs_and_releases_runner(self):
+        class Runner:
+            names = ["y"]
+            stages_ns = {"compile": 1}
+            closed = False
+
+            def invoke(self):
+                pass
+
+            def outputs(self):
+                return [np.array([1], dtype=np.float32)]
+
+            def close(self):
+                self.closed = True
+
+        for names in (["y"], ["wrong"]):
+            runner = Runner()
+            with self.assertRaises(ValueError):
+                checked_native_build(lambda model, feeds: runner, b"edited", {}, names,
+                                     [np.array([2], dtype=np.float32)], 0, 0)
+            self.assertTrue(runner.closed)
+
     def test_cast_rewrite_oracle_rejects_lossy_shortcuts(self):
         root = Path(__file__).resolve().parents[1] / "artifact"
         task = next(t for t in json.loads((root / "manifests/extension-specs.json").read_text())["tasks"]
@@ -351,7 +374,7 @@ class BenchmarkOracleTests(unittest.TestCase):
                 "reference_execution_mode": "ORT_SEQUENTIAL",
                 "reference_graph_optimization": "ORT_ENABLE_ALL",
                 "reference_provider": "CPUExecutionProvider"},
-                "operator_cases": [{"id": "isolation", "inputs": [
+                "operator_cases": [{"id": "isolation", "rtol": 0, "atol": 0, "inputs": [
                     {"name": "x", "dtype": "float32", "shape": [2]}]}],
                 "model_cases": []}
             spec_path = root / "spec.json"
@@ -378,6 +401,33 @@ class BenchmarkOracleTests(unittest.TestCase):
             self.assertEqual(actual[1].dtype, np.dtype("float32"))
             np.testing.assert_array_equal(actual[0], np.array([1, -2], dtype=np.int64))
             np.testing.assert_array_equal(actual[1], values)
+
+            # Exercise the production worker entry point using the same pinned
+            # inputs and isolated oracle, not a second measurement harness.
+            model.graph.node[0].op_type = "Neg"
+            edited_path = root / "edited.onnx"
+            onnx.save(model, edited_path)
+            backends = []
+            if importlib.util.find_spec("tvm"):
+                backends.append(["--backend", "tvm"])
+            if os.environ.get("ONNX_MLIR_BIN"):
+                backends.append(["--backend", "onnx-mlir", "--onnx-mlir",
+                                 os.environ["ONNX_MLIR_BIN"]])
+            for backend in backends:
+                with self.subTest(backend=backend):
+                    common = [sys.executable, str(Path(__file__).resolve().parents[1] /
+                              "artifact/run_baseline_benchmarks.py"), "--spec", str(spec_path),
+                              "--inputs", str(root), "--case-id", "isolation", *backend]
+                    updated = run_json(common + ["--worker", "update", "--model", str(model_path),
+                                                 "--edited-model", str(edited_path)])
+                    rebuilt = run_json(common + ["--worker", "rebuild", "--model", str(edited_path)])
+                    self.assertTrue(updated["initial"]["correct"])
+                    self.assertTrue(updated["replacement"]["correct"])
+                    self.assertIsNone(rebuilt["initial"])
+                    self.assertNotEqual(updated["initial"]["output_digest"],
+                                        updated["replacement"]["output_digest"])
+                    for field in ("model_sha256", "output_digest"):
+                        self.assertEqual(updated["replacement"][field], rebuilt["replacement"][field])
 
     def test_external_worker_reports_errors_and_reaps_timeout(self):
         self.assertEqual(run_json([sys.executable, "-c", 'print("log"); print(\'{"ok": true}\')']),
@@ -565,6 +615,19 @@ class TVMIntegrationTests(unittest.TestCase):
             self.assertTrue(compare_outputs(actual, [np.maximum(expected, 0), expected], 0, 0)["correct"])
         self.assertEqual(runner.names, ["positive", "sum"])
         self.assertEqual(set(runner.stages_ns), {"import", "compile", "bind"})
+        # A live original executable must not cause the edited graph to reuse
+        # stale code through a native process cache.
+        model.graph.node[0].op_type = "Sub"
+        edited = feeds["x.0"] - feeds["offset"]
+        replacement, record = checked_native_build(
+            lambda blob, inputs: TVMRunner(blob, inputs, {"kind": "llvm", "num-cores": 1}, 1),
+            model.SerializeToString(), feeds, ["positive", "sum"],
+            [np.maximum(edited, 0), edited], 0, 0)
+        self.assertTrue(record["correct"])
+        self.assertEqual(record["wall_ns"], record["ready_ns"] + record["validation_ns"])
+        runner.invoke()
+        self.assertTrue(compare_outputs(runner.outputs(), [np.maximum(expected, 0), expected], 0, 0)["correct"])
+        self.assertFalse(compare_outputs(replacement.outputs(), runner.outputs(), 0, 0)["correct"])
 
 
 @unittest.skipUnless(os.environ.get("ONNX_MLIR_BIN"), "ONNX_MLIR_BIN is not set")
@@ -610,6 +673,20 @@ class ONNXMLIRIntegrationTests(unittest.TestCase):
                                                               original], 0, 0)["correct"])
                 self.assertEqual(runner.names, ["transposed", "identity"])
                 self.assertEqual(set(runner.stages_ns), {"compile", "bind"})
+                model.graph.node[0].op_type = "Sub"
+                replacement, record = checked_native_build(
+                    lambda blob, inputs: ONNXMLIRRunner(blob, inputs, compiler, 1),
+                    model.SerializeToString(), feeds, ["transposed", "identity"],
+                    [(original - feeds["offset"]).T, original], 0, 0)
+                try:
+                    self.assertTrue(record["correct"])
+                    self.assertEqual(record["wall_ns"], record["ready_ns"] + record["validation_ns"])
+                    runner.invoke()
+                    self.assertTrue(compare_outputs(runner.outputs(),
+                        [(original + feeds["offset"]).T, original], 0, 0)["correct"])
+                    self.assertFalse(compare_outputs(replacement.outputs(), runner.outputs(), 0, 0)["correct"])
+                finally:
+                    replacement.close()
             finally:
                 runner.close()
             runner.close()  # Idempotent cleanup; previously copied outputs remain valid.
