@@ -11,6 +11,7 @@ import json
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -25,13 +26,48 @@ ACTION_SCHEMA = {"type": "object", "properties": {
     "source": {"type": "string"}}, "required": ["action"], "additionalProperties": False}
 
 
+class ContextLimitError(ValueError):
+    def __init__(self, detail: dict):
+        super().__init__(detail["message"])
+        self.detail = detail
+
+
+def context_limit(body: bytes) -> dict | None:
+    """Recognize the native runner's structured rejection, not message substrings."""
+    try:
+        value = json.loads(body)
+        for _ in range(3):
+            if isinstance(value, str):
+                value = json.loads(value)
+            elif isinstance(value, dict) and "error" in value:
+                value = value["error"]
+            else:
+                break
+        if (isinstance(value, dict) and value.get("type") == "exceed_context_size_error"
+                and value.get("code") == 400 and isinstance(value.get("message"), str)
+                and type(value.get("n_prompt_tokens")) is int
+                and type(value.get("n_ctx")) is int
+                and value["n_prompt_tokens"] > value["n_ctx"] > 0):
+            return value
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
 def local_api(path: str, payload: dict | None = None) -> dict:
     # The installed model is used as-is: no remote provider and no model pull.
     request = urllib.request.Request("http://127.0.0.1:11434/api/" + path,
         data=json.dumps(payload).encode() if payload is not None else None,
         headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=600) as response:
-        return json.load(response)
+    try:
+        with urllib.request.urlopen(request, timeout=600) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as failure:
+        body = failure.read()
+        detail = context_limit(body) if failure.code == 400 else None
+        if detail is not None:
+            raise ContextLimitError(detail) from failure
+        raise RuntimeError(f"provider HTTP {failure.code}: {body.decode(errors='replace')[:6000]}") from failure
 
 
 def response_usage(response: dict, model: str, context: int, prediction: int) -> tuple[int, int]:
@@ -240,23 +276,31 @@ def main() -> int:
         if remaining <= 0:
             break
         request = {"model": args.model, "messages": messages, "stream": False,
+                   "truncate": False, "shift": False,
                    "think": False, "format": ACTION_SCHEMA,
                    "options": {**options, "seed": args.seed + action_index,
                                "num_predict": min(4096, remaining)}}
         response = None
+        request_hash = hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
         try:
             response = local_api("chat", request)
             prompt_count, completion_count = response_usage(
                 response, args.model, options["num_ctx"], request["options"]["num_predict"])
+        except ContextLimitError as failure:
+            events.append({"action_index": action_index, "request_sha256": request_hash,
+                           "context_limit": failure.detail})
+            stop = "budget"
+            break
         except Exception as failure:
             infrastructure_error = f"provider: {type(failure).__name__}: {failure}"
             events.append({"action_index": action_index, "provider_error": infrastructure_error,
-                           "response": response})
+                           "request_sha256": request_hash, "response": response})
             stop = "agent_error"
             break
         prompt_tokens += prompt_count
         completion_tokens += completion_count
         events.append({"action_index": action_index, "response": response,
+                       "request_sha256": request_hash,
                        "candidate_before_sha256": digest(candidate)})
         content = response["message"]["content"]
         messages.append({"role": "assistant", "content": content})
@@ -299,7 +343,8 @@ def main() -> int:
     def identity_check() -> bool:
         final_tags = local_api("tags")["models"]
         return (any(model.get("name") == args.model and model.get("digest") == model_revision
-                    for model in final_tags) and native_identity(args) == system_identity and
+                    for model in final_tags) and local_api("version") == server_version and
+                native_identity(args) == system_identity and
                 all(digest(ROOT / path) == value for path, value in source_identity.items()))
 
     final, identity_stable, final_errors = final_checks(oracle, identity_check)
@@ -325,7 +370,9 @@ def main() -> int:
         "infrastructure_error": infrastructure_error,
         "dirty": dirty, "task": args.task, "task_spec_sha256": source_identity[str(spec_path.relative_to(ROOT))],
         "api_card_sha256": source_identity[str(card.relative_to(ROOT))], "seed": args.seed, "run": args.run,
-        "options": options, "think": False, "public_case_ids": public_ids,
+        "options": options, "think": False,
+        "context_policy": {"truncate": False, "shift": False, "overflow": "stop-budget"},
+        "public_case_ids": public_ids,
         "demonstrations": demos, "messages": messages, "events": events,
         "submitted": submitted, "wall_ms": wall_ms, "final_check_errors": final_errors,
         "final_oracle_sha256": (digest(root / "final-oracle.json")

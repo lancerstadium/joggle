@@ -243,6 +243,8 @@ class BenchmarkOracleTests(unittest.TestCase):
                     return {"models": [{"name": "test-model", "digest": "f" * 64}]}
                 if path == "version":
                     return {"version": "test"}
+                self.assertIs(payload["truncate"], False)
+                self.assertIs(payload["shift"], False)
                 raise TimeoutError("test provider timeout")
             def git(command, **kwargs):
                 return "a" * 40 if "rev-parse" in command else b""
@@ -263,6 +265,49 @@ class BenchmarkOracleTests(unittest.TestCase):
             self.assertEqual(row["passed"], "false")
             self.assertEqual(row["parsed"], "")
             self.assertFalse(json.loads((output / "result.json").read_text())["release_eligible"])
+
+    def test_agent_context_limit_requires_structured_native_error(self):
+        detail = {"code": 400, "type": "exceed_context_size_error", "message": "too long",
+                  "n_prompt_tokens": 16404, "n_ctx": 2048}
+        for value in (detail, {"error": detail}, {"error": json.dumps({"error": detail})}):
+            self.assertEqual(run_extension_agent.context_limit(json.dumps(value).encode()), detail)
+        for change in ({"type": "other"}, {"code": 500}, {"n_ctx": 0},
+                       {"n_prompt_tokens": 10}, {"n_prompt_tokens": True}):
+            self.assertIsNone(run_extension_agent.context_limit(json.dumps(detail | change).encode()))
+        self.assertIsNone(run_extension_agent.context_limit(b"exceed_context_size_error"))
+
+    def test_agent_context_limit_stops_without_model_action(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "trajectory"
+            argv = ["agent", "--model", "test-model", "--system", "Joggle",
+                    "--task", "ana-storage-cost", "--seed", "1", "--output", str(output),
+                    "--joggle", sys.executable, "--builtin-mods", directory]
+            detail = {"code": 400, "type": "exceed_context_size_error", "message": "too long",
+                      "n_prompt_tokens": 40000, "n_ctx": 32768}
+            def api(path, payload=None):
+                if path == "tags":
+                    return {"models": [{"name": "test-model", "digest": "f" * 64}]}
+                if path == "version":
+                    return {"version": "test"}
+                self.assertIs(payload["truncate"], False)
+                self.assertIs(payload["shift"], False)
+                raise run_extension_agent.ContextLimitError(detail)
+            def git(command, **kwargs):
+                return "a" * 40 if "rev-parse" in command else b""
+            final = {"passed": False, "setup": [], "cases": []}
+            with patch.object(sys, "argv", argv), patch.object(sys, "platform", "darwin"), \
+                    patch.object(run_extension_agent, "local_api", side_effect=api), \
+                    patch.object(run_extension_agent, "native_identity", return_value={}), \
+                    patch.object(subprocess, "check_output", side_effect=git), \
+                    patch.object(run_extension_agent, "final_checks", return_value=(final, True, [])):
+                self.assertEqual(run_extension_agent.main(), 0)
+            record = json.loads((output / "trajectory.json").read_text())
+            self.assertIsNone(record["infrastructure_error"])
+            self.assertEqual(record["events"][0]["context_limit"], detail)
+            self.assertEqual(len(record["events"][0]["request_sha256"]), 64)
+            with (output / "result.csv").open() as stream:
+                row = next(csv.DictReader(stream))
+            self.assertEqual(row["stop_reason"], "budget")
 
     def test_agent_usage_rejects_missing_or_out_of_budget_counts(self):
         response = {"done": True, "model": "test-model", "message": {"content": "{}"},

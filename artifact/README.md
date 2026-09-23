@@ -158,9 +158,15 @@ credentials are removed from the child environment. MLIR additionally needs
 The agent has no shell action. `--allow-dirty` marks an integration run against
 uncommitted harness changes; otherwise the collector requires a clean checkout.
 
-Each response must report valid token counts within the requested generation
-and context limits. These checks validate reported usage; provider-side input
-truncation requires tokenizer-level accounting before a formal collection.
+Each request disables history truncation and generation-time context shifting
+with Ollama's `truncate: false` and `shift: false`. Responses must report valid
+token counts within the requested generation and context limits. A structured
+native context-size rejection ends the trajectory at its budget boundary; it
+does not execute an action or retry with shortened history. Records retain the
+request hash, overflow token counts, context policy, and server version. Other
+provider errors remain infrastructure failures. Before formal collection,
+verify these controls on every pinned model/server pair; token counts alone
+cannot establish that an older server honored the flags.
 Public and final oracle reports must cover their assigned fixture populations.
 Provider, oracle, and identity-check exceptions are retained in the trajectory
 with `stop_reason: agent_error`; final-check failures still produce the CSV and
