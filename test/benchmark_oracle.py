@@ -22,7 +22,7 @@ from onnx import helper, numpy_helper
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "artifact"))
 from run_baseline_benchmarks import compare_outputs, isolated_reference, ort_session, run_json
-from run_baseline_benchmarks import checked_native_build
+from run_baseline_benchmarks import checked_native_build, apply_model_edit
 from run_joggle_benchmarks import compiler_identity, checkpoint_protocol, make_harness, Unsupported
 from benchmark_backends import ONNXMLIRRunner, TVMRunner, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
@@ -404,9 +404,16 @@ class BenchmarkOracleTests(unittest.TestCase):
 
             # Exercise the production worker entry point using the same pinned
             # inputs and isolated oracle, not a second measurement harness.
-            model.graph.node[0].op_type = "Neg"
-            edited_path = root / "edited.onnx"
-            onnx.save(model, edited_path)
+            edit = {"schema": "onnx-node-edit/v1", "node_index": 0, "domain": "",
+                    "before": "Identity", "after": "Neg",
+                    "model_sha256": hashlib.sha256(model_path.read_bytes()).hexdigest()}
+            edit_path = root / "edit.json"
+            edit_path.write_text(json.dumps(edit))
+            for changes in ({"before": "Add"}, {"node_index": -1}, {"node_index": True},
+                            {"model_sha256": "0" * 64}, {"after": "Identity"},
+                            {"after": "MissingOperator"}):
+                with self.assertRaises((ValueError, onnx.checker.ValidationError)):
+                    apply_model_edit(model_path.read_bytes(), {**edit, **changes})
             backends = []
             if importlib.util.find_spec("tvm"):
                 backends.append(["--backend", "tvm"])
@@ -417,13 +424,15 @@ class BenchmarkOracleTests(unittest.TestCase):
                 with self.subTest(backend=backend):
                     common = [sys.executable, str(Path(__file__).resolve().parents[1] /
                               "artifact/run_baseline_benchmarks.py"), "--spec", str(spec_path),
-                              "--inputs", str(root), "--case-id", "isolation", *backend]
-                    updated = run_json(common + ["--worker", "update", "--model", str(model_path),
-                                                 "--edited-model", str(edited_path)])
-                    rebuilt = run_json(common + ["--worker", "rebuild", "--model", str(edited_path)])
+                              "--inputs", str(root), "--case-id", "isolation", *backend,
+                              "--model", str(model_path), "--edit-json", str(edit_path)]
+                    updated = run_json(common + ["--worker", "update"])
+                    rebuilt = run_json(common + ["--worker", "rebuild"])
                     self.assertTrue(updated["initial"]["correct"])
                     self.assertTrue(updated["replacement"]["correct"])
                     self.assertIsNone(rebuilt["initial"])
+                    self.assertGreater(updated["replacement"]["edit_ns"], 0)
+                    self.assertEqual(updated["edit_sha256"], rebuilt["edit_sha256"])
                     self.assertNotEqual(updated["initial"]["output_digest"],
                                         updated["replacement"]["output_digest"])
                     for field in ("model_sha256", "output_digest"):

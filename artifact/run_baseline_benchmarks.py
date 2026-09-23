@@ -163,10 +163,37 @@ def isolated_reference(args: argparse.Namespace, names: list[str]) -> list[np.nd
             return [arrays[f"arr_{reference_names.index(name)}"] for name in names]
 
 
+def apply_model_edit(model: bytes, edit: dict[str, Any]) -> bytes:
+    """Apply one hash-bound operator replacement without backend-specific edits."""
+    import onnx
+
+    fields = {"schema", "model_sha256", "node_index", "domain", "before", "after"}
+    if set(edit) != fields or edit["schema"] != "onnx-node-edit/v1":
+        raise ValueError("invalid ONNX node edit specification")
+    if sha256(model) != edit["model_sha256"]:
+        raise ValueError("edit source hash mismatch")
+    proto = onnx.load_model_from_string(model)
+    index = edit["node_index"]
+    if type(index) is not int or not 0 <= index < len(proto.graph.node):
+        raise ValueError("edit node index is outside the graph")
+    node = proto.graph.node[index]
+    if node.domain != edit["domain"] or node.op_type != edit["before"]:
+        raise ValueError("edit precondition does not match the original operator")
+    if not isinstance(edit["after"], str) or not edit["after"] or edit["before"] == edit["after"]:
+        raise ValueError("edit must replace the operator")
+    node.op_type = edit["after"]
+    onnx.checker.check_model(proto, full_check=True)
+    return proto.SerializeToString()
+
+
 def checked_native_build(factory, model: bytes, feeds: dict, names: list[str],
-                         expected: list[np.ndarray], rtol: float, atol: float):
+                         expected: list[np.ndarray], rtol: float, atol: float,
+                         edit: dict[str, Any] | None = None):
     """Time construction through validation, excluding reference generation."""
     started = time.perf_counter_ns()
+    if edit is not None:
+        model = apply_model_edit(model, edit)
+    edited = time.perf_counter_ns()
     runner = factory(model, feeds)
     try:
         ready = time.perf_counter_ns()
@@ -180,6 +207,7 @@ def checked_native_build(factory, model: bytes, feeds: dict, names: list[str],
         elapsed = time.perf_counter_ns() - started
         return runner, {
             "wall_ns": elapsed, "ready_ns": ready - started,
+            "edit_ns": edited - started if edit is not None else 0,
             "validation_ns": elapsed - (ready - started),
             "stages_ns": runner.stages_ns,
             "model_sha256": sha256(model),
@@ -213,27 +241,35 @@ def production_update(args: argparse.Namespace) -> dict[str, Any]:
     else:
         raise ValueError("production update requires TVM or ONNX-MLIR")
     original = args.model.read_bytes()
-    replacement = args.edited_model.read_bytes() if args.worker == "update" else original
-    if args.worker == "update" and replacement == original:
-        raise ValueError("update requires a changed serialized model")
+    edit = json.loads(args.edit_json.read_text())
+    # Generate the edited reference outside candidate timing. The identical
+    # hash-bound edit is applied again inside every measured build.
+    replacement = apply_model_edit(original, edit)
     runners = []
 
-    def build(model, path):
+    def build(model, path, applied_edit=None):
         names = [out.name for out in onnx.load_model_from_string(model).graph.output]
         oracle_args = argparse.Namespace(**vars(args))
         oracle_args.model = path
         expected = isolated_reference(oracle_args, names)
-        runner, record = checked_native_build(factory, model, feeds, names, expected,
-                                               case["rtol"], case["atol"])
+        runner, record = checked_native_build(factory,
+            original if applied_edit is not None else model, feeds, names, expected,
+            case["rtol"], case["atol"], applied_edit)
         runners.append(runner)
+        if record["model_sha256"] != sha256(model):
+            raise ValueError("measured edit differs from reference model")
         return record
 
     try:
         initial = build(original, args.model) if args.worker == "update" else None
-        result = build(replacement, args.edited_model if initial else args.model)
+        with tempfile.TemporaryDirectory(prefix="joggle-edited-reference-") as directory:
+            path = Path(directory) / "edited.onnx"
+            path.write_bytes(replacement)
+            result = build(replacement, path, edit)
         return {"schema": "production-update-sample/v1", "backend": args.backend,
                 "policy": args.worker, "case_id": args.case_id,
-                "edit_delivery": "replacement-onnx-bytes-preloaded",
+                "edit_delivery": "hash-bound-node-replacement",
+                "edit_sha256": sha256(json.dumps(edit, sort_keys=True).encode()),
                 "retained_state": retained if initial else "fresh-worker",
                 "initial": initial, "replacement": result,
                 "oracle": correctness_oracle_record(),
@@ -582,7 +618,7 @@ def parse_args() -> argparse.Namespace:
     root = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser()
     parser.add_argument("--worker", choices=("execute", "oracle", "update", "rebuild"))
-    parser.add_argument("--edited-model", type=Path)
+    parser.add_argument("--edit-json", type=Path)
     parser.add_argument("--backend", choices=("onnxruntime", "tvm", "onnx-mlir"), default="onnxruntime")
     parser.add_argument("--onnx-mlir", type=Path, help="path to the ONNX-MLIR compiler executable")
     parser.add_argument("--target-json", default='{"kind":"llvm","num-cores":1}')
@@ -623,10 +659,10 @@ def parse_args() -> argparse.Namespace:
             parser.error("oracle worker requires --output")
         if args.worker in {"update", "rebuild"} and args.backend == "onnxruntime":
             parser.error("production update workers require tvm or onnx-mlir")
-        if args.worker == "update" and (not args.edited_model or not args.edited_model.is_file()):
-            parser.error("update worker requires an existing --edited-model")
-        if args.edited_model and args.worker != "update":
-            parser.error("--edited-model is only valid for update workers")
+        if args.worker in {"update", "rebuild"} and (not args.edit_json or not args.edit_json.is_file()):
+            parser.error("production workers require an existing --edit-json")
+        if args.edit_json and args.worker not in {"update", "rebuild"}:
+            parser.error("--edit-json is only valid for production workers")
         args.case_id = args.case_id[0]
     else:
         if not args.group or not args.output:

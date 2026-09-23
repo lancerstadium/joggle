@@ -133,7 +133,7 @@ after adapter validation. The current metadata and matched-stage providers use
 different endpoints. Their records remain separate from the main comparison.
 
 The existing external collector also exposes `--worker update --model BEFORE
---edited-model AFTER` and `--worker rebuild --model AFTER` for native adapter
+--edit-json EDIT` and `--worker rebuild --model BEFORE --edit-json EDIT` for native adapter
 validation. Both require the existing input index, case ID, specification, and
 backend arguments. The update worker retains the original checked executable
 while compiling the replacement; the rebuild worker starts in a fresh process.
@@ -142,10 +142,12 @@ compiler subprocess for each build. Neither adapter claims subgraph reuse.
 
 These workers emit `production-update-sample/v1` JSON, not Figure 6 CSV rows.
 They record source/input hashes, output digests, initial validation, and separate
-ready/validation times. The supplied edited ONNX bytes and oracle outputs are
-prepared before the measured build boundary. Consequently these adapter samples
-do not yet include edit application, a prescribed edit population, or paired
-repetitions. The production collector must add those components and the Joggle
+edit/ready/validation times. An `onnx-node-edit/v1` specification binds a node
+index, domain, and before/after operator names to the source model SHA-256.
+Both paths apply and validate that edit inside the measured boundary. Oracle
+outputs are prepared separately using the same deterministic edit. These samples
+do not yet define a prescribed edit population or paired repetitions.
+The production collector must add those components and the Joggle
 resident update path before these samples can support the main comparison.
 
 ### Supporting matched-stage diagnostic
