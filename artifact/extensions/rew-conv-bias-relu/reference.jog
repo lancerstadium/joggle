@@ -1,0 +1,39 @@
+mod extension
+use base
+use ir
+
+local fn fuse(m: Mod, relu: Op) -> bool {
+    if ir.callee(relu) != "relu" { return false }
+    let bias = ir.def(ir.args(relu)[0])
+    if !ir.live(bias) || ir.callee(bias) != "bias_add" { return false }
+    let conv = ir.def(ir.args(bias)[0])
+    if !ir.live(conv) || ir.callee(conv) != "conv2d" { return false }
+    if len(ir.users(ir.outs(conv)[0])) != 1 || len(ir.users(ir.outs(bias)[0])) != 1 { return false }
+    let meta = ir.meta(conv)
+    var axis = 3
+    if str(base.get(meta, "layout")) == "NCHW" { axis = 1 }
+    let shape = args(args(ir.type(ir.outs(conv)[0]))[1])
+    let b = ir.args(bias)[1]
+    let bshape = args(args(ir.type(b))[1])
+    if len(shape) != 4 || len(bshape) != 1 { return false }
+    if shape[axis] != bshape[0] || int(ir.meta(bias, "axis")) != axis { return false }
+    let old = ir.outs(relu)[0]
+    let result = ir.call(m, relu, ir.find(m, "fused_conv_bias_relu"), ir.args(conv) + [b], ir.type(old))
+    assert(ir.rename(m, result, "fused", ir.key(result)), "binding failed")
+    for key in keys(meta) {
+      assert(ir.set(m, ir.def(result), key, base.get(meta, key)), "attribute write failed")
+    }
+    ir.replace(m, old, result)
+    ir.erase(m, relu)
+    ir.erase(m, bias)
+    ir.erase(m, conv)
+    return true
+}
+
+fn transform(m: Mod) -> bool {
+  var changed = false
+  for relu in ir.ops(ir.find(m, "subject"), ["call"]) {
+    if fuse(m, relu) { changed = true }
+  }
+  return changed
+}

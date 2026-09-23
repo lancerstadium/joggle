@@ -55,7 +55,8 @@ The native tasks include `ana-broadcast-shape`, `ana-storage-cost`,
 `ana-numeric-range`, `ana-fusion-match`, `emit-storage-plan`,
 `emit-target-capability`, `emit-graph-manifest`, `rew-add-zero`, and
 `rew-redundant-cast`, `rew-transpose-pair`, `con-instruction-select`, and
-`con-gelu-expand`, `con-quant-expand`, and `con-layout-legalize`.
+`con-gelu-expand`, `con-quant-expand`, `con-layout-legalize`, and
+`rew-conv-bias-relu`.
 Each task directory under `extensions/` contains reference implementations for
 Joggle, MLIR, and xDSL; the shared `starter.*` files contain their empty entry
 points. Attribute-analysis tasks read a request from function metadata in
@@ -170,6 +171,15 @@ including a fixed-seed nonperiodic set that distinguishes spatial permutations.
 The spatial reference is also regression-tested against ONNX Runtime on all
 six valid shapes and against a hand-calculated cross-correlation example.
 
+`rew-conv-bias-relu` performs native Conv/BiasAdd/ReLU fusion with complete
+attribute and output-use preservation. Nine cases cover NCHW/NHWC, stride,
+asymmetric padding, dilation, repeated final outputs, shared intermediates,
+an incompatible activation, and a shape-compatible but incorrect bias axis.
+The latter four must remain unchanged. Both the exact observed graph and
+bitwise f32 outputs on six input sets are checked. Fused semantics preserve
+the original convolution accumulation, then bias addition, then ReLU; this
+task measures extension correctness, not fused-kernel throughput.
+
 ### Local agent execution
 
 `run_extension_agent.py` runs an installed Ollama model with four actions:
@@ -212,7 +222,7 @@ The current collector emits integration records with `release_eligible: false`.
 It records successful native execution but does not infer a failed compiler's
 parse/type/build phase from its exit code. Unmeasured phase fields and reference
 likelihoods remain empty. These records cannot enter the release assembler.
-The full matrix additionally requires the remaining 10 native task harnesses,
+The full matrix additionally requires the remaining 9 native task harnesses,
 phase-specific instrumentation, and the frozen demonstration sets. The
 assembler consumes complete provider records:
 

@@ -68,6 +68,14 @@ the convolution carries `stride`, `pad`, and `dilation`. Padding order is
 top, left, bottom, right. Bind new results before setting attributes and
 preserve all users, including repeated outputs.
 
+For `rew-conv-bias-relu`, follow native operand definitions with `ir.def` and
+check convolution/bias result users with `ir.users`. Read `layout` from the
+convolution and `axis` from BiasAdd. Require matching rank-one channel bias
+and single-use intermediates. Insert the declared `fused_conv_bias_relu`
+before ReLU with `[input, weight, bias]`. Copy every convolution metadata key,
+redirect final uses, then erase ReLU, BiasAdd, and convolution in that order.
+Return from a helper to skip a nonmatching chain; Jog has no `continue`.
+
 ## Analysis entry point
 
 Edit the supplied `module.jog`. Its public entry point is:

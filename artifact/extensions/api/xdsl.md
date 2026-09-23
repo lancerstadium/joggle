@@ -139,3 +139,11 @@ Transpose `perm` attributes use `ArrayAttr` of `IntegerAttr` values. Copy
 `stride`, `pad`, and `dilation` to the convolution; padding order is top,
 left, bottom, right. Transpose the result back to NHWC and replace every
 source result use. Reject mismatched input/weight channels before mutation.
+
+For `rew-conv-bias-relu`, follow operand `.owner` operations from ReLU through
+BiasAdd to convolution and inspect result `.uses`. Require a single use for
+each intermediate, rank-one channel bias, and the correct layout-specific
+bias axis. Insert `CallOp("fused_conv_bias_relu", [input, weight, bias],
+[result_type])` before ReLU, copying convolution attributes. The callee is a
+property rather than an entry in `.attributes`. Replace final uses, then
+erase ReLU, BiasAdd, and convolution in that order.

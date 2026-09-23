@@ -142,3 +142,10 @@ transpose's `perm` using `getI64ArrayAttr`. Copy `stride`, `pad`, and
 `dilation` to the convolution; padding order is top, left, bottom, right.
 Transpose the result back to NHWC and replace every source result use.
 Reject mismatched input/weight channels before mutation.
+
+For `rew-conv-bias-relu`, follow `getDefiningOp<func::CallOp>()` from ReLU
+through BiasAdd to convolution; require `hasOneUse()` for both intermediate
+results. Check rank-one channel bias and the layout's bias axis. Create the
+declared `fused_conv_bias_relu` with input, weight, bias operands. Copy all
+convolution attributes except `callee`, preserving the new target symbol.
+Replace final users, then erase ReLU, BiasAdd, and convolution.

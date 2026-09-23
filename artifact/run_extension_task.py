@@ -25,10 +25,43 @@ ROOT = Path(__file__).resolve().parent
 SUPPORTED_TASKS = {"ana-broadcast-shape", "ana-storage-cost", "ana-numeric-range",
                    "ana-fusion-match", "emit-storage-plan", "emit-target-capability",
                    "emit-graph-manifest", "rew-add-zero", "rew-redundant-cast", "rew-transpose-pair",
-                   "con-instruction-select", "con-gelu-expand", "con-quant-expand", "con-layout-legalize"}
+                   "con-instruction-select", "con-gelu-expand", "con-quant-expand", "con-layout-legalize",
+                   "rew-conv-bias-relu"}
 
-REWRITE_TASKS = {"rew-add-zero", "rew-redundant-cast", "rew-transpose-pair", "con-instruction-select", "con-gelu-expand", "con-quant-expand", "con-layout-legalize"}
+REWRITE_TASKS = {"rew-add-zero", "rew-redundant-cast", "rew-transpose-pair", "con-instruction-select", "con-gelu-expand", "con-quant-expand", "con-layout-legalize", "rew-conv-bias-relu"}
 GELU_TOLERANCES = {"f32": (1e-5, 1e-6), "f64": (1e-12, 1e-12)}
+
+
+def conv_fusion_graph(request: dict, eliminate: bool) -> dict:
+    graph = layout_graph(request)
+    conv = graph["nodes"][0]
+    conv["op"] = "conv2d"
+    conv["attrs"]["layout"] = request["layout"]
+    conv["attrs"]["tag"] = "fusion"
+    conv["results"][0]["name"] = "c"
+    channels = conv["results"][0]["shape"][3]
+    if request["layout"] == "NCHW":
+        for value, permutation in ((graph["inputs"][0], [0, 3, 1, 2]),
+                                   (graph["inputs"][1], [3, 2, 0, 1]),
+                                   (conv["results"][0], [0, 3, 1, 2])):
+            value["shape"] = [value["shape"][i] for i in permutation]
+    bias = {"name": "b", "element": "f32", "shape": [channels]}
+    graph["inputs"].append(bias)
+    result = conv["results"][0]
+    fused = {"op": "fused_conv_bias_relu", "inputs": ["x", "w", "b"],
+             "results": [dict(result, name="y")], "attrs": dict(conv["attrs"])}
+    graph["declarations"] = [dict(fused, parameter_types=graph["inputs"])]
+    graph["nodes"] = [fused] if eliminate else [conv,
+        {"op": "bias_add", "inputs": ["c", "b"], "results": [dict(result, name="biased")],
+         "attrs": {"axis": request.get("bias_axis", 1 if request["layout"] == "NCHW" else 3)}},
+        {"op": request.get("activation", "relu"), "inputs": ["biased"],
+         "results": [dict(result, name="y")]}]
+    graph["outputs"] = ["y"] + (["y", "x"] if request.get("shared_output") else [])
+    if request.get("shared_conv"):
+        graph["outputs"].append("c")
+    if request.get("shared_bias"):
+        graph["outputs"].append("biased")
+    return graph
 
 
 def layout_graph(request: dict) -> dict:
@@ -206,6 +239,8 @@ def cast_graph(request: dict, eliminate: bool) -> dict:
 
 def rewrite_graph(request: dict, eliminate: bool = False) -> dict:
     """Build the tensor-dialect fixture; the extension sees native SSA, not this map."""
+    if request.get("op") == "conv-bias-activation":
+        return conv_fusion_graph(request, eliminate)
     if "weight" in request and "input" in request:
         return layout_graph(request)
     if "lhs_scale" in request:
@@ -312,12 +347,28 @@ def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool,
                 value = np.broadcast_to(converted, ty["shape"])
             elif node["op"].startswith("transpose_") and len(node["inputs"]) == 1:
                 value = np.transpose(values[node["inputs"][0]], attrs["perm"])
-            elif node["op"] in {"conv2d_nhwc", "conv2d_nchw"}:
-                x, w = (values[key] for key in node["inputs"])
-                if node["op"] == "conv2d_nchw":
+            elif node["op"] == "bias_add":
+                x, b = (values[key] for key in node["inputs"])
+                shape = [1] * x.ndim
+                shape[attrs["axis"]] = b.size
+                value = x + b.reshape(shape)
+            elif node["op"] in {"relu", "sigmoid"}:
+                x = values[node["inputs"][0]]
+                if node["op"] == "relu":
+                    value = np.maximum(x, np.float32(0))
+                else:
+                    e = np.exp(-np.abs(x))
+                    value = np.where(x >= 0, np.float32(1) / (np.float32(1) + e), e / (np.float32(1) + e))
+            elif node["op"] in {"conv2d_nhwc", "conv2d_nchw", "conv2d", "fused_conv_bias_relu"}:
+                x, w = (values[key] for key in node["inputs"][:2])
+                nchw = node["op"] == "conv2d_nchw" or attrs.get("layout") == "NCHW"
+                if nchw:
                     value = convolution_nhwc(x.transpose(0, 2, 3, 1), w.transpose(2, 3, 1, 0), attrs).transpose(0, 3, 1, 2)
                 else:
                     value = convolution_nhwc(x, w, attrs)
+                if node["op"] == "fused_conv_bias_relu":
+                    bias = values[node["inputs"][2]]
+                    value = np.maximum(value + bias.reshape([1, -1, 1, 1] if nchw else [1, 1, 1, -1]), np.float32(0))
             elif node["op"] in {"matmul", "mma_m16n16k16"} and len(node["inputs"]) == 2:
                 inputs = [values[key] for key in node["inputs"]]
                 a, b = (value.astype(np.float32) for value in inputs)
@@ -339,7 +390,7 @@ def rewrite_numerics(actual: dict, original: dict, no_signed_zeros: bool,
                [0, 0, 0, 0], [0.1, -0.3, 1.5, -2.75], [-128, 127, 256, -257]]
     if tolerance is not None:
         samples += [[-3, -1, 0, 1, 3], [-8, -4, -2, 0.5, 4]]
-    if any(node["op"] == "conv2d_nhwc" for node in original["nodes"]):
+    if any(node["op"] in {"conv2d_nhwc", "conv2d"} for node in original["nodes"]):
         # Short repeating patterns can be invariant under a wrong spatial transpose.
         rng = np.random.Generator(np.random.PCG64(731))
         samples.append({value["id"]: rng.uniform(-1, 1, math.prod(value["type"]["shape"])).tolist()

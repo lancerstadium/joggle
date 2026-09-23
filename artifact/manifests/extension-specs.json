@@ -206,13 +206,19 @@
       "title": "Conv Bias ReLU fusion",
       "footprint": false,
       "required_roles": ["rewrite"],
-      "contract": "Fuse an analysis-approved Conv2D, BiasAdd, ReLU chain into fused_conv_bias_relu with identical operands and convolution attributes; preserve graphs rejected by the match contract.",
+      "contract": "Fuse native f32 conv2d -> bias_add -> relu calls only when convolution and bias results each have one use, the rank-one bias matches output channels, and bias_add axis agrees with convolution layout (NCHW axis 1 or NHWC axis 3). Create the declared fused_conv_bias_relu call with input, weight, bias operands in that order; preserve every convolution attribute and every final output use, then remove the three original calls. Preserve rejected chains unchanged. Convolution uses cross-correlation, stride/dilation=[height,width], pad=[top,left,bottom,right], and NCHW/OIHW or NHWC/HWIO tensors. Fused semantics retain f32 convolution accumulation followed by f32 bias addition and ReLU, without reassociation. All matching information must be read from native SSA, including uses and attributes.",
       "positive_cases": [
-        {"id": "valid-nchw", "input": {"graph": "relu(bias_add(conv2d(x,w,stride=1,pad=1),b))", "shape": [1, 3, 8, 8]}, "expect": {"ops": ["fused_conv_bias_relu"], "attributes": {"stride": 1, "pad": 1}}},
-        {"id": "valid-nhwc", "input": {"graph": "relu(bias_add(conv2d(x,w,stride=2,pad=0),b))", "shape": [1, 8, 8, 3]}, "expect": {"ops": ["fused_conv_bias_relu"], "attributes": {"stride": 2, "pad": 0}}}
+        {"id": "valid-nchw", "input": {"op": "conv-bias-activation", "layout": "NCHW", "input": [1, 5, 7, 2], "weight": [3, 3, 2, 4], "pad": [1, 1, 1, 1]}, "expect": {"eliminate": true}},
+        {"id": "valid-nhwc", "input": {"op": "conv-bias-activation", "layout": "NHWC", "input": [2, 7, 9, 2], "weight": [3, 2, 2, 3], "stride": [2, 1]}, "expect": {"eliminate": true}},
+        {"id": "asymmetric-pad", "input": {"op": "conv-bias-activation", "layout": "NCHW", "input": [1, 5, 7, 2], "weight": [2, 3, 2, 3], "pad": [1, 2, 0, 1]}, "expect": {"eliminate": true}},
+        {"id": "dilated", "input": {"op": "conv-bias-activation", "layout": "NHWC", "input": [1, 7, 9, 2], "weight": [2, 3, 2, 4], "dilation": [2, 2], "pad": [1, 0, 0, 2]}, "expect": {"eliminate": true}},
+        {"id": "shared-result", "input": {"op": "conv-bias-activation", "layout": "NCHW", "input": [2, 3, 5, 2], "weight": [1, 1, 2, 3], "shared_output": true}, "expect": {"eliminate": true}}
       ],
       "negative_cases": [
-        {"id": "shared-conv", "input": {"graph": "pair(relu(bias_add(conv2d(x,w),b)),conv2d-result)", "conv_uses": 2}, "expect": {"graph": "unchanged"}}
+        {"id": "wrong-bias-axis", "input": {"op": "conv-bias-activation", "layout": "NCHW", "input": [1, 4, 6, 2], "weight": [2, 2, 2, 3], "bias_axis": 2}, "expect": {"eliminate": false}},
+        {"id": "shared-conv", "input": {"op": "conv-bias-activation", "layout": "NCHW", "input": [1, 4, 6, 2], "weight": [2, 2, 2, 3], "shared_conv": true}, "expect": {"eliminate": false}},
+        {"id": "shared-bias", "input": {"op": "conv-bias-activation", "layout": "NHWC", "input": [1, 4, 6, 2], "weight": [2, 2, 2, 3], "shared_bias": true}, "expect": {"eliminate": false}},
+        {"id": "wrong-activation", "input": {"op": "conv-bias-activation", "layout": "NHWC", "input": [1, 4, 6, 2], "weight": [2, 2, 2, 3], "activation": "sigmoid"}, "expect": {"eliminate": false}}
       ],
       "oracle": {"phases": ["build", "semantic"], "comparison": "numerical"}
     },

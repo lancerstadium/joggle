@@ -132,6 +132,38 @@ class BenchmarkOracleTests(unittest.TestCase):
                                      [np.array([2], dtype=np.float32)], 0, 0)
             self.assertTrue(runner.closed)
 
+    def test_conv_fusion_preserves_layout_attributes_users_and_arithmetic(self):
+        root = Path(__file__).resolve().parents[1] / "artifact"
+        task = next(t for t in json.loads((root / "manifests/extension-specs.json").read_text())["tasks"]
+                    if t["id"] == "rew-conv-bias-relu")
+        for case in task["positive_cases"] + task["negative_cases"]:
+            request = case["input"]
+            original = graph_manifest(rewrite_graph(request))
+            expected = graph_manifest(rewrite_graph(request, case["expect"]["eliminate"]))
+            self.assertTrue(rewrite_numerics(expected, original, False)["passed"], case["id"])
+            if case["expect"]["eliminate"]:
+                self.assertEqual(len(expected["nodes"]), 1)
+                self.assertEqual(expected["nodes"][0]["attrs"], original["nodes"][0]["attrs"])
+                # Incorrect operand wiring must not be accepted as a valid fusion.
+                wrong = rewrite_graph(request, True)
+                wrong["nodes"][0]["inputs"][-1] = "x"
+                with self.assertRaises(ValueError):
+                    rewrite_numerics(graph_manifest(wrong), original, False)
+            else:
+                self.assertEqual(expected, original)
+        request = task["negative_cases"][0]["input"]
+        wrong = graph_manifest(rewrite_graph(request, True))
+        original = graph_manifest(rewrite_graph(request))
+        self.assertFalse(rewrite_numerics(wrong, original, False)["passed"])
+        request = {"op": "conv-bias-activation", "layout": "NHWC",
+                   "input": [1, 1, 4, 1], "weight": [1, 1, 1, 1]}
+        report = rewrite_numerics(graph_manifest(rewrite_graph(request, True)),
+                                  graph_manifest(rewrite_graph(request)), False,
+                                  extra_feeds={"v0": [-2, 0, 1, 3], "v1": [2], "v2": [-1]})
+        self.assertTrue(report["passed"])
+        observed = np.frombuffer(bytes.fromhex(report["cases"][-1]["after_bits"][0]), dtype=np.float32)
+        np.testing.assert_array_equal(observed, [0, 0, 1, 5])
+
     def test_layout_conversion_rejects_wrong_padding_and_permutation(self):
         source = rewrite_graph({"input": [1, 4, 4, 2], "weight": [3, 3, 2, 3],
                                 "pad": [1, 0, 0, 1], "shared_output": True})
