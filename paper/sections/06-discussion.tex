@@ -1,20 +1,27 @@
 \section{Discussion}
 \label{sec:discussion}
 
-\paragraph{Extension boundaries.} A mod groups a feature's functions behind one
-public interface independently of compiler stages. For a numeric-format
-change, analysis, lowering, and packing can share an owner while source fragments
-subdivide implementation. The package study shows that direct publication
-reduces integration code; subsequent edits remain local in all three systems.
+\paragraph{Integration and maintenance.} The package study separates the cost of
+introducing a feature from the cost of changing it. Direct mod publication
+reduces installation files and registration code; subsequent maintenance stays
+within one file in all three implementations. The organizational benefit is
+therefore an explicit cross-stage integration boundary. A package can still
+subdivide its implementation without distributing its public contract among
+compiler stages.
 
-\paragraph{Reuse boundaries.} Within a retained graph, observations and effects
-select stages; across imported revisions, specialization signatures select
-reusable prepared bodies. These are distinct reuse units. Removing preparation
-work shifts the remaining update cost toward emission and native compilation,
-identifying the next boundary for optimization.
+\paragraph{Dependency granularity and turnaround.} Reuse helps when its unit matches
+the change. Recorded observations select work within a retained graph, whereas
+specialization signatures identify reusable prepared bodies after import.
+The latter removes most preparation cost in the repeated-edit study. As a
+result, emission and native compilation account for a larger share of
+turnaround. Extending reuse to independently emitted artifacts is a concrete
+next step: their identities must include the relevant bodies, layouts, target
+settings, and dependencies.
 
-\paragraph{Consistent publication.} Mods determine which implementation is
-visible; calls record what it observes; transactions publish the resulting graph
-and dependency records together. External inputs enter call identity through
-typed arguments and environment revisions. Consequently, extension, ownership,
-and reuse share an explicit publication boundary.
+\paragraph{Composition with explicit effects.} A shared call interface makes compiler
+roles available to both developers and agents, but the semantic contract still
+determines whether an extension is correct. Typed arguments, read-only checks,
+and transactional mutation provide common enforcement points. In particular,
+publishing graph state and dependency records together connects extensibility
+to reuse: composed functions can publish new results while invalidating
+observations of the state they replace.

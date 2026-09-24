@@ -56,12 +56,11 @@ transactional publication boundary.
   \label{fig:architecture}
 \end{figure}
 
-The rest of the design follows the three requirements from
-Section~\ref{sec:requirements}. Section~\ref{sec:compiler-functions} realizes
-R1 with typed compiler functions. Section~\ref{sec:mods} realizes R2 with
-mod-scoped composition. Sections~\ref{sec:incremental}
-and~\ref{sec:graph-runtime} realize R3 through observed dependencies and the
-graph runtime that validates them.
+The rest of the design develops these relationships in order.
+Section~\ref{sec:compiler-functions} defines typed compiler functions;
+Section~\ref{sec:mods} gives them a mod-scoped composition boundary.
+Sections~\ref{sec:incremental} and~\ref{sec:graph-runtime} then explain how
+observed dependencies and transactional graph storage support reuse.
 
 \subsection{Compiler Functions}
 \label{sec:compiler-functions}

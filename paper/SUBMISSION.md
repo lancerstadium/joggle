@@ -33,7 +33,7 @@ is a later, post-acceptance process with its own instructions.
 
 ## Current checks
 
-The main PDF has 14 pages. Technical content ends on page 12; pages 13--14 contain
+The main PDF has 15 pages. Technical content ends on page 12; pages 13--15 contain
 references only. The separate supplement has twelve pages. Table A.5's 12 paired
 input/output examples occupy five portrait pages, with verbatim quoted task
 contracts and 8.5 pt DOT labels. Section C.4 uses portrait tables while retaining its diagram typography
@@ -65,24 +65,28 @@ in a six-panel display. Appendix E adds complete footprints (A.13), native
 installation files (A.14), and six worked maintenance input/output pairs (A.15).
 The related-work table places ten systems/frameworks across two horizontal
 bands and names their composition and dependency mechanisms. The main PDF
-now cites 31 sources. The literature expansion covers IRDL, LMS, AnyDSL,
+now cites 48 sources. The literature expansion covers IRDL, LMS, AnyDSL,
 Exo, Ansor, TASO, Mirage, PluS, egglog, self-adjusting computation, IncA,
-and SWE-agent. Citations occur in the introduction, motivation, and
+SWE-agent, Delite, Forge, Stratego, Lift, RISE/ELEVATE, guided equality
+saturation, MetaSchedule, Relax, Tensor Comprehensions, TACO, Shake, pluto,
+PIE, differential dataflow, SWE-bench, AutoTVM, and Glow.
+Citations occur in the introduction, motivation, and
 related-work comparisons; every bibliography entry is cited. KernelBench,
 TensorIR, and Exo 2 now use formal proceedings records rather than preprint
 metadata. Primary papers, project documentation, institutional records, or
 official proceedings were opened during the reference check; source locators
 for the additions are recorded in `references.bib` comments. Final author
 review remains part of submission approval.
-The 72-condition Agent completion collection is still running and is not a
-completed result. Add its results and associated displays before finalizing
-the evaluation.
+The local Agent collection is stopped. The API-based collection has not started;
+its model and provider configuration will be chosen with the authors. Complete
+the matched population and its displays before finalizing the evaluation.
 
 The repeated-update data in `data/figure-06-update.json` are pinned to revision
 `1dce55b815f2f63d75b8b799119e8febc8956523`, including prepared-body reuse.
-The current main-branch resident compiler does not yet contain that reuse path.
-Integrate and verify the measured implementation before packaging the artifact;
-do not relabel those measurements as results of the current main branch.
+The main-branch resident compiler now contains that reuse path, together with
+the corresponding invalidation, transfer, and storage fixes. The CSV still
+identifies the original measured revision. Rerun the repeated study on the
+integrated main before replacing those measurements.
 The external-data integration check at
 `.cache/artifact/external-data-verified.qpfoeC/` is a separate single-repetition
 correctness run, not a replacement for the paper's repeated measurements.

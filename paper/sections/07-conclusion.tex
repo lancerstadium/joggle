@@ -1,12 +1,12 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-Joggle organizes compiler extension around typed functions, graph-level mods,
-and dependency-directed execution. A shared language, call model, and value
-model compose semantic definitions, analyses, transformations, conversions,
-and emitters. Mods preserve cross-stage ownership, while recorded observations
-and transactional publication support reuse over mutable graphs. Prepared-body
-reuse yields $1.49$--$2.48\times$ executable-ready speedups over complete
-rebuilds on the three repeated model subjects. The resulting design treats
-compiler extension as a program with explicit composition, ownership, and
-update dependencies.
+Joggle makes compiler capabilities programmable through one typed call model,
+organizes cross-stage features in graph-level mods, and directs updates using
+recorded dependencies. The resulting progressive IR separates feature
+ownership from program containment while retaining explicit mutation and
+publication rules. Native package comparisons show reduced integration
+footprints, and prepared-body reuse accelerates executable-ready updates by
+$1.49$--$2.48\times$ on the three measured models. Together, these results
+support a compiler organization in which composition, ownership, and update
+dependencies are first-class parts of an extension.

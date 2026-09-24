@@ -1,53 +1,45 @@
 \section{Introduction}
 \label{sec:introduction}
 
-AI systems evolve through new operators, numeric formats, and hardware targets,
-driving extensible IRs and hardware-aware tensor
-compilation~\cite{lattner2021mlir,feng2022tensorir}.
-Supporting these changes requires coordinated extensions across several parts
-of a compiler. For example, a fused operator needs a semantic definition, a
-legality analysis, a graph rewrite, and a target implementation. Changing its
-numeric format or layout requires these parts to agree again. Developers and
-code-generating agents must therefore coordinate several compiler roles to
-complete even a single feature. SWE-agent shows that tool interfaces affect
-agent performance~\cite{yang2024sweagent}, while KernelBench evaluates generated
-kernels for correctness and speed~\cite{ouyang2025kernelbench}. Cross-stage
-extensions additionally require agreement among compiler roles.
+The evolution of AI workloads makes compiler development a continuing part of
+deployment. New operators, numeric formats, and accelerators require changes
+from semantic definitions to generated code. Extensible IRs and tensor
+programming systems provide the building blocks for these changes
+~\cite{lattner2021mlir,feng2022tensorir}. The remaining challenge is to compose
+those blocks into features that developers can extend, maintain, and evaluate
+without repeatedly coordinating the entire compiler.
 
-This coordination becomes costly when compiler roles expose separate
-declaration and invocation mechanisms. Registries, build targets, and backend
-libraries can further divide ownership of the same feature. After an edit,
-an ordered pipeline may also rerun stages that never observed the changed
-state. Expression, ownership, and re-execution thus impose distinct costs on
-the same development task.
+Consider adding a fused convolution. Its definition, legality analysis, graph
+rewrite, and target implementation must agree on one semantic contract. Yet
+these roles may use different interfaces and belong to separate registries,
+build targets, and backend libraries. Even after a local modification, a
+pipeline can repeat work unrelated to that change. The development cost thus
+depends on three boundaries: how capabilities compose, where a feature is
+owned, and what an edit invalidates.
 
-These costs reflect different relationships within the compiler. Program
-containment describes the code being compiled, whereas feature ownership spans
-the implementations acting on it. Similarly, two successive passes can inspect
-disjoint graph regions, so pipeline order alone does not determine their update
-dependencies. Addressing the three costs therefore requires explicit ownership
-and dependency boundaries alongside program structure.
+Our central observation is that none of these boundaries is determined by
+program containment alone. A feature can span several IR levels, and adjacent
+passes can inspect disjoint graph regions. Consequently, organizing the
+subject program does not by itself organize the compiler capabilities acting
+on it. Ownership and execution dependencies need explicit representations
+alongside the program graph.
 
-Joggle follows this separation by expressing compiler behavior as typed
-functions over a shared graph model. A \emph{compiler function} defines semantics,
-analyzes or transforms the graph, converts representations, or emits an
-artifact. To organize these functions, a graph-level \emph{mod} groups a feature's
-implementations, native bindings, and declared dependencies. At execution time,
-recorded graph observations and published effects determine which calls
-require re-execution. Transactions publish graph changes and dependency records
-together, preserving the state on which reuse depends.
+We present Joggle, a compiler infrastructure that makes these relationships
+explicit. Typed \emph{compiler functions} express behavior, graph-level \emph{mods} own
+cross-stage features, and recorded observations and effects direct updates.
+Functions progressively refine a typed graph while semantic operations and
+lower-level helpers coexist. Each successful mutation publishes a verified
+state over the same entity model. This \emph{progressive intermediate
+representation} preserves a feature's ownership as its subject program changes
+form.
 
-As these functions execute, they progressively refine a typed graph without
-fixing its operator set. Semantic operations and lower-level helpers can
-coexist during refinement, and each published state remains a verified,
-inspectable mod. We call this a \emph{progressive intermediate representation}.
-Its key distinction is that the owner of a feature remains separate from the
-program structure its functions change.
+This organization also provides a concrete setting for agent-assisted compiler
+development. Repository-editing benchmarks and agents emphasize executable
+feedback~\cite{jimenez2024swebench,yang2024sweagent}, while KernelBench measures
+generated kernels~\cite{ouyang2025kernelbench}. Here, an extension can involve
+several compiler roles, making their composition part of the task itself.
 
-Figure~\ref{fig:thesis-map} brings these relationships together: three development costs lead to
-three mechanisms and corresponding evaluation endpoints. Extension completion,
-change footprint, and update cost assess the compiler-development workflow;
-operator and model execution assess the resulting artifacts.
+Figure~\ref{fig:thesis-map} summarizes the three mechanisms developed in this paper.
 
 \begin{figure*}[t]
   \centering
@@ -61,8 +53,6 @@ operator and model execution assess the resulting artifacts.
     maps to dependency-directed updates and efficient response.}
   \label{fig:thesis-map}
 \end{figure*}
-
-Together, these choices yield three complementary design mechanisms.
 
 \paragraph{Unified compiler functions.} Five compiler roles share typed calls over
 graph handles and owned values. Common resolution and composition rules let
@@ -79,10 +69,12 @@ and propagates overlapping effects to select affected stages. Entity generations
 and revisions identify stale observations; transactional publication keeps
 reusable records consistent with the verified graph.
 
-The evaluation pairs extension tasks and implementation patches across Joggle,
-MLIR, and xDSL. Model-edit comparisons use Joggle, TVM, and ONNX-MLIR; execution
-comparisons additionally include ONNX Runtime. Prepared-body reuse yields
-$1.49$--$2.48\times$ executable-ready speedups over complete rebuilds on
-three models, with identical output digests. The generated artifacts pass
-checks on all 24 operators and 14 of the 15 models. These experiments separate
-extension cost, compilation turnaround, and generated-code performance.
+The evaluation separates extension completion, package changes, and update
+latency from generated-code performance. Native package integration touches
+one file per extension, compared with three in the matched MLIR and xDSL
+implementations. Prepared-body reuse accelerates executable-ready updates by
+$1.49$--$2.48\times$ over complete rebuilds on three models. On eight models
+compiled correctly by all four systems, the generated executables achieve a
+$2.10\times$ geometric-mean speedup over default TVM. Together, these
+experiments examine both the cost of changing a compiler and the artifacts
+it produces.

@@ -45,17 +45,13 @@ tensors with dtype-specific tolerances. Failed cases remain in coverage but do
 not enter latency ratios. The repeated update experiment covers three edit sites on each of
 DenseNet-121, SqueezeNet-1.1, and TinyYOLOv3, with ten paired repetitions per site. The
 execution experiment uses ten warm-ups and 100 timed samples per artifact. We
-form ratios within an edit, model, or operator before aggregation. Every CSV row
-records correctness, subject and input digests, compiler identity, seed, and
-timing boundary; run records additionally pin build flags, host policy, and
-cache configuration.
+form ratios within an edit, model, or operator before aggregation. The supplement
+gives per-case measurements, input/output examples, and compiler configurations.
 
-Figure~\ref{fig:eval-workflow} summarizes the common comparison structure.
-Extension and ownership studies share feature specifications; update paths
-start from the same edited graph; execution paths consume identical tensors.
-The oracle precedes metric aggregation in each branch. Successful cases
-provide paired measurements, while unsuccessful cases remain in the coverage
-denominator.
+Figure~\ref{fig:eval-workflow} shows the paired design: shared feature
+specifications for extension and ownership, the same edited graph for updates,
+and identical tensors for execution. Each path checks correctness before
+aggregating measurements.
 
 \begin{figure}[!tbp]
   \centering
@@ -95,14 +91,12 @@ runs once with deterministic decoding and no demonstrations. The paired design
 contains 72 trajectories: 12 tasks, three systems, and two models.
 
 The primary endpoint is executable success within budget: the final workspace
-must parse, type-check, build, and pass the semantic oracle without manual
-repair. We macro-average success over tasks and resample tasks within each
-family. For successful trajectories, secondary measures are completion tokens,
-tool calls, edit attempts, and wall time. The record distinguishes the stopping
-condition from the final candidate outcome: exhausting a budget and submitting
-incorrect code are different events. Native build, execution, observation, and
-semantic failures are recorded at the boundary that detects them. The supplement
-pairs the natural-language contracts with input graphs and expected outputs.
+must build and pass the semantic oracle without manual repair. We macro-average
+success over tasks and resample tasks within each family. Successful
+trajectories also report completion tokens, tool calls, edit attempts, and wall
+time. Stopping conditions and candidate outcomes distinguish budget exhaustion
+from incorrect code. The supplement pairs natural-language contracts with
+input graphs and expected outputs.
 
 \subsection{Change Footprint and Ownership}
 \label{sec:eval-controllable}

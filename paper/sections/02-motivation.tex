@@ -1,15 +1,13 @@
-\section{Why Compiler Extensions Resist Local Change}
+\section{Motivation}
 \label{sec:motivation}
 
-\subsection{One Feature, Several Mechanisms}
+\subsection{Cross-Stage Extensions}
 \label{sec:workflow}
 
-Figure~\ref{fig:workflow} follows a model from structure to device. Extension
-work enters at every level: an operator defines semantics, a graph pass changes
-connectivity, a system pass chooses order and storage, and a backend realizes
-the result for a platform. The interfaces at these levels evolved for
-different purposes. A feature that crosses them must connect their
-registration, calling, and invalidation conventions.
+Figure~\ref{fig:workflow} follows a model from structure to device. Operator definitions specify
+semantics; graph passes change connectivity; system passes choose order and
+storage; backends produce target implementations. These extension points
+describe different responsibilities within one compilation workflow.
 
 \begin{figure}[t]
   \centering
@@ -23,76 +21,51 @@ registration, calling, and invalidation conventions.
   \label{fig:workflow}
 \end{figure}
 
-Consider a fused convolution, bias addition, and activation. The feature must
-state the fused operation's types and semantics, recognize a legal source
-subgraph, replace it without losing users, select a target form, and emit or
-bind its implementation. A layout or numeric-format change must update the
-same contract in every role. None of these tasks is exceptional; their
-composition is the problem.
+For example, fusing convolution, bias addition, and activation requires more
+than a replacement kernel. An analysis checks types, shapes, and intermediate
+uses; a rewrite replaces the legal subgraph; conversion and emission realize
+the fused operation. Changing its layout or numeric format can affect several
+of these implementations while leaving unrelated features unchanged.
 
-LLVM supplies a shared typed representation for analysis and
-transformation~\cite{lattner2004llvm};
-MLIR extends that model across abstraction levels~\cite{lattner2021mlir};
-Halide separates algorithms from schedules~\cite{ragankelley2012halide}; and
-TVM combines graph and tensor optimization for heterogeneous
-targets~\cite{chen2018tvm}. Joggle makes the compiler capabilities acting on
-these structures explicit: typed functions express them, mods own them, and
-recorded dependencies drive their re-execution.
+Existing systems expose substantial control over this workflow: MLIR supports
+multi-level lowering~\cite{lattner2021mlir}, Halide separates algorithms and
+schedules~\cite{ragankelley2012halide}, and Relax composes graph, tensor, and library
+abstractions~\cite{lai2025relax}. The issue is therefore not whether a compiler can
+express an optimization, but how a complete feature crosses its interfaces.
 
-\subsection{Three Sources of Friction}
+\subsection{Boundaries That Spread Change}
 \label{sec:friction}
 
-\paragraph{Fragmented mechanisms.}
-Schemas define admissible programs. Analyses derive facts, passes rewrite
-graphs, converters bridge representations, and emitters produce artifacts.
-When each role has a separate declaration and invocation model, their
-composition requires adapters and conventions outside the local definition.
-A common syntax alone does not remove these boundaries; calls and values
-must compose as well. IRDL addresses declarative IR
-definitions~\cite{fehr2022irdl}, and the Transform dialect makes transformation
-control programmable~\cite{lucke2025transform}; a cross-stage feature needs both.
+\paragraph{Fragmented mechanisms.} A fusion rule must invoke its legality check and pass
+the matched graph to conversion. If these roles use different call and value
+models, adapters become part of the feature. IRDL makes definitions declarative
+~\cite{fehr2022irdl}, and the Transform dialect makes transformation control
+programmable~\cite{lucke2025transform}. Composing a complete extension also requires
+agreement at the boundaries between such mechanisms.
 
-\paragraph{Scattered ownership.}
-Hierarchical IR assigns operations to regions, blocks, and functions.
-Cross-stage capability ownership instead emerges from directories, registries,
-build targets, pass pipelines, and backend tables. One semantic change
-therefore crosses several review and release boundaries.
+\paragraph{Scattered ownership.} Regions, blocks, and functions organize the program
+being compiled. They do not determine who owns the fusion rule, its analysis,
+or its emitter. When registration and deployment place these parts in separate
+packages, one feature acquires several integration boundaries. A useful
+ownership unit must follow the capability across stages.
 
-\paragraph{Coarse re-execution.}
-A driver that invalidates a pipeline suffix after a local edit selects a coarse
-update unit. That suffix can include stages that never observed the edited
-entity and stages unreachable from the preceding effects. Repeated
-decoding, traversal, conversion, and native compilation then dominate
-turnaround. Dynamic dependencies provide a finer update boundary in
-self-adjusting computation~\cite{acar2009selfadjusting} and incremental program
-analysis~\cite{szabo2016inca}.
+\paragraph{Coarse updates.} Pipeline order is similarly insufficient to identify affected
+work. Editing one operator need not change analyses of a disjoint branch, yet
+invalidating a stage suffix reruns both. Dynamic dependencies recover this
+distinction in self-adjusting computation~\cite{acar2009selfadjusting} and
+interactive development pipelines~\cite{konat2018pie}. For a mutable compiler graph,
+the dependencies must also account for replaced entities and published edits.
 
-These costs arise at different boundaries. The call interface determines how
-a feature is expressed; ownership determines where it is changed; dependencies
-determine what must execute again. Making these boundaries explicit allows a
-cross-stage feature to be composed, published, and updated as a unit.
-
-\subsection{Design Requirements}
+\subsection{A Composable Update Model}
 \label{sec:requirements}
 
-\paragraph{R1: one typed extension surface.}
-Semantics, analyses, transformations, conversions, and artifact generation
-must share a language, call model, and value model. Read-only and mutating
-calls remain distinguishable through explicit effect contracts.
+These observations lead to three design requirements. First, compiler roles
+need a shared typed call interface so that analysis, transformation, and
+emission compose directly. Second, a cross-stage feature needs an owner with
+explicit visibility and dependencies, independent of subject-program
+containment. Third, execution needs observed dependencies and effects so that
+updates follow changed state rather than stage order.
 
-\paragraph{R2: an explicit feature boundary.}
-A cross-stage capability needs a named owner, public and local functions,
-declared dependencies, native bindings, and an independent lifecycle. This
-boundary must be orthogonal to program containment so that feature ownership
-survives graph lowering.
-
-\paragraph{R3: dependency-directed execution.}
-The runtime must identify what a call actually observed, propagate only
-effects that can reach later observations, and reuse decoded work across
-calls. Reuse becomes visible only when the graph and its dependency records
-are published together.
-
-Compiler functions realize R1; mods realize R2; the evaluator and graph
-runtime realize R3. Section~\ref{sec:design} presents them in the order a call
-encounters them: resolution, ownership, dependency capture, and transactional
-execution.
+The requirements meet at publication: a reusable result must refer to the
+same graph state as its dependency records. Section~\ref{sec:design} develops compiler
+functions, mods, and transactional evaluation around that invariant.

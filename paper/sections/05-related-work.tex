@@ -37,70 +37,91 @@ programmable units, composition boundaries, and dependency mechanisms.
   \end{tabularx}
 \end{table*}
 
-\subsection{Extensible Compiler Infrastructures}
+\subsection{Compiler Construction and Composition}
 
 LLVM supplies typed SSA, analyses, and passes~\cite{lattner2004llvm}; MLIR adds
-extensible dialects and multi-level lowering~\cite{lattner2021mlir}. IRDL specifies
-operations, types, attributes, and constraints declaratively~\cite{fehr2022irdl},
-while xDSL brings MLIR-compatible construction into Python~\cite{fehr2025xdsl}.
-MLIR's pass manager caches analyses at operation anchors and invalidates them
-according to preservation declarations~\cite{mlirpass}.
+extensible dialects and multi-level lowering~\cite{lattner2021mlir}. IRDL makes
+operation, type, and attribute constraints declarative~\cite{fehr2022irdl}, while
+xDSL brings compatible construction into Python~\cite{fehr2025xdsl}. MLIR also
+caches analyses at operation anchors, with invalidation governed by
+preservation declarations~\cite{mlirpass}. These mechanisms organize compiler
+behavior around representations and passes.
 
-Metaprogramming offers another route to extensibility. LMS stages code through
-types~\cite{rompf2010lms}; AnyDSL specializes higher-order
-functions through partial evaluation~\cite{leissa2018anydsl}. These approaches
-make program generation compositional. Our compiler functions instead expose
-the roles acting on a mutable graph through one call and value model. Mods
-give those functions a shared ownership and publication boundary, orthogonal
-to program containment.
+Staging takes a complementary approach. LMS uses types to stage code
+~\cite{rompf2010lms}, and AnyDSL specializes higher-order programs by partial
+evaluation~\cite{leissa2018anydsl}. Delite shares parallel patterns, optimizations,
+and code generators across embedded DSLs~\cite{sujeeth2014delite}; Forge generates
+DSL implementations from declarative specifications~\cite{sujeeth2013forge}.
+Our design gives semantic definitions, analyses, rewrites, conversions, and
+emitters a common invocation model over mutable graphs, together with
+mod-scoped ownership and dependency-directed execution.
 
-\subsection{Tensor Compilers}
+\subsection{Tensor Optimization and Deployment}
 
-Halide separates algorithms from schedules~\cite{ragankelley2012halide}. TVM
-combines graph and tensor optimization~\cite{chen2018tvm}, TensorIR exposes tensor
-computation blocks~\cite{feng2022tensorir}, and Ansor searches a hierarchical
-space of tensor programs~\cite{zheng2020ansor}. Triton exposes tiled
-kernels~\cite{tillet2019triton}. At graph level, TASO generates and verifies
-substitutions~\cite{jia2019taso}, while Mirage searches transformations across
-kernel, thread-block, and thread levels~\cite{wu2025mirage}.
+Halide separates algorithms from schedules~\cite{ragankelley2012halide}, and
+TVM combines graph and tensor optimization~\cite{chen2018tvm}. Within this setting,
+AutoTVM learns operator cost models~\cite{chen2018autotvm}, Ansor searches tensor
+programs~\cite{zheng2020ansor}, and MetaSchedule composes stochastic transformations
+~\cite{shao2022metaschedule}. TensorIR exposes computation blocks and scheduling
+primitives~\cite{feng2022tensorir}, while Relax connects graph, tensor, and external
+library abstractions for dynamic workloads~\cite{lai2025relax}.
 
-PluS packages expert subgraph optimizations as pluggable graph
-schedules~\cite{wu2025plus}. ONNX-MLIR lowers model operations~\cite{jin2020onnxmlir},
-and ONNX Runtime assigns graph partitions to execution providers~\cite{ortarchitecture}.
-These are complementary optimization and deployment boundaries. A mod instead
-groups the definitions, analyses, rewrites, and emitters implementing one
-cross-stage feature. Section~\ref{sec:evaluation} measures extension changes
-separately from the performance of generated artifacts.
+Other systems expose different units of optimization. Lift uses functional
+data-parallel patterns~\cite{steuwer2017lift}; TACO compiles dense and sparse tensor
+algebra~\cite{kjolstad2017taco}; Tensor Comprehensions combines mathematical
+definitions with polyhedral compilation and autotuning~\cite{vasilache2018tc};
+Triton exposes tiled kernels~\cite{tillet2019triton}. At graph level, TASO generates
+verified substitutions~\cite{jia2019taso}, Mirage searches across kernel,
+thread-block, and thread levels~\cite{wu2025mirage}, and PluS packages expert
+optimizations as graph schedules~\cite{wu2025plus}.
+
+Deployment introduces further boundaries. Glow separates graph optimization
+from address-only lowering~\cite{rotem2019glow}, ONNX-MLIR lowers model operations
+~\cite{jin2020onnxmlir}, and ONNX Runtime partitions graphs among execution providers
+~\cite{ortarchitecture}. Our mod boundary follows the feature implementing these
+roles rather than a particular optimization level. The evaluation accordingly
+measures package integration and maintenance separately from executable speed.
 
 \subsection{Programmable Transformations}
 
-Nanopass derives representation checks and traversal support from explicit
-source and target languages~\cite{keep2013nanopass}. Exo externalizes accelerator
-instructions and scheduling decisions~\cite{ikarashi2022exo}; Exo 2 adds reusable
-scheduling libraries through actions, inspection, and cursors~\cite{ikarashi2025exo2}.
-The Transform dialect represents schedules as IR with payload handles and
-effects~\cite{lucke2025transform}. For rule-driven optimization, \texttt{egg}
-combines equality saturation and e-class analyses~\cite{willsey2021egg};
-\texttt{egglog} integrates these with Datalog and incremental
-evaluation~\cite{zhang2023egglog}.
+Stratego separates rewrite rules from reusable control strategies
+~\cite{visser2001stratego}, while Nanopass derives checks and traversal support
+from explicit source and target languages~\cite{keep2013nanopass}. RISE and
+ELEVATE pair computational patterns with composable optimization strategies
+~\cite{hagedorn2020elevate}. Exo externalizes accelerator instructions and scheduling
+~\cite{ikarashi2022exo}; Exo 2 builds scheduling libraries from actions, inspection,
+and cursors~\cite{ikarashi2025exo2}. The Transform dialect represents schedules
+as IR with payload handles and effects~\cite{lucke2025transform}.
 
-For agents, this broader extension surface moves beyond fast-kernel
-generation~\cite{ouyang2025kernelbench} to matched tasks across six compiler
-roles, all with native build-and-test feedback.
+For search-driven transformation, egg combines equality saturation and
+e-class analyses~\cite{willsey2021egg}; guided equality saturation narrows search
+through intermediate expressions or sketches~\cite{koehler2024guided}; egglog
+integrates equality saturation with Datalog and incremental evaluation
+~\cite{zhang2023egglog}. These systems establish programmable transformation as a
+powerful abstraction. Compiler functions extend a shared call boundary to the
+surrounding analysis, conversion, and emission roles, while recording the graph
+state needed to reuse their execution.
 
-\subsection{Incremental Computation}
+\subsection{Incremental Execution}
 
-Self-adjusting computation combines dynamic dependence graphs and memoization
-to reuse executions after input changes~\cite{acar2009selfadjusting}. Adapton
-adds demand-driven composition~\cite{hammer2014adapton}. For program analysis,
-IncA compiles specifications into incrementally maintained graph
-patterns~\cite{szabo2016inca}. Build Systems à la Carte separates dependency
-discovery, scheduling, and rebuilding~\cite{mokhov2018build}; rustc reuses
-validated query results through a red-green dependency graph~\cite{rustcincremental}.
-LLVM ORC instead manages on-demand materialization and symbol dependencies
-for JIT compilation~\cite{llvmorc}.
+Self-adjusting computation records dynamic dependencies and reuses prior
+work~\cite{acar2009selfadjusting}; Adapton adds demand-driven composition
+~\cite{hammer2014adapton}. Differential dataflow maintains computations with nested
+iteration~\cite{mcsherry2013differential}, and IncA incrementally maintains program
+analyses expressed as graph patterns~\cite{szabo2016inca}.
 
-For mutable compiler graphs, our evaluator records typed observations and
-changed scopes. Revisions validate state, generations validate identity, and
-effect overlap selects downstream work. Transactions publish graph and
-dependency records together.
+Build and development systems make dependency granularity explicit. Shake
+discovers dependencies during execution~\cite{mitchell2012shake}; pluto records
+fine-grained requirements and builder dependencies~\cite{erdweg2015pluto}; PIE
+combines a typed language with persistent incremental pipelines~\cite{konat2018pie}.
+Build Systems à la Carte separates scheduling from rebuilding
+~\cite{mokhov2018build}, and rustc validates cached queries through a red-green
+dependency graph~\cite{rustcincremental}. LLVM ORC instead supports on-demand
+materialization and symbol dependencies in JIT compilation~\cite{llvmorc}.
+
+Our evaluator applies dependency tracking to in-place graph refinement.
+Observations identify typed entities and scopes. Generations detect replaced
+entities, revisions track changes, and effects select downstream work.
+Transactional publication keeps these records consistent with the graph.
+Prepared-body reuse addresses a separate boundary: transferring unchanged
+specializations across newly imported program revisions.

@@ -20,53 +20,45 @@ AI workloads evolve.
 
 ## 1. Introduction
 
-AI systems evolve through new operators, numeric formats, and hardware targets,
-driving extensible IRs and hardware-aware tensor compilation
-[@lattner2021mlir; @feng2022tensorir].
-Supporting these changes requires coordinated extensions across several parts
-of a compiler. For example, a fused operator needs a semantic definition, a
-legality analysis, a graph rewrite, and a target implementation. Changing its
-numeric format or layout requires these parts to agree again. Developers and
-code-generating agents must therefore coordinate several compiler roles to
-complete even a single feature. SWE-agent shows that tool interfaces affect
-agent performance [@yang2024sweagent], while KernelBench evaluates generated
-kernels for correctness and speed [@ouyang2025kernelbench]. Cross-stage
-extensions additionally require agreement among compiler roles.
+The evolution of AI workloads makes compiler development a continuing part of
+deployment. New operators, numeric formats, and accelerators require changes
+from semantic definitions to generated code. Extensible IRs and tensor
+programming systems provide the building blocks for these changes
+[@lattner2021mlir; @feng2022tensorir]. The remaining challenge is to compose
+those blocks into features that developers can extend, maintain, and evaluate
+without repeatedly coordinating the entire compiler.
 
-This coordination becomes costly when compiler roles expose separate
-declaration and invocation mechanisms. Registries, build targets, and backend
-libraries can further divide ownership of the same feature. After an edit,
-an ordered pipeline may also rerun stages that never observed the changed
-state. Expression, ownership, and re-execution thus impose distinct costs on
-the same development task.
+Consider adding a fused convolution. Its definition, legality analysis, graph
+rewrite, and target implementation must agree on one semantic contract. Yet
+these roles may use different interfaces and belong to separate registries,
+build targets, and backend libraries. Even after a local modification, a
+pipeline can repeat work unrelated to that change. The development cost thus
+depends on three boundaries: how capabilities compose, where a feature is
+owned, and what an edit invalidates.
 
-These costs reflect different relationships within the compiler. Program
-containment describes the code being compiled, whereas feature ownership spans
-the implementations acting on it. Similarly, two successive passes can inspect
-disjoint graph regions, so pipeline order alone does not determine their update
-dependencies. Addressing the three costs therefore requires explicit ownership
-and dependency boundaries alongside program structure.
+Our central observation is that none of these boundaries is determined by
+program containment alone. A feature can span several IR levels, and adjacent
+passes can inspect disjoint graph regions. Consequently, organizing the
+subject program does not by itself organize the compiler capabilities acting
+on it. Ownership and execution dependencies need explicit representations
+alongside the program graph.
 
-Joggle follows this separation by expressing compiler behavior as typed
-functions over a shared graph model. A *compiler function* defines semantics,
-analyzes or transforms the graph, converts representations, or emits an
-artifact. To organize these functions, a graph-level *mod* groups a feature's
-implementations, native bindings, and declared dependencies. At execution time,
-recorded graph observations and published effects determine which calls
-require re-execution. Transactions publish graph changes and dependency records
-together, preserving the state on which reuse depends.
+We present Joggle, a compiler infrastructure that makes these relationships
+explicit. Typed *compiler functions* express behavior, graph-level *mods* own
+cross-stage features, and recorded observations and effects direct updates.
+Functions progressively refine a typed graph while semantic operations and
+lower-level helpers coexist. Each successful mutation publishes a verified
+state over the same entity model. This *progressive intermediate
+representation* preserves a feature's ownership as its subject program changes
+form.
 
-As these functions execute, they progressively refine a typed graph without
-fixing its operator set. Semantic operations and lower-level helpers can
-coexist during refinement, and each published state remains a verified,
-inspectable mod. We call this a *progressive intermediate representation*.
-Its key distinction is that the owner of a feature remains separate from the
-program structure its functions change.
+This organization also provides a concrete setting for agent-assisted compiler
+development. Repository-editing benchmarks and agents emphasize executable
+feedback [@jimenez2024swebench; @yang2024sweagent], while KernelBench measures
+generated kernels [@ouyang2025kernelbench]. Here, an extension can involve
+several compiler roles, making their composition part of the task itself.
 
-Figure 1 brings these relationships together: three development costs lead to
-three mechanisms and corresponding evaluation endpoints. Extension completion,
-change footprint, and update cost assess the compiler-development workflow;
-operator and model execution assess the resulting artifacts.
+Figure 1 summarizes the three mechanisms developed in this paper.
 
 <!-- FIGURE 1 PROMPT — A dense two-column 3×3 systems-paper argument map. The
 columns are PROGRAMMABILITY, ORGANIZATION, and UPDATE; the rows are CHALLENGE,
@@ -93,8 +85,6 @@ decorative people. -->
 *Figure 1: Joggle maps three extension challenges to system mechanisms and
 measurable outcomes.*
 
-Together, these choices yield three complementary design mechanisms.
-
 **Unified compiler functions.** Five compiler roles share typed calls over
 graph handles and owned values. Common resolution and composition rules let
 one role invoke another, while effect contracts distinguish inspection,
@@ -110,24 +100,24 @@ and propagates overlapping effects to select affected stages. Entity generations
 and revisions identify stale observations; transactional publication keeps
 reusable records consistent with the verified graph.
 
-The evaluation pairs extension tasks and implementation patches across Joggle,
-MLIR, and xDSL. Model-edit comparisons use Joggle, TVM, and ONNX-MLIR; execution
-comparisons additionally include ONNX Runtime. Prepared-body reuse yields
-$1.49$--$2.48\times$ executable-ready speedups over complete rebuilds on
-three models, with identical output digests. The generated artifacts pass
-checks on all 24 operators and 14 of the 15 models. These experiments separate
-extension cost, compilation turnaround, and generated-code performance.
+The evaluation separates extension completion, package changes, and update
+latency from generated-code performance. Native package integration touches
+one file per extension, compared with three in the matched MLIR and xDSL
+implementations. Prepared-body reuse accelerates executable-ready updates by
+$1.49$--$2.48\times$ over complete rebuilds on three models. On eight models
+compiled correctly by all four systems, the generated executables achieve a
+$2.10\times$ geometric-mean speedup over default TVM. Together, these
+experiments examine both the cost of changing a compiler and the artifacts
+it produces.
 
-## 2. Why Compiler Extensions Resist Local Change
+## 2. Motivation
 
-### 2.1 One Feature, Several Mechanisms
+### 2.1 Cross-Stage Extensions
 
-Figure 2 follows a model from structure to device. Extension work enters at
-every level: an operator defines semantics, a graph pass changes connectivity,
-a system pass chooses order and storage, and a backend realizes the result for
-a platform. The interfaces at these levels evolved for different purposes. A
-feature that crosses them must connect their registration, calling, and
-invalidation convention.
+Figure 2 follows a model from structure to device. Operator definitions specify
+semantics; graph passes change connectivity; system passes choose order and
+storage; backends produce target implementations. These extension points
+describe different responsibilities within one compilation workflow.
 
 <!-- FIGURE 2 PLAN — Single-column figure. Preserve the supplied overview
 artwork and its existing layout. It shows model structure and formats above
@@ -139,73 +129,52 @@ regenerate or alter the figure. -->
 *Figure 2: A compiler extension can span semantic definition, optimization,
 runtime support, and target deployment.*
 
-Consider a fused convolution, bias addition, and activation. The feature must
-state the fused operation's types and semantics, recognize a legal source
-subgraph, replace it without losing users, select a target form, and emit or
-bind its implementation. A layout or numeric-format change must update the
-same contract in every role. None of these tasks is exceptional; their
-composition is the problem.
+For example, fusing convolution, bias addition, and activation requires more
+than a replacement kernel. An analysis checks types, shapes, and intermediate
+uses; a rewrite replaces the legal subgraph; conversion and emission realize
+the fused operation. Changing its layout or numeric format can affect several
+of these implementations while leaving unrelated features unchanged.
 
-LLVM supplies a shared typed representation for analysis and transformation
-[@lattner2004llvm];
-MLIR extends that model across abstraction levels [@lattner2021mlir]; Halide
-separates algorithms from schedules [@ragankelley2012halide]; and TVM combines
-graph and tensor optimization for heterogeneous targets [@chen2018tvm]. Joggle
-makes the compiler capabilities acting on these structures explicit: typed
-functions express them, mods own them, and recorded dependencies drive their
-re-execution.
+Existing systems expose substantial control over this workflow: MLIR supports
+multi-level lowering [@lattner2021mlir], Halide separates algorithms and
+schedules [@ragankelley2012halide], and Relax composes graph, tensor, and library
+abstractions [@lai2025relax]. The issue is therefore not whether a compiler can
+express an optimization, but how a complete feature crosses its interfaces.
 
-### 2.2 Three Sources of Friction
+### 2.2 Boundaries That Spread Change
 
-*Fragmented mechanisms.* Schemas define admissible programs. Analyses derive
-facts, passes rewrite graphs, converters bridge representations, and emitters
-produce artifacts. When each role has a separate declaration and invocation
-model, their composition requires adapters and conventions outside the local
-definition. A common syntax alone does not remove these boundaries; calls and
-values must compose as well. IRDL addresses declarative IR definitions
+*Fragmented mechanisms.* A fusion rule must invoke its legality check and pass
+the matched graph to conversion. If these roles use different call and value
+models, adapters become part of the feature. IRDL makes definitions declarative
 [@fehr2022irdl], and the Transform dialect makes transformation control
-programmable [@lucke2025transform]; a cross-stage feature needs both.
+programmable [@lucke2025transform]. Composing a complete extension also requires
+agreement at the boundaries between such mechanisms.
 
-*Scattered ownership.* Hierarchical IR assigns operations to regions, blocks,
-and functions. Cross-stage capability ownership instead emerges from
-directories, registries, build targets, pass pipelines, and backend tables. One
-semantic change therefore crosses several review and release boundaries.
+*Scattered ownership.* Regions, blocks, and functions organize the program
+being compiled. They do not determine who owns the fusion rule, its analysis,
+or its emitter. When registration and deployment place these parts in separate
+packages, one feature acquires several integration boundaries. A useful
+ownership unit must follow the capability across stages.
 
-*Coarse re-execution.* A driver that invalidates a pipeline suffix after a local
-edit selects a coarse update unit. That suffix can include stages that never
-observed the edited entity and stages unreachable from the preceding effects.
-Repeated decoding, traversal, conversion, and native compilation then dominate
-turnaround. Dynamic dependencies provide a finer update boundary in
-self-adjusting computation [@acar2009selfadjusting] and incremental program
-analysis [@szabo2016inca].
+*Coarse updates.* Pipeline order is similarly insufficient to identify affected
+work. Editing one operator need not change analyses of a disjoint branch, yet
+invalidating a stage suffix reruns both. Dynamic dependencies recover this
+distinction in self-adjusting computation [@acar2009selfadjusting] and
+interactive development pipelines [@konat2018pie]. For a mutable compiler graph,
+the dependencies must also account for replaced entities and published edits.
 
-These costs arise at different boundaries. The call interface determines how
-a feature is expressed; ownership determines where it is changed; dependencies
-determine what must execute again. Making these boundaries explicit allows a
-cross-stage feature to be composed, published, and updated as a unit.
+### 2.3 A Composable Update Model
 
-### 2.3 Design Requirements
+These observations lead to three design requirements. First, compiler roles
+need a shared typed call interface so that analysis, transformation, and
+emission compose directly. Second, a cross-stage feature needs an owner with
+explicit visibility and dependencies, independent of subject-program
+containment. Third, execution needs observed dependencies and effects so that
+updates follow changed state rather than stage order.
 
-The preceding workflow gives three requirements for a malleable compiler.
-
-**R1 — One typed extension surface.** Semantics, analyses, transformations,
-conversions, and artifact generation must share a language, call model, and
-value model. Read-only and mutating calls remain distinguishable through
-explicit effect contracts.
-
-**R2 — An explicit feature boundary.** A cross-stage capability needs a named
-owner, public and local functions, declared dependencies, native bindings, and
-an independent lifecycle. This boundary must be orthogonal to program
-containment so that feature ownership survives graph lowering.
-
-**R3 — Dependency-directed execution.** The runtime must identify what a call
-actually observed, propagate only effects that can reach later observations,
-and reuse decoded work across calls. Reuse becomes visible only when the graph
-and its dependency records are published together.
-
-Compiler functions realize R1; mods realize R2; the evaluator and graph runtime
-realize R3. Section 3 presents them in the order a call encounters them:
-resolution, ownership, dependency capture, and transactional execution.
+The requirements meet at publication: a reusable result must refer to the
+same graph state as its dependency records. Section 3 develops compiler
+functions, mods, and transactional evaluation around that invariant.
 
 ## 3. Design
 
@@ -276,10 +245,10 @@ Use thin dependency arrows and tiny local annotations, not word-heavy cards. -->
 typed calls operate on the subject graph. Decoded plans, dependency records,
 and versioned entity stores support transactional publication. Entries are schematic.*
 
-The rest of the design follows the three requirements from Section 2. Section
-3.2 realizes R1 with typed compiler functions. Section 3.3 realizes R2 with
-mod-scoped composition. Sections 3.4 and 3.5 realize R3 through observed
-dependencies and the graph runtime that validates them.
+The rest of the design develops these relationships in order. Section 3.2
+defines typed compiler functions; Section 3.3 gives them a mod-scoped
+composition boundary. Sections 3.4 and 3.5 then explain how observed
+dependencies and transactional graph storage support reuse.
 
 ### 3.2 Compiler Functions
 
@@ -664,15 +633,12 @@ Failed cases remain in coverage but do not enter latency ratios. The repeated up
 experiment covers three edit sites on each of DenseNet-121, SqueezeNet-1.1,
 and TinyYOLOv3, with ten paired repetitions per site. The execution experiment uses ten warm-ups and
 100 timed samples per artifact. We form ratios within an edit, model, or
-operator before aggregation. Every CSV row records correctness, subject and
-input digests, compiler identity, seed, and timing boundary; run records
-additionally pin build flags, host policy, and cache configuration.
+operator before aggregation. The supplement gives per-case measurements,
+input/output examples, and compiler configurations.
 
-Figure 6 summarizes the common comparison structure. Extension and ownership
-studies share feature specifications; update paths start from the same edited
-graph; execution paths consume identical tensors. The oracle precedes metric
-aggregation in each branch. Successful cases provide paired measurements,
-while unsuccessful cases remain in the coverage denominator.
+Figure 6 shows the paired design: shared feature specifications for extension
+and ownership, the same edited graph for updates, and identical tensors for
+execution. Each path checks correctness before aggregating measurements.
 
 <!-- FIGURE 6 PROMPT — evaluation-workflow.png. Original dense square
 single-column protocol schematic, fine black rules, white background, small
@@ -717,14 +683,12 @@ runs once with deterministic decoding and no demonstrations. The paired design
 contains 72 trajectories: 12 tasks, three systems, and two models.
 
 The primary endpoint is executable success within budget: the final workspace
-must parse, type-check, build, and pass the semantic oracle without manual
-repair. We macro-average success over tasks and resample tasks within each
-family. For successful trajectories, secondary measures are completion tokens,
-tool calls, edit attempts, and wall time. The record distinguishes the stopping
-condition from the final candidate outcome: exhausting a budget and submitting
-incorrect code are different events. Native build, execution, observation, and
-semantic failures are recorded at the boundary that detects them. The supplement
-pairs the natural-language contracts with input graphs and expected outputs.
+must build and pass the semantic oracle without manual repair. We macro-average
+success over tasks and resample tasks within each family. Successful
+trajectories also report completion tokens, tool calls, edit attempts, and wall
+time. Stopping conditions and candidate outcomes distinguish budget exhaustion
+from incorrect code. The supplement pairs natural-language contracts with
+input graphs and expected outputs.
 
 <!-- AGENT-RESULTS FIGURE PLAN — Compact 2×3 grouped vertical bars. Rows are the
 two frozen models; columns show task-macro executable success, completion
@@ -1007,104 +971,133 @@ units, composition boundaries, and dependency mechanisms.
 *Table 2: Programmable units and dependency mechanisms. The two bands share
 comparison dimensions; entries name mechanisms rather than capability scores.*
 
-### 5.1 Extensible Compiler Infrastructures
+### 5.1 Compiler Construction and Composition
 
 LLVM supplies typed SSA, analyses, and passes [@lattner2004llvm]; MLIR adds
-extensible dialects and multi-level lowering [@lattner2021mlir]. IRDL specifies
-operations, types, attributes, and constraints declaratively [@fehr2022irdl],
-while xDSL brings MLIR-compatible construction into Python [@fehr2025xdsl].
-MLIR's pass manager caches analyses at operation anchors and invalidates them
-according to preservation declarations [@mlirpass].
+extensible dialects and multi-level lowering [@lattner2021mlir]. IRDL makes
+operation, type, and attribute constraints declarative [@fehr2022irdl], while
+xDSL brings compatible construction into Python [@fehr2025xdsl]. MLIR also
+caches analyses at operation anchors, with invalidation governed by
+preservation declarations [@mlirpass]. These mechanisms organize compiler
+behavior around representations and passes.
 
-Metaprogramming offers another route to extensibility. LMS stages code through
-types [@rompf2010lms]; AnyDSL specializes higher-order
-functions through partial evaluation [@leissa2018anydsl]. These approaches
-make program generation compositional. Our compiler functions instead expose
-the roles acting on a mutable graph through one call and value model. Mods
-give those functions a shared ownership and publication boundary, orthogonal
-to program containment.
+Staging takes a complementary approach. LMS uses types to stage code
+[@rompf2010lms], and AnyDSL specializes higher-order programs by partial
+evaluation [@leissa2018anydsl]. Delite shares parallel patterns, optimizations,
+and code generators across embedded DSLs [@sujeeth2014delite]; Forge generates
+DSL implementations from declarative specifications [@sujeeth2013forge].
+Our design gives semantic definitions, analyses, rewrites, conversions, and
+emitters a common invocation model over mutable graphs, together with
+mod-scoped ownership and dependency-directed execution.
 
-### 5.2 Tensor Compilers
+### 5.2 Tensor Optimization and Deployment
 
-Halide separates algorithms from schedules [@ragankelley2012halide]. TVM
-combines graph and tensor optimization [@chen2018tvm], TensorIR exposes tensor
-computation blocks [@feng2022tensorir], and Ansor searches a hierarchical
-space of tensor programs [@zheng2020ansor]. Triton exposes tiled kernels
-[@tillet2019triton]. At graph level, TASO generates and verifies substitutions
-[@jia2019taso], while Mirage searches transformations across kernel, thread-block,
-and thread levels [@wu2025mirage].
+Halide separates algorithms from schedules [@ragankelley2012halide], and
+TVM combines graph and tensor optimization [@chen2018tvm]. Within this setting,
+AutoTVM learns operator cost models [@chen2018autotvm], Ansor searches tensor
+programs [@zheng2020ansor], and MetaSchedule composes stochastic transformations
+[@shao2022metaschedule]. TensorIR exposes computation blocks and scheduling
+primitives [@feng2022tensorir], while Relax connects graph, tensor, and external
+library abstractions for dynamic workloads [@lai2025relax].
 
-PluS packages expert subgraph optimizations as pluggable graph schedules
-[@wu2025plus]. ONNX-MLIR lowers model operations [@jin2020onnxmlir], and ONNX
-Runtime assigns graph partitions to execution providers [@ortarchitecture].
-These are complementary optimization and deployment boundaries. A mod instead
-groups the definitions, analyses, rewrites, and emitters implementing one
-cross-stage feature. Section 4 measures extension changes separately from
-the performance of generated artifacts.
+Other systems expose different units of optimization. Lift uses functional
+data-parallel patterns [@steuwer2017lift]; TACO compiles dense and sparse tensor
+algebra [@kjolstad2017taco]; Tensor Comprehensions combines mathematical
+definitions with polyhedral compilation and autotuning [@vasilache2018tc];
+Triton exposes tiled kernels [@tillet2019triton]. At graph level, TASO generates
+verified substitutions [@jia2019taso], Mirage searches across kernel,
+thread-block, and thread levels [@wu2025mirage], and PluS packages expert
+optimizations as graph schedules [@wu2025plus].
+
+Deployment introduces further boundaries. Glow separates graph optimization
+from address-only lowering [@rotem2019glow], ONNX-MLIR lowers model operations
+[@jin2020onnxmlir], and ONNX Runtime partitions graphs among execution providers
+[@ortarchitecture]. Our mod boundary follows the feature implementing these
+roles rather than a particular optimization level. The evaluation accordingly
+measures package integration and maintenance separately from executable speed.
 
 ### 5.3 Programmable Transformations
 
-Nanopass derives representation checks and traversal support from explicit
-source and target languages [@keep2013nanopass]. Exo externalizes accelerator
-instructions and scheduling decisions [@ikarashi2022exo]; Exo 2 adds reusable
-scheduling libraries through actions, inspection, and cursors [@ikarashi2025exo2].
-The Transform dialect represents schedules as IR with payload handles and
-effects [@lucke2025transform]. For rule-driven optimization, `egg` combines
-equality saturation and e-class analyses [@willsey2021egg]; `egglog` integrates
-these with Datalog and incremental evaluation [@zhang2023egglog].
+Stratego separates rewrite rules from reusable control strategies
+[@visser2001stratego], while Nanopass derives checks and traversal support
+from explicit source and target languages [@keep2013nanopass]. RISE and
+ELEVATE pair computational patterns with composable optimization strategies
+[@hagedorn2020elevate]. Exo externalizes accelerator instructions and scheduling
+[@ikarashi2022exo]; Exo 2 builds scheduling libraries from actions, inspection,
+and cursors [@ikarashi2025exo2]. The Transform dialect represents schedules
+as IR with payload handles and effects [@lucke2025transform].
 
-For agents, this broader extension surface moves beyond fast-kernel generation
-[@ouyang2025kernelbench] to matched tasks across six compiler roles, all with
-native build-and-test feedback.
+For search-driven transformation, egg combines equality saturation and
+e-class analyses [@willsey2021egg]; guided equality saturation narrows search
+through intermediate expressions or sketches [@koehler2024guided]; egglog
+integrates equality saturation with Datalog and incremental evaluation
+[@zhang2023egglog]. These systems establish programmable transformation as a
+powerful abstraction. Compiler functions extend a shared call boundary to the
+surrounding analysis, conversion, and emission roles, while recording the graph
+state needed to reuse their execution.
 
-### 5.4 Incremental Computation
+### 5.4 Incremental Execution
 
-Self-adjusting computation combines dynamic dependence graphs and memoization
-to reuse executions after input changes [@acar2009selfadjusting]. Adapton
-adds demand-driven composition [@hammer2014adapton]. For program analysis,
-IncA compiles specifications into incrementally maintained graph patterns
-[@szabo2016inca]. Build Systems à la Carte separates dependency discovery,
-scheduling, and rebuilding [@mokhov2018build]; rustc reuses validated query
-results through a red-green dependency graph [@rustcincremental]. LLVM ORC
-instead manages on-demand materialization and symbol dependencies for JIT
-compilation [@llvmorc].
+Self-adjusting computation records dynamic dependencies and reuses prior
+work [@acar2009selfadjusting]; Adapton adds demand-driven composition
+[@hammer2014adapton]. Differential dataflow maintains computations with nested
+iteration [@mcsherry2013differential], and IncA incrementally maintains program
+analyses expressed as graph patterns [@szabo2016inca].
 
-For mutable compiler graphs, our evaluator records typed observations and
-changed scopes. Revisions validate state, generations validate identity, and
-effect overlap selects downstream work. Transactions publish graph and
-dependency records together.
+Build and development systems make dependency granularity explicit. Shake
+discovers dependencies during execution [@mitchell2012shake]; pluto records
+fine-grained requirements and builder dependencies [@erdweg2015pluto]; PIE
+combines a typed language with persistent incremental pipelines [@konat2018pie].
+Build Systems à la Carte separates scheduling from rebuilding
+[@mokhov2018build], and rustc validates cached queries through a red-green
+dependency graph [@rustcincremental]. LLVM ORC instead supports on-demand
+materialization and symbol dependencies in JIT compilation [@llvmorc].
+
+Our evaluator applies dependency tracking to in-place graph refinement.
+Observations identify typed entities and scopes. Generations detect replaced
+entities, revisions track changes, and effects select downstream work.
+Transactional publication keeps these records consistent with the graph.
+Prepared-body reuse addresses a separate boundary: transferring unchanged
+specializations across newly imported program revisions.
 
 ## 6. Discussion
 
-**Extension boundaries.** A mod groups a feature's functions behind one public
-interface independently of compiler stages. For a numeric-format change,
-analysis, lowering, and packing can share an owner while source fragments
-subdivide implementation. The package study shows that direct publication
-reduces integration code; subsequent edits remain local in all three systems.
+**Integration and maintenance.** The package study separates the cost of
+introducing a feature from the cost of changing it. Direct mod publication
+reduces installation files and registration code; subsequent maintenance stays
+within one file in all three implementations. The organizational benefit is
+therefore an explicit cross-stage integration boundary. A package can still
+subdivide its implementation without distributing its public contract among
+compiler stages.
 
-**Reuse boundaries.** Within a retained graph, observations and effects select
-stages; across imported revisions, specialization signatures select reusable
-prepared bodies. These are distinct reuse units. Removing preparation work
-shifts the remaining update cost toward emission and native compilation,
-identifying the next boundary for optimization.
+**Dependency granularity and turnaround.** Reuse helps when its unit matches
+the change. Recorded observations select work within a retained graph, whereas
+specialization signatures identify reusable prepared bodies after import.
+The latter removes most preparation cost in the repeated-edit study. As a
+result, emission and native compilation account for a larger share of
+turnaround. Extending reuse to independently emitted artifacts is a concrete
+next step: their identities must include the relevant bodies, layouts, target
+settings, and dependencies.
 
-**Consistent publication.** Mods determine which implementation is visible;
-calls record what it observes; transactions publish the resulting graph and
-dependency records together. External inputs enter call identity through typed
-arguments and environment revisions. Consequently, extension, ownership, and
-reuse share an explicit publication boundary.
+**Composition with explicit effects.** A shared call interface makes compiler
+roles available to both developers and agents, but the semantic contract still
+determines whether an extension is correct. Typed arguments, read-only checks,
+and transactional mutation provide common enforcement points. In particular,
+publishing graph state and dependency records together connects extensibility
+to reuse: composed functions can publish new results while invalidating
+observations of the state they replace.
 
 ## 7. Conclusion
 
-Joggle organizes compiler extension around typed functions, graph-level mods,
-and dependency-directed execution. A shared language, call model, and value
-model compose semantic definitions, analyses, transformations, conversions,
-and emitters. Mods preserve cross-stage ownership, while recorded observations
-and transactional publication support reuse over mutable graphs. Prepared-body
-reuse yields $1.49$--$2.48\times$ executable-ready speedups over complete
-rebuilds on the three repeated model subjects. The resulting design treats
-compiler extension as a program with explicit composition, ownership, and
-update dependencies.
+Joggle makes compiler capabilities programmable through one typed call model,
+organizes cross-stage features in graph-level mods, and directs updates using
+recorded dependencies. The resulting progressive IR separates feature
+ownership from program containment while retaining explicit mutation and
+publication rules. Native package comparisons show reduced integration
+footprints, and prepared-body reuse accelerates executable-ready updates by
+$1.49$--$2.48\times$ on the three measured models. Together, these results
+support a compiler organization in which composition, ownership, and update
+dependencies are first-class parts of an extension.
 
 ## Appendix A. Operator Measurements
 
