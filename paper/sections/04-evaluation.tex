@@ -215,8 +215,8 @@ TVM completes DenseNet and SqueezeNet updates in 10.531\,s and 1.070\,s;
 ONNX-MLIR takes 10.713\,s, 2.112\,s, and 2.778\,s on the three models. Their
 paired rebuild/update speedups remain between $0.99\times$ and $1.00\times$.
 TVM's TinyYOLOv3 path rejects an unsupported \texttt{Loop}. Thus, Joggle
-achieves the largest paired reuse gain, while ONNX-MLIR has the lowest
-absolute update time on DenseNet and TinyYOLOv3, and TVM on SqueezeNet.
+achieves the largest paired reuse gain. TVM is fastest on DenseNet and
+SqueezeNet by absolute median update time; ONNX-MLIR is fastest on TinyYOLOv3.
 
 \paragraph{Cost breakdown.}
 Prepared-body reuse accounts for most of the update gain. DenseNet's median

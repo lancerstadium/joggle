@@ -34,8 +34,8 @@ is a later, post-acceptance process with its own instructions.
 ## Current checks
 
 The main PDF has 15 pages. Technical content ends on page 12; pages 13--15 contain
-references only. The separate supplement has twelve pages. Table A.5's 12 paired
-input/output examples occupy five portrait pages, with verbatim quoted task
+references only. The separate supplement has thirteen pages. Table A.5's 12 paired
+input/output examples occupy six portrait pages, with verbatim quoted task
 contracts and 8.5 pt DOT labels. Section C.4 uses portrait tables while retaining its diagram typography
 and display sizes. All supplement pages are portrait. Both entry points explicitly enable page numbers.
 
@@ -91,11 +91,28 @@ with thinking disabled (46 input tokens and 10 output tokens in total); they
 are not task outcomes. The returned model identifiers match the requests;
 the provider returns an empty system fingerprint, not a weight revision.
 The credential is stored in the macOS Keychain, outside this repository.
-The existing local-only runner and merger still need the API adapter before
-formal collection. Complete the matched population and its displays before
-finalizing the evaluation. Do not run native Agent tests during performance
-timing. Protocol controls are synchronized in Section 4.2 and Appendix C;
-result fields remain unfilled until collection.
+The hosted adapter and trajectory merger are committed in `a519175`. The
+native-oracle regression suite passes 65 tests with five optional-environment
+skips. Collection is running in
+`.cache/artifact/main-agents-siliconflow-20260925-otrf81w2/`: its manifest fixes
+all 72 conditions and their shuffled order before collecting outcomes. All
+36 native reference implementations pass under isolation before paid task
+requests. Preflight identified one environment issue: MLIR's CMake configuration
+needs read-only access to LLVM's source CMake modules as well as its build
+directory. The original failed preflight record and corrected toolchain scope
+are retained. Complete the matched population and its displays before
+finalizing the evaluation. Native performance timing has finished, so Agent
+native tests do not overlap those measurements. Protocol controls are
+synchronized in Section 4.2 and Appendix C; result fields remain unfilled
+until collection.
+
+The first completed trajectory exposed a postprocessing mismatch: the merger
+counted schema-rejected JSON as tool calls, while the runner correctly rejected
+those actions before invocation. Commit `df86756` corrects only the merger and
+its regression test; runner, prompts, task definitions, and native oracles are
+unchanged. The original unsuccessful trajectory is retained and passes the
+corrected audit without modifying its CSV, response history, or oracle result.
+The remaining conditions continue in the original fixed order.
 
 The repeated-update data in `data/figure-06-update.json` now identify integrated
 main source revision `cc82ef114093b6d90ca94df05b54a60084585e72`, including
@@ -151,11 +168,18 @@ within a retained graph from prepared-body reuse across imported graphs.
 Both PDFs include this mechanism clarification, the measured host configuration,
 and the native invocation/output-storage boundaries in Table A.4. Repeated
 method and discussion text was condensed to keep technical content within
-12 pages, with references on pages 13–15. The 12-page supplement retains its
+12 pages, with references on pages 13–15. The 13-page supplement retains its
 portrait tables. The Agent protocol table's paragraph indentation was removed
 to fix overflow. Final logs contain no overfull boxes or undefined references;
 rendered pages 10 and 12 of the main paper and page 3 of the supplement were
 visually checked after the final rebuild.
+
+The hosted-protocol update adds request/context limits, condition order, model
+alias records, and the wall-time boundary to Appendix C. The rebuilt supplement
+has 13 pages; pages 3--4 were rendered and checked for table/diagram overlap.
+The new model-level update medians also correct the old fastest-system sentence:
+TVM has the lowest median on DenseNet and SqueezeNet, ONNX-MLIR on TinyYOLOv3.
+The main PDF remains at 12 technical pages plus three reference pages.
 
 The current end-to-end exports were recomputed from individual timing rows:
 11,604 operator rows and 4,911 model rows. All exported medians, p95 values,

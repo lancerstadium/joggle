@@ -709,7 +709,7 @@ model_revision,system,system_revision,task,family,run,seed,
 budget_actions,budget_tokens,wall_ms,prompt_tokens,completion_tokens,tool_calls,
 edit_attempts,files_touched,parsed,typed,built,passed,stop_reason,
 task_spec_sha256,api_card_sha256,trajectory_sha256,patch_sha256,reference_nll,
-reference_tokens,reference_bytes,reference_bpb. -->
+reference_tokens. -->
 
 ### 4.3 Change Footprint and Ownership
 
@@ -816,8 +816,8 @@ TVM completes DenseNet and SqueezeNet updates in 10.531 s and 1.070 s;
 ONNX-MLIR takes 10.713 s, 2.112 s, and 2.778 s on the three models. Their paired
 rebuild/update speedups remain between 0.99× and 1.00×. TVM's TinyYOLOv3 path
 rejects an unsupported `Loop`. Thus, Joggle achieves the largest paired reuse
-gain, while ONNX-MLIR has the lowest absolute update time on DenseNet and
-TinyYOLOv3, and TVM on SqueezeNet.
+gain. TVM is fastest on DenseNet and SqueezeNet by absolute median update
+time; ONNX-MLIR is fastest on TinyYOLOv3.
 
 **Cost breakdown.** Prepared-body reuse accounts for most of the update gain.
 DenseNet's median Prepare time falls from 30.631 s to 1.307 s, reducing total
@@ -1211,9 +1211,22 @@ the Python collector. Numerical checks follow the timed interval.*
 | Sampling | Temperature 0; thinking disabled |
 | Action format | JSON object: `inspect`, `edit`, `test`, or `finish` |
 | Per-trajectory limits | 30 actions; 32,000 generated tokens |
+| Per-request limit | 4,096 generated tokens, capped by the remaining budget |
+| Context | Complete history; 131,072-token service window |
 | Examples | Public positive and negative fixtures; no demonstrations |
 | Final oracle | Public and held-out fixtures |
 | Matched population | 12 tasks × 3 systems × 2 models; one run per condition |
+| Condition order | Shuffled once with seed 20260925 |
+
+The service exposes model aliases rather than immutable weight revisions.
+Each trajectory therefore records the requested and returned model identifiers,
+catalog entry, UTC timestamps, response identifiers, and token usage. The
+condition identifier 1701 is not sent as a sampling seed. Each request carries
+the complete conversation, including public-test feedback. Explicit HTTP
+429/502/503/504 responses receive at most two retries, after two and four
+seconds; transport timeouts stop collection for inspection. Candidate failures
+remain task outcomes. Wall time spans the action loop, including API requests
+and public tests, and excludes the final held-out oracle.
 
 Table A.5 reproduces the semantic-contract field of each task prompt verbatim,
 in quotation marks and italics. The native API card and public fixtures accompany

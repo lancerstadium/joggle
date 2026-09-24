@@ -7,7 +7,7 @@
 \small
 \setlength{\tabcolsep}{4pt}
 \renewcommand{\arraystretch}{1.05}
-\noindent\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}ll@{}}
+\noindent\begin{tabular}{@{}p{.26\textwidth}p{\dimexpr.74\textwidth-8pt\relax}@{}}
 \toprule
 Setting & Value \\
 \midrule
@@ -16,13 +16,26 @@ Model identifiers & \texttt{Qwen/Qwen3-8B}; \texttt{Qwen/Qwen3-14B} \\
 Sampling & Temperature 0; thinking disabled \\
 Action format & JSON object: \texttt{inspect}, \texttt{edit}, \texttt{test}, or \texttt{finish} \\
 Per-trajectory limits & 30 actions; 32,000 generated tokens \\
+Per-request limit & 4,096 generated tokens, capped by the remaining budget \\
+Context & Complete history; 131,072-token service window \\
 Examples & Public positive and negative fixtures; no demonstrations \\
 Final oracle & Public and held-out fixtures \\
 Matched population & 12 tasks $\times$ 3 systems $\times$ 2 models; one run per condition \\
+Condition order & Shuffled once with seed 20260925 \\
 \bottomrule
-\end{tabular*}
+\end{tabular}
 \endgroup
 \par\medskip
+
+The service exposes model aliases rather than immutable weight revisions.
+Each trajectory therefore records the requested and returned model identifiers,
+catalog entry, UTC timestamps, response identifiers, and token usage. The
+condition identifier 1701 is not sent as a sampling seed. Each request carries
+the complete conversation, including public-test feedback. Explicit HTTP
+429/502/503/504 responses receive at most two retries, after two and four
+seconds; transport timeouts stop collection for inspection. Candidate failures
+remain task outcomes. Wall time spans the action loop, including API requests
+and public tests, and excludes the final held-out oracle.
 
 NSZ denotes \texttt{no\_signed\_zeros}, DQ dequantization, Q quantization,
 and RNE round-to-nearest, ties-to-even.
