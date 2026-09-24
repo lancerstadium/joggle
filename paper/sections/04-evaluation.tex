@@ -212,23 +212,23 @@ rebuild uses the same pipeline with an empty body cache.
 Figure~\ref{fig:update-results} reports absolute update latency and paired
 rebuild/update speedup, separating cross-system turnaround from reuse within
 each system. Across nine edit sites, Joggle reduces executable-ready time on
-all three subjects. Median paired speedups are $2.48\times$ for DenseNet-121,
-$1.49\times$ for SqueezeNet-1.1, and $1.88\times$ for TinyYOLOv3. Each model
+all three subjects. Median paired speedups are $2.49\times$ for DenseNet-121,
+$1.46\times$ for SqueezeNet-1.1, and $1.86\times$ for TinyYOLOv3. Each model
 contributes three edits with ten paired repetitions; every successful update
 matches its rebuild's output digest.
 
-Absolute median update times are 19.991\,s, 1.704\,s, and 9.763\,s for Joggle.
-TVM completes DenseNet and SqueezeNet updates in 10.636\,s and 1.092\,s;
-ONNX-MLIR takes 10.950\,s, 2.032\,s, and 2.796\,s on the three models. Their
+Absolute median update times are 20.336\,s, 1.832\,s, and 10.013\,s for Joggle.
+TVM completes DenseNet and SqueezeNet updates in 10.531\,s and 1.070\,s;
+ONNX-MLIR takes 10.713\,s, 2.112\,s, and 2.778\,s on the three models. Their
 paired rebuild/update speedups remain between $0.99\times$ and $1.00\times$.
-TVM's TinyYOLOv3 path fails before producing an executable. Reuse therefore
-shortens the measured rebuild path, while external turnaround still depends on
-the cost of the complete compiler pipeline.
+TVM's TinyYOLOv3 path rejects an unsupported \texttt{Loop}. Thus, Joggle
+achieves the largest paired reuse gain, while ONNX-MLIR has the lowest
+absolute update time on DenseNet and TinyYOLOv3, and TVM on SqueezeNet.
 
 \paragraph{Cost breakdown.}
 Prepared-body reuse accounts for most of the update gain. DenseNet's median
-Prepare time falls from 29.854\,s to 1.298\,s, reducing total lowering from
-37.692\,s to 8.411\,s. Emission remains near 6.5\,s and native compilation near
+Prepare time falls from 30.631\,s to 1.307\,s, reducing total lowering from
+38.617\,s to 8.539\,s. Emission remains near 6.5\,s and native compilation near
 2.7\,s. SqueezeNet and TinyYOLOv3 show the same pattern: preparation contracts,
 while emission and native compilation remain stable. The supplement reports
 all 27 edit/system combinations and phase medians.

@@ -12,7 +12,7 @@ emission through one language, call model, and value model. Graph-level mods
 then give each cross-stage feature an explicit owner, while recorded
 dependencies direct reactive execution toward affected work. Across three
 models, prepared-body reuse accelerates executable-ready updates by
-$1.49$--$2.48\times$ over complete rebuilds. The generated executables also
+$1.46$--$2.49\times$ over complete rebuilds. The generated executables also
 achieve a $2.10\times$ geometric-mean speedup over default TVM on eight models
 compiled correctly by all compared systems. Together, these mechanisms make
 compiler capabilities composable, independently organized, and reusable as
@@ -105,7 +105,7 @@ The evaluation separates extension completion, package changes, and update
 latency from generated-code performance. Native package integration touches
 one file per extension, compared with three in the matched MLIR and xDSL
 implementations. Prepared-body reuse accelerates executable-ready updates by
-$1.49$--$2.48\times$ over complete rebuilds on three models. On eight models
+$1.46$--$2.49\times$ over complete rebuilds on three models. On eight models
 compiled correctly by all four systems, the generated executables achieve a
 $2.10\times$ geometric-mean speedup over default TVM. Together, these
 experiments examine both the cost of changing a compiler and the artifacts
@@ -813,22 +813,22 @@ rebuild uses the same pipeline with an empty body cache.
 **Turnaround and reuse.** Figure 8 reports absolute update latency and paired
 rebuild/update speedup, separating cross-system turnaround from reuse within
 each system. Across nine edit sites, Joggle reduces executable-ready time on
-all three subjects. Median paired speedups are 2.48× for DenseNet-121, 1.49× for
-SqueezeNet-1.1, and 1.88× for TinyYOLOv3. Each model contributes three edits
+all three subjects. Median paired speedups are 2.49× for DenseNet-121, 1.46× for
+SqueezeNet-1.1, and 1.86× for TinyYOLOv3. Each model contributes three edits
 with ten paired repetitions; every successful update matches its rebuild's
 output digest.
 
-Absolute median update times are 19.991 s, 1.704 s, and 9.763 s for Joggle.
-TVM completes DenseNet and SqueezeNet updates in 10.636 s and 1.092 s;
-ONNX-MLIR takes 10.950 s, 2.032 s, and 2.796 s on the three models. Their paired
+Absolute median update times are 20.336 s, 1.832 s, and 10.013 s for Joggle.
+TVM completes DenseNet and SqueezeNet updates in 10.531 s and 1.070 s;
+ONNX-MLIR takes 10.713 s, 2.112 s, and 2.778 s on the three models. Their paired
 rebuild/update speedups remain between 0.99× and 1.00×. TVM's TinyYOLOv3 path
-fails before producing an executable. Reuse therefore shortens the measured
-rebuild path, while external turnaround still depends on the cost of the
-complete compiler pipeline.
+rejects an unsupported `Loop`. Thus, Joggle achieves the largest paired reuse
+gain, while ONNX-MLIR has the lowest absolute update time on DenseNet and
+TinyYOLOv3, and TVM on SqueezeNet.
 
 **Cost breakdown.** Prepared-body reuse accounts for most of the update gain.
-DenseNet's median Prepare time falls from 29.854 s to 1.298 s, reducing total
-lowering from 37.692 s to 8.411 s. Emission remains near 6.5 s and native
+DenseNet's median Prepare time falls from 30.631 s to 1.307 s, reducing total
+lowering from 38.617 s to 8.539 s. Emission remains near 6.5 s and native
 compilation near 2.7 s. SqueezeNet and TinyYOLOv3 show the same pattern:
 preparation contracts, while emission and native compilation remain stable.
 The supplement reports all 27 edit/system combinations and phase medians.
@@ -1120,7 +1120,7 @@ recorded dependencies. The resulting progressive IR separates feature
 ownership from program containment while retaining explicit mutation and
 publication rules. Native package comparisons show reduced integration
 footprints, and prepared-body reuse accelerates executable-ready updates by
-$1.49$--$2.48\times$ on the three measured models. Together, these results
+$1.46$--$2.49\times$ on the three measured models. Together, these results
 support a compiler organization in which composition, ownership, and update
 dependencies are first-class parts of an extension.
 
@@ -1378,44 +1378,44 @@ Ten paired repetitions at each of nine edit sites. Times are seconds; brackets g
 
 | Model | Edit node | System | Rebuild [Q1, Q3] | Update [Q1, Q3] | Speedup | Pass |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
-| DenseNet-121 | 5-add | Joggle | 49.851 [49.298, 51.216] | 20.041 [19.889, 20.224] | 2.47× | 20/20 |
-|  |  | TVM | 10.484 [10.377, 10.572] | 10.594 [10.467, 10.652] | 0.99× | 20/20 |
-|  |  | ONNX-MLIR | 10.857 [10.580, 11.049] | 10.757 [10.673, 11.250] | 1.00× | 20/20 |
-|  | 456-relu | Joggle | 49.325 [48.811, 53.012] | 19.950 [19.870, 22.194] | 2.49× | 20/20 |
-|  |  | TVM | 10.533 [10.496, 10.565] | 10.689 [10.638, 10.729] | 0.99× | 20/20 |
-|  |  | ONNX-MLIR | 10.987 [10.919, 11.033] | 11.004 [10.946, 11.077] | 1.00× | 20/20 |
-|  | 907-relu | Joggle | 49.231 [48.941, 49.644] | 19.939 [19.757, 20.338] | 2.48× | 20/20 |
-|  |  | TVM | 10.474 [10.353, 10.530] | 10.606 [10.588, 10.616] | 0.99× | 20/20 |
-|  |  | ONNX-MLIR | 10.809 [10.651, 11.024] | 10.868 [10.702, 10.998] | 1.00× | 20/20 |
-| SqueezeNet-1.1 | 1-relu | Joggle | 2.511 [2.500, 2.524] | 1.711 [1.690, 1.712] | 1.48× | 20/20 |
-|  |  | TVM | 1.085 [1.082, 1.086] | 1.084 [1.082, 1.112] | 1.00× | 20/20 |
-|  |  | ONNX-MLIR | 2.097 [2.002, 2.121] | 2.069 [1.978, 2.168] | 1.00× | 20/20 |
-|  | 34-relu | Joggle | 2.532 [2.527, 2.607] | 1.711 [1.698, 1.737] | 1.49× | 20/20 |
-|  |  | TVM | 1.094 [1.091, 1.096] | 1.097 [1.091, 1.107] | 1.00× | 20/20 |
-|  |  | ONNX-MLIR | 2.035 [1.979, 2.106] | 2.060 [1.998, 2.139] | 0.99× | 20/20 |
-|  | 63-relu | Joggle | 2.515 [2.507, 2.564] | 1.699 [1.693, 1.707] | 1.49× | 20/20 |
-|  |  | TVM | 1.078 [1.075, 1.081] | 1.089 [1.082, 1.104] | 0.99× | 20/20 |
-|  |  | ONNX-MLIR | 2.010 [1.964, 2.119] | 1.999 [1.964, 2.121] | 1.00× | 20/20 |
-| TinyYOLOv3 | 176-add | Joggle | 18.300 [18.238, 18.482] | 9.763 [9.722, 9.815] | 1.87× | 20/20 |
+| DenseNet-121 | 5-add | Joggle | 51.029 [49.521, 51.807] | 20.420 [20.109, 20.568] | 2.49× | 20/20 |
+|  |  | TVM | 10.413 [10.334, 10.531] | 10.531 [10.469, 10.628] | 0.99× | 20/20 |
+|  |  | ONNX-MLIR | 10.651 [10.623, 10.812] | 10.729 [10.700, 10.832] | 1.00× | 20/20 |
+|  | 456-relu | Joggle | 51.308 [50.231, 53.704] | 20.511 [20.296, 20.831] | 2.46× | 20/20 |
+|  |  | TVM | 10.379 [10.279, 10.537] | 10.531 [10.488, 10.710] | 0.98× | 20/20 |
+|  |  | ONNX-MLIR | 10.803 [10.738, 10.848] | 10.703 [10.646, 10.761] | 1.01× | 20/20 |
+|  | 907-relu | Joggle | 50.236 [49.568, 51.507] | 20.217 [19.915, 20.802] | 2.48× | 20/20 |
+|  |  | TVM | 10.536 [10.440, 10.565] | 10.536 [10.457, 10.643] | 0.99× | 20/20 |
+|  |  | ONNX-MLIR | 10.722 [10.688, 10.766] | 10.702 [10.672, 10.745] | 1.00× | 20/20 |
+| SqueezeNet-1.1 | 1-relu | Joggle | 2.684 [2.663, 2.705] | 1.829 [1.820, 1.858] | 1.46× | 20/20 |
+|  |  | TVM | 1.068 [1.066, 1.083] | 1.073 [1.068, 1.091] | 1.00× | 20/20 |
+|  |  | ONNX-MLIR | 2.138 [2.086, 2.216] | 2.102 [2.081, 2.165] | 1.01× | 20/20 |
+|  | 34-relu | Joggle | 2.675 [2.648, 2.758] | 1.837 [1.825, 1.873] | 1.45× | 20/20 |
+|  |  | TVM | 1.076 [1.074, 1.085] | 1.073 [1.067, 1.092] | 1.00× | 20/20 |
+|  |  | ONNX-MLIR | 2.121 [2.107, 2.155] | 2.158 [2.111, 2.179] | 1.00× | 20/20 |
+|  | 63-relu | Joggle | 2.679 [2.653, 2.705] | 1.828 [1.823, 1.844] | 1.46× | 20/20 |
+|  |  | TVM | 1.076 [1.067, 1.082] | 1.069 [1.066, 1.075] | 1.00× | 20/20 |
+|  |  | ONNX-MLIR | 2.095 [2.069, 2.142] | 2.091 [2.084, 2.115] | 1.00× | 20/20 |
+| TinyYOLOv3 | 176-add | Joggle | 18.723 [18.525, 18.984] | 10.055 [9.955, 10.149] | 1.86× | 20/20 |
 |  |  | TVM | × | × | --- | 0/20 |
-|  |  | ONNX-MLIR | 2.798 [2.773, 2.805] | 2.776 [2.748, 2.813] | 1.00× | 20/20 |
-|  | 238-add | Joggle | 18.373 [18.254, 18.775] | 9.784 [9.699, 9.848] | 1.88× | 20/20 |
+|  |  | ONNX-MLIR | 2.737 [2.727, 2.745] | 2.771 [2.720, 2.807] | 0.99× | 20/20 |
+|  | 238-add | Joggle | 18.573 [18.280, 18.693] | 10.078 [10.001, 10.170] | 1.83× | 20/20 |
 |  |  | TVM | × | × | --- | 0/20 |
-|  |  | ONNX-MLIR | 2.772 [2.756, 2.807] | 2.808 [2.772, 2.841] | 0.99× | 20/20 |
-|  | 260-add | Joggle | 18.029 [17.946, 18.365] | 9.614 [9.493, 9.936] | 1.90× | 20/20 |
+|  |  | ONNX-MLIR | 2.749 [2.724, 2.825] | 2.746 [2.726, 2.793] | 1.00× | 20/20 |
+|  | 260-add | Joggle | 18.504 [18.270, 18.652] | 9.901 [9.772, 9.982] | 1.87× | 20/20 |
 |  |  | TVM | × | × | --- | 0/20 |
-|  |  | ONNX-MLIR | 2.799 [2.756, 2.844] | 2.797 [2.782, 2.861] | 0.99× | 20/20 |
+|  |  | ONNX-MLIR | 2.752 [2.724, 2.776] | 2.858 [2.776, 2.903] | 0.97× | 20/20 |
 
 Joggle phase medians in seconds over 30 runs per model and policy. Prepare is a component of Lower; columns have separately computed medians. Decode includes input specialization; CC is native compilation.
 
 | Model | Policy | Decode | Parse | Lower | Prepare | Emit | CC | Bind |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| DenseNet-121 | rebuild | 1.649 | 0.521 | 37.692 | 29.854 | 6.598 | 2.683 | 0.128 |
-| DenseNet-121 | update | 1.660 | 0.531 | 8.411 | 1.298 | 6.475 | 2.692 | 0.127 |
-| SqueezeNet-1.1 | rebuild | 0.328 | 0.078 | 1.390 | 0.936 | 0.298 | 0.299 | 0.121 |
-| SqueezeNet-1.1 | update | 0.328 | 0.078 | 0.581 | 0.166 | 0.285 | 0.298 | 0.120 |
-| TinyYOLOv3 | rebuild | 1.873 | 0.565 | 13.418 | 10.780 | 1.799 | 0.461 | 0.127 |
-| TinyYOLOv3 | update | 1.867 | 0.571 | 4.851 | 2.330 | 1.785 | 0.465 | 0.126 |
+| DenseNet-121 | rebuild | 1.654 | 0.524 | 38.617 | 30.631 | 6.640 | 2.735 | 0.634 |
+| DenseNet-121 | update | 1.722 | 0.535 | 8.539 | 1.307 | 6.525 | 2.708 | 0.256 |
+| SqueezeNet-1.1 | rebuild | 0.328 | 0.078 | 1.401 | 0.947 | 0.299 | 0.299 | 0.247 |
+| SqueezeNet-1.1 | update | 0.328 | 0.078 | 0.583 | 0.169 | 0.284 | 0.298 | 0.248 |
+| TinyYOLOv3 | rebuild | 1.884 | 0.570 | 13.462 | 10.834 | 1.822 | 0.474 | 0.255 |
+| TinyYOLOv3 | update | 1.944 | 0.572 | 4.885 | 2.357 | 1.787 | 0.471 | 0.257 |
 
 <!-- UPDATE DATA END -->
 

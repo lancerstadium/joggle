@@ -11,14 +11,14 @@
   "sources": [
     {
       "system": "joggle",
-      "csv_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/prepared-repeat-1dce55b.lSwbUC/joggle.csv",
-      "samples_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/prepared-repeat-1dce55b.lSwbUC/joggle.samples.jsonl",
-      "record_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/prepared-repeat-1dce55b.lSwbUC/joggle.json",
-      "record_sha256": "b150ab537c659b7efe18d270fa549f55d70a33e5635c5ec82485610bac5f7ac4",
-      "csv_sha256": "7c1e21970f5d72de551019c33a7dd1415512eb9f9b147e8c4325c1c6db20d50c",
-      "samples_sha256": "b41e6961dec37055b2e83502b48613f3e89cd19a3811ea7a3e1ad8701db90c60",
+      "csv_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/main-updates-20260924-H8DNhW/joggle.csv",
+      "samples_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/main-updates-20260924-H8DNhW/joggle.samples.jsonl",
+      "record_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/main-updates-20260924-H8DNhW/joggle.json",
+      "record_sha256": "bc7609c256703a1598a1147506eb219feb45555341f1a37f55058d99e1d10772",
+      "csv_sha256": "a3de5fc29b8e76bfcee0b5525ed753337fb5f5da057cdf4d8db08ea49b5a663c",
+      "samples_sha256": "b4f42e587a0314c91f35fe15b8b73e5517988a3e792b9c1036541f5c9485d44f",
       "collection": {
-        "created_utc": "2026-09-24T02:45:43.497472+00:00",
+        "created_utc": "2026-09-24T14:47:49.605860+00:00",
         "dirty": false,
         "failures": 0,
         "host": "macOS-15.7.3-arm64-arm-64bit-Mach-O",
@@ -37,12 +37,12 @@
           "ultraface-rfb-320",
           "xcit-tiny-12-p8-224-opset17"
         ],
-        "output_sha256": "7c1e21970f5d72de551019c33a7dd1415512eb9f9b147e8c4325c1c6db20d50c",
+        "output_sha256": "a3de5fc29b8e76bfcee0b5525ed753337fb5f5da057cdf4d8db08ea49b5a663c",
         "partial": true,
         "population_sha256": "dd567d18543a3214f127ace30f2ee5f32cb8b2e81ef6db158688b64f7b7fff6d",
-        "raw_sha256": "b41e6961dec37055b2e83502b48613f3e89cd19a3811ea7a3e1ad8701db90c60",
+        "raw_sha256": "b4f42e587a0314c91f35fe15b8b73e5517988a3e792b9c1036541f5c9485d44f",
         "release_eligible": false,
-        "revision": "1dce55b815f2f63d75b8b799119e8febc8956523",
+        "revision": "cc82ef114093b6d90ca94df05b54a60084585e72",
         "rows": 180,
         "schema": "production-update-collection/v1",
         "seed": 20260921,
@@ -52,10 +52,10 @@
           "tiny-yolov3-11"
         ],
         "sources": {
-          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/manifests/benchmark-cases.json": "2fa842e74a5cfcbf59217c4e1d85f7cf2fd11e09dc5ef429f8510965e0835d00",
-          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/manifests/production-node-edits.json": "dd567d18543a3214f127ace30f2ee5f32cb8b2e81ef6db158688b64f7b7fff6d",
-          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/run_baseline_benchmarks.py": "af455cacb15a3e06363a26149c1af974bca295bec687e30403f27c5fdda0ce75",
-          "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/inputs/index.json": "848044a73fcc1481328def6b4c33f843949e3a3a681a1372f632c813d958ce23"
+          "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/inputs/index.json": "848044a73fcc1481328def6b4c33f843949e3a3a681a1372f632c813d958ce23",
+          "/Users/lancer/Documents/Item/joggle/artifact/manifests/benchmark-cases.json": "2fa842e74a5cfcbf59217c4e1d85f7cf2fd11e09dc5ef429f8510965e0835d00",
+          "/Users/lancer/Documents/Item/joggle/artifact/manifests/production-node-edits.json": "dd567d18543a3214f127ace30f2ee5f32cb8b2e81ef6db158688b64f7b7fff6d",
+          "/Users/lancer/Documents/Item/joggle/artifact/run_baseline_benchmarks.py": "bdbed762c75c64d2b9d1c3ce34017971f265070a96d91a11fbaf7a4e971ca072"
         },
         "stable": true,
         "timeouts_seconds": {
@@ -69,14 +69,14 @@
     },
     {
       "system": "tvm",
-      "csv_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/prepared-repeat-1dce55b.lSwbUC/tvm.csv",
-      "samples_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/prepared-repeat-1dce55b.lSwbUC/tvm.samples.jsonl",
-      "record_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/prepared-repeat-1dce55b.lSwbUC/tvm.json",
-      "record_sha256": "0cd53a3cdcc86598f5cb34dbf2c6c3104bd8eb768e7ad2dd667f38c6cd6d47a4",
-      "csv_sha256": "9925ede4839dbb2f92e499f139a46043c18189e311c6ca6d608138142b67e200",
-      "samples_sha256": "f50904080a316044e89b5557133f66c09fd1b26d9f67ff1c42c13f5d96e28a07",
+      "csv_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/main-updates-20260924-H8DNhW/tvm.csv",
+      "samples_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/main-updates-20260924-H8DNhW/tvm.samples.jsonl",
+      "record_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/main-updates-20260924-H8DNhW/tvm.json",
+      "record_sha256": "232e4ebec80141374ecebe1f9b2b96acdf44eba4085fb6257eac2b6db512a34b",
+      "csv_sha256": "cedaae9c26523665041fea17d5696b7f1c193a3c83252cb0f592b28b6039e97a",
+      "samples_sha256": "86137565d6a5f7ba0959d710f4ceab1f2b2740e0be46fe0d7fc35c87dc731565",
       "collection": {
-        "created_utc": "2026-09-24T03:09:28.718316+00:00",
+        "created_utc": "2026-09-24T15:11:32.002830+00:00",
         "dirty": false,
         "failures": 60,
         "host": "macOS-15.7.3-arm64-arm-64bit-Mach-O",
@@ -95,12 +95,12 @@
           "ultraface-rfb-320",
           "xcit-tiny-12-p8-224-opset17"
         ],
-        "output_sha256": "9925ede4839dbb2f92e499f139a46043c18189e311c6ca6d608138142b67e200",
+        "output_sha256": "cedaae9c26523665041fea17d5696b7f1c193a3c83252cb0f592b28b6039e97a",
         "partial": true,
         "population_sha256": "dd567d18543a3214f127ace30f2ee5f32cb8b2e81ef6db158688b64f7b7fff6d",
-        "raw_sha256": "f50904080a316044e89b5557133f66c09fd1b26d9f67ff1c42c13f5d96e28a07",
+        "raw_sha256": "86137565d6a5f7ba0959d710f4ceab1f2b2740e0be46fe0d7fc35c87dc731565",
         "release_eligible": false,
-        "revision": "1dce55b815f2f63d75b8b799119e8febc8956523",
+        "revision": "cc82ef114093b6d90ca94df05b54a60084585e72",
         "rows": 180,
         "schema": "production-update-collection/v1",
         "seed": 20260921,
@@ -110,10 +110,10 @@
           "tiny-yolov3-11"
         ],
         "sources": {
-          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/manifests/benchmark-cases.json": "2fa842e74a5cfcbf59217c4e1d85f7cf2fd11e09dc5ef429f8510965e0835d00",
-          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/manifests/production-node-edits.json": "dd567d18543a3214f127ace30f2ee5f32cb8b2e81ef6db158688b64f7b7fff6d",
-          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/run_baseline_benchmarks.py": "af455cacb15a3e06363a26149c1af974bca295bec687e30403f27c5fdda0ce75",
-          "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/inputs/index.json": "848044a73fcc1481328def6b4c33f843949e3a3a681a1372f632c813d958ce23"
+          "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/inputs/index.json": "848044a73fcc1481328def6b4c33f843949e3a3a681a1372f632c813d958ce23",
+          "/Users/lancer/Documents/Item/joggle/artifact/manifests/benchmark-cases.json": "2fa842e74a5cfcbf59217c4e1d85f7cf2fd11e09dc5ef429f8510965e0835d00",
+          "/Users/lancer/Documents/Item/joggle/artifact/manifests/production-node-edits.json": "dd567d18543a3214f127ace30f2ee5f32cb8b2e81ef6db158688b64f7b7fff6d",
+          "/Users/lancer/Documents/Item/joggle/artifact/run_baseline_benchmarks.py": "bdbed762c75c64d2b9d1c3ce34017971f265070a96d91a11fbaf7a4e971ca072"
         },
         "stable": true,
         "timeouts_seconds": {
@@ -127,14 +127,14 @@
     },
     {
       "system": "onnx-mlir",
-      "csv_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/prepared-repeat-1dce55b.lSwbUC/onnx-mlir.csv",
-      "samples_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/prepared-repeat-1dce55b.lSwbUC/onnx-mlir.samples.jsonl",
-      "record_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/prepared-repeat-1dce55b.lSwbUC/onnx-mlir.json",
-      "record_sha256": "dfd04688b9c1d6a950a46e352209d00ffa594a0d82db6cc999ae40711561b748",
-      "csv_sha256": "8e18706ba1b922c62ec865f75587f4c2695caa9ee2ba69e00bbb752b9893e482",
-      "samples_sha256": "0111ae2c25080e6e1f6e9bbf86797b62346784a66d18b7c6ee88d6400cad8f77",
+      "csv_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/main-updates-20260924-H8DNhW/onnx-mlir.csv",
+      "samples_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/main-updates-20260924-H8DNhW/onnx-mlir.samples.jsonl",
+      "record_path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/main-updates-20260924-H8DNhW/onnx-mlir.json",
+      "record_sha256": "a1a25f9d7909c1d69a52b4c2e2df046a5fe01bdc87be62feac2892bd5806bd4d",
+      "csv_sha256": "ae14f5a4ac67114058ae6ae2f95aaad4f2651d23badd936373a691203f509b38",
+      "samples_sha256": "f5d70a945e3114c6aa0a22ebfc721b0c37bbaeaff0b06e57f45765add33b3372",
       "collection": {
-        "created_utc": "2026-09-24T03:40:54.698675+00:00",
+        "created_utc": "2026-09-24T15:41:21.586248+00:00",
         "dirty": false,
         "failures": 0,
         "host": "macOS-15.7.3-arm64-arm-64bit-Mach-O",
@@ -153,12 +153,12 @@
           "ultraface-rfb-320",
           "xcit-tiny-12-p8-224-opset17"
         ],
-        "output_sha256": "8e18706ba1b922c62ec865f75587f4c2695caa9ee2ba69e00bbb752b9893e482",
+        "output_sha256": "ae14f5a4ac67114058ae6ae2f95aaad4f2651d23badd936373a691203f509b38",
         "partial": true,
         "population_sha256": "dd567d18543a3214f127ace30f2ee5f32cb8b2e81ef6db158688b64f7b7fff6d",
-        "raw_sha256": "0111ae2c25080e6e1f6e9bbf86797b62346784a66d18b7c6ee88d6400cad8f77",
+        "raw_sha256": "f5d70a945e3114c6aa0a22ebfc721b0c37bbaeaff0b06e57f45765add33b3372",
         "release_eligible": false,
-        "revision": "1dce55b815f2f63d75b8b799119e8febc8956523",
+        "revision": "cc82ef114093b6d90ca94df05b54a60084585e72",
         "rows": 180,
         "schema": "production-update-collection/v1",
         "seed": 20260921,
@@ -168,10 +168,10 @@
           "tiny-yolov3-11"
         ],
         "sources": {
-          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/manifests/benchmark-cases.json": "2fa842e74a5cfcbf59217c4e1d85f7cf2fd11e09dc5ef429f8510965e0835d00",
-          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/manifests/production-node-edits.json": "dd567d18543a3214f127ace30f2ee5f32cb8b2e81ef6db158688b64f7b7fff6d",
-          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/run_baseline_benchmarks.py": "af455cacb15a3e06363a26149c1af974bca295bec687e30403f27c5fdda0ce75",
-          "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/inputs/index.json": "848044a73fcc1481328def6b4c33f843949e3a3a681a1372f632c813d958ce23"
+          "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/inputs/index.json": "848044a73fcc1481328def6b4c33f843949e3a3a681a1372f632c813d958ce23",
+          "/Users/lancer/Documents/Item/joggle/artifact/manifests/benchmark-cases.json": "2fa842e74a5cfcbf59217c4e1d85f7cf2fd11e09dc5ef429f8510965e0835d00",
+          "/Users/lancer/Documents/Item/joggle/artifact/manifests/production-node-edits.json": "dd567d18543a3214f127ace30f2ee5f32cb8b2e81ef6db158688b64f7b7fff6d",
+          "/Users/lancer/Documents/Item/joggle/artifact/run_baseline_benchmarks.py": "bdbed762c75c64d2b9d1c3ce34017971f265070a96d91a11fbaf7a4e971ca072"
         },
         "stable": true,
         "timeouts_seconds": {
@@ -186,6 +186,6 @@
   ],
   "speedup_estimator": "median of within-edit paired rebuild/update ratios",
   "whiskers": "25th to 75th percentile across ten paired repetitions",
-  "csv_sha256": "08585787a9e0b25c6b01d9daebe5705c8c0cb5ee2346f0d92fa42fa78b982efa",
-  "stages_sha256": "d82707d67fe1e24f90eba8ace1e5503efc2fc277a9918d14b9c66f63c8a49974"
+  "csv_sha256": "8495ee42351422e7811065df1d3a699a014ab061d3953c2af6868efcd49e92c0",
+  "stages_sha256": "06f4186e123771993af38007c6d9c79b2f2ab6627b32787a0eb99efd11260259"
 }

@@ -97,24 +97,31 @@ finalizing the evaluation. Do not run native Agent tests during performance
 timing. Protocol controls are synchronized in Section 4.2 and Appendix C;
 result fields remain unfilled until collection.
 
-The repeated-update data in `data/figure-06-update.json` are pinned to revision
-`1dce55b815f2f63d75b8b799119e8febc8956523`, including prepared-body reuse.
-The main-branch resident compiler now contains that reuse path, together with
-the corresponding invalidation, transfer, and storage fixes. The CSV still
-identifies the original measured revision. Rerun the repeated study on the
-integrated main before replacing those measurements.
+The repeated-update data in `data/figure-06-update.json` now identify integrated
+main source revision `cc82ef114093b6d90ca94df05b54a60084585e72`, including
+prepared-body reuse and its invalidation, transfer, and storage fixes. The
+540 raw rows, 180 phase records, 27 edit/system summaries, and both Appendix D
+tables were replaced from the completed matched collection. The source audit
+checks population, inputs, edits, compiler identity, and paired output equality.
+Joggle and ONNX-MLIR each pass all 180 trials; TVM passes 120 and rejects all
+60 TinyYOLOv3 trials because its ONNX frontend does not support `Loop`.
+The measured paired reuse range is now 1.46–2.49×. Abstract, introduction,
+evaluation, and conclusion are synchronized in MD and TeX. Figure 8 and both
+PDFs still require regeneration after the live execution timing finishes.
 The external-data integration check at
 `.cache/artifact/external-data-verified.qpfoeC/` is a separate single-repetition
 correctness run, not a replacement for the paper's repeated measurements.
 
-The integrated-main repeat is running serially in
+The integrated-main repeat completed serially in
 `.cache/artifact/main-updates-20260924-H8DNhW/`: Joggle, TVM, then ONNX-MLIR;
 three models, nine edit sites, ten repetitions, and two policies per system
 (540 records). The measured source revision is
 `cc82ef114093b6d90ca94df05b54a60084585e72`. Paper-only revisions do not alter
-that source identity. Collectors, compiler binaries, and mods remain unchanged
-during collection. Replace the published update data only after the entire
-matched run finishes and its correctness and timing records are reconciled.
+that source identity. All three collectors record stable, clean source state
+throughout collection. Their generic full-population release flag remains
+false because this study uses the declared three-model edit population rather
+than the broader model manifest; the paper exporter validates the complete
+540-trial population explicitly.
 
 End-to-end and package measurements have separate source records. The current
 model merge includes a Joggle run from `38a426d`; the operator merge includes
