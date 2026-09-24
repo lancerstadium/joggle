@@ -38,6 +38,12 @@ corpus. It measures the time to produce a bound executable after an edit,
 using the same fixed inputs as the execution study.
 End-to-end execution also includes ONNX Runtime.
 
+\paragraph{Platform.}
+Compilation and execution measurements use an Apple M4 host with 24 GiB of
+memory and macOS 15.7.3. Backends run sequentially with one execution thread;
+core placement follows the OS scheduler. For timing studies, generated C is
+compiled with Apple Clang 17 at \texttt{-O3 -DNDEBUG}.
+
 \paragraph{Correctness and measurement.}
 Compiler-extension tasks use build-and-test oracles; transformations use
 verification and canonical graph digests; executable artifacts use reference
@@ -249,6 +255,10 @@ TVM Relax's default LLVM CPU pipeline without tuning, and ONNX-MLIR at
 \texttt{-O3} with parallelism and fast math disabled. Joggle uses input-fixed
 entry signatures and the same byte-identical tensors. The operator comparison
 also includes Joggle without its optimization pack.
+
+Inputs remain resident during timing. Each backend uses its native invocation
+and output-storage policy; Appendix B lists these boundaries. Input loading,
+compilation, and reference evaluation are outside the execution interval.
 
 We report median steady-state execution latency from 100 measurements after
 ten warm-ups. Figure~\ref{fig:performance} groups all 24 operators into six

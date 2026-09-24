@@ -49,6 +49,9 @@ bibliography text, and ACM caption defaults are also below 10 pt. Resolve the
 typography and recheck pagination before upload.
 The two-column rule is explicit for the paper; the CFP gives no separate
 layout specification for the optional supplement.
+The author has chosen to retain the compact figure layout for the current
+revision. This choice does not establish compliance with the font-size rule;
+no typography reflow is scheduled in the present content/data pass.
 
 ## Code and measurement alignment
 
@@ -115,3 +118,6 @@ The MD and TeX design sources now distinguish observation-based stage selection
 within a retained graph from prepared-body reuse across imported graphs.
 Rebuild and inspect the PDFs after the live timing collection; the current PDF
 predates this mechanism clarification.
+The subsequent source revision also adds the measured host configuration to
+the methodology and native invocation/output-storage boundaries to Table A.4.
+Check both the main paper and supplement when rebuilding.

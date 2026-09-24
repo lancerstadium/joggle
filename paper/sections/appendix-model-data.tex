@@ -60,20 +60,22 @@
 
 \begin{table}[!htbp]
   \caption{Execution controls used for Tables~\ref{tab:operator-data}
-  and~\ref{tab:model-data}. The artifact records the complete commit identifiers,
-  input and output digests, host description, and per-sample timings.}
+  and~\ref{tab:model-data}. Inputs are resident; one execution thread, ten
+  warm-ups, and 100 timed samples are used throughout. Joggle times calls in a
+  native C loop; the other systems time invocations from the Python collector.
+  Numerical checks follow the timed interval.}
   \label{tab:execution-controls}
   \centering
   \scriptsize
   \setlength{\tabcolsep}{5pt}
   \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}llll@{}}
     \toprule
-    System & Compiler path & Optimization & Timing policy \\
+    System & Optimization & Timed invocation & Output storage \\
     \midrule
-    Joggle & typed graph $\rightarrow$ C $\rightarrow$ native & \texttt{-O3 -DNDEBUG} & 1 thread; 10 warm-ups; 100 samples \\
-    ORT 1.26 & CPU execution provider & full graph optimization & 1 thread; sequential execution \\
-    TVM & Relax $\rightarrow$ LLVM & default CPU pipeline; no tuning & 1 thread \\
-    ONNX-MLIR 0.4.2 & ONNX $\rightarrow$ LLVM & \texttt{-O3}; no fast math & no parallelism \\
+    Joggle & Clang 17; \texttt{-O3 -DNDEBUG} & native C harness & caller-allocated buffers \\
+    ORT 1.26 & CPU; full graph optimization & \texttt{session.run} & runtime-managed outputs \\
+    TVM 0.26.dev0 & default Relax/LLVM; no tuning & \texttt{invoke\_stateful} & VM-managed outputs \\
+    ONNX-MLIR 0.4.2 & \texttt{-O3}; no fast math or parallelism & C ABI \texttt{run\_main\_graph} & allocate new; release previous \\
     \bottomrule
   \end{tabular*}
 \end{table}

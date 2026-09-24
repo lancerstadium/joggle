@@ -626,6 +626,11 @@ from the 15-model end-to-end corpus. It measures the time to produce a bound
 executable after an edit, using the same fixed inputs as the execution study.
 End-to-end execution also includes ONNX Runtime.
 
+**Platform.** Compilation and execution measurements use an Apple M4 host
+with 24 GiB of memory and macOS 15.7.3. Backends run sequentially with one
+execution thread; core placement follows the OS scheduler. For timing studies,
+generated C is compiled with Apple Clang 17 at `-O3 -DNDEBUG`.
+
 **Correctness and measurement.** Compiler-extension tasks use build-and-test
 oracles; transformations use verification and canonical graph digests;
 executable artifacts use reference tensors with dtype-specific tolerances.
@@ -853,6 +858,10 @@ TVM Relax's default LLVM CPU pipeline without tuning, and ONNX-MLIR at
 `-O3` with parallelism and fast math disabled. Joggle uses input-fixed
 entry signatures and the same byte-identical tensors. The operator comparison
 also includes Joggle without its optimization pack.
+
+Inputs remain resident during timing. Each backend uses its native invocation
+and output-storage policy; Appendix B lists these boundaries. Input loading,
+compilation, and reference evaluation are outside the execution interval.
 
 We report median steady-state execution latency from 100 measurements after
 ten warm-ups. The performance figure groups all 24 operators into six panels
@@ -1192,14 +1201,17 @@ warm-ups. × identifies a candidate without a numerically valid executable.
 
 *Table A.3: Excluded model executions and the first terminal oracle phase.*
 
-| System | Compiler path | Optimization | Timing policy |
+| System | Optimization | Timed invocation | Output storage |
 | --- | --- | --- | --- |
-| Joggle | typed graph → C → native | `-O3 -DNDEBUG` | 1 thread; 10 warm-ups; 100 samples |
-| ORT 1.26 | CPU execution provider | full graph optimization | 1 thread; sequential execution |
-| TVM | Relax → LLVM | default CPU pipeline; no tuning | 1 thread |
-| ONNX-MLIR 0.4.2 | ONNX → LLVM | `-O3`; no fast math | no parallelism |
+| Joggle | Clang 17; `-O3 -DNDEBUG` | native C harness | caller-allocated buffers |
+| ORT 1.26 | CPU provider; full graph optimization | `session.run` | runtime-managed outputs |
+| TVM 0.26.dev0 | default Relax/LLVM; no tuning | `invoke_stateful` | VM-managed outputs |
+| ONNX-MLIR 0.4.2 | `-O3`; no fast math or parallelism | C ABI `run_main_graph` | allocate new; release previous |
 
-*Table A.4: Execution controls used for Tables A.1 and A.2.*
+*Table A.4: Execution controls used for Tables A.1 and A.2. Inputs are resident;
+one execution thread, ten warm-ups, and 100 timed samples are used throughout.
+Joggle times calls in a native C loop; the other systems time invocations from
+the Python collector. Numerical checks follow the timed interval.*
 
 ## Appendix C. Extension Task Inputs and Outputs
 
