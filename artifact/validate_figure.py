@@ -104,18 +104,26 @@ def extension(rows: list[dict[str, str]], partial: bool, tasks: dict[str, str], 
             raise SystemExit(f"line {line}: contract hash differs")
         for field in ("api_card_sha256", "trajectory_sha256", "patch_sha256"):
             digest(row[field], line, field)
-        reference_tokens = unsigned(row, "reference_tokens", line)
-        if reference_tokens == 0:
-            raise SystemExit(f"line {line}: reference token count is zero")
-        real(row, "reference_nll", line)
-        phases = [boolean(row, field, line) for field in ("parsed", "typed", "built", "passed")]
-        if phases != sorted(phases, reverse=True):
+        if bool(row["reference_tokens"]) != bool(row["reference_nll"]):
+            raise SystemExit(f"line {line}: incomplete reference likelihood")
+        if row["reference_tokens"]:
+            if unsigned(row, "reference_tokens", line) == 0:
+                raise SystemExit(f"line {line}: reference token count is zero")
+            real(row, "reference_nll", line)
+        phases = [None if not row[field] else boolean(row, field, line)
+                  for field in ("parsed", "typed", "built")]
+        passed = boolean(row, "passed", line)
+        observed = [phase for phase in phases if phase is not None] + [passed]
+        if observed != sorted(observed, reverse=True) or (passed and phases != [True] * 3):
             raise SystemExit(f"line {line}: inconsistent oracle phases")
-        allowed_stops = {"success", "parse", "type", "build", "semantic", "budget", "agent_error"}
+        allowed_stops = {"success", "build", "execution", "observation", "semantic",
+                         "action_budget", "token_budget", "context_budget", "agent_error"}
         if row["stop_reason"] not in allowed_stops:
             raise SystemExit(f"line {line}: invalid stop reason")
-        if phases[-1] != (row["stop_reason"] == "success"):
+        if passed != (row["stop_reason"] == "success"):
             raise SystemExit(f"line {line}: success and stop reason disagree")
+        if not partial and (demos != 0 or run != 0 or row["stop_reason"] == "agent_error"):
+            raise SystemExit(f"line {line}: primary protocol requires run zero, no demonstrations, and a valid provider")
         groups[(row["model"], row["system"], row["task"], demos)].append(row)
         condition = (row["model"], row["task"], demos)
         condition_systems[condition].add(row["system"])
@@ -130,15 +138,17 @@ def extension(rows: list[dict[str, str]], partial: bool, tasks: dict[str, str], 
         raise SystemExit("Figure 4 task population is incomplete")
     if len({row["model"] for row in rows}) != 2:
         raise SystemExit("Figure 4 requires two models")
-    if len(condition_systems) != 2 * 24 * 2 or any(
+    if len(tasks) != 12 or Counter(tasks.values()) != Counter({family: 2 for family in FAMILIES}):
+        raise SystemExit("Figure 4 requires the frozen two-task-per-family execution set")
+    if len(condition_systems) != 2 * len(tasks) or any(
         systems != SYSTEMS for systems in condition_systems.values()
     ):
         raise SystemExit("Figure 4 system pairing is incomplete")
     for key, group in groups.items():
-        if len(group) != 10 or {int(row["run"]) for row in group} != set(range(10)):
-            raise SystemExit(f"{key}: expected ten complete agent trajectories")
-    if len(rows) != 2880:
-        raise SystemExit(f"Figure 4 requires 2880 trajectories, found {len(rows)}")
+        if len(group) != 1:
+            raise SystemExit(f"{key}: expected one deterministic agent trajectory")
+    if len(rows) != 72:
+        raise SystemExit(f"Figure 4 requires 72 trajectories, found {len(rows)}")
 
 
 def footprint(rows: list[dict[str, str]], partial: bool, tasks: dict[str, str]) -> None:
@@ -262,7 +272,7 @@ def main() -> int:
     if args.figure in {"4", "5"}:
         manifest = list(csv.DictReader((root / "manifests/extension-tasks.csv").open(newline="", encoding="utf-8")))
         tasks = {row["task_id"]: row["family"] for row in manifest
-                 if args.figure == "4" or row["footprint"] == "true"}
+                 if row["footprint"] == "true"}
         if args.figure == "4":
             spec_path = root / "manifests/extension-specs.json"
             extension(rows, args.allow_partial, tasks, hashlib.sha256(spec_path.read_bytes()).hexdigest())

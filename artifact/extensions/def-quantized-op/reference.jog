@@ -1,0 +1,39 @@
+mod extension
+use base
+use ir
+use tensor
+
+fn qadd<A: Ty, B: Ty, L: list<int>, R: list<int>>(
+  lhs: tensor<A, L>, rhs: tensor<B, R>
+) -> tensor<A, L>;
+
+fn verify(m: Mod) -> bool {
+  for op in ir.ops(ir.find(m, "subject"), ["call"]) {
+    if ir.target(m, op) == "extension.qadd" {
+      let inputs = ir.args(op)
+      let outputs = ir.outs(op)
+      assert(len(inputs) == 2 && len(outputs) == 1, "operand-count-mismatch")
+      let left = ir.type(inputs[0])
+      let right = ir.type(inputs[1])
+      let result = ir.type(outputs[0])
+      assert(tensor.valid(left) && tensor.valid(right) && tensor.valid(result), "operand-type-mismatch")
+      assert(tensor.elem(left) == ty("i8") && tensor.elem(right) == ty("i8") &&
+             tensor.elem(result) == ty("i8"), "operand-type-mismatch")
+      assert(tensor.shape(left) == tensor.shape(right) &&
+             tensor.shape(left) == tensor.shape(result), "shape-mismatch")
+      for name in ["lhs_scale", "rhs_scale", "output_scale"] {
+        let value = ir.meta(op, name)
+        assert(base.kind(value) == "f64", "invalid-scale")
+        let scale = base.real(value)
+        assert(scale > 0.0 && scale <= 1.7976931348623157e308, "invalid-scale")
+      }
+      for name in ["lhs_zero", "rhs_zero", "output_zero"] {
+        let value = ir.meta(op, name)
+        assert(base.kind(value) == "int", "invalid-zero-point")
+        let zero = base.int(value)
+        assert(zero >= -2147483648 && zero <= 2147483647, "invalid-zero-point")
+      }
+    }
+  }
+  return false
+}

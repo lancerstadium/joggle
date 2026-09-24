@@ -1,0 +1,77 @@
+mod extension
+use base
+use ir
+
+local fn fuse(m: Mod, relu: Op) -> bool {
+  if ir.callee(relu) != "relu" { return false }
+  let quant = ir.def(ir.args(relu)[0])
+  if !ir.live(quant) || ir.callee(quant) != "requantize" { return false }
+  let bias = ir.def(ir.args(quant)[0])
+  if !ir.live(bias) || ir.callee(bias) != "bias" { return false }
+  let conv = ir.def(ir.args(bias)[0])
+  if !ir.live(conv) || ir.callee(conv) != "qconv" { return false }
+  for op in [conv, bias, quant] {
+    if len(ir.users(ir.outs(op)[0])) != 1 { return false }
+  }
+  if str(ir.meta(conv, "layout")) != "NHWC" || str(ir.meta(conv, "kernel_layout")) != "HWIO" { return false }
+  if ir.meta(relu, "output_zero") != ir.meta(quant, "output_zero") { return false }
+  let old = ir.outs(relu)[0]
+  let inputs = ir.args(conv) + [ir.args(bias)[1]]
+  let result = ir.call(m, relu, ir.find(m, "fused_qconv_relu"), inputs, ir.type(old))
+  assert(ir.rename(m, result, "fused", ir.key(result)), "binding-failed")
+  for op in [conv, quant] {
+    let meta = ir.meta(op)
+    for key in keys(meta) {
+      assert(ir.set(m, ir.def(result), key, base.get(meta, key)), "attribute-write-failed")
+    }
+  }
+  assert(ir.replace(m, old, result), "replace-failed")
+  for op in [relu, quant, bias, conv] { assert(ir.erase(m, op), "erase-failed") }
+  return true
+}
+
+fn transform(m: Mod) -> bool {
+  var changed = false
+  for op in ir.ops(ir.find(m, "subject"), ["call"]) {
+    if fuse(m, op) { changed = true }
+  }
+  return changed
+}
+
+fn analyze(m: Mod) -> dict {
+  var found = false
+  var source = "#include <stdint.h>\n#include <math.h>\n"
+  for op in ir.ops(ir.find(m, "subject"), ["call"]) {
+    if ir.callee(op) == "fused_qconv_relu" {
+      assert(!found, "expected-fused-convolution")
+      found = true
+      let inputs = ir.args(op)
+      let x = args(args(ir.type(inputs[0]))[1])
+      let w = args(args(ir.type(inputs[1]))[1])
+      let b = args(args(ir.type(inputs[2]))[1])
+      assert(x[3] == w[2] && len(b) == 1 && b[0] == w[3], "shape-mismatch")
+      let labels = ["N", "H", "W", "CI", "KH", "KW", "CO"]
+      let sizes = [x[0], x[1], x[2], x[3], w[0], w[1], w[3]]
+      for i in 0..7 { source += "#define " + labels[i] + " (" + text(int(sizes[i])) + ")\n" }
+      source += "#define ACC_SCALE (" + text(ir.meta(op, "acc_scale")) + ")\n"
+      source += "#define OUT_SCALE (" + text(ir.meta(op, "out_scale")) + ")\n"
+      source += "#define ZERO (" + text(ir.meta(op, "output_zero")) + ")\n"
+    }
+  }
+  assert(found, "expected-fused-convolution")
+  source += "int task_kernel(const int8_t *x, const int8_t *w, const int32_t *b, int8_t *y) {\n"
+  source += "  const int oh=H-KH+1, ow=W-KW+1;\n"
+  source += "  for(int n=0;n<N;++n) for(int h=0;h<oh;++h) for(int col=0;col<ow;++col) for(int co=0;co<CO;++co) {\n"
+  source += "    int64_t acc=b[co];\n"
+  source += "    for(int kh=0;kh<KH;++kh) for(int kw=0;kw<KW;++kw) for(int ci=0;ci<CI;++ci)\n"
+  source += "      acc+=(int64_t)x[((n*H+h+kh)*W+col+kw)*CI+ci]*w[((kh*KW+kw)*CI+ci)*CO+co];\n"
+  source += "    if(acc<INT32_MIN || acc>INT32_MAX) return 1;\n"
+  source += "    double scaled=(double)acc*ACC_SCALE/OUT_SCALE;\n"
+  source += "    if(isnan(scaled)) return 2;\n"
+  source += "    double value=scaled<=0 ? ZERO : scaled>=127-ZERO ? 127 : nearbyint(scaled)+ZERO;\n"
+  source += "    y[((n*oh+h)*ow+col)*CO+co]=(int8_t)value;\n"
+  source += "  }\n  return 0;\n}\n"
+  var result: dict = {symbol: "task_kernel"}
+  result["source"] = source
+  return result
+}

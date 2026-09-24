@@ -1,0 +1,33 @@
+mod extension
+use base
+use ir
+use tensor
+
+fn relayout<E: Ty, S: list<int>>(input: tensor<E, S>) -> _;
+
+fn verify(m: Mod) -> bool {
+  let subject = ir.find(m, "subject")
+  var changed = false
+  for op in ir.ops(subject, ["call"]) {
+    if ir.target(m, op) == "extension.relayout" {
+      let inputs = ir.args(op)
+      let outputs = ir.outs(op)
+      assert(len(inputs) == 1 && len(outputs) == 1, "operand-count-mismatch")
+      let input = ir.type(inputs[0])
+      assert(tensor.valid(input) && len(tensor.shape(input)) == 4, "rank-mismatch")
+      let src = ir.meta(op, "src")
+      let dst = ir.meta(op, "dst")
+      assert((src == "NCHW" || src == "NHWC") && (dst == "NCHW" || dst == "NHWC"),
+             "invalid-layout")
+      var axes: list<int> = [0, 1, 2, 3]
+      if src != dst {
+        if src == "NCHW" { axes = [0, 2, 3, 1] }
+        else { axes = [0, 3, 1, 2] }
+      }
+      let result = tensor.type(tensor.elem(input), tensor.permuted(tensor.shape(input), axes))
+      changed = ir.type(m, outputs[0], result) || changed
+      changed = ir.returns(m, subject, [result]) || changed
+    }
+  }
+  return changed
+}

@@ -1,5 +1,69 @@
 # MLIR extension interface
 
+## Fused quantized convolution entry points
+
+For `vert-fused-op`, implement `void transform(mlir::ModuleOp)` and
+`llvm::json::Object analyze(mlir::ModuleOp)`. The second entry receives the
+verified transformed IR. Inspect `func::CallOp` operands and their defining
+operations, check `hasOneUse()`, and read `RankedTensorType::getShape()`.
+Scale attributes are f64 `FloatAttr`; the zero-point is an i64 `IntegerAttr`.
+Copy metadata without replacing the new call's `callee` attribute.
+
+The input is a typed SSA chain `qconv(x,w) → bias(conv,b) → requantize → relu`.
+The qconv operands are NHWC i8 activations and HWIO i8 weights; its result
+and the biased result are i32 tensors. Requantize and ReLU return i8 tensors.
+The qconv attributes are `layout="NHWC"` and `kernel_layout="HWIO"`;
+requantize carries `acc_scale`, `out_scale`, and `output_zero`; ReLU also
+carries `output_zero`. A matching `fused_qconv_relu(x,w,b)` declaration
+is supplied. Fuse only when all three intermediate values have one use.
+Preserve shared chains, output uses, tensor types, and all five fused attributes.
+
+The emission result has exactly `symbol="task_kernel"` and `source`,
+a complete C99 translation unit exporting
+`int task_kernel(const int8_t *x, const int8_t *w, const int32_t *b, int8_t *y)`.
+Arrays are contiguous NHWC, HWIO, channel bias, and NHWC output respectively.
+Return zero on valid inputs; preserve inputs and output boundaries. Specialize
+shapes and quantization metadata, not tensor contents: runtime vectors are
+provided only to the compiled executable. Apply valid cross-correlation with
+unit stride/dilation, no padding, and zero input/weight zero-points. Add i32
+bias, compute `acc * acc_scale / out_scale`, round ties to even, add the
+output zero-point, and clamp to `[output_zero,127]`. The driver selects
+round-to-nearest-even and checks exact signed output bytes against an independent
+integer-accumulation oracle. The shared-chain negative case is checked
+structurally and does not request a fused kernel.
+
+## Signed-int4 vertical entry points
+
+For `vert-int4`, implement `void transform(mlir::ModuleOp)` followed by
+`llvm::json::Object analyze(mlir::ModuleOp)`. The source `subject` takes two
+rank-one i4 tensors and returns a saturated i4 sum and packed i8 bytes. Replace
+`qint4_add` with the declared `sext_i4_i8` calls, `add_i8`, `clamp_i8`
+(i64 attributes `lower=-8`, `upper=7`), and `trunc_i8_i4`; retain `qint4_pack`
+and both result uses. Validate the wide `values` array of `qint4_literal`
+before truncation. Reject invalid literals with the specified diagnostic.
+
+`analyze` receives verified lowered IR. Return exactly `range=[-8,7]`,
+`symbol="task_kernel"`, and `source` containing a complete C99 translation unit
+exporting `int task_kernel(const int8_t*, const int8_t*, int8_t*, uint8_t*, size_t)`.
+Arguments are lhs, rhs, unpacked signed results, packed bytes, and element count.
+Return zero on valid inputs; preserve input buffers and output boundaries.
+Count zero uses null pointers. Runtime vectors are not present in the IR;
+the oracle tests every signed-nibble operand pair at each lane.
+
+## Input format entry point
+
+For `vert-input-format`, implement
+`mlir::OwningOpRef<mlir::ModuleOp> readExtension(llvm::StringRef source, mlir::MLIRContext &context)`.
+Construct a native module containing a single-block `func.func @subject` with
+typed tensor arguments, typed `func.call` operations, and `func.return`.
+Declare the called primitives privately. Use `splat`, `add`, `mul`, and `relu`,
+or distinguish signatures with `splat__typeN`, `add__typeN`, `mul__typeN`, and
+`relu__typeN`, where N is a nonnegative decimal integer. Splat constants carry
+a `value` attribute interpreted at the result element type, including f32 rounding.
+The driver verifies the module and its print/parse/print stability; a separate
+observer compares its complete typed dataflow. Reject malformed input by throwing
+`std::runtime_error` with the specified diagnostic. Returning a report is not import.
+
 ## Analysis entry point
 
 Edit the supplied C++ implementation. Its public entry point is:
@@ -158,6 +222,34 @@ emitter. The oracle compiles and executes independent-buffer, in-place, and
 zero-count calls, checking exact f32 bits and positive-zero ReLU output.
 
 ## Type definition entry point
+
+For `def-target-intrinsic`, register `extension.dot4_i8` and export
+`Operation *constructExtension(OpBuilder &, ValueRange, ArrayRef<NamedAttribute>)`.
+The constructor receives three operands and no attributes. Return a detached
+registered operation that consumes these operands and produces one `i32`.
+Its verifier checks both fixed, one-dimensional `vector<4xi8>` operands and
+the accumulator independently. The driver verifies and round-trips the operation;
+the observer checks operand identity and interprets fixed dot-product semantics.
+This task does not require a machine-code lowering.
+
+For `def-layout-attribute`, use the same registration and construction entry
+points with one tensor operand and two `StringAttr` values, `src` and `dst`.
+Construct registered `extension.relayout` with its rank-four result inferred
+from the layout permutation. The driver derives the function return type
+from the constructed result. Preserve element type and both attributes;
+reject invalid rank with `rank-mismatch` and unknown layouts with
+`invalid-layout`. The fixed observer checks operand identity and the printed
+result type; the fixture supplies no expected output shape.
+
+For `def-quantized-op`, register native `extension.qadd` and export
+`Operation *constructExtension(OpBuilder &, ValueRange, ArrayRef<NamedAttribute>)`.
+The constructor receives the two subject arguments and six quantization
+attributes, without an expected-result-type argument. Build the registered
+operation and infer its result from the lhs tensor. Its verifier checks equal
+i8 tensor shapes, finite positive f64 scales, and i32 zero points. Attributes
+are named `lhs_scale`, `rhs_scale`, `output_scale`, `lhs_zero`, `rhs_zero`, and
+`output_zero`. The driver verifies and round-trips the constructed IR; a
+separate fixed observer checks its operand/result wiring and attributes.
 
 For `def-parametric-type`, export `void registerExtension(MLIRContext&)`.
 Register a dialect named `extension` containing `extension.fx` backed by

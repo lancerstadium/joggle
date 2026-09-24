@@ -27,7 +27,7 @@ from run_baseline_benchmarks import production_sample_row, correctness_oracle_re
 from run_baseline_benchmarks import production_worker_timeout
 from run_joggle_benchmarks import compiler_identity, checkpoint_protocol, make_harness, Unsupported
 from benchmark_backends import ONNXMLIRRunner, TVMRunner, JoggleRunner, JoggleCompiler, onnx_mlir_identity, tvm_identity
-from validate_figure import performance
+from validate_figure import performance, extension
 from run_extension_task import (execute, fusion_fixture, graph_fixture, sandbox_policy,
                                 equivalent, rewrite_graph, graph_manifest, rewrite_numerics, gelu_structure,
                                 quant_structure, convolution_nhwc, layout_structure, wrapper_execution,
@@ -39,6 +39,54 @@ from merge_update_rows import production_rows, sha256 as file_sha256
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_extension_primary_matrix_requires_all_72_conditions(self):
+        families = ("definition", "analysis", "rewrite", "conversion", "emission", "vertical")
+        tasks = {f"{family}-{i}": family for family in families for i in range(2)}
+        rows = []
+        for model in ("model-a", "model-b"):
+            for task, family in tasks.items():
+                for system in ("Joggle", "MLIR", "xDSL"):
+                    rows.append(dict(model=model, model_revision="revision", system=system,
+                        system_revision="native", task=task, family=family, demo_count="0",
+                        demo_ids="", run="0", seed="1701", wall_ms="1", prompt_tokens="5",
+                        completion_tokens="3", tool_calls="1", edit_attempts="1", files_touched="1",
+                        budget_actions="30", budget_tokens="32000", task_spec_sha256="a"*64,
+                        api_card_sha256="b"*64, trajectory_sha256="c"*64, patch_sha256="d"*64,
+                        reference_tokens="", reference_nll="", parsed="true", typed="true",
+                        built="true", passed="true", stop_reason="success"))
+        extension(rows, False, tasks, "a"*64)
+        for field, value in (("run", "1"), ("demo_count", "2"),
+                             ("parsed", ""), ("reference_nll", "1.0"),
+                             ("seed", "1702"), ("stop_reason", "agent_error")):
+            changed = copy.deepcopy(rows)
+            changed[0][field] = value
+            with self.subTest(field=field), self.assertRaises(SystemExit):
+                extension(changed, False, tasks, "a"*64)
+        with self.assertRaises(SystemExit):
+            extension(rows[:-1], False, tasks, "a"*64)
+        failed = copy.deepcopy(rows)
+        failed[0].update(parsed="", typed="", built="", passed="false", stop_reason="build")
+        extension(failed, False, tasks, "a"*64)
+
+    def test_agent_context_preflight_requires_real_overflow_rejection(self):
+        detail = {"code": 400, "type": "exceed_context_size_error", "message": "too long",
+                  "n_prompt_tokens": 80000, "n_ctx": 32768}
+        with patch.object(run_extension_agent, "local_api",
+                          side_effect=run_extension_agent.ContextLimitError(detail)) as api:
+            result = run_extension_agent.check_context_policy("test-model")
+            self.assertTrue(result["verified"])
+            self.assertEqual(len(result["request_sha256"]), 64)
+            request = api.call_args.args[1]
+            self.assertEqual(request["options"]["temperature"], 0.0)
+            self.assertFalse(request["shift"])
+            self.assertFalse(request["truncate"])
+        with patch.object(run_extension_agent, "local_api", return_value={}), self.assertRaises(ValueError):
+            run_extension_agent.check_context_policy("test-model")
+        with patch.object(run_extension_agent, "local_api", side_effect=
+                          run_extension_agent.ContextLimitError(detail | {"n_ctx": 2048})), \
+                self.assertRaises(ValueError):
+            run_extension_agent.check_context_policy("test-model")
+
     def test_resident_scalarization_preserves_mutable_index_declarations(self):
         repo = Path(__file__).resolve().parents[1]
         compiler = Path(os.environ.get("JOGGLE_RESIDENT_COMPILER", repo / "build/artifact/joggle-artifact-reactive"))
@@ -266,54 +314,6 @@ fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {
             self.assertEqual(compiled.returncode, 0, compiled.stderr + "\n" + (output / "0.c").read_text())
             subprocess.run([str(root / "run")], check=True, timeout=10)
 
-    def test_production_sample_requires_matching_edit_protocol_and_boundaries(self):
-        case = {"case_id": "model", "edit": {"model_sha256": "a" * 64},
-                "replacement_sha256": "b" * 64}
-        identity = {"backend": "test"}
-        sample = {"schema": "production-update-sample/v1", "backend": "tvm", "policy": "update",
-                  "case_id": "model", "edit_sha256": hashlib.sha256(json.dumps(case["edit"], sort_keys=True).encode()).hexdigest(),
-                  "benchmark_spec_sha256": "s", "input_index_sha256": "i", "identity_stable": True,
-                  "compiler_identity": identity, "final_compiler_identity": identity,
-                  "oracle": correctness_oracle_record(), "retained_state": "native caches",
-                  "initial": {"correct": True, "model_sha256": "a" * 64}, "input_digest": "c" * 64,
-                  "replacement": {"correct": True, "model_sha256": "b" * 64,
-                                  "wall_ns": 10, "ready_ns": 8, "edit_ns": 1, "validation_ns": 2,
-                                  "output_digest": "d" * 64}}
-        self.assertEqual(production_sample_row(sample, "tvm", "update", case, "s", "i")["wall_ns"], 10)
-        for key, value in (("edit_sha256", "wrong"), ("benchmark_spec_sha256", "wrong"),
-                           ("initial", None), ("retained_state", "fresh-worker"),
-                           ("final_compiler_identity", {}), ("input_digest", "")):
-            with self.subTest(key=key), self.assertRaises(ValueError):
-                production_sample_row(sample | {key: value}, "tvm", "update", case, "s", "i")
-        for key, value in (("wall_ns", 11), ("ready_ns", 0), ("edit_ns", 9),
-                           ("correct", False), ("model_sha256", "wrong"), ("output_digest", "")):
-            wrong = sample | {"replacement": sample["replacement"] | {key: value}}
-            with self.subTest(key=key), self.assertRaises(ValueError):
-                production_sample_row(wrong, "tvm", "update", case, "s", "i")
-        fresh = sample | {"policy": "rebuild", "initial": None, "retained_state": "fresh-worker"}
-        self.assertEqual(production_sample_row(fresh, "tvm", "rebuild", case, "s", "i")["correct"], "true")
-
-    def test_production_worker_command_preserves_explicit_tool_configuration(self):
-        args = argparse.Namespace(spec=Path("spec"), inputs=Path("inputs"), backend="joggle",
-                                  target_json='{"kind":"llvm"}', onnx_mlir=None,
-                                  edit_json=Path("edit.json"), joggle=Path("custom/joggle"),
-                                  joggle_server=Path("custom/server"), builtin_mods=Path("custom/mods"),
-                                  cc="custom/clang", case_timeout=17)
-        argv = baseline_command(args, "update", "model", Path("model.onnx"))
-        for key in ("edit_json", "joggle", "joggle_server", "builtin_mods", "cc", "case_timeout"):
-            flag = "--" + key.replace("_", "-")
-            self.assertEqual(argv[argv.index(flag) + 1], str(getattr(args, key)))
-
-    def test_native_definition_observation_requires_one_parametric_type(self):
-        for text in ("fx<8,3>", "!extension.fx<8, 3>"):
-            self.assertEqual(definition_result({"types": [text]}),
-                             {"canonical": "fx<8,3>", "storage_bits": 8})
-        for actual in ({}, {"types": True}, {"types": []}, {"types": [3]},
-                       {"types": ["i8"]}, {"types": ["fx<8,3>", "fx<16,7>"]}):
-            with self.subTest(actual=actual), self.assertRaises(ValueError):
-                definition_result(actual)
-
-    @unittest.skipUnless(importlib.util.find_spec("xdsl"), "xDSL is required")
     @unittest.skipUnless((Path(__file__).resolve().parents[1] /
                           "build/artifact/joggle-artifact-reactive").is_file() and shutil.which("cc"),
                          "resident compiler and C compiler are required")
@@ -417,6 +417,54 @@ int main(void) {
         finally:
             compiler.close()
 
+    def test_production_sample_requires_matching_edit_protocol_and_boundaries(self):
+        case = {"case_id": "model", "edit": {"model_sha256": "a" * 64},
+                "replacement_sha256": "b" * 64}
+        identity = {"backend": "test"}
+        sample = {"schema": "production-update-sample/v1", "backend": "tvm", "policy": "update",
+                  "case_id": "model", "edit_sha256": hashlib.sha256(json.dumps(case["edit"], sort_keys=True).encode()).hexdigest(),
+                  "benchmark_spec_sha256": "s", "input_index_sha256": "i", "identity_stable": True,
+                  "compiler_identity": identity, "final_compiler_identity": identity,
+                  "oracle": correctness_oracle_record(), "retained_state": "native caches",
+                  "initial": {"correct": True, "model_sha256": "a" * 64}, "input_digest": "c" * 64,
+                  "replacement": {"correct": True, "model_sha256": "b" * 64,
+                                  "wall_ns": 10, "ready_ns": 8, "edit_ns": 1, "validation_ns": 2,
+                                  "output_digest": "d" * 64}}
+        self.assertEqual(production_sample_row(sample, "tvm", "update", case, "s", "i")["wall_ns"], 10)
+        for key, value in (("edit_sha256", "wrong"), ("benchmark_spec_sha256", "wrong"),
+                           ("initial", None), ("retained_state", "fresh-worker"),
+                           ("final_compiler_identity", {}), ("input_digest", "")):
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                production_sample_row(sample | {key: value}, "tvm", "update", case, "s", "i")
+        for key, value in (("wall_ns", 11), ("ready_ns", 0), ("edit_ns", 9),
+                           ("correct", False), ("model_sha256", "wrong"), ("output_digest", "")):
+            wrong = sample | {"replacement": sample["replacement"] | {key: value}}
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                production_sample_row(wrong, "tvm", "update", case, "s", "i")
+        fresh = sample | {"policy": "rebuild", "initial": None, "retained_state": "fresh-worker"}
+        self.assertEqual(production_sample_row(fresh, "tvm", "rebuild", case, "s", "i")["correct"], "true")
+
+    def test_production_worker_command_preserves_explicit_tool_configuration(self):
+        args = argparse.Namespace(spec=Path("spec"), inputs=Path("inputs"), backend="joggle",
+                                  target_json='{"kind":"llvm"}', onnx_mlir=None,
+                                  edit_json=Path("edit.json"), joggle=Path("custom/joggle"),
+                                  joggle_server=Path("custom/server"), builtin_mods=Path("custom/mods"),
+                                  cc="custom/clang", case_timeout=17)
+        argv = baseline_command(args, "update", "model", Path("model.onnx"))
+        for key in ("edit_json", "joggle", "joggle_server", "builtin_mods", "cc", "case_timeout"):
+            flag = "--" + key.replace("_", "-")
+            self.assertEqual(argv[argv.index(flag) + 1], str(getattr(args, key)))
+
+    def test_native_definition_observation_requires_one_parametric_type(self):
+        for text in ("fx<8,3>", "!extension.fx<8, 3>"):
+            self.assertEqual(definition_result({"types": [text]}),
+                             {"canonical": "fx<8,3>", "storage_bits": 8})
+        for actual in ({}, {"types": True}, {"types": []}, {"types": [3]},
+                       {"types": ["i8"]}, {"types": ["fx<8,3>", "fx<16,7>"]}):
+            with self.subTest(actual=actual), self.assertRaises(ValueError):
+                definition_result(actual)
+
+    @unittest.skipUnless(importlib.util.find_spec("xdsl"), "xDSL is required")
     def test_registered_fixed_point_type_roundtrip_and_bounds(self):
         from io import StringIO
         from xdsl.context import Context
@@ -872,6 +920,7 @@ int main(void) {
                 return "a" * 40 if "rev-parse" in command else b""
             with patch.object(sys, "argv", argv), patch.object(sys, "platform", "darwin"), \
                     patch.object(run_extension_agent, "local_api", side_effect=api), \
+                    patch.object(run_extension_agent, "check_context_policy", return_value={"verified": True}), \
                     patch.object(run_extension_agent, "native_identity", return_value={}), \
                     patch.object(subprocess, "check_output", side_effect=git), \
                     patch.object(subprocess, "run", side_effect=OSError("test oracle unavailable")):
@@ -919,6 +968,7 @@ int main(void) {
             final = {"passed": False, "setup": [], "cases": []}
             with patch.object(sys, "argv", argv), patch.object(sys, "platform", "darwin"), \
                     patch.object(run_extension_agent, "local_api", side_effect=api), \
+                    patch.object(run_extension_agent, "check_context_policy", return_value={"verified": True}), \
                     patch.object(run_extension_agent, "native_identity", return_value={}), \
                     patch.object(subprocess, "check_output", side_effect=git), \
                     patch.object(run_extension_agent, "final_checks", return_value=(final, True, [])):
@@ -929,7 +979,7 @@ int main(void) {
             self.assertEqual(len(record["events"][0]["request_sha256"]), 64)
             with (output / "result.csv").open() as stream:
                 row = next(csv.DictReader(stream))
-            self.assertEqual(row["stop_reason"], "budget")
+            self.assertEqual(row["stop_reason"], "context_budget")
 
     def test_agent_usage_rejects_missing_or_out_of_budget_counts(self):
         response = {"done": True, "model": "test-model", "message": {"content": "{}"},

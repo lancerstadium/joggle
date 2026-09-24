@@ -7,17 +7,20 @@ models. The populations below specify collection targets, not completed runs.
 
 | Figure | Claim | Compared systems | Independent unit | Primary endpoint |
 | --- | --- | --- | --- | --- |
-| 4 | Convenient extension | Joggle, MLIR, xDSL | 24 extension tasks | agent success within budget |
+| 4 | Convenient extension | Joggle, MLIR, xDSL | 12 tasks; two per family | agent success within budget |
 | 5 | Controllable change | Joggle, MLIR, xDSL | 12 matched patches | files, lines, zones, declarations |
-| 6 | Efficient update | Joggle, TVM, ONNX-MLIR; IREE adapter pending | 15 complete models | edit-to-executable time and Update/Full |
+| 6 | Efficient update | Joggle, TVM, ONNX-MLIR | 9 edit sites in 3 complete models | edit-to-executable time and paired Full/Update |
 | 7 | End-to-end performance | Joggle base/opt, ONNX Runtime, TVM, ONNX-MLIR | 24 operators and 15 models | steady-state latency and correct coverage |
 
-The original Figure 4 collection target is 2,880 trajectories; Figure 5 targets
-36 matched patch rows. The five Figure 7 variants allow at most 19,500 valid
+Figure 4 collects 72 trajectories: 12 tasks × three systems × two models,
+one deterministic zero-shot run per condition. Figure 5 targets 36 matched
+patch rows on the same tasks. The five Figure 7 variants allow at most 19,500 valid
 timing rows (39 subjects x 5 variants x 100 repetitions), with unsupported or
-incorrect cases recorded separately. Freeze the Figure 6 edit population and
-native adapters before scheduling its formal collection. Count completed
-subjects from audited run records, not these targets.
+incorrect cases recorded separately. Figure 6's manuscript dataset contains
+540 policy rows: nine edit sites × three systems × ten paired repetitions ×
+two policies. Its source, edit population, revisions, and cache configuration
+are bound by `paper/data/figure-06-update.json` (relative to the repository
+root). Count completed subjects from audited run records, not these targets.
 
 ## Common controls
 
@@ -35,11 +38,12 @@ Record an interrupted or contaminated collection beside its CSV as
 rejects the entire run; recollect it into a new path. Keep its output checks as
 diagnostic evidence, separate from timing evidence.
 
-## External comparator expansion
+## Comparator roles and optional extensions
 
-The comparison separates full compiler-extension tasks from
-operator-scheduling subsets. The following systems are assigned by task,
-not pooled into a single ranking:
+The primary extension comparison is Joggle/MLIR/xDSL; the primary executable
+comparison is Joggle/TVM/ONNX-MLIR, with ONNX Runtime additionally providing
+an execution baseline. The following broader candidates describe optional
+follow-up coverage, not extra members of either frozen primary population:
 
 | Claim | Full-task comparators | Focused subsets |
 | --- | --- | --- |
@@ -81,14 +85,24 @@ analysis, rewrite, conversion, emission, and vertical extension. Two pinned
 small code models drive the same deterministic coding-agent harness. For each
 system, the agent receives the same semantic specification, a compact native
 API card, an isolated workspace, and inspect/edit/build/test tools. Each
-model/system/task condition uses zero or two disjoint demonstrations and ten
-seeded runs under a 30-action and 32k-token budget, yielding 2,880 trajectories.
+model/system/task condition uses one zero-shot run under a 30-action and
+32k-generated-token budget. The execution set is the 12 tasks marked
+`footprint: true` in `extension-specs.json`; no task is selected from agent
+outcomes. Both models use temperature zero, seed 1701, run index zero, no
+demonstrations, and a 32,768-token context. Context overflow terminates the run
+as budget exhaustion; the provider must reject overflow rather than truncate
+the conversation. This yields 72 trajectories. Two-demonstration diagnostics
+are supported by the runner but are excluded from this primary dataset.
 
 Executable success within budget is primary. Successful trajectories report
 completion tokens, tool calls, edit attempts, and wall time. Unsuccessful runs
-report the first terminal phase: parse, type, build, semantic test, or budget.
-Reference-solution log-perplexity is a supplementary interface-predictability
-diagnostic, not a separate experiment.
+report build, execution, observation, or semantic failure, or the exhausted
+action, token, or context budget. The runner does not infer parsing and typing
+phases from diagnostic text; only successful end-to-end execution establishes
+all three success gates. Infrastructure errors are recorded separately and
+are rejected by the primary assembler. Reference-likelihood fields remain
+empty when the provider does not expose scoring; they are not required for
+executable-success measurements.
 
 - Contract: `manifests/extension-specs.json`
 - Task index: `manifests/extension-tasks.csv`

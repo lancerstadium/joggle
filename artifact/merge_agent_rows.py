@@ -20,6 +20,44 @@ def sha256(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def validate_trajectory(path: Path, provider: dict, rows: list[dict[str, str]]) -> None:
+    """Bind a primary measurement to its isolated final oracle and tool record."""
+    if len(rows) != 1:
+        raise SystemExit(f"{path}: expected one trajectory per provider file")
+    row = rows[0]
+    trajectory = Path(provider["trajectory"])
+    if sha256(trajectory) != provider["trajectory_sha256"] or sha256(trajectory) != row["trajectory_sha256"]:
+        raise SystemExit(f"{path}: trajectory digest differs")
+    data = json.loads(trajectory.read_text())
+    if (data.get("schema") != "extension-agent-trajectory/v1" or data.get("dirty")
+            or data.get("identity_stable") is not True or data.get("infrastructure_error")
+            or data.get("options") != {"temperature": 0.0, "num_ctx": 32768}
+            or data.get("context_check", {}).get("verified") is not True
+            or data.get("demonstrations") or data.get("think") is not False):
+        raise SystemExit(f"{path}: trajectory violates the frozen execution protocol")
+    overflow = data["context_check"].get("overflow", {})
+    if (overflow.get("type") != "exceed_context_size_error" or overflow.get("n_ctx") != 32768
+            or type(overflow.get("n_prompt_tokens")) is not int or overflow["n_prompt_tokens"] <= 32768):
+        raise SystemExit(f"{path}: missing native context-budget check")
+    for field in ("task", "system", "task_spec_sha256", "api_card_sha256"):
+        if data[field] != row[field]:
+            raise SystemExit(f"{path}: {field} differs from trajectory")
+    if data["model"]["digest"] != row["model_revision"] or data["model"]["name"] != row["model"]:
+        raise SystemExit(f"{path}: model identity differs")
+    if sha256(trajectory.parent / "candidate.patch") != row["patch_sha256"]:
+        raise SystemExit(f"{path}: patch digest differs")
+    oracle_path = trajectory.parent / "final-oracle.json"
+    if sha256(oracle_path) != data["final_oracle_sha256"]:
+        raise SystemExit(f"{path}: final oracle digest differs")
+    oracle = json.loads(oracle_path.read_text())
+    if (oracle.get("complete_task") is not True
+            or oracle.get("execution_isolation", {}).get("kind") != "macos-seatbelt"
+            or oracle["task"] != row["task"] or oracle["system"] != row["system"]
+            or oracle["task_spec_sha256"] != row["task_spec_sha256"]
+            or (row["passed"] == "true") != oracle["passed"]):
+        raise SystemExit(f"{path}: final oracle does not support the measured result")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("inputs", type=Path, nargs="+")
@@ -41,14 +79,16 @@ def main() -> int:
             reader = csv.DictReader(stream)
             if reader.fieldnames != header:
                 raise SystemExit(f"{path}: columns differ from Figure 4 schema")
-            rows.extend(reader)
+            source_rows = list(reader)
+            rows.extend(source_rows)
         provider = path.with_suffix(".json")
         payload = json.loads(provider.read_text(encoding="utf-8"))
         if (payload.get("schema") != "agent-provider/v1"
                 or payload.get("dirty")
-                or payload.get("release_eligible") is False
+                or payload.get("release_eligible") is not True
                 or payload.get("output_sha256") != sha256(path)):
             raise SystemExit(f"{path}: invalid agent-provider record")
+        validate_trajectory(path, payload, source_rows)
         records.append({
             "path": str(path.resolve()), "sha256": sha256(path),
             "record": str(provider.resolve()), "record_sha256": sha256(provider),

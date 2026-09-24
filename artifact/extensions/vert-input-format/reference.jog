@@ -1,0 +1,228 @@
+mod extension
+use base
+
+local fn letter(c: int) -> bool {
+  return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95
+}
+
+local fn digit(c: int) -> bool { return c >= 48 && c <= 57 }
+
+local fn character(c: int) -> str {
+  let lower = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
+               "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"]
+  let upper = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+               "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"]
+  if digit(c) { return text(c - 48) }
+  if c >= 97 && c <= 122 { return lower[c - 97] }
+  if c >= 65 && c <= 90 { return upper[c - 65] }
+  if c == 95 { return "_" }
+  if c == 37 { return "%" }
+  if c == 60 { return "<" }
+  if c == 62 { return ">" }
+  if c == 43 { return "+" }
+  if c == 45 { return "-" }
+  if c == 46 { return "." }
+  assert(false, "syntax-error")
+  return ""
+}
+
+local fn slice(data: bytes, start: int, end: int) -> str {
+  var result = ""
+  for i in start..end { result += character(byte(data, i)) }
+  return result
+}
+
+local fn token(data: bytes, start: int, end: int) -> dict {
+  var value: dict = {}
+  value["word"] = slice(data, start, end)
+  value["start"] = start
+  value["end"] = end
+  return value
+}
+
+local fn lex(data: bytes) -> list<list<dict>> {
+  var lines: list<list<dict>> = []
+  var tokens: list<dict> = []
+  var start = 0
+  for i in 0..(size(data) + 1) {
+    var c = 10
+    if i < size(data) { c = byte(data, i) }
+    if c == 9 || c == 10 || c == 13 || c == 32 || c == 61 {
+      if i > start { tokens += [token(data, start, i)] }
+      start = i + 1
+      if c == 61 { tokens += [{word: "="}] }
+      if c == 10 || c == 13 {
+        if len(tokens) > 0 { lines += [tokens] }
+        tokens = []
+      }
+    }
+  }
+  return lines
+}
+
+local fn identifier(data: bytes, value: dict) -> str {
+  let start = int(value["start"])
+  let end = int(value["end"])
+  assert(end - start >= 2, "syntax-error")
+  assert(byte(data, start) == 37 && letter(byte(data, start + 1)), "syntax-error")
+  for i in (start + 2)..end {
+    assert(letter(byte(data, i)) || digit(byte(data, i)), "syntax-error")
+  }
+  return "v_" + slice(data, start + 1, end)
+}
+
+local fn tensor_type(data: bytes, value: dict) -> (str, str) {
+  let start = int(value["start"])
+  let end = int(value["end"])
+  assert(end - start >= 10, "syntax-error")
+  assert(slice(data, start, start + 7) == "tensor<" && byte(data, end - 1) == 62, "syntax-error")
+  var dimensions: list<int> = []
+  var part = start + 7
+  var element_start = -1
+  for i in (start + 7)..(end - 1) {
+    if element_start < 0 {
+      let c = byte(data, i)
+      if c == 120 {
+        assert(i > part, "syntax-error")
+        dimensions += [int(ty(slice(data, part, i)))]
+        part = i + 1
+      } else {
+        if !digit(c) { element_start = i }
+      }
+    }
+  }
+  assert(element_start == part, "syntax-error")
+  let element = slice(data, element_start, end - 1)
+  assert(element == "f32" || element == "f64" || element == "i8" ||
+         element == "i16" || element == "i32" || element == "i64", "syntax-error")
+  return "tensor<" + element + ", " + text(dimensions) + ">", element
+}
+
+local fn literal(data: bytes, value: dict, element: str) -> str {
+  let start = int(value["start"])
+  let end = int(value["end"])
+  var first = start
+  let negative = byte(data, first) == 45
+  if negative || byte(data, first) == 43 { first += 1 }
+  assert(first < end, "syntax-error")
+  if element == "i8" || element == "i16" || element == "i32" || element == "i64" {
+    var limit = -9223372036854775807
+    if negative { limit -= 1 }
+    if element == "i8" { limit = -127; if negative { limit = -128 } }
+    if element == "i16" { limit = -32767; if negative { limit = -32768 } }
+    if element == "i32" { limit = -2147483647; if negative { limit = -2147483648 } }
+    var number = 0
+    for i in first..end {
+      let c = byte(data, i)
+      assert(digit(c), "type-error")
+      let d = c - 48
+      assert(number >= (limit + d) / 10, "literal-out-of-range")
+      number = number * 10 - d
+    }
+    if negative { return text(number) }
+    return text(-number)
+  }
+  var digits = 0
+  var exponent_digits = 0
+  var dot = false
+  var exponent = false
+  var sign_allowed = false
+  for i in first..end {
+    let c = byte(data, i)
+    if digit(c) {
+      if exponent { exponent_digits += 1 } else { digits += 1 }
+      sign_allowed = false
+    } else {
+      if c == 46 && !dot && !exponent { dot = true }
+      else {
+        if (c == 101 || c == 69) && !exponent && digits > 0 {
+          exponent = true
+          sign_allowed = true
+        } else {
+          assert((c == 43 || c == 45) && sign_allowed, "syntax-error")
+          sign_allowed = false
+        }
+      }
+    }
+  }
+  assert(digits > 0 && (!exponent || exponent_digits > 0), "syntax-error")
+  var word = slice(data, first, end)
+  if byte(data, first) == 46 { word = "0" + word }
+  if byte(data, end - 1) == 46 { word += "0" }
+  if !dot && !exponent { word += ".0" }
+  if negative { word = "-" + word }
+  return word
+}
+
+fn read(data: bytes) -> str {
+  var values: dict = {}
+  var declarations = ""
+  var parameters = ""
+  var body = ""
+  var result = ""
+  var started = false
+  var returned = false
+  var serial = 0
+  for tokens in lex(data) {
+    assert(!returned, "syntax-error")
+    let head = str(tokens[0]["word"])
+    if head == "input" {
+      assert(len(tokens) == 3 && !started, "syntax-error")
+      let name = identifier(data, tokens[1])
+      assert(!has(values, name), "duplicate-value")
+      let type, element = tensor_type(data, tokens[2])
+      if parameters != "" { parameters += ", " }
+      parameters += name + ": " + type
+      values[name] = type
+    } else {
+      if head == "return" {
+        assert(len(tokens) == 2, "syntax-error")
+        let name = identifier(data, tokens[1])
+        assert(has(values, name), "undefined-value")
+        result = str(values[name])
+        body += "return " + name + "\n"
+        returned = true
+      } else {
+        assert(len(tokens) >= 4 && tokens[1]["word"] == "=", "syntax-error")
+        let name = identifier(data, tokens[0])
+        assert(!has(values, name), "duplicate-value")
+        let operation = str(tokens[2]["word"])
+        var type = ""
+        var operands = ""
+        var signature = ""
+        var primitive = operation
+        if operation == "const" {
+          assert(len(tokens) == 5, "syntax-error")
+          let parsed, element = tensor_type(data, tokens[4])
+          type = parsed
+          body += "[value: " + literal(data, tokens[3], element) + "]\n"
+          primitive = "splat"
+        } else {
+          assert(operation == "add" || operation == "mul" || operation == "relu", "syntax-error")
+          var arity = 2
+          if operation == "relu" { arity = 1 }
+          assert(len(tokens) == arity + 3, "syntax-error")
+          for i in 0..arity {
+            let source = identifier(data, tokens[i + 3])
+            assert(has(values, source), "undefined-value")
+            let source_type = str(values[source])
+            if i == 0 { type = source_type }
+            assert(type == source_type, "type-error")
+            if i > 0 { operands += ", "; signature += ", " }
+            operands += source
+            signature += "a" + text(i) + ": " + type
+          }
+        }
+        let symbol = primitive + "__type" + text(serial)
+        serial += 1
+        declarations += "fn " + symbol + "(" + signature + ") -> " + type + ";\n"
+        body += "let " + name + " = " + symbol + "(" + operands + ")\n"
+        values[name] = type
+        started = true
+      }
+    }
+  }
+  assert(returned, "syntax-error")
+  return "mod imported\nuse tensor\n" + declarations +
+         "fn subject(" + parameters + ") -> " + result + " {\n" + body + "}\n"
+}

@@ -16,10 +16,11 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from run_extension_task import ROOT, SUPPORTED_TASKS, REWRITE_TASKS, DEFINITION_TASKS, digest, case_completed
+from run_extension_task import ROOT, SUPPORTED_TASKS, REWRITE_TASKS, DEFINITION_TASKS, IMPORT_TASKS, COMPOUND_TASKS, digest, case_completed
 
 
 ACTIONS, TOKENS = 30, 32000
+GENERATION_OPTIONS = {"temperature": 0.0, "num_ctx": 32768}
 SUFFIXES = {"Joggle": "jog", "MLIR": "cpp", "xDSL": "py"}
 CARD_NAMES = {"Joggle": "joggle", "MLIR": "mlir", "xDSL": "xdsl"}
 ACTION_SCHEMA = {"type": "object", "properties": {
@@ -69,6 +70,22 @@ def local_api(path: str, payload: dict | None = None) -> dict:
         if detail is not None:
             raise ContextLimitError(detail) from failure
         raise RuntimeError(f"provider HTTP {failure.code}: {body.decode(errors='replace')[:6000]}") from failure
+
+
+def check_context_policy(model: str) -> dict:
+    """Verify that this provider rejects overflow instead of dropping history."""
+    request = {"model": model, "stream": False, "think": False,
+               "truncate": False, "shift": False,
+               "messages": [{"role": "user", "content": "context_probe " * 40000}],
+               "options": {**GENERATION_OPTIONS, "num_predict": 1}}
+    try:
+        local_api("chat", request)
+    except ContextLimitError as error:
+        if error.detail["n_ctx"] != GENERATION_OPTIONS["num_ctx"]:
+            raise ValueError("provider context differs from the experimental budget") from error
+        return {"verified": True, "overflow": error.detail,
+                "request_sha256": hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()}
+    raise ValueError("provider accepted an over-budget prompt; context policy is not enforced")
 
 
 def response_usage(response: dict, model: str, context: int, prediction: int) -> tuple[int, int]:
@@ -121,8 +138,72 @@ def final_checks(oracle, identity_check) -> tuple[dict | None, bool, list[str]]:
     return final, stable, errors
 
 
+def candidate_outcome(report: dict) -> str:
+    """Classify observed outcomes without guessing a compiler phase from stderr."""
+    if any(step["exit_code"] != 0 for step in report["setup"]):
+        return "build"
+    if not report["cases"]:
+        return "observation"
+    for case in report["cases"]:
+        emission = case.get("emission")
+        numerics = case.get("numerics") or {}
+        if emission and emission["exit_code"] != 0:
+            return "execution"
+        if "build" in numerics and numerics["build"]["exit_code"] != 0:
+            return "build"
+        if "run" in numerics and numerics["run"]["exit_code"] != 0:
+            return "execution"
+        if any(run["exit_code"] != 0 for run in numerics.get("runs", [])):
+            return "execution"
+    if any(case.get("timeout") is True or
+           (case["exit_code"] != 0 and not case_completed(case))
+           for case in report["cases"]):
+        return "execution"
+    if any(case["decode_error"] for case in report["cases"]):
+        return "observation"
+    return "success" if report["passed"] else "semantic"
+
+
 def public_case_ids(task: dict) -> list[str]:
     return [cases[0]["id"] for cases in (task["positive_cases"], task["negative_cases"]) if cases]
+
+
+def demonstration_tasks(target: str, policy: dict, tasks: dict) -> list[str]:
+    """Select the same ordered, target-disjoint examples for every native system."""
+    if (not isinstance(policy, dict) or
+            policy.get("schema") != "extension-demonstrations/v1" or
+            policy.get("selection") != "first-task-distinct-from-target-per-slot" or
+            not isinstance(policy.get("slots"), list) or len(policy["slots"]) != 2 or
+            target not in tasks):
+        raise ValueError("invalid demonstration protocol")
+    selected = []
+    for slot in policy["slots"]:
+        if (not isinstance(slot, list) or len(slot) < 2 or
+                any(not isinstance(name, str) or name not in tasks or
+                    name not in SUPPORTED_TASKS for name in slot) or
+                len(set(slot)) != len(slot)):
+            raise ValueError("invalid demonstration slot")
+        name = next(name for name in slot if name != target)
+        if name in selected:
+            raise ValueError("demonstration slots select duplicate tasks")
+        for suffix in SUFFIXES.values():
+            if not (ROOT / "extensions" / name / ("reference." + suffix)).is_file():
+                raise ValueError("demonstration lacks a native reference")
+        selected.append(name)
+    return selected
+
+
+def edit_candidate(candidate: Path, source: str) -> dict:
+    if not isinstance(source, str):
+        raise ValueError("edit requires a source string")
+    content = source.encode("utf-8")
+    changed = candidate.read_bytes() != content
+    if changed:
+        candidate.write_bytes(content)
+    feedback = {"edited": changed, "source_sha256": digest(candidate)}
+    if not changed:
+        feedback["reason"] = "unchanged source; no file modification"
+    return feedback
 
 
 def tool_feedback(report: dict) -> dict:
@@ -130,12 +211,23 @@ def tool_feedback(report: dict) -> dict:
         raise ValueError("only public-fixture reports may enter model feedback")
     def artifact_feedback(case):
         result = case.get("numerics") or {}
+        feedback = {}
+        if case.get("emission"):
+            feedback["emission"] = {key: case["emission"][key][-6000:] if key in ("stdout", "stderr")
+                                    else case["emission"][key] for key in
+                                    ("exit_code", "stdout", "stderr", "timeout")}
         if "build" not in result:
-            return {}
-        return {"artifact": {phase: {key: result[phase][key][-6000:] if key in ("stdout", "stderr")
+            return feedback
+        feedback["artifact"] = {phase: {key: result[phase][key][-6000:] if key in ("stdout", "stderr")
                                      else result[phase][key] for key in
                                      ("exit_code", "stdout", "stderr", "timeout")}
-                             for phase in ("build", "run") if phase in result}}
+                             for phase in ("build", "run") if phase in result}
+        failed_run = next((run for run in result.get("runs", []) if not run["passed"]), None)
+        if failed_run:
+            feedback["artifact"]["run"] = {
+                key: failed_run[key][-6000:] if key in ("stdout", "stderr") else failed_run[key]
+                for key in ("exit_code", "stdout", "stderr", "timeout", "expected", "observed")}
+        return feedback
     return {"build": [{"exit_code": item["exit_code"],
                        "stderr": item["stderr"][-6000:]} for item in report["setup"]],
             "cases": [{key: case[key] for key in ("id", "passed", "actual", "expected",
@@ -145,7 +237,7 @@ def tool_feedback(report: dict) -> dict:
 
 def native_identity(args: argparse.Namespace) -> dict:
     identity = backend_identity(args)
-    if getattr(args, "task", None) == "emit-kernel-wrapper":
+    if getattr(args, "task", None) in {"emit-kernel-wrapper", *COMPOUND_TASKS}:
         compiler = args.cc.resolve(strict=True)
         identity["host_compiler"] = {"path": str(compiler), "sha256": digest(compiler),
                                      "version": subprocess.check_output([str(compiler), "--version"], text=True)}
@@ -179,7 +271,8 @@ def main() -> int:
     parser.add_argument("--task", choices=sorted(SUPPORTED_TASKS), required=True)
     parser.add_argument("--run", type=int, choices=range(10), default=0)
     parser.add_argument("--seed", type=int, required=True)
-    parser.add_argument("--demo", action="append", default=[])
+    parser.add_argument("--demo", action="append", default=[],
+                        help="two ordered tasks from the frozen demonstration protocol; omit for zero-shot")
     parser.add_argument("--output", type=Path, required=True, help="new trajectory directory")
     parser.add_argument("--joggle", type=Path)
     parser.add_argument("--builtin-mods", type=Path)
@@ -211,22 +304,32 @@ def main() -> int:
     system_identity = native_identity(args)
     system_revision = hashlib.sha256(json.dumps(system_identity, sort_keys=True).encode()).hexdigest()
     server_version = local_api("version")
+    context_check = check_context_policy(args.model)
     spec_path = ROOT / "manifests/extension-specs.json"
     spec = json.loads(spec_path.read_text())
     tasks = {task["id"]: task for task in spec["tasks"]}
+    demo_path = ROOT / "manifests/extension-demonstrations.json"
+    try:
+        expected_demos = demonstration_tasks(args.task, json.loads(demo_path.read_text()), tasks)
+    except (ValueError, OSError) as failure:
+        parser.error(str(failure))
+    if args.demo and args.demo != expected_demos:
+        parser.error("demonstration protocol requires this order: " + ", ".join(expected_demos))
     if any(task not in SUPPORTED_TASKS for task in args.demo):
         parser.error("demonstrations must have executable reference implementations")
     task = tasks[args.task]
     card = ROOT / "extensions/api" / (CARD_NAMES[args.system] + ".md")
     suffix = SUFFIXES[args.system]
     starter = ROOT / "extensions" / (
-        ("definition-starter." if args.task in DEFINITION_TASKS else
+        ("compound-starter." if args.task in COMPOUND_TASKS else
+         "import-starter." if args.task in IMPORT_TASKS else
+         "definition-starter." if args.task in DEFINITION_TASKS else
          "rewrite-starter." if args.task in REWRITE_TASKS else "starter.") + suffix)
     source_identity = {str(path.relative_to(ROOT)): digest(path) for path in (
-        Path(__file__).resolve(), ROOT / "run_extension_task.py", spec_path, card, starter,
+        Path(__file__).resolve(), ROOT / "run_extension_task.py", spec_path, demo_path, card, starter,
         ROOT / "extensions/CMakeLists.txt", ROOT / "extensions/mlir-driver.cpp",
         ROOT / "extensions/xdsl-driver.py")}
-    if args.task in REWRITE_TASKS:
+    if args.task in REWRITE_TASKS or args.task in IMPORT_TASKS or args.task in COMPOUND_TASKS:
         for path in (ROOT / "extensions/emit-graph-manifest/reference.jog",
                      ROOT / "extensions/emit-graph-manifest/reference.py"):
             source_identity[str(path.relative_to(ROOT))] = digest(path)
@@ -236,8 +339,10 @@ def main() -> int:
     demos = []
     for name in args.demo:
         source = ROOT / "extensions" / name / ("reference." + suffix)
+        source_identity[str(source.relative_to(ROOT))] = digest(source)
         demos.append({"task": name, "contract": tasks[name]["contract"],
-                      "source": source.read_text(), "source_sha256": digest(source)})
+                      "source": source.read_text(),
+                      "source_sha256": source_identity[str(source.relative_to(ROOT))]})
     root = args.output.resolve()
     root.mkdir(parents=True)
     candidate = root / ("candidate." + suffix)
@@ -259,8 +364,8 @@ def main() -> int:
     infrastructure_error = None
     prompt_tokens = completion_tokens = edits = tool_calls = 0
     submitted = False
-    stop = "budget"
-    options = {"temperature": 0.2, "top_p": 0.95, "top_k": 40, "num_ctx": 32768}
+    stop = "action_budget"
+    options = dict(GENERATION_OPTIONS)
     started = time.perf_counter()
 
     def oracle(name: str, public: bool) -> dict:
@@ -297,6 +402,7 @@ def main() -> int:
     for action_index in range(ACTIONS):
         remaining = TOKENS - completion_tokens
         if remaining <= 0:
+            stop = "token_budget"
             break
         request = {"model": args.model, "messages": messages, "stream": False,
                    "truncate": False, "shift": False,
@@ -312,7 +418,7 @@ def main() -> int:
         except ContextLimitError as failure:
             events.append({"action_index": action_index, "request_sha256": request_hash,
                            "context_limit": failure.detail})
-            stop = "budget"
+            stop = "context_budget"
             break
         except Exception as failure:
             infrastructure_error = f"provider: {type(failure).__name__}: {failure}"
@@ -333,6 +439,7 @@ def main() -> int:
             if kind not in ("inspect", "edit", "test", "finish"):
                 raise ValueError("unknown action")
             if completion_tokens > TOKENS:
+                stop = "token_budget"
                 break
             if kind == "finish":
                 submitted = True
@@ -342,11 +449,8 @@ def main() -> int:
             if kind == "inspect":
                 feedback = {"source": candidate.read_text()}
             elif kind == "edit":
-                if not isinstance(action.get("source"), str):
-                    raise ValueError("edit requires a source string")
-                candidate.write_text(action["source"])
+                feedback = edit_candidate(candidate, action.get("source"))
                 edits += 1
-                feedback = {"edited": True, "source_sha256": digest(candidate)}
             else:
                 try:
                     feedback = tool_feedback(oracle(f"public-{action_index}", public=True))
@@ -362,6 +466,8 @@ def main() -> int:
         messages.append({"role": "user", "content": json.dumps(feedback)})
         (root / "checkpoint.json").write_text(json.dumps({"events": events,
             "messages": messages, "completion_tokens": completion_tokens}, indent=2) + "\n")
+    if stop == "action_budget" and completion_tokens >= TOKENS:
+        stop = "token_budget"
     wall_ms = round((time.perf_counter() - started) * 1000)
     def identity_check() -> bool:
         final_tags = local_api("tags")["models"]
@@ -376,12 +482,12 @@ def main() -> int:
         stop = "agent_error"
     passed = bool(final and final["passed"] and completion_tokens <= TOKENS and identity_stable and
                   not infrastructure_error and stop != "agent_error")
+    outcome = candidate_outcome(final) if final else None
     if passed:
         stop = "success"
     elif stop == "submitted":
-        stop = "build" if any(step["exit_code"] != 0 for step in final["setup"]) else "semantic"
-    gates = bool(final and all(step["exit_code"] == 0 for step in final["setup"]) and any(
-        case_completed(case) for case in final["cases"]))
+        stop = outcome
+    gates = passed
     patch_text = "".join(difflib.unified_diff(starter.read_text().splitlines(keepends=True),
         candidate.read_text().splitlines(keepends=True), fromfile=starter.name,
         tofile="candidate." + suffix))
@@ -394,10 +500,12 @@ def main() -> int:
         "dirty": dirty, "task": args.task, "task_spec_sha256": source_identity[str(spec_path.relative_to(ROOT))],
         "api_card_sha256": source_identity[str(card.relative_to(ROOT))], "seed": args.seed, "run": args.run,
         "options": options, "think": False,
+        "context_check": context_check,
         "context_policy": {"truncate": False, "shift": False, "overflow": "stop-budget"},
         "public_case_ids": public_ids,
         "demonstrations": demos, "messages": messages, "events": events,
         "submitted": submitted, "wall_ms": wall_ms, "final_check_errors": final_errors,
+        "candidate_outcome": outcome,
         "final_oracle_sha256": (digest(root / "final-oracle.json")
                                 if (root / "final-oracle.json").is_file() else None)}
     trajectory = root / "trajectory.json"
@@ -426,7 +534,8 @@ def main() -> int:
     record = {"schema": "agent-provider/v1", "dirty": dirty, "output_sha256": digest(output),
               "trajectory": str(trajectory), "trajectory_sha256": digest(trajectory),
               "reference_scoring": "not-collected", "complete_population": False,
-              "release_eligible": False,
+              "release_eligible": bool(not dirty and identity_stable and final
+                                       and not infrastructure_error and not args.demo),
               "phase_reporting": "successful-execution-only"}
     output.with_suffix(".json").write_text(json.dumps(record, indent=2) + "\n")
     print(json.dumps({"task": args.task, "system": args.system, "passed": passed,

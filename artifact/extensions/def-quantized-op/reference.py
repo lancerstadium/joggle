@@ -42,3 +42,7 @@ class QAdd(IRDLOperation):
 
 def register(context):
     context.load_dialect(Dialect("extension", [QAdd], []))
+
+
+def construct(operands, attributes):
+    return QAdd.construct(*operands, attributes)

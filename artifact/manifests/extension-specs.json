@@ -40,11 +40,20 @@
       "contract": "Define qadd on equal-shape i8 tensors with finite positive input/output scales and signed i32 zero points; the result shape equals the operands and its element type is i8.",
       "positive_cases": [
         {"id": "vector", "input": {"lhs": {"type": "tensor<4xi8>", "scale": 0.5, "zero": 0}, "rhs": {"type": "tensor<4xi8>", "scale": 0.25, "zero": -3}, "output_scale": 0.5, "output_zero": 0}, "expect": {"result": "tensor<4xi8>"}},
-        {"id": "matrix", "input": {"lhs": {"type": "tensor<2x3xi8>", "scale": 0.125, "zero": 2}, "rhs": {"type": "tensor<2x3xi8>", "scale": 0.125, "zero": 2}, "output_scale": 0.25, "output_zero": 1}, "expect": {"result": "tensor<2x3xi8>"}}
+        {"id": "matrix", "input": {"lhs": {"type": "tensor<2x3xi8>", "scale": 0.125, "zero": 2}, "rhs": {"type": "tensor<2x3xi8>", "scale": 0.125, "zero": 2}, "output_scale": 0.25, "output_zero": 1}, "expect": {"result": "tensor<2x3xi8>"}},
+        {"id": "scalar", "input": {"lhs": "tensor<i8>", "rhs": "tensor<i8>", "output_scale": 0.25}, "expect": {"result": "tensor<i8>"}},
+        {"id": "empty-axis", "input": {"lhs": "tensor<0x3xi8>", "rhs": "tensor<0x3xi8>", "output_scale": 0.5}, "expect": {"result": "tensor<0x3xi8>"}},
+        {"id": "signed-zero-point-bounds", "input": {"lhs": {"type": "tensor<1x2x3xi8>", "scale": 0.0625, "zero": -2147483648}, "rhs": {"type": "tensor<1x2x3xi8>", "scale": 2.0, "zero": 2147483647}, "output_scale": 1.0, "output_zero": -2147483648}, "expect": {"result": "tensor<1x2x3xi8>"}}
       ],
       "negative_cases": [
         {"id": "shape-mismatch", "input": {"lhs": "tensor<2x3xi8>", "rhs": "tensor<3x2xi8>", "output_scale": 0.5}, "expect": {"error": "shape-mismatch", "phase": "type"}},
-        {"id": "zero-scale", "input": {"lhs": "tensor<4xi8>", "rhs": "tensor<4xi8>", "output_scale": 0.0}, "expect": {"error": "invalid-scale", "phase": "build"}}
+        {"id": "zero-scale", "input": {"lhs": "tensor<4xi8>", "rhs": "tensor<4xi8>", "output_scale": 0.0}, "expect": {"error": "invalid-scale", "phase": "build"}},
+        {"id": "lhs-zero-scale", "input": {"lhs": {"type": "tensor<4xi8>", "scale": 0.0}, "rhs": "tensor<4xi8>", "output_scale": 1.0}, "expect": {"error": "invalid-scale", "phase": "build"}},
+        {"id": "rhs-negative-scale", "input": {"lhs": "tensor<4xi8>", "rhs": {"type": "tensor<4xi8>", "scale": -0.25}, "output_scale": 1.0}, "expect": {"error": "invalid-scale", "phase": "build"}},
+        {"id": "negative-output-scale", "input": {"lhs": "tensor<4xi8>", "rhs": "tensor<4xi8>", "output_scale": -0.5}, "expect": {"error": "invalid-scale", "phase": "build"}},
+        {"id": "lhs-element", "input": {"lhs": "tensor<4xi16>", "rhs": "tensor<4xi8>", "output_scale": 1.0}, "expect": {"error": "operand-type-mismatch", "phase": "type"}},
+        {"id": "rhs-element", "input": {"lhs": "tensor<4xi8>", "rhs": "tensor<4xi16>", "output_scale": 1.0}, "expect": {"error": "operand-type-mismatch", "phase": "type"}},
+        {"id": "rank-mismatch", "input": {"lhs": "tensor<i8>", "rhs": "tensor<1xi8>", "output_scale": 1.0}, "expect": {"error": "shape-mismatch", "phase": "type"}}
       ],
       "oracle": {"phases": ["parse", "type", "build", "semantic"], "comparison": "exact-json"}
     },
@@ -57,10 +66,17 @@
       "contract": "Define relayout on a rank-four tensor with source and destination layouts drawn from NCHW and NHWC; infer the permuted result shape and retain both layouts through round-trip.",
       "positive_cases": [
         {"id": "to-nhwc", "input": {"type": "tensor<1x3x8x16xf32>", "src": "NCHW", "dst": "NHWC"}, "expect": {"result": "tensor<1x8x16x3xf32>", "permutation": [0, 2, 3, 1]}},
-        {"id": "to-nchw", "input": {"type": "tensor<2x7x9x4xf16>", "src": "NHWC", "dst": "NCHW"}, "expect": {"result": "tensor<2x4x7x9xf16>", "permutation": [0, 3, 1, 2]}}
+        {"id": "to-nchw", "input": {"type": "tensor<2x7x9x4xf16>", "src": "NHWC", "dst": "NCHW"}, "expect": {"result": "tensor<2x4x7x9xf16>", "permutation": [0, 3, 1, 2]}},
+        {"id": "identity-nchw", "input": {"type": "tensor<2x3x4x5xf32>", "src": "NCHW", "dst": "NCHW"}, "expect": {"result": "tensor<2x3x4x5xf32>", "permutation": [0, 1, 2, 3]}},
+        {"id": "identity-nhwc", "input": {"type": "tensor<2x4x5x3xf16>", "src": "NHWC", "dst": "NHWC"}, "expect": {"result": "tensor<2x4x5x3xf16>", "permutation": [0, 1, 2, 3]}},
+        {"id": "empty-axis", "input": {"type": "tensor<1x3x0x16xf32>", "src": "NCHW", "dst": "NHWC"}, "expect": {"result": "tensor<1x0x16x3xf32>", "permutation": [0, 2, 3, 1]}},
+        {"id": "integer-element", "input": {"type": "tensor<1x8x16x3xi8>", "src": "NHWC", "dst": "NCHW"}, "expect": {"result": "tensor<1x3x8x16xi8>", "permutation": [0, 3, 1, 2]}}
       ],
       "negative_cases": [
-        {"id": "wrong-rank", "input": {"type": "tensor<3x8x16xf32>", "src": "NCHW", "dst": "NHWC"}, "expect": {"error": "rank-mismatch", "phase": "type"}}
+        {"id": "wrong-rank", "input": {"type": "tensor<3x8x16xf32>", "src": "NCHW", "dst": "NHWC"}, "expect": {"error": "rank-mismatch", "phase": "type"}},
+        {"id": "scalar-rank", "input": {"type": "tensor<f32>", "src": "NCHW", "dst": "NHWC"}, "expect": {"error": "rank-mismatch", "phase": "type"}},
+        {"id": "invalid-source", "input": {"type": "tensor<1x3x8x16xf32>", "src": "CHWN", "dst": "NHWC"}, "expect": {"error": "invalid-layout", "phase": "build"}},
+        {"id": "invalid-destination", "input": {"type": "tensor<1x3x8x16xf32>", "src": "NCHW", "dst": "HWCN"}, "expect": {"error": "invalid-layout", "phase": "build"}}
       ],
       "oracle": {"phases": ["parse", "type", "build", "semantic"], "comparison": "exact-json"}
     },
@@ -70,14 +86,24 @@
       "title": "Target intrinsic operation",
       "footprint": false,
       "required_roles": ["definition"],
-      "contract": "Define dot4_i8 taking two vector<4xi8> operands and one i32 accumulator and returning i32; reject every other lane count or element type.",
+      "contract": "Define and register dot4_i8 taking two fixed one-dimensional vector<4xi8> operands and one i32 accumulator and returning i32; reject every other operand type, rank, or lane count. Construct the operation with the three supplied operands unchanged. The fixed target semantics are acc + sum(lhs[i] * rhs[i]); the oracle independently interprets the observed registered operation on signed inputs whose sum fits i32. This definition task does not require machine-code lowering.",
       "positive_cases": [
         {"id": "zero-acc", "input": {"lhs": [1, 2, 3, 4], "rhs": [4, 3, 2, 1], "acc": 0}, "expect": {"result": 20, "type": "i32"}},
-        {"id": "negative", "input": {"lhs": [-2, 3, 1, 0], "rhs": [4, -5, 2, 7], "acc": 9}, "expect": {"result": -12, "type": "i32"}}
+        {"id": "negative", "input": {"lhs": [-2, 3, 1, 0], "rhs": [4, -5, 2, 7], "acc": 9}, "expect": {"result": -12, "type": "i32"}},
+        {"id": "accumulator", "input": {"lhs": [0, 0, 0, 0], "rhs": [4, -5, 2, 7], "acc": 37}, "expect": {"result": 37, "type": "i32"}},
+        {"id": "signed-extremes", "input": {"lhs": [-128, 127, -1, 1], "rhs": [127, -128, -1, 1], "acc": 7}, "expect": {"result": -32503, "type": "i32"}}
       ],
       "negative_cases": [
         {"id": "wrong-lanes", "input": {"lhs_type": "vector<8xi8>", "rhs_type": "vector<8xi8>", "acc_type": "i32"}, "expect": {"error": "operand-type-mismatch", "phase": "type"}},
-        {"id": "wrong-element", "input": {"lhs_type": "vector<4xi16>", "rhs_type": "vector<4xi16>", "acc_type": "i32"}, "expect": {"error": "operand-type-mismatch", "phase": "type"}}
+        {"id": "wrong-element", "input": {"lhs_type": "vector<4xi16>", "rhs_type": "vector<4xi16>", "acc_type": "i32"}, "expect": {"error": "operand-type-mismatch", "phase": "type"}},
+        {"id": "lhs-lanes", "input": {"lhs_type": "vector<8xi8>"}, "expect": {"error": "operand-type-mismatch", "phase": "type"}},
+        {"id": "rhs-lanes", "input": {"rhs_type": "vector<8xi8>"}, "expect": {"error": "operand-type-mismatch", "phase": "type"}},
+        {"id": "lhs-element", "input": {"lhs_type": "vector<4xi16>"}, "expect": {"error": "operand-type-mismatch", "phase": "type"}},
+        {"id": "rhs-element", "input": {"rhs_type": "vector<4xi16>"}, "expect": {"error": "operand-type-mismatch", "phase": "type"}},
+        {"id": "acc-width", "input": {"acc_type": "i64"}, "expect": {"error": "operand-type-mismatch", "phase": "type"}},
+        {"id": "rhs-tensor", "input": {"rhs_type": "tensor<4xi8>"}, "expect": {"error": "operand-type-mismatch", "phase": "type"}},
+        {"id": "rhs-rank", "input": {"rhs_type": "vector<2x2xi8>"}, "expect": {"error": "operand-type-mismatch", "phase": "type"}},
+        {"id": "lhs-scalar", "input": {"lhs_type": "i8"}, "expect": {"error": "operand-type-mismatch", "phase": "type"}}
       ],
       "oracle": {"phases": ["parse", "type", "build", "semantic"], "comparison": "exact-json"}
     },
@@ -471,10 +497,13 @@
       "title": "Four-bit numeric format",
       "footprint": true,
       "required_roles": ["definition", "analysis", "conversion", "emission"],
-      "contract": "Add signed qint4 values in [-8,7], packed low nibble first; provide range analysis, lower elementwise add through i8 with saturation, and emit packed bytes.",
+      "contract": "Add signed qint4 values in [-8,7], using two's-complement nibbles packed low nibble first. Provide range analysis, lower equal-length elementwise add through i8, saturate each sum to [-8,7], and emit packed bytes. For an odd element count, set the unused high nibble of the final byte to zero. The reported range is the representable qint4 type range, not the observed output range. Reject source literals outside [-8,7] before addition; do not truncate them into nibbles.",
       "positive_cases": [
         {"id": "odd-count", "input": {"lhs": [-8, -1, 0, 3, 7], "rhs": [1, 1, -2, 6, 7]}, "expect": {"values": [-7, 0, -2, 7, 7], "bytes_hex": "09 7e 07", "range": [-8, 7]}},
-        {"id": "even-count", "input": {"lhs": [2, -3, 4, -5], "rhs": [3, 1, -2, -4]}, "expect": {"values": [5, -2, 2, -8], "bytes_hex": "e5 82", "range": [-8, 7]}}
+        {"id": "even-count", "input": {"lhs": [2, -3, 4, -5], "rhs": [3, 1, -2, -4]}, "expect": {"values": [5, -2, 2, -8], "bytes_hex": "e5 82", "range": [-8, 7]}},
+        {"id": "negative-tail", "input": {"lhs": [-8], "rhs": [-8]}, "expect": {"values": [-8], "bytes_hex": "08", "range": [-8, 7]}},
+        {"id": "saturation-limits", "input": {"lhs": [-8, 7, -8, 7], "rhs": [-8, 7, 7, -8]}, "expect": {"values": [-8, 7, -1, -1], "bytes_hex": "78 ff", "range": [-8, 7]}},
+        {"id": "empty", "input": {"lhs": [], "rhs": []}, "expect": {"values": [], "bytes_hex": "", "range": [-8, 7]}}
       ],
       "negative_cases": [
         {"id": "literal-out-of-range", "input": {"values": [0, 8]}, "expect": {"error": "literal-out-of-range", "phase": "build"}}
@@ -487,10 +516,13 @@
       "title": "Fused quantized convolution",
       "footprint": true,
       "required_roles": ["definition", "analysis", "rewrite", "emission"],
-      "contract": "Add fused_qconv_relu for NHWC i8 convolution, i32 channel bias, requantization, and ReLU; match the unfused single-use chain and emit one manifest node.",
+      "contract": "Add fused_qconv_relu for NHWC signed-i8 input and HWIO signed-i8 weights, with unit stride and dilation, no padding, and zero input/weight zero points. Compute valid cross-correlation with i32 accumulation and per-output-channel i32 bias; fixtures have no i32 overflow. Requantize each biased accumulator as round_ties_to_even(accumulator * scales.acc / scales.out) + output_zero, then clamp to [max(-128, output_zero),127] to implement signed-i8 saturation and real-domain ReLU. Scales are finite and positive, and output_zero is in [-128,127]. Match the qconv -> bias -> requantize -> relu chain only when each intermediate result is single-use; preserve a shared chain. Emit one fused_qconv_relu manifest node for a matched chain and execute the fused semantics on runtime inputs.",
       "positive_cases": [
         {"id": "unit-kernel", "input": {"x": [[[[1, -2]]]], "w": [[[[2], [-3]]]], "bias": [1], "scales": {"acc": 0.25, "out": 0.5}, "output_zero": 0}, "expect": {"values": [[[[4]]]], "node_ops": ["fused_qconv_relu"]}},
-        {"id": "relu-clamp", "input": {"x": [[[[1]]]], "w": [[[[-2]]]], "bias": [0], "scales": {"acc": 0.5, "out": 0.5}, "output_zero": 0}, "expect": {"values": [[[[0]]]], "node_ops": ["fused_qconv_relu"]}}
+        {"id": "relu-clamp", "input": {"x": [[[[1]]]], "w": [[[[-2]]]], "bias": [0], "scales": {"acc": 0.5, "out": 0.5}, "output_zero": 0}, "expect": {"values": [[[[0]]]], "node_ops": ["fused_qconv_relu"]}},
+        {"id": "ties-and-output-zero", "input": {"x": [[[[1]]]], "w": [[[[3, 5]]]], "bias": [0, 0], "scales": {"acc": 0.5, "out": 1.0}, "output_zero": 1}, "expect": {"values": [[[[3, 3]]]], "node_ops": ["fused_qconv_relu"]}},
+        {"id": "saturation-and-real-relu", "input": {"x": [[[[127]]]], "w": [[[[127, -128]]]], "bias": [0, 0], "scales": {"acc": 1.0, "out": 1.0}, "output_zero": -3}, "expect": {"values": [[[[127, -3]]]], "node_ops": ["fused_qconv_relu"]}},
+        {"id": "spatial-kernel", "input": {"x": [[[[1], [2]], [[3], [4]]]], "w": [[[[1]], [[2]]], [[[3]], [[4]]]], "bias": [1], "scales": {"acc": 1.0, "out": 1.0}, "output_zero": 0}, "expect": {"values": [[[[31]]]], "node_ops": ["fused_qconv_relu"]}}
       ],
       "negative_cases": [
         {"id": "shared-conv", "input": {"chain": ["qconv", "bias", "requantize", "relu"], "conv_uses": 2}, "expect": {"matches": []}}

@@ -1,0 +1,6 @@
+mod extension
+use base
+use ir
+
+fn transform(m: Mod) -> bool { return false }
+fn analyze(m: Mod) -> dict { return {} }

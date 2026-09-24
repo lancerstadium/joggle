@@ -51,6 +51,14 @@ python3 artifact/validate_extension_specs.py
 ```
 
 `run_extension_task.py` executes candidate code against the shared contract.
+The primary agent/footprint set consists of the twelve tasks marked
+`footprint: true` in `manifests/extension-specs.json`. Its native references
+cover all three systems, including `def-quantized-op`, `vert-int4`, and
+`vert-fused-op`. Vertical tasks first transform and verify the native SSA
+graph, then emit C that is compiled and checked on runtime inputs. The input
+tensors are not embedded in the compiler fixture. Empty starters must fail the
+complete oracle; a retained negative rewrite case alone is not task completion.
+
 The native tasks include `ana-broadcast-shape`, `ana-storage-cost`,
 `ana-numeric-range`, `ana-fusion-match`, `emit-storage-plan`,
 `emit-target-capability`, `emit-graph-manifest`, `rew-add-zero`, and

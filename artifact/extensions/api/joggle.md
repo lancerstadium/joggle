@@ -1,5 +1,74 @@
 # Joggle extension interface
 
+## Fused quantized convolution entry points
+
+For `vert-fused-op`, implement `fn transform(m: Mod) -> bool` and
+`fn analyze(m: Mod) -> dict`. The second entry receives the verified transformed
+IR. Read shapes through `args(args(ir.type(value))[1])`, then `int` for each
+dimension. Read attributes with `ir.meta`; bind inserted results with
+`ir.rename` before attaching metadata. Construct a dictionary first and assign
+computed values by key; dictionary literals contain attribute literals.
+
+The input is a typed SSA chain `qconv(x,w) → bias(conv,b) → requantize → relu`.
+The qconv operands are NHWC i8 activations and HWIO i8 weights; its result
+and the biased result are i32 tensors. Requantize and ReLU return i8 tensors.
+The qconv attributes are `layout="NHWC"` and `kernel_layout="HWIO"`;
+requantize carries `acc_scale`, `out_scale`, and `output_zero`; ReLU also
+carries `output_zero`. A matching `fused_qconv_relu(x,w,b)` declaration
+is supplied. Fuse only when all three intermediate values have one use.
+Preserve shared chains, output uses, tensor types, and all five fused attributes.
+
+The emission result has exactly `symbol="task_kernel"` and `source`,
+a complete C99 translation unit exporting
+`int task_kernel(const int8_t *x, const int8_t *w, const int32_t *b, int8_t *y)`.
+Arrays are contiguous NHWC, HWIO, channel bias, and NHWC output respectively.
+Return zero on valid inputs; preserve inputs and output boundaries. Specialize
+shapes and quantization metadata, not tensor contents: runtime vectors are
+provided only to the compiled executable. Apply valid cross-correlation with
+unit stride/dilation, no padding, and zero input/weight zero-points. Add i32
+bias, compute `acc * acc_scale / out_scale`, round ties to even, add the
+output zero-point, and clamp to `[output_zero,127]`. The driver selects
+round-to-nearest-even and checks exact signed output bytes against an independent
+integer-accumulation oracle. The shared-chain negative case is checked
+structurally and does not request a fused kernel.
+
+## Signed-int4 vertical entry points
+
+For `vert-int4`, implement `transform(Mod) -> bool` followed by
+`analyze(Mod) -> dict`. The source `subject` takes two rank-one i4 tensors and
+returns the saturated i4 sum and packed i8 bytes. Replace `qint4_add` with the
+declared `sext_i4_i8` calls, `add_i8`, `clamp_i8` (metadata `lower=-8`, `upper=7`),
+and `trunc_i8_i4`; retain `qint4_pack` and both result uses. Bind shared new
+results with `ir.rename` before printing. For `qint4_literal`, validate every
+wide integer in its `values` metadata before truncation.
+
+`analyze` receives the verified lowered IR. Return exactly `range=[-8,7]`,
+`symbol="task_kernel"`, and `source` containing a complete C99 translation unit
+exporting `int task_kernel(const int8_t*, const int8_t*, int8_t*, uint8_t*, size_t)`.
+Arguments are lhs, rhs, unpacked signed results, packed bytes, and element count.
+Return zero on valid inputs; preserve input buffers and output boundaries.
+Count zero uses null pointers. Runtime vectors are not present in the IR;
+the oracle tests every signed-nibble operand pair at each lane.
+
+## Input format entry point
+
+For `vert-input-format`, export `fn read(data: bytes) -> str`. The native CLI
+passes the original input bytes to this function, parses the returned Jog source,
+loads its imports, verifies its IR, and prints it. The oracle then independently
+observes the `subject` graph and checks print/parse/print stability.
+Return actual Jog source, not a JSON report or an asserted success flag.
+The output uses `tensor<element, [dimensions]>` types and typed declarations
+for `splat`, `add`, `mul`, and `relu`; constants carry `value` metadata.
+To represent different signatures in one graph, the reserved spellings
+`splat__typeN`, `add__typeN`, `mul__typeN`, and `relu__typeN` are accepted,
+where N is a nonnegative decimal integer. Types, operand edges, constants,
+and return values must all match the source program.
+
+`base.size(data)` and `base.byte(data, index)` inspect input bytes. Use
+`base.assert(condition, diagnostic)` to reject invalid source. A `splat` value
+is converted to its tensor element type, including f32 rounding; the oracle
+compares this typed value along with the full graph.
+
 ## Native rewrite entry point
 
 For rewrite tasks, use `fn transform(m: Mod) -> bool`, returning whether the
@@ -84,6 +153,32 @@ the metadata. The oracle compiles the source and checks independent-buffer,
 in-place, and zero-count calls, including positive-zero ReLU output.
 
 ## Type definition entry point
+
+For `def-target-intrinsic`, declare `extension.dot4_i8(lhs, rhs, acc)` with
+result `i32` and export `verify(m: Mod) -> bool`. The two vector types use Jog
+spelling `vector<i8, 4>`; a tensor or a multidimensional vector is distinct.
+Inspect all three operand types, the result type, and arity through the graph
+API. The observer requires the original operands and returned result to remain
+connected to the registered call. Numerical fixtures interpret its fixed target
+semantics independently; generated machine code is not required for this task.
+
+For `def-layout-attribute`, declare `extension.relayout(input)` and export
+`verify(Mod) -> bool`. The call carries string metadata `src` and `dst`.
+Infer the result from the native tensor shape and the layout permutation;
+use `ir.type(m, result, type)` and `ir.returns(m, subject, [type])` to install
+that type. The input fixture has no expected output shape. Preserve both
+layout attributes, reject non-rank-four tensors with `rank-mismatch`, and
+reject layouts outside NCHW/NHWC with `invalid-layout`.
+
+For `def-quantized-op`, declare a generic `extension.qadd(lhs, rhs)` whose
+result type is inferred from its first tensor operand, and provide
+`fn verify(m: Mod) -> bool`. The `subject` call carries `lhs_scale`,
+`rhs_scale`, `output_scale` as f64 metadata and `lhs_zero`, `rhs_zero`,
+`output_zero` as signed-i32-range integer metadata. Inspect native operand and
+result types and reject invalid shapes, elements, scales, and zero points.
+The fixed observer checks the two subject operands, return connection,
+inferred result type, and all six attributes after print/reparse. Do not
+return a report dictionary or substitute a precomputed answer.
 
 For `def-parametric-type`, define callable `fn fx<W: int, F: int>() -> Ty`
 and `fn verify(m: Mod) -> bool`. Construct a structural type with

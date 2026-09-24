@@ -17,3 +17,35 @@ fn analyze(m: Mod) -> dict {
   result["types"] = types
   return result
 }
+
+fn qadd(m: Mod) -> dict {
+  return definition(m, "extension.qadd", 2)
+}
+
+fn relayout(m: Mod) -> dict {
+  return definition(m, "extension.relayout", 1)
+}
+
+fn dot4_i8(m: Mod) -> dict {
+  return definition(m, "extension.dot4_i8", 3)
+}
+
+local fn definition(m: Mod, target: str, arity: int) -> dict {
+  let subject = ir.find(m, "subject")
+  let params = ir.params(subject)
+  let ops = ir.ops(subject)
+  assert(len(params) == arity && len(ops) == 2, "unexpected-definition-structure")
+  let call = ops[0]
+  assert(ir.live(ir.resolve(m, call)) && ir.target(m, call) == target && ir.args(call) == params,
+         "unexpected-definition-operands")
+  let outputs = ir.outs(call)
+  assert(len(outputs) == 1 && ir.kind(ops[1]) == "return" && ir.args(ops[1]) == outputs,
+         "unexpected-definition-result")
+  var result: dict = {}
+  var types: list<str> = []
+  for value in params { types += [text(ir.type(value))] }
+  result["inputs"] = types
+  result["result"] = text(ir.type(outputs[0]))
+  result["attributes"] = ir.meta(call)
+  return result
+}

@@ -1,0 +1,7 @@
+mod extension
+use base
+
+fn read(data: bytes) -> str {
+  assert(false, "not-implemented")
+  return ""
+}

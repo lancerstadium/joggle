@@ -1,0 +1,8 @@
+{
+  "schema": "extension-demonstrations/v1",
+  "selection": "first-task-distinct-from-target-per-slot",
+  "slots": [
+    ["ana-storage-cost", "ana-broadcast-shape"],
+    ["rew-add-zero", "rew-redundant-cast"]
+  ]
+}

@@ -1,0 +1,20 @@
+mod extension
+use base
+use ir
+
+fn dot4_i8<A: Ty, B: Ty, C: Ty>(lhs: A, rhs: B, accumulator: C) -> i32;
+
+fn verify(m: Mod) -> bool {
+  let vector = ty("vector", [ty("i8"), ty("4")])
+  for op in ir.ops(ir.find(m, "subject"), ["call"]) {
+    if ir.target(m, op) == "extension.dot4_i8" {
+      let inputs = ir.args(op)
+      let outputs = ir.outs(op)
+      assert(len(inputs) == 3 && len(outputs) == 1, "operand-count-mismatch")
+      assert(ir.type(inputs[0]) == vector && ir.type(inputs[1]) == vector &&
+             ir.type(inputs[2]) == ty("i32"), "operand-type-mismatch")
+      assert(ir.type(outputs[0]) == ty("i32"), "result-type-mismatch")
+    }
+  }
+  return false
+}

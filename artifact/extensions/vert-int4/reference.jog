@@ -1,0 +1,69 @@
+mod extension
+use base
+use ir
+
+fn transform(m: Mod) -> bool {
+  let calls = ir.ops(ir.find(m, "subject"), ["call"])
+  for op in calls {
+    if ir.callee(op) == "qint4_literal" {
+      for value in base.get(ir.meta(op), "values") {
+        assert(kind(value) == "int", "literal-out-of-range")
+        assert(int(value) >= -8 && int(value) <= 7, "literal-out-of-range")
+      }
+    }
+    if ir.callee(op) == "qint4_add" {
+      let inputs = ir.args(op)
+      let outputs = ir.outs(op)
+      assert(len(inputs) == 2 && len(outputs) == 1, "arity-mismatch")
+      let type = ir.type(outputs[0])
+      assert(name(type) == "tensor" && args(type)[0] == ty("i4"), "unsupported-element-type")
+      assert(ir.type(inputs[0]) == type && ir.type(inputs[1]) == type, "shape-mismatch")
+    }
+  }
+  var changed = false
+  for op in calls {
+    if ir.callee(op) == "qint4_add" {
+      let inputs = ir.args(op)
+      let output = ir.outs(op)[0]
+      let type = ir.type(output)
+      let wide = ty("tensor", [ty("i8"), args(type)[1]])
+      let left = ir.call(m, op, ir.find(m, "sext_i4_i8"), [inputs[0]], wide)
+      let right = ir.call(m, op, ir.find(m, "sext_i4_i8"), [inputs[1]], wide)
+      let sum = ir.call(m, op, ir.find(m, "add_i8"), [left, right], wide)
+      let clamped = ir.call(m, op, ir.find(m, "clamp_i8"), [sum], wide)
+      assert(ir.rename(m, clamped, "clamped", ir.key(clamped)), "binding-failed")
+      assert(ir.set(m, ir.def(clamped), "lower", -8), "attribute-write-failed")
+      assert(ir.set(m, ir.def(clamped), "upper", 7), "attribute-write-failed")
+      let result = ir.call(m, op, ir.find(m, "trunc_i8_i4"), [clamped], type)
+      assert(ir.rename(m, result, "qint4_sum", ir.key(result)), "binding-failed")
+      assert(ir.replace(m, output, result), "replace-failed")
+      assert(ir.erase(m, op), "erase-failed")
+      changed = true
+    }
+  }
+  return changed
+}
+
+fn analyze(m: Mod) -> dict {
+  var limits: list<int> = []
+  for op in ir.ops(ir.find(m, "subject"), ["call"]) {
+    if ir.callee(op) == "clamp_i8" {
+      limits += [int(ir.meta(op, "lower")), int(ir.meta(op, "upper"))]
+    }
+  }
+  assert(len(limits) == 2, "expected-lowered-int4")
+  var source = "#include <stdint.h>\n#include <stddef.h>\n"
+  source += "#define LOW (" + text(limits[0]) + ")\n#define HIGH (" + text(limits[1]) + ")\n"
+  source += "int task_kernel(const int8_t *a, const int8_t *b, int8_t *values, uint8_t *packed, size_t n) {\n"
+  source += "  for (size_t i=0; i<n; ++i) if(a[i]<-8 || a[i]>7 || b[i]<-8 || b[i]>7) return 1;\n"
+  source += "  for (size_t i=0; i<n; ++i) {\n"
+  source += "    int sum=(int)a[i]+(int)b[i];\n"
+  source += "    if(sum<LOW) sum=LOW;\n    if(sum>HIGH) sum=HIGH;\n"
+  source += "    values[i]=(int8_t)sum;\n    uint8_t nibble=(uint8_t)((unsigned)sum & 15u);\n"
+  source += "    if((i & 1u)==0) packed[i/2]=nibble; else packed[i/2]|=(uint8_t)(nibble<<4);\n"
+  source += "  }\n  return 0;\n}\n"
+  var result: dict = {symbol: "task_kernel"}
+  result["range"] = limits
+  result["source"] = source
+  return result
+}

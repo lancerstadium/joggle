@@ -28,9 +28,144 @@ SUPPORTED_TASKS = {"ana-broadcast-shape", "ana-storage-cost", "ana-numeric-range
                    "ana-fusion-match", "emit-storage-plan", "emit-target-capability",
                    "emit-graph-manifest", "rew-add-zero", "rew-redundant-cast", "rew-transpose-pair",
                    "con-instruction-select", "con-gelu-expand", "con-quant-expand", "con-layout-legalize",
-                   "rew-conv-bias-relu", "emit-kernel-wrapper", "def-parametric-type"}
+                   "rew-conv-bias-relu", "emit-kernel-wrapper", "def-parametric-type", "def-quantized-op"}
 
-DEFINITION_TASKS = {"def-parametric-type"}
+SUPPORTED_TASKS.update({"def-layout-attribute", "def-target-intrinsic"})
+IMPORT_TASKS = {"vert-input-format"}
+SUPPORTED_TASKS.update(IMPORT_TASKS)
+COMPOUND_TASKS = {"vert-int4", "vert-fused-op"}
+SUPPORTED_TASKS.update(COMPOUND_TASKS)
+DEFINITION_TASKS = {"def-parametric-type", "def-quantized-op", "def-layout-attribute", "def-target-intrinsic"}
+
+
+def layout_definition_fixture(request: dict, system: str) -> str:
+    type = request["type"]
+    src, dst = json.dumps(request["src"]), json.dumps(request["dst"])
+    if system == "Joggle":
+        match = re.fullmatch(r"tensor<((?:\d+x)*)(i\d+|f\d+)>", type)
+        if match is None: raise ValueError("invalid layout fixture tensor type")
+        shape = [int(d) for d in match[1].split("x") if d]
+        return (f"mod fixture\nuse tensor\nuse extension\nfn subject(a: tensor<{match[2]}, {shape}>) -> _ {{\n"
+                f"[src: {src}, dst: {dst}]\nlet y = extension.relayout(a)\nreturn y\n}}\n")
+    return ("module attributes {study.attributes = {src = " + src + ", dst = " + dst + "}} { " +
+            f"func.func @subject(%a: {type}) -> {type} {{ func.return %a : {type} }} }}\n")
+
+
+def layout_definition_result(actual: object, request: dict) -> dict:
+    if not isinstance(actual, dict) or set(actual) != {"inputs", "result", "attributes"}:
+        raise ValueError("invalid layout operation observation")
+    def normalized(value):
+        if not isinstance(value, str):
+            raise ValueError("invalid observed layout type")
+        compact = re.sub(r"\s+", "", value)
+        match = re.fullmatch(r"tensor<(i\d+|f\d+),\[([\d,]*)\]>", compact)
+        return ("tensor<" + "".join(d + "x" for d in match[2].split(",") if d) + match[1] + ">"
+                if match else compact)
+    if (not isinstance(actual["inputs"], list) or len(actual["inputs"]) != 1 or
+            normalized(actual["inputs"][0]) != request["type"] or
+            actual["attributes"] != {key: request[key] for key in ("src", "dst")}):
+        raise ValueError("candidate changed operand or layout attributes")
+    src, dst = actual["attributes"]["src"], actual["attributes"]["dst"]
+    if src not in ("NCHW", "NHWC") or dst not in ("NCHW", "NHWC"):
+        raise ValueError("invalid observed layout")
+    return {"result": normalized(actual["result"]), "permutation": [src.index(axis) for axis in dst]}
+
+
+def quantized_definition_inputs(request: dict) -> tuple[list[str], dict]:
+    operands = [request[name] if isinstance(request[name], dict) else {"type": request[name]}
+                for name in ("lhs", "rhs")]
+    attributes = {name + suffix: operand.get(key, default)
+                  for name, operand in zip(("lhs", "rhs"), operands)
+                  for suffix, key, default in (("_scale", "scale", 1.0), ("_zero", "zero", 0))}
+    attributes.update(output_scale=request["output_scale"], output_zero=request.get("output_zero", 0))
+    return [operand["type"] for operand in operands], attributes
+
+
+def quantized_definition_fixture(request: dict, system: str) -> str:
+    types, attributes = quantized_definition_inputs(request)
+    if system == "Joggle":
+        def jog(type):
+            match = re.fullmatch(r"tensor<((?:\d+x)*)(i\d+|f\d+)>", type)
+            if match is None: raise ValueError("invalid quantized fixture tensor type")
+            shape = [int(d) for d in match[1].split("x") if d]
+            return f"tensor<{match[2]}, {shape}>"
+        lhs, rhs = map(jog, types)
+        attrs = ", ".join(f"{name}: {json.dumps(value, allow_nan=False)}" for name, value in attributes.items())
+        return (f"mod fixture\nuse tensor\nuse extension\nfn subject(a: {lhs}, b: {rhs}) -> {lhs} {{\n"
+                f"[{attrs}]\nlet result = extension.qadd(a, b)\nreturn result\n}}\n")
+    attrs = ", ".join(f"{name} = {value} : " + ("f64" if name.endswith("_scale") else "i32")
+                      for name, value in attributes.items())
+    lhs, rhs = types
+    return ("module attributes {study.attributes = {" + attrs + "}} { " +
+            f"func.func @subject(%a: {lhs}, %b: {rhs}) -> {lhs} {{ func.return %a : {lhs} }} }}\n")
+
+
+def quantized_definition_result(actual: object, request: dict) -> dict:
+    types, attributes = quantized_definition_inputs(request)
+    if not isinstance(actual, dict) or set(actual) != {"inputs", "result", "attributes"}:
+        raise ValueError("invalid quantized operation observation")
+    def normalized(type):
+        if not isinstance(type, str): raise ValueError("invalid observed type")
+        compact = re.sub(r"\s+", "", type)
+        match = re.fullmatch(r"tensor<(i\d+|f\d+),\[([\d,]*)\]>", compact)
+        return ("tensor<" + "".join(d + "x" for d in match[2].split(",") if d) + match[1] + ">"
+                if match else compact)
+    if (not isinstance(actual["inputs"], list) or list(map(normalized, actual["inputs"])) != types or
+            actual["attributes"] != attributes or any(
+                type(actual["attributes"][name]) is not type(value) for name, value in attributes.items())):
+        raise ValueError("candidate changed operands or quantization attributes")
+    return {"result": normalized(actual["result"])}
+
+
+def intrinsic_definition_fixture(request: dict, system: str) -> str:
+    types = [request.get(name, default) for name, default in
+             (("lhs_type", "vector<4xi8>"), ("rhs_type", "vector<4xi8>"), ("acc_type", "i32"))]
+    if system == "Joggle":
+        def jog(value):
+            match = re.fullmatch(r"(vector|tensor)<((?:\d+x)+)(i\d+)>", value)
+            if not match:
+                return value
+            dims = [int(d) for d in match[2].split("x") if d]
+            extent = str(dims[0]) if match[1] == "vector" and len(dims) == 1 else str(dims)
+            return f"{match[1]}<{match[3]}, {extent}>"
+        arguments = ", ".join(f"a{i}: {jog(value)}" for i, value in enumerate(types))
+        return (f"mod fixture\nuse extension\nfn subject({arguments}) -> i32 {{\n"
+                "let result = extension.dot4_i8(a0, a1, a2)\nreturn result\n}\n")
+    arguments = ", ".join(f"%a{i}: {value}" for i, value in enumerate(types))
+    return ("module attributes {study.attributes = {}} { " +
+            f"func.func @subject({arguments}) -> {types[2]} {{ func.return %a2 : {types[2]} }} }}\n")
+
+
+def intrinsic_definition_result(actual: object, request: dict) -> dict:
+    """Interpret the fixed ISA semantics after native construction is observed.
+
+    This is a definition-task semantic oracle, not generated-machine-code timing.
+    Native observers separately require the registered operation to consume the
+    original three arguments and require its sole result to be returned.
+    """
+    if not isinstance(actual, dict) or set(actual) != {"inputs", "result", "attributes"}:
+        raise ValueError("invalid intrinsic operation observation")
+    def normalized(value):
+        if not isinstance(value, str):
+            raise ValueError("invalid intrinsic type")
+        compact = re.sub(r"\s+", "", value)
+        match = re.fullmatch(r"vector<(i\d+),(\d+)>", compact)
+        return f"vector<{match[2]}x{match[1]}>" if match else compact
+    if (not isinstance(actual["inputs"], list) or
+            list(map(normalized, actual["inputs"])) != ["vector<4xi8>", "vector<4xi8>", "i32"] or
+            normalized(actual["result"]) != "i32" or actual["attributes"] != {}):
+        raise ValueError("candidate changed intrinsic signature or attributes")
+    lhs, rhs, accumulator = request["lhs"], request["rhs"], request["acc"]
+    if (not isinstance(lhs, list) or not isinstance(rhs, list) or len(lhs) != 4 or len(rhs) != 4 or
+            any(type(value) is not int or not -128 <= value <= 127 for value in lhs + rhs) or
+            type(accumulator) is not int or not -(1 << 31) <= accumulator < (1 << 31)):
+        raise ValueError("invalid intrinsic test operands")
+    result = accumulator + sum(a * b for a, b in zip(lhs, rhs, strict=True))
+    # The task corpus currently stays within signed i32; overflow semantics
+    # must be specified before adding overflow cases.
+    if not -(1 << 31) <= result < (1 << 31):
+        raise ValueError("intrinsic test result exceeds the defined test domain")
+    return {"result": result, "type": "i32"}
 
 
 def definition_fixture(request: dict, system: str) -> str:
@@ -546,6 +681,294 @@ def fusion_fixture(request: dict, system: str) -> str:
             f"{', '.join([ty] * len(returned))}\n  }}\n}}\n")
 
 
+def qconv_parameters(request: dict) -> dict:
+    """Validate the fused-task contract independently of candidate code.
+
+    Runtime tensors are retained here, never attached to the compiler graph.
+    Shapes and quantization attributes are the emitter's only specialization
+    inputs. The arithmetic oracle below uses Python integers for accumulation.
+    """
+    import numpy as np
+
+    tensors = {}
+    for name, rank, low, high in (("x", 4, -128, 127), ("w", 4, -128, 127),
+                                 ("bias", 1, -(1 << 31), (1 << 31) - 1)):
+        try:
+            value = np.asarray(request[name], dtype=object)
+        except (KeyError, ValueError, TypeError) as failure:
+            raise ValueError("invalid-tensor") from failure
+        if value.ndim != rank or any(extent <= 0 for extent in value.shape):
+            raise ValueError("shape-mismatch")
+        if any(type(item) is not int or not low <= item <= high for item in value.flat):
+            raise ValueError("literal-out-of-range")
+        tensors[name] = value
+    n, h, width, ci = tensors["x"].shape
+    kh, kw, wi, co = tensors["w"].shape
+    if wi != ci or tensors["bias"].shape != (co,) or kh > h or kw > width:
+        raise ValueError("shape-mismatch")
+    scales = request.get("scales", {})
+    if not isinstance(scales, dict):
+        raise ValueError("invalid-scale")
+    for name in ("acc", "out"):
+        value = scales.get(name)
+        if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+            raise ValueError("invalid-scale")
+    zero = request.get("output_zero", 0)
+    if type(zero) is not int or not -128 <= zero <= 127:
+        raise ValueError("invalid-zero-point")
+    return {**tensors, "output_shape": (n, h-kh+1, width-kw+1, co),
+            "acc_scale": float(scales["acc"]), "out_scale": float(scales["out"]),
+            "output_zero": zero}
+
+
+def qconv_reference(request: dict) -> dict:
+    """Valid NHWC/HWIO cross-correlation, RNE, saturation, then real ReLU."""
+    import numpy as np
+
+    p = qconv_parameters(request)
+    x, weights, bias = p["x"], p["w"], p["bias"]
+    output = np.empty(p["output_shape"], dtype=object)
+    kh, kw, ci, _ = weights.shape
+    for n, row, col, channel in np.ndindex(output.shape):
+        accumulator = int(bias[channel])
+        for dy, dx, inner in np.ndindex(kh, kw, ci):
+            accumulator += int(x[n, row+dy, col+dx, inner]) * int(weights[dy, dx, inner, channel])
+        if not -(1 << 31) <= accumulator < (1 << 31):
+            raise ValueError("accumulator-overflow")
+        scaled = accumulator * p["acc_scale"] / p["out_scale"]
+        if math.isnan(scaled):
+            raise ValueError("invalid-requantization")
+        # Clamp before rounding only outside the representable output interval.
+        # This also handles overflow of the floating intermediate without
+        # changing finite ties-to-even behavior inside that interval.
+        zero = p["output_zero"]
+        rounded = 127-zero if scaled >= 127-zero else 0 if scaled <= 0 else round(scaled)
+        output[n, row, col, channel] = max(zero, min(127, rounded+zero))
+    return {"values": output.tolist(), "node_ops": ["fused_qconv_relu"]}
+
+
+def qconv_graph(request: dict, fused: bool = False) -> dict:
+    """Represent the chain and its real SSA fan-out, not a match-count answer."""
+    shared = request.get("conv_uses", 1) != 1
+    fixture = request
+    if "x" not in fixture:
+        if not shared:
+            raise ValueError("missing-runtime-input")
+        # The structural negative case has no runtime vectors in its contract.
+        fixture = {"x": [[[[1, -2]]]], "w": [[[[2], [-3]]]], "bias": [1],
+                   "scales": {"acc": 0.25, "out": 0.5}, "output_zero": 0}
+    p = qconv_parameters(fixture)
+
+    def value(name, element, shape):
+        return {"name": name, "element": element, "shape": list(shape)}
+
+    inputs = [value("x", "i8", p["x"].shape), value("w", "i8", p["w"].shape),
+              value("b", "i32", p["bias"].shape)]
+    convolved = value("conv", "i32", p["output_shape"])
+    biased = value("biased", "i32", p["output_shape"])
+    quantized = value("quantized", "i8", p["output_shape"])
+    output = value("output", "i8", p["output_shape"])
+    layout = {"layout": "NHWC", "kernel_layout": "HWIO"}
+    quant = {key: p[key] for key in ("acc_scale", "out_scale", "output_zero")}
+    nodes = [
+        {"op": "qconv", "inputs": ["x", "w"], "results": [convolved], "attrs": layout},
+        {"op": "bias", "inputs": ["conv", "b"], "results": [biased]},
+        {"op": "requantize", "inputs": ["biased"], "results": [quantized], "attrs": quant},
+        {"op": "relu", "inputs": ["quantized"], "results": [output],
+         "attrs": {"output_zero": p["output_zero"]}}]
+    if fused and not shared:
+        nodes = [{"op": "fused_qconv_relu", "inputs": ["x", "w", "b"],
+                  "results": [output], "attrs": {**layout, **quant}}]
+    return {"inputs": inputs, "nodes": nodes,
+            "outputs": ["output", "conv"] if shared else ["output"],
+            "declarations": [{"op": "fused_qconv_relu", "parameter_types": inputs,
+                              "results": [output]}]}
+
+
+def qint4_reference(request: dict) -> dict:
+    """Independent signed-nibble semantics; inputs are never pre-truncated."""
+    def literals(values):
+        if not isinstance(values, list):
+            raise ValueError("invalid-literals")
+        if any(type(value) is not int or not -8 <= value <= 7 for value in values):
+            raise ValueError("literal-out-of-range")
+        return values
+
+    # Source-literal diagnostics are checked before any arithmetic or packing.
+    if "values" in request:
+        literals(request["values"])
+    lhs, rhs = literals(request.get("lhs")), literals(request.get("rhs"))
+    if len(lhs) != len(rhs):
+        raise ValueError("shape-mismatch")
+    values = [max(-8, min(7, left + right)) for left, right in zip(lhs, rhs)]
+    packed = []
+    for index in range(0, len(values), 2):
+        low = values[index] & 15
+        high = (values[index + 1] & 15) if index + 1 < len(values) else 0
+        packed.append(low | (high << 4))
+    return {"values": values, "bytes_hex": bytes(packed).hex(" "), "range": [-8, 7]}
+
+
+def qint4_graph(request: dict) -> dict:
+    """Build native typed input IR without exposing runtime vectors to emitters.
+
+    Signed qint4 has an i4 representation. Arithmetic extends to i8 before
+    saturation; packing produces bytes, whose bit patterns are unsigned.
+    Invalid source literals remain wide metadata until the extension checks them.
+    """
+    def value(name, element, count):
+        return {"name": name, "element": element, "shape": [count]}
+
+    if "values" in request:
+        count = len(request["values"])
+        return {"inputs": [], "nodes": [
+            {"op": "qint4_literal", "inputs": [],
+             "results": [value("literal", "i4", count)],
+             "attrs": {"values": request["values"]}}], "outputs": ["literal"]}
+    count = len(request["lhs"])
+    lhs, rhs = value("lhs", "i4", count), value("rhs", "i4", len(request["rhs"]))
+    widened = value("wide", "i8", count)
+    summed = value("sum", "i4", count)
+    packed = value("packed", "i8", (count + 1) // 2)
+    return {"inputs": [lhs, rhs], "nodes": [
+        {"op": "qint4_add", "inputs": ["lhs", "rhs"], "results": [summed]},
+        {"op": "qint4_pack", "inputs": ["sum"], "results": [packed]}],
+        "outputs": ["sum", "packed"],
+        "declarations": [
+            {"op": "sext_i4_i8", "parameter_types": [lhs], "results": [widened]},
+            {"op": "add_i8", "parameter_types": [widened, widened], "results": [widened]},
+            {"op": "clamp_i8", "parameter_types": [widened], "results": [widened]},
+            {"op": "trunc_i8_i4", "parameter_types": [widened], "results": [summed]}]}
+
+
+def qint4_lowered_graph(request: dict) -> dict:
+    graph = qint4_graph(request)
+    count = len(request["lhs"])
+    def node(op, operands, name, element, attrs=None):
+        result = {"op": op, "inputs": operands,
+                  "results": [{"name": name, "element": element, "shape": [count]}]}
+        if attrs is not None:
+            result["attrs"] = attrs
+        return result
+    graph["nodes"] = [node("sext_i4_i8", ["lhs"], "left", "i8"),
+                      node("sext_i4_i8", ["rhs"], "right", "i8"),
+                      node("add_i8", ["left", "right"], "wide_sum", "i8"),
+                      node("clamp_i8", ["wide_sum"], "clamped", "i8", {"lower": -8, "upper": 7}),
+                      node("trunc_i8_i4", ["clamped"], "sum", "i4"), graph["nodes"][1]]
+    return graph
+
+
+def input_format_graph(text: str) -> dict:
+    """Independent source oracle for the line-oriented graph import task.
+
+    Keep names and edges, including repeated operands. Native candidates must
+    construct this graph; reporting operation names alone is not sufficient.
+    """
+    identifier = r"%([A-Za-z_][A-Za-z_0-9]*)"
+    tensor_type = r"tensor<((?:\d+x)*)(f32|f64|i8|i16|i32|i64)>"
+    number = r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?"
+    graph = {"inputs": [], "nodes": [], "outputs": []}
+    values = {}
+    returned = False
+
+    def define(name, element, shape):
+        if name in values:
+            raise ValueError("duplicate-value")
+        value = {"name": name, "element": element, "shape": shape}
+        values[name] = value
+        return value
+
+    def lookup(name):
+        if name not in values:
+            raise ValueError("undefined-value")
+        return values[name]
+
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if returned:
+            raise ValueError("syntax-error")
+        match = re.fullmatch(r"input\s+" + identifier + r"\s+" + tensor_type, line)
+        if match:
+            if graph["nodes"]:
+                raise ValueError("syntax-error")
+            name, dims, element = match.groups()
+            graph["inputs"].append(define(name, element, [int(d) for d in dims.split("x") if d]))
+            continue
+        match = re.fullmatch(identifier + r"\s*=\s*const\s+(" + number + r")\s+" + tensor_type, line)
+        if match:
+            name, literal, dims, element = match.groups()
+            if element.startswith("i"):
+                if re.fullmatch(r"[+-]?\d+", literal) is None:
+                    raise ValueError("type-error")
+                value = int(literal)
+                bits = int(element[1:])
+                if not -(1 << (bits - 1)) <= value < (1 << (bits - 1)):
+                    raise ValueError("literal-out-of-range")
+            else:
+                value = float(literal)
+                try:
+                    if element == "f32":
+                        value = struct.unpack("<f", struct.pack("<f", value))[0]
+                except OverflowError as failure:
+                    raise ValueError("literal-out-of-range") from failure
+                if not math.isfinite(value):
+                    raise ValueError("literal-out-of-range")
+            result = define(name, element, [int(d) for d in dims.split("x") if d])
+            graph["nodes"].append({"op": "splat", "inputs": [], "results": [result],
+                                   "attrs": {"value": value}})
+            continue
+        match = re.fullmatch(identifier + r"\s*=\s*(add|mul|relu)\s+(.+)", line)
+        if match:
+            name, operation, arguments = match.groups()
+            operands = arguments.split()
+            if (len(operands) != (1 if operation == "relu" else 2) or
+                    any(re.fullmatch(identifier, operand) is None for operand in operands)):
+                raise ValueError("syntax-error")
+            inputs = [operand[1:] for operand in operands]
+            types = [lookup(operand) for operand in inputs]
+            if any((value["element"], value["shape"]) !=
+                   (types[0]["element"], types[0]["shape"]) for value in types[1:]):
+                raise ValueError("type-error")
+            result = define(name, types[0]["element"], list(types[0]["shape"]))
+            graph["nodes"].append({"op": operation, "inputs": inputs, "results": [result]})
+            continue
+        match = re.fullmatch(r"return\s+" + identifier, line)
+        if match:
+            name = match.group(1)
+            lookup(name)
+            graph["outputs"] = [name]
+            returned = True
+            continue
+        raise ValueError("syntax-error")
+    if not returned:
+        raise ValueError("syntax-error")
+    return graph
+
+
+def imported_graph(actual: dict) -> dict:
+    """Normalize primitive spelling and typed splat semantics, not graph edges."""
+    for node in actual["nodes"]:
+        match = re.fullmatch(r"(splat|add|mul|relu)__type\d+", node["op"])
+        if match:
+            node["op"] = match[1]
+        if node["op"] == "splat" and len(node["results"]) == 1:
+            element = node["results"][0]["type"]["element"]
+            for attribute in node["attrs"]:
+                if attribute[0] == "value" and element == "f32":
+                    value = attribute[1]
+                    if isinstance(value, bool) or not isinstance(value, (int, float)):
+                        raise ValueError("invalid splat constant")
+                    try:
+                        attribute[1] = struct.unpack("<f", struct.pack("<f", value))[0]
+                    except OverflowError as failure:
+                        raise ValueError("literal-out-of-range") from failure
+                    if not math.isfinite(attribute[1]):
+                        raise ValueError("literal-out-of-range")
+    return actual
+
+
 def graph_fixture(request: dict, system: str) -> str:
     """Create typed SSA calls with native attributes, not a serialized request."""
     def tensor(value: dict) -> str:
@@ -703,6 +1126,174 @@ int main(int argc, char **argv) {
 '''
 
 
+QINT4_DRIVER = r'''
+#include <stdint.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+int task_kernel(const int8_t*, const int8_t*, int8_t*, uint8_t*, size_t);
+int main(int argc, char **argv) {
+  if ((argc - 1) % 2) return 2;
+  size_t n = (size_t)(argc - 1) / 2, packed_n = (n + 1) / 2;
+  int8_t *a = malloc(n+2), *b = malloc(n+2), *v = malloc(n+2);
+  int8_t *saved_a = malloc(n+2), *saved_b = malloc(n+2);
+  uint8_t *p = malloc(packed_n+2);
+  if (!a || !b || !v || !p || !saved_a || !saved_b) return 3;
+  for (int probe = 0; probe <= (n ? 256 : 0); ++probe) {
+    memset(a, 85, n+2); memset(b, 85, n+2);
+    memset(v, 85, n+2); memset(p, 165, packed_n+2);
+    for (size_t i = 0; i < n; ++i) {
+      if (!probe) {
+        char *end_a, *end_b;
+        long left = strtol(argv[1+i], &end_a, 10);
+        long right = strtol(argv[1+n+i], &end_b, 10);
+        if (*end_a || *end_b || left < -128 || left > 127 || right < -128 || right > 127) return 4;
+        a[i+1] = (int8_t)left; b[i+1] = (int8_t)right;
+      } else {
+        a[i+1] = (int8_t)(((probe-1)/16 + i) % 16) - 8;
+        b[i+1] = (int8_t)(((probe-1)%16 + 2*i) % 16) - 8;
+      }
+    }
+    memcpy(saved_a, a, n+2); memcpy(saved_b, b, n+2);
+    int status = task_kernel(n ? a+1 : NULL, n ? b+1 : NULL,
+                             n ? v+1 : NULL, n ? p+1 : NULL, n);
+    int guards = v[0] == 85 && v[n+1] == 85 && p[0] == 165 && p[packed_n+1] == 165;
+    int preserved = !memcmp(a, saved_a, n+2) && !memcmp(b, saved_b, n+2);
+    printf("{\"status\":%d,\"guards\":%s,\"inputs_preserved\":%s,\"values\":[",
+           status, guards ? "true":"false", preserved ? "true":"false");
+    for (size_t i = 0; status == 0 && i < n; ++i) printf("%s%d", i ? ",":"", (int)v[i+1]);
+    printf("],\"bytes_hex\":\"");
+    for (size_t i = 0; status == 0 && i < packed_n; ++i) printf("%s%02x", i ? " ":"", (unsigned)p[i+1]);
+    printf("\"}\n");
+  }
+  free(a); free(b); free(v); free(p); free(saved_a); free(saved_b);
+  return 0;
+}
+'''
+
+
+QCONV_DRIVER = r'''
+#include <stdint.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <fenv.h>
+int task_kernel(const int8_t*, const int8_t*, const int32_t*, int8_t*);
+int main(int argc, char **argv) {
+  if (argc < 5 || fesetround(FE_TONEAREST)) return 2;
+  size_t nx=strtoul(argv[1],0,10), nw=strtoul(argv[2],0,10);
+  size_t nb=strtoul(argv[3],0,10), ny=strtoul(argv[4],0,10);
+  if ((size_t)argc != 5+nx+nw+nb) return 2;
+  int8_t *x=malloc(nx+2), *w=malloc(nw+2), *y=malloc(ny+2);
+  int32_t *b=malloc((nb+2)*sizeof(int32_t));
+  if (!x || !w || !y || !b) return 3;
+  memset(x,85,nx+2); memset(w,85,nw+2); memset(y,85,ny+2);
+  for (size_t i=0;i<nb+2;i++) b[i]=123456789;
+  for (size_t i=0;i<nx;i++) x[i+1]=(int8_t)strtol(argv[5+i],0,10);
+  for (size_t i=0;i<nw;i++) w[i+1]=(int8_t)strtol(argv[5+nx+i],0,10);
+  for (size_t i=0;i<nb;i++) b[i+1]=(int32_t)strtol(argv[5+nx+nw+i],0,10);
+  int status=task_kernel(x+1,w+1,b+1,y+1);
+  if (status || x[0]!=85 || x[nx+1]!=85 || w[0]!=85 || w[nw+1]!=85 ||
+      y[0]!=85 || y[ny+1]!=85 || b[0]!=123456789 || b[nb+1]!=123456789) return 4;
+  for (size_t i=0;i<nx;i++) if (x[i+1]!=(int8_t)strtol(argv[5+i],0,10)) return 5;
+  for (size_t i=0;i<nw;i++) if (w[i+1]!=(int8_t)strtol(argv[5+nx+i],0,10)) return 5;
+  for (size_t i=0;i<nb;i++) if (b[i+1]!=(int32_t)strtol(argv[5+nx+nw+i],0,10)) return 5;
+  for (size_t i=0;i<ny;i++) printf("%d ",(int)y[i+1]);
+  free(x); free(w); free(b); free(y);
+  return 0;
+}
+'''
+
+
+def qconv_execution(actual: object, case: dict, work: Path, compiler: Path,
+                    timeout: float, policy: str | None, scratch: Path) -> dict:
+    """Validate emitted kernels on independent runtime vectors, not constants."""
+    import numpy as np
+
+    if (not isinstance(actual, dict) or set(actual) != {"source", "symbol"}
+            or actual["symbol"] != "task_kernel" or not isinstance(actual["source"], str)):
+        return {"passed": False, "error": "invalid fused convolution emission"}
+    root = work / case["id"]
+    root.mkdir()
+    source, driver, binary = root / "kernel.c", root / "driver.c", root / "run"
+    source.write_text(actual["source"])
+    driver.write_text(QCONV_DRIVER)
+    build = execute([compiler, "-std=c99", "-O2", "-fno-fast-math", "-ffp-contract=off",
+                     source, driver, "-lm", "-o", binary], timeout, policy, scratch)
+    result = {"passed": False, "source_sha256": digest(source),
+              "driver_sha256": digest(driver), "build": build, "runs": []}
+    if build["exit_code"] != 0:
+        return result
+    request = case["input"]
+    parameters = qconv_parameters(request)
+    # The source sees shapes/quantization, never these seeded runtime probes.
+    rng = np.random.default_rng(20260924)
+    probes = [request]
+    for _ in range(32):
+        probes.append({**request,
+            "x": rng.integers(-128, 128, size=parameters["x"].shape).tolist(),
+            "w": rng.integers(-128, 128, size=parameters["w"].shape).tolist(),
+            "bias": rng.integers(-256, 257, size=parameters["bias"].shape).tolist()})
+    for probe in probes:
+        p = qconv_parameters(probe)
+        expected = np.asarray(qconv_reference(probe)["values"]).reshape(-1).tolist()
+        arrays = [p[name].reshape(-1).tolist() for name in ("x", "w", "bias")]
+        run = execute([binary, *map(str, [*map(len, arrays), len(expected)]),
+                       *(str(value) for array in arrays for value in array)], timeout, policy, scratch)
+        try:
+            observed = [int(value) for value in run["stdout"].split()]
+        except ValueError:
+            observed = None
+        passed = run["exit_code"] == 0 and observed == expected
+        result["runs"].append({**run, "expected": expected, "observed": observed, "passed": passed})
+        if not passed:
+            return result
+    result.update(passed=True, probes=len(probes), executable_sha256=digest(binary))
+    return result
+
+
+def qint4_execution(actual: object, case: dict, work: Path, compiler: Path,
+                    timeout: float, policy: str | None, scratch: Path) -> dict:
+    """Compile emitted code and exercise every qint4 pair at every lane."""
+    if (not isinstance(actual, dict) or set(actual) != {"range", "source", "symbol"}
+            or actual["range"] != [-8, 7] or actual["symbol"] != "task_kernel"
+            or not isinstance(actual["source"], str)):
+        return {"passed": False, "error": "invalid int4 emission"}
+    root = work / case["id"]
+    root.mkdir()
+    source, driver, binary = root / "kernel.c", root / "driver.c", root / "run"
+    source.write_text(actual["source"])
+    driver.write_text(QINT4_DRIVER)
+    build = execute([compiler, "-std=c99", "-O2", source, driver, "-o", binary],
+                    timeout, policy, scratch)
+    result = {"passed": False, "source_sha256": digest(source),
+              "driver_sha256": digest(driver), "build": build}
+    if build["exit_code"] != 0:
+        return result
+    request = case["input"]
+    expected = qint4_reference(request)
+    count = len(request["lhs"])
+    probes = [request] + [{"lhs": [(pair // 16 + lane) % 16 - 8 for lane in range(count)],
+                           "rhs": [(pair % 16 + 2 * lane) % 16 - 8 for lane in range(count)]}
+                          for pair in range(256) if count]
+    run = execute([binary, *map(str, request["lhs"]), *map(str, request["rhs"])],
+                  timeout, policy, scratch)
+    result["run"] = run
+    try:
+        observations = [json.loads(line) for line in run["stdout"].splitlines()]
+        expected_rows = [{"status": 0, "guards": True, "inputs_preserved": True,
+                          "values": value["values"], "bytes_hex": value["bytes_hex"]}
+                         for value in (qint4_reference(probe) for probe in probes)]
+        result.update({"probes": len(probes), "observations": observations,
+                       "expected": expected,
+                       "passed": run["exit_code"] == 0 and observations == expected_rows})
+    except (ValueError, TypeError) as failure:
+        result["error"] = str(failure)
+    return result
+
+
 def wrapper_execution(actual: object, case: dict, work: Path, compiler: Path,
                       timeout: float, policy: str | None, scratch: Path) -> dict:
     """Compile emitted C separately from the fixed driver; compare observed f32 bits."""
@@ -733,7 +1324,7 @@ def wrapper_execution(actual: object, case: dict, work: Path, compiler: Path,
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--task", choices=sorted(SUPPORTED_TASKS), required=True)
+    parser.add_argument("--task", choices=sorted(SUPPORTED_TASKS | IMPORT_TASKS | COMPOUND_TASKS), required=True)
     parser.add_argument("--case", action="append", default=[],
                         help="run selected public fixtures; omitted for complete task scoring")
     parser.add_argument("--system", choices=("Joggle", "MLIR", "xDSL"), required=True)
@@ -774,15 +1365,23 @@ def main() -> int:
     spec = json.loads(spec_path.read_text())
     spec_hash = digest(spec_path)
     task = next(task for task in spec["tasks"] if task["id"] == args.task)
-    rewriting = args.task in REWRITE_TASKS
+    compound = args.task in COMPOUND_TASKS
+    rewriting = args.task in REWRITE_TASKS or compound
+    importing = args.task in IMPORT_TASKS
     definition = args.task in DEFINITION_TASKS
+    constructor = {
+        "def-quantized-op": (quantized_definition_fixture, quantized_definition_result, "qadd"),
+        "def-layout-attribute": (layout_definition_fixture, layout_definition_result, "relayout"),
+        "def-target-intrinsic": (intrinsic_definition_fixture, intrinsic_definition_result, "dot4_i8"),
+    }.get(args.task)
+    constructing = constructor is not None
     all_cases = task["positive_cases"] + task["negative_cases"]
     if not set(args.case).issubset({case["id"] for case in all_cases}):
         parser.error("--case names a fixture outside the selected task")
     source_hash = digest(args.source)
     harness_files = [Path(__file__).resolve(), ROOT / "extensions/CMakeLists.txt",
                      ROOT / "extensions/mlir-driver.cpp", ROOT / "extensions/xdsl-driver.py"]
-    if rewriting:
+    if rewriting or importing:
         harness_files += [ROOT / "extensions/emit-graph-manifest/reference.jog",
                           ROOT / "extensions/emit-graph-manifest/reference.py"]
     if definition:
@@ -795,12 +1394,12 @@ def main() -> int:
               "setup": [], "cases": [], "passed": False}
     record["complete_task"] = not args.case
     wrapper = args.task == "emit-kernel-wrapper"
-    if wrapper:
+    if wrapper or compound:
         args.cc = args.cc.resolve(strict=True)
         record["compiler_identity"] = {"path": str(args.cc), "sha256": digest(args.cc),
                                        "version": execute([args.cc, "--version"], args.timeout)}
         record["setup"].append(record["compiler_identity"]["version"])
-    if rewriting:
+    if rewriting and not compound:
         import numpy as np
         record["numerical_oracle"] = {"numpy_version": np.__version__,
                                       "comparison": "bitwise-except-explicit-nsz"}
@@ -816,7 +1415,7 @@ def main() -> int:
         policy = sandbox_policy(args, work) if args.isolate else None
         record["execution_isolation"] = {"kind": "macos-seatbelt" if policy else "none",
                                          "policy": policy}
-        if (rewriting and args.system != "Joggle") or (definition and args.system == "xDSL"):
+        if ((rewriting or importing) and args.system != "Joggle") or (definition and args.system == "xDSL") or (constructing and args.system == "MLIR"):
             observer_identity = execute([args.xdsl_python or sys.executable, "-c",
                 "import importlib.metadata,json,sys; print(json.dumps({'python':sys.version,"
                 "'xdsl':importlib.metadata.version('xdsl')}))"], args.timeout, policy, scratch)
@@ -827,14 +1426,15 @@ def main() -> int:
             mod = work / "mods/extension"
             mod.mkdir(parents=True)
             shutil.copyfile(args.source, mod / "module.jog")
-            command = ([args.joggle, "run", "extension.verify"] if definition else
+            command = ([args.joggle, "read", "extension.read"] if importing else
+                       [args.joggle, "run", "extension.verify"] if definition else
                        [args.joggle, "run", "extension.transform"] if rewriting else [args.joggle, "query", "extension.analyze"])
             flags = ["-M", args.builtin_mods, "-M", work / "mods"]
             if definition:
                 observer = work / "mods/observer"
                 observer.mkdir()
                 shutil.copyfile(ROOT / "extensions/definition-observer.jog", observer / "module.jog")
-            if rewriting:
+            if rewriting or importing:
                 observer = work / "mods/observer"
                 observer.mkdir()
                 observer.joinpath("module.jog").write_text(
@@ -845,7 +1445,8 @@ def main() -> int:
                         'ir.kind(op) == "return", "rewrite result contains unsupported control or operations")'))
         elif args.system == "xDSL":
             command = [args.xdsl_python, ROOT / "extensions/xdsl-driver.py", args.source]
-            flags = ["--definition"] if definition else ["--rewrite"] if rewriting else []
+            flags = (["--input-format"] if importing else ["--construct"] if constructing else
+                     ["--definition"] if definition else ["--rewrite"] if rewriting else [])
         else:
             # A candidate must never inherit another candidate's executable.
             # Hash-separated builds also avoid timestamp-resolution races when
@@ -856,15 +1457,21 @@ def main() -> int:
                 "mlir_dir": str(args.mlir_dir.resolve()),
                 "rewrite": rewriting,
                 "definition": definition,
+                "constructing": constructing,
+                "importing": importing,
+                "compound": compound,
             }).encode()).hexdigest()
             build = (work / "build" if args.isolate else
                      args.build_root.resolve() / "mlir" / build_key)
-            for argv in (["cmake", "-S", ROOT / "extensions", "-B", build,
+            configure = ["cmake", "-S", ROOT / "extensions", "-B", build,
                           f"-DMLIR_DIR={args.mlir_dir.resolve()}",
                           f"-DEXTENSION_SOURCE={args.source}",
-                          f"-DEXTENSION_REWRITE={'ON' if rewriting else 'OFF'}",
-                          f"-DEXTENSION_DEFINITION={'ON' if definition else 'OFF'}", "-DCMAKE_BUILD_TYPE=Release"],
-                         ["cmake", "--build", build, "--parallel", "1"]):
+                          f"-DEXTENSION_INPUT_FORMAT={'ON' if importing else 'OFF'}",
+                          f"-DEXTENSION_REWRITE={'ON' if rewriting and not compound else 'OFF'}",
+                          f"-DEXTENSION_COMPOUND={'ON' if compound else 'OFF'}",
+                          f"-DEXTENSION_DEFINITION={'ON' if definition else 'OFF'}",
+                          f"-DEXTENSION_CONSTRUCT={'ON' if constructing else 'OFF'}", "-DCMAKE_BUILD_TYPE=Release"]
+            for argv in (configure, ["cmake", "--build", build, "--parallel", "1"]):
                 step = execute(argv, args.timeout, policy, scratch)
                 record["setup"].append(step)
                 if step["exit_code"] != 0:
@@ -880,7 +1487,14 @@ def main() -> int:
                 path = work / ("input.jog" if args.system == "Joggle" else "input.mlir")
                 # Runtime test vectors are oracle inputs, not emitter metadata.
                 request = {"kernel": case["input"]["kernel"]} if wrapper else case["input"]
-                if definition:
+                if compound:
+                    source = graph_fixture(qconv_graph(request) if args.task == "vert-fused-op"
+                                           else qint4_graph(request), args.system)
+                elif importing:
+                    source = request["text"]
+                elif constructing:
+                    source = constructor[0](request, args.system)
+                elif definition:
                     source = definition_fixture(request, args.system)
                 elif rewriting:
                     source = graph_fixture(rewrite_graph(case["input"]), args.system)
@@ -895,12 +1509,12 @@ def main() -> int:
                     source = "module attributes {study.request = " + native_attr(request) + "} {}\n"
                 path.write_text(source)
                 construction = None
-                if definition and args.system == "Joggle":
+                if definition and not constructing and args.system == "Joggle":
                     construction = execute([args.joggle, "query", "observer.construct", path, *flags],
                                            args.timeout, policy, scratch)
                 step = (construction if construction is not None and construction["exit_code"] != 0 else
                         execute([*command, path, *flags], args.timeout, policy, scratch))
-                if (rewriting or definition) and "error" in case["expect"]:
+                if (rewriting or definition or importing) and "error" in case["expect"]:
                     passed = expected_rejection(step, case["expect"])
                     record["cases"].append({"id": case["id"], "input": case["input"],
                                             "expected": case["expect"], "passed": passed,
@@ -910,15 +1524,20 @@ def main() -> int:
                 error = ""
                 observation = None
                 numerics = None
+                emission = None
                 checked_step = step
-                if (rewriting or (definition and args.system == "Joggle")) and step["exit_code"] == 0:
+                if (rewriting or importing or constructing or (definition and args.system == "Joggle")) and step["exit_code"] == 0:
                     transformed = work / ("transformed.jog" if args.system == "Joggle" else "transformed.mlir")
                     transformed.write_text(step["stdout"])
                     if args.system == "Joggle":
-                        inspect = [args.joggle, "query", "observer.analyze", transformed, *flags]
+                        inspect = [args.joggle, "query", "observer." + constructor[2] if constructing else
+                                   "observer.analyze", transformed, *flags]
                     else:
                         inspect = [args.xdsl_python or sys.executable, ROOT / "extensions/xdsl-driver.py",
-                                   "--inspect", transformed]
+                                   "--inspect-input-format" if importing else
+                                   "--inspect-definition" if constructing else "--inspect", transformed]
+                        if constructing:
+                            inspect.append("extension." + constructor[2])
                     observation = execute(inspect, args.timeout, policy, scratch)
                     checked_step = observation
                     if observation["exit_code"] != 0:
@@ -927,7 +1546,11 @@ def main() -> int:
                     try:
                         actual = json.loads(checked_step["stdout"], parse_constant=invalid_constant)
                         canonical(actual)
-                        if definition:
+                        if importing:
+                            actual = imported_graph(actual)
+                        if constructing:
+                            actual = constructor[1](actual, request)
+                        elif definition:
                             actual = definition_result(actual)
                     except ValueError as failure:
                         actual = None
@@ -937,10 +1560,13 @@ def main() -> int:
                 conversion_check = {"con-gelu-expand": gelu_structure, "con-quant-expand": quant_structure,
                                     "con-layout-legalize": layout_structure}.get(args.task)
                 conversion = conversion_check is not None
-                expected = (case["expect"] if conversion else
+                expected = (graph_manifest(qconv_graph(request, fused=True)) if args.task == "vert-fused-op" else
+                            graph_manifest(qint4_lowered_graph(request)) if compound else
+                            graph_manifest(input_format_graph(request["text"])) if importing else
+                            case["expect"] if conversion else
                             graph_manifest(rewrite_graph(case["input"], case["expect"]["eliminate"]))
                             if rewriting else expected_result(args.task, case))
-                original = graph_manifest(rewrite_graph(case["input"])) if rewriting else None
+                original = graph_manifest(rewrite_graph(case["input"])) if rewriting and not compound else None
                 passed = (step["exit_code"] == 0 and checked_step["exit_code"] == 0 and not error and
                           (conversion_check(actual, original) if conversion else
                            equivalent(actual, expected, task["oracle"]["comparison"] == "numerical",
@@ -948,7 +1574,25 @@ def main() -> int:
                 if wrapper and step["exit_code"] == 0 and not error:
                     numerics = wrapper_execution(actual, case, work, args.cc, args.timeout, policy, scratch)
                     passed = numerics["passed"]
-                if rewriting and passed:
+                if args.task == "def-target-intrinsic" and actual is not None:
+                    numerics = {"boundary": "independent-intrinsic-interpretation",
+                                "passed": passed, "result": actual["result"]}
+                if compound and passed and not (args.task == "vert-fused-op" and "matches" in case["expect"]):
+                    emit = ([args.joggle, "query", "extension.analyze", transformed, *flags]
+                            if args.system == "Joggle" else
+                            [*command, transformed] if args.system == "xDSL" else
+                            [*command, transformed, "--emit"])
+                    emission = execute(emit, args.timeout, policy, scratch)
+                    passed = emission["exit_code"] == 0
+                    if passed:
+                        try:
+                            emitted = json.loads(emission["stdout"], parse_constant=invalid_constant)
+                            execution = qconv_execution if args.task == "vert-fused-op" else qint4_execution
+                            numerics = execution(emitted, case, work, args.cc, args.timeout, policy, scratch)
+                            passed = numerics["passed"]
+                        except (ValueError, TypeError) as failure:
+                            passed, error = False, str(failure)
+                if rewriting and not compound and passed:
                     try:
                         tolerance = GELU_TOLERANCES[case["input"]["element"]] if args.task == "con-gelu-expand" else None
                         feeds = {"v0": case["input"]["lhs"], "v1": case["input"]["rhs"]} if args.task == "con-quant-expand" else None
@@ -959,6 +1603,11 @@ def main() -> int:
                         passed = False
                         error = str(failure)
                 repeat = None
+                if importing and args.system == "Joggle" and step["exit_code"] == 0:
+                    # The native read command already parses, verifies, and
+                    # prints. Reparse that IR without invoking the candidate.
+                    repeat = execute([args.joggle, "check", transformed, *flags], args.timeout, policy, scratch)
+                    passed = passed and repeat["exit_code"] == 0 and repeat["stdout"] == step["stdout"]
                 if task["family"] == "emission" and step["exit_code"] == 0:
                     repeat = execute([*command, path, *flags], args.timeout, policy, scratch)
                     passed = passed and repeat["exit_code"] == 0 and repeat["stdout"] == step["stdout"]
@@ -967,13 +1616,14 @@ def main() -> int:
                                         "expected_sha256": hashlib.sha256(canonical(expected).encode()).hexdigest(),
                                         "passed": passed, "repeat": repeat,
                                         "observation": observation, "numerics": numerics,
+                                        "emission": emission,
                                         "construction": construction,
                                         "decode_error": error, **step})
         record["passed"] = (setup_ok and bool(record["cases"]) and
                             all(case["passed"] for case in record["cases"]) and
                             digest(args.source) == source_hash and
                             digest(spec_path) == spec_hash and
-                            (not wrapper or digest(args.cc) == record["compiler_identity"]["sha256"]) and
+                            (not (wrapper or compound) or digest(args.cc) == record["compiler_identity"]["sha256"]) and
                             all(digest(ROOT / path) == value
                                 for path, value in record["harness_sha256"].items()))
     args.output.parent.mkdir(parents=True, exist_ok=True)
