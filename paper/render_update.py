@@ -10,6 +10,7 @@ import argparse
 import csv
 import hashlib
 import json
+import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -17,12 +18,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Patch
 from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
+from matplotlib.colors import to_rgb
 
 PAPER = Path(__file__).resolve().parent
+sys.path.insert(0, str(PAPER.parent / "artifact" / "figures"))
+from common import COLORS as SYSTEM_COLORS, PERFORMANCE_FONT_SIZE, PERFORMANCE_SIZE, SYSTEM_HATCHES
+
 DATA = PAPER / "data"
 SYSTEMS = ("joggle", "tvm", "onnx-mlir")
 LABELS = ("Joggle", "TVM", "ONNX-MLIR")
-COLORS = ("#087E8B", "#E07A2D", "#2E5AAC")
+COLORS = tuple(SYSTEM_COLORS[system] for system in SYSTEMS)
 MODELS = ("densenet-12", "squeezenet1.1-7", "tiny-yolov3-11")
 NAMES = ("DenseNet-121", "SqueezeNet-1.1", "TinyYOLOv3")
 POLICIES = ("rebuild", "update")
@@ -158,12 +163,13 @@ def summarize(rows, indexed):
 
 
 def render(summary):
-    plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10.5,
+    font = PERFORMANCE_FONT_SIZE
+    plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": font, "font.stretch": "condensed",
                          "pdf.fonttype": 42, "axes.linewidth": .45,
                          "xtick.direction": "in", "ytick.direction": "in",
                          "xtick.top": True, "ytick.right": True,
                          "savefig.bbox": None})
-    fig, axes = plt.subplots(2, 3, figsize=(7.0, 3.6), sharex="col", sharey="row")
+    fig, axes = plt.subplots(2, 3, figsize=PERFORMANCE_SIZE, sharex="col", sharey="row")
     values = [r["rebuild_q75_s"] for r in summary if r["rebuild_q75_s"] != ""]
     ymax = max(values) * 1.6
     for col, (model, name) in enumerate(zip(MODELS, NAMES)):
@@ -175,23 +181,26 @@ def render(summary):
                 if not row["update_correct"] or not row["rebuild_correct"]:
                     for ax in axes[:, col]:
                         ax.text(pos, .03, "×", transform=ax.get_xaxis_transform(),
-                                color=color, ha="center", va="bottom", fontsize=10.5)
+                                color=color, ha="center", va="bottom", fontsize=font)
                     continue
                 for k, policy in enumerate(POLICIES):
                     y = row[f"{policy}_median_s"]
                     ax = axes[0, col]
                     bx = pos + (k - .5) * .115
-                    ax.bar(bx, y - .35, bottom=.35, width=.11, color="white" if k == 0 else color,
-                           edgecolor=color, lw=.45, hatch="////" if k == 0 else None, zorder=3)
+                    face = tuple(.72 + .28 * c for c in to_rgb(color)) if k == 0 else color
+                    ax.bar(bx, y - .35, bottom=.35, width=.11, color=face,
+                           edgecolor="#26333D", lw=.35,
+                           hatch="////" if k == 0 else SYSTEM_HATCHES[system], zorder=3)
                     ax.errorbar(bx, y, yerr=[[y-row[f"{policy}_q25_s"]], [row[f"{policy}_q75_s"]-y]],
                                 fmt="none", ecolor="#26333D", elinewidth=.4, capsize=.6, zorder=4)
                 y = row["speedup_median"]
                 ax = axes[1, col]
-                ax.bar(pos, y, width=.23, color=color, edgecolor="#26333D", lw=.3, zorder=3)
+                ax.bar(pos, y, width=.23, color=color, edgecolor="#26333D", lw=.3,
+                       hatch=SYSTEM_HATCHES[system], zorder=3)
                 ax.errorbar(pos, y, yerr=[[y-row["speedup_q25"]], [row["speedup_q75"]-y]],
                             fmt="none", ecolor="#26333D", elinewidth=.4, capsize=.7, zorder=4)
-        axes[0, col].set_title(f"({chr(97+col)}) {name}", loc="left", fontsize=10.5, pad=2)
-        axes[1, col].set_title(f"({chr(100+col)}) Reuse gain", loc="left", fontsize=10.5, pad=2)
+        axes[0, col].set_title(f"({chr(97+col)}) {name}", loc="left", fontsize=font, pad=2)
+        axes[1, col].set_title(f"({chr(100+col)}) Reuse gain", loc="left", fontsize=font, pad=2)
         axes[0, col].set_yscale("log")
         axes[0, col].set_ylim(.35, ymax)
         axes[0, col].yaxis.set_major_locator(LogLocator(base=10))
@@ -204,18 +213,19 @@ def render(summary):
         axes[1, col].set_xticks(range(3), [e.replace("node-", "").replace("-", "\n") for e in edits])
         for ax in axes[:, col]:
             ax.set_xlim(-.52, 2.52)
-            ax.tick_params(which="both", labelsize=10.5, length=3, pad=2, width=.5)
+            ax.tick_params(which="both", labelsize=font, length=2, pad=1, width=.4)
             ax.tick_params(which="minor", length=.9)
             ax.grid(axis="y", lw=.35, color="#DDE3E8", zorder=0)
-    axes[0, 0].set_ylabel("Ready time (s)", fontsize=10.5, labelpad=1)
-    axes[1, 0].set_ylabel("Rebuild / update ↑", fontsize=10.5, labelpad=1)
-    handles = [Patch(facecolor=c, edgecolor=c, label=s) for s,c in zip(LABELS,COLORS)]
-    handles += [Patch(facecolor="white", edgecolor="#56616C", hatch="////", label="rebuild"),
+    axes[0, 0].set_ylabel("Ready (s) ↓", fontsize=font, labelpad=0)
+    axes[1, 0].set_ylabel("Rebuild / update ↑", fontsize=font, labelpad=0)
+    handles = [Patch(facecolor=c, edgecolor="#26333D", hatch=SYSTEM_HATCHES[system], label=s)
+               for system,s,c in zip(SYSTEMS,LABELS,COLORS)]
+    handles += [Patch(facecolor="#D8DCE2", edgecolor="#56616C", hatch="////", label="rebuild"),
                 Patch(facecolor="#7B8494", label="update")]
-    fig.legend(handles=handles, loc="upper center", ncol=5, frameon=False,
-               fontsize=10.5, columnspacing=.7, handlelength=1, bbox_to_anchor=(.53,1.0))
-    fig.text(.09,.014,"Node ID / edit · n = 10 pairs · whiskers: IQR · × failed",fontsize=10.5)
-    fig.subplots_adjust(left=.09,right=.986,bottom=.20,top=.86,wspace=.15,hspace=.5)
+    fig.legend(handles=handles, loc="upper center", ncol=len(handles), frameon=False,
+               fontsize=font, columnspacing=.7, handlelength=1, handletextpad=.3,
+               labelspacing=.2, bbox_to_anchor=(.53,1.02))
+    fig.subplots_adjust(left=.10,right=.99,bottom=.15,top=.86,wspace=.14,hspace=.40)
     for suffix in ("pdf", "png"):
         fig.savefig(PAPER / f"figures/figure-06-update.{suffix}", dpi=400)
     plt.close(fig)

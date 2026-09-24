@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Audit, export, and plot the complete model population from native run CSVs.
 
-The six-panel layout uses a two-column canvas and 10.5 pt labels, matching
-EuroSys 2027's minimum 10 pt requirement at final printed size.
+The six-panel author-review layout uses a compact single-column canvas.
+See paper/SUBMISSION.md for the separate submission typography check.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 from matplotlib.ticker import LogLocator, MultipleLocator
 
-from common import COLORS, PERFORMANCE_SIZE, configure, read_rows, save
+from common import COLORS, PERFORMANCE_FONT_SIZE, PERFORMANCE_SIZE, configure, read_rows, save
 from figure_07_performance import HATCHES, LABELS, MODEL_LABELS, VARIANTS, plot_variants, summarize
 
 ARTIFACT = Path(__file__).resolve().parents[1]
@@ -94,7 +94,7 @@ def main() -> int:
                         help="Build source-data CSV from matched native model runs; base is optional")
     parser.add_argument("--output", type=Path, default=Path("paper/figures/figure-07-models.pdf"))
     parser.add_argument("--summary", type=Path, default=Path("paper/data/figure-07-models-summary.csv"))
-    parser.add_argument("--font-size", type=float, default=10.5)
+    parser.add_argument("--font-size", type=float, default=PERFORMANCE_FONT_SIZE)
     args = parser.parse_args()
     if args.models:
         assemble(args.models, args.csv)
@@ -132,21 +132,21 @@ def main() -> int:
     font = args.font_size
     if not np.isfinite(font) or font < 3:
         raise ValueError("font size must be finite and at least 3 points")
-    with plt.rc_context({"font.size": font, "savefig.bbox": None,
+    with plt.rc_context({"font.size": font, "savefig.bbox": None, "font.stretch": "condensed",
                          "axes.linewidth": 0.5, "legend.fontsize": font,
                          "xtick.labelsize": font, "ytick.labelsize": font}):
         fig, axes = plt.subplots(2, 3, figsize=PERFORMANCE_SIZE,
                                  sharey=True)
         panels = [
-            ("Dense CNNs", [("densenet-12", "Dense"), ("googlenet-12", "Google"),
+            ("Dense CNNs", [("densenet-12", "Dense"), ("googlenet-12", "Goog."),
                             ("resnet18-v1-7", "Res18")]),
-            ("Mobile CNNs", [("mobilenetv2-7", "MBV2"), ("shufflenet-v2-12", "Shuffle"),
+            ("Mobile CNNs", [("mobilenetv2-7", "MBV2"), ("shufflenet-v2-12", "Shuf."),
                              ("squeezenet1.1-7", "SqNet")]),
-            ("Detectors", [("ssd-mobilenetv1-12", "SSD"), ("tiny-yolov3-11", "YOLOv3"),
-                           ("tinyyolov2-8", "YOLOv2"), ("ultraface-rfb-320", "UFace")]),
-            ("Quantized", [("efficientnet-lite4-11-int8", "Eff-I8"),
-                           ("efficientnet-lite4-11-qdq", "Eff-QDQ"),
-                           ("squeezenet1.0-13-qdq", "Sq-QDQ")]),
+            ("Detectors", [("ssd-mobilenetv1-12", "SSD"), ("tiny-yolov3-11", "Yv3"),
+                           ("tinyyolov2-8", "Yv2"), ("ultraface-rfb-320", "UF")]),
+            ("Quantized", [("efficientnet-lite4-11-int8", "Eff\nI8"),
+                           ("efficientnet-lite4-11-qdq", "Eff\nQDQ"),
+                           ("squeezenet1.0-13-qdq", "Sq\nQDQ")]),
             ("Other models", [("mnist-8", "MNIST"),
                               ("xcit-tiny-12-p8-224-opset17", "XCiT")]),
             ("Aggregate", [("geomean", f"GeoMean\n{len(paired)}/{len(names)} correct")]),
@@ -187,9 +187,7 @@ def main() -> int:
             ax.set_yticks(ticks, [f"{tick:g}" for tick in ticks])
             ax.yaxis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10)))
             ax.set_xlim(-0.6, len(entries) - 0.4)
-            ax.set_xticks(range(len(entries)), [label for _, label in entries],
-                          rotation=35 if len(entries) > 1 else 0,
-                          ha="right" if len(entries) > 1 else "center")
+            ax.set_xticks(range(len(entries)), [label for _, label in entries], ha="center")
             ax.xaxis.set_minor_locator(MultipleLocator(0.5))
             ax.set_title(f"({chr(97 + panel_index)}) {title}", loc="left", pad=2,
                          fontsize=font)
@@ -198,25 +196,24 @@ def main() -> int:
                 spine.set_linewidth(0.5)
             ax.tick_params(axis="both", which="major", direction="in", top=True,
                            right=True, labeltop=False, labelright=False,
-                           labelleft=panel_index % 3 == 0, length=3, width=0.5,
-                           pad=2, labelsize=font)
+                           labelleft=panel_index % 3 == 0, length=2, width=0.4,
+                           pad=1, labelsize=font)
             ax.tick_params(axis="both", which="minor", direction="in", top=True,
                            right=True, length=1.1, width=0.35)
             ax.grid(axis="y", which="major", color="#D9DFE4", linewidth=0.35)
             ax.set_axisbelow(True)
+            if panel_index % 3 == 0:
+                ax.set_ylabel("Time / ORT ↓", fontsize=font, labelpad=0)
         handles = [Patch(facecolor=COLORS[variant], edgecolor="#26333D", linewidth=0.35,
                          hatch=HATCHES[variant],
                          label=LABELS[variant]) for variant in variants]
         handles.append(Line2D([], [], color="#58616B", ls="--", lw=0.75, label="ORT = 1"))
         fig.legend(handles=handles, loc="upper center", ncol=len(handles), frameon=False,
                    handletextpad=0.3, handlelength=1.1, columnspacing=0.8,
-                   bbox_to_anchor=(0.5, 1.0))
-        fig.text(0.012, 0.54, "Latency / ORT ↓ (log)", rotation=90,
-                 va="center", fontsize=font)
-        fig.text(0.09, 0.014, "Median → p95   × invalid   – no reference/aggregate", fontsize=font)
-        fig.subplots_adjust(left=0.09, right=0.986,
-                            top=0.86, bottom=0.20,
-                            wspace=0.17, hspace=0.86)
+                   labelspacing=0.2, bbox_to_anchor=(0.53, 1.02))
+        fig.subplots_adjust(left=0.10, right=0.99,
+                            top=0.86, bottom=0.15,
+                            wspace=0.14, hspace=0.65)
         save(fig, args.output)
         plt.close(fig)
     print(json.dumps(aggregate, indent=2))

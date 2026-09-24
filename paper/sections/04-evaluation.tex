@@ -153,18 +153,19 @@ Prepare time falls from 29.854\,s to 1.298\,s; total lowering falls from
 while emission and native compilation remain stable. The supplement reports
 all 27 edit/system combinations and the phase medians.
 
-\begin{figure*}[tp]
+\begin{figure}[tp]
   \centering
-  \includegraphics[width=\textwidth]{figures/figure-06-update.pdf}
-  \caption{Repeated model edits: absolute ready time (top) and paired
-  rebuild/update speedup (bottom). Ten repetitions per edit; bars show medians,
-  whiskers IQR, and $\times$ failed compilation.}
+  \includegraphics[width=\columnwidth]{figures/figure-06-update.pdf}
+  \caption{Repeated model edits: ready time (top, log scale) and paired
+  rebuild/update speedup (bottom). Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3.
+  Ticks identify edited nodes and operators. Ten repetitions per edit; bars
+  show medians, whiskers IQR, and $\times$ failed compilation.}
   \Description{Six boxed panels compare three systems at nine edit sites.
   Top panels show absolute time on a logarithmic axis. Bottom panels show
   paired reuse speedup on a linear axis. Joggle reuses preparation work;
   baseline update times remain close to their rebuild times.}
   \label{fig:update-results}
-\end{figure*}
+\end{figure}
 
 The production endpoint is a bound executable for the edited model.
 Update-to-ready time starts immediately before applying the edit and includes
@@ -224,17 +225,18 @@ confidence intervals. Figure~\ref{fig:model-performance} uses the same encoding.
 Cases that fail compilation or numerical validation remain in the coverage
 denominator but contribute no latency ratio.
 
-\begin{figure*}[tp]
+\begin{figure}[tp]
   \centering
-  \includegraphics[width=\textwidth]{figures/figure-07-performance.pdf}
+  \includegraphics[width=\columnwidth]{figures/figure-07-performance.pdf}
   \caption{Operator latency / ORT (log scale). Bars span parity to median;
   whiskers reach p95 over 100 samples. Correct: Joggle/ORT 24/24;
-  TVM/ONNX-MLIR 22/24. $\times$ marks invalid candidates.}
+  TVM/ONNX-MLIR 22/24. $\times$ marks invalid candidates.
+  DW/PW: depthwise/pointwise; MM: matmul; B/R: bias/ReLU.}
   \Description{Six aligned small multiples compare the base and optimized
   Joggle paths, TVM, and ONNX-MLIR on four operators per family, with a common logarithmic
   scale and an ONNX Runtime reference line at one.}
   \label{fig:performance}
-\end{figure*}
+\end{figure}
 
 \begin{table}[t]
   \caption{Operator summary. Geometric means use all 24 or the common 22
@@ -293,9 +295,9 @@ from coverage: a failed candidate is marked $\times$, and a correct candidate
 without a valid ORT reference is marked with a dash. Absolute medians and p95
 values for every correct candidate remain in the accompanying CSV.
 
-\begin{figure*}[tp]
+\begin{figure}[tp]
   \centering
-  \includegraphics[width=\textwidth]{figures/figure-07-models.pdf}
+  \includegraphics[width=\columnwidth]{figures/figure-07-models.pdf}
   \caption{Model latency / ORT; medians and p95 over 100 samples.
   $\times$: invalid candidate; dash: invalid reference. Panel (f): eight jointly
   correct models. Coverage: Joggle 14/15, ORT 13/15, TVM/ONNX-MLIR 11/15.}
@@ -305,7 +307,7 @@ values for every correct candidate remain in the accompanying CSV.
   symbols. On the eight-model common set, Joggle is faster than TVM and slower
   than ONNX-MLIR and ORT.}
   \label{fig:model-performance}
-\end{figure*}
+\end{figure}
 
 The execution measurements establish the cost and coverage of the emitted
 artifacts. Paired update measurements separately identify compilation work

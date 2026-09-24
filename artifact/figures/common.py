@@ -29,8 +29,10 @@ COLORS = {
     "onnx-mlir-llvm": "#2E5AAC",
 }
 
-# Shared two-column size; labels are set at final printed size.
-PERFORMANCE_SIZE = (7.0, 3.6)
+# Compact author-review layout; see paper/SUBMISSION.md for submission typography.
+PERFORMANCE_SIZE = (3.33, 2.25)
+PERFORMANCE_FONT_SIZE = 5.5
+SYSTEM_HATCHES = {"joggle": None, "tvm": "..", "onnx-mlir": "\\\\"}
 
 
 def configure() -> None:

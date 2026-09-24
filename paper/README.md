@@ -776,9 +776,10 @@ SqueezeNet and TinyYOLOv3 show the same pattern: preparation contracts, while
 emission and native compilation remain stable. The supplement reports all 27
 edit/system combinations and the phase medians.
 
-*Figure 7: Repeated model edits: absolute ready time (top) and paired
-rebuild/update speedup (bottom). Ten repetitions per edit; bars show medians,
-whiskers IQR, and × failed compilation.*
+*Figure 7: Repeated model edits: ready time (top, log scale) and paired
+rebuild/update speedup (bottom). Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3.
+Ticks identify edited nodes and operators. Ten repetitions per edit; bars
+show medians, whiskers IQR, and × failed compilation.*
 
 The production endpoint is a bound executable for the edited model.
 Update-to-ready time starts immediately before applying the edit and includes
@@ -818,12 +819,15 @@ scalarization, model-wide storage planning, emission, native compilation, and
 binding for the replacement executable. The matched rebuild uses the identical
 pipeline with an empty body cache.
 
-<!-- UPDATE-RESULTS FIGURE — Two-column 3×2 vertical-bar panels at
-7.0×3.6 inches with 10.5 pt labels. Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3. Top:
+<!-- UPDATE-RESULTS FIGURE — Single-column vertical bars, two rows by three columns,
+3.33×2.25 inches with 5.5 pt labels. Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3. Top:
 absolute ready time for three edit sites, grouped by system and policy; log
-axis, hatched rebuild and solid update. Bottom: paired rebuild/update speedup
+axis, hatched rebuild and full-color update. Bottom: paired rebuild/update speedup
 at the same edit sites; linear axis and parity at one. Teal Joggle, amber TVM,
-blue ONNX-MLIR; four-sided inward ticks, IQR whiskers, explicit × for
+blue ONNX-MLIR, with the same system hatches as Figures 8–9. Use lighter
+hatched rebuild bars and full-color update bars. Tight axis-label padding,
+horizontal multiline edit labels, and compact row spacing enlarge the plot
+areas without changing the canvas. Four-sided inward ticks, IQR whiskers, explicit × for
 unsupported cases. Ten paired repetitions per edit. CSV and provenance:
 paper/data/figure-06-update.*; script: paper/render_update.py. -->
 
@@ -849,8 +853,11 @@ fail compilation or numerical validation remain in the coverage denominator
 but contribute no latency ratio.
 
 <!-- PERFORMANCE FIGURE PROMPT — Render from measured CSV using
-artifact/figures/figure_07_performance.py. Compact two-column figure with
-7.0×3.6-inch canvas and 10.5 pt labels. Six panels, two rows by three columns: elementwise, reduction, matmul,
+artifact/figures/figure_07_performance.py. Compact single-column figure with
+3.33×2.25-inch canvas and 5.5 pt DejaVu Sans Condensed labels. Use compact
+horizontal multiline case labels and axis-attached y labels rather than
+distant figure-level text.
+Six panels, two rows by three columns: elementwise, reduction, matmul,
 convolution, quantization, fusion.
 Every panel contains four operators and grouped base/optimized/TVM/ONNX-MLIR bars. Shared
 logarithmic y axis, one legend, ORT=1 dashed line, median-to-p95 whiskers,
@@ -865,7 +872,8 @@ No generated pixels or illustrative numbers for data. -->
 
 *Figure 8: Operator latency / ORT (log scale). Bars span parity to median;
 whiskers reach p95 over 100 samples. Correct: Joggle/ORT 24/24;
-TVM/ONNX-MLIR 22/24. × marks invalid candidates.*
+TVM/ONNX-MLIR 22/24. × marks invalid candidates. DW/PW: depthwise/pointwise;
+MM: matmul; B/R: bias/ReLU.*
 
 | Operator-suite measure | Base | Optimized | TVM | ONNX-MLIR |
 | --- | ---: | ---: | ---: | ---: |
@@ -914,7 +922,7 @@ is marked ×, and a correct candidate without a valid ORT reference is marked
 with a dash. Absolute medians and p95 values for every correct candidate remain
 in the accompanying CSV.
 
-<!-- FIGURE 9 DATA — Two-column 7.0×3.6-inch paired bar plot, 10.5 pt labels, two rows by
+<!-- FIGURE 9 DATA — Single-column 3.33×2.25-inch paired bar plot, 5.5 pt labels, two rows by
 three columns. Five panels contain all 15 models grouped as dense CNNs,
 mobile CNNs, detectors, quantized models, and other models; the sixth gives
 the four-system common-set geometric means. Shared logarithmic latency/ORT
