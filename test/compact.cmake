@@ -17,7 +17,7 @@ joggle_run("compact selection failed"
   ERROR_VARIABLE error)
 file(READ "${selected}" text)
 string(REGEX MATCHALL
-       "opt.instance: \\{\"fn\": \"compact.nn.conv2d\""
+       "opt.instance: \\{[^\n]*\"fn\": \"compact.nn.conv2d\""
        instances "${text}")
 list(LENGTH instances instance_count)
 if(NOT instance_count EQUAL 1)

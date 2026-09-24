@@ -55,6 +55,31 @@ local fn choose(
   return selected
 }
 
+// Bind/expand may add functions but do not rename the supplied implementations.
+// Keep only positions here: overload compatibility is checked at each call.
+local fn implementation_index(impls: list<Fn>) -> dict {
+  var index: dict = {}
+  for i in 0..len(impls) {
+    let name = ir.name(impls[i])
+    let symbol = ir.symbol(impls[i])
+    index[name] = base.get(index, name, []) + [i]
+    if symbol != name {
+      index[symbol] = base.get(index, symbol, []) + [i]
+    }
+  }
+  return index
+}
+
+local fn indexed_implementations(
+  impls: list<Fn>, index: dict, symbol: str
+) -> list<Fn> {
+  var out: list<Fn> = []
+  for position in base.get(index, symbol, []) {
+    out += [impls[int(position)]]
+  }
+  return out
+}
+
 local fn apply_with(
   m: Mod, impls: list<Fn>, policies: list<Fn>,
   config: dict, configured: bool, limit: int
@@ -63,6 +88,7 @@ local fn apply_with(
   var changed = false
   var again = true
   var exceeded = false
+  let index = implementation_index(impls)
   for round in 0..(limit + 1) {
     if again {
       var calls: list<Op> = []
@@ -72,7 +98,9 @@ local fn apply_with(
       for op in ir.ops(m, ["call"]) {
         if ir.live(op) && len(ir.meta(op)) == 0 {
           let selected = ir.match(
-            op, choose(m, op, impls, policies, config, configured)
+            op, choose(m, op,
+                       indexed_implementations(impls, index, ir.target(m, op)),
+                       policies, config, configured)
           )
           if ir.live(selected) && selected != ir.resolve(m, op) {
             if len(ir.blks(selected)) == 0 {

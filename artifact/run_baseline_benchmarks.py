@@ -212,6 +212,7 @@ def checked_native_build(factory, model: bytes, feeds: dict, names: list[str],
             "edit_ns": edited - started if edit is not None else 0,
             "validation_ns": elapsed - (ready - started),
             "stages_ns": runner.stages_ns,
+            "lowering_profile": getattr(runner, "lowering_profile", None),
             "model_sha256": sha256(model),
             "output_digest": output_digest(names, outputs), **comparison,
         }
@@ -228,6 +229,7 @@ def production_identity(args: argparse.Namespace) -> dict[str, Any]:
         from run_joggle_benchmarks import compiler_identity
         backend = compiler_identity(args)
         backend["server_sha256"] = sha256(args.joggle_server.read_bytes())
+        backend["prepared_reuse"] = args.joggle_reuse
         backend["constant_storage"] = "external-immutable-bytes; owned-per-executable"
         compiler = Path(shutil.which(args.cc) or args.cc).resolve(strict=True)
         backend["host_compiler"] = {
@@ -250,7 +252,7 @@ def production_identity(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def production_update(args: argparse.Namespace) -> dict[str, Any]:
-    """One full or resident-runtime rebuild; no synthetic incremental cache."""
+    """One complete edited build with explicitly identified retained state."""
     import onnx
     from benchmark_backends import ONNXMLIRRunner, TVMRunner, JoggleCompiler, JoggleRunner
 
@@ -263,6 +265,8 @@ def production_update(args: argparse.Namespace) -> dict[str, Any]:
         factory = lambda model, inputs: JoggleRunner(model, inputs, resident,
             args.joggle, args.builtin_mods, args.cc, args.case_timeout)
         retained = "resident-env-and-evaluator-plans; fresh-source-graph"
+        if args.joggle_reuse == "prepared":
+            retained = "resident-env-and-evaluator-plans-and-prepared-bodies; fresh-source-graph"
     elif args.backend == "tvm":
         import tvm  # Initialize libraries before either timing boundary.
         from tvm.relax.frontend.onnx import from_onnx  # noqa: F401
@@ -301,7 +305,8 @@ def production_update(args: argparse.Namespace) -> dict[str, Any]:
     try:
         setup_started = time.perf_counter_ns()
         if args.backend == "joggle":
-            resident = JoggleCompiler(args.joggle_server, args.builtin_mods, args.case_timeout)
+            resident = JoggleCompiler(args.joggle_server, args.builtin_mods, args.case_timeout,
+                                      args.joggle_reuse)
         setup_ns = time.perf_counter_ns() - setup_started
         initial = build(original, args.model) if args.worker == "update" else None
         with tempfile.TemporaryDirectory(prefix="joggle-edited-reference-") as directory:
@@ -415,7 +420,7 @@ def command(
     if args.onnx_mlir:
         argv.extend(["--onnx-mlir", str(args.onnx_mlir)])
     if kind in {"update", "rebuild"}:
-        for key in ("edit_json", "joggle", "joggle_server", "builtin_mods", "cc", "case_timeout"):
+        for key in ("edit_json", "joggle", "joggle_server", "joggle_reuse", "builtin_mods", "cc", "case_timeout"):
             argv.extend(["--" + key.replace("_", "-"), str(getattr(args, key))])
     return argv
 
@@ -530,6 +535,17 @@ def production_sample_row(sample: dict, backend: str, policy: str, case: dict,
             raise ValueError("update sample lacks a validated original build")
     elif initial is not None or sample.get("retained_state") != "fresh-worker":
         raise ValueError("rebuild sample is not a fresh worker")
+    if backend == "joggle":
+        compiler = sample["compiler_identity"].get("backend")
+        if not isinstance(compiler, dict):
+            raise ValueError("invalid Joggle compiler identity")
+        reuse = compiler.get("prepared_reuse", "none")
+        if reuse not in {"none", "prepared"}:
+            raise ValueError("unknown Joggle reuse configuration")
+        retained = ("resident-env-and-evaluator-plans-and-prepared-bodies; fresh-source-graph"
+                    if reuse == "prepared" else "resident-env-and-evaluator-plans; fresh-source-graph")
+        if policy == "update" and sample["retained_state"] != retained:
+            raise ValueError("retained state differs from compiler reuse configuration")
     result = sample.get("replacement")
     if (not isinstance(result, dict) or result.get("correct") is not True or
             result.get("model_sha256") != case["replacement_sha256"]):
@@ -840,6 +856,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--joggle", type=Path, default=root.parent / "build/joggle")
     parser.add_argument("--joggle-server", type=Path,
                         default=root.parent / "build/artifact/joggle-artifact-reactive")
+    parser.add_argument("--joggle-reuse", choices=("none", "prepared"), default="none")
     parser.add_argument("--builtin-mods", type=Path, default=root.parent / "build/modules")
     parser.add_argument("--cc", default="cc")
     parser.add_argument("--onnx-mlir", type=Path, help="path to the ONNX-MLIR compiler executable")
@@ -864,6 +881,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
     args = parser.parse_args()
+    if args.joggle_reuse != "none" and args.backend != "joggle":
+        parser.error("--joggle-reuse applies only to the Joggle backend")
     if args.backend == "joggle":
         if args.worker not in {"update", "rebuild"} and args.group != "updates":
             parser.error("resident Joggle backend requires an update or rebuild worker")

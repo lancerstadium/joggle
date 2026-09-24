@@ -966,7 +966,15 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
       }
     }
   };
+  // Closure discovery depends on the source body, not the call site's type
+  // bindings. Repeated calls in this batch share that discovery; their actual
+  // instantiation and expansion below still happen independently.
+  std::vector<Fn> scanned_implementations;
   for (Fn implementation : implementations) {
+    if (std::find(scanned_implementations.begin(), scanned_implementations.end(),
+                  implementation) != scanned_implementations.end())
+      continue;
+    scanned_implementations.push_back(implementation);
     active_dependencies.push_back(implementation);
     collect_locals(collect_locals, implementation);
     active_dependencies.pop_back();
@@ -1193,6 +1201,21 @@ bool Env::call(std::string_view symbol, std::span<const Attr> args,
                std::vector<Attr>& returns) {
   const auto found = impl_->natives.find(symbol);
   if (found == impl_->natives.end()) {
+    const std::vector<Fn> candidates = find_fns(symbol);
+    std::vector<Ty> argument_types;
+    for (const Attr& argument : args)
+      argument_types.push_back(scalar_type(argument));
+    bool ambiguous = false;
+    const Fn function = detail::resolve_overload(
+        candidates, argument_types, {}, nullptr, &ambiguous);
+    if (function && !function.external())
+      return detail::evaluate_call(*this, function, args, returns);
+    if (!candidates.empty() && !function) {
+      detail::add_diag(impl_->diags,
+                       ambiguous ? "call is ambiguous: " + std::string(symbol)
+                                 : "arguments do not match a declaration: " + std::string(symbol));
+      return false;
+    }
     detail::add_diag(impl_->diags,
                      "native function is not bound: " + std::string(symbol));
     return false;

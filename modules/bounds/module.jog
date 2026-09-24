@@ -250,6 +250,29 @@ local fn base_call(m: Mod, op: Op) -> str {
 
 // Shape vectors built from scalar expressions retain their element intervals.
 // Do not guess through parameters, unknown indices, or unsupported producers.
+// Tensor payloads encode fixed-width elements in little-endian order. Decode
+// only the requested element; model weights must not become an analysis table.
+local fn literal_element(value: Val, at: int, count: int) -> list<int> {
+  let data = ir.constant(value)
+  if base.kind(data) != "bytes" { return [] }
+  let name = base.name(tensor.elem(ir.type(value)))
+  let widths = {i8: 1, u8: 1, i16: 2, u16: 2, i32: 4, u32: 4, i64: 8, u64: 8}
+  if !base.has(widths, name) { return [] }
+  let width = base.int(widths[name])
+  let size = base.size(data)
+  if size % width != 0 || size / width != count { return [] }
+  let offset = at * width
+  var result = base.byte(data, offset + width - 1)
+  let signed = name == "i8" || name == "i16" || name == "i32" || name == "i64"
+  if signed && result >= 128 { result -= 256 }
+  // Bounds use signed 64-bit metadata; unrepresentable u64 values stay unknown.
+  if !signed && width == 8 && result >= 128 { return [] }
+  for reverse in 1..width {
+    result = result * 256 + base.byte(data, offset + width - reverse - 1)
+  }
+  return [result, result]
+}
+
 local fn vector_element(m: Mod, value: Val, at: int, known: dict) -> list<int> {
   let type = ir.type(value)
   if !tensor.valid(type) || !integer(tensor.elem(type)) { return [] }
@@ -260,8 +283,14 @@ local fn vector_element(m: Mod, value: Val, at: int, known: dict) -> list<int> {
     count = base.int(dims[0])
   }
   if at < 0 || at >= count { return [] }
+  let binding = id(value) + ".element." + text(at)
+  if base.has(known, binding + ".lo") && base.has(known, binding + ".hi") {
+    return [base.int(known[binding + ".lo"]), base.int(known[binding + ".hi"])]
+  }
   let source = ir.def(value)
-  if !ir.live(source) || ir.kind(source) != "call" { return [] }
+  if !ir.live(source) { return [] }
+  if ir.kind(source) == "constant" { return literal_element(value, at, count) }
+  if ir.kind(source) != "call" { return [] }
   let inputs = ir.args(source)
   let target = ir.target(m, source)
   if target == "tensor.tensor" && len(inputs) == 1 {
@@ -278,7 +307,88 @@ local fn vector_element(m: Mod, value: Val, at: int, known: dict) -> list<int> {
       return vector_element(m, inputs[0], at, known)
     }
   }
+  let outputs = ir.outs(source)
+  for i in 0..len(outputs) {
+    if outputs[i] == value { return call_result(m, source, i, at, known) }
+  }
   return []
+}
+
+// Analyze an owned function in a call-local environment. Only the requested
+// tensor element and statically indexed reads are bound, never an entire tensor.
+// Recursion has no finite summary here and remains unknown.
+local fn call_result(
+  m: Mod, call: Op, position: int, element: int, known: dict
+) -> list<int> {
+  let target = ir.resolve(m, call)
+  if !ir.live(target) || !ir.owned(m, target) { return [] }
+  let bodies = ir.blks(target)
+  let params = ir.params(target)
+  let inputs = ir.args(call)
+  if len(bodies) == 0 || len(params) != len(inputs) ||
+     len(ir.generics(target)) != 0 { return [] }
+  let active = base.get(known, "bounds.active", [])
+  for prior in active { if base.int(prior) == ir.key(target) { return [] } }
+  let ops = ir.ops(bodies[0])
+  if len(ops) == 0 || ir.kind(ops[len(ops) - 1]) != "return" { return [] }
+  let returned = ir.args(ops[len(ops) - 1])
+  if position >= len(returned) { return [] }
+  var local = constants(ir.vals(target))
+  local["bounds.active"] = active + [ir.key(target)]
+  let ordered = ir.ops(target)
+  // Bind scalar arguments before deriving indices. Scalar-only functions need
+  // no preliminary traversal, especially along nested helper-call chains.
+  for i in 0..len(params) {
+    let key = id(params[i])
+    if integer(ir.type(params[i])) {
+      let bound = scoped_value(m, inputs[i], ir.blk(call), known)
+      if len(bound) == 2 {
+        local[key + ".lo"] = bound[0]
+        local[key + ".hi"] = bound[1]
+      }
+    }
+  }
+  var needs_indices = false
+  for op in ordered {
+    let args = ir.args(op)
+    if ir.kind(op) == "call" && ir.target(m, op) == "tensor.operator []" &&
+       len(args) == 2 {
+      for param in params {
+        if args[0] == param {
+          let at = get(local, args[1])
+          if len(at) != 2 || at[0] != at[1] { needs_indices = true }
+        }
+      }
+    }
+  }
+  var indices = local
+  if needs_indices { indices = infer_operations(m, ordered, local) }
+  for i in 0..len(params) {
+    let key = id(params[i])
+    if tensor.valid(ir.type(params[i])) {
+      var requested: list<int> = []
+      if element >= 0 { requested += [element] }
+      for op in ordered {
+        let args = ir.args(op)
+        if ir.kind(op) == "call" && ir.target(m, op) == "tensor.operator []" &&
+           len(args) == 2 && args[0] == params[i] {
+          let at = get(indices, args[1])
+          if len(at) == 2 && at[0] == at[1] { requested += [at[0]] }
+        }
+      }
+      for at in requested {
+        let bound = vector_element(m, inputs[i], at, known)
+        if len(bound) == 2 {
+          let slot = key + ".element." + text(at)
+          local[slot + ".lo"] = bound[0]
+          local[slot + ".hi"] = bound[1]
+        }
+      }
+    }
+  }
+  local = infer_operations(m, ordered, local)
+  if element >= 0 { return vector_element(m, returned[position], element, local) }
+  return get(local, returned[position])
 }
 
 local fn result(m: Mod, op: Op, known: dict) -> list<int> {
@@ -333,16 +443,16 @@ local fn result(m: Mod, op: Op, known: dict) -> list<int> {
     return []
   }
   if name == "" {
-    return []
+    return call_result(m, op, 0, -1, known)
   }
   if (name == "copy" || name == "operator +") && len(inputs) == 1 {
-    return get(known, inputs[0])
+    return scoped_value(m, inputs[0], ir.blk(op), known)
   }
   if name == "operator -" && len(inputs) == 1 {
-    return neg(get(known, inputs[0]))
+    return neg(scoped_value(m, inputs[0], ir.blk(op), known))
   }
   if name == "operator !" && len(inputs) == 1 {
-    let value = get(known, inputs[0])
+    let value = scoped_value(m, inputs[0], ir.blk(op), known)
     if len(value) == 2 && value[0] == value[1] {
       return exact(value[0] == 0)
     }
@@ -351,8 +461,8 @@ local fn result(m: Mod, op: Op, known: dict) -> list<int> {
     }
   }
   if len(inputs) == 2 {
-    let left = get(known, inputs[0])
-    let right = get(known, inputs[1])
+    let left = scoped_value(m, inputs[0], ir.blk(op), known)
+    let right = scoped_value(m, inputs[1], ir.blk(op), known)
     if name == "operator +" {
       return add(left, right)
     }
@@ -379,7 +489,7 @@ local fn result(m: Mod, op: Op, known: dict) -> list<int> {
     }
   }
   if len(inputs) == 1 && base.name(type) == name {
-    let value = get(known, inputs[0])
+    let value = scoped_value(m, inputs[0], ir.blk(op), known)
     let target_limits = limits(type)
     if len(value) == 2 && len(target_limits) == 2 &&
        value[0] >= target_limits[0] && value[1] <= target_limits[1] {
@@ -389,11 +499,152 @@ local fn result(m: Mod, op: Op, known: dict) -> list<int> {
   return []
 }
 
-[memo]
-fn infer(m: Mod) -> dict {
-  var known: dict = {}
+// A yielded comparison operand is constrained by the selected branch arm.
+// Keep this fact local to the join; the same SSA value outside that arm does
+// not acquire the constraint.
+local fn copied_source(m: Mod, value: Val) -> Val {
+  let source = ir.def(value)
+  if ir.live(source) && ir.kind(source) == "call" &&
+     ir.target(m, source) == "base.copy" && len(ir.args(source)) == 1 {
+    return copied_source(m, ir.args(source)[0])
+  }
+  return value
+}
 
-  for value in ir.vals(m) {
+local fn same_scalar(m: Mod, a: Val, b: Val, known: dict) -> bool {
+  let left = copied_source(m, a)
+  let right = copied_source(m, b)
+  if left == right { return true }
+  let l = ir.def(left)
+  let r = ir.def(right)
+  if !ir.live(l) || !ir.live(r) || ir.kind(l) != "call" ||
+     ir.kind(r) != "call" || ir.target(m, l) != "tensor.operator []" ||
+     ir.target(m, r) != "tensor.operator []" { return false }
+  let la = ir.args(l)
+  let ra = ir.args(r)
+  if len(la) != 2 || len(ra) != 2 || la[0] != ra[0] { return false }
+  let li = get(known, la[1])
+  let ri = get(known, ra[1])
+  return len(li) == 2 && len(ri) == 2 && li[0] == li[1] &&
+         ri[0] == ri[1] && li[0] == ri[0]
+}
+
+local fn selected_condition(m: Mod, value: Val, known: dict) -> Val {
+  let source = ir.def(value)
+  if !ir.live(source) || ir.kind(source) != "branch" { return value }
+  let inputs = ir.args(source)
+  let flag = get(known, inputs[0])
+  if len(flag) != 2 || flag[0] != flag[1] { return value }
+  var arm = 0
+  if flag[0] == 0 { arm = 1 }
+  let bodies = ir.blks(source)
+  if arm >= len(bodies) { return value }
+  let ops = ir.ops(bodies[arm])
+  if len(ops) == 0 { return value }
+  let outputs = ir.outs(source)
+  let yielded = ir.args(ops[len(ops) - 1])
+  for i in 0..len(outputs) {
+    if outputs[i] == value && i < len(yielded) {
+      var selected = yielded[i]
+      let args = ir.args(bodies[arm])
+      for j in 0..len(args) {
+        if selected == args[j] { selected = inputs[j + 1] }
+      }
+      return selected_condition(m, selected, known)
+    }
+  }
+  return value
+}
+
+local fn branch_value(
+  m: Mod, value: Val, owner: Op, arm: int, known: dict
+) -> list<int> {
+  let original = get(known, value)
+  if !integer(ir.type(value)) { return original }
+  let inputs = ir.args(owner)
+  if len(inputs) == 0 { return original }
+  let condition = ir.def(selected_condition(m, inputs[0], known))
+  if !ir.live(condition) || ir.kind(condition) != "call" { return original }
+  var name = base_call(m, condition)
+  let operands = ir.args(condition)
+  if len(operands) != 2 { return original }
+  var source = copied_source(m, value)
+  let arguments = ir.args(ir.blks(owner)[arm])
+  for i in 0..len(arguments) {
+    if source == arguments[i] && i + 1 < len(inputs) { source = inputs[i + 1] }
+  }
+  var other = operands[1]
+  if same_scalar(m, source, operands[1], known) {
+    other = operands[0]
+    if name == "operator <" { name = "operator >" } else {
+      if name == "operator <=" { name = "operator >=" } else {
+        if name == "operator >" { name = "operator <" } else {
+          if name == "operator >=" { name = "operator <=" }
+        }
+      }
+    }
+  } else { if !same_scalar(m, source, operands[0], known) { return original } }
+  if arm == 1 {
+    if name == "operator <" { name = "operator >=" } else {
+      if name == "operator <=" { name = "operator >" } else {
+        if name == "operator >" { name = "operator <=" } else {
+          if name == "operator >=" { name = "operator <" } else {
+            if name == "operator ==" { name = "operator !=" } else {
+              if name == "operator !=" { name = "operator ==" }
+            }
+          }
+        }
+      }
+    }
+  }
+  let bound = get(known, other)
+  if len(bound) != 2 { return original }
+  var out = original
+  if len(out) != 2 { out = limits(ir.type(value)) }
+  if len(out) != 2 { return original }
+  if name == "operator <" || name == "operator <=" {
+    var upper = [bound[1]]
+    if name == "operator <" { upper = sub_value(bound[1], 1) }
+    if len(upper) == 0 { return original }
+    if upper[0] < out[1] { out[1] = upper[0] }
+  } else {
+    if name == "operator >" || name == "operator >=" {
+      var lower = [bound[0]]
+      if name == "operator >" { lower = add_value(bound[0], 1) }
+      if len(lower) == 0 { return original }
+      if lower[0] > out[0] { out[0] = lower[0] }
+    } else {
+      if name != "operator ==" { return original }
+      if bound[0] > out[0] { out[0] = bound[0] }
+      if bound[1] < out[1] { out[1] = bound[1] }
+    }
+  }
+  if out[0] > out[1] { return original }
+  return out
+}
+
+local fn scoped_value(m: Mod, value: Val, block: Blk, known: dict) -> list<int> {
+  let owner = ir.op(block)
+  if !ir.live(owner) { return get(known, value) }
+  var out = scoped_value(m, value, ir.blk(owner), known)
+  if ir.kind(owner) != "branch" { return out }
+  let bodies = ir.blks(owner)
+  for arm in 0..len(bodies) {
+    if bodies[arm] == block {
+      let local = branch_value(m, value, owner, arm, known)
+      if len(local) != 2 { return out }
+      if len(out) != 2 { return local }
+      if local[0] > out[0] { out[0] = local[0] }
+      if local[1] < out[1] { out[1] = local[1] }
+    }
+  }
+  if len(out) == 2 && out[0] > out[1] { return get(known, value) }
+  return out
+}
+
+local fn constants(values: list<Val>) -> dict {
+  var known: dict = {}
+  for value in values {
     if ir.is_const(value) && base.kind(ir.constant(value)) == "int" &&
        integer(ir.type(value)) {
       let exact = base.int(ir.constant(value))
@@ -406,8 +657,12 @@ fn infer(m: Mod) -> dict {
       }
     }
   }
+  return known
+}
 
-  for op in ir.ops(m) {
+local fn infer_operations(m: Mod, ops: list<Op>, seed: dict) -> dict {
+  var known = seed
+  for op in ops {
     let kind = ir.kind(op)
     if kind == "call" {
       let outputs = ir.outs(op)
@@ -510,7 +765,7 @@ fn infer(m: Mod) -> dict {
                       if i >= len(arm) {
                         complete = false
                       } else {
-                        let value = get(known, arm[i])
+                        let value = branch_value(m, arm[i], owner, arm_index, known)
                         if len(value) != 2 {
                           complete = false
                         } else {
@@ -562,6 +817,11 @@ fn infer(m: Mod) -> dict {
     }
   }
   return known
+}
+
+[memo]
+fn infer(m: Mod) -> dict {
+  return infer_operations(m, ir.ops(m), constants(ir.vals(m)))
 }
 
 local fn predicate(m: Mod, op: Op) -> bool {

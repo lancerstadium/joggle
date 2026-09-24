@@ -19,16 +19,37 @@ from pathlib import Path
 ONNX_MLIR_FLAGS = ("-O3", "--parallel=false", "--enable-fast-math=false", "--EmitLib")
 
 
+def resident_stages(timing: dict, elapsed_ns: int) -> dict[str, int]:
+    """Partition the client interval using the native compiler's nested clock.
+
+    Native wall time is a consistency bound, not another additive stage.
+    Protocol overhead includes dispatch, reporting and clock-rounding residue.
+    """
+    fields = ("parse_ns", "lower_ns", "emit_ns", "wall_ns")
+    if (not isinstance(timing, dict) or timing.get("schema") != "resident-lowering/v1"
+            or type(elapsed_ns) is not int or elapsed_ns < 0
+            or any(type(timing.get(key)) is not int or timing[key] < 0 for key in fields)):
+        raise ValueError("invalid resident compiler timing record")
+    native_sum = sum(timing[key] for key in fields[:3])
+    if not native_sum <= timing["wall_ns"] <= elapsed_ns:
+        raise ValueError("resident compiler timings exceed their enclosing interval")
+    return {"parse": timing["parse_ns"], "lower": timing["lower_ns"],
+            "emit": timing["emit_ns"], "compile_protocol": elapsed_ns - native_sum}
+
+
 class JoggleCompiler:
     """Resident native environment; each request lowers a fresh source graph."""
 
-    def __init__(self, server: Path, modules: Path, timeout: float):
+    def __init__(self, server: Path, modules: Path, timeout: float, reuse: str = "none"):
+        if reuse not in {"none", "prepared"}:
+            raise ValueError("unknown prepared-body reuse mode")
         self.timeout = timeout
         self.errors = tempfile.TemporaryFile(mode="w+t")
         self.process = None
         try:
             self.process = subprocess.Popen(
-                [str(server.resolve()), "--compile-server", str(modules.resolve())],
+                [str(server.resolve()), "--compile-reuse-server" if reuse == "prepared"
+                 else "--compile-server", str(modules.resolve())],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.errors,
                 text=True, bufsize=1)
             if self.receive() != {"ready": True}:
@@ -102,7 +123,16 @@ class JoggleRunner:
             started = time.perf_counter_ns()
             output = root / "compiled"
             compiler.compile(root / "source.jog", output)
-            self.stages_ns["lower_emit"] = time.perf_counter_ns() - started
+            lower_emit_ns = time.perf_counter_ns() - started
+            self.stages_ns.update(resident_stages(
+                json.loads((output / "0.timing.json").read_text()), lower_emit_ns))
+            # Preserve nested pass measurements when temporary outputs vanish.
+            # These explain `lower`; they are not additional additive stages.
+            self.lowering_profile = json.loads((output / "0.profile.attr").read_text())
+            if (not isinstance(self.lowering_profile, dict)
+                    or self.lowering_profile.get("succeeded") is not True
+                    or not isinstance(self.lowering_profile.get("steps"), list)):
+                raise ValueError("invalid resident lowering profile")
             started = time.perf_counter_ns()
             library = root / "model.so"
             compiled = subprocess.run([cc, "-std=c11", "-O3", "-DNDEBUG", "-shared", "-fPIC",
@@ -132,15 +162,14 @@ class JoggleRunner:
                 self._arrays.append(array)
                 self._arguments.append(array.ctypes.data)
                 argument_types.append(ctypes.c_void_p)
-            # The emitter's ABI places its immutable data pointer between inputs
-            # and results. Own aligned storage for the whole runner lifetime;
-            # a replacement runner must not overwrite a live predecessor's data.
             if entry["data"]:
+                # NumPy owns an aligned buffer for the C mod's packed payload;
+                # retaining it alongside inputs keeps every derived view live.
                 payload = (output / "0.bin").read_bytes()
-                weights = np.zeros(max(1, len(payload)), dtype=np.uint8)
-                weights[:len(payload)] = np.frombuffer(payload, dtype=np.uint8)
-                self._arrays.append(weights)
-                self._arguments.append(weights.ctypes.data)
+                data = np.empty(max(1, len(payload)), dtype=np.uint8)
+                data[:len(payload)] = np.frombuffer(payload, dtype=np.uint8)
+                self._arrays.append(data)
+                self._arguments.append(data.ctypes.data)
                 argument_types.append(ctypes.c_void_p)
             for result in entry["results"]:
                 dtype = np.dtype(dtypes[result["c"]])

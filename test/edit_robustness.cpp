@@ -73,8 +73,11 @@ bool local_families() {
     store.ops[4].data.args = {12, 13};
     for (const auto id : {4, 5}) store.vals[id].data.def = 0;
     for (const auto id : {14, 15}) store.vals[id].data.def = 1;
-    for (int id = 6; id <= 13; ++id)
-      store.vals[id].data.kind = ValKind::blk_arg;
+    for (std::uint32_t blk = 0; blk < store.blks.size(); ++blk)
+      for (const auto id : store.blks[blk].data.args) {
+        store.vals[id].data.kind = ValKind::blk_arg;
+        store.vals[id].data.blk = blk;
+      }
     if (variant == 1) store.ops[2].data.args = {11, 11};
     if (variant == 2) store.ops[4].data.args = {2, 13};
     if (variant == 3) store.ops[1].live = false;
@@ -85,6 +88,54 @@ bool local_families() {
         return false;
   }
   return true;
+}
+
+bool long_carried_family() {
+  using namespace joggle::detail;
+  constexpr std::uint32_t count = 96;
+  Store store;
+  store.vals.resize(3 * count + 2);
+  for (auto& value : store.vals) {
+    value.live = true;
+    value.data.fn = 0;
+  }
+  store.fns.resize(1);
+  store.fns[0].live = true;
+  store.blks.resize(count);
+  store.ops.resize(2 * count);
+  for (std::uint32_t i = 0; i < count; ++i) {
+    const auto iterator = 3 * i + 2, argument = iterator + 1, result = iterator + 2;
+    auto& loop = store.ops[2 * i];
+    loop.live = true;
+    loop.data.kind = joggle::Op::Kind::loop;
+    loop.data.iter_names = {"i"};
+    loop.data.carried_count = 1;
+    loop.data.args = {1, i ? result - 3 : 0};
+    loop.data.outs = {result};
+    loop.data.blks = {i};
+    auto& body = store.blks[i];
+    body.live = true;
+    body.data.fn = 0;
+    body.data.parent_op = 2 * i;
+    body.data.args = {iterator, argument};
+    body.data.ops = {2 * i + 1};
+    store.fns[0].data.blks.push_back(i);
+    auto& yield = store.ops[2 * i + 1];
+    yield.live = true;
+    yield.data.kind = joggle::Op::Kind::yield;
+    yield.data.blk = i;
+    yield.data.args = {argument};
+    store.vals[iterator].data.kind = ValKind::blk_arg;
+    store.vals[argument].data.kind = ValKind::blk_arg;
+    store.vals[iterator].data.blk = i;
+    store.vals[argument].data.blk = i;
+    store.vals[result].data.def = 2 * i;
+  }
+  rebuild_uses(store);
+  ValFamilies reference(store);
+  for (std::uint32_t id = 0; id < store.vals.size(); ++id)
+    if (family(store, id) != reference.members(id)) return false;
+  return family(store, 0).size() == 2 * count + 1;
 }
 
 class Random {
@@ -336,11 +387,105 @@ bool edit(joggle::Env& env, joggle::Mod& mod, Random& random,
 }  // namespace
 
 int main(int argc, char** argv) {
+  CHECK(joggle::detail::sha256("") ==
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  CHECK(joggle::detail::sha256("abc") ==
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+  CHECK(joggle::detail::sha256(
+        "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq") ==
+        "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
+  CHECK(joggle::detail::sha256(std::string(1000000, 'a')) ==
+        "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");
+  CHECK(joggle::detail::fingerprint(joggle::Attr(std::int64_t{1})) !=
+        joggle::detail::fingerprint(joggle::Attr("1")));
+  // Independently generated with hashlib over the versioned tagged encoding.
+  CHECK(joggle::detail::fingerprint(joggle::Attr("abc")) ==
+        "sha256:a1c608d48467928f0d79aaf81d743b9b24196edc87959d8755e316595d1b9f24");
+  CHECK(joggle::detail::fingerprint(joggle::Attr(0.0)) !=
+        joggle::detail::fingerprint(joggle::Attr(-0.0)));
   CHECK(local_families());
+  CHECK(long_carried_family());
   CHECK(argc == 2);
   joggle::Env env;
   env.path(argv[1]);
   CHECK(env.load("base"));
+
+  // Audit immediately after construction: verify() rebuilds uses and would
+  // otherwise hide missing or duplicated incremental edges.
+  joggle::Mod control;
+  CHECK(joggle::parse(env,
+      "mod control_edges\nuse base\n"
+      "fn main(flag: bool) -> i32 {\n"
+      "  var state = i32(0)\n  for k in 0..4 {}\n  return state\n}\n",
+      control, "control-edges.jog"));
+  const auto control_fn = control.find_fn("main");
+  joggle::Val span, state;
+  for (auto op : control_fn.ops())
+    if (op.kind() == joggle::Op::Kind::loop) span = op.args().front();
+  for (auto value : control_fn.vals()) {
+    if (value.name() == "state") state = value;
+  }
+  CHECK(span && state && audit(control));
+  const std::vector<std::string> iterators{"i", "j"};
+  const std::vector<joggle::Val> ranges{span, span};
+  const std::vector<joggle::Val> carried{state};
+  const auto loop = control.loop(control_fn.body().ops().back(),
+                                 iterators, ranges, carried);
+  CHECK(loop && audit(control));
+  const auto range_users = span.users();
+  CHECK(std::count(range_users.begin(), range_users.end(), loop) == 2);
+  const auto body = loop.blks().front();
+  const std::vector<joggle::Val> nested_carried{body.args().back()};
+  const auto branch = control.branch(body.ops().back(),
+                                     control_fn.params().front(), nested_carried);
+  CHECK(branch && audit(control));
+  CHECK(branch.blks().size() == 2);
+  for (auto arm : branch.blks()) {
+    const auto argument = arm.args().front();
+    const auto users = argument.users();
+    CHECK(users.size() == 1 && users.front() == arm.ops().back());
+  }
+  CHECK(control.verify(env) && audit(control));
+
+  // Erasure updates only surviving parent orders and each owner's block list.
+  // Overlapping roots and duplicate roots must still remove each subtree once.
+  for (int variant = 0; variant < 3; ++variant) {
+    joggle::Mod dead;
+    CHECK(joggle::parse(env,
+        "mod dead_controls\nuse base\n"
+        "fn main(x: i32) -> i32 {\n"
+        "  for i in 0..4 { for j in 0..3 { let unused = x + x } }\n"
+        "  for k in 0..2 { let unused = x + x }\n  return x\n}\n"
+        "fn other(x: i32) -> i32 { for k in 0..2 {} return x }\n",
+        dead, "dead-controls.jog"));
+    const auto fn = dead.find_fn("main");
+    const auto other = dead.find_fn("other");
+    const auto other_blocks = other.blks();
+    const auto other_ops = other.ops();
+    std::vector<joggle::Op> outer;
+    for (const auto op : fn.body().ops())
+      if (op.kind() == joggle::Op::Kind::loop) outer.push_back(op);
+    CHECK(outer.size() == 2);
+    joggle::Op inner;
+    for (const auto op : outer[0].blks()[0].ops())
+      if (op.kind() == joggle::Op::Kind::loop) inner = op;
+    CHECK(inner && audit(dead));
+    const auto removed_blocks = outer[0].blks();
+    if (variant == 0) {
+      CHECK(dead.erase(outer[0]));
+      CHECK(outer[1] && fn.blks().size() == 2);
+    } else {
+      const std::vector<joggle::Op> roots = variant == 1
+          ? std::vector<joggle::Op>{outer[0], inner, outer[1], outer[0]}
+          : std::vector<joggle::Op>{inner, outer[1], outer[0]};
+      CHECK(dead.erase(roots));
+      CHECK(!outer[1] && fn.blks().size() == 1);
+    }
+    CHECK(!outer[0] && !inner && !removed_blocks[0]);
+    CHECK(other.blks() == other_blocks && other.ops() == other_ops);
+    CHECK(audit(dead));
+    CHECK(dead.verify(env));
+  }
 
   // Rejected typed calls must roll back appended arenas, use edges, and
   // revisions without disturbing pre-existing handles or subsequent calls.

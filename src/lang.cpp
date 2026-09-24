@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cmath>
+#include <cstdlib>
 #include <exception>
 #include <set>
 #include <unordered_map>
@@ -820,6 +822,7 @@ private:
       detail::ValData value;
       value.kind = detail::ValKind::blk_arg;
       value.fn = fn;
+      value.blk = body;
       value.name = iter;
       value.type = Ty("index");
       const auto id = add_val(std::move(value));
@@ -830,6 +833,7 @@ private:
       detail::ValData value;
       value.kind = detail::ValKind::blk_arg;
       value.fn = fn;
+      value.blk = body;
       value.name = name;
       value.type = store_.vals[binding.value].data.type;
       value.meta = store_.vals[binding.value].data.meta;
@@ -887,6 +891,7 @@ private:
         detail::ValData value;
         value.kind = detail::ValKind::blk_arg;
         value.fn = fn;
+        value.blk = body;
         value.name = name;
         value.type = store_.vals[binding.value].data.type;
         value.meta = store_.vals[binding.value].data.meta;
@@ -1034,6 +1039,7 @@ private:
       detail::ValData carried;
       carried.kind = detail::ValKind::blk_arg;
       carried.fn = fn;
+      carried.blk = body;
       carried.type = Ty("bool");
       const auto carried_id = add_val(std::move(carried));
       store_.blks[body].data.args.push_back(carried_id);
@@ -1147,15 +1153,10 @@ private:
       const Token token = take();
       const std::string text = negative ? "-" + token.text : token.text;
       if (token.text.find_first_of(".eE") != std::string::npos) {
-        double value = 0;
-        std::size_t consumed = 0;
-        try {
-          value = std::stod(text, &consumed);
-        } catch (const std::exception&) {
-          fail("invalid real literal", token.loc);
-          return std::nullopt;
-        }
-        if (consumed != text.size()) {
+        char* end = nullptr;
+        const double value = std::strtod(text.c_str(), &end);
+        // Finite subnormals and signed underflow-to-zero are valid literals.
+        if (end != text.c_str() + text.size() || !std::isfinite(value)) {
           fail("invalid real literal", token.loc);
           return std::nullopt;
         }

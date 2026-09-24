@@ -1,27 +1,25 @@
 local fn dependencies(m: Mod, config: dict) -> list<Op> {
   var out: list<Op> = []
-  var seen_calls: list<Op> = []
+  var signatures: dict = {}
+  var headers: dict = {}
   for op in ir.ops(m) {
     if external_call(m, op, config) {
       let fn = ir.resolve(m, op)
-      var seen = false
-      for existing in seen_calls {
-        let prior_fn = ir.resolve(m, existing)
-        if symbol(m, prior_fn, config) == symbol(m, fn, config) {
-          let prior_abi = external_abi(m, existing, config)
-          let current_abi = external_abi(m, op, config)
-          assert(prior_abi == current_abi,
-                 "c: external symbol " + symbol(m, fn, config) +
-                 " has incompatible call ABIs: " + prior_abi + " and " +
-                 current_abi)
-          assert(binding_header(prior_fn) == binding_header(fn),
-                 "c: one external symbol has conflicting headers")
-          seen = true
-        }
-      }
-      if !seen {
-        seen_calls += [op]
-        if binding_header(fn) == "" {
+      let name = symbol(m, fn, config)
+      let current_abi = external_abi(m, op, config)
+      let header = binding_header(fn)
+      if base.has(signatures, name) {
+        let prior_abi = base.str(base.get(signatures, name))
+        assert(prior_abi == current_abi,
+               "c: external symbol " + name +
+               " has incompatible call ABIs: " + prior_abi + " and " +
+               current_abi)
+        assert(base.str(base.get(headers, name)) == header,
+               "c: one external symbol has conflicting headers")
+      } else {
+        signatures[name] = current_abi
+        headers[name] = header
+        if header == "" {
           out += [op]
         }
       }
@@ -120,7 +118,7 @@ local fn source_headers(
         out += [type_header(ir.type(value), config)]
       }
     }
-    if (payload(op) && (blob == "" || mem.planned(ir.outs(op)[0]))) ||
+    if (payload(op) && (blob == "" || !borrows_payload(op))) ||
        (ir.kind(op) == "call" &&
         (ir.callee(op) == "base.copy" || call_name(m, op) == "operator []=") &&
         len(ir.outs(op)) == 1 && tensor.valid(ir.type(ir.outs(op)[0]))) {
@@ -146,24 +144,20 @@ local fn prototypes(
   data_fns: list<Fn>, config: dict, definition_syntax: bool
 ) -> str {
   var declarations = ""
-  var names: list<str> = []
+  var names: dict = {}
   for op in calls {
     let fn = ir.resolve(m, op)
     let name = symbol(m, fn, config)
-    for existing in names {
-      assert(existing != name,
-             "c: overloaded or colliding function name " + name)
-    }
-    names += [name]
+    assert(!base.has(names, name),
+           "c: overloaded or colliding function name " + name)
+    names[name] = true
     declarations += external_signature(m, op, config) + ";\n"
   }
   for fn in fns {
     let name = symbol(m, fn, config)
-    for existing in names {
-      assert(existing != name,
-             "c: overloaded or colliding function name " + name)
-    }
-    names += [name]
+    assert(!base.has(names, name),
+           "c: overloaded or colliding function name " + name)
+    names[name] = true
     declarations += linkage(m, fn) +
                     signature(
                       m, fn, blob, data_fns, config,

@@ -288,7 +288,8 @@ fn capacity(m: Mod, value: Val) -> list<int> {
 }
 
 fn bound(m: Mod) -> bool {
-  let known = bounds.infer(m)
+  var known: dict = {}
+  var inferred = false
   var changed = false
   for fn in ir.fns(m) {
     var desired: dict = {}
@@ -300,6 +301,13 @@ fn bound(m: Mod) -> bool {
                   (ir.target(m, source) == "tensor.make" ||
                    ir.callee(source) == "tensor.make")
       if owns {
+        // Static tensor shapes already carry their capacity. Infer integer
+        // bounds only when an allocation actually needs dynamic shape facts.
+        if !inferred && tensor.valid(ir.type(value)) &&
+           !tensor.static(ir.type(value)) {
+          known = bounds.infer(m)
+          inferred = true
+        }
         let shape = capacity_with(m, value, known, [value])
         let name = ir.name(value)
         if name != "" {

@@ -53,3 +53,10 @@ if(used EQUAL -1 OR unused EQUAL -1)
   message(FATAL_ERROR
           "built-in algebra was applied to a user overload:\n${output}")
 endif()
+
+string(REGEX MATCHALL "x \\+ one" overloaded_additions "${output}")
+list(LENGTH overloaded_additions overloaded_count)
+if(NOT overloaded_count EQUAL 2)
+  message(FATAL_ERROR
+          "CSE treated a user overload as a pure built-in:\n${output}")
+endif()

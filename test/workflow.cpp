@@ -491,6 +491,32 @@ int main(int argc, char** argv) {
       env, generic_recur, "generic4",
       std::vector<joggle::Ty>{joggle::Ty("4")});
   CHECK(generic4 && generic4.generics().empty() && recursive_fn.verify(env));
+  // Function cloning attaches new use edges without changing the source's
+  // edges. Repeated operands must remain repeated entries in the use index.
+  joggle::Mod repeated_clone;
+  CHECK(joggle::parse(env,
+      "mod repeated_clone\nfn twice(x: int) -> int { return x + x }\n",
+      repeated_clone, "repeated-clone.jog"));
+  const joggle::Fn twice = repeated_clone.find_fn("twice");
+  const auto original_users = twice.params()[0].users();
+  CHECK(original_users.size() == 2);
+  for (int index = 0; index < 12; ++index) {
+    const joggle::Fn copy = repeated_clone.clone(env, twice, "copy" + std::to_string(index));
+    CHECK(copy && repeated_clone.verify(env));
+    CHECK(twice.params()[0].users() == original_users);
+    const auto users = copy.params()[0].users();
+    CHECK(users.size() == 2 && users[0] == users[1]);
+    CHECK(users[0] != original_users[0]);
+  }
+  for (const joggle::Mod* module : {&generated_fn, &recursive_fn, &repeated_clone})
+    for (joggle::Fn function : module->fns())
+      for (joggle::Val value : function.vals()) {
+        std::size_t occurrences = 0;
+        for (joggle::Op op : function.ops())
+          for (joggle::Val operand : op.args())
+            occurrences += operand == value;
+        CHECK(value.users().size() == occurrences);
+      }
   const std::string recursive_text = joggle::print(recursive_fn);
   CHECK(recursive_text.find("recursive.recur_copy(n)") != std::string::npos);
   CHECK(recursive_text.find("fn generic4(n: int)") != std::string::npos);
@@ -1445,6 +1471,60 @@ int main(int argc, char** argv) {
     CHECK(code.find_fn("derived_expose_expand_with"));
     CHECK(code.verify(env));
 
+    // Fail after capturing the private closure: the public name collides.
+    // Every helper, import, revision and original use edge must roll back.
+    joggle::Mod collision;
+    CHECK(joggle::parse(env,
+        "mod compiler.collision\n"
+        "fn derived_expose(m: Mod, accept: Fn, limit: int) -> bool { return limit == limit }\n",
+        collision, "compiler-collision.jog"));
+    const auto collision_text = joggle::print(collision);
+    const auto collision_revision = collision.revision();
+    const auto collision_original = collision.find_fn("derived_expose");
+    const auto original_uses = collision_original.params()[2].users();
+    for (int attempt = 0; attempt < 2; ++attempt) {
+      CHECK(!collision.clone(env, source, "derived_expose"));
+      CHECK(joggle::print(collision) == collision_text);
+      CHECK(collision.revision() == collision_revision);
+      CHECK(collision_original.params()[2].users() == original_uses);
+      CHECK(!collision.find_fn("derived_expose_expose_with"));
+      CHECK(collision.uses().empty());
+      collision.clear_diags();
+      CHECK(collision.verify(env));
+    }
+    CHECK(collision.clone(env, source, "other_expose"));
+    CHECK(collision.verify(env));
+
+    joggle::Mod binding;
+    CHECK(joggle::parse(env,
+        "mod compiler.binding\nuse opt\n"
+        "fn bound(m: Mod, accept: Fn, limit: int) -> bool { return true }\n"
+        "fn main(m: Mod, accept: Fn) -> bool { return opt.expose(m, accept, 2) }\n",
+        binding, "compiler-binding.jog"));
+    joggle::Op binding_call;
+    for (auto op : binding.find_fn("main").ops())
+      if (op.callee() == "opt.expose") binding_call = op;
+    CHECK(binding_call);
+    const auto binding_text = joggle::print(binding);
+    const auto binding_revision = binding.revision();
+    const std::array<std::size_t, 1> bound_params{2};
+    CHECK(!binding.bind(env, binding_call, source, "bound", bound_params));
+    CHECK(joggle::print(binding) == binding_text);
+    CHECK(binding.revision() == binding_revision);
+    CHECK(!binding.find_fn("bound_expose_with"));
+    binding.clear_diags();
+    CHECK(binding.verify(env));
+    const auto bound = binding.bind(env, binding_call, source, "bound_ok", bound_params);
+    CHECK(bound && bound.params().size() == 2 && binding.verify(env));
+    CHECK(binding_call.args().size() == 2);
+    for (auto function : binding.fns())
+      for (auto value : function.vals()) {
+        std::size_t count = 0;
+        for (auto op : function.ops())
+          for (auto operand : op.args()) count += operand == value;
+        CHECK(value.users().size() == count);
+      }
+
     joggle::Mod c_code;
     CHECK(joggle::parse(env,
                         "mod compiler.c\n"
@@ -1503,6 +1583,41 @@ int main(int argc, char** argv) {
                         "compiler-c-source-after.jog"));
     CHECK(joggle::run(env, "c.prepare", original_after));
     CHECK(joggle::print(original_after) == joggle::print(original));
+  }
+  {
+    // Detached revisions may share a module name. Their public helpers must
+    // be captured too, rather than resolving to the new revision's helpers.
+    joggle::Mod destination;
+    CHECK(joggle::parse(env,
+        "mod transient.revision\n"
+        "fn helper() -> int { return 99 }\n"
+        "fn inert(m: Mod) -> bool { return true }\n",
+        destination, "transient-new.jog"));
+    joggle::Fn copied;
+    {
+      joggle::Mod source;
+      CHECK(joggle::parse(env,
+          "mod transient.revision\nuse ir\n"
+          "fn helper() -> int { return 7 }\n"
+          "fn entry(m: Mod) -> bool {\n"
+          "  return ir.set(m, ir.find(m, \"inert\"), \"captured\", helper())\n"
+          "}\n", source, "transient-old.jog"));
+      CHECK(source.verify(env));
+      copied = destination.clone(env, source.find_fn("entry"), "derived");
+      CHECK(copied && destination.verify(env));
+      CHECK(destination.find_fn("derived_helper").local());
+      const auto before = joggle::print(destination);
+      const auto revision = destination.revision();
+      CHECK(!destination.clone(env, source.find_fn("entry"), "derived"));
+      CHECK(joggle::print(destination) == before);
+      CHECK(destination.revision() == revision);
+      destination.clear_diags();
+    }
+    // Captured bodies do not retain graph handles into the destroyed source.
+    CHECK(joggle::run(env, copied, destination));
+    CHECK(destination.find_fn("inert").meta("captured"));
+    CHECK(destination.find_fn("inert").meta("captured")->integer() == 7);
+    CHECK(destination.verify(env));
   }
   {
     // A private opaque dependency cannot be copied as an editable body;
@@ -2018,6 +2133,37 @@ int main(int argc, char** argv) {
       }
     }
   }
+
+  // Repeated calls share lexical discovery, but specialize independently.
+  joggle::Mod repeated_closure;
+  CHECK(joggle::parse(env,
+      "mod lexical.repeated\nuse script\n"
+      "fn main(m: Mod) -> int {\n"
+      "  let a = script.local_overload_probe(true)\n"
+      "  let b = script.local_overload_probe(7)\n"
+      "  let c = script.local_overload_probe(false)\n"
+      "  return a + b + c\n}\n",
+      repeated_closure, "lexical-repeated.jog"));
+  CHECK(repeated_closure.verify(env));
+  std::vector<joggle::Op> repeated_calls;
+  std::vector<joggle::Fn> repeated_bodies;
+  for (joggle::Op op : repeated_closure.find_fn("main").ops()) {
+    if (op.callee() != "script.local_overload_probe")
+      continue;
+    repeated_calls.push_back(op);
+    repeated_bodies.push_back(env.resolve(repeated_closure, op));
+  }
+  CHECK(repeated_calls.size() == 3);
+  CHECK(repeated_bodies[0] == repeated_bodies[1] &&
+        repeated_bodies[1] == repeated_bodies[2]);
+  CHECK(joggle::query(env, repeated_closure.find_fn("main"), repeated_closure,
+                       overload_result));
+  CHECK(overload_result.integer() == 57);
+  CHECK(env.expand(repeated_closure, repeated_calls, repeated_bodies));
+  CHECK(repeated_closure.verify(env));
+  CHECK(joggle::query(env, repeated_closure.find_fn("main"), repeated_closure,
+                       overload_result));
+  CHECK(overload_result.integer() == 57);
 
   joggle::Mod recursive_closure;
   constexpr std::string_view recursive_closure_source =
@@ -3529,6 +3675,47 @@ int main(int argc, char** argv) {
   CHECK(failed_structure.verify(env));
 
   joggle::Mod renamed_control;
+  joggle::Mod retarget_uses;
+  CHECK(joggle::parse(env,
+      "mod retarget_uses\n"
+      "fn left(a: int, b: int) -> int { return a + b }\n"
+      "fn right(a: int, b: int) -> int { return a - b }\n"
+      "fn main(a: int, b: int) -> int { let x = left(a, a) return x + b }\n",
+      retarget_uses, "retarget-uses.jog"));
+  const auto retarget_main = retarget_uses.find_fn("main");
+  const auto retarget_params = retarget_main.params();
+  joggle::Op retarget_call;
+  for (auto op : retarget_main.ops())
+    if (op.callee() == "left") retarget_call = op;
+  CHECK(retarget_call);
+  const auto untouched = retarget_uses.find_fn("left").params()[0];
+  const auto untouched_users = untouched.users();
+  for (const auto& indices : {std::array{1, 1}, std::array{0, 1}, std::array{0, 0}}) {
+    const std::array arguments{retarget_params[indices[0]], retarget_params[indices[1]]};
+    CHECK(retarget_uses.retarget(env, retarget_call, "right", arguments));
+    CHECK(retarget_uses.verify(env));
+    CHECK(untouched.users() == untouched_users);
+    for (auto value : retarget_main.vals()) {
+      std::size_t count = 0;
+      for (auto op : retarget_main.ops())
+        for (auto operand : op.args()) count += operand == value;
+      CHECK(value.users().size() == count);
+    }
+  }
+  joggle::Mod rename_scope;
+  CHECK(joggle::parse(env,
+      "mod rename_scope\n"
+      "fn first(a: int, b: int) -> int { return a + b }\n"
+      "fn other(target: int) -> int { return target }\n",
+      rename_scope, "rename-scope.jog"));
+  const auto first_parameters = rename_scope.find_fn("first").params();
+  const auto scope_before = joggle::print(rename_scope);
+  CHECK(!rename_scope.rename(first_parameters[0], "b"));
+  CHECK(joggle::print(rename_scope) == scope_before);
+  rename_scope.clear_diags();
+  CHECK(rename_scope.rename(first_parameters[0], "target"));
+  CHECK(rename_scope.verify(env));
+  CHECK(rename_scope.find_fn("other").params()[0].name() == "target");
   CHECK(joggle::parse(env, built_control_text, renamed_control,
                       "renamed-control.jog"));
   std::vector<joggle::Op> renamed_loops;
@@ -3566,6 +3753,38 @@ int main(int argc, char** argv) {
                       "renamed-control-roundtrip.jog"));
   CHECK(renamed_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(renamed_control, renamed_roundtrip));
+
+  // Clone into a store with existing blocks so source block IDs cannot serve
+  // as destination ownership. Renaming carried values must stay in the clone.
+  joggle::Mod owned_arguments;
+  CHECK(joggle::parse(env,
+      "mod owned_arguments\n"
+      "fn padding(n: int) -> int {\n"
+      "  var out = 0\n"
+      "  for i in 0..n { out += i }\n"
+      "  return out\n}\n", owned_arguments, "owned-arguments.jog"));
+  const auto owned_copy = owned_arguments.clone(
+      env, renamed_control.find_fn("build"), "copied");
+  CHECK(owned_copy && owned_arguments.verify(env));
+  std::size_t owned_loop_index = 0;
+  for (const auto op : owned_copy.ops()) {
+    if (op.kind() == joggle::Op::Kind::loop) {
+      CHECK(owned_arguments.rename(op.blks()[0].args()[0],
+          "copied_iterator_" + std::to_string(owned_loop_index++)));
+    } else if (op.kind() == joggle::Op::Kind::branch) {
+      CHECK(owned_arguments.rename(op.blks()[0].args()[0], "copied_acc"));
+    }
+  }
+  CHECK(owned_loop_index == 2 && owned_arguments.verify(env));
+  CHECK(joggle::print(renamed_control) == renamed_control_text);
+  CHECK(owned_arguments.find_fn("padding").body().ops().size() != 0);
+  const auto owned_text = joggle::print(owned_arguments);
+  CHECK(owned_text.find("var copied_acc: int = 0") != std::string::npos);
+  joggle::Mod owned_roundtrip;
+  CHECK(joggle::parse(env, owned_text, owned_roundtrip,
+                      "owned-arguments-roundtrip.jog"));
+  CHECK(owned_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(owned_arguments, owned_roundtrip));
 
   joggle::Mod wrong_result_type;
   CHECK(joggle::parse(env,
@@ -3943,6 +4162,61 @@ int main(int argc, char** argv) {
   CHECK(!flag(definition_report, "cached") &&
         string_field(definition_report, "miss") == "function_revision" &&
         rebuilt_left_definition != left_definition);
+
+  // A caller's emitted body also depends on the callee's binding. Editing
+  // another function must not leave a cached call to an obsolete C symbol.
+  joggle::Mod binding_scope;
+  CHECK(joggle::parse(env,
+                      "mod binding_scope\n"
+                      "fn target(x: int) -> int;\n"
+                      "fn caller(x: int) -> int { return target(x) }\n"
+                      "fn unrelated() -> int { return 7 }\n",
+                      binding_scope, "binding-scope.jog"));
+  const joggle::Fn binding_target = binding_scope.find_fn("target");
+  const auto set_binding = [&](std::string name) {
+    joggle::Attr::Dict binding;
+    binding["name"] = joggle::Attr(std::move(name));
+    return binding_scope.set(binding_target, "c", joggle::Attr(std::move(binding)));
+  };
+  CHECK(set_binding("target_v1"));
+  CHECK(binding_scope.verify(env));
+  const std::vector<joggle::Attr> caller_args{joggle::Attr("caller")};
+  joggle::Attr caller_before;
+  CHECK(joggle::query(env, "c.definition", binding_scope, caller_before,
+                      caller_args, &definition_report));
+  CHECK(caller_before.string() &&
+        caller_before.string()->find("target_v1(") != std::string_view::npos);
+  joggle::Attr caller_cached;
+  CHECK(joggle::query(env, "c.definition", binding_scope, caller_cached,
+                      caller_args, &definition_report));
+  CHECK(flag(definition_report, "cached") && caller_cached == caller_before);
+  bool unrelated_edited = false;
+  for (const joggle::Op op : binding_scope.find_fn("unrelated").ops())
+    if (op.kind() == joggle::Op::Kind::constant)
+      unrelated_edited = binding_scope.replace(op, joggle::Attr(std::int64_t{8}));
+  CHECK(unrelated_edited);
+  CHECK(joggle::query(env, "c.definition", binding_scope, caller_cached,
+                      caller_args, &definition_report));
+  CHECK(flag(definition_report, "cached") && caller_cached == caller_before);
+  CHECK(set_binding("target_v2"));
+  joggle::Attr caller_after;
+  CHECK(joggle::query(env, "c.definition", binding_scope, caller_after,
+                      caller_args, &definition_report));
+  CHECK(!flag(definition_report, "cached") && caller_after.string() &&
+        caller_after.string()->find("target_v2(") != std::string_view::npos &&
+        caller_after.string()->find("target_v1(") == std::string_view::npos);
+  joggle::Mod binding_fresh;
+  CHECK(joggle::parse(env, joggle::print(binding_scope), binding_fresh,
+                      "binding-fresh.jog"));
+  CHECK(binding_fresh.verify(env));
+  joggle::Attr caller_fresh;
+  CHECK(joggle::query(env, "c.definition", binding_fresh, caller_fresh,
+                      caller_args));
+  CHECK(caller_fresh == caller_after);
+  CHECK(set_binding("target_v1"));
+  CHECK(joggle::query(env, "c.definition", binding_scope, caller_cached,
+                      caller_args, &definition_report));
+  CHECK(!flag(definition_report, "cached") && caller_cached == caller_before);
 
   joggle::Mod overloaded;
   constexpr std::string_view overload_source =
@@ -4553,6 +4827,16 @@ int main(int argc, char** argv) {
   CHECK(env.bound("sample.echo"));
   const std::vector<joggle::Attr> arguments{joggle::Attr(std::int64_t{41})};
   std::vector<joggle::Attr> returns;
+  CHECK(env.call("script.host_call", arguments, returns));
+  CHECK(returns.size() == 2 && returns[0].integer() == 42 &&
+        returns[1].string() == "jog");
+  CHECK(env.call("script.host_call", std::vector<joggle::Attr>{joggle::Attr("hello")}, returns));
+  CHECK(returns.size() == 1 && returns[0].string() == "hello!");
+  const auto before_jog_failure = returns;
+  CHECK(!env.call("script.host_reject", std::vector<joggle::Attr>{joggle::Attr(std::int64_t{-1})}, returns));
+  CHECK(returns == before_jog_failure);
+  CHECK(!env.diags().empty() && env.diags().back().message.find("negative-host-input") != std::string::npos);
+  env.clear_diags();
   CHECK(env.call("sample.ping", arguments, returns));
   CHECK(returns.size() == 1);
   CHECK(returns[0].integer() == 42);

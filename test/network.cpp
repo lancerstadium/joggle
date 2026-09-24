@@ -38,6 +38,89 @@ int main(int argc, char** argv) {
   CHECK(env.load("script"));
   CHECK(env.load("c"));
 
+  // Name probes share an index only while the owning store is unchanged.
+  joggle::Mod bound_subject;
+  CHECK(joggle::parse(env,
+      "mod bound_subject\nfn first(x: int) -> int { return x }\n"
+      "fn second(y: int) -> int { return y }\n", bound_subject));
+  const auto bound_original = joggle::print(bound_subject);
+  const auto bound_revision = bound_subject.revision();
+  const std::vector<joggle::Attr> reject_bound{joggle::Attr(true)};
+  CHECK(!joggle::run(env, "script.bound_index_probe", bound_subject, reject_bound));
+  CHECK(joggle::print(bound_subject) == bound_original);
+  CHECK(bound_subject.revision() == bound_revision);
+  joggle::Attr bound_state;
+  CHECK(joggle::query(env, "script.bound_index_state", bound_subject, bound_state));
+  CHECK(joggle::print(bound_state) == "[true, false, false, true]");
+  const std::vector<joggle::Attr> accept_bound{joggle::Attr(false)};
+  CHECK(joggle::run(env, "script.bound_index_probe", bound_subject, accept_bound));
+  CHECK(joggle::query(env, "script.bound_index_state", bound_subject, bound_state));
+  CHECK(joggle::print(bound_state) == "[false, true, false, true]");
+  CHECK(bound_subject.rename(bound_subject.find_fn("first").params()[0], "x"));
+  CHECK(joggle::query(env, "script.bound_index_state", bound_subject, bound_state));
+  CHECK(joggle::print(bound_state) == "[true, false, false, true]");
+
+  joggle::Mod declaration_source;
+  CHECK(joggle::parse(env,
+      "mod declaration_source\nfn value(x: int) -> int { return x }\n",
+      declaration_source, "declaration-source.jog"));
+  const auto original_value = declaration_source.find_fn("value");
+  CHECK(declaration_source.set(original_value, "identity", joggle::Attr("retained")));
+  CHECK(joggle::run(env, "script.declare_value", declaration_source));
+  const auto value_decl = declaration_source.find_fn("value_decl");
+  CHECK(value_decl && value_decl.external() && !value_decl.body());
+  CHECK(value_decl.params().size() == 1 && value_decl.params()[0].type() == joggle::Ty("int"));
+  CHECK(value_decl.returns() == original_value.returns());
+  CHECK(value_decl.meta("identity") && value_decl.meta("identity")->string() == "retained");
+  const auto declaration_before = joggle::print(declaration_source);
+  const auto declaration_revision = declaration_source.revision();
+  CHECK(!declaration_source.declare(env, original_value, "value_decl"));
+  CHECK(joggle::print(declaration_source) == declaration_before);
+  CHECK(declaration_source.revision() == declaration_revision);
+  declaration_source.clear_diags();
+  CHECK(declaration_source.verify(env));
+
+  // Batch transfers share one rollback boundary, including captured helpers.
+  joggle::Mod batch_source, batch_target;
+  CHECK(joggle::parse(env,
+      "mod batch_source\nfn helper(x: int) -> int { return x }\n"
+      "fn first(x: int) -> int { return helper(x) }\n"
+      "fn second(x: int) -> int { return helper(x) }\n", batch_source));
+  CHECK(joggle::parse(env, "mod batch_target\n", batch_target));
+  const std::vector<joggle::Fn> batch_fns = {
+      batch_source.find_fn("first"), batch_source.find_fn("second")};
+  const std::vector<std::string> batch_names = {"first_copy", "second_copy"};
+  const auto batch_bodies = batch_target.clone(env, batch_fns, batch_names);
+  CHECK(batch_bodies.size() == 2);
+  CHECK(batch_target.verify(env));
+  const std::vector<std::string> declaration_names = {"first_decl", "second_decl"};
+  const auto declarations = batch_target.declare(env, batch_fns, declaration_names);
+  CHECK(declarations.size() == 2);
+  CHECK(declarations[0].external() && !declarations[0].body());
+  CHECK(declarations[1].external() && !declarations[1].body());
+  const auto batch_before = joggle::print(batch_target);
+  const auto batch_revision = batch_target.revision();
+  const std::vector<std::string> colliding_names = {"temporary", "first_copy"};
+  CHECK(batch_target.clone(env, batch_fns, colliding_names).empty());
+  CHECK(joggle::print(batch_target) == batch_before);
+  CHECK(batch_target.revision() == batch_revision);
+  batch_target.clear_diags();
+  CHECK(batch_target.declare(env, batch_fns, colliding_names).empty());
+  CHECK(joggle::print(batch_target) == batch_before);
+  CHECK(batch_target.revision() == batch_revision);
+  batch_target.clear_diags();
+  const std::vector<std::string> missing_names = {"only_one"};
+  CHECK(batch_target.clone(env, batch_fns, missing_names).empty());
+  CHECK(batch_target.declare(env, batch_fns, missing_names).empty());
+  CHECK(joggle::print(batch_target) == batch_before);
+  batch_target.clear_diags();
+  batch_source = joggle::Mod{};
+  CHECK(batch_target.verify(env));
+  // Same-store sources remain valid as the destination grows.
+  const std::vector<std::string> local_names = {"local_first", "local_second"};
+  CHECK(batch_target.clone(env, batch_bodies, local_names).size() == 2);
+  CHECK(batch_target.verify(env));
+
   joggle::Mod unsupported_nullary;
   CHECK(joggle::parse(env,
       "mod unsupported_nullary\nfn value() -> str;\n"
@@ -484,6 +567,38 @@ int main(int argc, char** argv) {
     instance_names.emplace(fn.name());
   }
   CHECK(instance_names.size() == 2);
+  // Move derived bodies into a fresh revision of the same source module.
+  // Instantiation must select those exact handles, not regenerate the bodies.
+  joggle::Mod next_instance;
+  CHECK(joggle::parse(env, instance_source, next_instance,
+                      "next-instance-network.jog"));
+  std::vector<joggle::Fn> transferred;
+  for (const auto& name : instance_names) {
+    const auto fn = next_instance.clone(env, instance.find_fn(name), name);
+    CHECK(fn && fn.meta("opt.instance"));
+    CHECK(*fn.meta("opt.instance") == *instance.find_fn(name).meta("opt.instance"));
+    transferred.push_back(fn);
+  }
+  CHECK(next_instance.verify(env));
+  CHECK(joggle::run(env, "script.instantiate_scale", next_instance));
+  CHECK(next_instance.verify(env));
+  std::size_t transferred_count = 0;
+  for (const auto fn : next_instance.fns()) {
+    if (fn.meta("opt.instance")) {
+      ++transferred_count;
+      CHECK(std::find(transferred.begin(), transferred.end(), fn) != transferred.end());
+    }
+  }
+  CHECK(transferred_count == 2);
+  std::size_t transferred_calls = 0;
+  for (const auto op : next_instance.find_fn("main").ops()) {
+    if (op.kind() == joggle::Op::Kind::call) {
+      const auto target = env.resolve(next_instance, op);
+      transferred_calls += std::find(transferred.begin(), transferred.end(), target) !=
+                           transferred.end();
+    }
+  }
+  CHECK(transferred_calls == 3);
   std::size_t instance_calls = 0;
   std::size_t generic_calls = 0;
   for (joggle::Op op : instance.ops()) {
@@ -524,6 +639,104 @@ int main(int argc, char** argv) {
   CHECK(resumed_names == instance_names);
   for (joggle::Op op : resumed_calls)
     CHECK(op && resumed_names.contains(std::string(op.callee())));
+
+  // A new call after a template-body edit must not select an instance of the
+  // preceding body merely because its symbol and signature are unchanged.
+  joggle::Mod edited_template;
+  CHECK(joggle::parse(env,
+      "mod edited_template\n"
+      "fn value<T: Ty>(x: T) -> int { return 11 }\n"
+      "fn main(x: int) -> int { return value(x) }\n",
+      edited_template, "edited-template.jog"));
+  CHECK(joggle::run(env, "script.instantiate_owned_value", edited_template));
+  const std::string before_template_edit = joggle::print(edited_template);
+  const joggle::Fn template_fn = edited_template.find_fn("value");
+  const joggle::Fn edited_main = edited_template.find_fn("main");
+  CHECK(template_fn && edited_main);
+  const joggle::Op edited_return = edited_main.body().ops().back();
+  const joggle::Fn preceding_instance =
+      env.resolve(edited_template, edited_return.args().front().def());
+  CHECK(preceding_instance && preceding_instance.meta("opt.instance"));
+  bool changed_template = false;
+  for (joggle::Op op : template_fn.ops()) {
+    if (op.kind() == joggle::Op::Kind::constant) {
+      CHECK(edited_template.replace(op, joggle::Attr(std::int64_t{22})));
+      changed_template = true;
+    }
+  }
+  CHECK(changed_template);
+  const std::vector<joggle::Val> new_args{edited_main.params().front()};
+  const joggle::Val new_result = edited_template.call(
+      env, edited_return, template_fn, new_args, joggle::Ty("int"));
+  CHECK(new_result);
+  CHECK(edited_template.args(env, edited_return,
+                            std::vector<joggle::Val>{new_result}));
+  CHECK(joggle::run(env, "script.instantiate_owned_value", edited_template));
+  CHECK(edited_template.verify(env));
+  const joggle::Fn replacement_instance = env.resolve(edited_template, new_result.def());
+  CHECK(replacement_instance && replacement_instance != preceding_instance);
+  CHECK(replacement_instance.body().ops().back().args().front().constant().integer() == 22);
+
+  // Serialized metadata can outlive the originating store and its revision
+  // counters. Changing only the template in a saved module must also miss.
+  std::string changed_serialized_template = before_template_edit;
+  const std::size_t template_literal = changed_serialized_template.find("return 11");
+  CHECK(template_literal != std::string::npos);
+  changed_serialized_template.replace(template_literal, 9, "return 22");
+  joggle::Mod reloaded_template;
+  CHECK(joggle::parse(env, changed_serialized_template, reloaded_template,
+                      "reloaded-template.jog"));
+  const joggle::Fn reloaded_main = reloaded_template.find_fn("main");
+  const joggle::Op reloaded_return = reloaded_main.body().ops().back();
+  const joggle::Fn serialized_instance =
+      env.resolve(reloaded_template, reloaded_return.args().front().def());
+  CHECK(serialized_instance && serialized_instance.meta("opt.instance"));
+  const joggle::Val reloaded_result = reloaded_template.call(
+      env, reloaded_return, reloaded_template.find_fn("value"),
+      std::vector<joggle::Val>{reloaded_main.params().front()}, joggle::Ty("int"));
+  CHECK(reloaded_result);
+  CHECK(reloaded_template.args(env, reloaded_return,
+                              std::vector<joggle::Val>{reloaded_result}));
+  CHECK(joggle::run(env, "script.instantiate_owned_value", reloaded_template));
+  CHECK(reloaded_template.verify(env));
+  const joggle::Fn reloaded_instance =
+      env.resolve(reloaded_template, reloaded_result.def());
+  CHECK(reloaded_instance && reloaded_instance != serialized_instance);
+  CHECK(reloaded_instance.body().ops().back().args().front().constant().integer() == 22);
+
+  // Content follows private callees without absorbing unrelated function
+  // bodies. Store revisions alone cannot distinguish these two changes.
+  joggle::Mod closure_content;
+  CHECK(joggle::parse(env,
+      "mod closure_content\n"
+      "local fn helper() -> int { return 11 }\n"
+      "fn value<T: Ty>(x: T) -> int { return helper() }\n"
+      "fn unrelated() -> int { return 33 }\n",
+      closure_content, "closure-content.jog"));
+  const auto wrapper_content = closure_content.find_fn("value").content();
+  joggle::Attr content_before, content_unrelated, content_after;
+  CHECK(joggle::query(env, "script.owned_value_content", closure_content,
+                      content_before));
+  for (joggle::Op op : closure_content.find_fn("unrelated").ops())
+    if (op.kind() == joggle::Op::Kind::constant)
+      CHECK(closure_content.replace(op, joggle::Attr(std::int64_t{44})));
+  CHECK(joggle::query(env, "script.owned_value_content", closure_content,
+                      content_unrelated));
+  CHECK(content_unrelated == content_before);
+  for (joggle::Op op : closure_content.find_fn("helper").ops())
+    if (op.kind() == joggle::Op::Kind::constant)
+      CHECK(closure_content.replace(op, joggle::Attr(std::int64_t{22})));
+  CHECK(closure_content.find_fn("value").content() == wrapper_content);
+  CHECK(joggle::query(env, "script.owned_value_content", closure_content,
+                      content_after));
+  CHECK(content_after != content_before);
+  joggle::Mod closure_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(closure_content), closure_roundtrip,
+                      "closure-content-roundtrip.jog"));
+  joggle::Attr content_roundtrip;
+  CHECK(joggle::query(env, "script.owned_value_content", closure_roundtrip,
+                      content_roundtrip));
+  CHECK(content_roundtrip == content_after);
 
   // Existing names, including gaps in numeric suffixes, remain untouched.
   std::string reserved_source(instance_source);
@@ -587,6 +800,48 @@ int main(int argc, char** argv) {
   CHECK(emitted_header.string());
   CHECK(emitted_header.string()->find("kernel_scale") ==
         std::string::npos);
+
+  // A prepared (not memory-planned) specialization can seed another source
+  // revision. Its identity survives lowering and the body is not regenerated.
+  joggle::Mod reused_emission;
+  CHECK(joggle::parse(env, emission_source, reused_emission,
+                      "reused-instance-emission.jog"));
+  const auto prepared_kernel = emission.find_fn("kernel_scale");
+  CHECK(prepared_kernel && prepared_kernel.meta("opt.instance"));
+  const auto imported_kernel = reused_emission.clone(
+      env, prepared_kernel, "kernel_scale");
+  CHECK(imported_kernel);
+  const auto imported_content = imported_kernel.content();
+  CHECK(joggle::run(env, "opt.instantiate", reused_emission, script_module));
+  CHECK(reused_emission.find_fn("kernel_scale") == imported_kernel);
+  CHECK(!reused_emission.find_fn("kernel_scale_2"));
+  CHECK(imported_kernel.content() == imported_content);
+  CHECK(joggle::run(env, "c.prepare", reused_emission));
+  joggle::Attr reused_source;
+  CHECK(joggle::query(env, "c.source", reused_emission, reused_source));
+  CHECK(reused_source == emitted_source);
+
+  // Changing the tensor signature must select a new body, not the cached one.
+  std::string resized_source(emission_source);
+  for (std::size_t at = 0; (at = resized_source.find("[8]", at)) != std::string::npos;
+       at += 4)
+    resized_source.replace(at, 3, "[16]");
+  joggle::Mod resized_emission;
+  CHECK(joggle::parse(env, resized_source, resized_emission,
+                      "resized-instance-emission.jog"));
+  const auto old_kernel = resized_emission.clone(env, prepared_kernel, "kernel_scale");
+  CHECK(old_kernel);
+  CHECK(joggle::run(env, "opt.instantiate", resized_emission, script_module));
+  const auto new_kernel = resized_emission.find_fn("kernel_scale_2");
+  CHECK(new_kernel && new_kernel != old_kernel);
+  CHECK(new_kernel.params().front().type() == joggle::Ty("tensor<i8, [16]>"));
+  std::size_t resized_calls = 0;
+  for (const auto op : resized_emission.find_fn("main").ops())
+    if (op.kind() == joggle::Op::Kind::call)
+      resized_calls += env.resolve(resized_emission, op) == new_kernel;
+  CHECK(resized_calls == 2);
+  CHECK(joggle::run(env, "c.prepare", resized_emission));
+  CHECK(resized_emission.verify(env));
 
   constexpr std::string_view contextual_expand_source =
       "mod contextual_expand\n"
@@ -744,6 +999,63 @@ int main(int argc, char** argv) {
   CHECK(env.diags().back().message.find(
             "external symbol mixed_external has incompatible call ABIs") !=
         std::string::npos);
+
+  // Symbol indexing must still reject declarations with the same ABI but
+  // different headers, including header-backed calls that need no prototype.
+  env.clear_diags();
+  joggle::Mod conflicting_headers;
+  CHECK(joggle::parse(env,
+      "mod conflicting_headers\n"
+      "use script\n"
+      "fn main(x: i32) -> i32 {\n"
+      "  return script.header_second(script.header_first(x))\n"
+      "}\n",
+      conflicting_headers, "conflicting-headers.jog"));
+  CHECK(joggle::run(env, "c.prepare", conflicting_headers));
+  const std::string headers_before = joggle::print(conflicting_headers);
+  joggle::Attr headers_source;
+  CHECK(!joggle::query(env, "c.source", conflicting_headers, headers_source));
+  CHECK(joggle::print(conflicting_headers) == headers_before);
+  CHECK(!env.diags().empty());
+  CHECK(env.diags().back().message.find("conflicting headers") !=
+        std::string::npos);
+  env.clear_diags();
+
+  // Repeated calls with one ABI share the first declaration without losing
+  // either call site. Header-backed symbols are included once, not declared.
+  joggle::Mod repeated_external;
+  CHECK(joggle::parse(env,
+      "mod repeated_external\nuse script\n"
+      "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
+      "  return script.mixed(script.mixed(x))\n}\n",
+      repeated_external, "repeated-external.jog"));
+  CHECK(joggle::run(env, "c.prepare", repeated_external));
+  joggle::Attr repeated_source;
+  CHECK(joggle::query(env, "c.source", repeated_external, repeated_source));
+  CHECK(repeated_source.string());
+  const auto emitted = *repeated_source.string();
+  const auto declaration = emitted.find("void mixed_external(");
+  CHECK(declaration != std::string_view::npos);
+  CHECK(emitted.find("void mixed_external(", declaration + 1) ==
+        std::string_view::npos);
+  CHECK(count(repeated_external, "script.mixed") == 2);
+
+  joggle::Mod repeated_header;
+  CHECK(joggle::parse(env,
+      "mod repeated_header\nuse script\n"
+      "fn main(x: i32) -> i32 {\n"
+      "  return script.header_first(script.header_first(x))\n}\n",
+      repeated_header, "repeated-header.jog"));
+  CHECK(joggle::run(env, "c.prepare", repeated_header));
+  joggle::Attr repeated_header_source;
+  CHECK(joggle::query(env, "c.source", repeated_header, repeated_header_source));
+  CHECK(repeated_header_source.string());
+  const auto header_text = *repeated_header_source.string();
+  const auto include = header_text.find("#include <first.h>");
+  CHECK(include != std::string_view::npos);
+  CHECK(header_text.find("#include <first.h>", include + 1) ==
+        std::string_view::npos);
+  CHECK(header_text.find("int32_t shared_external(") == std::string_view::npos);
 
   joggle::Mod ambiguous_impl;
   CHECK(joggle::parse(env, implementation_source, ambiguous_impl,

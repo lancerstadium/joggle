@@ -9,6 +9,17 @@ use onnx.nn
 use bounds
 use mem
 
+fn host_call(value: int) -> (int, str) { return value + 1, "jog" }
+fn host_call(value: str) -> str { return value + "!" }
+fn host_reject(value: int) -> int {
+  base.assert(value >= 0, "negative-host-input")
+  return value
+}
+
+fn declare_value(m: Mod) -> bool {
+  return ir.live(ir.declare(m, ir.find(m, "value"), "value_decl"))
+}
+
 fn function_keys(m: Mod) -> list<int> {
   var keys: list<int> = []
   for fn in ir.fns(m) {
@@ -189,6 +200,11 @@ fn external_select.external(x: i32) -> i32;
 
 [c: {name: "mixed_external"}]
 fn mixed<T: Ty, N: int>(x: tensor<T, [N]>) -> tensor<T, [N]>;
+
+[c: {name: "shared_external", include: "first.h"}]
+fn header_first(x: i32) -> i32;
+[c: {name: "shared_external", include: "second.h"}]
+fn header_second(x: i32) -> i32;
 
 fn typed_caps() -> list<Fn> {
   return ir.fns("script")
@@ -509,6 +525,14 @@ fn kernel.scale<S: list<int>>(
 
 fn instantiate_scale(m: Mod) -> bool {
   return opt.instantiate(m, [ir.find("script.kernel.scale")])
+}
+
+fn instantiate_owned_value(m: Mod) -> bool {
+  return opt.instantiate(m, [ir.find(m, "value")])
+}
+
+fn owned_value_content(m: Mod) -> Attr {
+  return ir.fingerprint(ir.find(m, "value"))
 }
 
 fn instantiate_selected(m: Mod) -> bool {
@@ -877,6 +901,40 @@ fn memo_handle_probe(m: Mod) -> bool {
     }
   }
   return false
+}
+
+fn bound_index_probe(m: Mod, reject: bool) -> bool {
+  let first = ir.find(m, "first")
+  let second = ir.find(m, "second")
+  assert(ir.bound(first, "x") && !ir.bound(first, "y") &&
+         ir.bound(second, "y") && !ir.bound(second, "x"),
+         "bound lookup crossed function ownership")
+  assert(ir.rename(m, ir.params(first)[0], "renamed"), "rename failed")
+  assert(!ir.bound(first, "x") && ir.bound(first, "renamed"),
+         "bound lookup retained an old name")
+  let operations = ir.ops(first)
+  let value = ir.constant(m, operations[len(operations) - 1], 17, ty("int"))
+  assert(ir.bound(first, ir.name(value)), "new unnamed value was not indexed")
+  assert(ir.rename(m, value, "added"), "constant rename failed")
+  assert(ir.bound(first, "added"), "new binding was not indexed")
+  let copy = ir.clone(m, first, "bound_copy")
+  assert(ir.live(copy) && ir.bound(copy, "added") &&
+         ir.bound(copy, "renamed"), "cloned function was not indexed")
+  assert(ir.erase(m, ir.def(value)), "unused constant erase failed")
+  assert(!ir.bound(first, "added") && ir.bound(copy, "added"),
+         "erased binding was retained or another function was changed")
+  assert(ir.erase(m, copy), "cloned function erase failed")
+  // Switch stores within one evaluator, then return to the subject store.
+  assert(ir.bound(ir.find("script.bound_index_probe"), "reject") &&
+         ir.bound(first, "renamed"), "bound lookup did not switch stores")
+  assert(!reject, "bound rollback requested")
+  return true
+}
+
+fn bound_index_state(m: Mod) -> list<bool> {
+  let first = ir.find(m, "first")
+  return [ir.bound(first, "x"), ir.bound(first, "renamed"),
+          ir.bound(first, "added"), ir.bound(ir.find(m, "second"), "y")]
 }
 
 fn fresh_rename_probe(m: Mod) -> bool {

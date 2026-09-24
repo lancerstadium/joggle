@@ -354,8 +354,13 @@ python3 artifact/run_baseline_benchmarks.py \
 Repeat with `--worker rebuild`, or select `--backend tvm` /
 `--backend onnx-mlir` with the corresponding compiler configuration. The JSON
 sample records edit/input/output hashes, absolute wall time, executable-ready
-time, validation time, backend stages, and retained state. Joggle currently
-retains its environment and evaluator plans but parses a fresh source graph.
+time, validation time, backend stages, and retained state. Joggle retains its
+environment and evaluator plans but parses a fresh source graph. Add
+`--joggle-reuse prepared` to retain prepared function bodies as well. Matching
+specializations enter preparation as declarations; only referenced bodies are
+materialized before scalarization and model-wide storage planning. The matched
+rebuild starts with an empty body cache. Emission, native compilation, and
+binding remain in both measured paths.
 Its entry signature is derived from the same fixed inputs as the end-to-end
 collector. Building first refreshes the copied mod files in `build/modules`.
 
@@ -381,6 +386,7 @@ benchmark script:
 
 ```sh
 python3 artifact/run_baseline_benchmarks.py --group updates --backend joggle \
+  --joggle-reuse prepared \
   --inputs .cache/artifact/release-data/inputs --model-root .cache/onnx-zoo \
   --edit-manifest artifact/manifests/production-node-edits.json \
   --iterations 10 --output .cache/artifact/production-updates-joggle.csv

@@ -614,7 +614,7 @@ bool mutates_ir(std::string_view name, std::span<const Item> args) {
   const std::size_t arity = args.size();
   if (name == "trim" || name == "call" || name == "assign" ||
       name == "loop" || name == "branch" || name == "bind" ||
-      name == "clone" || name == "fold" || name == "expand" ||
+      name == "clone" || name == "declare" || name == "fold" || name == "expand" ||
       name == "expand_partial" || name == "move" || name == "fuse" ||
       name == "replace" || name == "erase" || name == "retarget" ||
       name == "rename" || name == "set" || name == "unset" ||
@@ -786,6 +786,9 @@ class Eval {
 public:
   using Error = std::function<void(std::string, Loc)>;
 
+  static bool evaluate_call(Env& env, Fn function, std::span<const Attr> args,
+                            std::vector<Attr>& returns);
+
   static bool sequence(Env& env,
                        std::span<const std::string_view> functions, Mod& mod,
                        Attr* report, std::span<const Attr> args,
@@ -825,6 +828,14 @@ public:
                              std::span<const Attr> args) {
     Items values{Item(&mod)};
     values.reserve(args.size() + 1);
+    for (const Attr& value : args)
+      values.push_back(materialize(value));
+    return invoke(fn, std::move(values));
+  }
+
+  std::optional<Items> call(Fn fn, std::span<const Attr> args) {
+    Items values;
+    values.reserve(args.size());
     for (const Attr& value : args)
       values.push_back(materialize(value));
     return invoke(fn, std::move(values));
@@ -2372,15 +2383,15 @@ private:
       ++function_counters->invocations;
     }
 #endif
-    const std::vector<Val> params = fn.params();
-    const std::vector<Val> generics = fn.generics();
-    if (generics.size() != generic_args.size()) {
+    // Arity checking needs counts only. Materializing handles here allocates
+    // on every invocation, including memo hits and cached-plan execution.
+    if (fn.store_->fns[fn.id_].data.generic_vals.size() != generic_args.size()) {
       fail("generic argument count does not match compile-time function '" +
                std::string(fn.name()) + "'",
            fn.loc());
       return std::nullopt;
     }
-    if (params.size() != args.size()) {
+    if (fn.store_->fns[fn.id_].data.params.size() != args.size()) {
       fail("argument count does not match compile-time function '" +
                std::string(fn.name()) + "'",
            fn.loc());
@@ -2463,6 +2474,8 @@ private:
       flow = execute_plan(fn, *plan, std::move(generic_args), std::move(args));
     } else
     {
+      const std::vector<Val> params = fn.params();
+      const std::vector<Val> generics = fn.generics();
       Frame frame = acquire_frame();
       for (std::size_t index = 0; index < generics.size(); ++index)
         put(frame, generics[index], std::move(generic_args[index]));
@@ -3939,6 +3952,37 @@ private:
       if (const auto* fn = as<Fn>(args[0]); fn && *fn)
         return single(Item(Attr(static_cast<std::int64_t>(fn->revision()))),
                       single_result);
+    } else if (name == "fingerprint" && args.size() == 1) {
+      if (const auto* root = as<Fn>(args[0]); root && *root) {
+        // Preserve lexical overload families: generic calls can select a
+        // different member after binding. Cycles are represented once.
+        std::vector<Fn> seen;
+        Attr::List contents;
+        const auto visit = [&](const auto& self, Fn fn) -> void {
+          if (std::find(seen.begin(), seen.end(), fn) != seen.end())
+            return;
+          seen.push_back(fn);
+          observe(Item(fn));
+          if (fn.store_ == observed_)
+            observed_structure_ = true;
+          Attr::List uses;
+          for (const auto& use : fn.store_->uses)
+            uses.emplace_back(use);
+          contents.emplace_back(Attr::List{Attr(std::string(fn.module())),
+                                           Attr(std::move(uses)), fn.content()});
+          for (Op op : fn.ops()) {
+            if (op.kind() != Op::Kind::call)
+              continue;
+            const Ty applied(std::string(op.callee()));
+            if (applied.valid())
+              for (Fn candidate : env_.resolve_fns(fn, applied.name()))
+                self(self, candidate);
+          }
+        };
+        visit(visit, *root);
+        return single(Item(Attr(detail::fingerprint(Attr(std::move(contents))))),
+                      single_result);
+      }
     } else if (name == "params" && args.size() == 1) {
       if (const auto* fn = as<Fn>(args[0])) {
         Items out;
@@ -4362,12 +4406,25 @@ private:
       const auto* fn = as<Fn>(args[0]);
       const auto candidate = string(args[1]);
       if (fn && *fn && candidate) {
-        const bool found = std::any_of(
-            fn->store_->vals.begin(), fn->store_->vals.end(),
-            [&](const auto& slot) {
-              return slot.live && slot.data.fn == fn->id_ &&
-                     slot.data.name == *candidate;
-            });
+        // Share clone hygiene's maintained index instead of scanning all
+        // values for every emitted result name. Unnamed values are not indexed.
+        bool found = false;
+        if (candidate->empty()) {
+          found = std::any_of(fn->store_->vals.begin(), fn->store_->vals.end(),
+              [&](const auto& slot) {
+                return slot.live && slot.data.fn == fn->id_ && slot.data.name.empty();
+              });
+        } else {
+          detail::index_value_names(*fn->store_);
+          const auto names = fn->store_->value_names.find(std::string(*candidate));
+          if (names != fn->store_->value_names.end())
+            found = std::any_of(names->second.begin(), names->second.end(),
+                [&](std::uint32_t id) {
+                  const auto& slot = fn->store_->vals[id];
+                  return slot.live && slot.data.fn == fn->id_ &&
+                         slot.data.name == *candidate;
+                });
+        }
         return single(Item(Attr(found)), single_result);
       }
     } else if (name == "local" && args.size() == 1) {
@@ -4679,6 +4736,17 @@ private:
             record_clone(**mod, *fn, result, before, generics);
             return Items{Item(result)};
           }
+        }
+      }
+    } else if (name == "declare" && args.size() == 3) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* fn = as<Fn>(args[1]);
+      const auto target = string(args[2]);
+      if (mod && *mod && fn && target) {
+        const Fn result = (*mod)->declare(env_, *fn, std::string(*target));
+        if (result) {
+          fresh_names_.clear();
+          return Items{Item(result)};
         }
       }
     } else if (name == "clone" &&
@@ -5162,6 +5230,33 @@ private:
   bool failed_ = false;
   bool folding_ = false;
 };
+
+bool Eval::evaluate_call(Env& env, Fn function, std::span<const Attr> args,
+                   std::vector<Attr>& returns) {
+  Eval eval(env, [&](std::string message, Loc loc) {
+    env.error(std::move(message), std::move(loc));
+  });
+  const auto values = eval.call(function, args);
+  if (!values)
+    return false;
+  std::vector<Attr> produced;
+  produced.reserve(values->size());
+  for (const Item& value : *values) {
+    auto converted = attribute(value);
+    if (!converted) {
+      env.error("call result is not representable as Attr", function.loc());
+      return false;
+    }
+    produced.push_back(std::move(*converted));
+  }
+  returns = std::move(produced);
+  return true;
+}
+
+bool evaluate_call(Env& env, Fn function, std::span<const Attr> args,
+                   std::vector<Attr>& returns) {
+  return Eval::evaluate_call(env, function, args, returns);
+}
 
 }  // namespace joggle::detail
 

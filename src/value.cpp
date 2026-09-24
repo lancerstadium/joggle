@@ -122,19 +122,17 @@ std::unordered_set<std::uint32_t> family(const Store& store,
         if (op.outs[i] == id)
           group(value.def, i);
     }
-    if (value.kind == ValKind::blk_arg && value.fn < store.fns.size() &&
-        store.fns[value.fn].live) {
-      for (const auto blk : store.fns[value.fn].data.blks) {
-        if (blk >= store.blks.size() || !store.blks[blk].live)
-          continue;
-        const auto& body = store.blks[blk].data;
-        if (body.parent_op < store.ops.size() && store.ops[body.parent_op].live) {
-          const auto& op = store.ops[body.parent_op].data;
-          const auto offset = op.kind == Op::Kind::loop ? op.iter_names.size() : 0;
-          for (std::size_t i = offset; i < body.args.size(); ++i)
-            if (body.args[i] == id)
-              group(body.parent_op, i - offset);
-        }
+    if (value.kind == ValKind::blk_arg && value.blk < store.blks.size() &&
+        store.blks[value.blk].live) {
+      // Block ownership survives renames and is remapped when cloning. Only
+      // inspect this argument's block, never all blocks in its function.
+      const auto& body = store.blks[value.blk].data;
+      if (body.parent_op < store.ops.size() && store.ops[body.parent_op].live) {
+        const auto& op = store.ops[body.parent_op].data;
+        const auto offset = op.kind == Op::Kind::loop ? op.iter_names.size() : 0;
+        for (std::size_t i = offset; i < body.args.size(); ++i)
+          if (body.args[i] == id)
+            group(body.parent_op, i - offset);
       }
     }
     for (const auto user : value.users) {

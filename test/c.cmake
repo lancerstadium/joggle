@@ -585,3 +585,44 @@ joggle_run("generated C returned the wrong result"
   COMMAND "${program}"
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error)
+
+# External payloads are borrowed only by immutable bindings. Mutable literals
+# and reassignment must copy into owned storage, with and without slot reuse.
+foreach(mode IN ITEMS unplanned planned)
+  set(payload_model "${ROOT}/payload-${mode}.jog")
+  set(payload_passes c.prepare)
+  if(mode STREQUAL "planned")
+    list(APPEND payload_passes mem.plan)
+  endif()
+  joggle_run("${mode} payload preparation failed"
+    COMMAND "${TOOL}" run ${payload_passes}
+            "${CMAKE_CURRENT_LIST_DIR}/data/c_payload_slots.jog" -M "${MODULES}"
+    OUTPUT_FILE "${payload_model}")
+  foreach(kind IN ITEMS source header data)
+    set(payload_args)
+    if(NOT kind STREQUAL "data")
+      list(APPEND payload_args --arg "\"model\"")
+    endif()
+    joggle_run("${mode} payload ${kind} emission failed"
+      COMMAND "${TOOL}" emit "c.${kind}" "${payload_model}"
+              ${payload_args} -M "${MODULES}"
+      OUTPUT_FILE "${ROOT}/payload-${mode}.${kind}")
+  endforeach()
+  file(READ "${ROOT}/payload-${mode}.source" payload_source)
+  if(NOT payload_source MATCHES "#include <string.h>" OR
+     NOT payload_source MATCHES "memcpy\\(" OR
+     NOT payload_source MATCHES "const int32_t\\*")
+    message(FATAL_ERROR "${mode} payload did not distinguish owned and borrowed storage")
+  endif()
+  if(mode STREQUAL "planned" AND NOT payload_source MATCHES "memcpy\\(slot_")
+    message(FATAL_ERROR "payload regression did not exercise a planned storage slot")
+  endif()
+  joggle_run("${mode} payload C compilation failed"
+    COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
+            -include "${ROOT}/payload-${mode}.header"
+            -x c "${ROOT}/payload-${mode}.source"
+            "${CMAKE_CURRENT_LIST_DIR}/data/c_payload_slots_main.c"
+            -o "${ROOT}/payload-${mode}")
+  joggle_run("${mode} payload execution failed"
+    COMMAND "${ROOT}/payload-${mode}" "${ROOT}/payload-${mode}.data")
+endforeach()

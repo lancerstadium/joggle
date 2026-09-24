@@ -943,6 +943,7 @@ Op Mod::loop(Op before, std::span<const std::string> names,
     detail::ValData arg;
     arg.kind = detail::ValKind::blk_arg;
     arg.fn = store.blks[parent].data.fn;
+    arg.blk = blk_id;
     arg.name = name;
     arg.type = Ty("index");
     const auto id = static_cast<std::uint32_t>(store.vals.size());
@@ -954,6 +955,7 @@ Op Mod::loop(Op before, std::span<const std::string> names,
     detail::ValData arg;
     arg.kind = detail::ValKind::blk_arg;
     arg.fn = store.blks[parent].data.fn;
+    arg.blk = blk_id;
     arg.name = std::string(value.name());
     arg.type = value.type();
     arg.meta = value.meta();
@@ -970,7 +972,11 @@ Op Mod::loop(Op before, std::span<const std::string> names,
   const auto yield_id = static_cast<std::uint32_t>(store.ops.size());
   store.ops.push_back({std::move(yield), 1, true});
   store.blks[blk_id].data.ops.push_back(yield_id);
-  detail::rebuild_uses(store);
+  // Only the new loop and yield add operand edges. Existing operations keep
+  // their inputs, including repeated uses of the same iteration source.
+  for (std::uint32_t id = op_id; id < store.ops.size(); ++id)
+    for (const std::uint32_t arg : store.ops[id].data.args)
+      store.vals[arg].data.users.push_back(id);
   touch(store, store.blks[parent].data.fn);
   return Op(&store, op_id, store.ops[op_id].generation);
 }
@@ -1052,6 +1058,7 @@ Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
       detail::ValData arg;
       arg.kind = detail::ValKind::blk_arg;
       arg.fn = fn;
+      arg.blk = blk_id;
       arg.name = std::string(value.name());
       arg.type = value.type();
       arg.meta = value.meta();
@@ -1069,7 +1076,10 @@ Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
     store.ops.push_back({std::move(yield), 1, true});
     store.blks[blk_id].data.ops.push_back(yield_id);
   }
-  detail::rebuild_uses(store);
+  // Register the branch and both yields without rescanning unrelated IR.
+  for (std::uint32_t id = op_id; id < store.ops.size(); ++id)
+    for (const std::uint32_t arg : store.ops[id].data.args)
+      store.vals[arg].data.users.push_back(id);
   touch(store, fn);
   return Op(&store, op_id, store.ops[op_id].generation);
 }
@@ -1196,13 +1206,7 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
   if (needs_fresh_names) {
     // Scan only values appended since the last named clone. Copying or
     // restoring the Store carries the index with its corresponding arena.
-    for (; store.indexed_value_names < store.vals.size();
-         ++store.indexed_value_names) {
-      const auto id = static_cast<std::uint32_t>(store.indexed_value_names);
-      const auto& slot = store.vals[id];
-      if (slot.live && !slot.data.name.empty())
-        store.value_names[slot.data.name].push_back(id);
-    }
+    detail::index_value_names(store);
   }
   const auto name_used = [&](const std::string& name) {
     const auto found = store.value_names.find(name);
@@ -1304,6 +1308,7 @@ std::vector<Op> Mod::clone(std::span<const Op> sources, Op before,
       for (const std::uint32_t old_arg : old_args) {
         detail::ValData value = store.vals[old_arg].data;
         value.fn = fn;
+        value.blk = body_id;
         value.name = remap_name(std::move(value.name));
         value.users.clear();
         const auto value_id = static_cast<std::uint32_t>(store.vals.size());
@@ -1362,15 +1367,24 @@ void Mod::infer(const Env& env, std::uint32_t id) {
 
 Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
               std::span<const Ty> generic_args) {
+  return clone(env, source_fn, std::move(name), generic_args, false);
+}
+
+Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
+              std::span<const Ty> generic_args, bool enclosing_transaction) {
   auto& store = impl_->store;
   if (!source_fn || source_fn.store_ == &store ||
       !detail::valid_binding(name))
-    return clone_one(env, source_fn, std::move(name), generic_args, {});
+    return clone_one(env, source_fn, std::move(name), generic_args, {},
+                     enclosing_transaction);
 
   // Derivation must capture lexical private helpers. Merely qualifying a
   // copied call back to its source module would cross that module's visibility
   // boundary, while copying only the public wrapper leaves its algorithm
   // unavailable for inspection and editing.
+  // A detached source has no loadable module to retain public helpers from.
+  // Capture its complete owned closure, not just private dependencies.
+  const bool detached = !env.owns(source_fn);
   std::unordered_map<std::uint32_t, std::uint8_t> state;
   std::vector<Fn> private_order;
   std::string cycle;
@@ -1397,7 +1411,7 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
           env.resolve_fns(current, applied.name());
       const Fn selected = env.match(op, candidates);
       for (Fn callee : candidates) {
-        if (!callee.local() || callee.store_ != source_fn.store_ ||
+        if ((!detached && !callee.local()) || callee.store_ != source_fn.store_ ||
             callee == current ||
             (current.generics().empty() && callee != selected))
           continue;
@@ -1422,28 +1436,88 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
   for (Fn helper : private_order)
     helpers.emplace_back(helper, name + "_" + std::string(helper.name()));
 
-  detail::Store backup = store;
+  std::optional<detail::Store> backup;
+  if (!enclosing_transaction)
+    backup.emplace(store);
   const auto rollback = [&](std::string message, Loc loc = {}) {
-    store = backup;
+    if (backup)
+      store = std::move(*backup);
     detail::add_diag(store.diags, std::move(message), std::move(loc));
     return Fn{};
   };
-  for (const auto& [helper, helper_name] : helpers)
-    if (!clone_one(env, helper, helper_name, {}, helpers))
+  for (const auto& [helper, helper_name] : helpers) {
+    const Fn copied = clone_one(env, helper, helper_name, {}, helpers, true);
+    if (!copied)
       return rollback("function clone could not capture private helper '" +
                           std::string(helper.module()) + "." +
                           std::string(helper.name()) + "'",
                       helper.loc());
-  Fn result = clone_one(env, source_fn, std::move(name), generic_args, helpers);
+    if (detached)
+      store.fns[copied.id_].data.local = true;
+  }
+  Fn result = clone_one(env, source_fn, std::move(name), generic_args, helpers, true);
   if (!result)
     return rollback("function clone could not copy its public body",
                     source_fn.loc());
   return result;
 }
 
+Fn Mod::declare(const Env& env, Fn source_fn, std::string name) {
+  return clone_one(env, source_fn, std::move(name), {}, {}, false, true);
+}
+
+std::vector<Fn> Mod::clone(const Env& env, std::span<const Fn> fns,
+                           std::span<const std::string> names) {
+  auto& store = impl_->store;
+  if (fns.size() != names.size()) {
+    detail::add_diag(store.diags, "function clone batch requires one name per function");
+    return {};
+  }
+  if (fns.empty()) return {};
+  auto backup = store;
+  std::vector<Fn> result;
+  result.reserve(fns.size());
+  for (std::size_t i = 0; i < fns.size(); ++i) {
+    const auto copied = clone(env, fns[i], names[i], {}, true);
+    if (!copied) {
+      auto diags = std::move(store.diags);
+      store = std::move(backup);
+      store.diags = std::move(diags);
+      return {};
+    }
+    result.push_back(copied);
+  }
+  return result;
+}
+
+std::vector<Fn> Mod::declare(const Env& env, std::span<const Fn> fns,
+                             std::span<const std::string> names) {
+  auto& store = impl_->store;
+  if (fns.size() != names.size()) {
+    detail::add_diag(store.diags, "function declaration batch requires one name per function");
+    return {};
+  }
+  if (fns.empty()) return {};
+  auto backup = store;
+  std::vector<Fn> result;
+  result.reserve(fns.size());
+  for (std::size_t i = 0; i < fns.size(); ++i) {
+    const auto copied = clone_one(env, fns[i], names[i], {}, {}, true, true);
+    if (!copied) {
+      auto diags = std::move(store.diags);
+      store = std::move(backup);
+      store.diags = std::move(diags);
+      return {};
+    }
+    result.push_back(copied);
+  }
+  return result;
+}
+
 Fn Mod::clone_one(const Env& env, Fn source_fn, std::string name,
                   std::span<const Ty> generic_args,
-                  std::span<const std::pair<Fn, std::string>> helpers) {
+                  std::span<const std::pair<Fn, std::string>> helpers,
+                  bool enclosing_transaction, bool declaration_only) {
   auto& store = impl_->store;
   const auto reject = [&](std::string message, Loc loc = {}) {
     detail::add_diag(store.diags, std::move(message), std::move(loc));
@@ -1457,9 +1531,10 @@ Fn Mod::clone_one(const Env& env, Fn source_fn, std::string name,
   if (!detail::valid_binding(name))
     return reject("function clone requires a valid local function name",
                   source_fn.loc());
-  if (source_fn.external() || !source_fn.body())
+  if (!declaration_only && (source_fn.external() || !source_fn.body()))
     return reject("function clone requires a source body", source_fn.loc());
-  if (source_fn.store_ != &store && source_fn.module() == store.name)
+  if (source_fn.store_ != &store && source_fn.module() == store.name &&
+      env.owns(source_fn) && !declaration_only)
     return reject("function clone cannot merge distinct modules with one name",
                   source_fn.loc());
 
@@ -1526,19 +1601,34 @@ Fn Mod::clone_one(const Env& env, Fn source_fn, std::string name,
     }
   }
 
-  detail::Store backup = store;
-  const detail::Store* source =
-      source_fn.store_ == &store ? &backup : source_fn.store_;
+  // Capturing an external closure is already atomic in clone(). Its helpers
+  // read immutable external storage and share the caller's rollback boundary.
+  // A same-module clone still needs a stable source while vectors grow.
+  const bool same_store = source_fn.store_ == &store;
+  std::optional<detail::Store> backup;
+  if (!enclosing_transaction || same_store)
+    backup.emplace(store);
+  const std::uint64_t before_revision = store.revision;
+  const detail::Store* source = same_store ? &*backup : source_fn.store_;
+  const std::size_t first_cloned_op = store.ops.size();
   const detail::FnData& old_fn = source->fns[source_fn.id_].data;
   const Fn source_context(const_cast<detail::Store*>(source), source_fn.id_,
                           source->fns[source_fn.id_].generation);
   const auto rollback = [&](std::string message, Loc loc = {}) {
-    store = backup;
+    if (backup)
+      store = std::move(*backup);
     detail::add_diag(store.diags, std::move(message), std::move(loc));
     return Fn{};
   };
 
-  if (source != &backup) {
+  if (!same_store && !env.owns(source_fn)) {
+    // Calls into the detached source are rewritten to the captured closure.
+    // Import only its external dependencies, never its transient module name.
+    for (const auto& dependency : source->uses)
+      if (!use(env, dependency))
+        return rollback("function clone could not import source dependency '" +
+                            dependency + "'", source_fn.loc());
+  } else if (!same_store) {
     const std::string symbol = std::string(source_fn.module()) + "." +
                                std::string(source_fn.name());
     const std::vector<Fn> visible = env.resolve_fns(*this, symbol);
@@ -1575,14 +1665,24 @@ Fn Mod::clone_one(const Env& env, Fn source_fn, std::string name,
   for (const std::uint32_t id : old_fn.params)
     store.fns[next_fn_id].data.params.push_back(copy_value(id));
 
+  if (declaration_only) {
+    store.fns[next_fn_id].data.external = true;
+    store.revision = before_revision;
+    touch(store);
+    return Fn(&store, next_fn_id, store.fns[next_fn_id].generation);
+  }
+
   const std::uint32_t old_body = old_fn.blks.front();
   detail::BlkData body;
   body.fn = next_fn_id;
   const auto body_id = static_cast<std::uint32_t>(store.blks.size());
   store.blks.push_back({std::move(body), 1, true});
   store.fns[next_fn_id].data.blks.push_back(body_id);
-  for (const std::uint32_t old_arg : source->blks[old_body].data.args)
-    store.blks[body_id].data.args.push_back(copy_value(old_arg));
+  for (const std::uint32_t old_arg : source->blks[old_body].data.args) {
+    const auto arg = copy_value(old_arg);
+    store.vals[arg].data.blk = body_id;
+    store.blks[body_id].data.args.push_back(arg);
+  }
 
   const auto constant = [&](Attr literal, Ty type) {
     detail::OpData op;
@@ -1756,6 +1856,7 @@ Fn Mod::clone_one(const Env& env, Fn source_fn, std::string name,
       for (const std::uint32_t old_arg : source->blks[old_blk].data.args) {
         detail::ValData value = source->vals[old_arg].data;
         value.fn = next_fn_id;
+        value.blk = body_id;
         value.type = substitute(value.type, bindings);
         value.users.clear();
         const auto value_id = static_cast<std::uint32_t>(store.vals.size());
@@ -1777,8 +1878,13 @@ Fn Mod::clone_one(const Env& env, Fn source_fn, std::string name,
       return rollback("function clone encountered an unmapped value",
                       source->ops[op].data.loc);
   }
-  detail::rebuild_uses(store);
-  store.revision = backup.revision;
+  // The cloned body owns new values and operations; pre-existing edges do not
+  // change. Attach each new operand occurrence once (including duplicates),
+  // instead of rebuilding all uses in the destination for every helper clone.
+  for (std::size_t id = first_cloned_op; id < store.ops.size(); ++id)
+    for (const std::uint32_t arg : store.ops[id].data.args)
+      store.vals[arg].data.users.push_back(static_cast<std::uint32_t>(id));
+  store.revision = before_revision;
   touch(store);
   return Fn(&store, next_fn_id, store.fns[next_fn_id].generation);
 }
@@ -1838,7 +1944,7 @@ Fn Mod::bind(const Env& env, Op call, Fn source_fn, std::string name,
       return rollback("bind accepts only structural constant arguments",
                       call.loc());
 
-  Fn result = clone(env, source_fn, std::move(name), generic_args);
+  Fn result = clone(env, source_fn, std::move(name), generic_args, true);
   if (!result)
     return rollback("bind could not clone its function", call.loc());
   const std::vector<Val> params = result.params();
@@ -1885,7 +1991,8 @@ Fn Mod::bind(const Env& env, Op call, Fn source_fn, std::string name,
   }
   store.fns[result.id_].data.params = std::move(next_params);
   store.fns[result.id_].data.local = true;
-  detail::rebuild_uses(store);
+  // Cloning, materialization and replacement maintain their operand edges;
+  // the removed parameters have already been checked to have no remaining uses.
   detail::touch(store);
   if (!retarget(env, call, result, remaining))
     return rollback("bind could not retarget its call", call.loc());
@@ -2134,6 +2241,7 @@ bool Mod::expand(const Env& env, Op call, Fn callee,
         const std::uint32_t old_arg = old_args[index];
         detail::ValData value = source.vals[old_arg].data;
         value.fn = owner;
+        value.blk = body_id;
         value.name = copy_name(value.name);
         value.type = substitute(value.type, bindings);
         value.users.clear();
@@ -2795,6 +2903,7 @@ bool Mod::erase(std::span<const Op> roots) {
     detail::add_diag(store.diags, std::move(message), std::move(loc));
     return false;
   };
+  std::size_t single_position = 0;
   for (Op op : roots) {
     if (!op.valid() || op.store_ != &store)
       return reject("erase requires live operations in this module");
@@ -2802,11 +2911,14 @@ bool Mod::erase(std::span<const Op> roots) {
       return reject("cannot erase a Blk terminator", op.loc());
     const std::uint32_t parent = store.ops[op.id_].data.blk;
     if (parent == detail::none || parent >= store.blks.size() ||
-        !store.blks[parent].live ||
-        std::find(store.blks[parent].data.ops.begin(),
-                  store.blks[parent].data.ops.end(), op.id_) ==
-            store.blks[parent].data.ops.end())
+        !store.blks[parent].live)
       return reject("erase operation is not in its parent Blk", op.loc());
+    const auto& order = store.blks[parent].data.ops;
+    const auto found = std::find(order.begin(), order.end(), op.id_);
+    if (found == order.end())
+      return reject("erase operation is not in its parent Blk", op.loc());
+    if (roots.size() == 1)
+      single_position = static_cast<std::size_t>(found - order.begin());
   }
 
   std::unordered_set<std::uint32_t> ops;
@@ -2834,28 +2946,45 @@ bool Mod::erase(std::span<const Op> roots) {
                       store.ops[store.vals[value].data.def].data.loc);
     }
   }
-  // Every operation records its containing block. Only these block orders
-  // can contain erased ids; unrelated functions and blocks need no scan.
-  std::vector<std::uint32_t> parents;
-  parents.reserve(ops.size());
-  for (const std::uint32_t id : ops)
-    parents.push_back(store.ops[id].data.blk);
-  std::sort(parents.begin(), parents.end());
-  parents.erase(std::unique(parents.begin(), parents.end()), parents.end());
-  for (const std::uint32_t parent : parents) {
+  // Validation and subtree collection above are read-only. A single root can
+  // reuse its validated position; deleted child blocks need no order scan.
+  if (roots.size() == 1) {
+    const auto parent = store.ops[roots.front().id_].data.blk;
     auto& order = store.blks[parent].data.ops;
-    order.erase(std::remove_if(order.begin(), order.end(),
-                               [&](std::uint32_t id) {
-                                 return ops.contains(id);
-                               }),
-                order.end());
+    order.erase(order.begin() + single_position);
+  } else {
+    std::vector<std::uint32_t> parents;
+    parents.reserve(roots.size());
+    for (Op op : roots) {
+      const auto parent = store.ops[op.id_].data.blk;
+      if (!blks.contains(parent))
+        parents.push_back(parent);
+    }
+    std::sort(parents.begin(), parents.end());
+    parents.erase(std::unique(parents.begin(), parents.end()), parents.end());
+    for (const auto parent : parents) {
+      auto& order = store.blks[parent].data.ops;
+      order.erase(std::remove_if(order.begin(), order.end(),
+                                 [&](std::uint32_t id) { return ops.contains(id); }),
+                  order.end());
+    }
+  }
+  std::vector<std::uint32_t> owners;
+  owners.reserve(blks.size());
+  for (const auto blk : blks) {
+    const auto fn = store.blks[blk].data.fn;
+    if (fn < store.fns.size())
+      owners.push_back(fn);
+  }
+  std::sort(owners.begin(), owners.end());
+  owners.erase(std::unique(owners.begin(), owners.end()), owners.end());
+  for (const auto fn : owners) {
+    auto& owned = store.fns[fn].data.blks;
+    owned.erase(std::remove_if(owned.begin(), owned.end(),
+                               [&](std::uint32_t id) { return blks.contains(id); }),
+                owned.end());
   }
   for (const std::uint32_t blk : blks) {
-    const std::uint32_t fn = store.blks[blk].data.fn;
-    if (fn < store.fns.size()) {
-      auto& owned = store.fns[fn].data.blks;
-      owned.erase(std::remove(owned.begin(), owned.end(), blk), owned.end());
-    }
     store.blks[blk].live = false;
     ++store.blks[blk].generation;
   }
@@ -3188,6 +3317,20 @@ bool Mod::rename(Val value, std::string name) {
   const std::unordered_set<std::uint32_t> related =
       detail::family(store, value.id_);
 
+  std::unordered_set<std::uint32_t> function_bindings, binding_blocks;
+  for (const auto id : related) {
+    const auto& data = store.vals[id].data;
+    if (data.kind == detail::ValKind::generic || data.kind == detail::ValKind::param)
+      function_bindings.insert(data.fn);
+    else if (data.kind == detail::ValKind::blk_arg) {
+      if (data.blk >= store.blks.size() || !store.blks[data.blk].live) {
+        detail::add_diag(store.diags, "rename requires a live argument block");
+        return false;
+      }
+      binding_blocks.insert(data.blk);
+    }
+  }
+
   const auto conflicts = [&](std::span<const std::uint32_t> ids) {
     const bool owns = std::any_of(ids.begin(), ids.end(), [&](std::uint32_t id) {
       return related.contains(id);
@@ -3197,9 +3340,10 @@ bool Mod::rename(Val value, std::string name) {
                     store.vals[id].live && store.vals[id].data.name == name;
            });
   };
-  for (const auto& slot : store.fns) {
-    if (!slot.live)
+  for (const auto owner : function_bindings) {
+    if (owner >= store.fns.size() || !store.fns[owner].live)
       continue;
+    const auto& slot = store.fns[owner];
     std::vector<std::uint32_t> bindings = slot.data.generic_vals;
     bindings.insert(bindings.end(), slot.data.params.begin(),
                     slot.data.params.end());
@@ -3209,8 +3353,8 @@ bool Mod::rename(Val value, std::string name) {
       return false;
     }
   }
-  for (const auto& slot : store.blks)
-    if (slot.live && conflicts(slot.data.args)) {
+  for (const auto block : binding_blocks)
+    if (conflicts(store.blks[block].data.args)) {
       detail::add_diag(store.diags, "rename would duplicate a Blk binding");
       return false;
     }
@@ -3238,8 +3382,9 @@ bool Mod::rename(Val value, std::string name) {
         op.form == Op::Form::hidden)
       op.form = Op::Form::let;
   }
-  for (const auto& blk_slot : store.blks) {
-    if (!blk_slot.live || blk_slot.data.parent_op == detail::none ||
+  for (const auto block : binding_blocks) {
+    const auto& blk_slot = store.blks[block];
+    if (blk_slot.data.parent_op == detail::none ||
         blk_slot.data.parent_op >= store.ops.size() ||
         !store.ops[blk_slot.data.parent_op].live)
       continue;
@@ -3349,10 +3494,14 @@ bool Mod::retarget(const Env& env, Op call, std::string callee,
   if (op.callee == callee && op.args == values)
     return true;
   const bool changed_args = op.args != values;
+  if (changed_args) {
+    for (const auto value : op.args)
+      remove_user(store, value, call.id_);
+    for (const auto value : values)
+      add_user(store, value, call.id_);
+  }
   op.callee = std::move(callee);
   op.args = std::move(values);
-  if (changed_args)
-    detail::rebuild_uses(store);
   touch(store, fn_for_op(store, call.id_));
   return true;
 }
@@ -3436,6 +3585,16 @@ int Mod::print_diags(std::FILE* file) const {
 }  // namespace joggle
 
 namespace joggle::detail {
+
+void index_value_names(const Store& store) {
+  for (; store.indexed_value_names < store.vals.size();
+       ++store.indexed_value_names) {
+    const auto id = static_cast<std::uint32_t>(store.indexed_value_names);
+    const auto& slot = store.vals[id];
+    if (slot.live && !slot.data.name.empty())
+      store.value_names[slot.data.name].push_back(id);
+  }
+}
 
 bool materializable_generic(const Ty& type, const Ty& value,
                             std::span<const Val> context) {

@@ -156,6 +156,10 @@ fn maximum<E: Ty>(left: E, right: E) -> E {
   return out
 }
 
+fn maximum<E: Ty>(left: tensor<E, []>, right: tensor<E, []>) -> tensor<E, []> {
+  return tensor<E, []>(maximum(left[0], right[0]))
+}
+
 fn maximum<E: Ty, S: list<int>>(
   left: tensor<E, S>, right: tensor<E, S>
 ) -> tensor<E, S> {
@@ -174,6 +178,10 @@ fn minimum<E: Ty>(left: E, right: E) -> E {
   var out = right
   if unordered(left) || (!unordered(right) && left < right) { out = left }
   return out
+}
+
+fn minimum<E: Ty>(left: tensor<E, []>, right: tensor<E, []>) -> tensor<E, []> {
+  return tensor<E, []>(minimum(left[0], right[0]))
 }
 
 fn minimum<E: Ty, S: list<int>>(

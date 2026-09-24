@@ -1,6 +1,7 @@
 #include "joggle/joggle.h"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -106,6 +107,21 @@ bool stable_type(std::string_view source) {
 }  // namespace
 
 int main() {
+  {
+    joggle::Env env;
+    for (const auto literal : {"1e-310", "1e-400", "-1e-400"}) {
+      joggle::Attr value;
+      CHECK(joggle::parse(env, literal, value));
+      CHECK(value.real() && std::isfinite(*value.real()));
+      if (std::string_view(literal) == "1e-310") CHECK(*value.real() > 0);
+      else CHECK(*value.real() == 0);
+      CHECK(std::signbit(*value.real()) == (literal[0] == '-'));
+    }
+    for (const auto literal : {"1e400", "-1e400", "1e+"}) {
+      joggle::Attr value;
+      CHECK(!joggle::parse(env, literal, value));
+    }
+  }
   constexpr std::array<std::string_view, 5> modules{
       "mod empty\n",
       "mod scalar\nfn add(a: i32, b: i32) -> i32 { return a + b }\n",

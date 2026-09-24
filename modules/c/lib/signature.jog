@@ -425,23 +425,32 @@ local fn contains(fn: Fn, value: Val) -> bool {
   return false
 }
 
-local fn uses_slot(m: Mod, fn: Fn, slot: int) -> bool {
+[memo]
+local fn runtime_slots(m: Mod, fn: Fn) -> dict {
+  var used: dict = {}
   for op in ir.ops(fn) {
     let inputs = ir.args(op)
     for at in 0..len(inputs) {
       let value = storage_value(inputs[at])
-      if mem.planned(value) && mem.slot(value) == slot &&
-         runtime_arg(m, op, at) {
-        return true
+      if mem.planned(value) && runtime_arg(m, op, at) {
+        used[text(mem.slot(value))] = true
       }
     }
   }
-  return false
+  return used
+}
+
+local fn uses_slot(m: Mod, fn: Fn, slot: int) -> bool {
+  return base.has(runtime_slots(m, fn), text(slot))
 }
 
 local fn runtime_storage(m: Mod, value: Val) -> bool {
   if !mem.planned(value) {
     return true
+  }
+  let definition = ir.def(value)
+  if ir.live(definition) {
+    return uses_slot(m, ir.owner(ir.blk(definition)), mem.slot(value))
   }
   for fn in ir.fns(m) {
     if contains(fn, value) {

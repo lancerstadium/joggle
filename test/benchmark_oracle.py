@@ -43,6 +43,10 @@ from collect_footprint import collect_packages
 from merge_agent_rows import summarize as agent_summary, success_intervals, validate_trajectory
 
 
+BUILD = Path(os.environ.get("JOGGLE_TEST_BUILD_DIR",
+    Path(__file__).resolve().parents[1] / "build")).resolve()
+
+
 class BenchmarkOracleTests(unittest.TestCase):
     def test_package_collector_rejects_failed_candidate_before_publication(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -297,7 +301,7 @@ class BenchmarkOracleTests(unittest.TestCase):
 
     def test_resident_scalarization_preserves_mutable_index_declarations(self):
         repo = Path(__file__).resolve().parents[1]
-        compiler = Path(os.environ.get("JOGGLE_RESIDENT_COMPILER", repo / "build/artifact/joggle-artifact-reactive"))
+        compiler = Path(os.environ.get("JOGGLE_RESIDENT_COMPILER", BUILD / "artifact/joggle-artifact-reactive"))
         if not compiler.is_file() or not shutil.which("cc"):
             self.skipTest("resident compiler and C compiler are required")
         with tempfile.TemporaryDirectory() as directory:
@@ -478,15 +482,21 @@ class BenchmarkOracleTests(unittest.TestCase):
     def test_joggle_host_compile_failure_keeps_compiler_diagnostics(self):
         x = helper.make_tensor_value_info("x", onnx.TensorProto.FLOAT, [1])
         model = helper.make_model(helper.make_graph([], "identity", [x], [x])).SerializeToString()
-        compiler = type("Compiler", (), {"compile": lambda self, source, output: None})()
+        def compile_fixture(self, source, output):
+            output.mkdir()
+            (output / "0.timing.json").write_text(json.dumps({
+                "schema": "resident-lowering/v1", "parse_ns": 0,
+                "lower_ns": 0, "emit_ns": 0, "wall_ns": 0}))
+            (output / "0.profile.attr").write_text(json.dumps({
+                "succeeded": True, "steps": []}))
+        compiler = type("Compiler", (), {"compile": compile_fixture})()
         result = subprocess.CompletedProcess(["cc"], 1, "", "error: undeclared storage binding")
         with patch("run_joggle_benchmarks.run_to_file"), patch("benchmark_backends.subprocess.run", return_value=result):
             with self.assertRaisesRegex(RuntimeError, "undeclared storage binding"):
                 JoggleRunner(model, {"x": np.zeros(1, dtype=np.float32)}, compiler,
                              Path("tool"), Path("mods"), "cc", 10)
 
-    @unittest.skipUnless((Path(__file__).resolve().parents[1] /
-                          "build/artifact/joggle-artifact-reactive").is_file() and shutil.which("cc"),
+    @unittest.skipUnless((BUILD / "artifact/joggle-artifact-reactive").is_file() and shutil.which("cc"),
                          "resident compiler and C compiler are required")
     def test_resident_index_updates_keep_the_planned_storage_binding(self):
         repo = Path(__file__).resolve().parents[1]
@@ -507,8 +517,8 @@ fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {
 }
 """)
             output = root / "compiled"
-            subprocess.run([str(repo / "build/artifact/joggle-artifact-reactive"), "--compile-sequence",
-                            str(repo / "build/modules"), str(output), str(source)],
+            subprocess.run([str(BUILD / "artifact/joggle-artifact-reactive"), "--compile-sequence",
+                            str(BUILD / "modules"), str(output), str(source)],
                            check=True, capture_output=True, text=True, timeout=30)
             harness = root / "main.c"
             harness.write_text("void resident_storage_main(const float*,float*);\n"
@@ -522,13 +532,12 @@ fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {
             self.assertEqual(compiled.returncode, 0, compiled.stderr + "\n" + (output / "0.c").read_text())
             subprocess.run([str(root / "run")], check=True, timeout=10)
 
-    @unittest.skipUnless((Path(__file__).resolve().parents[1] /
-                          "build/artifact/joggle-artifact-reactive").is_file() and shutil.which("cc"),
+    @unittest.skipUnless((BUILD / "artifact/joggle-artifact-reactive").is_file() and shutil.which("cc"),
                          "resident compiler and C compiler are required")
     def test_resident_external_constants_keep_owned_abi_storage(self):
         repo = Path(__file__).resolve().parents[1]
-        compiler = JoggleCompiler(repo / "build/artifact/joggle-artifact-reactive",
-                                  repo / "build/modules", 60)
+        compiler = JoggleCompiler(BUILD / "artifact/joggle-artifact-reactive",
+                                  BUILD / "modules", 60)
         try:
             for dtype in (np.float32, np.float64, np.int32):
                 with self.subTest(dtype=dtype):
@@ -554,11 +563,14 @@ fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {
                         for weights in (np.array([2, 3, -1, 5], dtype=dtype),
                                         np.array([-4, 2, 7, 1], dtype=dtype), None):
                             runner = JoggleRunner(model(weights), {"x": x}, compiler,
-                                repo / "build/joggle", repo / "build/modules", shutil.which("cc"), 60)
+                                BUILD / "joggle", BUILD / "modules", shutil.which("cc"), 60)
                             runners.append(runner)
                             expected.append(x if weights is None else x + weights)
                             output = Path(runner._temporary.name) / "compiled"
                             entry = json.loads((output / "0.api.json").read_text())[0]
+                            emission = runner.lowering_profile["emit_components_ns"]
+                            self.assertEqual(sum(emission.values()), runner.stages_ns["emit"])
+                            self.assertTrue(all(type(n) is int and n >= 0 for n in emission.values()))
                             if weights is None:
                                 self.assertEqual(entry["data"], "")
                             else:
@@ -577,13 +589,12 @@ fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {
         finally:
             compiler.close()
 
-    @unittest.skipUnless((Path(__file__).resolve().parents[1] /
-                          "build/artifact/joggle-artifact-reactive").is_file() and shutil.which("cc"),
+    @unittest.skipUnless((BUILD / "artifact/joggle-artifact-reactive").is_file() and shutil.which("cc"),
                          "resident compiler and C compiler are required")
     def test_external_constant_initializes_planned_writable_slot(self):
         repo = Path(__file__).resolve().parents[1]
-        compiler = JoggleCompiler(repo / "build/artifact/joggle-artifact-reactive",
-                                  repo / "build/modules", 60)
+        compiler = JoggleCompiler(BUILD / "artifact/joggle-artifact-reactive",
+                                  BUILD / "modules", 60)
         try:
             with tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -656,10 +667,10 @@ int main(void) {
         args = argparse.Namespace(spec=Path("spec"), inputs=Path("inputs"), backend="joggle",
                                   target_json='{"kind":"llvm"}', onnx_mlir=None,
                                   edit_json=Path("edit.json"), joggle=Path("custom/joggle"),
-                                  joggle_server=Path("custom/server"), builtin_mods=Path("custom/mods"),
+                                  joggle_server=Path("custom/server"), joggle_reuse="prepared", builtin_mods=Path("custom/mods"),
                                   cc="custom/clang", case_timeout=17)
         argv = baseline_command(args, "update", "model", Path("model.onnx"))
-        for key in ("edit_json", "joggle", "joggle_server", "builtin_mods", "cc", "case_timeout"):
+        for key in ("edit_json", "joggle", "joggle_server", "joggle_reuse", "builtin_mods", "cc", "case_timeout"):
             flag = "--" + key.replace("_", "-")
             self.assertEqual(argv[argv.index(flag) + 1], str(getattr(args, key)))
 
@@ -768,19 +779,18 @@ int main(void) {
         with self.assertRaises(ValueError):
             plot_variants([dict(summary[0], variant="unknown"), summary[-1]])
 
-    @unittest.skipUnless((Path(__file__).resolve().parents[1] /
-                          "build/artifact/joggle-artifact-reactive").is_file() and shutil.which("cc"),
+    @unittest.skipUnless((BUILD / "artifact/joggle-artifact-reactive").is_file() and shutil.which("cc"),
                          "resident compiler and C compiler are required")
     def test_resident_lowering_keeps_fresh_sources_and_matches_full_rebuild(self):
         repo = Path(__file__).resolve().parents[1]
-        tool = repo / "build/artifact/joggle-artifact-reactive"
+        tool = BUILD / "artifact/joggle-artifact-reactive"
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             before, after = root / "before.jog", root / "after.jog"
             for path, value in ((before, 1), (after, 2)):
                 path.write_text(f"mod resident\nfn main(x: f32) -> f32 {{ return x + f32({value}) }}\n")
             original_sources = (before.read_bytes(), after.read_bytes())
-            command = [str(tool), "--compile-sequence", str(repo / "build/modules")]
+            command = [str(tool), "--compile-sequence", str(BUILD / "modules")]
             warm, full = root / "warm", root / "full"
             subprocess.run(command + [str(warm), str(before), str(after), str(before)],
                            check=True, capture_output=True, text=True, timeout=60)
@@ -808,6 +818,84 @@ int main(void) {
                                       capture_output=True, text=True, timeout=10)
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("refusing to replace", rejected.stderr)
+
+    def test_prepared_reuse_sequence_executes_edits_and_reversions(self):
+        repo = Path(__file__).resolve().parents[1]
+        tool = BUILD / "artifact/joggle-artifact-reactive"
+        if not tool.is_file() or not shutil.which("cc"):
+            self.skipTest("resident compiler and C compiler are required")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            before, after = root / "before.jog", root / "after.jog"
+            source = ("mod model\nuse nn\n[entry]\n"
+                      "fn main(x: tensor<f32, [8]>) -> tensor<f32, [8]> {\n"
+                      "let a = nn.relu(x)\nlet b = nn.relu(a)\n"
+                      "let c = nn.relu(b)\nlet d = nn.relu(c)\nreturn d\n}\n")
+            before.write_text(source)
+            after.write_text(source.replace("return d", "return nn.sigmoid(d)"))
+            out = root / "compiled"
+            subprocess.run([str(tool), "--compile-reuse-sequence", str(BUILD / "modules"),
+                            str(out), str(before), str(after), str(before)],
+                           check=True, capture_output=True, text=True, timeout=60)
+            self.assertEqual(before.read_text(), source)
+            for i in range(3):
+                profile = json.loads((out / f"{i}.profile.attr").read_text())
+                if i:
+                    self.assertGreater(profile["imported_instances"], 0)
+                    self.assertGreater(profile["reachable_imports"], 0)
+                    self.assertLessEqual(profile["reachable_imports"], profile["materialized_instances"])
+                    self.assertLessEqual(profile["materialized_instances"], profile["imported_instances"])
+                timing = json.loads((out / f"{i}.timing.json").read_text())
+                self.assertGreaterEqual(profile["import_ns"], 0)
+                self.assertGreaterEqual(profile["capture_ns"], 0)
+                self.assertGreaterEqual(profile["materialize_ns"], 0)
+                self.assertLessEqual(profile["import_ns"] + profile["materialize_ns"] +
+                                     profile["capture_ns"], timing["lower_ns"])
+                values = np.maximum(np.arange(8, dtype=np.float32) - 2, 0)
+                if i == 1:
+                    values = 1 / (1 + np.exp(-values))
+                api = json.loads((out / f"{i}.api.json").read_text())
+                entry = next(item for item in api if item["name"] == "model_main")
+                args = "x, NULL, y" if entry.get("data") else "x, y"
+                harness = root / f"harness-{i}.c"
+                harness.write_text("#include <stddef.h>\n#include <math.h>\n" +
+                    entry["declaration"] + "\nint main(void) {\n" +
+                    "float x[8]={-2,-1,0,1,2,3,4,5}, y[8];\nfloat expected[8]={" +
+                    ",".join(str(float(v)) for v in values) + "};\n" +
+                    f"model_main({args});\n" +
+                    "for(int j=0;j<8;++j) if(!isfinite(y[j]) || "
+                    "fabsf(y[j]-expected[j])>1e-5f) return 1;\nreturn 0; }\n")
+                binary = root / f"run-{i}"
+                subprocess.run([shutil.which("cc"), "-std=c11", "-O3",
+                                str(out / f"{i}.c"), str(harness), "-lm", "-o", str(binary)],
+                               check=True, capture_output=True, timeout=60)
+                subprocess.run([str(binary)], check=True, timeout=10)
+
+    def test_resident_timings_partition_without_double_counting(self):
+        from benchmark_backends import resident_stages
+        timing = {"schema": "resident-lowering/v1", "parse_ns": 3,
+                  "lower_ns": 20, "emit_ns": 7, "wall_ns": 30}
+        stages = resident_stages(timing, 36)
+        self.assertEqual(stages, {"parse": 3, "lower": 20, "emit": 7,
+                                  "compile_protocol": 6})
+        self.assertEqual(sum(stages.values()), 36)
+        self.assertEqual(resident_stages(dict(timing, wall_ns=31), 36), stages)
+        for field in ("parse_ns", "lower_ns", "emit_ns", "wall_ns"):
+            for invalid in (-1, True, 1.5, "3", None):
+                with self.subTest(field=field, invalid=invalid):
+                    with self.assertRaises(ValueError):
+                        resident_stages(dict(timing, **{field: invalid}), 36)
+            missing = dict(timing)
+            del missing[field]
+            with self.assertRaises(ValueError):
+                resident_stages(missing, 36)
+        for invalid in (None, {}, dict(timing, schema="unknown"),
+                        dict(timing, wall_ns=29), dict(timing, wall_ns=37)):
+            with self.assertRaises(ValueError):
+                resident_stages(invalid, 36)
+        for invalid in (-1, True, 1.5, 29):
+            with self.assertRaises(ValueError):
+                resident_stages(timing, invalid)
 
     def test_checked_build_rejects_stale_outputs_and_releases_runner(self):
         class Runner:
@@ -1461,8 +1549,10 @@ int main(void) {
                 with self.assertRaises((ValueError, onnx.checker.ValidationError)):
                     apply_model_edit(model_path.read_bytes(), {**edit, **changes})
             backends = []
-            if (Path(__file__).resolve().parents[1] / "build/artifact/joggle-artifact-reactive").is_file():
-                backends.append(["--backend", "joggle"])
+            if (BUILD / "artifact/joggle-artifact-reactive").is_file():
+                backends.append(["--backend", "joggle", "--joggle", str(BUILD / "joggle"),
+                                 "--joggle-server", str(BUILD / "artifact/joggle-artifact-reactive"),
+                                 "--builtin-mods", str(BUILD / "modules")])
             if importlib.util.find_spec("tvm"):
                 backends.append(["--backend", "tvm"])
             if os.environ.get("ONNX_MLIR_BIN"):
@@ -1497,10 +1587,10 @@ int main(void) {
                         self.assertEqual(updated["replacement"][field], rebuilt["replacement"][field])
 
             repo = Path(__file__).resolve().parents[1]
-            if (repo / "build/artifact/joggle-artifact-reactive").is_file():
+            if (BUILD / "artifact/joggle-artifact-reactive").is_file():
                 worker_args = argparse.Namespace(**vars(args), backend="joggle", worker="rebuild",
-                    joggle=repo / "build/joggle", builtin_mods=repo / "build/modules",
-                    joggle_server=repo / "build/artifact/joggle-artifact-reactive",
+                    joggle=BUILD / "joggle", builtin_mods=BUILD / "modules",
+                    joggle_server=BUILD / "artifact/joggle-artifact-reactive", joggle_reuse="none",
                     cc="cc", edit_json=edit_path)
                 with patch("run_baseline_benchmarks.production_identity",
                            side_effect=[{"compiler": "before"}, {"compiler": "after"}]), \

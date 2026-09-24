@@ -186,6 +186,63 @@ std::string_view Fn::module() const noexcept {
 std::uint64_t Fn::revision() const noexcept {
   return valid() ? store_->fns[id_].data.revision : 0;
 }
+Attr Fn::content() const {
+  if (!valid())
+    return {};
+  const auto& fn = store_->fns[id_].data;
+  std::unordered_map<std::uint32_t, std::int64_t> numbers;
+  Attr::List values;
+  const auto value = [&](std::uint32_t id) {
+    const auto found = numbers.find(id);
+    if (found != numbers.end())
+      return Attr(found->second);
+    const auto number = static_cast<std::int64_t>(values.size());
+    numbers.emplace(id, number);
+    const auto& data = store_->vals[id].data;
+    values.emplace_back(Attr::List{Attr(data.name), Attr(std::string(data.type.text())),
+                                  Attr(data.meta)});
+    return Attr(number);
+  };
+  const auto references = [&](const auto& ids) {
+    Attr::List out;
+    for (auto id : ids)
+      out.push_back(value(id));
+    return Attr(std::move(out));
+  };
+  const Attr generics = references(fn.generic_vals);
+  const Attr params = references(fn.params);
+  const auto block = [&](const auto& self, std::uint32_t id) -> Attr {
+    const auto& data = store_->blks[id].data;
+    const Attr args = references(data.args);
+    Attr::List ops;
+    for (auto op_id : data.ops) {
+      const auto& op = store_->ops[op_id].data;
+      const Attr inputs = references(op.args);
+      const Attr outputs = references(op.outs);
+      Attr::List children, names;
+      for (auto child : op.blks)
+        children.push_back(self(self, child));
+      for (const auto& name : op.iter_names)
+        names.emplace_back(name);
+      ops.emplace_back(Attr::List{
+          Attr(static_cast<std::int64_t>(op.kind)),
+          Attr(static_cast<std::int64_t>(op.form)), Attr(op.callee),
+          inputs, outputs, Attr(std::move(children)), Attr(std::move(names)),
+          Attr(static_cast<std::int64_t>(op.carried_count)),
+          Attr(static_cast<std::int64_t>(op.logic)), op.literal, Attr(op.meta)});
+    }
+    return Attr(Attr::List{args, Attr(std::move(ops))});
+  };
+  Attr::List roots, returns;
+  for (auto id : fn.blks)
+    if (store_->blks[id].data.parent_op == detail::none)
+      roots.push_back(block(block, id));
+  for (const auto& type : fn.returns)
+    returns.emplace_back(std::string(type.text()));
+  return Attr(Attr::List{Attr(fn.name), Attr(fn.local), Attr(fn.external),
+                         Attr(fn.meta), generics, params, Attr(std::move(returns)),
+                         Attr(std::move(values)), Attr(std::move(roots))});
+}
 std::vector<Val> Fn::generics() const {
   std::vector<Val> out;
   if (!valid())

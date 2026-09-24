@@ -12,6 +12,28 @@ joggle_run("bounds query failed"
   COMMAND "${TOOL}" query bounds.report "${MODEL}" -M "${MODULES}"
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error)
+foreach(pair
+    "i8;-1" "u8;255" "i16;-32768" "u16;65535"
+    "i32;-2147483648" "u32;4294967295"
+    "i64_min;-9223372036854775808" "i64_max;9223372036854775807"
+    "u64_fit;9223372036854775807")
+  list(GET pair 0 name)
+  list(GET pair 1 value)
+  joggle_expect("binary ${name} element lost its exact bound"
+    TEXT "${output}" MATCHES
+    "\"hi\": ${value}, \"lo\": ${value}, \"name\": \"binary_${name}\"")
+endforeach()
+foreach(limit 10 30)
+  joggle_expect("nested calls lost argument-local bounds"
+    TEXT "${output}" MATCHES
+    "\"hi\": ${limit}, \"lo\": -2147483648, \"name\": \"nested${limit}\"")
+  joggle_expect("indexed calls lost their scalar argument"
+    TEXT "${output}" MATCHES
+    "\"hi\": ${limit}, \"lo\": ${limit}, \"name\": \"indexed${limit}\"")
+endforeach()
+joggle_expect("binary analysis guessed an unrepresentable or unknown element"
+  TEXT "${output}" NOT_MATCHES
+  "\"name\": \"binary_(u64|index|oob)_unknown\"")
 if(NOT output MATCHES
    "\"[0-9]+\": \\{\"fn\": \"kernel\", \"hi\": 5, \"lo\": 2, \"name\": \"i\", \"type\": \"index\"\\}" OR
    NOT output MATCHES
@@ -26,6 +48,28 @@ endif()
 joggle_expect("shape-vector interval was lost"
   TEXT "${output}" MATCHES
   "\"hi\": 2, \"lo\": 0, \"name\": \"bounded_element\"")
+joggle_expect("upper clamp lost its comparison constraint"
+  TEXT "${output}" MATCHES
+  "\"hi\": 100, \"lo\": -2147483648, \"name\": \"upper_clamped\"")
+joggle_expect("first call lost its argument-specific bound"
+  TEXT "${output}" MATCHES
+  "\"hi\": 10, \"lo\": -2147483648, \"name\": \"call10\"")
+joggle_expect("second call reused another call's bound"
+  TEXT "${output}" MATCHES
+  "\"hi\": 30, \"lo\": -2147483648, \"name\": \"call30\"")
+joggle_expect("recursive call acquired an unsupported finite summary"
+  TEXT "${output}" NOT_MATCHES "\"name\": \"recursive_result\"")
+joggle_expect("reversed comparison lost its lower constraint"
+  TEXT "${output}" MATCHES
+  "\"hi\": 2147483647, \"lo\": -5, \"name\": \"lower_clamped\"")
+joggle_expect("false branch lost its inverted constraint"
+  TEXT "${output}" MATCHES
+  "\"hi\": 100, \"lo\": -2147483648, \"name\": \"else_clamped\"")
+joggle_expect("equality branch lost its exact constraint"
+  TEXT "${output}" MATCHES
+  "\"hi\": 100, \"lo\": 100, \"name\": \"equal_clamped\"")
+joggle_expect("branch constraint leaked to an unguarded input use"
+  TEXT "${output}" NOT_MATCHES "\"name\": \"outside_branch\"")
 joggle_expect("unchanged shape-vector element was lost"
   TEXT "${output}" MATCHES
   "\"hi\": 7, \"lo\": 7, \"name\": \"untouched_element\"")

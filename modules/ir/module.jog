@@ -12,6 +12,7 @@ fn uses(m: Mod) -> list<str>;
 fn trim(m: Mod) -> bool;
 fn revision(m: Mod) -> int;
 fn revision(f: Fn) -> int;
+fn fingerprint(f: Fn) -> str;
 fn params(f: Fn) -> list<Val>;
 fn returns(f: Fn) -> list<Ty>;
 fn generics(f: Fn) -> list<Val>;
@@ -106,6 +107,7 @@ fn clone(
   m: Mod, ops: list<Op>, before: Op, old: list<Val>, next: list<Val>
 ) -> list<Op>;
 fn clone(m: Mod, fn: Fn, name: str) -> Fn;
+fn declare(m: Mod, fn: Fn, name: str) -> Fn;
 fn clone(m: Mod, fn: Fn, name: str, generics: list<Ty>) -> Fn;
 fn bind(m: Mod, op: Op, fn: Fn, name: str, params: list<int>) -> Fn;
 fn fold(m: Mod, call: Op, fn: Fn) -> bool;

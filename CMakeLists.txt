@@ -110,6 +110,7 @@ function(joggle_label label)
 endfunction()
 
 add_library(joggle
+  src/digest.cpp
   src/env.cpp
   src/eval.cpp
   src/handle.cpp

@@ -2,6 +2,103 @@ mod bounded
 use base
 use tensor
 
+fn binary_elements(at: index) -> i64 {
+  let s8: tensor<i8, []> = hex"ff"
+  let u8s: tensor<u8, []> = hex"ff"
+  let s16: tensor<i16, []> = hex"0080"
+  let u16s: tensor<u16, []> = hex"ffff"
+  let s32: tensor<i32, []> = hex"00000080"
+  let u32s: tensor<u32, []> = hex"ffffffff"
+  let s64: tensor<i64, [2]> = hex"0000000000000080ffffffffffffff7f"
+  let u64s: tensor<u64, [2]> = hex"ffffffffffffff7f0000000000000080"
+  let binary_i8 = s8[0]
+  let binary_u8 = u8s[0]
+  let binary_i16 = s16[0]
+  let binary_u16 = u16s[0]
+  let binary_i32 = s32[0]
+  let binary_u32 = u32s[0]
+  let binary_i64_min = s64[0]
+  let binary_i64_max = s64[1]
+  let binary_u64_fit = u64s[0]
+  let binary_u64_unknown = u64s[1]
+  let binary_index_unknown = s64[at]
+  let binary_oob_unknown = s64[2]
+  return binary_i64_min
+}
+
+local fn clamp_call(x: i32, limit: i32) -> i32 {
+  var selected = limit
+  if x < limit { selected = x }
+  return selected
+}
+
+local fn nested1(x: i32, limit: i32) -> i32 { return clamp_call(x, limit) }
+local fn nested2(x: i32, limit: i32) -> i32 { return nested1(x, limit) }
+local fn nested3(x: i32, limit: i32) -> i32 { return nested2(x, limit) }
+local fn nested4(x: i32, limit: i32) -> i32 { return nested3(x, limit) }
+local fn nested5(x: i32, limit: i32) -> i32 { return nested4(x, limit) }
+
+fn nested_calls(x: i32) -> i32 {
+  let nested10 = nested5(x, i32(10))
+  let nested30 = nested5(x, i32(30))
+  return nested10 + nested30
+}
+
+local fn indexed_call(x: tensor<i32, [2]>, at: index) -> i32 {
+  return x[at + index(0)]
+}
+
+fn indexed_calls() -> i32 {
+  let values: tensor<i32, [2]> = hex"0a0000001e000000"
+  let indexed10 = indexed_call(values, index(0))
+  let indexed30 = indexed_call(values, index(1))
+  return indexed10 + indexed30
+}
+
+fn distinct_calls(x: i32) -> i32 {
+  let call10 = clamp_call(x, i32(10))
+  let call30 = clamp_call(x, i32(30))
+  return call10 + call30
+}
+
+local fn recursive_call(x: i32) -> i32 {
+  return recursive_call(x)
+}
+
+fn recursive_unknown(x: i32) -> i32 {
+  let recursive_result = recursive_call(x)
+  return recursive_result
+}
+
+fn clamp_upper(x: i32) -> i32 {
+  var selected = i32(100)
+  if x < selected { selected = x }
+  let upper_clamped = selected
+  return upper_clamped
+}
+
+fn clamp_lower(x: i32) -> i32 {
+  var selected = i32(-5)
+  if selected < x { selected = x }
+  let lower_clamped = selected
+  return lower_clamped
+}
+
+fn clamp_else(x: i32) -> i32 {
+  var selected = i32(100)
+  if x >= selected { selected = i32(100) } else { selected = x }
+  let else_clamped = selected
+  let outside_branch = x
+  return else_clamped + outside_branch
+}
+
+fn clamp_equal(x: i32) -> i32 {
+  var selected = i32(100)
+  if x == selected { selected = x }
+  let equal_clamped = selected
+  return equal_clamped
+}
+
 fn kernel() -> int {
   var out = 0
   for i in 2..6 {

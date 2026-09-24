@@ -669,7 +669,8 @@ bool load_production_env(joggle::Env& env, const char* modules) {
 
 int compile_source(joggle::Env& env, const char* source,
                    const std::filesystem::path& directory, int sequence,
-                   bool external_data) {
+                   bool external_data,
+                   joggle::Mod* prepared_cache = nullptr) {
   const auto begin = Clock::now();
   std::ifstream input(source, std::ios::binary);
   if (!input) {
@@ -687,7 +688,150 @@ int compile_source(joggle::Env& env, const char* source,
       "onnx.nn.infer", "onnx.nn.convert", "c.prepare", "tile.scalarize",
       "mem.plan", "c.noalias"};
   joggle::Attr profile;
-  if (!joggle::run(env, pipeline, mod, {}, nullptr, &profile)) {
+  std::size_t imported_instances = 0;
+  const auto lower = [&]() {
+    if (!prepared_cache)
+      return joggle::run(env, pipeline, mod, {}, nullptr, &profile);
+    joggle::Attr::List steps;
+    std::int64_t initial_ns = 0, snapshot_ns = 0;
+    std::int64_t import_ns = 0, materialize_ns = 0, capture_ns = 0;
+    std::size_t reachable_imports = 0, materialized_instances = 0;
+    std::vector<joggle::Fn> imported;
+    std::vector<joggle::Fn> cached_sources;
+    for (const auto stage : pipeline) {
+      if (stage == "c.prepare") {
+        const auto import_begin = Clock::now();
+        std::map<std::string, bool> imported_keys;
+        std::vector<std::string> import_names;
+        for (const auto fn : prepared_cache->fns()) {
+          const auto* key = fn.meta("opt.instance");
+          if (!key || !imported_keys.emplace(joggle::print(*key), true).second)
+            continue;
+          std::string name = "__prepared_" + std::to_string(imported_instances);
+          while (!mod.find_fns(name).empty()) name += "_";
+          import_names.push_back(name);
+          cached_sources.push_back(fn);
+          ++imported_instances;
+        }
+        imported = mod.declare(env, cached_sources, import_names);
+        if (imported.size() != cached_sources.size()) {
+          mod.print_diags(stderr);
+          return false;
+        }
+        import_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            Clock::now() - import_begin).count();
+      }
+      joggle::Attr part;
+      if (!joggle::run(env, stage, mod, {}, nullptr, &part)) return false;
+      initial_ns += integer(part, "initial_verification_ns");
+      snapshot_ns += integer(part, "snapshot_ns");
+      const auto* entries = field(part, "steps").list();
+      if (!entries) return false;
+      steps.insert(steps.end(), entries->begin(), entries->end());
+      if (stage == "c.prepare") {
+        const auto materialize_begin = Clock::now();
+        // Only signatures participate in preparation. Reconnect referenced
+        // prepared bodies afterwards, before model-wide lowering/planning.
+        std::vector<std::vector<joggle::Op>> declaration_calls(imported.size());
+        for (const auto op : mod.ops()) {
+          if (op.kind() != joggle::Op::Kind::call) continue;
+          const auto target = env.resolve(mod, op);
+          const auto found = std::find(imported.begin(), imported.end(), target);
+          if (found != imported.end())
+            declaration_calls[static_cast<std::size_t>(found - imported.begin())].push_back(op);
+        }
+        std::vector<joggle::Fn> materialize_sources;
+        std::vector<std::string> materialize_names;
+        for (std::size_t i = 0; i < imported.size(); ++i) {
+          if (declaration_calls[i].empty()) continue;
+          std::string name = std::string(imported[i].name()) + "_body";
+          while (!mod.find_fns(name).empty()) name += "_";
+          materialize_sources.push_back(cached_sources[i]);
+          materialize_names.push_back(name);
+        }
+        const auto bodies = mod.clone(env, materialize_sources, materialize_names);
+        if (bodies.size() != materialize_sources.size()) {
+          mod.print_diags(stderr);
+          return false;
+        }
+        std::size_t body_index = 0;
+        for (std::size_t i = 0; i < imported.size(); ++i) {
+          const auto declaration = imported[i];
+          const auto& callers = declaration_calls[i];
+          if (!callers.empty()) {
+            const auto body = bodies[body_index++];
+            for (const auto op : callers)
+              if (!mod.retarget(env, op, body)) { mod.print_diags(stderr); return false; }
+            imported[i] = body;
+            ++materialized_instances;
+          }
+          if (!mod.erase(env, declaration)) { mod.print_diags(stderr); return false; }
+        }
+        materialize_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            Clock::now() - materialize_begin).count();
+        const auto capture_begin = Clock::now();
+        // Save bodies before scalarization and model-wide memory planning.
+        // The environment and pipeline are fixed for this diagnostic session.
+        joggle::Mod next_cache;
+        if (!joggle::parse(env, "mod artifact.prepared\n", next_cache)) return false;
+        std::vector<joggle::Fn> reachable;
+        const auto owned = mod.fns();
+        for (const auto fn : owned)
+          if (!fn.local()) reachable.push_back(fn);
+        for (std::size_t i = 0; i < reachable.size(); ++i) {
+          for (const auto op : reachable[i].ops()) {
+            if (op.kind() != joggle::Op::Kind::call) continue;
+            const auto fn = env.resolve(mod, op);
+            if (fn && std::find(owned.begin(), owned.end(), fn) != owned.end() &&
+                std::find(reachable.begin(), reachable.end(), fn) == reachable.end())
+              reachable.push_back(fn);
+          }
+        }
+        for (const auto fn : imported) {
+          if (std::find(reachable.begin(), reachable.end(), fn) != reachable.end()) {
+            ++reachable_imports;
+          }
+        }
+        std::size_t saved = 0;
+        std::map<std::string, bool> saved_keys;
+        std::vector<joggle::Fn> save_sources;
+        std::vector<std::string> save_names;
+        for (const auto fn : reachable) {
+          const auto* key = fn.meta("opt.instance");
+          if (!fn.local() || !key || !fn.generics().empty() ||
+              !saved_keys.emplace(joggle::print(*key), true).second)
+            continue;
+          save_sources.push_back(fn);
+          save_names.push_back("saved_" + std::to_string(saved++));
+        }
+        if (next_cache.clone(env, save_sources, save_names).size() != save_sources.size()) {
+          next_cache.print_diags(stderr);
+          return false;
+        }
+        if (!next_cache.verify(env)) {
+          next_cache.print_diags(stderr);
+          return false;
+        }
+        *prepared_cache = std::move(next_cache);
+        capture_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            Clock::now() - capture_begin).count();
+      }
+    }
+    joggle::Attr::Dict combined;
+    combined["succeeded"] = joggle::Attr(true);
+    combined["initial_verification_ns"] = joggle::Attr(initial_ns);
+    combined["snapshot_ns"] = joggle::Attr(snapshot_ns);
+    combined["steps"] = joggle::Attr(std::move(steps));
+    combined["imported_instances"] = joggle::Attr(static_cast<std::int64_t>(imported_instances));
+    combined["reachable_imports"] = joggle::Attr(static_cast<std::int64_t>(reachable_imports));
+    combined["materialized_instances"] = joggle::Attr(static_cast<std::int64_t>(materialized_instances));
+    combined["import_ns"] = joggle::Attr(import_ns);
+    combined["materialize_ns"] = joggle::Attr(materialize_ns);
+    combined["capture_ns"] = joggle::Attr(capture_ns);
+    profile = joggle::Attr(std::move(combined));
+    return true;
+  };
+  if (!lower()) {
     env.print_diags(stderr);
     return 1;
   }
@@ -704,41 +848,62 @@ int compile_source(joggle::Env& env, const char* source,
     return 1;
   }
   const auto lowered = Clock::now();
+  const auto ns = [](auto duration) {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+  };
+  joggle::Attr::Dict emit_components;
+  std::int64_t measured_emit_ns = 0;
+  const auto record_emit = [&](std::string key, auto begin, auto end) {
+    const auto duration = ns(end - begin);
+    emit_components[std::move(key)] = joggle::Attr(duration);
+    measured_emit_ns += duration;
+  };
   const std::string prefix = std::to_string(sequence);
+  // Keep tensor payloads out of the C translation unit. The C mod owns the
+  // layout and propagates this data parameter through calls that need it.
   const std::array<joggle::Attr, 1> data_name{joggle::Attr("weights")};
-  const std::span<const joggle::Attr> emission_args =
+  const std::span<const joggle::Attr> data_argument =
       external_data ? std::span<const joggle::Attr>(data_name)
                     : std::span<const joggle::Attr>();
   for (const auto& [function, suffix] :
        std::array<std::pair<std::string_view, std::string_view>, 3>{{
            {"c.source", ".c"}, {"c.header", ".h"}, {"c.api", ".api.json"}}}) {
     joggle::Attr result;
-    if (!joggle::query(env, function, mod, result, emission_args)) {
+    const auto query_begin = Clock::now();
+    if (!joggle::query(env, function, mod, result, data_argument)) {
       env.print_diags(stderr);
       return 1;
     }
+    const auto query_end = Clock::now();
+    record_emit(std::string(function) + ".query", query_begin, query_end);
+    const auto write_begin = Clock::now();
     std::ofstream file(directory / (prefix + std::string(suffix)), std::ios::binary);
     if (result.string()) file << *result.string();
     else file << joggle::print(result);
+    file.close();
     if (!file) return 1;
+    record_emit(std::string(function) + ".write", write_begin, Clock::now());
   }
   if (external_data) {
     joggle::Attr data;
+    const auto data_begin = Clock::now();
     if (!joggle::query(env, "c.data", mod, data) || !data.bytes()) {
       env.print_diags(stderr);
+      std::cerr << "C data query did not produce a binary payload\n";
       return 1;
     }
-    std::ofstream file(directory / (prefix + ".bin"), std::ios::binary);
+    record_emit("c.data.query", data_begin, Clock::now());
+    const auto payload_begin = Clock::now();
+    std::ofstream payload(directory / (prefix + ".bin"), std::ios::binary);
     const auto& bytes = *data.bytes();
     if (!bytes.empty())
-      file.write(reinterpret_cast<const char*>(bytes.data()),
-                 static_cast<std::streamsize>(bytes.size()));
-    if (!file) return 1;
+      payload.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    payload.close();
+    if (!payload) return 1;
+    record_emit("c.data.write", payload_begin, Clock::now());
   }
   const auto end = Clock::now();
-  const auto ns = [](auto duration) {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
-  };
+  emit_components["overhead"] = joggle::Attr(ns(end - lowered) - measured_emit_ns);
   std::ofstream timing(directory / (prefix + ".timing.json"));
   timing << "{\"schema\":\"resident-lowering/v1\",\"sequence\":" << sequence
          << ",\"parse_ns\":" << ns(parsed - begin)
@@ -746,7 +911,12 @@ int compile_source(joggle::Env& env, const char* source,
          << ",\"emit_ns\":" << ns(end - lowered)
          << ",\"wall_ns\":" << ns(end - begin) << "}\n";
   std::ofstream detail(directory / (prefix + ".profile.attr"));
-  detail << joggle::print(profile);
+  // Nested diagnostic components partition emit_ns; they are not additional
+  // stages in the complete ready interval. Keep the aggregate timing intact.
+  if (!profile.dict()) return 1;
+  auto detailed_profile = *profile.dict();
+  detailed_profile["emit_components_ns"] = joggle::Attr(std::move(emit_components));
+  detail << joggle::print(joggle::Attr(std::move(detailed_profile)));
   if (!timing || !detail) return 1;
   return 0;
 }
@@ -764,8 +934,11 @@ int compile_sequence(int argc, char** argv) {
   std::filesystem::create_directories(directory);
   joggle::Env env;
   if (!load_production_env(env, argv[2])) return 1;
+  joggle::Mod prepared_cache;
+  const bool reuse = std::string_view(argv[1]) == "--compile-reuse-sequence";
   for (int index = 4; index < argc; ++index)
-    if (compile_source(env, argv[index], directory, index - 4, false)) return 1;
+    if (compile_source(env, argv[index], directory, index - 4, false,
+                       reuse ? &prepared_cache : nullptr)) return 1;
   return 0;
 }
 
@@ -773,6 +946,8 @@ int compile_server(int argc, char** argv) {
   if (argc != 3) return 2;
   joggle::Env env;
   if (!load_production_env(env, argv[2])) return 1;
+  joggle::Mod prepared_cache;
+  const bool reuse = std::string_view(argv[1]) == "--compile-reuse-server";
   std::cout << "{\"ready\":true}\n" << std::flush;
   std::string line;
   int sequence = 0;
@@ -789,16 +964,19 @@ int compile_server(int argc, char** argv) {
       return 2;
     }
     std::filesystem::create_directories(directory);
-    if (compile_source(env, std::string(*source).c_str(), directory, 0, true)) return 1;
+    if (compile_source(env, std::string(*source).c_str(), directory, 0, true,
+                       reuse ? &prepared_cache : nullptr)) return 1;
     std::cout << "{\"ok\":true,\"sequence\":" << sequence++ << "}\n" << std::flush;
   }
   return 0;
 }
 
 int main(int argc, char** argv) {
-  if (argc > 1 && std::string_view(argv[1]) == "--compile-server")
+  if (argc > 1 && (std::string_view(argv[1]) == "--compile-server" ||
+                   std::string_view(argv[1]) == "--compile-reuse-server"))
     return compile_server(argc, argv);
-  if (argc > 1 && std::string_view(argv[1]) == "--compile-sequence")
+  if (argc > 1 && (std::string_view(argv[1]) == "--compile-sequence" ||
+                   std::string_view(argv[1]) == "--compile-reuse-sequence"))
     return compile_sequence(argc, argv);
   Config config;
   if (!parse_args(argc, argv, config))

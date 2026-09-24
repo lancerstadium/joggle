@@ -239,6 +239,11 @@ local fn payload(op: Op) -> bool {
   return base.kind(payload_data(op)) == "bytes"
 }
 
+local fn borrows_payload(op: Op) -> bool {
+  return !mem.planned(ir.outs(op)[0]) && !reuses(op) &&
+         ir.form(op) != "var"
+}
+
 local fn aligned(offset: int, alignment: int) -> int {
   return ((offset + alignment - 1) / alignment) * alignment
 }
@@ -282,14 +287,10 @@ local fn tensor_constant(
   let elements = count(type)
   assert(bytes == elements * width(tensor.elem(type), config),
          "c: tensor constant byte size does not match its type")
-  if blob != "" {
-    // A planned value uses writable storage that can also serve later values.
-    // Initialize that slot instead of redeclaring it as an immutable pointer.
-    if mem.planned(output) {
-      if bytes == 0 { return "" }
-      return indent + "memcpy(" + val(output) + ", " + blob + " + " +
-             text(payload_offset(offsets, output)) + ", " + text(bytes) + ");\n"
-    }
+  // Only immutable, independently bound literals can borrow the payload.
+  // Planned slots and assignments already own storage; a new pointer would
+  // redeclare that storage and make later writes target the read-only blob.
+  if blob != "" && borrows_payload(op) {
     return indent + "const " + scalar(tensor.elem(type), config) + "* " +
            val(output) + " = (const " + scalar(tensor.elem(type), config) +
            "*)(const void*)(" + blob + " + " +
@@ -307,6 +308,10 @@ local fn tensor_constant(
   }
   if bytes == 0 {
     return out
+  }
+  if blob != "" {
+    return out + indent + "memcpy(" + val(output) + ", " + blob + " + " +
+           text(payload_offset(offsets, output)) + ", " + text(bytes) + ");\n"
   }
   out += indent + "static const unsigned char data_" +
          label(output) +

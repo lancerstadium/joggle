@@ -1,5 +1,29 @@
 mod range_c
 use tensor
+use nn
+
+// Four uses retain a shared helper; each call must keep its own argument bound.
+fn cap10(x: tensor<i32, []>) -> tensor<i32, []> {
+  return nn.minimum(x, tensor<i32, []>(i32(10)))
+}
+fn cap20(x: tensor<i32, []>) -> tensor<i32, []> {
+  return nn.minimum(x, tensor<i32, []>(i32(20)))
+}
+fn cap30(x: tensor<i32, []>) -> tensor<i32, []> {
+  return nn.minimum(x, tensor<i32, []>(i32(30)))
+}
+
+fn capped(x: tensor<i32, []>) -> tensor<i32, [_]> {
+  let cap: tensor<i32, []> = hex"64000000"
+  let stop = nn.minimum(cap, x)
+  return tensor.range(tensor<i32, []>(i32(0)), stop, tensor<i32, []>(i32(1)))
+}
+
+fn descending(x: tensor<i32, []>) -> tensor<i32, [_]> {
+  let cap: tensor<i32, []> = hex"9cffffff"
+  let stop = nn.maximum(x, cap)
+  return tensor.range(tensor<i32, []>(i32(0)), stop, tensor<i32, []>(i32(-1)))
+}
 
 fn main() -> tensor<i32, [_]> {
   let start = tensor<i32, []>(i32(9))

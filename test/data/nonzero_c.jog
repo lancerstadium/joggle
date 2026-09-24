@@ -26,3 +26,24 @@ fn rows(x: tensor<i32, [2, 3]>, rows: index) -> tensor<i64, [2, _]> {
   let prefix: tensor<i32, [_, 3]> = tensor.view(x, shape)
   return nn.nonzero(prefix)
 }
+
+fn indices(x: tensor<f32, [4]>, count: index) -> tensor<i32, [_]> {
+  let shape = tensor<index, [1]>(count)
+  let prefix: tensor<f32, [_]> = tensor.view(x, shape)
+  let mask: tensor<bool, [_]> = prefix > tensor<f32, []>(f32(0))
+  let selected: tensor<i64, [1, _]> = nn.nonzero(mask)
+  let columns: tensor<i64, [_, 1]> = tensor.permute(selected, [1, 0])
+  let flat: tensor<i64, [_]> = tensor.reshape(columns, tensor<i64, [1]>(i64(-1)), false)
+  return tensor.cast(flat)
+}
+
+fn sliced_indices(x: tensor<f32, [2, 3]>, ends: tensor<i32, [2]>) -> tensor<i32, [_]> {
+  let starts = tensor<i32, [2]>(i32(0))
+  let sliced: tensor<f32, [_, _]> = tensor.slice(x, starts, ends)
+  let flat: tensor<f32, [_]> = tensor.reshape(sliced, tensor<i64, [1]>(i64(-1)), false)
+  let mask: tensor<bool, [_]> = flat > tensor<f32, []>(f32(0))
+  let selected: tensor<i64, [1, _]> = nn.nonzero(mask)
+  let columns: tensor<i64, [_, 1]> = tensor.permute(selected, [1, 0])
+  let indices: tensor<i64, [_]> = tensor.reshape(columns, tensor<i64, [1]>(i64(-1)), false)
+  return tensor.cast(indices)
+}

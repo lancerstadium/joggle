@@ -294,6 +294,9 @@ public:
   std::string_view name() const noexcept;
   std::string_view module() const noexcept;
   std::uint64_t revision() const noexcept;
+  /// Structural content with function-local value numbering; excludes source
+  /// locations and mutation counters. Referenced functions are not expanded.
+  Attr content() const;
   std::vector<Val> generics() const;
   std::vector<Val> params() const;
   std::vector<Ty> returns() const;
@@ -359,6 +362,8 @@ public:
               std::span<const Fn> implementations,
               bool best_effort = false) const;
   bool bound(std::string_view symbol) const noexcept;
+  /// Execute a loaded Jog function or a bound native function with Attr values.
+  /// On failure, returns is unchanged; diagnostics are appended to the Env.
   bool call(std::string_view symbol, std::span<const Attr> args,
             std::vector<Attr>& returns);
   std::vector<std::string> modules() const;
@@ -441,8 +446,18 @@ public:
   std::vector<Op> clone(std::span<const Op> ops, Op before,
                         std::span<const Val> old_values = {},
                         std::span<const Val> new_values = {});
+  /// Clone a body and its lexical private helpers. For a source not owned by
+  /// Env, capture all reachable owned helper bodies; no source module is loaded.
+  /// Captured helpers are local, and failures roll back the complete closure.
   Fn clone(const Env& env, Fn fn, std::string name,
            std::span<const Ty> generics = {});
+  /// Copy a function signature and metadata as a bodyless declaration.
+  Fn declare(const Env& env, Fn fn, std::string name);
+  /// Copy a batch atomically; names and functions must have equal lengths.
+  std::vector<Fn> clone(const Env& env, std::span<const Fn> fns,
+                        std::span<const std::string> names);
+  std::vector<Fn> declare(const Env& env, std::span<const Fn> fns,
+                          std::span<const std::string> names);
   Fn bind(const Env& env, Op call, Fn fn, std::string name,
           std::span<const std::size_t> params);
   bool move(Op op, Op before);
@@ -492,7 +507,11 @@ private:
               std::vector<Op>* created = nullptr);
   Fn clone_one(const Env& env, Fn source, std::string name,
                std::span<const Ty> generics,
-               std::span<const std::pair<Fn, std::string>> helpers);
+               std::span<const std::pair<Fn, std::string>> helpers,
+               bool enclosing_transaction = false,
+               bool declaration_only = false);
+  Fn clone(const Env& env, Fn source, std::string name,
+           std::span<const Ty> generics, bool enclosing_transaction);
   void infer(const Env& env, std::uint32_t op);
 
   friend class Parser;

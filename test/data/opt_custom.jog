@@ -13,3 +13,10 @@ fn unused(x: i32) -> i32 {
   let observed = x + i32(1)
   return x
 }
+
+fn duplicate_overload(x: i32) -> i32 {
+  let one = i32(1)
+  let first = x + one
+  let second = x + one
+  return first * second
+}

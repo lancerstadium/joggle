@@ -12,6 +12,9 @@
 
 namespace joggle::detail {
 
+bool evaluate_call(Env& env, Fn function, std::span<const Attr> args,
+                   std::vector<Attr>& returns);
+
 enum class CacheMiss : std::uint8_t {
   none,
   cold,
@@ -160,6 +163,8 @@ enum class Logic : std::uint8_t { none, and_, or_ };
 struct ValData {
   ValKind kind = ValKind::result;
   std::uint32_t fn = none;
+  // Owning block for block arguments; results are owned through their def.
+  std::uint32_t blk = none;
   std::string name;
   Ty type;
   Attr::Dict meta;
@@ -285,11 +290,11 @@ struct Store {
   std::vector<Slot<ValData>> vals;
   std::vector<Diag> diags;
   std::unordered_map<std::string, std::vector<std::uint32_t>> symbols;
-  // Append-only value-name index for clone hygiene. Entries are ids, never
-  // pointers into the value arena. Lookups discard erased values lazily;
+  // Append-only value-name index for binding queries and clone hygiene.
+  // Entries are ids, never pointers into the value arena. Lookups filter erased values;
   // rename updates entries for the already indexed prefix.
-  std::unordered_map<std::string, std::vector<std::uint32_t>> value_names;
-  std::size_t indexed_value_names = 0;
+  mutable std::unordered_map<std::string, std::vector<std::uint32_t>> value_names;
+  mutable std::size_t indexed_value_names = 0;
   mutable std::unordered_map<std::size_t, std::vector<QueryData>> queries;
   // Scratch marks for dependency-cone walks. Epochs avoid clearing an
   // operation-sized bitmap on every edit while keeping the public result
@@ -327,6 +332,9 @@ inline bool live(const std::vector<Slot<T>>& slots, std::uint32_t id,
 void add_diag(std::vector<Diag>& diags, std::string message, Loc loc = {});
 int print_diags(std::FILE* file, const std::vector<Diag>& diags);
 bool valid_binding(std::string_view text);
+std::string sha256(std::string_view bytes);
+std::string fingerprint(const Attr& value);
+void index_value_names(const Store& store);
 bool valid_qualified_name(std::string_view text);
 bool sized_integer_type(std::string_view name) noexcept;
 bool integer_type(std::string_view name) noexcept;

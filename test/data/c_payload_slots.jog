@@ -1,0 +1,16 @@
+mod payload_slots
+use tensor
+
+fn mutable(x: i32) -> i32 {
+  var values: tensor<i32, [2]> = hex"0100000002000000"
+  values[0] = x
+  let first = values[0] + values[1]
+  values = tensor<i32, [2]>(i32(3))
+  values[1] = i32(5)
+  return first + values[0] + values[1]
+}
+
+fn immutable() -> i32 {
+  let values: tensor<i32, [2]> = hex"0100000002000000"
+  return values[0] + values[1]
+}

@@ -24,12 +24,12 @@ using detail::intrinsic_type;
 namespace {
 
 std::uint32_t arg_blk(const detail::Store& store, std::uint32_t value) {
-  for (std::uint32_t id = 0; id < store.blks.size(); ++id) {
-    const auto& args = store.blks[id].data.args;
-    if (std::find(args.begin(), args.end(), value) != args.end())
-      return id;
-  }
-  return detail::none;
+  const auto id = store.vals[value].data.blk;
+  if (id >= store.blks.size() || !store.blks[id].live)
+    return detail::none;
+  const auto& args = store.blks[id].data.args;
+  return std::find(args.begin(), args.end(), value) != args.end()
+             ? id : detail::none;
 }
 
 std::uint32_t arg_fn(const detail::Store& store, std::uint32_t value) {
@@ -1242,7 +1242,8 @@ bool Mod::verify(const Env& env) {
                          fn.loc);
       for (const std::uint32_t value : blk.args)
         if (value < store.vals.size() && store.vals[value].live &&
-            store.vals[value].data.fn != fn_id)
+            (store.vals[value].data.fn != fn_id ||
+             store.vals[value].data.blk != blk_id))
           detail::add_diag(store.diags,
                            "block argument has an inconsistent owner",
                            fn.loc);

@@ -45,20 +45,15 @@ local fn cse_key(op: Op) -> str {
 
 local fn cse_block(m: Mod, block: Blk, pure: list<str>) -> bool {
   var changed = false
-  let ops = ir.ops(block)
+  // Resolve the pure-call set once per block rather than interpreting the
+  // symbol predicate for every operation and every permitted name.
+  let ops = ir.calls(m, ir.ops(block, ["call"]), pure)
   var seen: dict = {}
   for i in 0..len(ops) {
     let op = ops[i]
     if ir.live(op) {
-      var allowed = false
-      for callee in pure {
-        if matches(m, op, callee) {
-          allowed = true
-        }
-      }
       let form = ir.form(op)
-      if ir.kind(op) == "call" && allowed &&
-         (form == "expr" || form == "let") {
+      if form == "expr" || form == "let" {
         var merged = false
         let key = cse_key(op)
         if has(seen, key) {
