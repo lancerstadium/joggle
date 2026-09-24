@@ -449,12 +449,18 @@ def run_json(argv: list[str], timeout: float = 1200) -> dict[str, Any]:
 
 
 def git_state(repo: Path) -> tuple[str, bool]:
+    """Identify experimental sources independently of manuscript-only edits.
+
+    The returned commit still checks out the exact collector and compiler
+    sources. Paper exports and layout changes do not alter an executing study.
+    """
+    sources = [".", ":(exclude)paper"]
     revision = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+        ["git", "log", "-1", "--format=%H", "--", *sources], cwd=repo, check=True,
         capture_output=True, text=True,
     ).stdout.strip()
     dirty = bool(subprocess.run(
-        ["git", "status", "--porcelain"], cwd=repo, check=True,
+        ["git", "status", "--porcelain", "--", *sources], cwd=repo, check=True,
         capture_output=True, text=True,
     ).stdout.strip())
     return revision, dirty

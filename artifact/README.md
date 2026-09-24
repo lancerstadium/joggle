@@ -384,6 +384,11 @@ measurement record, not a completed repeated model/edit population.
 Repeated production collection uses the same collector, without a separate
 benchmark script:
 
+Numerical collectors record the latest commit affecting files outside
+`paper/`. Manuscript-only edits and commits leave that experimental revision
+unchanged, so typesetting can continue during a run. Changes to compiler,
+mod, or collector sources still change the recorded experimental state.
+
 ```sh
 python3 artifact/run_baseline_benchmarks.py --group updates --backend joggle \
   --joggle-reuse prepared \

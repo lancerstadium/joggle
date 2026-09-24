@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "artifact"))
 from run_baseline_benchmarks import compare_outputs, isolated_reference, ort_session, run_json
 from run_baseline_benchmarks import checked_native_build, apply_model_edit, production_update
 from run_baseline_benchmarks import production_sample_row, correctness_oracle_record, command as baseline_command
-from run_baseline_benchmarks import production_worker_timeout
+from run_baseline_benchmarks import production_worker_timeout, git_state
 from run_joggle_benchmarks import compiler_identity, checkpoint_protocol, make_harness, Unsupported
 from benchmark_backends import ONNXMLIRRunner, TVMRunner, JoggleRunner, JoggleCompiler, onnx_mlir_identity, tvm_identity
 from validate_figure import performance, extension
@@ -48,6 +48,39 @@ BUILD = Path(os.environ.get("JOGGLE_TEST_BUILD_DIR",
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_measurement_revision_ignores_only_manuscript_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            def git(*args):
+                return subprocess.run(["git", *args], cwd=root, check=True,
+                                      capture_output=True, text=True).stdout.strip()
+            git("init", "-q")
+            git("config", "user.name", "Benchmark test")
+            git("config", "user.email", "benchmark@example.invalid")
+            git("config", "commit.gpgsign", "false")
+            (root / "artifact").mkdir()
+            (root / "paper").mkdir()
+            collector = root / "artifact" / "collector.py"
+            manuscript = root / "paper" / "README.md"
+            collector.write_text("# collector\n")
+            manuscript.write_text("# manuscript\n")
+            git("add", ".")
+            git("commit", "-qm", "initial sources")
+            measured = git("rev-parse", "HEAD")
+            self.assertEqual(git_state(root), (measured, False))
+            manuscript.write_text("# revised manuscript\n")
+            (root / "paper" / "new-figure.tex").write_text("% figure\n")
+            self.assertEqual(git_state(root), (measured, False))
+            git("add", "paper")
+            git("commit", "-qm", "paper only")
+            self.assertNotEqual(git("rev-parse", "HEAD"), measured)
+            self.assertEqual(git_state(root), (measured, False))
+            collector.write_text("# changed collector\n")
+            self.assertEqual(git_state(root), (measured, True))
+            git("add", "artifact")
+            git("commit", "-qm", "change collector")
+            self.assertEqual(git_state(root), (git("rev-parse", "HEAD"), False))
+
     def test_package_collector_rejects_failed_candidate_before_publication(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
