@@ -12,6 +12,9 @@ import numpy as np
 
 
 COLORS = {
+    "joggle": "#087E8B",
+    "tvm": "#E07A2D",
+    "onnx-mlir": "#2E5AAC",
     "Joggle": "#087E8B",
     "MLIR": "#2E5AAC",
     "xDSL": "#E07A2D",

@@ -1,64 +1,67 @@
-# Joggle
+# Joggle: A Progressive IR for Malleable Compilation
 
 ## Abstract
 
-A heterogeneous-compiler feature is rarely local. Its semantics, analyses,
-graph transformations, conversions, and artifact generation often use
-different extension and invalidation mechanisms. Joggle instead represents
-programs and compiler behavior on one typed graph substrate. Typed compiler
-functions give these roles one language, call model, and value model;
-graph-level *mods* define ownership and dependency boundaries; and an evaluator
-records graph observations and effects before publishing updates
-transactionally. This arrangement forms a progressive intermediate
-representation: compiler functions refine verified mods inside a common graph
-model. Stable handles, hierarchical revisions,
-dependency indices, and cached execution plans then restrict re-execution to
-stages whose recorded inputs may have changed. We evaluate this design with
-held-out extension tasks, matched cross-system feature patches, controlled
-edits over a pinned model corpus, and operator- and model-level artifact
-measurements. The experiments connect one programmable surface to executable
-completion, mod ownership to patch footprint, and dependency-selected work to
-update cost.
+A compiler feature can span semantics, analysis, graph transformation,
+conversion, artifact generation, and build registration. These roles commonly
+use separate interfaces and ownership boundaries; after an edit, a staged
+driver consequently has little information below the pass or pipeline level.
+Joggle represents both programs and compiler functions on one typed graph.
+Functions distinguish read-only inspection, verified mutation, conversion,
+and artifact return through their effect contracts. A graph-level *mod* owns
+the functions, native bindings, and dependencies of a feature independently of
+program containment. During evaluation, Joggle records the graph state read by
+each call and the scope written by each stage. Stable entity generations,
+hierarchical revisions, and read--write overlap then determine which calls must
+run after an edit; a transaction publishes the new graph and its records
+together. We evaluate the representation, ownership model, and update algorithm
+through held-out extension tasks, matched cross-system patches, and controlled
+model edits. Separate operator and model experiments test the executable
+artifacts: Joggle passes 24/24 operators and 14/15 models; its optimization pack
+reduces operator latency by $1.78\times$, and its common-model geometric mean is
+$2.10\times$ faster than default TVM.
 
 ## 1. Introduction
 
-Compilers for heterogeneous systems coordinate decisions at several scales.
-They define operator semantics, transform graphs, schedule loops and memory,
-convert representations, and generate artifacts for processors and
-accelerators. LLVM established the value of a shared typed representation for
-analysis and transformation [@lattner2004llvm]; MLIR generalized this approach
-to multiple abstraction levels [@lattner2021mlir]; Halide separated algorithms
-from schedules [@ragankelley2012halide]; and TVM combined graph- and
-operator-level optimization for diverse targets [@chen2018tvm]. Together they
-make programs increasingly malleable, but the compiler's own extension model
-remains divided among mechanisms with different syntax, ownership, and
-execution rules.
+A compiler extension is rarely one edit. Adding a numeric format, a fused
+operator, or a target mapping can require a semantic definition, legality
+analysis, graph rewrite, representation conversion, artifact emitter, and
+build registration. Modern infrastructures provide powerful mechanisms for
+each task, but expose them through different languages, object models, and
+ownership boundaries. The program is programmable; the path that changes its
+compiler remains fragmented.
 
-Consider adding a numeric format or a target-specific operator family. Its
-semantic definition may live in an operator registry, legality in an analysis,
-selection in a pass, representation changes in conversions, and realization in
-an emitter or runtime binding. Each mechanism is individually useful, yet the
-extension is the conjunction of all of them. A developer must reconstruct the
-cross-layer contract before making a local change. A code-generating agent faces
-the same structural burden: a plausible edit can omit a registration path,
-modify the wrong representation, or trigger a wider rebuild and rerun than the
-change requires.
+This mismatch matters for both developers and code-generating agents. A local
+feature is complete only when every cross-layer contract agrees. Its pieces
+may be scattered across an IR hierarchy, pass registry, build target,
+conversion library, and backend. A later edit must rediscover those pieces,
+and a conventional staged driver may rebuild an entire suffix even when most
+stages neither read nor affect the change. The resulting costs are not three
+independent inconveniences: fragmented mechanisms diffuse ownership, diffuse
+ownership obscures dependencies, and obscured dependencies force coarse
+re-execution.
 
-This fragmentation creates three coupled problems. First, compiler behavior is
-expressed through several extension interfaces, so one logical feature cannot
-be inspected or generated through one language. Second, ownership follows
-source trees, registries, and IR layers instead of the feature's dependency
-boundary, so its change surface grows with the compiler. Third, staged drivers
-usually track whole pass results, so a small edit can repeat conversions and
-analyses whose observations remain valid. These are programmability,
-organization, and update-efficiency problems, respectively.
+Joggle treats compiler behavior as a typed program over the same graph that it
+transforms. A *compiler function* can define semantics, inspect a graph,
+rewrite it, convert representations, or emit an artifact through one language,
+call model, and value model. A graph-level *mod* owns the functions, native
+bindings, and dependencies that constitute a feature. During execution, Joggle
+records the graph state each call observes and the effects each stage publishes.
+Revisions, dependency indices, and cached execution plans then select the
+affected calls after an edit, while a transaction couples their records to the
+verified graph they describe.
 
-Figure 1 connects each development problem to a Joggle mechanism and its
-evaluation endpoint. Extension tasks measure executable completion and agent
-effort; paired patches measure change footprint; controlled edits measure
-update latency and executed work. Together, these comparisons link the
-extension interface, ownership boundary, and execution model to their effects
-on compiler development.
+We call this a *progressive intermediate representation*. Compilation is not
+required to traverse a fixed ladder of mutually isolated IRs. Instead, typed
+compiler functions progressively refine a verified graph. Every published
+state remains a normal, inspectable mod, and each feature keeps an explicit
+owner across stages.
+
+Figure 1 states the paper's argument. Its rows move from development problem to
+Joggle mechanism to observable outcome. The evaluation follows the columns:
+extension completion, matched patch footprint, and model update cost. Separate
+operator and model experiments test the artifacts emitted through the common
+extension surface.
 
 <!-- FIGURE 1 PROMPT — A dense two-column 3×3 systems-paper argument map. The
 columns are PROGRAMMABILITY, ORGANIZATION, and UPDATE; the rows are CHALLENGE,
@@ -85,54 +88,33 @@ decorative people. -->
 *Figure 1: Joggle maps three extension challenges to system mechanisms and
 measurable outcomes.*
 
-Joggle addresses them by making compiler behavior part of the program model. A
-Joggle program and its compiler extensions use the same typed graph and the
-same function language. Analyses, transformations, converters, and artifact
-generators are ordinary typed *compiler functions*. A *mod* owns such functions
-with its graph, native bindings, and explicit `use` dependencies. An evaluator
-executes calls transactionally, observes the graph state they read, and records
-the effects they publish.
+The paper contributes three technical elements: (1) a typed representation in
+which program entities and compiler functions share a handle and value model,
+with separate semantics for inspection, verified mutation, conversion, and
+artifact return; (2) a mod graph that specifies function visibility, native
+bindings, dependencies, and publication independently of program containment;
+and (3) an update algorithm in which entity generations and revisions validate
+recorded reads, write overlap propagates affected work, and a transaction
+publishes the graph and dependency records together.
 
-We call the representation *progressive* because compilation proceeds through
-typed refinements of one verified graph. A mod may retain semantic operations,
-introduce lower-level
-helpers, or replace selected definitions; each published intermediate remains
-an inspectable Joggle mod. Progress is therefore chosen by typed functions and
-explicit dependencies, not encoded as a mandatory global pipeline.
+We evaluate these elements with held-out extension tasks, matched patches
+across Joggle, MLIR, and xDSL, controlled model edits across Joggle, TVM, and
+ONNX-MLIR, and executable artifacts against ONNX Runtime. On the current
+artifact matrix, Joggle passes 24/24 operators and 14/15 models. Its optimization
+pack reduces operator latency by $1.78\times$ over its required lowering path;
+on the eight models supported by all four systems, Joggle is $2.10\times$
+faster than default TVM.
 
-This design yields three contributions:
+## 2. Why Compiler Extensions Resist Local Change
 
-1. **Unified metaprogramming.** One language, call model, and value model cover
-   semantic definitions, analyses, graph transformations, representation
-   conversion, and artifact generation while retaining distinct read and write
-   contracts.
-2. **Mod-scoped composition.** Graph-level mod packages define ownership,
-   publication, dependency, and change boundaries across compilation stages.
-   This boundary is orthogonal to hierarchical program IR.
-3. **Dependency-directed updates.** Revisions, dependency indices, and cached
-   execution plans restrict re-execution to compiler calls and stages whose
-   recorded observations overlap published edits, under transactional
-   publication.
+### 2.1 One Feature, Several Mechanisms
 
-The evaluation assigns one evidence stream to each contribution. Held-out
-extensions measure predictability and executable task success. Matched feature
-patches measure repository footprint. Controlled edits over complete models
-measure latency and executed work. Artifact quality and mechanism costs
-complete the evidence chain while reporting compiler responsiveness and
-generated-code quality separately.
-
-## 2. Motivation and Design Requirements
-
-### 2.1 Compiler Extension Workflow
-
-Figure 2 summarizes where extension work enters a heterogeneous compilation
-stack. Model formats carry structures and semantics into the compiler.
-Operator-level transformations specialize individual computations;
-graph-level transformations fuse, propagate, or quantize across operations;
-system-level transformations plan ordering, storage, and communication. The
-runtime then supplies execution and platform support before deployment to a
-target. These levels cooperate, but they are commonly exposed through different
-APIs and maintained by different developers.
+Figure 2 follows a model from structure to device. Extension work enters at
+every level: an operator defines semantics, a graph pass changes connectivity,
+a system pass chooses order and storage, and a backend realizes the result for
+a platform. The interfaces at these levels evolved for different purposes.
+Their separation is useful, but a feature that crosses them inherits every
+registration, calling, and invalidation convention.
 
 <!-- FIGURE 2 PLAN — Single-column figure. Preserve the supplied overview
 artwork and its existing layout. It shows model structure and formats above
@@ -144,76 +126,69 @@ regenerate or alter the figure. -->
 *Figure 2: A compiler extension can span semantic definition, optimization,
 runtime support, and target deployment.*
 
-Consider adding a fused convolution, bias addition, and activation. The
-extension defines the fused operator's semantics, checks shapes and uses,
-replaces a matching subgraph, selects a target implementation, and emits an
-artifact. These responsibilities span several stages in Figure 2. A later
-change to the supported layout or numeric type must preserve agreement among
-the legality test, transformation, and target implementation. Section 3 uses
-this operator extension to make the interfaces and ownership boundary concrete.
+Consider a fused convolution, bias addition, and activation. The feature must
+state the fused operation's types and semantics, recognize a legal source
+subgraph, replace it without losing users, select a target form, and emit or
+bind its implementation. A layout or numeric-format change must update the
+same contract in every role. None of these tasks is exceptional; their
+composition is the problem.
 
-Existing infrastructures offer rich extension points for these individual
-roles. The difficulty addressed here is their composition: a complete feature
-must connect declarations, transformations, target realization, and
-invalidation even when those roles have separate interfaces and ownership
-boundaries.
+Existing systems organize program structure effectively. LLVM supplies a
+shared typed representation for analysis and transformation [@lattner2004llvm];
+MLIR extends that model across abstraction levels [@lattner2021mlir]; Halide
+separates algorithms from schedules [@ragankelley2012halide]; and TVM combines
+graph and tensor optimization for heterogeneous targets [@chen2018tvm]. Joggle
+addresses a different boundary: how the compiler capabilities that act on
+those structures are expressed, owned, and re-executed as one feature evolves.
 
-### 2.2 Development Friction
+### 2.2 Three Sources of Friction
 
-*Fragmented metaprogramming.* An operator schema describes admissible programs,
-but a pass, converter, and emitter describe actions over those programs. When
-each role uses a different registration and invocation model, neither a person
-nor a synthesis tool can treat the feature as one typed program. The required
-context includes framework conventions that are not present in the local
-definition, increasing both implementation effort and the opportunity for an
-incomplete extension.
+*Fragmented mechanisms.* Schemas define admissible programs. Analyses derive
+facts, passes rewrite graphs, converters bridge representations, and emitters
+produce artifacts. When each role has a separate declaration and invocation
+model, a feature cannot be inspected, generated, or composed as one typed
+program. Correctness depends on conventions outside the local definition.
 
-*Diffuse ownership.* Hierarchical IRs organize operations inside regions,
-blocks, and functions. That containment expresses program semantics; compiler
-capabilities additionally need ownership and dependency boundaries. Capability
-ownership is often reconstructed from directories, build targets, registries,
-and pass ordering. A feature revision
-can therefore touch files and subsystems outside its semantic boundary, making
-review, replacement, and parallel development harder to control.
+*Scattered ownership.* Hierarchical IR organizes operations inside regions,
+blocks, and functions, but it does not by itself assign ownership to a
+cross-stage capability. That ownership is often reconstructed from directories,
+registries, build targets, pass pipelines, and backend tables. Consequently,
+one semantic change crosses several review and release boundaries.
 
-*Coarse update boundaries.* A conventional pipeline establishes correctness by
-running an ordered sequence of stages over each new input. After a local graph
-or policy edit, rerunning the affected suffix is safe but can be unnecessarily
-broad: an analysis that did not observe the edited entity is recomputed, and a
-later stage can be rerun even when an earlier stage publishes no relevant
-effect. Materialized representation boundaries add further units to rebuild,
-validate, and traverse.
+*Coarse re-execution.* An ordered pipeline can safely respond to a local edit by
+rerunning a suffix. Safety, however, does not imply precision. A stage may rerun
+even when it did not observe the edited entity; later stages may rerun even
+when an earlier stage publishes no relevant effect. Repeated decoding,
+traversal, conversion, and native compilation then dominate turnaround.
 
-The three costs reinforce one another. Fragmented interfaces spread a feature;
-spread ownership enlarges its change surface; a larger change surface forces
-coarser invalidation. Addressing only one layer leaves the other two as limits
-on extension velocity.
+These problems form a causal chain. Separate mechanisms scatter a feature;
+scattered features hide the dependencies that matter; hidden dependencies
+leave a stage or pipeline suffix as the smallest safe update unit. Joggle
+therefore treats interface, ownership, and update granularity as one design
+problem.
 
 ### 2.3 Design Requirements
 
 The preceding workflow gives three requirements for a malleable compiler.
 
-**R1 — One typed extension surface.** Semantic definitions, analyses,
-transformations, converters, and artifact generators must share one language,
-call model, and value model. The surface preserves explicit effects: read-only
-queries and mutating transformations use distinct publication rules within the
-same syntax.
+**R1 — One typed extension surface.** Semantics, analyses, transformations,
+conversions, and artifact generation must share a language, call model, and
+value model. Read-only and mutating calls remain distinguishable through
+explicit effect contracts.
 
-**R2 — Explicit capability composition.** A feature must have a named owner,
-public and private functions, declared dependencies, and an independent
-lifecycle. This graph-level package boundary is orthogonal to hierarchical
-program containment, making a compiler capability installable, inspectable,
-replaceable, and removable through its owner.
+**R2 — An explicit feature boundary.** A cross-stage capability needs a named
+owner, public and local functions, declared dependencies, native bindings, and
+an independent lifecycle. This boundary must be orthogonal to program
+containment so that lowering a graph does not dissolve feature ownership.
 
-**R3 — Change-proportional execution.** Revisions and dependency indices must
-validate the state a function actually observed and propagate only effects that
-can reach a later observation. Cached execution plans must avoid repeated setup.
-Updates remain transactional: records and plans become reusable only with the
-verified graph from which they were derived.
+**R3 — Change-proportional execution.** The runtime must identify what a call
+actually observed, propagate only effects that can reach later observations,
+and reuse decoded work across calls. Reuse becomes visible only when the graph
+and its dependency records are published together.
 
-These requirements determine Joggle's structure. Compiler functions provide
-R1, mods provide R2, and the evaluator and graph runtime provide R3. The next
-section develops these mechanisms in the order in which a call uses them.
+Compiler functions realize R1; mods realize R2; the evaluator and graph runtime
+realize R3. Section 3 presents them in the order a call encounters them:
+resolution, ownership, dependency capture, and transactional execution.
 
 ## 3. Joggle Design
 
@@ -454,7 +429,8 @@ entity from a new entity that later reuses the same slot.
 
 Mutating pipelines require one further step. After a successful run, a reactive
 schedule stores for each stage $s_i$ its call key $K_i$, observed inputs $D_i$,
-and output scope $W_i$. The key names the environment, function, and arguments.
+and output scope $W_i$. The schedule is bound to the subject store; its key
+names the environment and its epoch, the stage function, and the arguments.
 The output scope contains changed function identities and flags for structural
 or mod-dependency changes. On the next run, a stage is selected when its key or
 inputs are stale, or when an earlier selected stage may change something it
@@ -470,7 +446,11 @@ $$
 The second term is an *upstream* miss. The inputs recorded for $s_i$ may still
 match at the start of a run, yet an earlier stage selected in the same run can
 change them. Propagating recorded output scopes restricts downstream selection
-to overlapping regions instead of forcing all later stages to execute.
+to stages with overlapping observations instead of forcing all later stages
+to execute. A selected stage executes its complete function body. Thus, the
+observations determine which stages run, while the compiler's stage boundaries
+determine how much work each selection performs. Replacing the subject store
+starts a cold schedule.
 
 ```text
 Algorithm 1: Reactive stage selection and execution
@@ -528,7 +508,7 @@ overlapping effects select $s_2$; disjoint observations retain $s_3$.
 Verification gates joint publication; rollback preserves the committed external edit.*
 
 Fine-grained observations reduce re-execution but add capture and validation
-work. For $K$ stages, incremental latency is approximately
+work. For $K$ stages, scheduled graph-evaluation latency is approximately
 
 $$
 \begin{aligned}
@@ -655,16 +635,16 @@ draws 13 editable subjects from the 15-model end-to-end corpus and
 uses the same fixed inputs. End-to-end execution also includes ONNX Runtime.
 
 **Correctness and measurement.** Compiler-extension tasks use build-and-test
-oracles; graph transformations use verification and canonical structural
-digests; artifacts use reference tensors with dtype-specific tolerances. A
-failed oracle remains visible in coverage results but never contributes a
-latency or speedup. Warm-path latency cases run ten warm-ups followed by 100
-measurements in a seeded random order. We report medians and 95th percentiles per subject;
-confidence intervals resample the independent unit---task, model, or
-operator---rather than repeated timings. Ratios are formed within a subject before
-geometric aggregation. CSV rows record subject identity, seed, and correctness;
-hash-bound run records pin revisions, build flags, host and CPU policy, and
-cache configuration.
+oracles; transformations use verification and canonical graph digests;
+executable artifacts use reference tensors with dtype-specific tolerances.
+Failed cases remain in coverage but do not enter latency ratios. The update
+experiment has two populations: one complete sweep over 13 models and 37 edit
+sites, and ten paired repetitions of three edit sites on each of DenseNet-121,
+SqueezeNet-1.1, and TinyYOLOv3. The execution experiment uses ten warm-ups and
+100 timed samples per artifact. We form ratios within an edit, model, or
+operator before aggregation. Every CSV row records correctness, subject and
+input digests, compiler identity, seed, and timing boundary; run records
+additionally pin build flags, host policy, and cache configuration.
 
 Figure 6 summarizes the common comparison structure. Extension and ownership
 studies share feature specifications; update paths start from the same edited
@@ -724,13 +704,13 @@ prompt, and the continuation is a canonical edit action containing the native
 reference. Bits per byte is the reported measure; source records also retain
 token count and negative log likelihood.
 
-<!-- AGENT-RESULTS FIGURE PLAN — Full-width, three compact panels fed by one CSV and one
-plotting script. (a) task-macro executable success grouped by family; (b)
-paired task-level success difference from Joggle to MLIR and xDSL; (c) tokens
-and tool calls among successful trajectories. Keep the two models in separate
-compact rows. Failure composition and reference-solution bits per byte belong
-in supplementary figures. CSV: figure-04-extension.csv. Raw columns: model,
-model_revision,system,system_revision,task,family,demo_count,demo_ids,run,seed,
+<!-- AGENT-RESULTS FIGURE PLAN — Compact 2×3 grouped vertical bars. Rows are the
+two frozen models; columns show task-macro executable success, completion
+tokens for successful tasks, and successful tool calls. Each panel uses the
+same six family positions and fixed Joggle/MLIR/xDSL colors. Failure phase and
+reference-solution bits per byte belong in the supplement. CSV:
+figure-04-extension.csv. Raw columns: model,
+model_revision,system,system_revision,task,family,run,seed,
 budget_actions,budget_tokens,wall_ms,prompt_tokens,completion_tokens,tool_calls,
 edit_attempts,files_touched,parsed,typed,built,passed,stop_reason,
 task_spec_sha256,api_card_sha256,trajectory_sha256,patch_sha256,reference_nll,
@@ -762,48 +742,64 @@ build edits, absolute paired counts are primary. We summarize the paired
 difference with a task-level bootstrap interval and report a ratio only when
 both counts are nonzero. Small rewrites and vertical features remain separate.
 
-<!-- FOOTPRINT-RESULTS FIGURE PLAN — One-column dense paired-dot plot fed by one CSV and one
-plotting script. Rows are the 12 feature changes grouped by family; four narrow
-columns show touched source files, changed source lines, ownership zones, and
-registry/build edits in a single-column 2-by-2 layout. Symmetric-log axes retain
-true zero while labeling raw counts. Connect systems implementing the
-same task and retain true zeros. CSV: figure-05-footprint.csv. Raw columns:
+<!-- FOOTPRINT-RESULTS FIGURE PLAN — One-column dense 2×2 grouped vertical-bar
+figure. The four panels show touched source files, changed source lines,
+ownership zones, and registry/build edits for the same 12 tasks. Fixed
+Joggle/MLIR/xDSL colors and family separators make paired task comparisons
+visible; symmetric-log axes retain true zero while labeling raw counts. CSV:
+figure-05-footprint.csv. Raw columns:
 system,system_revision,task,family,patch_hash,source_files,source_added,
 source_deleted,test_files,test_added,test_deleted,zones,registrations,fanout,
 cross_zone_edges,oracle_passed. -->
 
 ### 4.4 Reactive Update Cost
 
-The production update endpoint is a replacement executable for a changed
-model. Its timing boundary starts when the edit is applied to a previously
-compiled model and ends after the replacement passes numerical validation
-against the edited model's reference outputs.
-Cold construction of reusable compiler state is measured separately.
+The production endpoint is a bound executable for the edited model.
+Update-to-ready time starts immediately before applying the edit and includes
+import, specialization, lowering, emission, native compilation, and binding.
+Numerical validation follows the interval and gates the result. We retain both
+intervals:
+
+$$
+T_{validated}=T_{ready}+T_{validation}.
+$$
+
+Reference outputs are generated outside both intervals. We record environment
+setup and the validated initial build separately from the update.
 
 For system $s$ and edit $e$, the paired update ratio is
 
 $$
-UpdateRatio_{s,e}=\frac{T_{update,s,e}}{T_{full,s,e}}.
+UpdateRatio_{s,e}=\frac{T_{ready,update,s,e}}{T_{ready,full,s,e}}.
 $$
 
 The denominator is a complete rebuild of the same edited model under the same
 optimization policy. Absolute update latency compares turnaround across
 systems, while the ratio isolates reuse within each system.
 
-The protocol separates model-graph, optimization-policy, and compiler-source
-edits. Each case fixes the edit location and semantics, input tensors, and
-correctness tolerance. Native caches remain enabled, with retained state and
-invalidation recorded for each path. Coverage counts the cases that produce
-correct replacement executables. Stage timings explain the total cost rather
-than replacing it with an isolated propagation measurement.
+Each case applies the same hash-bound node replacement, input tensors, and
+tolerance. The update path first compiles and validates the original model; the
+matched rebuild starts in a fresh worker. Both apply the edit inside the timed
+interval. Native caches remain enabled: TVM retains its runtime and process
+caches, while ONNX-MLIR invokes a fresh compiler process from a resident host.
 
-<!-- UPDATE-RESULTS FIGURE — Full width only because it contains all 13 editable
-models. Three aligned dense bar panels: (a) absolute update-to-ready seconds
-for Joggle, TVM, and ONNX-MLIR; (b) same-edit rebuild/update speedup extending
-from parity; (c) normalized stacked bars for Joggle's measured update stages,
-annotated with absolute totals. Panels share model order, boxed axes, inward
-ticks, and one legend. × denotes no correct executable and never stands for
-zero latency. Source: audited production update CSV only. -->
+Joggle retains its environment, evaluator plans, and prepared function bodies.
+It matches specialization signatures after importing the edited graph and
+materializes only referenced cached bodies. Scalarization, model-wide storage
+planning, emission, native compilation, and binding still run for every
+replacement. The rebuild uses the identical pipeline with an empty body cache.
+This endpoint therefore combines dependency-selected preparation with the
+unavoidable work needed to publish a new native executable; it does not equate
+an evaluator cache hit with a ready artifact.
+
+<!-- UPDATE-RESULTS FIGURE — Compact 3×2 vertical-bar small multiples using the
+same visual grammar as the operator and model execution figures. Models are
+grouped into classic CNNs, mobile CNNs, quantized/transformer, detection, YOLO,
+and small/common panels. Within each model, Joggle/TVM/ONNX-MLIR use fixed
+colors; hatched bars show rebuild and solid bars show update. Use logarithmic
+y axes, four-sided inward ticks, × for failed correctness, and a tiny
+rebuild/update label above each valid pair. The final panel includes the
+common-set geometric mean. Source: audited production update CSV only. -->
 
 ### 4.5 End-to-End Performance
 
@@ -1085,6 +1081,9 @@ paired patch footprint, and reactive update cost while measuring generated
 artifacts independently.
 
 ## Appendix A. Operator Measurements
+
+The table reports individual operator latencies and matched baseline ratios.
+The main evaluation presents aggregate comparisons and their performance implications.
 
 | Operator | ORT (µs) | Base / ORT | Opt / ORT | TVM / ORT | ONNX-MLIR / ORT |
 | --- | ---: | ---: | ---: | ---: | ---: |

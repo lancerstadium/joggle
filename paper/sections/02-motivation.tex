@@ -1,102 +1,95 @@
-\section{Motivation and Design Requirements}
+\section{Why Compiler Extensions Resist Local Change}
 \label{sec:motivation}
 
-\subsection{Compiler Extension Workflow}
+\subsection{One Feature, Several Mechanisms}
 \label{sec:workflow}
 
-Figure~\ref{fig:workflow} summarizes where extension work enters a
-heterogeneous compilation stack. Model formats carry structures and semantics
-into the compiler. Operator-level transformations specialize individual
-computations; graph-level transformations fuse, propagate, or quantize across
-operations; system-level transformations plan ordering, storage, and
-communication. The runtime then supplies execution and platform support before
-deployment to a target. These levels cooperate, but they are commonly exposed
-through different APIs and maintained by different developers.
+Figure~\ref{fig:workflow} follows a model from structure to device. Extension
+work enters at every level: an operator defines semantics, a graph pass changes
+connectivity, a system pass chooses order and storage, and a backend realizes
+the result for a platform. The interfaces at these levels evolved for
+different purposes. Their separation is useful, but a feature that crosses
+them inherits every registration, calling, and invalidation convention.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-02-workflow.png}
-  \caption{A compiler extension can span semantic definition, optimization,
-    runtime support, and target deployment.}
-  \Description{A workflow from model structure and model formats through
-    operator-, graph-, and system-level compilation, an online runtime, and
-    target devices. The sides show customization artifacts and the algorithm,
-    system, and hardware developers who create them.}
+  \caption{A heterogeneous compiler exposes extension points from model
+    semantics through optimization and deployment. A complete feature can
+    cross several of these points.}
+  \Description{A workflow from model formats through operator-, graph-, and
+    system-level compilation, runtime support, and target devices, with
+    customization artifacts and developer roles at the sides.}
   \label{fig:workflow}
 \end{figure}
 
-Consider adding a fused convolution, bias addition, and activation. The
-extension defines the fused operator's semantics, checks shapes and uses,
-replaces a matching subgraph, selects a target implementation, and emits an
-artifact. These responsibilities span several stages in
-Figure~\ref{fig:workflow}. A later change to the supported layout or numeric
-type must preserve agreement among the legality test, transformation, and
-target implementation. Section~\ref{sec:design} uses this operator extension
-to make the interfaces and ownership boundary concrete.
+Consider a fused convolution, bias addition, and activation. The feature must
+state the fused operation's types and semantics, recognize a legal source
+subgraph, replace it without losing users, select a target form, and emit or
+bind its implementation. A layout or numeric-format change must update the
+same contract in every role. None of these tasks is exceptional; their
+composition is the problem.
 
-Existing infrastructures offer rich extension points for these individual
-roles. The difficulty addressed here is their composition: a complete feature
-must connect declarations, transformations, target realization, and
-invalidation even when those roles have separate interfaces and ownership
-boundaries.
+Existing systems organize program structure effectively. LLVM supplies a
+shared typed representation for analysis and transformation~\cite{lattner2004llvm};
+MLIR extends that model across abstraction levels~\cite{lattner2021mlir};
+Halide separates algorithms from schedules~\cite{ragankelley2012halide}; and
+TVM combines graph and tensor optimization for heterogeneous
+targets~\cite{chen2018tvm}. Joggle addresses a different boundary: how the
+compiler capabilities that act on those structures are expressed, owned, and
+re-executed as one feature evolves.
 
-\subsection{Development Friction}
+\subsection{Three Sources of Friction}
 \label{sec:friction}
 
-\paragraph{Fragmented metaprogramming.}
-An operator schema describes admissible programs, but a pass, converter, and
-emitter describe actions over those programs. When each role uses a different
-registration and invocation model, neither a person nor a synthesis tool can
-treat the feature as one typed program. The required context includes framework
-conventions that are absent from the local definition, increasing both
-implementation effort and the opportunity for an incomplete extension.
+\paragraph{Fragmented mechanisms.}
+Schemas define admissible programs. Analyses derive facts, passes rewrite
+graphs, converters bridge representations, and emitters produce artifacts.
+When each role has a separate declaration and invocation model, a feature
+cannot be inspected, generated, or composed as one typed program. Correctness
+depends on conventions outside the local definition.
 
-\paragraph{Diffuse ownership.}
-Hierarchical IRs organize operations inside regions, blocks, and functions.
-That containment expresses program semantics; compiler capabilities
-additionally need ownership and dependency boundaries. Capability ownership is
-often reconstructed from directories, build
-targets, registries, and pass ordering. A feature revision can therefore touch
-files and subsystems outside its semantic boundary, making review, replacement,
-and parallel development harder to control.
+\paragraph{Scattered ownership.}
+Hierarchical IR organizes operations inside regions, blocks, and functions,
+but it does not by itself assign ownership to a cross-stage capability. That
+ownership is often reconstructed from directories, registries, build targets,
+pass pipelines, and backend tables. Consequently, one semantic change crosses
+several review and release boundaries.
 
-\paragraph{Coarse update boundaries.}
-A conventional pipeline establishes correctness by running an ordered sequence
-of stages over each new input. After a local graph or policy edit, rerunning the
-affected suffix is safe but can be unnecessarily broad: an analysis that did
-not observe the edited entity is recomputed, and a later stage can be rerun even
-when an earlier stage publishes no relevant effect. Materialized representation
-boundaries add further units to rebuild, validate, and traverse.
+\paragraph{Coarse re-execution.}
+An ordered pipeline can safely respond to a local edit by rerunning a suffix.
+Safety, however, does not imply precision. A stage may rerun even when it did
+not observe the edited entity; later stages may rerun even when an earlier
+stage publishes no relevant effect. Repeated decoding, traversal, conversion,
+and native compilation then dominate interactive turnaround.
 
-The three costs reinforce one another. Fragmented interfaces spread a feature;
-spread ownership enlarges its change surface; a larger change surface forces
-coarser invalidation. Addressing only one layer leaves the other two as limits
-on extension velocity.
+These problems form a causal chain. Separate mechanisms scatter a feature;
+scattered features hide the dependencies that matter; hidden dependencies
+leave a stage or pipeline suffix as the smallest safe update unit. Joggle
+therefore treats interface, ownership, and update granularity as one design
+problem.
 
 \subsection{Design Requirements}
 \label{sec:requirements}
 
-The preceding workflow gives three requirements for a malleable compiler.
+\paragraph{R1: one typed extension surface.}
+Semantics, analyses, transformations, conversions, and artifact generation
+must share a language, call model, and value model. Read-only and mutating
+calls remain distinguishable through explicit effect contracts.
 
-\paragraph{R1---One typed extension surface.}
-Semantic definitions, analyses, transformations, converters, and artifact
-generators must share one language, call model, and value model. The surface
-preserves explicit effects: read-only queries and mutating transformations use
-distinct publication rules within the same syntax.
+\paragraph{R2: an explicit feature boundary.}
+A cross-stage capability needs a named owner, public and local functions,
+declared dependencies, native bindings, and an independent lifecycle. This
+boundary must be orthogonal to program containment so that lowering a graph
+does not dissolve feature ownership.
 
-\paragraph{R2---Explicit capability composition.}
-A feature must have a named owner, public and private functions, declared
-dependencies, and an independent lifecycle. This graph-level package boundary
-is orthogonal to hierarchical program containment, making a compiler capability
-installable, inspectable, replaceable, and removable through its owner.
+\paragraph{R3: change-proportional execution.}
+The runtime must identify what a call actually observed, propagate only
+effects that can reach later observations, and reuse decoded work across
+calls. Reuse becomes visible only when the graph and its dependency records
+are published together.
 
-\paragraph{R3---Change-proportional execution.}
-Revisions and dependency indices must validate the state a function actually
-observed and propagate only effects that can reach a later observation. Cached
-execution plans must avoid repeated setup. Updates remain transactional:
-records and plans become reusable only with the verified graph from which they
-were derived.
-
-These requirements determine Joggle's structure. Compiler functions provide
-R1, mods provide R2, and the evaluator and graph runtime provide R3. The next
-section develops these mechanisms in the order in which a call uses them.
+Compiler functions realize R1; mods realize R2; the evaluator and graph
+runtime realize R3. Section~\ref{sec:design} presents them in the order a call
+encounters them: resolution, ownership, dependency capture, and transactional
+execution.

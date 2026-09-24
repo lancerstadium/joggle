@@ -1,0 +1,76 @@
+\section{Model Measurements}
+\label{sec:model-data}
+
+\begin{table}[!htbp]
+  \caption{Per-model median execution latency in milliseconds. Every reported
+  latency is backed by 100 measured samples after ten warm-ups and a numerical
+  oracle. An entry marked $\times$ did not produce a valid result and is excluded
+  from latency aggregates. Exact revisions, hashes, p95 values, and failure
+  categories accompany the artifact CSV.}
+  \label{tab:model-data}
+  \centering
+  \scriptsize
+  \setlength{\tabcolsep}{4.5pt}
+  \renewcommand{\arraystretch}{1.08}
+  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lrrrr@{}}
+    \toprule
+    Model & ORT & Joggle & TVM & ONNX-MLIR \\
+    \midrule
+    DenseNet-121 & 18.124 & 706.663 & 1801.893 & 774.156 \\
+    EfficientNet-Lite4 int8 & 11.651 & 131.990 & $\times$ & $\times$ \\
+    EfficientNet-Lite4 QDQ & $\times$ & 133.687 & 707.443 & $\times$ \\
+    GoogLeNet & 12.390 & 266.846 & 945.052 & 612.744 \\
+    MNIST & 0.048 & 0.205 & 0.203 & 0.336 \\
+    MobileNetV2 & $\times$ & 86.007 & 181.238 & 23.114 \\
+    ResNet-18 & 14.358 & 839.229 & 1129.282 & 908.751 \\
+    ShuffleNet-v2 & 1.858 & 26.912 & 66.672 & 8.450 \\
+    SqueezeNet-1.0 QDQ & 2.853 & 56.658 & 164.147 & $\times$ \\
+    SqueezeNet-1.1 & 2.263 & 63.121 & 163.041 & 82.522 \\
+    SSD-MobileNetV1 & 13.056 & $\times$ & $\times$ & $\times$ \\
+    TinyYOLOv3 & 23.817 & 521.532 & $\times$ & 1393.870 \\
+    TinyYOLOv2 & 19.982 & 499.543 & 2421.420 & 1825.879 \\
+    UltraFace-RFB-320 & 3.414 & 20.767 & $\times$ & 12.112 \\
+    XCiT-Tiny & 43.016 & 2953.539 & 2972.780 & 318.047 \\
+    \midrule
+    Correct & 13/15 & 14/15 & 11/15 & 11/15 \\
+    \bottomrule
+  \end{tabular*}
+\end{table}
+
+\begin{table}[!htbp]
+  \caption{Excluded model executions and the first terminal oracle phase.}
+  \label{tab:model-failures}
+  \centering
+  \scriptsize
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lll@{}}
+    \toprule
+    System & Backend or preparation failure & Numerical-oracle failure \\
+    \midrule
+    Joggle & SSD-MobileNetV1 & --- \\
+    ORT & --- & EfficientNet-Lite4 QDQ; MobileNetV2 \\
+    TVM & EfficientNet-Lite4 int8; SSD-MobileNetV1; TinyYOLOv3; UltraFace & --- \\
+    ONNX-MLIR & EfficientNet-Lite4 int8; SqueezeNet-1.0 QDQ; SSD-MobileNetV1 & EfficientNet-Lite4 QDQ \\
+    \bottomrule
+  \end{tabular*}
+\end{table}
+
+\begin{table}[!htbp]
+  \caption{Execution controls used for Tables~\ref{tab:operator-data}
+  and~\ref{tab:model-data}. The artifact records the complete commit identifiers,
+  input and output digests, host description, and per-sample timings.}
+  \label{tab:execution-controls}
+  \centering
+  \scriptsize
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}llll@{}}
+    \toprule
+    System & Compiler path & Optimization & Timing policy \\
+    \midrule
+    Joggle & typed graph $\rightarrow$ C $\rightarrow$ native & \texttt{-O3 -DNDEBUG} & 1 thread; 10 warm-ups; 100 samples \\
+    ORT 1.26 & CPU execution provider & full graph optimization & 1 thread; sequential execution \\
+    TVM & Relax $\rightarrow$ LLVM & default CPU pipeline; no tuning & 1 thread \\
+    ONNX-MLIR 0.4.2 & ONNX $\rightarrow$ LLVM & \texttt{-O3}; no fast math & no parallelism \\
+    \bottomrule
+  \end{tabular*}
+\end{table}

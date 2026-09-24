@@ -37,16 +37,17 @@ subjects from the 15-model end-to-end corpus and uses the same fixed inputs.
 End-to-end execution also includes ONNX Runtime.
 
 \paragraph{Correctness and measurement.}
-Compiler-extension tasks use build-and-test oracles; graph transformations use
-verification and canonical structural digests; artifacts use reference tensors
-with dtype-specific tolerances. A failed oracle remains visible in coverage
-results but never contributes a latency or speedup. Warm-path latency cases run
-ten warm-ups followed by 100 measurements in a seeded random order. We report
-medians and 95th percentiles per subject; confidence intervals resample the
-independent unit---task, model, or operator---rather than repeated
-timings. Ratios are formed within a subject before geometric aggregation. CSV
-rows record subject identity, seed, and correctness; hash-bound run records pin
-revisions, build flags, host and CPU policy, and cache configuration.
+Compiler-extension tasks use build-and-test oracles; transformations use
+verification and canonical graph digests; executable artifacts use reference
+tensors with dtype-specific tolerances. Failed cases remain in coverage but do
+not enter latency ratios. The update experiment has two populations: one
+complete sweep over 13 models and 37 edit sites, and ten paired repetitions of
+three edit sites on each of DenseNet-121, SqueezeNet-1.1, and TinyYOLOv3. The
+execution experiment uses ten warm-ups and 100 timed samples per artifact. We
+form ratios within an edit, model, or operator before aggregation. Every CSV row
+records correctness, subject and input digests, compiler identity, seed, and
+timing boundary; run records additionally pin build flags, host policy, and
+cache configuration.
 
 Figure~\ref{fig:eval-workflow} summarizes the common comparison structure.
 Extension and ownership studies share feature specifications; update paths
@@ -131,28 +132,41 @@ separate.
 \subsection{Reactive Update Cost}
 \label{sec:eval-efficient}
 
-The production update endpoint is a replacement executable for a changed
-model. Its timing boundary starts when the edit is applied to a previously
-compiled model and ends after the replacement passes numerical validation
-against the edited model's reference outputs.
-Cold construction of reusable compiler state is measured separately.
+The production endpoint is a bound executable for the edited model.
+Update-to-ready time starts immediately before applying the edit and includes
+import, specialization, lowering, emission, native compilation, and binding.
+Numerical validation follows the interval and gates the result. We retain both
+intervals:
+\[
+T_{\mathrm{validated}}=T_{\mathrm{ready}}+T_{\mathrm{validation}}.
+\]
+Reference outputs are generated outside both intervals. We record environment
+setup and the validated initial build separately from the update.
 
 For system $s$ and edit $e$, the paired update ratio is
 
 \[
-\operatorname{UpdateRatio}_{s,e}=\frac{T_{\mathrm{update},s,e}}{T_{\mathrm{full},s,e}}.
+\operatorname{UpdateRatio}_{s,e}=\frac{T_{\mathrm{ready,update},s,e}}{T_{\mathrm{ready,full},s,e}}.
 \]
 
 The denominator is a complete rebuild of the same edited model under the same
 optimization policy. Absolute update latency compares turnaround across
 systems, while the ratio isolates reuse within each system.
 
-The protocol separates model-graph, optimization-policy, and compiler-source
-edits. Each case fixes the edit location and semantics, input tensors, and
-correctness tolerance. Native caches remain enabled, with retained state and
-invalidation recorded for each path. Coverage counts the cases that produce
-correct replacement executables. Stage timings explain the total cost rather
-than replacing it with an isolated propagation measurement.
+Each case applies the same hash-bound node replacement, input tensors, and
+tolerance. The update path first compiles and validates the original model; the
+matched rebuild starts in a fresh worker. Both apply the edit inside the timed
+interval. Native caches remain enabled: TVM retains its runtime and process
+caches, while ONNX-MLIR invokes a fresh compiler process from a resident host.
+
+Joggle retains its environment, evaluator plans, and prepared function bodies.
+It matches specialization signatures after importing the edited graph and
+materializes only referenced cached bodies. Scalarization, model-wide storage
+planning, emission, native compilation, and binding still run for every
+replacement. The rebuild uses the identical pipeline with an empty body cache.
+This endpoint therefore combines dependency-selected preparation with the
+unavoidable work needed to publish a new native executable; it does not equate
+an evaluator cache hit with a ready artifact.
 
 \subsection{End-to-End Performance}
 \label{sec:eval-artifacts}

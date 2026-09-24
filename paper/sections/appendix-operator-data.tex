@@ -1,7 +1,10 @@
 \section{Operator Measurements}
 \label{sec:operator-data}
 
-\begin{table}[h]
+The table reports individual operator latencies and matched baseline ratios.
+The main evaluation presents aggregate comparisons and their performance implications.
+
+\begin{table}[!htbp]
   \caption{Operator execution measurements. Joggle revision
   \texttt{5a71fe55a3be}, Apple Clang 17.0.0 (\texttt{-O3 -DNDEBUG}),
   ONNX Runtime 1.26.0 CPU with full graph optimization, TVM revision
@@ -9,18 +12,18 @@
   \texttt{4a13c34aa695} (\texttt{-O3}, no parallelism or fast math).
   All use one CPU thread. Each passing entry uses ten warm-ups and 100
   measured samples. Ratios divide unrounded per-operator medians; values
-  below one indicate lower latency than ORT. O--M denotes ONNX-MLIR;
+  below one indicate lower latency than ORT;
   --- denotes an unsupported operation; $\times$ denotes a failed numerical
   oracle. Geometric means use the indicated common population.}
   \label{tab:operator-data}
   \centering
   \footnotesize
-  \setlength{\tabcolsep}{2pt}
-  \begin{tabular}{@{}lrrrrr@{}}
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lrrrrr@{}}
     \toprule
     & ORT ($\mu$s) & \multicolumn{4}{c}{Latency / ORT} \\
     \cmidrule(l){3-6}
-    Operator & & Base & Opt. & TVM & O--M \\
+    Operator & & Joggle base & Joggle opt. & TVM & ONNX-MLIR \\
     \midrule
     conv-depthwise & 41.92 & 3.64 & 4.57 & 0.82 & 3.74 \\
     conv-pointwise & 63.83 & 146.92 & 32.66 & 144.27 & 12.65 \\
@@ -56,5 +59,5 @@
     Geomean, common 22 & --- & 8.95 & 5.23 & 6.66 & 3.18 \\
     Correct operators & 24/24 & 24/24 & 24/24 & 22/24 & 22/24 \\
     \bottomrule
-  \end{tabular}
+  \end{tabular*}
 \end{table}

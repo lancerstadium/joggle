@@ -220,7 +220,8 @@ entity from a new entity that later reuses the same slot.
 
 Mutating pipelines require one further step. After a successful run, a reactive
 schedule stores for each stage $s_i$ its call key $K_i$, observed inputs $D_i$,
-and output scope $W_i$. The key names the environment, function, and arguments.
+and output scope $W_i$. The schedule is bound to the subject store; its key
+names the environment and its epoch, the stage function, and the arguments.
 The output scope contains changed function identities and flags for structural
 or mod-dependency changes. On the next run, a stage is selected when its key or
 inputs are stale, or when an earlier selected stage may change something it
@@ -236,7 +237,11 @@ observed:
 The second term is an \emph{upstream} miss. The inputs recorded for $s_i$ may
 still match at the start of a run, yet an earlier stage selected in the same run
 can change them. Propagating recorded output scopes restricts downstream
-selection to overlapping regions instead of forcing all later stages to execute.
+selection to stages with overlapping observations instead of forcing all later
+stages to execute. A selected stage executes its complete function body. Thus,
+the observations determine which stages run, while the compiler's stage
+boundaries determine how much work each selection performs. Replacing the
+subject store starts a cold schedule.
 
 \begin{algorithm}[t]
   \caption{Reactive stage selection and execution}
@@ -291,7 +296,7 @@ reachability from the edited node.
 \end{figure}
 
 Fine-grained observations reduce re-execution but add capture and validation
-work. For $K$ stages, incremental latency is approximately
+work. For $K$ stages, scheduled graph-evaluation latency is approximately
 \[
   \begin{aligned}
     T_{\mathrm{select}}

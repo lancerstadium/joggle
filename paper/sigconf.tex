@@ -43,26 +43,27 @@
 
 \begin{document}
 
-\title[Joggle]{Joggle: Malleable Compilation with a Progressive Intermediate Representation}
+\title[Joggle]{Joggle: A Progressive IR for Malleable Compilation}
 
 \begin{abstract}
-A heterogeneous-compiler feature is rarely local. Its semantics, analyses,
-graph transformations, conversions, and artifact generation often use
-different extension and invalidation mechanisms. Joggle instead represents
-programs and compiler behavior on one typed graph substrate. Typed compiler
-functions give these roles one language, call model, and value model;
-graph-level \emph{mods} define ownership and dependency boundaries; and an
-evaluator records graph observations and effects before publishing updates
-transactionally. This arrangement forms a progressive intermediate
-representation: compiler functions refine verified mods inside a common graph
-model. Stable handles, hierarchical revisions,
-dependency indices, and cached execution plans then restrict re-execution to
-stages whose recorded inputs may have changed. We evaluate this design with
-held-out extension tasks, matched cross-system feature patches, controlled
-edits over a pinned model corpus, and operator- and model-level artifact
-measurements. The experiments connect one programmable surface to executable
-completion, mod ownership to patch footprint, and dependency-selected work to
-update cost.
+A compiler feature can span semantics, analysis, graph transformation,
+conversion, artifact generation, and build registration. These roles commonly
+use separate interfaces and ownership boundaries; after an edit, a staged
+driver consequently has little information below the pass or pipeline level.
+Joggle represents both programs and compiler functions on one typed graph.
+Functions distinguish read-only inspection, verified mutation, conversion,
+and artifact return through their effect contracts. A graph-level \emph{mod}
+owns the functions, native bindings, and dependencies of a feature independently
+of program containment. During evaluation, Joggle records the graph state read
+by each call and the scope written by each stage. Stable entity generations,
+hierarchical revisions, and read--write overlap then determine which calls must
+run after an edit; a transaction publishes the new graph and its records
+together. We evaluate the representation, ownership model, and update algorithm
+through held-out extension tasks, matched cross-system patches, and controlled
+model edits. Separate operator and model experiments test the executable
+artifacts: Joggle passes 24/24 operators and 14/15 models; its optimization pack
+reduces operator latency by $1.78\times$, and its common-model geometric mean is
+$2.10\times$ faster than default TVM.
 \end{abstract}
 
 \keywords{compilers, extensibility, metaprogramming, incremental compilation}

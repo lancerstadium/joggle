@@ -1,92 +1,75 @@
 \section{Introduction}
 \label{sec:introduction}
 
-Compilers for heterogeneous systems coordinate decisions at several scales.
-They define operator semantics, transform graphs, schedule loops and memory,
-convert representations, and generate artifacts for processors and
-accelerators. LLVM established the value of a shared typed representation for
-analysis and transformation~\cite{lattner2004llvm}; MLIR generalized this
-approach to multiple abstraction levels~\cite{lattner2021mlir}; Halide
-separated algorithms from schedules~\cite{ragankelley2012halide}; and TVM
-combined graph- and operator-level optimization for diverse
-targets~\cite{chen2018tvm}. Together they make programs increasingly malleable,
-but the compiler's own extension model remains divided among mechanisms with
-different syntax, ownership, and execution rules.
+A compiler extension is rarely one edit. Adding a numeric format, a fused
+operator, or a target mapping can require a semantic definition, legality
+analysis, graph rewrite, representation conversion, artifact emitter, and
+build registration. Modern infrastructures provide powerful mechanisms for
+each task, but expose them through different languages, object models, and
+ownership boundaries. The program is programmable; the path that changes its
+compiler remains fragmented.
 
-Consider adding a numeric format or a target-specific operator family. Its
-semantic definition may live in an operator registry, legality in an analysis,
-selection in a pass, representation changes in conversions, and realization in
-an emitter or runtime binding. Each mechanism is individually useful, yet the
-extension is the conjunction of all of them. A developer must reconstruct the
-cross-layer contract before making a local change. A code-generating agent
-faces the same structural burden: a plausible edit can omit a registration
-path, modify the wrong representation, or trigger a wider rebuild and rerun
-than the change requires.
+This mismatch matters for both developers and code-generating agents. A local
+feature is complete only when every cross-layer contract agrees. Its pieces
+may be scattered across an IR hierarchy, pass registry, build target,
+conversion library, and backend. A later edit must rediscover those pieces,
+and a conventional staged driver may rebuild an entire suffix even when most
+stages neither read nor affect the change. The resulting costs are not three
+independent inconveniences: fragmented mechanisms diffuse ownership, diffuse
+ownership obscures dependencies, and obscured dependencies force coarse
+re-execution.
 
-This fragmentation creates three coupled problems. First, compiler behavior is
-expressed through several extension interfaces, so one logical feature cannot
-be inspected or generated through one language. Second, ownership follows
-source trees, registries, and IR layers instead of the feature's dependency
-boundary, so its change surface grows with the compiler. Third, staged drivers
-usually track whole pass results, so a small edit can repeat conversions and
-analyses whose observations remain valid. These are programmability,
-organization, and update-efficiency problems, respectively.
+Joggle treats compiler behavior as a typed program over the same graph that it
+transforms. A \emph{compiler function} can define semantics, inspect a graph,
+rewrite it, convert representations, or emit an artifact through one language,
+call model, and value model. A graph-level \emph{mod} owns the functions,
+native bindings, and dependencies that constitute a feature. During execution,
+Joggle records the graph state each call observes and the effects each stage
+publishes. Revisions, dependency indices, and cached execution plans then
+select the affected calls after an edit, while a transaction couples their
+records to the verified graph they describe.
 
-Figure~\ref{fig:thesis-map} connects each development problem to a Joggle
-mechanism and its evaluation endpoint. Extension tasks measure executable
-completion and agent effort; paired patches measure change footprint;
-controlled edits measure update latency and executed work. Together, these
-comparisons link the extension interface, ownership boundary, and execution
-model to their effects on compiler development.
+We call this a \emph{progressive intermediate representation}. Compilation is
+not required to traverse a fixed ladder of mutually isolated IRs. Instead,
+typed compiler functions progressively refine a verified graph: a stage may
+retain semantic operations, introduce lower-level helpers, or replace selected
+definitions. Every published state remains a normal, inspectable mod, and each
+feature keeps an explicit owner across stages.
+
+Figure~\ref{fig:thesis-map} states the paper's argument. Its rows move from
+development problem to Joggle mechanism to observable outcome. The evaluation
+follows the columns: extension completion, matched patch footprint, and model
+update cost. Separate operator and model experiments test the artifacts emitted
+through the common extension surface.
 
 \begin{figure*}[t]
   \centering
   \includegraphics[width=.94\textwidth]{figures/figure-01-thesis-map.png}
-  \caption{Joggle maps three extension challenges to system mechanisms and
-    measurable outcomes.}
-  \Description{A three-column, three-row argument map read top to bottom.
-    Fragmented mechanisms map to unified metaprogramming and convenient
-    extension. Scattered ownership maps to a graph-level mod boundary and
-    controllable change. Coarse re-execution maps to revisions, dependency
-    indices, cached plans, and efficient updates.}
+  \caption{Three compiler-development problems and Joggle's corresponding
+    mechanisms. Each column terminates in the quantity evaluated in
+    Section~\ref{sec:evaluation}.}
+  \Description{A three-column argument map. Fragmented mechanisms map to
+    unified metaprogramming and convenient extension; scattered ownership maps
+    to a graph-level mod boundary and controlled change; coarse re-execution
+    maps to dependency-directed updates and efficient response.}
   \label{fig:thesis-map}
 \end{figure*}
 
-Joggle addresses these problems by making compiler behavior part of the
-program model. A Joggle program and its compiler extensions use the same typed
-graph and the same function language. Analyses, transformations, converters,
-and artifact generators are ordinary typed \emph{compiler functions}. A
-\emph{mod} owns such functions with its graph, native bindings, and explicit
-\texttt{use} dependencies. An evaluator executes calls transactionally,
-observes the graph state they read, and records the effects they publish.
+The paper contributes three technical elements: (1) a typed representation in
+which program entities and compiler functions share a handle and value model,
+with separate semantics for inspection, verified mutation, conversion, and
+artifact return; (2) a mod graph that specifies function visibility, native
+bindings, dependencies, and publication independently of program containment;
+and (3) an update algorithm in which entity generations and revisions validate
+recorded reads, write overlap propagates affected work, and a transaction
+publishes the graph and dependency records together.
 
-We call the representation \emph{progressive} because compilation proceeds
-through typed refinements of one verified graph. A mod may retain semantic
-operations, introduce lower-level
-helpers, or replace selected definitions; each published intermediate remains
-an inspectable Joggle mod. Progress is therefore chosen by typed functions and
-explicit dependencies, not encoded as a mandatory global pipeline.
-
-This design yields three contributions.
-
-\paragraph{Unified metaprogramming.}
-One language, call model, and value model cover semantic definitions, analyses,
-graph transformations, representation conversion, and artifact generation
-while retaining distinct read and write contracts.
-
-\paragraph{Mod-scoped composition.}
-Graph-level mod packages define ownership, publication, dependency, and change
-boundaries across compilation stages. This boundary is orthogonal to
-hierarchical program IR.
-
-\paragraph{Dependency-directed updates.}
-Revisions, dependency indices, and cached execution plans restrict
-re-execution to compiler calls and stages whose recorded observations overlap
-published edits, under transactional publication.
-
-The evaluation assigns one evidence stream to each contribution. Held-out
-extensions measure predictability and executable task success. Matched feature
-patches measure repository footprint. Controlled edits over complete models
-measure latency and executed work. Artifact quality and mechanism costs
-complete the evidence chain while reporting compiler responsiveness and
-generated-code quality separately.
+We evaluate these contributions with held-out extension tasks, matched patches
+across Joggle, MLIR, and xDSL, controlled model edits across Joggle, TVM, and
+ONNX-MLIR, and executable artifacts against ONNX Runtime. On the current
+artifact matrix, Joggle passes 24/24 operators and 14/15 models. Its optimization
+pack reduces operator latency by $1.78\times$ over its required lowering path;
+on the eight models supported by all four systems, Joggle is $2.10\times$
+faster than default TVM. These execution results complement---rather than
+substitute for---the paper's primary evidence about extension, ownership, and
+update cost.

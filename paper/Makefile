@@ -26,6 +26,7 @@ sigconf.pdf: sigconf.tex references.bib \
 	latexmk -pdf -interaction=nonstopmode -halt-on-error sigconf.tex
 
 supplement.pdf: supplement.tex sections/appendix-operator-data.tex \
+	sections/appendix-model-data.tex \
 	sections/appendix-extension-data.tex figures/agent-gelu-before.pdf \
 	figures/agent-gelu-after.pdf
 	latexmk -pdf -interaction=nonstopmode -halt-on-error supplement.tex
