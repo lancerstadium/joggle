@@ -13,6 +13,8 @@ import socket
 import tempfile
 import unittest
 import csv
+import io
+import urllib.error
 from unittest.mock import patch
 from pathlib import Path
 
@@ -1368,6 +1370,70 @@ int main(void) {
             validate_trajectory(output / "result.csv", metadata, rows)
             with self.assertRaises(SystemExit):
                 validate_trajectory(output / "result.csv", metadata, [rows[0] | {"completion_tokens": "4"}])
+
+    def test_hosted_429_waits_for_token_window(self):
+        error = urllib.error.HTTPError('https://api.siliconflow.cn/v1/chat/completions',
+            429, 'rate limited', {}, io.BytesIO(b'{"message":"TPM limit reached"}'))
+        class Response(io.BytesIO):
+            headers = {}
+        response = Response(b'{"model":"test"}')
+        with patch.object(run_extension_agent.urllib.request, 'urlopen', side_effect=[error,response]), \
+                patch.object(run_extension_agent.time, 'sleep') as sleep:
+            result = run_extension_agent.hosted_api('chat/completions','test-key',{})
+        sleep.assert_called_once_with(60)
+        self.assertEqual(result['_transport']['retries'][0]['wait_seconds'],60)
+
+    def test_hosted_resume_preserves_budget_and_request(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/'trajectory'; model='Qwen/Qwen3-8B'
+            argv=['agent','--provider','siliconflow','--model',model,'--system','Joggle',
+                  '--task','ana-storage-cost','--seed','1701','--output',str(output),
+                  '--joggle',sys.executable,'--builtin-mods',directory]
+            count=0; rejected=[]
+            def api(path,key,payload=None):
+                nonlocal count
+                if path=='models':return {'data':[{'id':model}]}
+                count+=1
+                if count==2:
+                    rejected.append(copy.deepcopy(payload))
+                    raise RuntimeError('provider HTTP errors: [{"status":429,"body":"TPM limit reached"}]')
+                if count==3:self.assertEqual(payload,rejected[0])
+                return {'model':model,'choices':[{'finish_reason':'stop','message':{
+                    'content':'{"action":"inspect"}' if count==1 else '{"action":"finish"}'}}],
+                    'usage':{'prompt_tokens':100,'completion_tokens':5}}
+            def native(command,**kwargs):
+                out=Path(command[command.index('--output')+1]); source=Path(command[command.index('--source')+1])
+                out.write_text(json.dumps({'passed':False,'complete_task':True,
+                    'task':'ana-storage-cost','system':'Joggle',
+                    'source_sha256':run_extension_agent.digest(source),
+                    'task_spec_sha256':run_extension_agent.digest(run_extension_agent.ROOT/'manifests/extension-specs.json'),
+                    'execution_isolation':{'kind':'macos-seatbelt'},'setup':[{'exit_code':1}],'cases':[]}))
+                return subprocess.CompletedProcess(command,1,stdout='',stderr='')
+            with patch.object(sys,'platform','darwin'), \
+                    patch('run_baseline_benchmarks.git_state',return_value=('a'*40,False)), \
+                    patch.object(run_extension_agent,'hosted_key',return_value='test-key'), \
+                    patch.object(run_extension_agent,'hosted_api',side_effect=api), \
+                    patch.object(run_extension_agent,'native_identity',return_value={'compiler':'test'}), \
+                    patch.object(subprocess,'run',side_effect=native):
+                with patch.object(sys,'argv',argv):self.assertEqual(run_extension_agent.main(),0)
+                self.assertFalse(json.loads((output/'result.json').read_text())['release_eligible'])
+                candidate=output/'candidate.jog'; original=candidate.read_bytes()
+                candidate.write_bytes(original+b'\n// changed outside the agent\n')
+                with patch.object(sys,'argv',[*argv,'--resume']), self.assertRaisesRegex(ValueError,'candidate differs'):
+                    run_extension_agent.main()
+                candidate.write_bytes(original)
+                with patch.object(sys,'argv',[*argv,'--resume']):self.assertEqual(run_extension_agent.main(),0)
+                with patch.object(sys,'argv',[*argv,'--resume']), self.assertRaisesRegex(ValueError,'verified interrupted prefix'):
+                    run_extension_agent.main()
+            with (output/'result.csv').open() as stream:rows=list(csv.DictReader(stream))
+            provider=json.loads((output/'result.json').read_text())
+            self.assertTrue(provider['release_eligible']);self.assertEqual(count,3)
+            self.assertEqual(rows[0]['completion_tokens'],'10');self.assertEqual(rows[0]['tool_calls'],'1')
+            validate_trajectory(output/'result.csv',provider,rows)
+            record=json.loads((output/'trajectory.json').read_text())
+            self.assertEqual(len(record['events']),2);self.assertEqual(len(record['continuations']),1)
+            Path(record['continuations'][0]['record']).write_text('{}')
+            with self.assertRaises(SystemExit):validate_trajectory(output/'result.csv',provider,rows)
 
     def test_hosted_usage_and_catalog_validation(self):
         response = {"model": "test-model", "choices": [{"finish_reason": "stop",

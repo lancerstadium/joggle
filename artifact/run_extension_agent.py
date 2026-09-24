@@ -97,11 +97,19 @@ def hosted_api(path: str, key: str, payload: dict | None = None) -> dict:
                 return result
         except urllib.error.HTTPError as error:
             # Never record request headers or retry an ambiguous transport timeout.
-            body = error.read().decode(errors="replace").replace(key, "[redacted]")[:6000]
+            with error:
+                body = error.read().decode(errors="replace").replace(key, "[redacted]")[:6000]
             failures.append({"status": error.code, "body": body})
             if error.code not in (429, 502, 503, 504) or attempt == 2:
                 raise RuntimeError(f"provider HTTP errors: {json.dumps(failures)}") from error
-            time.sleep(2 ** (attempt + 1))
+            # A minute-level token quota cannot recover during a 2-second retry.
+            delay = 60 * (attempt + 1) if error.code == 429 else 2 ** (attempt + 1)
+            failures[-1]["wait_seconds"] = delay
+            remaining = delay
+            while remaining:
+                pause = min(60, remaining)
+                time.sleep(pause)
+                remaining -= pause
     raise AssertionError("unreachable retry state")
 
 
@@ -338,6 +346,88 @@ def backend_identity(args: argparse.Namespace) -> dict:
             ]).encode()).hexdigest()}
 
 
+def resume_rate_limited(args: argparse.Namespace, installed: dict, native: dict,
+                        sources: dict, initial_messages: list[dict]) -> dict:
+    """Resume only a provably unserved 429 request, preserving its full prefix."""
+    root = args.output.resolve()
+    trajectory_path, csv_path = root / "trajectory.json", root / "result.csv"
+    previous = json.loads(trajectory_path.read_text())
+    provider = json.loads(csv_path.with_suffix(".json").read_text())
+    with csv_path.open() as stream:
+        rows = list(csv.DictReader(stream))
+    if (len(rows) != 1 or provider.get("output_sha256") != digest(csv_path)
+            or provider.get("trajectory_sha256") != digest(trajectory_path)
+            or rows[0].get("trajectory_sha256") != digest(trajectory_path)):
+        raise ValueError("resume records differ from the exported measurement")
+    row = rows[0]
+    events = previous.get("events", [])
+    if (previous.get("provider") != "siliconflow" or previous.get("identity_stable") is not True
+            or previous.get("dirty") or previous.get("final_check_errors")
+            or previous.get("model") != installed or previous.get("system_identity") != native
+            or previous.get("options") != HOSTED_OPTIONS or previous.get("endpoint") != HOSTED_ENDPOINT
+            or previous.get("messages", [])[:2] != initial_messages
+            or previous.get("demonstrations") or args.demo
+            or row.get("stop_reason") != "agent_error" or not events):
+        raise ValueError("resume requires an unchanged hosted condition and a verified interrupted prefix")
+    for field in ("task", "system", "seed", "run"):
+        if previous.get(field) != getattr(args, field):
+            raise ValueError(f"resume condition differs: {field}")
+    if (int(row["budget_actions"]) != ACTIONS or int(row["budget_tokens"]) != TOKENS
+            or previous.get("context_policy") != {
+                "history": "complete", "window_tokens": HOSTED_CONTEXT, "overflow": "provider-error"}):
+        raise ValueError("resume changes the budget or context policy")
+    # Transport-only fixes may change this file; every supplied task/API/oracle stays fixed.
+    for path, value in previous["source_identity"].items():
+        if path != Path(__file__).name and sources.get(path) != value:
+            raise ValueError(f"resume source differs: {path}")
+    last = events[-1]
+    marker = "provider HTTP errors: "
+    error = last.get("provider_error", "")
+    if (last.get("response") is not None or marker not in error
+            or error != previous.get("infrastructure_error")
+            or last.get("action_index") != len(events)-1
+            or any(event.get("response") is None for event in events[:-1])):
+        raise ValueError("resume requires an explicit rejected request, not an ambiguous failure")
+    failures = json.loads(error.split(marker, 1)[1])
+    if not failures or any(item.get("status") != 429 for item in failures):
+        raise ValueError("only explicit HTTP 429 interruptions may resume")
+    candidate = root / ("candidate." + SUFFIXES[args.system])
+    oracle_path = root / "final-oracle.json"
+    if (digest(oracle_path) != previous["final_oracle_sha256"]
+            or json.loads(oracle_path.read_text())["source_sha256"] != digest(candidate)):
+        raise ValueError("candidate differs from its interrupted final oracle")
+    prompt = completion = 0
+    for index, event in enumerate(events[:-1]):
+        if event["action_index"] != index:
+            raise ValueError("resume action prefix is not contiguous")
+        p, c = response_usage(event["response"], args.model, HOSTED_CONTEXT,
+                              min(4096, TOKENS-completion), "siliconflow")
+        prompt += p
+        completion += c
+    if prompt != int(row["prompt_tokens"]) or completion != int(row["completion_tokens"]):
+        raise ValueError("resume token counts differ from native responses")
+    request = {"model": args.model, "messages": previous["messages"], "stream": False,
+               **HOSTED_OPTIONS, "max_tokens": min(4096, TOKENS-completion)}
+    if hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest() != last["request_sha256"]:
+        raise ValueError("resume changes the unserved request")
+    continuations = list(previous.get("continuations", []))
+    record_path = root / f"interruption-{len(continuations)+1:02d}.json"
+    oracle_archive = record_path.with_name(record_path.stem + "-oracle.json")
+    if record_path.exists() or oracle_archive.exists():
+        raise ValueError("resume record already exists")
+    record_path.write_text(json.dumps({"trajectory": previous, "provider": provider,
+        "row": row}, indent=2, ensure_ascii=False) + "\n")
+    oracle_path.rename(oracle_archive)
+    continuations.append({"record": str(record_path), "sha256": digest(record_path),
+        "oracle": str(oracle_archive), "action_index": last["action_index"],
+        "reason": "explicit HTTP 429; same unserved request and remaining budget"})
+    return {"events": events[:-1], "messages": previous["messages"],
+            "prompt_tokens": prompt, "completion_tokens": completion,
+            "edits": int(row["edit_attempts"]), "tool_calls": int(row["tool_calls"]),
+            "wall_ms": int(row["wall_ms"]), "request_sha256": last["request_sha256"],
+            "continuations": continuations}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider", choices=("ollama", "siliconflow"), default="ollama")
@@ -349,6 +439,8 @@ def main() -> int:
     parser.add_argument("--demo", action="append", default=[],
                         help="two ordered tasks from the frozen demonstration protocol; omit for zero-shot")
     parser.add_argument("--output", type=Path, required=True, help="new trajectory directory")
+    parser.add_argument("--resume", action="store_true",
+                        help="continue an unchanged hosted trajectory after explicit HTTP 429 rejection")
     parser.add_argument("--joggle", type=Path)
     parser.add_argument("--builtin-mods", type=Path)
     parser.add_argument("--mlir-dir", type=Path)
@@ -361,7 +453,9 @@ def main() -> int:
         parser.error("native tool isolation currently requires macOS")
     if len(args.demo) not in (0, 2) or len(set(args.demo)) != len(args.demo) or args.task in args.demo:
         parser.error("provide zero or two distinct, task-disjoint demonstrations")
-    if args.seed < 0 or args.output.exists():
+    if args.resume and (args.provider != "siliconflow" or not args.output.is_dir()):
+        parser.error("--resume requires an existing SiliconFlow trajectory directory")
+    if args.seed < 0 or (args.output.exists() and not args.resume):
         parser.error("seed must be non-negative and output directory must not exist")
     required = {"Joggle": [args.joggle, args.builtin_mods], "MLIR": [args.mlir_dir],
                 "xDSL": [args.xdsl_python]}[args.system]
@@ -426,9 +520,10 @@ def main() -> int:
                       "source": source.read_text(),
                       "source_sha256": source_identity[str(source.relative_to(ROOT))]})
     root = args.output.resolve()
-    root.mkdir(parents=True)
+    root.mkdir(parents=True, exist_ok=args.resume)
     candidate = root / ("candidate." + suffix)
-    candidate.write_text(starter.read_text())
+    if not args.resume:
+        candidate.write_text(starter.read_text())
     public_ids = public_case_ids(task)
     messages = [{"role": "system", "content":
         "Implement a compiler extension. Respond with one JSON action per turn: "
@@ -439,7 +534,7 @@ def main() -> int:
         "also includes fixtures not exposed by test. Return JSON only."},
         {"role": "user", "content": json.dumps({"system": args.system,
             "task": args.task, "contract": task["contract"], "api": card.read_text(),
-            "starter": candidate.read_text(), "public_cases": [case for case in
+            "starter": starter.read_text(), "public_cases": [case for case in
             task["positive_cases"] + task["negative_cases"] if case["id"] in public_ids],
             "demonstrations": demos})}]
     events = []
@@ -448,6 +543,14 @@ def main() -> int:
     submitted = False
     stop = "action_budget"
     options = dict(HOSTED_OPTIONS if args.provider == "siliconflow" else GENERATION_OPTIONS)
+    previous_wall_ms, resume_request, continuations = 0, None, []
+    if args.resume:
+        restored = resume_rate_limited(args, installed[0], system_identity, source_identity, messages)
+        events, messages = restored["events"], restored["messages"]
+        prompt_tokens, completion_tokens = restored["prompt_tokens"], restored["completion_tokens"]
+        edits, tool_calls = restored["edits"], restored["tool_calls"]
+        previous_wall_ms, resume_request = restored["wall_ms"], restored["request_sha256"]
+        continuations = restored["continuations"]
     started = time.perf_counter()
 
     def oracle(name: str, public: bool) -> dict:
@@ -481,7 +584,7 @@ def main() -> int:
             raise RuntimeError(f"invalid oracle report: {failure}") from failure
         return report
 
-    for action_index in range(ACTIONS):
+    for action_index in range(len(events), ACTIONS):
         remaining = TOKENS - completion_tokens
         if remaining <= 0:
             stop = "token_budget"
@@ -497,6 +600,10 @@ def main() -> int:
                        **options, "max_tokens": prediction}
         response = None
         request_hash = hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
+        if resume_request is not None:
+            if request_hash != resume_request:
+                raise ValueError("resumed request differs from the unserved request")
+            resume_request = None
         try:
             response = (hosted_api("chat/completions", key, request)
                         if args.provider == "siliconflow" else local_api("chat", request))
@@ -559,7 +666,7 @@ def main() -> int:
             "messages": messages, "completion_tokens": completion_tokens}, indent=2) + "\n")
     if stop == "action_budget" and completion_tokens >= TOKENS:
         stop = "token_budget"
-    wall_ms = round((time.perf_counter() - started) * 1000)
+    wall_ms = previous_wall_ms + round((time.perf_counter() - started) * 1000)
     def identity_check() -> bool:
         if args.provider == "siliconflow":
             # The catalog exposes aliases, not immutable weights. Record that boundary.
@@ -606,7 +713,8 @@ def main() -> int:
                            {"truncate": False, "shift": False, "overflow": "stop-budget"}),
         "public_case_ids": public_ids,
         "demonstrations": demos, "messages": messages, "events": events,
-        "submitted": submitted, "wall_ms": wall_ms, "final_check_errors": final_errors,
+        "submitted": submitted, "wall_ms": wall_ms, "continuations": continuations,
+        "final_check_errors": final_errors,
         "candidate_outcome": outcome,
         "final_oracle_sha256": (digest(root / "final-oracle.json")
                                 if (root / "final-oracle.json").is_file() else None)}

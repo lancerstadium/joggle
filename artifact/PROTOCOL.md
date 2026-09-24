@@ -100,8 +100,21 @@ budget). Both models have a 131,072-token service window; recorded prompt plus
 completion counts must fit that window. No history is dropped by the harness.
 The seed field is the condition identifier 1701; it is not sent as a provider
 sampling seed. Service errors are recorded separately from candidate failures.
-Only explicit HTTP 429/502/503/504 responses are retried, at most twice with
-2/4-second waits; ambiguous transport timeouts are not retried automatically.
+Only explicit HTTP 429/502/503/504 responses are retried, at most twice.
+HTTP 429 waits 60/120 seconds for the minute-level quota to recover; other
+retryable statuses wait 2/4 seconds. Ambiguous transport timeouts are not
+retried automatically. This transport correction follows the first observed
+TPM rejection; it changes no prompts, candidates, sampling controls, or budgets.
+
+An exhausted explicit 429 can be continued with `--resume` at the same output
+directory. The runner verifies the native identity, task/API sources, candidate,
+complete conversation, and exact unserved request, then uses only the remaining
+action/token budget. Successfully returned requests are never regenerated.
+The interrupted record and oracle remain beside the resulting trajectory;
+the merger checks that its prior responses and messages are unchanged. Wall
+time sums active collection segments, including in-process retry waits but
+excluding manual recovery downtime and final held-out validation. Service
+rate-limit guidance: https://docs.siliconflow.cn/docs/userguide/faqs/rate-limit-and-upgradation.
 
 The CSV's `model_revision` is `hosted-alias:<model ID>`, not a weight digest.
 Trajectories retain catalog entries, returned model IDs, UTC timestamps,

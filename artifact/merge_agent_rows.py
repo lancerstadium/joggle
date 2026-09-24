@@ -48,6 +48,20 @@ def validate_trajectory(path: Path, provider: dict, rows: list[dict[str, str]]) 
                 or data["model"].get("catalog_entry", {}).get("id") != row["model"]):
             raise SystemExit(f"{path}: invalid hosted protocol or model identity")
         model_revision = "hosted-alias:" + row["model"]
+        for continuation in data.get("continuations", []):
+            archive = Path(continuation["record"])
+            if sha256(archive) != continuation["sha256"]:
+                raise SystemExit(f"{path}: interrupted trajectory archive differs")
+            old = json.loads(archive.read_text())["trajectory"]
+            index = continuation["action_index"]
+            if (index != len(old["events"])-1 or not 0 <= index < len(data["events"])
+                    or old["events"][-1].get("response") is not None
+                    or old["events"][:-1] != data["events"][:index]
+                    or old["messages"] != data["messages"][:len(old["messages"])]
+                    or old["events"][-1]["request_sha256"] != data["events"][index]["request_sha256"]
+                    or old["system_identity"] != data["system_identity"]
+                    or sha256(Path(continuation["oracle"])) != old["final_oracle_sha256"]):
+                raise SystemExit(f"{path}: resumed trajectory does not preserve its measured prefix")
     elif backend == "ollama":
         overflow = data.get("context_check", {}).get("overflow", {})
         if (data.get("options") != {"temperature": 0.0, "num_ctx": 32768}
