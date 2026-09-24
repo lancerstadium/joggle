@@ -1397,6 +1397,22 @@ int main(void) {
                 run_extension_agent.parse_action(value)
 
     def test_hosted_resume_preserves_budget_and_request(self):
+        self._check_hosted_resume(RuntimeError(
+            'provider HTTP errors: [{"status":429,"body":"TPM limit reached"}]'))
+
+    def test_hosted_timeout_resume_preserves_budget_and_request(self):
+        self._check_hosted_resume(TimeoutError('The read operation timed out'))
+
+    def test_hosted_resume_rejects_unapproved_interruptions(self):
+        for error in ('provider: ValueError: malformed response',
+                      'provider HTTP errors: [{"status":401}]',
+                      'provider HTTP errors: []',
+                      'provider HTTP errors: null',
+                      'provider HTTP errors: not json'):
+            with self.subTest(error=error):
+                self.assertIsNone(run_extension_agent.resumable_interruption(error))
+
+    def _check_hosted_resume(self, interruption):
         with tempfile.TemporaryDirectory() as directory:
             output=Path(directory)/'trajectory'; model='Qwen/Qwen3-8B'
             argv=['agent','--provider','siliconflow','--model',model,'--system','Joggle',
@@ -1409,7 +1425,7 @@ int main(void) {
                 count+=1
                 if count==2:
                     rejected.append(copy.deepcopy(payload))
-                    raise RuntimeError('provider HTTP errors: [{"status":429,"body":"TPM limit reached"}]')
+                    raise interruption
                 if count==3:self.assertEqual(payload,rejected[0])
                 return {'model':model,'choices':[{'finish_reason':'stop','message':{
                     'content':'{"action":"inspect"}' if count==1 else '{"action":"finish"}'}}],

@@ -140,6 +140,20 @@ time sums active collection segments, including in-process retry waits but
 excluding manual recovery downtime and final held-out validation. Service
 rate-limit guidance: https://docs.siliconflow.cn/docs/userguide/faqs/rate-limit-and-upgradation.
 
+On 25 September, after six completed primary trajectories and a read timeout
+before condition seven's first response, the author approved a uniform
+transport-continuation amendment. `--resume` also accepts a recorded
+`TimeoutError` when no response was received. This rule applies to every model,
+system, and task; completed outcomes and received responses are never rerun.
+The archived interruption, identical request, complete history, candidate, and
+remaining action/token budget are checked before continuation. Unreceived
+generation and usage are unknown, not zero: reported token costs count returned
+responses and are not a billing estimate. At most three external continuations
+per condition are attempted by this collection; a further interruption pauses
+the queue for review. Invalid received responses are not transport failures.
+Task contracts, API cards, native tools, sampling parameters, and scoring are
+unchanged. Earlier complete records remain primary observations.
+
 The CSV's `model_revision` is `hosted-alias:<model ID>`, not a weight digest.
 Trajectories retain catalog entries, returned model IDs, UTC timestamps,
 response/trace IDs, fingerprints when supplied, native responses and usage.

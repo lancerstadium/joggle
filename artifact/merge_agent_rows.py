@@ -33,7 +33,7 @@ def validate_trajectory(path: Path, provider: dict, rows: list[dict[str, str]]) 
         raise SystemExit(f"{path}: trajectory digest differs")
     data = json.loads(trajectory.read_text())
     backend = data.get("provider", "ollama")
-    from run_extension_agent import HOSTED_OPTIONS, HOSTED_ENDPOINT, HOSTED_CONTEXT, response_content, response_usage, parse_action
+    from run_extension_agent import HOSTED_OPTIONS, HOSTED_ENDPOINT, HOSTED_CONTEXT, response_content, response_usage, parse_action, resumable_interruption
     if provider.get("action_protocol") != data.get("action_protocol"):
         raise SystemExit(f"{path}: action protocol differs from trajectory")
     if (data.get("schema") != "extension-agent-trajectory/v1" or data.get("dirty")
@@ -57,6 +57,8 @@ def validate_trajectory(path: Path, provider: dict, rows: list[dict[str, str]]) 
             old = json.loads(archive.read_text())["trajectory"]
             index = continuation["action_index"]
             if (index != len(old["events"])-1 or not 0 <= index < len(data["events"])
+                    or resumable_interruption(old.get("infrastructure_error", "")) is None
+                    or old["events"][-1].get("provider_error") != old.get("infrastructure_error")
                     or old["events"][-1].get("response") is not None
                     or old["events"][:-1] != data["events"][:index]
                     or old["messages"] != data["messages"][:len(old["messages"])]

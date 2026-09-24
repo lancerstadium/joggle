@@ -377,9 +377,26 @@ def backend_identity(args: argparse.Namespace) -> dict:
             ]).encode()).hexdigest()}
 
 
-def resume_rate_limited(args: argparse.Namespace, installed: dict, native: dict,
+def resumable_interruption(error: str) -> str | None:
+    """Classify only approved interruptions; never discard a received answer."""
+    if error.startswith("provider: TimeoutError: "):
+        return "read-timeout"
+    marker = "provider HTTP errors: "
+    if marker in error:
+        try:
+            failures = json.loads(error.split(marker, 1)[1])
+            if (isinstance(failures, list) and failures and
+                    all(isinstance(item, dict) and item.get("status") == 429
+                        for item in failures)):
+                return "http-429"
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
+def resume_interrupted(args: argparse.Namespace, installed: dict, native: dict,
                         sources: dict, initial_messages: list[dict]) -> dict:
-    """Resume only a provably unserved 429 request, preserving its full prefix."""
+    """Resume a rejected or unanswered request, preserving its complete prefix."""
     root = args.output.resolve()
     trajectory_path, csv_path = root / "trajectory.json", root / "result.csv"
     previous = json.loads(trajectory_path.read_text())
@@ -412,16 +429,13 @@ def resume_rate_limited(args: argparse.Namespace, installed: dict, native: dict,
         if path != Path(__file__).name and sources.get(path) != value:
             raise ValueError(f"resume source differs: {path}")
     last = events[-1]
-    marker = "provider HTTP errors: "
     error = last.get("provider_error", "")
-    if (last.get("response") is not None or marker not in error
+    kind = resumable_interruption(error)
+    if (last.get("response") is not None or kind is None
             or error != previous.get("infrastructure_error")
             or last.get("action_index") != len(events)-1
             or any(event.get("response") is None for event in events[:-1])):
-        raise ValueError("resume requires an explicit rejected request, not an ambiguous failure")
-    failures = json.loads(error.split(marker, 1)[1])
-    if not failures or any(item.get("status") != 429 for item in failures):
-        raise ValueError("only explicit HTTP 429 interruptions may resume")
+        raise ValueError("resume requires an approved interruption without a received response")
     candidate = root / ("candidate." + SUFFIXES[args.system])
     oracle_path = root / "final-oracle.json"
     if (digest(oracle_path) != previous["final_oracle_sha256"]
@@ -440,7 +454,7 @@ def resume_rate_limited(args: argparse.Namespace, installed: dict, native: dict,
     request = {"model": args.model, "messages": previous["messages"], "stream": False,
                **HOSTED_OPTIONS, "max_tokens": min(4096, TOKENS-completion)}
     if hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest() != last["request_sha256"]:
-        raise ValueError("resume changes the unserved request")
+        raise ValueError("resume changes the unanswered request")
     continuations = list(previous.get("continuations", []))
     record_path = root / f"interruption-{len(continuations)+1:02d}.json"
     oracle_archive = record_path.with_name(record_path.stem + "-oracle.json")
@@ -451,7 +465,11 @@ def resume_rate_limited(args: argparse.Namespace, installed: dict, native: dict,
     oracle_path.rename(oracle_archive)
     continuations.append({"record": str(record_path), "sha256": digest(record_path),
         "oracle": str(oracle_archive), "action_index": last["action_index"],
-        "reason": "explicit HTTP 429; same unserved request and remaining budget"})
+        "kind": kind,
+        "reason": ("explicit HTTP 429; same unserved request and remaining budget"
+                   if kind == "http-429" else
+                   "read timeout; no answer received; same request and remaining budget"),
+        "unreceived_usage": "unknown" if kind == "read-timeout" else "not-returned"})
     return {"events": events[:-1], "messages": previous["messages"],
             "prompt_tokens": prompt, "completion_tokens": completion,
             "edits": int(row["edit_attempts"]), "tool_calls": int(row["tool_calls"]),
@@ -471,7 +489,7 @@ def main() -> int:
                         help="two ordered tasks from the frozen demonstration protocol; omit for zero-shot")
     parser.add_argument("--output", type=Path, required=True, help="new trajectory directory")
     parser.add_argument("--resume", action="store_true",
-                        help="continue an unchanged hosted trajectory after explicit HTTP 429 rejection")
+                        help="continue an unchanged hosted trajectory after HTTP 429 or an unanswered read timeout")
     parser.add_argument("--joggle", type=Path)
     parser.add_argument("--builtin-mods", type=Path)
     parser.add_argument("--mlir-dir", type=Path)
@@ -577,7 +595,7 @@ def main() -> int:
     options = dict(HOSTED_OPTIONS if args.provider == "siliconflow" else GENERATION_OPTIONS)
     previous_wall_ms, resume_request, continuations = 0, None, []
     if args.resume:
-        restored = resume_rate_limited(args, installed[0], system_identity, source_identity, messages)
+        restored = resume_interrupted(args, installed[0], system_identity, source_identity, messages)
         events, messages = restored["events"], restored["messages"]
         prompt_tokens, completion_tokens = restored["prompt_tokens"], restored["completion_tokens"]
         edits, tool_calls = restored["edits"], restored["tool_calls"]
@@ -634,7 +652,7 @@ def main() -> int:
         request_hash = hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
         if resume_request is not None:
             if request_hash != resume_request:
-                raise ValueError("resumed request differs from the unserved request")
+                raise ValueError("resumed request differs from the unanswered request")
             resume_request = None
         try:
             response = (hosted_api("chat/completions", key, request)
