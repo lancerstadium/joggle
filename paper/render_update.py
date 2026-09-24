@@ -16,7 +16,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Patch
-from matplotlib.ticker import LogLocator, NullFormatter
+from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
 
 PAPER = Path(__file__).resolve().parent
 DATA = PAPER / "data"
@@ -158,12 +158,12 @@ def summarize(rows, indexed):
 
 
 def render(summary):
-    plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 5.5,
+    plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10.5,
                          "pdf.fonttype": 42, "axes.linewidth": .45,
                          "xtick.direction": "in", "ytick.direction": "in",
                          "xtick.top": True, "ytick.right": True,
                          "savefig.bbox": None})
-    fig, axes = plt.subplots(2, 3, figsize=(3.35, 2.34), sharex="col", sharey="row")
+    fig, axes = plt.subplots(2, 3, figsize=(7.0, 3.6), sharex="col", sharey="row")
     values = [r["rebuild_q75_s"] for r in summary if r["rebuild_q75_s"] != ""]
     ymax = max(values) * 1.6
     for col, (model, name) in enumerate(zip(MODELS, NAMES)):
@@ -175,7 +175,7 @@ def render(summary):
                 if not row["update_correct"] or not row["rebuild_correct"]:
                     for ax in axes[:, col]:
                         ax.text(pos, .03, "×", transform=ax.get_xaxis_transform(),
-                                color=color, ha="center", va="bottom", fontsize=6)
+                                color=color, ha="center", va="bottom", fontsize=10.5)
                     continue
                 for k, policy in enumerate(POLICIES):
                     y = row[f"{policy}_median_s"]
@@ -190,30 +190,32 @@ def render(summary):
                 ax.bar(pos, y, width=.23, color=color, edgecolor="#26333D", lw=.3, zorder=3)
                 ax.errorbar(pos, y, yerr=[[y-row["speedup_q25"]], [row["speedup_q75"]-y]],
                             fmt="none", ecolor="#26333D", elinewidth=.4, capsize=.7, zorder=4)
-        axes[0, col].set_title(f"({chr(97+col)}) {name}", loc="left", fontsize=5.1, pad=2)
-        axes[1, col].set_title(f"({chr(100+col)}) Reuse gain", loc="left", fontsize=5.1, pad=2)
+        axes[0, col].set_title(f"({chr(97+col)}) {name}", loc="left", fontsize=10.5, pad=2)
+        axes[1, col].set_title(f"({chr(100+col)}) Reuse gain", loc="left", fontsize=10.5, pad=2)
         axes[0, col].set_yscale("log")
         axes[0, col].set_ylim(.35, ymax)
         axes[0, col].yaxis.set_major_locator(LogLocator(base=10))
+        axes[0, col].yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
         axes[0, col].yaxis.set_minor_locator(LogLocator(base=10, subs=(2, 5)))
         axes[0, col].yaxis.set_minor_formatter(NullFormatter())
         axes[1, col].set_ylim(0, max(3., max(r["speedup_q75"] for r in summary if r["speedup_q75"] != "")*1.2))
+        axes[1, col].set_yticks([0, 1, 2, 3])
         axes[1, col].axhline(1, color="#56616C", lw=.5, ls="--", zorder=4)
         axes[1, col].set_xticks(range(3), [e.replace("node-", "").replace("-", "\n") for e in edits])
         for ax in axes[:, col]:
             ax.set_xlim(-.52, 2.52)
-            ax.tick_params(which="both", labelsize=4.4, length=1.8, pad=1, width=.4)
+            ax.tick_params(which="both", labelsize=10.5, length=3, pad=2, width=.5)
             ax.tick_params(which="minor", length=.9)
             ax.grid(axis="y", lw=.35, color="#DDE3E8", zorder=0)
-    axes[0, 0].set_ylabel("Ready time (s)", fontsize=5.2, labelpad=1)
-    axes[1, 0].set_ylabel("Rebuild / update ↑", fontsize=5.2, labelpad=1)
+    axes[0, 0].set_ylabel("Ready time (s)", fontsize=10.5, labelpad=1)
+    axes[1, 0].set_ylabel("Rebuild / update ↑", fontsize=10.5, labelpad=1)
     handles = [Patch(facecolor=c, edgecolor=c, label=s) for s,c in zip(LABELS,COLORS)]
     handles += [Patch(facecolor="white", edgecolor="#56616C", hatch="////", label="rebuild"),
                 Patch(facecolor="#7B8494", label="update")]
-    fig.legend(handles=handles, loc="upper center", ncol=3, frameon=False,
-               fontsize=5.1, columnspacing=.7, handlelength=1, bbox_to_anchor=(.53,1.005))
-    fig.text(.13,.018,"Node ID / edit · n = 10 pairs · whiskers: IQR · × failed",fontsize=4.3)
-    fig.subplots_adjust(left=.13,right=.987,bottom=.16,top=.80,wspace=.13,hspace=.34)
+    fig.legend(handles=handles, loc="upper center", ncol=5, frameon=False,
+               fontsize=10.5, columnspacing=.7, handlelength=1, bbox_to_anchor=(.53,1.0))
+    fig.text(.09,.014,"Node ID / edit · n = 10 pairs · whiskers: IQR · × failed",fontsize=10.5)
+    fig.subplots_adjust(left=.09,right=.986,bottom=.20,top=.86,wspace=.15,hspace=.5)
     for suffix in ("pdf", "png"):
         fig.savefig(PAPER / f"figures/figure-06-update.{suffix}", dpi=400)
     plt.close(fig)

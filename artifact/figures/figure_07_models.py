@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Audit, export, and plot the complete model population from native run CSVs.
 
-The compact authoring layout uses a configurable font size. EuroSys 2027's
-submission instructions require >=10 pt, including figure text; the default
-6 pt authoring view is not a claim of submission-format compliance.
+The six-panel layout uses a two-column canvas and 10.5 pt labels, matching
+EuroSys 2027's minimum 10 pt requirement at final printed size.
 """
 
 from __future__ import annotations
@@ -95,7 +94,7 @@ def main() -> int:
                         help="Build source-data CSV from matched native model runs; base is optional")
     parser.add_argument("--output", type=Path, default=Path("paper/figures/figure-07-models.pdf"))
     parser.add_argument("--summary", type=Path, default=Path("paper/data/figure-07-models-summary.csv"))
-    parser.add_argument("--font-size", type=float, default=6.0)
+    parser.add_argument("--font-size", type=float, default=10.5)
     args = parser.parse_args()
     if args.models:
         assemble(args.models, args.csv)
@@ -166,7 +165,7 @@ def main() -> int:
                         mark = "–" if name == "geomean" or row["correct"] else "×"
                         ax.text(position + offset, 0.03, mark,
                                 transform=ax.get_xaxis_transform(), ha="center", va="bottom",
-                                fontsize=font - 1, color=COLORS[variant])
+                                fontsize=font, color=COLORS[variant])
                         continue
                     value = geometric[variant] if name == "geomean" else row["latency_over_ort"]
                     ax.bar(position + offset, value - 1, bottom=1, width=width * 0.9,
@@ -174,7 +173,7 @@ def main() -> int:
                            hatch=HATCHES[variant], zorder=3)
                     if name == "geomean":
                         ax.text(position + offset, value * 1.2, f"{value:.1f}",
-                                ha="center", va="bottom", fontsize=font - 1.5)
+                                ha="center", va="bottom", fontsize=font)
                     else:
                         tail = row["p95_over_ort_median"]
                         ax.errorbar(position + offset, value,
@@ -193,14 +192,14 @@ def main() -> int:
                           ha="right" if len(entries) > 1 else "center")
             ax.xaxis.set_minor_locator(MultipleLocator(0.5))
             ax.set_title(f"({chr(97 + panel_index)}) {title}", loc="left", pad=2,
-                         fontsize=font - 0.7)
+                         fontsize=font)
             for spine in ax.spines.values():
                 spine.set_visible(True)
                 spine.set_linewidth(0.5)
             ax.tick_params(axis="both", which="major", direction="in", top=True,
                            right=True, labeltop=False, labelright=False,
-                           labelleft=panel_index % 3 == 0, length=2.2, width=0.5,
-                           pad=1.5, labelsize=font - 1.5)
+                           labelleft=panel_index % 3 == 0, length=3, width=0.5,
+                           pad=2, labelsize=font)
             ax.tick_params(axis="both", which="minor", direction="in", top=True,
                            right=True, length=1.1, width=0.35)
             ax.grid(axis="y", which="major", color="#D9DFE4", linewidth=0.35)
@@ -209,15 +208,15 @@ def main() -> int:
                          hatch=HATCHES[variant],
                          label=LABELS[variant]) for variant in variants]
         handles.append(Line2D([], [], color="#58616B", ls="--", lw=0.75, label="ORT = 1"))
-        fig.legend(handles=handles, loc="upper center", ncol=3, frameon=False,
+        fig.legend(handles=handles, loc="upper center", ncol=len(handles), frameon=False,
                    handletextpad=0.3, handlelength=1.1, columnspacing=0.8,
                    bbox_to_anchor=(0.5, 1.0))
         fig.text(0.012, 0.54, "Latency / ORT ↓ (log)", rotation=90,
-                 va="center", fontsize=font - 0.5)
-        fig.text(0.12, 0.012, "Median → p95   × invalid   – no reference/aggregate", fontsize=font - 1)
-        fig.subplots_adjust(left=0.13, right=0.986,
-                            top=0.81 if len(handles) > 3 else 0.88, bottom=0.185,
-                            wspace=0.17, hspace=0.78)
+                 va="center", fontsize=font)
+        fig.text(0.09, 0.014, "Median → p95   × invalid   – no reference/aggregate", fontsize=font)
+        fig.subplots_adjust(left=0.09, right=0.986,
+                            top=0.86, bottom=0.20,
+                            wspace=0.17, hspace=0.86)
         save(fig, args.output)
         plt.close(fig)
     print(json.dumps(aggregate, indent=2))

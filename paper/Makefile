@@ -4,11 +4,11 @@
 all: sigconf.pdf supplement.pdf
 
 # Rebuild the three measured result figures without rerunning benchmarks.
-# All use the same single-column physical size and font scale.
+# All use the same two-column physical size and submission font scale.
 figures:
 	python3 render_update.py
-	python3 ../artifact/figures/figure_07_performance.py data/figure-07-operators.csv --output figures/figure-07-performance.pdf --summary data/figure-07-operators-summary.csv --font-size 5.5
-	python3 ../artifact/figures/figure_07_models.py data/figure-07-models.csv --output figures/figure-07-models.pdf --summary data/figure-07-models-summary.csv --font-size 5.5
+	python3 ../artifact/figures/figure_07_performance.py data/figure-07-operators.csv --output figures/figure-07-performance.pdf --summary data/figure-07-operators-summary.csv --font-size 10.5
+	python3 ../artifact/figures/figure_07_models.py data/figure-07-models.csv --output figures/figure-07-models.pdf --summary data/figure-07-models-summary.csv --font-size 10.5
 
 TASK_GRAPHS = $(patsubst %.dot,%.pdf,$(wildcard figures/task-*.dot))
 A5_GRAPHS = $(patsubst %.dot,%.pdf,$(wildcard figures/a5-*.dot))

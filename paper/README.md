@@ -818,8 +818,8 @@ scalarization, model-wide storage planning, emission, native compilation, and
 binding for the replacement executable. The matched rebuild uses the identical
 pipeline with an empty body cache.
 
-<!-- UPDATE-RESULTS FIGURE — Single-column 3×2 vertical-bar panels at
-3.35×2.34 inches. Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3. Top:
+<!-- UPDATE-RESULTS FIGURE — Two-column 3×2 vertical-bar panels at
+7.0×3.6 inches with 10.5 pt labels. Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3. Top:
 absolute ready time for three edit sites, grouped by system and policy; log
 axis, hatched rebuild and solid update. Bottom: paired rebuild/update speedup
 at the same edit sites; linear axis and parity at one. Teal Joggle, amber TVM,
@@ -849,8 +849,8 @@ fail compilation or numerical validation remain in the coverage denominator
 but contribute no latency ratio.
 
 <!-- PERFORMANCE FIGURE PROMPT — Render from measured CSV using
-artifact/figures/figure_07_performance.py. Compact single-column figure with
-six panels, two rows by three columns: elementwise, reduction, matmul,
+artifact/figures/figure_07_performance.py. Compact two-column figure with
+7.0×3.6-inch canvas and 10.5 pt labels. Six panels, two rows by three columns: elementwise, reduction, matmul,
 convolution, quantization, fusion.
 Every panel contains four operators and grouped base/optimized/TVM/ONNX-MLIR bars. Shared
 logarithmic y axis, one legend, ORT=1 dashed line, median-to-p95 whiskers,
@@ -914,7 +914,7 @@ is marked ×, and a correct candidate without a valid ORT reference is marked
 with a dash. Absolute medians and p95 values for every correct candidate remain
 in the accompanying CSV.
 
-<!-- FIGURE 8 DATA — Single-column 3.35-inch paired bar plot, two rows by
+<!-- FIGURE 9 DATA — Two-column 7.0×3.6-inch paired bar plot, 10.5 pt labels, two rows by
 three columns. Five panels contain all 15 models grouped as dense CNNs,
 mobile CNNs, detectors, quantized models, and other models; the sixth gives
 the four-system common-set geometric means. Shared logarithmic latency/ORT

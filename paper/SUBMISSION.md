@@ -33,14 +33,18 @@ is a later, post-acceptance process with its own instructions.
 
 ## Current checks
 
-The main PDF has 13 pages; technical content ends on page 12 and page 13
-contains references only. The separate supplement has eight pages, including
+The main PDF has 14 pages after reflowing the three measured figures at
+submission font size. Technical content ends on page 13: one technical page
+must still be removed through prose and layout revision. Page 14 contains
+references only. The separate supplement has eight pages, including
 three landscape pages for Table A5's 12 paired input/output examples. Both entry
 points explicitly enable page numbers.
 
-The compact authoring figures are not yet submission-size compliant: their
-labels use fonts below 10 pt. Some table bodies, bibliography text, and ACM
-caption defaults are also below 10 pt. Reflow these before upload; do not satisfy the page limit
-by shrinking type. Recheck pagination after the font and figure layout pass.
+The three measured figures now use a shared 7.0 × 3.6 in two-column canvas,
+10.5 pt text, and unchanged source data. Their vector exports have passed font
+size and edge-padding checks. Architecture illustrations still need a printed
+size audit. Some table bodies, bibliography text, and ACM caption defaults are
+also below 10 pt. Reflow these before upload; do not satisfy the page limit by
+shrinking type. Recheck pagination after the remaining font and layout pass.
 The two-column rule is explicit for the paper; the CFP gives no separate
 layout specification for the optional supplement.

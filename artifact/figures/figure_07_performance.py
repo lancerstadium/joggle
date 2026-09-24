@@ -94,8 +94,8 @@ def main() -> int:
     parser.add_argument("--summary", type=Path, help="Export displayed medians, p95s, and ratios")
     parser.add_argument("--kind", choices=("operator", "model"),
                         help="Select one population from a combined source-data CSV")
-    parser.add_argument("--font-size", type=float, default=6.0,
-                        help="Authoring font size in points")
+    parser.add_argument("--font-size", type=float, default=10.5,
+                        help="Label size in points at final printed width")
     args = parser.parse_args()
     rows = read_rows(args.csv, {
         "subject_kind", "subject", "family", "variant", "supported", "reason",
@@ -167,7 +167,7 @@ def main() -> int:
                   for s in names]
         ax.set_xticks(range(len(names)), labels, rotation=50, ha="right")
         ax.tick_params(axis="both", which="both", direction="in", top=True,
-                       right=True, labelsize=font - 1, length=2, width=0.45, pad=1)
+                       right=True, labelsize=font, length=3, width=0.5, pad=2)
         ax.tick_params(which="minor", length=1.1, width=0.35)
         ax.set_title(f"({chr(97 + panel_index)}) {title}", loc="left", fontsize=font, pad=2)
         ax.grid(axis="y", which="major", color="#DDE3E8", lw=0.45)
@@ -177,12 +177,12 @@ def main() -> int:
     handles = [Patch(facecolor=COLORS[v], edgecolor="#27333D", linewidth=0.35,
                       hatch=HATCHES[v], label=LABELS[v]) for v in variants]
     handles.append(Line2D([], [], color="#565F69", ls="--", lw=0.6, label="ORT = 1"))
-    fig.legend(handles=handles, loc="upper center", ncol=min(3, len(handles)), frameon=False,
-               handlelength=1.2, columnspacing=0.8, bbox_to_anchor=(0.51, 1.005))
+    fig.legend(handles=handles, loc="upper center", ncol=len(handles), frameon=False,
+               handlelength=1.2, columnspacing=0.8, bbox_to_anchor=(0.51, 1.0))
     fig.text(0.01, 0.56, "Latency / ORT ↓ (log)", va="center", rotation=90, fontsize=font)
-    fig.text(0.125, 0.012, "Median → p95   × invalid   – ORT invalid   ? absent", fontsize=font - 1)
-    fig.subplots_adjust(left=0.125, right=0.988, bottom=0.185,
-                        top=0.81 if len(handles) > 3 else 0.88, wspace=0.12, hspace=0.90)
+    fig.text(0.09, 0.014, "Median → p95   × invalid   – ORT invalid   ? absent", fontsize=font)
+    fig.subplots_adjust(left=0.09, right=0.986, bottom=0.26,
+                        top=0.86, wspace=0.14, hspace=1.55)
     save(fig, args.output)
     if args.summary:
         args.summary.parent.mkdir(parents=True, exist_ok=True)
