@@ -264,9 +264,7 @@ Maintain style of Image1, not its code transformation layout. Small labels, dens
 Correction: remove output labels beneath the API examples; label the forward Val-to-user-Op edge users, with no backwards users arrow.
 -->
 
-*Figure 3: Two graph structures organize compilation. Mods delimit compiler capabilities;
-typed calls operate on the subject graph. Decoded plans, dependency records,
-and versioned entity stores support transactional publication. Entries are schematic.*
+*Figure 3: Compilation architecture. Mod dependencies organize extensions; typed calls connect subject graphs, evaluator caches, and checked mutation.*
 
 The rest of the design develops these relationships in order. Section 3.2
 defines typed compiler functions; Section 3.3 gives them a mod-scoped
@@ -357,10 +355,7 @@ Tiny footnote "Subject functions complete; operator declarations supplied by fix
 No fake performance numbers. No Rust code. No ellipses replacing actual subject statements. No huge labels, no icons unrelated to code. The effect should be a carefully typeset dense academic code-and-graph transformation figure, not a presentation poster.
 -->
 
-*Figure 4: Quantized convolution fusion. Complete input and output subject
-functions surround the replacement excerpt. Guards, attribute transfer, and
-def-use updates connect source syntax to graph edits. Operator declarations
-come from the fixture; the complete transformation appears in Appendix C.7.*
+*Figure 4: Quantized convolution fusion. Complete subject functions surround the replacement excerpt. Fixture declarations are omitted; Appendix C.7 gives the full transformation.*
 
 To invoke a compiler function, the environment resolves its qualified name, visible
 mods, explicit generic arguments, parameter types, and result context. The
@@ -537,9 +532,7 @@ Edit this existing scientific figure, preserving portrait aspect, clean pale blu
 (c) Change heading to "Commit or restore". Keep G0 layout=NHWC and rollback to that state. Transaction contains s1 -> verify -> check D2 -> s2 -> verify -> commit arrow to G' and records. Compact small boxes not huge diamond. Show hatched s3 bypass. Published table columns "stage | observed state", rows "s1 | after s1", "s2 | after s2", "s3 | unchanged record". Tiny footer "later edits remain detectable". Absolutely remove phrase observations rebased. No global rebase. Main transaction semantics: failure at either verify restores input graph G0 and retains old records. Include short "failure: restore G0, keep records" below dashed rollback arrow. Avoid putting replay or fixed point claims. No fabricated performance numbers. All text legible with minimal padding, same image dimensions and visual weight as original.
 -->
 
-*Figure 5: Reactive updates. Each stage checks the graph produced by earlier
-stages. Changed observations trigger execution; unchanged records are retained.
-Failure restores the input graph and prior records.*
+*Figure 5: Reactive updates. Ordered checks expose upstream writes and retain unchanged records. Failure restores the input graph.*
 
 Fine-grained observations reduce re-execution but add validation and capture
 work. Each invocation validates the input graph, checks stage observations in
@@ -693,9 +686,7 @@ At top a small matrix X, with side note “24 operators / 15 models”. X fans o
 The four different flow topologies must be unmistakable: a repair LOOP, an independent-edit FAN-OUT, two paired VERTICAL TIMELINES, and parallel backend EXECUTION PATHS. This is not a capability comparison diagram and must not resemble a 3-column challenge-solution-benefit table. Keep balanced aligned quadrants but do not force every quadrant into one shared input/procedure/output template. Use small typography and compact layout. Render only the figure, without caption.
 -->
 
-*Figure 6: Evaluation workflow. Package edits share one parent; update
-timing includes native compilation and binding. The reuse path denotes Joggle's
-prepared bodies. Correct outputs enter latency ratios; all outcomes enter coverage.*
+*Figure 6: Evaluation workflow. Paired inputs and correctness checks connect extension tasks, package edits, executable-ready updates, and execution.*
 
 ### 4.2 Agent Extension Completion
 
@@ -779,9 +770,7 @@ provides the complete footprints, package files, and worked input/output pairs.
 
 ![Package integration and maintenance costs.](figures/figure-05-footprint.png)
 
-*Figure 7: Feature integration and maintenance. Panels show integration files,
-integration lines, and maintenance lines (left to right). Lines count additions
-plus deletions per patch. J/M/X: Joggle/MLIR/xDSL.*
+*Figure 7: Feature integration and maintenance. Columns: integration files, integration lines, maintenance lines. Lines count additions plus deletions. J/M/X: Joggle/MLIR/xDSL.*
 
 ### 4.4 Compilation Updates
 
@@ -849,10 +838,7 @@ compilation still run for each executable. As preparation shrinks, those stages
 account for more of the update time. The result therefore motivates extending
 reuse to artifact construction, rather than further optimizing preparation alone.
 
-*Figure 8: Executable-ready updates. Top: ready time (log scale).
-Bottom: paired rebuild/update speedup. Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3.
-Ticks identify edited nodes and operators. Ten repetitions per edit; bars
-show medians, whiskers IQR, and × failed compilation.*
+*Figure 8: Executable-ready updates. Top: median ready time, IQR. Bottom: paired rebuild/update speedup. Ten repetitions per edit; crosses mark failed compilation.*
 
 <!-- UPDATE-RESULTS FIGURE — Single-column vertical bars, two rows by three columns,
 3.33×2.25 inches with 5.5 pt labels. Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3. Top:
@@ -914,10 +900,7 @@ Source CSV: paper/data/figure-07-operators.csv.
 Model measurements have a separate companion display. Preserve every case and failed outcome.
 No generated pixels or illustrative numbers for data. -->
 
-*Figure 9: Operator execution. Latency is normalized to ORT (log scale). Bars span parity to median;
-whiskers reach p95 over 100 samples. Correct: Joggle/ORT 24/24;
-TVM/ONNX-MLIR 22/24. × marks invalid candidates. DW/PW: depthwise/pointwise;
-MM: matmul; B/R: bias/ReLU.*
+*Figure 9: Operator execution relative to ORT. Bars: median; whiskers: p95 (100 samples). Crosses: invalid. DW/PW: depthwise/pointwise; MM: matmul; B/R: bias/ReLU.*
 
 On the 22 operators correct in every configuration, optimized Joggle achieves
 $1.35\times$ lower geometric mean latency than default TVM. It has lower
@@ -971,10 +954,7 @@ CSV: paper/data/figure-07-models.csv; per-model summaries:
 paper/data/figure-07-models-summary.csv; script:
 artifact/figures/figure_07_models.py. -->
 
-*Figure 10: Model execution. Latency is normalized to ORT; medians and p95
-  use 100 samples.
-×: invalid candidate; dash: invalid reference. Panel (f): eight jointly correct
-models. Coverage: Joggle 14/15, ORT 13/15, TVM/ONNX-MLIR 11/15.*
+*Figure 10: Model execution relative to ORT. Bars: median; whiskers: p95 (100 samples). Crosses: invalid candidate; dash: invalid reference. Panel (f): eight jointly correct models.*
 
 <!-- PERFORMANCE DATA — Separate operator and model displays form one
 end-to-end experiment. Each display has a source CSV and plotting script.

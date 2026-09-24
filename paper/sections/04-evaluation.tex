@@ -45,10 +45,7 @@ aggregating measurements.
 \begin{figure}[!tbp]
   \centering
   \includegraphics[width=\columnwidth]{figures/evaluation-workflow.png}
-  \caption{Evaluation workflow. Package edits share one parent; update
-  timing includes native compilation and binding. The reuse path denotes
-  Joggle's prepared bodies. Correct outputs enter latency ratios; all outcomes
-  enter coverage.}
+  \caption{Evaluation workflow. Paired inputs and correctness checks connect extension tasks, package edits, executable-ready updates, and execution.}
   \Description{Four independent panels depict an agent repair loop, package
   edits branching from the same parent, paired vertical compilation timelines,
   and parallel backend execution. Measurements retain both successful and
@@ -128,9 +125,7 @@ provides the complete footprints, package files, and worked input/output pairs.
 \begin{figure}[tp]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-05-footprint.pdf}
-  \caption{Feature integration and maintenance. Panels show integration files,
-  integration lines, and maintenance lines (left to right). Lines count additions plus deletions per patch.
-  J/M/X: Joggle/MLIR/xDSL.}
+  \caption{Feature integration and maintenance. Columns: integration files, integration lines, maintenance lines. Lines count additions plus deletions. J/M/X: Joggle/MLIR/xDSL.}
   \Description{Six boxed panels separate package integration from maintenance.
   Joggle uses one integration file per feature versus three in MLIR and xDSL,
   with fewer integration lines. All maintenance edits touch one file and one
@@ -210,10 +205,7 @@ reuse to artifact construction, rather than further optimizing preparation alone
 \begin{figure}[tp]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-06-update.pdf}
-  \caption{Executable-ready updates. Top: ready time (log scale).
-  Bottom: paired rebuild/update speedup. Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3.
-  Ticks identify edited nodes and operators. Ten repetitions per edit; bars
-  show medians, whiskers IQR, and $\times$ failed compilation.}
+  \caption{Executable-ready updates. Top: median ready time, IQR. Bottom: paired rebuild/update speedup. Ten repetitions per edit; crosses mark failed compilation.}
   \Description{Six boxed panels compare three systems at nine edit sites.
   Top panels show absolute time on a logarithmic axis. Bottom panels show
   paired reuse speedup on a linear axis. Joggle reuses preparation work;
@@ -255,10 +247,7 @@ denominator but contribute no latency ratio.
 \begin{figure}[tp]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-07-performance.pdf}
-  \caption{Operator execution. Latency is normalized to ORT (log scale). Bars span parity to median;
-  whiskers reach p95 over 100 samples. Correct: Joggle/ORT 24/24;
-  TVM/ONNX-MLIR 22/24. $\times$ marks invalid candidates.
-  DW/PW: depthwise/pointwise; MM: matmul; B/R: bias/ReLU.}
+  \caption{Operator execution relative to ORT. Bars: median; whiskers: p95 (100 samples). Crosses: invalid. DW/PW: depthwise/pointwise; MM: matmul; B/R: bias/ReLU.}
   \Description{Six aligned small multiples compare the base and optimized
   Joggle paths, TVM, and ONNX-MLIR on four operators per family, with a common logarithmic
   scale and an ONNX Runtime reference line at one.}
@@ -305,10 +294,7 @@ values for every correct candidate remain in the accompanying CSV.
 \begin{figure}[tp]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-07-models.pdf}
-  \caption{Model execution. Latency is normalized to ORT; medians and p95
-  use 100 samples.
-  $\times$: invalid candidate; dash: invalid reference. Panel (f): eight jointly
-  correct models. Coverage: Joggle 14/15, ORT 13/15, TVM/ONNX-MLIR 11/15.}
+  \caption{Model execution relative to ORT. Bars: median; whiskers: p95 (100 samples). Crosses: invalid candidate; dash: invalid reference. Panel (f): eight jointly correct models.}
   \Description{Six boxed panels compare Joggle, TVM, and ONNX-MLIR with ORT:
   five model groups cover all 15 subjects and one gives common-set geometric
   means. Failed candidates and unavailable reference ratios have distinct

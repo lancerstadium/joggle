@@ -47,9 +47,7 @@ transactional publication boundary.
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/system-architecture.png}
-  \caption{Two graph structures organize compilation. Mods delimit compiler capabilities;
-  typed calls operate on the subject graph. Decoded plans, dependency records,
-  and versioned entity stores support transactional publication. Entries are schematic.}
+  \caption{Compilation architecture. Mod dependencies organize extensions; typed calls connect subject graphs, evaluator caches, and checked mutation.}
   \Description{Mod dependency and operator graphs connect to a shared typed
   call interface. Below, plan and dependency tables sit beside entity-slot
   arrays, followed by a verified transaction with commit and rollback paths.}
@@ -94,10 +92,7 @@ owned values through the same call interface.
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-03-operator-extension.png}
-  \caption{Quantized convolution fusion. Complete input and output subject
-  functions surround the replacement excerpt. Guards, attribute transfer, and
-  def--use updates connect source syntax to graph edits. Operator declarations
-  come from the fixture; the complete transformation appears in Appendix C.7.}
+  \caption{Quantized convolution fusion. Complete subject functions surround the replacement excerpt. Fixture declarations are omitted; Appendix C.7 gives the full transformation.}
   \Description{Three vertically stacked panels show the input quantized
   convolution chain, checked graph edits, and the resulting fused operation.
   Code and graph nodes are aligned. Scales, layouts, result types, and the
@@ -277,9 +272,7 @@ invalidate every consumer.
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/reactive-update.png}
-  \caption{Reactive updates. Each stage checks the graph produced by earlier
-  stages. Changed observations trigger execution; unchanged records are retained.
-  Failure restores the input graph and prior records.}
+  \caption{Reactive updates. Ordered checks expose upstream writes and retain unchanged records. Failure restores the input graph.}
   \Description{A convolution metadata edit invalidates a recorded read;
   actual writes invalidate a later stage while a disjoint stage is
   retained. A transaction verifies the new graph before publishing records.}
