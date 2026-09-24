@@ -33,7 +33,7 @@ is a later, post-acceptance process with its own instructions.
 
 ## Current checks
 
-The main PDF has 15 pages. Technical content ends on page 12; pages 13--15 contain
+The main PDF has 14 pages. Technical content ends on page 12; pages 13--14 contain
 references only. The separate supplement has thirteen pages. Table A.5's 12 paired
 input/output examples occupy six portrait pages, with verbatim quoted task
 contracts and 8.5 pt DOT labels. Section C.4 uses portrait tables while retaining its diagram typography
@@ -72,11 +72,11 @@ capabilities, and a tinted column identifies Joggle. Its measured integration
 rows show source files, source lines, and separate registration code for the
 two native packages; other systems are marked unmeasured. Figure 6 uses four
 independent protocol vignettes, distinct from the author's 3v3 overview. The main PDF
-now cites 48 sources. The literature expansion covers IRDL, LMS, AnyDSL,
+now cites 47 sources. The literature expansion covers IRDL, LMS, AnyDSL,
 Exo, Ansor, TASO, Mirage, PluS, egglog, self-adjusting computation, IncA,
 SWE-agent, Delite, Forge, Stratego, Lift, RISE/ELEVATE, guided equality
 saturation, MetaSchedule, Relax, Tensor Comprehensions, TACO, Shake, pluto,
-PIE, differential dataflow, SWE-bench, AutoTVM, and Glow.
+PIE, differential dataflow, SWE-bench, and Glow.
 Citations occur in the introduction, motivation, and
 related-work comparisons; every bibliography entry is cited. KernelBench,
 TensorIR, and Exo 2 now use formal proceedings records rather than preprint
@@ -102,8 +102,10 @@ The author approved a uniform transport-continuation rule: retain the timeout
 archive and resend only the unanswered request with unchanged remaining budget.
 The runner and trajectory validator implement this transport-only amendment;
 task/API sources and native binaries remain frozen.
-The transport amendment is committed as `dcb383e`; collection has resumed from
-condition seven in the original batch and order.
+The transport amendment is committed as `dcb383e`. Condition seven exhausted
+the three permitted continuations without a received answer; collection stopped
+with six completed conditions. The interrupted condition is an infrastructure
+failure, not a scored model failure. No partial primary result is published.
 No effective response or completed condition has been rerun.
 
 ## First review: unresolved submission gates
@@ -203,7 +205,7 @@ Both PDFs include this mechanism clarification, the measured host configuration,
 and the native invocation/output-storage boundaries in Table A.4. Repeated
 method and discussion text was condensed to keep technical content within
 12 pages. The current main PDF has 14 pages, with references beginning on
-page 12; the supplement has 13 portrait pages. The latest build has no
+page 13; the supplement has 13 portrait pages. The latest build has no
 overfull boxes or undefined references. Main pages 8 and 12 and supplement
 page 3 were rendered and visually checked after the prose edits.
 

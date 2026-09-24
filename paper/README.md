@@ -966,30 +966,31 @@ separately.
 
 ## 5. Related Work
 
-Table 2 compares extension interfaces, feature boundaries, and update
-mechanisms. Alongside compilers, it includes systems for incremental
-computation. Joggle combines compiler-function composition with read-tracked
-updates; the package comparison quantifies cross-stage publication costs.
-The final four rows compare native plugins and mods as feature packages.
+Table 2 follows the five compiler roles from definition to emission, then
+compares composition, rollback, and reuse boundaries. Checks identify extension
+interfaces for each system's program representation; Exo's emission interface
+uses instruction templates. The final four rows compare native plugins and
+mods as complete feature packages.
 
 | Dimension | MLIR [@lattner2021mlir] | xDSL [@fehr2025xdsl] | TVM [@chen2018tvm] | Exo 2 [@ikarashi2025exo2] | Transform [@lucke2025transform] | egg [@willsey2021egg] | egglog [@zhang2023egglog] | rustc [@rustcincremental] | Adapton [@hammer2014adapton] | PIE [@konat2018pie] | **Joggle** |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Extension notation | C++/ODS | Python | Py/C++ | Python | IR | Rust | Datalog | Rust | Host | PIE | **jog** |
-| Programmable unit | Op/pass | Op/pass | Block | Schedule | Transform | Rewrite | Rule | Query | Thunk | Task | **Function** |
-| Programmable transforms | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | **✓** |
+| Operator definitions | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | — | — | — | **✓** |
+| Inspection / analysis | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | **✓** |
+| Composable transforms | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | **✓** |
+| Conversion / lowering | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | — | — | **✓** |
+| Emission hooks | ✓ | ✓ | ✓ | ✓ | — | — | — | — | — | — | **✓** |
+| Extension notation | C++/ODS | Python | Py/C++ | Python | IR/C++ | Rust | Datalog | Rust | Host | PIE | **jog** |
 | Composition unit | Dialect | Dialect | IRModule | Library | Sequence | Rule set | Rule set | Query | Thunk | Pipeline | **mod** |
-| Program references | SSA | SSA | Blocks | Cursors | Handles | E-classes | E-classes | Keys | Thunks | Values | **Typed** |
-| Dependency carrier | Analysis | SSA links | Dataflow | Cursor | Handle | E-class | Relation | Query DAG | Demand DAG | Task DAG | **Read/effect** |
-| Update mechanism | Preserve | Use-def | Schedule | Forward | Effects | Rebuild | Semi-naive | Red-green | Demand | Incremental | **Revision** |
-| Read-tracked invalidation | — | — | — | — | — | — | — | ✓ | ✓ | ✓ | **✓** |
+| Mutation rollback scope | Conversion | — | — | — | Alternative | — | — | — | — | — | **Sequence** |
+| Read-tracked query reuse | — | — | — | — | — | — | — | ✓ | ✓ | ✓ | **✓** |
 | Single-owner package | ✓ | ✓ | — | — | — | — | — | — | — | — | **✓** |
 | No separate registration | × | × | — | — | — | — | — | — | — | — | **✓** |
 | Files / package ↓ | 3 | 3 | — | — | — | — | — | — | — | — | **1** |
 | Lines / package ↓ | 178–193 | 122–125 | — | — | — | — | — | — | — | — | **69–77** |
 
-*Table 2: Extension and update mechanisms across eleven systems. ✓: supported;
-×: absent in the measured packages; —: not assessed. Read-tracked invalidation
-records dependencies during execution. Package counts cover both cross-stage
+*Table 2: Extension coverage, composition, and reuse across eleven systems.
+✓: supported; ×: absent in the measured packages; —: not assessed.
+Read-tracked queries record dependencies during execution. Package counts cover both cross-stage
 features in Section 4.3, including publication declarations.*
 
 ### 5.1 Compiler Construction and Composition
@@ -999,24 +1000,21 @@ extensible dialects and multi-level lowering [@lattner2021mlir]. IRDL makes
 operation, type, and attribute constraints declarative [@fehr2022irdl], while
 xDSL brings compatible construction into Python [@fehr2025xdsl]. MLIR also
 caches analyses at operation anchors, with invalidation governed by
-preservation declarations [@mlirpass]. These mechanisms organize compiler
-behavior around representations and passes.
+preservation declarations [@mlirpass].
 
 Staging takes a complementary approach. LMS uses types to stage code
 [@rompf2010lms], and AnyDSL specializes higher-order programs by partial
 evaluation [@leissa2018anydsl]. Delite shares parallel patterns, optimizations,
 and code generators across embedded DSLs [@sujeeth2014delite]; Forge generates
 DSL implementations from declarative specifications [@sujeeth2013forge].
-Our design gives semantic definitions, analyses, rewrites, conversions, and
-emitters a common invocation model over mutable graphs, together with
-mod-scoped ownership and dependency-directed execution.
+Our design instead combines a common invocation model over mutable graphs
+with mod-scoped ownership and dependency-directed execution.
 
 ### 5.2 Tensor Optimization and Deployment
 
 Halide separates algorithms from schedules [@ragankelley2012halide], and
 TVM combines graph and tensor optimization [@chen2018tvm]. Within this setting,
-AutoTVM learns operator cost models [@chen2018autotvm], Ansor searches tensor
-programs [@zheng2020ansor], and MetaSchedule composes stochastic transformations
+Ansor searches tensor programs [@zheng2020ansor], and MetaSchedule composes stochastic transformations
 [@shao2022metaschedule]. TensorIR exposes computation blocks and scheduling
 primitives [@feng2022tensorir], while Relax connects graph, tensor, and external
 library abstractions for dynamic workloads [@lai2025relax].
@@ -1034,8 +1032,7 @@ Deployment introduces further boundaries. Glow separates graph optimization
 from address-only lowering [@rotem2019glow], ONNX-MLIR lowers model operations
 [@jin2020onnxmlir], and ONNX Runtime partitions graphs among execution providers
 [@ortarchitecture]. Our mod boundary follows the feature implementing these
-roles rather than a particular optimization level. The evaluation accordingly
-measures package integration and maintenance separately from executable speed.
+roles rather than a particular optimization level.
 
 ### 5.3 Programmable Transformations
 
@@ -1052,10 +1049,8 @@ For search-driven transformation, egg combines equality saturation and
 e-class analyses [@willsey2021egg]; guided equality saturation narrows search
 through intermediate expressions or sketches [@koehler2024guided]; egglog
 integrates equality saturation with Datalog and incremental evaluation
-[@zhang2023egglog]. These systems establish programmable transformation as a
-powerful abstraction. Compiler functions extend a shared call boundary to the
-surrounding analysis, conversion, and emission roles, while recording the graph
-state needed to reuse their execution.
+[@zhang2023egglog]. Compiler functions extend this programmability to analysis,
+conversion, and emission through a shared call boundary with recorded graph reads.
 
 ### 5.4 Incremental Execution
 
@@ -1074,12 +1069,9 @@ Build Systems à la Carte separates scheduling from rebuilding
 dependency graph [@rustcincremental]. LLVM ORC instead supports on-demand
 materialization and symbol dependencies in JIT compilation [@llvmorc].
 
-Our evaluator applies dependency tracking to in-place graph refinement.
-Observations identify typed entities and scopes. Generations detect replaced
-entities, revisions track changes, and effects select downstream work.
-Transactional publication keeps these records consistent with the graph.
-Prepared-body reuse addresses a separate boundary: transferring unchanged
-specializations across newly imported program revisions.
+Our evaluator tracks graph refinement through typed observations,
+entity generations, revisions, and effects, published transactionally.
+Prepared-body reuse transfers unchanged specializations across imported revisions.
 
 ## 6. Discussion
 
