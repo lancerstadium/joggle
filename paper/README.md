@@ -682,8 +682,9 @@ agent outcomes, we select two tasks per family for a 12-task execution set.
 Admission requires a system-specific harness and an idiomatic reference patch
 that passes the shared oracle.
 
-The agent protocol uses two frozen small instruction models with the same
-coding-agent harness. Each request combines a natural-language semantic
+The agent protocol uses Qwen3-8B and Qwen3-14B through SiliconFlow with the same
+coding-agent harness, temperature zero, and thinking disabled. Each request
+combines a natural-language semantic
 contract, public positive and negative examples, a native API card, and starter
 code. The agent can inspect or replace its source, invoke the public
 build-and-test oracle, and submit the result. Candidate programs execute in
@@ -691,7 +692,7 @@ isolated workspaces. The output consists of the final source patch and complete
 tool trajectory; final scoring also checks fixtures withheld from tool feedback.
 Each trajectory may take at
 most 30 actions and emit at most 32k tokens. Each model--system--task condition
-runs once with deterministic decoding and no demonstrations. The paired design
+runs once with the same sampling settings and no demonstrations. The paired design
 contains 72 trajectories: 12 tasks, three systems, and two models.
 
 The primary endpoint is executable success within budget: the final workspace
@@ -703,7 +704,7 @@ from incorrect code. The supplement pairs natural-language contracts with
 input graphs and expected outputs.
 
 <!-- AGENT-RESULTS FIGURE PLAN — Compact 2×3 grouped vertical bars. Rows are the
-two frozen models; columns show task-macro executable success, completion
+two selected models; columns show task-macro executable success, completion
 tokens for successful tasks, and successful tool calls. Each panel uses the
 same six family positions and fixed Joggle/MLIR/xDSL colors. Stopping conditions
 and final candidate outcomes belong in the supplement. CSV:
@@ -1216,6 +1217,19 @@ Joggle times calls in a native C loop; the other systems time invocations from
 the Python collector. Numerical checks follow the timed interval.*
 
 ## Appendix C. Extension Task Inputs and Outputs
+
+**Agent protocol.**
+
+| Setting | Value |
+| --- | --- |
+| Provider | SiliconFlow, Chat Completions API |
+| Model identifiers | `Qwen/Qwen3-8B`; `Qwen/Qwen3-14B` |
+| Sampling | Temperature 0; thinking disabled |
+| Action format | JSON object: `inspect`, `edit`, `test`, or `finish` |
+| Per-trajectory limits | 30 actions; 32,000 generated tokens |
+| Examples | Public positive and negative fixtures; no demonstrations |
+| Final oracle | Public and held-out fixtures |
+| Matched population | 12 tasks × 3 systems × 2 models; one run per condition |
 
 Table A.5 reproduces the semantic-contract field of each task prompt verbatim,
 in quotation marks and italics. The native API card and public fixtures accompany

@@ -2,6 +2,28 @@
 \section{Extension Task Inputs and Outputs}
 \label{sec:extension-task-data}
 
+\paragraph{Agent protocol.}
+\begingroup
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.05}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}ll@{}}
+\toprule
+Setting & Value \\
+\midrule
+Provider & SiliconFlow, Chat Completions API \\
+Model identifiers & \texttt{Qwen/Qwen3-8B}; \texttt{Qwen/Qwen3-14B} \\
+Sampling & Temperature 0; thinking disabled \\
+Action format & JSON object: \texttt{inspect}, \texttt{edit}, \texttt{test}, or \texttt{finish} \\
+Per-trajectory limits & 30 actions; 32,000 generated tokens \\
+Examples & Public positive and negative fixtures; no demonstrations \\
+Final oracle & Public and held-out fixtures \\
+Matched population & 12 tasks $\times$ 3 systems $\times$ 2 models; one run per condition \\
+\bottomrule
+\end{tabular*}
+\endgroup
+\par\medskip
+
 NSZ denotes \texttt{no\_signed\_zeros}, DQ dequantization, Q quantization,
 and RNE round-to-nearest, ties-to-even.
 

@@ -83,9 +83,19 @@ metadata. Primary papers, project documentation, institutional records, or
 official proceedings were opened during the reference check; source locators
 for the additions are recorded in `references.bib` comments. Final author
 review remains part of submission approval.
-The local Agent collection is stopped. The API-based collection has not started;
-its model and provider configuration will be chosen with the authors. Complete
-the matched population and its displays before finalizing the evaluation.
+The local Agent collection is stopped. The authors authorized SiliconFlow
+collection on 24 September; Qwen3-8B and Qwen3-14B are selected for the same
+72-condition matrix. Both model identifiers are available in the authenticated
+model list. Two connectivity-only JSON requests succeeded at temperature zero
+with thinking disabled (46 input tokens and 10 output tokens in total); they
+are not task outcomes. The returned model identifiers match the requests;
+the provider returns an empty system fingerprint, not a weight revision.
+The credential is stored in the macOS Keychain, outside this repository.
+The existing local-only runner and merger still need the API adapter before
+formal collection. Complete the matched population and its displays before
+finalizing the evaluation. Do not run native Agent tests during performance
+timing. Protocol controls are synchronized in Section 4.2 and Appendix C;
+result fields remain unfilled until collection.
 
 The repeated-update data in `data/figure-06-update.json` are pinned to revision
 `1dce55b815f2f63d75b8b799119e8febc8956523`, including prepared-body reuse.
