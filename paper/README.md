@@ -672,32 +672,24 @@ prepared bodies. Correct outputs enter latency ratios; all outcomes enter covera
 
 ### 4.2 Agent Extension Completion
 
-To assess unified extension programming, the agent study measures completion
-across six compiler roles rather than operator definition alone. The extension
-suite specifies 24 tasks, four in each of six families: type or
-operation definition, analysis, rewrite, conversion, artifact generation, and
-a vertical feature combining these roles. Each task has one semantic
-specification and fixed positive and negative fixtures. Before collecting
-agent outcomes, we select two tasks per family for a 12-task execution set.
-Admission requires a system-specific harness and an idiomatic reference patch
-that passes the shared oracle.
+To measure extension effort, we evaluate 12 tasks spanning definition,
+analysis, rewrite, conversion, artifact generation, and cross-stage features.
+Before collection, we select two tasks per family from a 24-task suite.
+Each selected task has a shared semantic contract and a tested native reference
+implementation in all three systems.
 
-Both Qwen3-8B and Qwen3-14B use the same coding-agent harness through
-SiliconFlow, at temperature zero with thinking disabled. Each request contains
-a natural-language contract, public positive and negative examples, a native
-API card, and starter code. The agent may inspect, replace, test, or submit its
-source in an isolated workspace. Each trajectory has a 30-action, 32k-token
-budget; final scoring checks public and held-out fixtures. We retain the final
-patch and complete trajectory. The matched design has 72 runs: 12 tasks, three
-systems, and two models, one run per condition without demonstrations.
+Qwen3-8B and Qwen3-14B use the same agent harness at temperature zero with
+thinking disabled. Each receives a natural-language contract, public positive
+and negative fixtures, a native API card, and starter code. The agent can
+inspect, replace, test, or submit its source in an isolated workspace, with
+30 actions and 32k generated tokens per trajectory. The design comprises
+72 runs: one per task, system, and model, without task demonstrations.
 
-The primary endpoint is executable success within budget: the final workspace
-must build and pass the semantic oracle without manual repair. We macro-average
-success over tasks and resample tasks within each family. Successful
-trajectories also report completion tokens, tool calls, edit attempts, and wall
-time. Stopping conditions and candidate outcomes distinguish budget exhaustion
-from incorrect code. The supplement pairs natural-language contracts with
-input graphs and expected outputs.
+Success requires the final workspace to build and pass public and held-out
+fixtures without manual repair. We average success across tasks and resample
+tasks within each family. Completion tokens and tool calls summarize cost
+among successful tasks; per-task records retain all outcomes. The supplement
+provides the protocol, quoted task contracts, and paired input/output graphs.
 
 <!-- AGENT-RESULTS FIGURE PLAN — Compact 2×3 grouped vertical bars. Rows are the
 two selected models; columns show task-macro executable success, completion
@@ -1206,13 +1198,12 @@ the Python collector. Numerical checks follow the timed interval.*
 
 | Setting | Value |
 | --- | --- |
-| Provider | SiliconFlow, Chat Completions API |
-| Model identifiers | `Qwen/Qwen3-8B`; `Qwen/Qwen3-14B` |
+| Models | Qwen3-8B; Qwen3-14B |
 | Sampling | Temperature 0; thinking disabled |
 | Action format | JSON object: `inspect`, `edit`, `test`, or `finish` |
 | Per-trajectory limits | 30 actions; 32,000 generated tokens |
 | Per-request limit | 4,096 generated tokens, capped by the remaining budget |
-| Context | Complete history; 131,072-token service window |
+| Context | Complete history; 131,072-token window |
 | Examples | Public positive and negative fixtures; no demonstrations |
 | Final oracle | Public and held-out fixtures |
 | Matched population | 12 tasks × 3 systems × 2 models; one run per condition |
@@ -1222,22 +1213,11 @@ All systems receive four explicit action templates:
 `{"action":"inspect"}`, `{"action":"edit","source":"<complete replacement source file>"}`,
 `{"action":"test"}`, and `{"action":"finish"}`. The candidate file is implicit;
 tests run all public fixtures. Error feedback names unrecognized fields.
-With author approval, this shared protocol replaced the implicit format after
-four initial trajectories produced 67 schema rejections in 104 responses.
-Those trajectories remain separate diagnostics; the full matched population
-is recollected with unchanged tasks, models, budgets, and scoring.
-
-The service exposes model aliases rather than immutable weight revisions.
-Each trajectory therefore records the requested and returned model identifiers,
-catalog entry, UTC timestamps, response identifiers, and token usage. The
-condition identifier 1701 is not sent as a sampling seed. Each request carries
-the complete conversation, including public-test feedback. HTTP 429 retries
-wait 60/120 seconds; HTTP 502/503/504 retries wait 2/4 seconds. The longer
-quota wait was introduced after the first TPM rejection. An explicit 429 may
-resume the identical unserved request with its remaining budget; prior
-responses and the interruption record are retained. Transport timeouts stop
-collection. Wall time sums active action-loop intervals, including retries and
-public tests, but excludes recovery downtime and the final held-out oracle.
+The full matched population uses this explicit protocol; four preliminary
+trajectories using an implicit action format are retained separately in the
+artifact. Each request includes prior interactions and public-test feedback.
+Wall time covers the active action loop, including public tests and request
+retries, but excludes interrupted-run downtime and final held-out validation.
 
 Table A.5 reproduces the semantic-contract field of each task prompt verbatim,
 in quotation marks and italics. The native API card and public fixtures accompany

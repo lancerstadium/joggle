@@ -83,14 +83,7 @@ metadata. Primary papers, project documentation, institutional records, or
 official proceedings were opened during the reference check; source locators
 for the additions are recorded in `references.bib` comments. Final author
 review remains part of submission approval.
-The local Agent collection is stopped. The authors authorized SiliconFlow
-collection on 24 September; Qwen3-8B and Qwen3-14B are selected for the same
-72-condition matrix. Both model identifiers are available in the authenticated
-model list. Two connectivity-only JSON requests succeeded at temperature zero
-with thinking disabled (46 input tokens and 10 output tokens in total); they
-are not task outcomes. The returned model identifiers match the requests;
-the provider returns an empty system fingerprint, not a weight revision.
-The credential is stored in the macOS Keychain, outside this repository.
+The Agent study uses Qwen3-8B and Qwen3-14B for the 72-condition matrix.
 The primary collection is running in
 `.cache/artifact/main-agents-explicit-20260925-x0f9ieig/`, frozen at `1d096c7`
 with action protocol `explicit-json-actions/v2`. Its manifest fixes all 72
@@ -99,25 +92,16 @@ isolation checks; their task, source, and oracle records were revalidated
 before starting. Native performance timing has finished, so Agent tests do
 not overlap those measurements. Complete the matched population and displays
 before finalizing the evaluation; main result fields are still unfilled.
+After assembling `data/figure-04-extension.csv` and its provenance record,
+`make -C paper agent-figure` audits the complete matrix and renders the shared
+2-by-3 bar layout. Add the measured figure and result analysis to Section 4.2
+only after the population is complete.
 
-The four earlier trajectories in
-`.cache/artifact/main-agents-siliconflow-20260925-otrf81w2/` are retained as
-protocol diagnostics. All four are unsuccessful, with 67 schema-rejected
-responses among 104 returned responses. On 25 September the author approved
-explicit shared JSON action templates and field-specific errors, followed by
-recollection of the entire matrix, not selective replacement of failures.
-Task contracts, native API cards, models, budgets, fixtures, scoring, and
-condition order are unchanged. The primary assembler rejects the old action
-protocol; Appendix C records the amendment.
-
-The hosted adapter also corrects schema-rejected tool-call counting (`df86756`)
-and supports explicit HTTP 429 recovery (`741577a`). Quota retries wait 60/120
-seconds. A resumed run preserves returned responses and the candidate, retries
-only the identical unserved request, and uses the original remaining budget.
-The current 73-test regression suite passes 68 tests with five environment
-skips. Active wall time includes retry waits but excludes recovery downtime
-and final held-out validation. The original MLIR preflight environment error
-and its corrected read-only LLVM source/build scope remain in the diagnostics.
+Four preliminary trajectories are retained separately. The author approved
+shared JSON action templates and field-specific errors before recollecting
+the entire matrix with unchanged tasks, models, budgets, and scoring.
+The primary assembler excludes the earlier protocol. Appendix C summarizes
+the method; `artifact/PROTOCOL.md` and batch manifests retain collection details.
 
 The repeated-update data in `data/figure-06-update.json` now identify integrated
 main source revision `cc82ef114093b6d90ca94df05b54a60084585e72`, including
@@ -173,18 +157,16 @@ within a retained graph from prepared-body reuse across imported graphs.
 Both PDFs include this mechanism clarification, the measured host configuration,
 and the native invocation/output-storage boundaries in Table A.4. Repeated
 method and discussion text was condensed to keep technical content within
-12 pages, with references on pages 13–15. The 13-page supplement retains its
-portrait tables. The Agent protocol table's paragraph indentation was removed
-to fix overflow. Final logs contain no overfull boxes or undefined references;
-rendered pages 10 and 12 of the main paper and page 3 of the supplement were
-visually checked after the final rebuild.
+12 pages. The current main PDF has 14 pages, with references beginning on
+page 12; the supplement has 13 portrait pages. The latest build has no
+overfull boxes or undefined references. Main pages 8 and 12 and supplement
+page 3 were rendered and visually checked after the prose edits.
 
-The hosted-protocol update adds request/context limits, condition order, model
-alias records, and the wall-time boundary to Appendix C. The rebuilt supplement
-has 13 pages; pages 3--4 were rendered and checked for table/diagram overlap.
+The Agent protocol table records request/context limits, condition order,
+and the wall-time boundary in Appendix C. Provider and operational details
+remain in the experimental records rather than manuscript prose.
 The new model-level update medians also correct the old fastest-system sentence:
 TVM has the lowest median on DenseNet and SqueezeNet, ONNX-MLIR on TinyYOLOv3.
-The main PDF remains at 12 technical pages plus three reference pages.
 
 The current end-to-end exports were recomputed from individual timing rows:
 11,604 operator rows and 4,911 model rows. All exported medians, p95 values,

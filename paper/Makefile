@@ -1,4 +1,4 @@
-.PHONY: all figures clean
+.PHONY: all figures agent-figure clean
 
 # Authoring order: revise README.md, synchronize the TeX section, then build.
 all: sigconf.pdf supplement.pdf
@@ -10,6 +10,11 @@ MEASURED_FIGURES = figures/figure-05-footprint.pdf figures/figure-06-update.pdf 
 PLOT_COMMON = ../artifact/figures/common.py
 
 figures: $(MEASURED_FIGURES)
+
+# Render only after the complete matched Agent matrix has been assembled.
+# Re-audit raw trajectories on every invocation; partial exports are rejected.
+agent-figure: data/figure-04-extension.csv data/figure-04-extension.json
+	python3 ../artifact/figures/figure_04_extension.py data/figure-04-extension.csv --output figures/figure-04-extension.pdf
 
 figures/figure-05-footprint.pdf: data/package-footprint.csv data/package-footprint.json \
 	../artifact/figures/figure_05_footprint.py $(PLOT_COMMON)

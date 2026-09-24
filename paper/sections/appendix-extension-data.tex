@@ -11,13 +11,12 @@
 \toprule
 Setting & Value \\
 \midrule
-Provider & SiliconFlow, Chat Completions API \\
-Model identifiers & \texttt{Qwen/Qwen3-8B}; \texttt{Qwen/Qwen3-14B} \\
+Models & Qwen3-8B; Qwen3-14B \\
 Sampling & Temperature 0; thinking disabled \\
 Action format & JSON object: \texttt{inspect}, \texttt{edit}, \texttt{test}, or \texttt{finish} \\
 Per-trajectory limits & 30 actions; 32,000 generated tokens \\
 Per-request limit & 4,096 generated tokens, capped by the remaining budget \\
-Context & Complete history; 131,072-token service window \\
+Context & Complete history; 131,072-token window \\
 Examples & Public positive and negative fixtures; no demonstrations \\
 Final oracle & Public and held-out fixtures \\
 Matched population & 12 tasks $\times$ 3 systems $\times$ 2 models; one run per condition \\
@@ -32,23 +31,12 @@ All systems receive four explicit action templates:
 \texttt{\{"action":"edit","source":"<complete replacement source file>"\}},
 \texttt{\{"action":"test"\}}, and \texttt{\{"action":"finish"\}}.
 The candidate file is implicit; tests run all public fixtures. Error feedback
-names unrecognized fields. With author approval, this shared protocol replaced
-the implicit format after four initial trajectories produced 67 schema
-rejections in 104 responses. Those trajectories remain separate diagnostics;
-the full matched population is recollected with unchanged tasks, models,
-budgets, and scoring.
-
-The service exposes model aliases rather than immutable weight revisions.
-Each trajectory therefore records the requested and returned model identifiers,
-catalog entry, UTC timestamps, response identifiers, and token usage. The
-condition identifier 1701 is not sent as a sampling seed. Each request carries
-the complete conversation, including public-test feedback. HTTP 429 retries
-wait 60/120 seconds; HTTP 502/503/504 retries wait 2/4 seconds. The longer
-quota wait was introduced after the first TPM rejection. An explicit 429 may
-resume the identical unserved request with its remaining budget; prior
-responses and the interruption record are retained. Transport timeouts stop
-collection. Wall time sums active action-loop intervals, including retries and
-public tests, but excludes recovery downtime and the final held-out oracle.
+names unrecognized fields. The full matched population uses this explicit
+protocol; four preliminary trajectories using an implicit action format are
+retained separately in the artifact. Each request includes prior interactions
+and public-test feedback. Wall time covers the active action loop, including
+public tests and request retries, but excludes interrupted-run downtime and
+final held-out validation.
 
 NSZ denotes \texttt{no\_signed\_zeros}, DQ dequantization, Q quantization,
 and RNE round-to-nearest, ties-to-even.

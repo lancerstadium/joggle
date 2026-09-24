@@ -76,32 +76,24 @@ aggregating measurements.
 \subsection{Agent Extension Completion}
 \label{sec:eval-convenient}
 
-To assess unified extension programming, the agent study measures completion
-across six compiler roles rather than operator definition alone. The extension
-suite specifies 24 tasks, four in each of six families: type or
-operation definition, analysis, rewrite, conversion, artifact generation, and
-a vertical feature combining these roles. Each task has one semantic
-specification and fixed positive and negative fixtures. Before collecting
-agent outcomes, we select two tasks per family for a 12-task execution set.
-Admission requires a system-specific harness and an idiomatic reference patch
-that passes the shared oracle.
+To measure extension effort, we evaluate 12 tasks spanning definition,
+analysis, rewrite, conversion, artifact generation, and cross-stage features.
+Before collection, we select two tasks per family from a 24-task suite.
+Each selected task has a shared semantic contract and a tested native reference
+implementation in all three systems.
 
-Both Qwen3-8B and Qwen3-14B use the same coding-agent harness through
-SiliconFlow, at temperature zero with thinking disabled. Each request contains
-a natural-language contract, public positive and negative examples, a native
-API card, and starter code. The agent may inspect, replace, test, or submit its
-source in an isolated workspace. Each trajectory has a 30-action, 32k-token
-budget; final scoring checks public and held-out fixtures. We retain the final
-patch and complete trajectory. The matched design has 72 runs: 12 tasks, three
-systems, and two models, one run per condition without demonstrations.
+Qwen3-8B and Qwen3-14B use the same agent harness at temperature zero with
+thinking disabled. Each receives a natural-language contract, public positive
+and negative fixtures, a native API card, and starter code. The agent can
+inspect, replace, test, or submit its source in an isolated workspace, with
+30 actions and 32k generated tokens per trajectory. The design comprises
+72 runs: one per task, system, and model, without task demonstrations.
 
-The primary endpoint is executable success within budget: the final workspace
-must build and pass the semantic oracle without manual repair. We macro-average
-success over tasks and resample tasks within each family. Successful
-trajectories also report completion tokens, tool calls, edit attempts, and wall
-time. Stopping conditions and candidate outcomes distinguish budget exhaustion
-from incorrect code. The supplement pairs natural-language contracts with
-input graphs and expected outputs.
+Success requires the final workspace to build and pass public and held-out
+fixtures without manual repair. We average success across tasks and resample
+tasks within each family. Completion tokens and tool calls summarize cost
+among successful tasks; per-task records retain all outcomes. The supplement
+provides the protocol, quoted task contracts, and paired input/output graphs.
 
 \subsection{Change Footprint and Ownership}
 \label{sec:eval-controllable}
