@@ -66,9 +66,11 @@ graph runtime that validates them.
 \subsection{Compiler Functions}
 \label{sec:compiler-functions}
 
-The metaprogramming interface consists of typed compiler functions. Operator
-semantics, analyses, transformations, representation conversion, and artifact
-generation use this single programmable surface for definition and invocation.
+Compiler functions provide the programmable interface to the shared graph.
+Operator semantics, analyses, transformations, representation conversion, and
+artifact generation use the same definition and invocation rules. Consequently,
+an extension can compose these roles through calls rather than adapters between
+role-specific interfaces.
 
 A compiler function accepts graph handles and ordinary values:
 \[
@@ -129,7 +131,9 @@ that organize these functions.
 \subsection{Mods}
 \label{sec:mods}
 
-A mod is the unit of ownership and composition. We model it as
+Where compiler functions define behavior, mods define who owns and exposes it.
+A mod groups the functions of a feature with their graph and dependencies. We
+model this boundary as
 \[
   \mathcal{M} = (n, U, F_{\mathrm{pub}}, F_{\mathrm{local}}, G, N).
 \]
@@ -183,9 +187,10 @@ second, dynamic dependency graph to avoid re-executing unaffected work.
 \subsection{Incremental Evaluation}
 \label{sec:incremental}
 
-A local graph edit need not invalidate every compiler result. Reuse depends
-on observed state rather than on the subject mod's whole revision alone. For a
-cached read-only call $c$, the evaluator stores
+Mods establish composition boundaries; recorded observations establish reuse
+boundaries within them. A local graph edit need not invalidate every compiler
+result. Instead, reuse depends on the state a call observed, rather than on the
+subject mod's whole revision alone. For a cached read-only call $c$, the evaluator stores
 \[
   C_c = (K_c, r_c, D_c),
 \]

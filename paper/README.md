@@ -274,9 +274,11 @@ dependencies and the graph runtime that validates them.
 
 ### 3.2 Compiler Functions
 
-The metaprogramming interface consists of typed compiler functions. Operator
-semantics, analyses, transformations, representation conversion, and artifact
-generation use this single programmable surface for definition and invocation.
+Compiler functions provide the programmable interface to the shared graph.
+Operator semantics, analyses, transformations, representation conversion, and
+artifact generation use the same definition and invocation rules. Consequently,
+an extension can compose these roles through calls rather than adapters between
+role-specific interfaces.
 
 A compiler function accepts graph handles and ordinary values:
 
@@ -342,7 +344,9 @@ that organize these functions.
 
 ### 3.3 Mods
 
-A mod is the unit of ownership and composition. We model it as
+Where compiler functions define behavior, mods define who owns and exposes it.
+A mod groups the functions of a feature with their graph and dependencies. We
+model this boundary as
 
 $$
 \mathcal{M} = (n, U, F_{pub}, F_{local}, G, N).
@@ -396,8 +400,10 @@ second, dynamic dependency graph to avoid re-executing unaffected work.
 
 ### 3.4 Incremental Evaluation
 
-A local graph edit need not invalidate every compiler result. Reuse depends
-on observed state rather than on the subject mod's whole revision alone.
+Mods establish composition boundaries; recorded observations establish reuse
+boundaries within them. A local graph edit need not invalidate every compiler
+result. Instead, reuse depends on the state a call observed, rather than on the
+subject mod's whole revision alone.
 For a cached read-only call $c$, the evaluator stores
 
 $$
@@ -637,10 +643,10 @@ correctness oracle before measurement.*
 
 **Subjects and controls.** Extension and ownership comparisons use Joggle,
 MLIR, and xDSL. Each extension follows its system's native API at a pinned
-revision. The production update protocol targets Joggle, TVM, and ONNX-MLIR
-and measures the time to produce a bound executable for the edited model. It
-draws 13 editable subjects from the 15-model end-to-end corpus and
-uses the same fixed inputs. End-to-end execution also includes ONNX Runtime.
+revision. The update comparison uses Joggle, TVM, and ONNX-MLIR on three models
+from the 15-model end-to-end corpus. It measures the time to produce a bound
+executable after an edit, using the same fixed inputs as the execution study.
+End-to-end execution also includes ONNX Runtime.
 
 **Correctness and measurement.** Compiler-extension tasks use build-and-test
 oracles; transformations use verification and canonical graph digests;
@@ -733,16 +739,26 @@ convolution fusion connect analysis, transformation, and emission in each system
 Initial integration and subsequent behavior changes are measured separately,
 so one-time package setup does not count as recurring maintenance.
 
+Each feature contributes an integration task and three independent maintenance
+tasks. The low-bit package changes its saturation interval, arithmetic
+operation, or nibble order. The convolution package changes requantization
+rounding, the activation bound, or spatial stride. Every maintenance task starts
+from the admitted original package. Its oracle checks both the changed behavior
+and preserved behavior, including packed-byte padding or shared graph users.
+Running the parent under the same oracle establishes that the task requires a
+semantic change.
+
 For patch $p$, the footprint is
 
 $$
 Footprint(p)=(F_p,L_p,Z_p,R_p),
 $$
 
-where $F_p$ counts touched implementation files, $L_p$ counts added plus
-deleted implementation lines, $Z_p$ counts ownership zones, and $R_p$ counts
-changed build, registry, or pipeline declaration lines under a frozen policy.
-Test changes are reported in parallel. A zone is a source package or build
+where $F_p$ counts touched package source files, $L_p$ counts added plus
+deleted source lines, $Z_p$ counts ownership zones, and $R_p$ counts
+changed entry-point and publication source lines under a frozen policy.
+Publication declarations contribute to $F_p$ and $L_p$; $R_p$ identifies that
+subset separately. Shared fixtures are excluded from source counts. A zone is a source package or build
 target with one public responsibility.
 
 Each paired patch implements the same behavior change. We count source and
@@ -751,8 +767,16 @@ Package-local implementation files share one ownership zone; compiler roles do
 not become separate zones merely because they occupy different files. This
 definition applies equally to graph-level mods and native baseline plugins.
 Absolute paired counts retain zero-cost registration and unchanged ownership
-boundaries. The accompanying dependency view identifies changes that reach
-beyond the feature's package.
+boundaries.
+
+**Integration and maintenance.** All 24 package implementations pass their
+oracles; each of the 18 maintenance variants also has a failing parent control.
+For both features, native installation uses one source file in Joggle and three
+in each baseline, including entry-point and publication declarations. By
+contrast, all six maintenance changes touch one implementation file and one
+ownership zone per system, with no registration edits. The observed difference
+is therefore in package integration; subsequent changes remain package-local
+in all three systems.
 
 <!-- FOOTPRINT-RESULTS FIGURE PLAN — One-column dense 2×2 grouped vertical-bar
 figure. The four panels show touched source files, changed source lines,
@@ -1064,30 +1088,32 @@ fine-grained graph invalidation with an ordered, effectful compiler pipeline.
 
 ## 6. Discussion
 
-**Ownership follows the feature.** A compiler's containment hierarchy describes
-the program, whereas a mod describes the feature that operates on it. Keeping
-these structures separate lets a numeric format or operator extension retain
-one public interface as its implementation spans analyses, rewrites, and
-emitters. Source fragments organize its internal code without introducing
-additional ownership boundaries. The mod graph then exposes the dependencies
-that loading and upgrade must validate.
+**Choosing extension boundaries.** A mod places the functions that implement a
+feature behind one public interface. Its boundary need not follow either a
+compiler stage or the subject program's containment hierarchy. For example,
+range analysis, lowering, and packing can remain together when a numeric format
+changes. Source fragments subdivide the implementation without creating new
+owners. The resulting dependency graph makes cross-package changes explicit;
+the package comparison measures how much source those changes touch.
 
-**Reuse follows the computation.** Stage selection depends on observed graph
-state and overlapping effects. Its granularity follows the compiler functions:
-narrow observations preserve more calls, while each selected stage executes
-its complete body. Across imported source revisions, the production update
-path reuses prepared function bodies through specialization signatures.
-These mechanisms act at different boundaries of the same workflow.
-The measured phase breakdown shows where reuse removes work and where emission
-and native compilation still determine turnaround.
+**Choosing reuse boundaries.** Within a retained graph, observations and effects
+determine stage selection: narrow reads preserve more calls, while each selected
+stage executes its complete body. Across imported source revisions, specialization
+signatures instead identify reusable prepared bodies. These two mechanisms
+reuse different units of work. The full update endpoint includes both the work
+they remove and the work they leave downstream. In particular, the measured
+reduction in preparation shifts more of the remaining cost to emission and
+native compilation, so phase reuse and absolute turnaround answer different
+performance questions.
 
-**Publication preserves reusable state.** A cached result describes a specific
-verified graph, so dependency records and mutations share a publication
-boundary. Successful execution commits both; failed execution restores the
-preceding state. Typed arguments and environment revisions account for
-external inputs, while execution plans track the compiler functions themselves.
-This separation keeps ownership, graph effects, and evaluator state explicit
-without exposing private runtime structures to extension authors.
+**Keeping the boundaries consistent.** Reuse is valid only while its observations
+describe the published graph and environment. Transactions therefore commit
+graph mutations and dependency records together; a failed stage restores the
+preceding state. Typed arguments and environment revisions include external
+inputs in call identity, while execution plans track compiler functions. This
+connects the three mechanisms: mods determine which implementation is visible,
+calls determine what it observes, and publication determines which state later
+calls can reuse.
 
 ## 7. Conclusion
 

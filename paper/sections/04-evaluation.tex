@@ -32,10 +32,10 @@ the design goals.
 
 \paragraph{Subjects and controls.}
 Extension and ownership comparisons use Joggle, MLIR, and xDSL. Each extension
-follows its system's native API at a pinned revision. The production update
-protocol targets Joggle, TVM, and ONNX-MLIR and measures the time to produce a
-bound executable for the edited model. It draws 13 editable
-subjects from the 15-model end-to-end corpus and uses the same fixed inputs.
+follows its system's native API at a pinned revision. The update comparison
+uses Joggle, TVM, and ONNX-MLIR on three models from the 15-model end-to-end
+corpus. It measures the time to produce a bound executable after an edit,
+using the same fixed inputs as the execution study.
 End-to-end execution also includes ONNX Runtime.
 
 \paragraph{Correctness and measurement.}
@@ -115,14 +115,24 @@ convolution fusion connect analysis, transformation, and emission in each system
 Initial integration and subsequent behavior changes are measured separately,
 so one-time package setup does not count as recurring maintenance.
 
+Each feature contributes an integration task and three independent maintenance
+tasks. The low-bit package changes its saturation interval, arithmetic
+operation, or nibble order. The convolution package changes requantization
+rounding, the activation bound, or spatial stride. Every maintenance task starts
+from the admitted original package. Its oracle checks both the changed behavior
+and preserved behavior, including packed-byte padding or shared graph users.
+Running the parent under the same oracle establishes that the task requires a
+semantic change.
+
 For patch $p$, the footprint is
 \[
   \operatorname{Footprint}(p)=(F_p,L_p,Z_p,R_p),
 \]
-where $F_p$ counts touched implementation files, $L_p$ counts added plus
-deleted implementation lines, $Z_p$ counts ownership zones, and $R_p$ counts
-changed build, registry, or pipeline declaration lines under a frozen policy.
-Test changes are reported in parallel. A zone is a source package or build
+where $F_p$ counts touched package source files, $L_p$ counts added plus
+deleted source lines, $Z_p$ counts ownership zones, and $R_p$ counts
+changed entry-point and publication source lines under a frozen policy.
+Publication declarations contribute to $F_p$ and $L_p$; $R_p$ identifies that
+subset separately. Shared fixtures are excluded from source counts. A zone is a source package or build
 target with one public responsibility.
 
 Each paired patch implements the same behavior change. We count source and
@@ -131,8 +141,17 @@ Package-local implementation files share one ownership zone; compiler roles do
 not become separate zones merely because they occupy different files. This
 definition applies equally to graph-level mods and native baseline plugins.
 Absolute paired counts retain zero-cost registration and unchanged ownership
-boundaries. The accompanying dependency view identifies changes that reach
-beyond the feature's package.
+boundaries.
+
+\paragraph{Integration and maintenance.}
+All 24 package implementations pass their oracles; each of the 18 maintenance
+variants also has a failing parent control. For both features, native
+installation uses one source file in Joggle and three in each baseline,
+including entry-point and publication declarations. By contrast, all six
+maintenance changes touch one implementation file and one ownership zone per
+system, with no registration edits. The observed difference is therefore in
+package integration; subsequent changes remain package-local in all three
+systems.
 
 \subsection{Reactive Update Cost}
 \label{sec:eval-efficient}

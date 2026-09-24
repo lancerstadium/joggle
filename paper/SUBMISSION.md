@@ -52,6 +52,18 @@ layout specification for the optional supplement.
 
 ## Code and measurement alignment
 
+The complete native-package comparison is collected in
+`data/package-footprint.csv`, with hash-bound source records in the adjacent
+JSON file. It contains eight conditions across three systems: two initial
+integrations and six independent maintenance changes. All 24 changed packages
+pass 201 semantic fixtures and 16,011 runtime probes; all 18 parent controls
+fail the corresponding changed contract. Counts describe the observed
+implementations, not hunk-minimized patches. The main text reports the
+integration difference and the equal maintenance file/ownership counts.
+The 72-condition Agent completion collection is still running and is not a
+completed result. Add its results and associated displays before finalizing
+the evaluation.
+
 The repeated-update data in `data/figure-06-update.json` are pinned to revision
 `1dce55b815f2f63d75b8b799119e8febc8956523`, including prepared-body reuse.
 The current main-branch resident compiler does not yet contain that reuse path.
