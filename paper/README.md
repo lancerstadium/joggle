@@ -20,15 +20,18 @@ AI workloads evolve.
 
 ## 1. Introduction
 
-AI systems evolve through new operators, numeric formats, and hardware targets.
+AI systems evolve through new operators, numeric formats, and hardware targets,
+driving extensible IRs and hardware-aware tensor compilation
+[@lattner2021mlir; @feng2022tensorir].
 Supporting these changes requires coordinated extensions across several parts
 of a compiler. For example, a fused operator needs a semantic definition, a
 legality analysis, a graph rewrite, and a target implementation. Changing its
 numeric format or layout requires these parts to agree again. Developers and
 code-generating agents must therefore coordinate several compiler roles to
-complete even a single feature. Recent kernel-generation benchmarks make
-correctness and performance central to this workflow [@ouyang2025kernelbench];
-cross-stage extensions additionally require agreement among compiler roles.
+complete even a single feature. SWE-agent shows that tool interfaces affect
+agent performance [@yang2024sweagent], while KernelBench evaluates generated
+kernels for correctness and speed [@ouyang2025kernelbench]. Cross-stage
+extensions additionally require agreement among compiler roles.
 
 This coordination becomes costly when compiler roles expose separate
 declaration and invocation mechanisms. Registries, build targets, and backend
@@ -159,7 +162,9 @@ facts, passes rewrite graphs, converters bridge representations, and emitters
 produce artifacts. When each role has a separate declaration and invocation
 model, their composition requires adapters and conventions outside the local
 definition. A common syntax alone does not remove these boundaries; calls and
-values must compose as well.
+values must compose as well. IRDL addresses declarative IR definitions
+[@fehr2022irdl], and the Transform dialect makes transformation control
+programmable [@lucke2025transform]; a cross-stage feature needs both.
 
 *Scattered ownership.* Hierarchical IR assigns operations to regions, blocks,
 and functions. Cross-stage capability ownership instead emerges from
@@ -170,7 +175,9 @@ semantic change therefore crosses several review and release boundaries.
 edit selects a coarse update unit. That suffix can include stages that never
 observed the edited entity and stages unreachable from the preceding effects.
 Repeated decoding, traversal, conversion, and native compilation then dominate
-turnaround.
+turnaround. Dynamic dependencies provide a finer update boundary in
+self-adjusting computation [@acar2009selfadjusting] and incremental program
+analysis [@szabo2016inca].
 
 These costs arise at different boundaries. The call interface determines how
 a feature is expressed; ownership determines where it is changed; dependencies
@@ -980,10 +987,8 @@ separately.
 
 ## 5. Related Work
 
-Table 2 compares programmable units and dependency mechanisms. Its two bands
-place compiler construction and scheduling alongside transformation and
-incremental-computation systems. Concrete mechanisms distinguish the units
-each system composes, references, and reuses.
+Table 2 compares compiler and incremental systems by their programmable
+units, composition boundaries, and dependency mechanisms.
 
 | Dimension | MLIR [@lattner2021mlir; @mlirpass] | xDSL [@fehr2025xdsl] | TVM [@chen2018tvm; @feng2022tensorir] | Exo 2 [@ikarashi2025exo2] | **Joggle** |
 | --- | --- | --- | --- | --- | --- |
@@ -1004,69 +1009,70 @@ comparison dimensions; entries name mechanisms rather than capability scores.*
 
 ### 5.1 Extensible Compiler Infrastructures
 
-LLVM established a reusable typed SSA infrastructure with shared analyses and
-passes [@lattner2004llvm]. MLIR extends this model with dialects, nested
-operations, declarative operation definitions, conversions, and pass pipelines
-across abstraction levels [@lattner2021mlir]. Its pass manager caches analyses
-at operation anchors and uses explicitly preserved analyses to control
-invalidation [@mlirpass]. xDSL retains compatibility with MLIR's SSA structure
-while moving compiler construction and rapid prototyping into Python
-[@fehr2025xdsl].
+LLVM supplies typed SSA, analyses, and passes [@lattner2004llvm]; MLIR adds
+extensible dialects and multi-level lowering [@lattner2021mlir]. IRDL specifies
+operations, types, attributes, and constraints declaratively [@fehr2022irdl],
+while xDSL brings MLIR-compatible construction into Python [@fehr2025xdsl].
+MLIR's pass manager caches analyses at operation anchors and invalidates them
+according to preservation declarations [@mlirpass].
 
-Joggle centers the typed compiler function together with the graph-level mod
-that owns and publishes it. Semantics, analysis,
-mutation, conversion, and artifact generation retain their distinct effects
-but share one declaration, resolution, and invocation model. The mod graph is
-orthogonal to blocks and operations, so capability ownership follows declared
-dependencies independently of program containment.
+Metaprogramming offers another route to extensibility. LMS stages code through
+types [@rompf2010lms]; AnyDSL specializes higher-order
+functions through partial evaluation [@leissa2018anydsl]. These approaches
+make program generation compositional. Our compiler functions instead expose
+the roles acting on a mutable graph through one call and value model. Mods
+give those functions a shared ownership and publication boundary, orthogonal
+to program containment.
 
 ### 5.2 Tensor Compilers
 
 Halide separates algorithms from schedules [@ragankelley2012halide]. TVM
-combines graph optimization, tensor programs, and target generation
-[@chen2018tvm]; TensorIR makes tensor computations first-class scheduling
-units [@feng2022tensorir]. Triton instead exposes tiled kernel computations
-[@tillet2019triton]. At model scale, ONNX-MLIR progressively lowers ONNX
-operations [@jin2020onnxmlir], while ONNX Runtime partitions graphs among
-execution providers [@ortarchitecture]. These systems expose different
-optimization boundaries. Typed compiler functions and mods supply a common
-extension boundary for the analyses, conversions, and emitters around them.
-Section 4 separately measures update turnaround and generated-code latency.
+combines graph and tensor optimization [@chen2018tvm], TensorIR exposes tensor
+computation blocks [@feng2022tensorir], and Ansor searches a hierarchical
+space of tensor programs [@zheng2020ansor]. Triton exposes tiled kernels
+[@tillet2019triton]. At graph level, TASO generates and verifies substitutions
+[@jia2019taso], while Mirage searches transformations across kernel, thread-block,
+and thread levels [@wu2025mirage].
+
+PluS packages expert subgraph optimizations as pluggable graph schedules
+[@wu2025plus]. ONNX-MLIR lowers model operations [@jin2020onnxmlir], and ONNX
+Runtime assigns graph partitions to execution providers [@ortarchitecture].
+These are complementary optimization and deployment boundaries. A mod instead
+groups the definitions, analyses, rewrites, and emitters implementing one
+cross-stage feature. Section 4 measures extension changes separately from
+the performance of generated artifacts.
 
 ### 5.3 Programmable Transformations
 
-The Nanopass framework derives representation checks and traversal support from
-explicit source and target languages, encouraging many small passes
-[@keep2013nanopass]. Exo 2 composes scheduling libraries from actions,
-inspection, and cursor references [@ikarashi2025exo2]. MLIR's Transform
-dialect instead represents schedules as IR, with payload handles and explicit
-effects [@lucke2025transform]. At the rewrite level, `egg` combines equality
-saturation, rebuilding, and e-class analyses [@willsey2021egg].
+Nanopass derives representation checks and traversal support from explicit
+source and target languages [@keep2013nanopass]. Exo externalizes accelerator
+instructions and scheduling decisions [@ikarashi2022exo]; Exo 2 adds reusable
+scheduling libraries through actions, inspection, and cursors [@ikarashi2025exo2].
+The Transform dialect represents schedules as IR with payload handles and
+effects [@lucke2025transform]. For rule-driven optimization, `egg` combines
+equality saturation and e-class analyses [@willsey2021egg]; `egglog` integrates
+these with Datalog and incremental evaluation [@zhang2023egglog].
 
-Our programmable unit extends beyond transformation control: typed calls
-compose semantic definitions, analyses, rewrites, conversions, and emitters;
-mods own their publication. This broader boundary also changes agent tasks.
-KernelBench evaluates generated GPU kernels through correctness and execution
-speed [@ouyang2025kernelbench]. Our extension study spans six compiler-task
-families, including analysis, conversion, and emission, with native build-and-test feedback.
+For agents, this broader extension surface moves beyond fast-kernel generation
+[@ouyang2025kernelbench] to matched tasks across six compiler roles, all with
+native build-and-test feedback.
 
 ### 5.4 Incremental Computation
 
-Self-adjusting systems record dependencies and repair demanded computation
-after an input changes. Adapton formalizes this model with a demanded
-computation graph [@hammer2014adapton]. Build Systems à la Carte separates
-dependency discovery, scheduling, and rebuilding policies [@mokhov2018build].
-Within a compiler, rustc's red-green query graph reuses validated results
-[@rustcincremental]. LLVM ORC addresses a different boundary: on-demand
-materialization and symbol dependencies for JIT compilation [@llvmorc].
+Self-adjusting computation combines dynamic dependence graphs and memoization
+to reuse executions after input changes [@acar2009selfadjusting]. Adapton
+adds demand-driven composition [@hammer2014adapton]. For program analysis,
+IncA compiles specifications into incrementally maintained graph patterns
+[@szabo2016inca]. Build Systems à la Carte separates dependency discovery,
+scheduling, and rebuilding [@mokhov2018build]; rustc reuses validated query
+results through a red-green dependency graph [@rustcincremental]. LLVM ORC
+instead manages on-demand materialization and symbol dependencies for JIT
+compilation [@llvmorc].
 
-Joggle specializes dependency tracking to mutable compiler graphs. A cached
-call records typed graph observations, while a mutating stage also records the
-scope it changed. Revisions and generations validate identity and state;
-upstream effect overlap selects later stages; and a transaction publishes the
-graph and dependency records together. Thus, reuse follows observations and
-published effects within an ordered compiler pipeline, rather than requiring
-JIT code generation.
+For mutable compiler graphs, our evaluator records typed observations and
+changed scopes. Revisions validate state, generations validate identity, and
+effect overlap selects downstream work. Transactions publish graph and
+dependency records together.
 
 ## 6. Discussion
 

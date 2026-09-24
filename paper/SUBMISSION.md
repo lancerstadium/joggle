@@ -33,7 +33,7 @@ is a later, post-acceptance process with its own instructions.
 
 ## Current checks
 
-The main PDF has 13 pages. Technical content ends on page 12; page 13 contains
+The main PDF has 14 pages. Technical content ends on page 12; pages 13--14 contain
 references only. The separate supplement has twelve pages. Table A.5's 12 paired
 input/output examples occupy five portrait pages, with verbatim quoted task
 contracts and 8.5 pt DOT labels. Section C.4 uses portrait tables while retaining its diagram typography
@@ -65,10 +65,15 @@ in a six-panel display. Appendix E adds complete footprints (A.13), native
 installation files (A.14), and six worked maintenance input/output pairs (A.15).
 The related-work table places ten systems/frameworks across two horizontal
 bands and names their composition and dependency mechanisms. The main PDF
-now cites 19 sources; eight new references cover Exo 2, TensorIR, Triton,
-ONNX-MLIR, KernelBench, rustc, LLVM ORC, and ONNX Runtime. Their primary
-papers or official documentation were opened during the reference check;
-final author review remains part of submission approval.
+now cites 31 sources. The literature expansion covers IRDL, LMS, AnyDSL,
+Exo, Ansor, TASO, Mirage, PluS, egglog, self-adjusting computation, IncA,
+and SWE-agent. Citations occur in the introduction, motivation, and
+related-work comparisons; every bibliography entry is cited. KernelBench,
+TensorIR, and Exo 2 now use formal proceedings records rather than preprint
+metadata. Primary papers, project documentation, institutional records, or
+official proceedings were opened during the reference check; source locators
+for the additions are recorded in `references.bib` comments. Final author
+review remains part of submission approval.
 The 72-condition Agent completion collection is still running and is not a
 completed result. Add its results and associated displays before finalizing
 the evaluation.

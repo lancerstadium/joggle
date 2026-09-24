@@ -1,15 +1,18 @@
 \section{Introduction}
 \label{sec:introduction}
 
-AI systems evolve through new operators, numeric formats, and hardware targets.
+AI systems evolve through new operators, numeric formats, and hardware targets,
+driving extensible IRs and hardware-aware tensor
+compilation~\cite{lattner2021mlir,feng2022tensorir}.
 Supporting these changes requires coordinated extensions across several parts
 of a compiler. For example, a fused operator needs a semantic definition, a
 legality analysis, a graph rewrite, and a target implementation. Changing its
 numeric format or layout requires these parts to agree again. Developers and
 code-generating agents must therefore coordinate several compiler roles to
-complete even a single feature. Recent kernel-generation benchmarks make
-correctness and performance central to this workflow~\cite{ouyang2025kernelbench};
-cross-stage extensions additionally require agreement among compiler roles.
+complete even a single feature. SWE-agent shows that tool interfaces affect
+agent performance~\cite{yang2024sweagent}, while KernelBench evaluates generated
+kernels for correctness and speed~\cite{ouyang2025kernelbench}. Cross-stage
+extensions additionally require agreement among compiler roles.
 
 This coordination becomes costly when compiler roles expose separate
 declaration and invocation mechanisms. Registries, build targets, and backend

@@ -148,22 +148,16 @@
   note         = {Accessed September 21, 2026}
 }
 
-@misc{chen2021codex,
-  author       = {Mark Chen and others},
-  title        = {Evaluating Large Language Models Trained on Code},
-  year         = {2021},
-  howpublished = {arXiv:2107.03374},
-  doi          = {10.48550/arXiv.2107.03374}
-}
-
 @inproceedings{ikarashi2025exo2,
   author = {Yuka Ikarashi and Kevin Qian and Samir Droubi and Alex Reinking
-            and Gilbert Bernstein and Jonathan Ragan-Kelley},
+            and Gilbert Louis Bernstein and Jonathan Ragan-Kelley},
   title = {Exo 2: Growing a Scheduling Language},
   booktitle = {Proceedings of the 30th ACM International Conference on
-               Architectural Support for Programming Languages and Operating Systems},
+               Architectural Support for Programming Languages and Operating Systems, Volume 1},
   year = {2025},
-  url = {https://arxiv.org/abs/2411.07211}
+  pages = {426--444},
+  publisher = {Association for Computing Machinery},
+  doi = {10.1145/3669940.3707218}
 }
 
 @inproceedings{tillet2019triton,
@@ -177,14 +171,17 @@
   doi = {10.1145/3315508.3329973}
 }
 
-@misc{feng2022tensorir,
+@inproceedings{feng2022tensorir,
   author = {Siyuan Feng and Bohan Hou and Hongyi Jin and Wuwei Lin and
             Junru Shao and Ruihang Lai and Zihao Ye and Lianmin Zheng and
             Cody Hao Yu and Yong Yu and Tianqi Chen},
   title = {{TensorIR}: An Abstraction for Automatic Tensorized Program Optimization},
-  year = {2022},
-  howpublished = {arXiv:2207.04296},
-  doi = {10.48550/arXiv.2207.04296}
+  booktitle = {Proceedings of the 28th ACM International Conference on
+               Architectural Support for Programming Languages and Operating Systems, Volume 2},
+  year = {2023},
+  pages = {804--817},
+  publisher = {Association for Computing Machinery},
+  doi = {10.1145/3575693.3576933}
 }
 
 @misc{jin2020onnxmlir,
@@ -197,13 +194,17 @@
   doi = {10.48550/arXiv.2008.08272}
 }
 
-@misc{ouyang2025kernelbench,
+@inproceedings{ouyang2025kernelbench,
   author = {Anne Ouyang and Simon Guo and Simran Arora and Alex L. Zhang
             and William Hu and Christopher R{\'e} and Azalia Mirhoseini},
   title = {{KernelBench}: Can {LLMs} Write Efficient {GPU} Kernels?},
+  booktitle = {Proceedings of the 42nd International Conference on Machine Learning},
   year = {2025},
-  howpublished = {arXiv:2502.10517},
-  doi = {10.48550/arXiv.2502.10517}
+  series = {Proceedings of Machine Learning Research},
+  volume = {267},
+  pages = {47356--47415},
+  publisher = {PMLR},
+  url = {https://proceedings.mlr.press/v267/ouyang25a.html}
 }
 
 @misc{rustcincremental,
@@ -228,4 +229,180 @@
   year = {2026},
   howpublished = {\url{https://onnxruntime.ai/docs/reference/high-level-design.html}},
   note = {Accessed September 24, 2026}
+}
+
+% Primary sources checked 2026-09-24. Comments identify the support for the
+% corresponding manuscript comparison; final citation approval is author-owned.
+% IRDL: author-hosted paper, abstract and Section 1 (definitions and constraints).
+% https://grosser.science/static/0c315060e8f3d8454de831910fbb6dd6/fehr-2022-irdl.pdf
+@inproceedings{fehr2022irdl,
+  author = {Mathieu Fehr and Jeff Niu and River Riddle and Mehdi Amini
+            and Zhendong Su and Tobias Grosser},
+  title = {{IRDL}: An {IR} Definition Language for {SSA} Compilers},
+  booktitle = {Proceedings of the 43rd ACM SIGPLAN International Conference
+               on Programming Language Design and Implementation},
+  year = {2022},
+  pages = {199--212},
+  publisher = {Association for Computing Machinery},
+  doi = {10.1145/3519939.3523700}
+}
+
+% LMS: project publications page and Getting Started, Rep[T] vs T;
+% GPCE metadata checked against the publisher's Crossref record.
+% https://scala-lms.github.io/publications.html
+% https://scala-lms.github.io/tutorials/start.html
+@inproceedings{rompf2010lms,
+  author = {Tiark Rompf and Martin Odersky},
+  title = {Lightweight Modular Staging: A Pragmatic Approach to Runtime
+           Code Generation and Compiled {DSLs}},
+  booktitle = {Proceedings of the Ninth International Conference on
+               Generative Programming and Component Engineering},
+  year = {2010},
+  pages = {127--136},
+  publisher = {Association for Computing Machinery},
+  doi = {10.1145/1868294.1868314}
+}
+
+% AnyDSL: author-hosted paper, abstract and Sections 1.1 and 3.
+% https://compilers.cs.uni-saarland.de/papers/anydsl.pdf
+@article{leissa2018anydsl,
+  author = {Roland Lei{\ss}a and Klaas Boesche and Sebastian Hack and
+            Ars{\`e}ne P{\'e}rard-Gayot and Richard Membarth and Philipp Slusallek
+            and Andr{\'e} M{\"u}ller and Bertil Schmidt},
+  title = {{AnyDSL}: A Partial Evaluation Framework for Programming
+           High-Performance Libraries},
+  journal = {Proceedings of the ACM on Programming Languages},
+  volume = {2},
+  number = {OOPSLA},
+  articleno = {119},
+  numpages = {30},
+  year = {2018},
+  publisher = {Association for Computing Machinery},
+  doi = {10.1145/3276489}
+}
+
+% Exo: official project, Exocompilation and PLDI 2022 publication entry.
+% https://exo-lang.dev/
+@inproceedings{ikarashi2022exo,
+  author = {Yuka Ikarashi and Gilbert Louis Bernstein and Alex Reinking
+            and Hasan Genc and Jonathan Ragan-Kelley},
+  title = {Exocompilation for Productive Programming of Hardware Accelerators},
+  booktitle = {Proceedings of the 43rd ACM SIGPLAN International Conference
+               on Programming Language Design and Implementation},
+  year = {2022},
+  pages = {703--718},
+  publisher = {Association for Computing Machinery},
+  doi = {10.1145/3519939.3523446}
+}
+
+% Ansor: proceedings abstract and official BibTeX (hierarchical program search).
+@inproceedings{zheng2020ansor,
+  author = {Lianmin Zheng and Chengfan Jia and Minmin Sun and Zhao Wu and
+            Cody Hao Yu and Ameer Haj-Ali and Yida Wang and Jun Yang and
+            Danyang Zhuo and Koushik Sen and Joseph E. Gonzalez and Ion Stoica},
+  title = {Ansor: Generating High-Performance Tensor Programs for Deep Learning},
+  booktitle = {14th USENIX Symposium on Operating Systems Design and Implementation},
+  year = {2020},
+  pages = {863--879},
+  publisher = {USENIX Association},
+  url = {https://www.usenix.org/conference/osdi20/presentation/zheng}
+}
+
+% TASO: author-hosted paper, abstract and Section 1.1 (verified substitutions).
+% https://cs.stanford.edu/~zhihao/papers/sosp19.pdf
+@inproceedings{jia2019taso,
+  author = {Zhihao Jia and Oded Padon and James Thomas and Todd Warszawski
+            and Matei Zaharia and Alex Aiken},
+  title = {{TASO}: Optimizing Deep Learning Computation with Automatic
+           Generation of Graph Substitutions},
+  booktitle = {Proceedings of the 27th ACM Symposium on Operating Systems Principles},
+  year = {2019},
+  pages = {47--62},
+  publisher = {Association for Computing Machinery},
+  doi = {10.1145/3341301.3359630}
+}
+
+% Mirage: proceedings abstract and official BibTeX (three-level muGraphs).
+@inproceedings{wu2025mirage,
+  author = {Mengdi Wu and Xinhao Cheng and Shengyu Liu and Chunan Shi and
+            Jianan Ji and Man Kit Ao and Praveen Velliengiri and Xupeng Miao
+            and Oded Padon and Zhihao Jia},
+  title = {Mirage: A Multi-Level Superoptimizer for Tensor Programs},
+  booktitle = {19th USENIX Symposium on Operating Systems Design and Implementation},
+  year = {2025},
+  pages = {21--38},
+  publisher = {USENIX Association},
+  url = {https://www.usenix.org/conference/osdi25/presentation/wu-mengdi}
+}
+
+% PluS: proceedings abstract and official BibTeX (pluggable subgraph schedules).
+@inproceedings{wu2025plus,
+  author = {Ruofan Wu and Zhen Zheng and Feng Zhang and Chuanjie Liu and
+            Zaifeng Pan and Jidong Zhai and Xiaoyong Du},
+  title = {{PluS}: Highly Efficient and Expandable {ML} Compiler with
+           Pluggable Graph Schedules},
+  booktitle = {2025 USENIX Annual Technical Conference},
+  year = {2025},
+  pages = {647--663},
+  publisher = {USENIX Association},
+  url = {https://www.usenix.org/conference/atc25/presentation/wu-ruofan}
+}
+
+% egglog: author-hosted paper, abstract and Section 1 (Datalog + EqSat).
+% https://ztatlock.net/pubs/2023-pldi-egglog/2023-pldi-egglog.pdf
+@article{zhang2023egglog,
+  author = {Yihong Zhang and Yisu Remy Wang and Oliver Flatt and David Cao
+            and Philip Zucker and Eli Rosenthal and Zachary Tatlock and Max Willsey},
+  title = {Better Together: Unifying Datalog and Equality Saturation},
+  journal = {Proceedings of the ACM on Programming Languages},
+  volume = {7},
+  number = {PLDI},
+  articleno = {125},
+  numpages = {25},
+  year = {2023},
+  publisher = {Association for Computing Machinery},
+  doi = {10.1145/3591239}
+}
+
+% Self-adjusting computation: author-hosted paper, abstract and Sections 1--2.
+% https://www.philinelabs.net/~ktangwon/papers/toplas09.pdf
+@article{acar2009selfadjusting,
+  author = {Umut A. Acar and Guy E. Blelloch and Matthias Blume and
+            Robert Harper and Kanat Tangwongsan},
+  title = {An Experimental Analysis of Self-Adjusting Computation},
+  journal = {ACM Transactions on Programming Languages and Systems},
+  volume = {32},
+  number = {1},
+  articleno = {3},
+  numpages = {53},
+  year = {2009},
+  publisher = {Association for Computing Machinery},
+  doi = {10.1145/1596527.1596530}
+}
+
+% IncA: author institution's publication record, abstract and metadata.
+% https://publikationen.bibliothek.kit.edu/1000188570
+@inproceedings{szabo2016inca,
+  author = {Tam{\'a}s Szab{\'o} and Sebastian Erdweg and Markus V{\"o}lter},
+  title = {{IncA}: A {DSL} for the Definition of Incremental Program Analyses},
+  booktitle = {Proceedings of the 31st IEEE/ACM International Conference on
+               Automated Software Engineering},
+  year = {2016},
+  pages = {320--331},
+  publisher = {Association for Computing Machinery},
+  doi = {10.1145/2970276.2970298}
+}
+
+% SWE-agent: official NeurIPS abstract and BibTeX (interface-dependent agents).
+@inproceedings{yang2024sweagent,
+  author = {John Yang and Carlos E. Jimenez and Alexander Wettig and Kilian Lieret
+            and Shunyu Yao and Karthik Narasimhan and Ofir Press},
+  title = {{SWE-agent}: Agent-Computer Interfaces Enable Automated Software Engineering},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume = {37},
+  year = {2024},
+  pages = {50528--50652},
+  publisher = {Curran Associates, Inc.},
+  doi = {10.52202/079017-1601},
+  url = {https://proceedings.neurips.cc/paper_files/paper/2024/hash/5a7c947568c1b1328ccc5230172e1e7c-Abstract-Conference.html}
 }

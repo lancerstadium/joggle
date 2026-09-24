@@ -1,10 +1,8 @@
 \section{Related Work}
 \label{sec:related}
 
-Table~\ref{tab:related} compares programmable units and dependency mechanisms.
-Its two bands place compiler construction and scheduling alongside
-transformation and incremental-computation systems. Concrete mechanisms
-distinguish the units each system composes, references, and reuses.
+Table~\ref{tab:related} compares compiler and incremental systems by their
+programmable units, composition boundaries, and dependency mechanisms.
 
 \begin{table*}[t]
   \caption{Programmable units and dependency mechanisms. The two bands share
@@ -41,66 +39,68 @@ distinguish the units each system composes, references, and reuses.
 
 \subsection{Extensible Compiler Infrastructures}
 
-LLVM established a reusable typed SSA infrastructure with shared analyses and
-passes~\cite{lattner2004llvm}. MLIR extends this model with dialects, nested
-operations, declarative operation definitions, conversions, and pass pipelines
-across abstraction levels~\cite{lattner2021mlir}. Its pass manager caches
-analyses at operation anchors and uses explicitly preserved analyses to control
-invalidation~\cite{mlirpass}. xDSL retains compatibility with MLIR's SSA
-structure while moving compiler construction and rapid prototyping into
-Python~\cite{fehr2025xdsl}.
+LLVM supplies typed SSA, analyses, and passes~\cite{lattner2004llvm}; MLIR adds
+extensible dialects and multi-level lowering~\cite{lattner2021mlir}. IRDL specifies
+operations, types, attributes, and constraints declaratively~\cite{fehr2022irdl},
+while xDSL brings MLIR-compatible construction into Python~\cite{fehr2025xdsl}.
+MLIR's pass manager caches analyses at operation anchors and invalidates them
+according to preservation declarations~\cite{mlirpass}.
 
-Joggle centers the typed compiler function together with the graph-level mod
-that owns and publishes it. Semantics, analysis, mutation, conversion, and
-artifact generation retain their distinct effects but share one declaration,
-resolution, and invocation model. The mod graph is orthogonal to blocks and
-operations, so capability ownership follows declared dependencies independently
-of program containment.
+Metaprogramming offers another route to extensibility. LMS stages code through
+types~\cite{rompf2010lms}; AnyDSL specializes higher-order
+functions through partial evaluation~\cite{leissa2018anydsl}. These approaches
+make program generation compositional. Our compiler functions instead expose
+the roles acting on a mutable graph through one call and value model. Mods
+give those functions a shared ownership and publication boundary, orthogonal
+to program containment.
 
 \subsection{Tensor Compilers}
 
 Halide separates algorithms from schedules~\cite{ragankelley2012halide}. TVM
-combines graph optimization, tensor programs, and target generation~\cite{chen2018tvm};
-TensorIR makes tensor computations first-class scheduling units~\cite{feng2022tensorir}.
-Triton instead exposes tiled kernel computations~\cite{tillet2019triton}.
-At model scale, ONNX-MLIR progressively lowers ONNX operations~\cite{jin2020onnxmlir},
-while ONNX Runtime partitions graphs among execution providers~\cite{ortarchitecture}.
-These systems expose different optimization boundaries. Typed compiler functions
-and mods supply a common extension boundary for the analyses, conversions, and
-emitters around them. Section~\ref{sec:evaluation} separately measures update
-turnaround and generated-code latency.
+combines graph and tensor optimization~\cite{chen2018tvm}, TensorIR exposes tensor
+computation blocks~\cite{feng2022tensorir}, and Ansor searches a hierarchical
+space of tensor programs~\cite{zheng2020ansor}. Triton exposes tiled
+kernels~\cite{tillet2019triton}. At graph level, TASO generates and verifies
+substitutions~\cite{jia2019taso}, while Mirage searches transformations across
+kernel, thread-block, and thread levels~\cite{wu2025mirage}.
+
+PluS packages expert subgraph optimizations as pluggable graph
+schedules~\cite{wu2025plus}. ONNX-MLIR lowers model operations~\cite{jin2020onnxmlir},
+and ONNX Runtime assigns graph partitions to execution providers~\cite{ortarchitecture}.
+These are complementary optimization and deployment boundaries. A mod instead
+groups the definitions, analyses, rewrites, and emitters implementing one
+cross-stage feature. Section~\ref{sec:evaluation} measures extension changes
+separately from the performance of generated artifacts.
 
 \subsection{Programmable Transformations}
 
-The Nanopass framework derives representation checks and traversal support from
-explicit source and target languages, encouraging many small
-passes~\cite{keep2013nanopass}. Exo 2 composes scheduling libraries from actions,
-inspection, and cursor references~\cite{ikarashi2025exo2}. MLIR's Transform
-dialect instead represents schedules as IR, with payload handles and explicit
-effects~\cite{lucke2025transform}. At the rewrite level, \texttt{egg} combines
-equality saturation, rebuilding, and e-class analyses~\cite{willsey2021egg}.
+Nanopass derives representation checks and traversal support from explicit
+source and target languages~\cite{keep2013nanopass}. Exo externalizes accelerator
+instructions and scheduling decisions~\cite{ikarashi2022exo}; Exo 2 adds reusable
+scheduling libraries through actions, inspection, and cursors~\cite{ikarashi2025exo2}.
+The Transform dialect represents schedules as IR with payload handles and
+effects~\cite{lucke2025transform}. For rule-driven optimization, \texttt{egg}
+combines equality saturation and e-class analyses~\cite{willsey2021egg};
+\texttt{egglog} integrates these with Datalog and incremental
+evaluation~\cite{zhang2023egglog}.
 
-Our programmable unit extends beyond transformation control: typed calls
-compose semantic definitions, analyses, rewrites, conversions, and emitters;
-mods own their publication. This broader boundary also changes agent tasks.
-KernelBench evaluates generated GPU kernels through correctness and execution
-speed~\cite{ouyang2025kernelbench}. Our extension study spans six compiler-task
-families, including analysis, conversion, and emission, with native build-and-test feedback.
+For agents, this broader extension surface moves beyond fast-kernel
+generation~\cite{ouyang2025kernelbench} to matched tasks across six compiler
+roles, all with native build-and-test feedback.
 
 \subsection{Incremental Computation}
 
-Self-adjusting systems record dependencies and repair demanded computation
-after an input changes. Adapton formalizes this model with a demanded
-computation graph~\cite{hammer2014adapton}. Build Systems à la Carte separates
-dependency discovery, scheduling, and rebuilding policies~\cite{mokhov2018build}.
-Within a compiler, rustc's red-green query graph reuses validated results~\cite{rustcincremental}.
-LLVM ORC addresses a different boundary: on-demand materialization and symbol
-dependencies for JIT compilation~\cite{llvmorc}.
+Self-adjusting computation combines dynamic dependence graphs and memoization
+to reuse executions after input changes~\cite{acar2009selfadjusting}. Adapton
+adds demand-driven composition~\cite{hammer2014adapton}. For program analysis,
+IncA compiles specifications into incrementally maintained graph
+patterns~\cite{szabo2016inca}. Build Systems à la Carte separates dependency
+discovery, scheduling, and rebuilding~\cite{mokhov2018build}; rustc reuses
+validated query results through a red-green dependency graph~\cite{rustcincremental}.
+LLVM ORC instead manages on-demand materialization and symbol dependencies
+for JIT compilation~\cite{llvmorc}.
 
-Joggle specializes dependency tracking to mutable compiler graphs. A cached
-call records typed graph observations, while a mutating stage also records the
-scope it changed. Revisions and generations validate identity and state;
-upstream effect overlap selects later stages; and a transaction publishes the
-graph and dependency records together. Thus, reuse follows observations and
-published effects within an ordered compiler pipeline, rather than requiring
-JIT code generation.
+For mutable compiler graphs, our evaluator records typed observations and
+changed scopes. Revisions validate state, generations validate identity, and
+effect overlap selects downstream work. Transactions publish graph and
+dependency records together.

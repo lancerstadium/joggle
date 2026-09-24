@@ -48,7 +48,9 @@ graphs, converters bridge representations, and emitters produce artifacts.
 When each role has a separate declaration and invocation model, their
 composition requires adapters and conventions outside the local definition.
 A common syntax alone does not remove these boundaries; calls and values
-must compose as well.
+must compose as well. IRDL addresses declarative IR
+definitions~\cite{fehr2022irdl}, and the Transform dialect makes transformation
+control programmable~\cite{lucke2025transform}; a cross-stage feature needs both.
 
 \paragraph{Scattered ownership.}
 Hierarchical IR assigns operations to regions, blocks, and functions.
@@ -61,7 +63,9 @@ A driver that invalidates a pipeline suffix after a local edit selects a coarse
 update unit. That suffix can include stages that never observed the edited
 entity and stages unreachable from the preceding effects. Repeated
 decoding, traversal, conversion, and native compilation then dominate
-interactive turnaround.
+turnaround. Dynamic dependencies provide a finer update boundary in
+self-adjusting computation~\cite{acar2009selfadjusting} and incremental program
+analysis~\cite{szabo2016inca}.
 
 These costs arise at different boundaries. The call interface determines how
 a feature is expressed; ownership determines where it is changed; dependencies
