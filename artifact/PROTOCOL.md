@@ -143,9 +143,20 @@ contract is unchanged. Verify package discovery from a clean consumer, graph
 transformation, emitted-code execution, and the final source tree. Do not
 infer dependencies from directory depth or assign each compiler role a zone.
 
-Implementation status: the semantic references are admitted; matched package
-maintenance patches are not yet measured. No package footprint row can be
-released from the single-file reference results. The minimizer exports an
+Implementation status: all six native system/feature packages pass admission
+(36 semantic cases and 3,582 runtime probes). The first maintenance condition,
+`lowbit-symmetric`, passes in all three systems. Each patch changes one
+implementation line, stays in one package, and leaves registration unchanged;
+reverting its sole hunk restores a parent that fails the changed numerical
+contract. These equal counts are retained. The full eight-condition matrix
+remains open; the first paired rows are not a completed Figure 5 dataset.
+No package footprint row can be released from the single-file Agent reference
+results. Admission records are in
+`.cache/artifact/package-admission-uFSMwu/summary.json`; the first paired
+maintenance records and reversal checks are in
+`.cache/artifact/lowbit-symmetric-5oTpsX/`.
+
+The minimizer exports an
 isolated tracked-file snapshot below `.cache/artifact/minimization` and uses a
 private Git index. It does not create another worktree or change the author's
 checkout/index. It first requires the unmodified baseline to fail the oracle,
