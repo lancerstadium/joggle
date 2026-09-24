@@ -668,7 +668,8 @@ bool load_production_env(joggle::Env& env, const char* modules) {
 }
 
 int compile_source(joggle::Env& env, const char* source,
-                   const std::filesystem::path& directory, int sequence) {
+                   const std::filesystem::path& directory, int sequence,
+                   bool external_data) {
   const auto begin = Clock::now();
   std::ifstream input(source, std::ios::binary);
   if (!input) {
@@ -704,17 +705,34 @@ int compile_source(joggle::Env& env, const char* source,
   }
   const auto lowered = Clock::now();
   const std::string prefix = std::to_string(sequence);
+  const std::array<joggle::Attr, 1> data_name{joggle::Attr("weights")};
+  const std::span<const joggle::Attr> emission_args =
+      external_data ? std::span<const joggle::Attr>(data_name)
+                    : std::span<const joggle::Attr>();
   for (const auto& [function, suffix] :
        std::array<std::pair<std::string_view, std::string_view>, 3>{{
            {"c.source", ".c"}, {"c.header", ".h"}, {"c.api", ".api.json"}}}) {
     joggle::Attr result;
-    if (!joggle::query(env, function, mod, result)) {
+    if (!joggle::query(env, function, mod, result, emission_args)) {
       env.print_diags(stderr);
       return 1;
     }
     std::ofstream file(directory / (prefix + std::string(suffix)), std::ios::binary);
     if (result.string()) file << *result.string();
     else file << joggle::print(result);
+    if (!file) return 1;
+  }
+  if (external_data) {
+    joggle::Attr data;
+    if (!joggle::query(env, "c.data", mod, data) || !data.bytes()) {
+      env.print_diags(stderr);
+      return 1;
+    }
+    std::ofstream file(directory / (prefix + ".bin"), std::ios::binary);
+    const auto& bytes = *data.bytes();
+    if (!bytes.empty())
+      file.write(reinterpret_cast<const char*>(bytes.data()),
+                 static_cast<std::streamsize>(bytes.size()));
     if (!file) return 1;
   }
   const auto end = Clock::now();
@@ -747,7 +765,7 @@ int compile_sequence(int argc, char** argv) {
   joggle::Env env;
   if (!load_production_env(env, argv[2])) return 1;
   for (int index = 4; index < argc; ++index)
-    if (compile_source(env, argv[index], directory, index - 4)) return 1;
+    if (compile_source(env, argv[index], directory, index - 4, false)) return 1;
   return 0;
 }
 
@@ -771,7 +789,7 @@ int compile_server(int argc, char** argv) {
       return 2;
     }
     std::filesystem::create_directories(directory);
-    if (compile_source(env, std::string(*source).c_str(), directory, 0)) return 1;
+    if (compile_source(env, std::string(*source).c_str(), directory, 0, true)) return 1;
     std::cout << "{\"ok\":true,\"sequence\":" << sequence++ << "}\n" << std::flush;
   }
   return 0;

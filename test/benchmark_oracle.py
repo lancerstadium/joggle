@@ -26,7 +26,7 @@ from run_baseline_benchmarks import checked_native_build, apply_model_edit, prod
 from run_baseline_benchmarks import production_sample_row, correctness_oracle_record, command as baseline_command
 from run_baseline_benchmarks import production_worker_timeout
 from run_joggle_benchmarks import compiler_identity, checkpoint_protocol, make_harness, Unsupported
-from benchmark_backends import ONNXMLIRRunner, TVMRunner, JoggleRunner, onnx_mlir_identity, tvm_identity
+from benchmark_backends import ONNXMLIRRunner, TVMRunner, JoggleRunner, JoggleCompiler, onnx_mlir_identity, tvm_identity
 from validate_figure import performance
 from run_extension_task import (execute, fusion_fixture, graph_fixture, sandbox_policy,
                                 equivalent, rewrite_graph, graph_manifest, rewrite_numerics, gelu_structure,
@@ -314,6 +314,109 @@ fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {
                 definition_result(actual)
 
     @unittest.skipUnless(importlib.util.find_spec("xdsl"), "xDSL is required")
+    @unittest.skipUnless((Path(__file__).resolve().parents[1] /
+                          "build/artifact/joggle-artifact-reactive").is_file() and shutil.which("cc"),
+                         "resident compiler and C compiler are required")
+    def test_resident_external_constants_keep_owned_abi_storage(self):
+        repo = Path(__file__).resolve().parents[1]
+        compiler = JoggleCompiler(repo / "build/artifact/joggle-artifact-reactive",
+                                  repo / "build/modules", 60)
+        try:
+            for dtype in (np.float32, np.float64, np.int32):
+                with self.subTest(dtype=dtype):
+                    x = np.array([1, -2, 3, -4], dtype=dtype)
+                    proto_type = helper.np_dtype_to_tensor_dtype(x.dtype)
+
+                    def model(weights):
+                        nodes = [helper.make_node("Identity", ["x"], ["y"])]
+                        initializers = []
+                        if weights is not None:
+                            nodes = [helper.make_node("Add", ["x", "w"], ["y"])]
+                            initializers = [numpy_helper.from_array(weights, "w")]
+                        graph = helper.make_graph(nodes, "external_data",
+                            [helper.make_tensor_value_info("x", proto_type, [4])],
+                            [helper.make_tensor_value_info("y", proto_type, [4])], initializers)
+                        result = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+                        result.ir_version = 9
+                        return result.SerializeToString()
+
+                    runners = []
+                    expected = []
+                    try:
+                        for weights in (np.array([2, 3, -1, 5], dtype=dtype),
+                                        np.array([-4, 2, 7, 1], dtype=dtype), None):
+                            runner = JoggleRunner(model(weights), {"x": x}, compiler,
+                                repo / "build/joggle", repo / "build/modules", shutil.which("cc"), 60)
+                            runners.append(runner)
+                            expected.append(x if weights is None else x + weights)
+                            output = Path(runner._temporary.name) / "compiled"
+                            entry = json.loads((output / "0.api.json").read_text())[0]
+                            if weights is None:
+                                self.assertEqual(entry["data"], "")
+                            else:
+                                self.assertTrue(entry["data"])
+                                self.assertIn(weights.tobytes(), (output / "0.bin").read_bytes())
+                                self.assertIn("const unsigned char*", (output / "0.c").read_text())
+                        # A changed weight artifact and a no-data executable must
+                        # neither alter nor outlive storage owned by another runner.
+                        for _ in range(3):
+                            for runner, values in zip(runners, expected, strict=True):
+                                runner.invoke()
+                                np.testing.assert_array_equal(runner.outputs()[0], values)
+                    finally:
+                        for runner in runners:
+                            runner.close()
+        finally:
+            compiler.close()
+
+    @unittest.skipUnless((Path(__file__).resolve().parents[1] /
+                          "build/artifact/joggle-artifact-reactive").is_file() and shutil.which("cc"),
+                         "resident compiler and C compiler are required")
+    def test_external_constant_initializes_planned_writable_slot(self):
+        repo = Path(__file__).resolve().parents[1]
+        compiler = JoggleCompiler(repo / "build/artifact/joggle-artifact-reactive",
+                                  repo / "build/modules", 60)
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                source = root / "input.jog"
+                source.write_text('''mod planned_data
+use tensor
+fn main(x: tensor<i32, [4]>) -> tensor<i32, [4]> {
+  var scratch: tensor<i32, [4]> = hex"01000000020000000300000004000000"
+  scratch[0] = x[0]
+  var out = tensor<i32, [4]>(i32(0))
+  for i in 0..4 { out[i] = scratch[i] }
+  return out
+}
+''')
+                output = root / "compiled"
+                compiler.compile(source, output)
+                emitted = (output / "0.c").read_text()
+                self.assertIn("memcpy(slot_", emitted)
+                self.assertIn("#include <string.h>", emitted)
+                harness = root / "main.c"
+                harness.write_text('''#include "compiled/0.h"
+#include <stdint.h>
+int main(void) {
+  const int32_t weights[4] = {1, 2, 3, 4};
+  int32_t x[4] = {9, 0, 0, 0}, out[4] = {0};
+  planned_data_main(x, (const unsigned char*)weights, out);
+  if(out[0]!=9 || out[1]!=2 || out[2]!=3 || out[3]!=4) return 1;
+  x[0] = -7;
+  planned_data_main(x, (const unsigned char*)weights, out);
+  if(out[0]!=-7 || out[1]!=2 || out[2]!=3 || out[3]!=4) return 2;
+  if(weights[0]!=1) return 3;
+  return 0;
+}
+''')
+                subprocess.run([shutil.which("cc"), "-std=c11", "-O3", "-Wall", "-Werror",
+                                str(output / "0.c"), str(harness), "-o", str(root / "run")],
+                               check=True, capture_output=True, text=True, timeout=30)
+                subprocess.run([str(root / "run")], check=True, timeout=10)
+        finally:
+            compiler.close()
+
     def test_registered_fixed_point_type_roundtrip_and_bounds(self):
         from io import StringIO
         from xdsl.context import Context

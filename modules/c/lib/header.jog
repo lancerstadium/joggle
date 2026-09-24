@@ -120,7 +120,7 @@ local fn source_headers(
         out += [type_header(ir.type(value), config)]
       }
     }
-    if (blob == "" && payload(op)) ||
+    if (payload(op) && (blob == "" || mem.planned(ir.outs(op)[0]))) ||
        (ir.kind(op) == "call" &&
         (ir.callee(op) == "base.copy" || call_name(m, op) == "operator []=") &&
         len(ir.outs(op)) == 1 && tensor.valid(ir.type(ir.outs(op)[0]))) {

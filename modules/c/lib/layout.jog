@@ -283,6 +283,13 @@ local fn tensor_constant(
   assert(bytes == elements * width(tensor.elem(type), config),
          "c: tensor constant byte size does not match its type")
   if blob != "" {
+    // A planned value uses writable storage that can also serve later values.
+    // Initialize that slot instead of redeclaring it as an immutable pointer.
+    if mem.planned(output) {
+      if bytes == 0 { return "" }
+      return indent + "memcpy(" + val(output) + ", " + blob + " + " +
+             text(payload_offset(offsets, output)) + ", " + text(bytes) + ");\n"
+    }
     return indent + "const " + scalar(tensor.elem(type), config) + "* " +
            val(output) + " = (const " + scalar(tensor.elem(type), config) +
            "*)(const void*)(" + blob + " + " +

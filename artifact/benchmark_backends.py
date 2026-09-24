@@ -132,6 +132,16 @@ class JoggleRunner:
                 self._arrays.append(array)
                 self._arguments.append(array.ctypes.data)
                 argument_types.append(ctypes.c_void_p)
+            # The emitter's ABI places its immutable data pointer between inputs
+            # and results. Own aligned storage for the whole runner lifetime;
+            # a replacement runner must not overwrite a live predecessor's data.
+            if entry["data"]:
+                payload = (output / "0.bin").read_bytes()
+                weights = np.zeros(max(1, len(payload)), dtype=np.uint8)
+                weights[:len(payload)] = np.frombuffer(payload, dtype=np.uint8)
+                self._arrays.append(weights)
+                self._arguments.append(weights.ctypes.data)
+                argument_types.append(ctypes.c_void_p)
             for result in entry["results"]:
                 dtype = np.dtype(dtypes[result["c"]])
                 size = result["bytes"]

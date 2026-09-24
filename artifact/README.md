@@ -304,6 +304,17 @@ retains its environment and evaluator plans but parses a fresh source graph.
 Its entry signature is derived from the same fixed inputs as the end-to-end
 collector. Building first refreshes the copied mod files in `build/modules`.
 
+The resident server publishes C source, a header, ABI metadata, and an immutable
+binary constant artifact through the existing `c.source`, `c.header`, `c.api`,
+and `c.data` interfaces. Constants are not expanded into C byte-array literals.
+The runner owns the aligned constant buffer for the lifetime of its executable;
+the ABI places this pointer after model inputs and before result pointers.
+Graph lowering, constant serialization, native compilation, data loading, and
+binding remain charged to executable-ready time. External data does not itself
+cache object files: the current adapter still invokes the host compiler for
+each replacement. The compiler identity records this storage mode, so these
+runs must not be pooled with the earlier embedded-constant measurements.
+
 Each sample fingerprints the native compiler, collector sources, and protocol
 before and after measurement. Joggle also fingerprints the resident server,
 loaded mod files, and host C compiler. A changed fingerprint rejects the

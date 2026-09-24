@@ -228,6 +228,7 @@ def production_identity(args: argparse.Namespace) -> dict[str, Any]:
         from run_joggle_benchmarks import compiler_identity
         backend = compiler_identity(args)
         backend["server_sha256"] = sha256(args.joggle_server.read_bytes())
+        backend["constant_storage"] = "external-immutable-bytes; owned-per-executable"
         compiler = Path(shutil.which(args.cc) or args.cc).resolve(strict=True)
         backend["host_compiler"] = {
             "path": str(compiler), "sha256": sha256(compiler.read_bytes()),
