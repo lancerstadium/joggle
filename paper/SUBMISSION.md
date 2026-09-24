@@ -121,3 +121,17 @@ predates this mechanism clarification.
 The subsequent source revision also adds the measured host configuration to
 the methodology and native invocation/output-storage boundaries to Table A.4.
 Check both the main paper and supplement when rebuilding.
+
+The current end-to-end exports were recomputed from individual timing rows:
+11,604 operator rows and 4,911 model rows. All exported medians, p95 values,
+correctness flags, and the text's geometric-mean ratios agree. This validates
+the existing export, not a new-main measurement. The update protocol now names
+the actual operator substitutions and identifies the edited graph as the oracle
+subject.
+
+After the timing collection, correct the stale overview in `artifact/PROTOCOL.md`:
+its Figure 5 summary still says 12 tasks / 36 patch rows, although the amended
+package section and collected data use eight conditions / 24 package rows.
+The execution study uses five configurations for operators and four for
+models, not five for both. Do not edit `artifact/` while the live collection is
+checking source stability.

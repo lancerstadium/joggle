@@ -776,7 +776,9 @@ patch, not a repeated timing estimate. J/M/X denote Joggle/MLIR/xDSL. Source:
 
 We next examine the compilation work triggered by a model edit. The measured
 endpoint is a bound replacement executable, covering the full path from the
-edited graph to runnable code.
+edited graph to runnable code. Each trial replaces one ONNX `Add` with `Sub`
+or one `Relu` with `LeakyRelu`, leaving graph edges and model parameters
+unchanged. The numerical oracle evaluates the edited model's semantics.
 
 **Update protocol.** Update-to-ready time starts immediately before applying
 the edit and includes import, specialization, lowering, emission, native
