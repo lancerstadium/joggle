@@ -244,6 +244,24 @@ Provider, oracle, and identity-check exceptions are retained in the trajectory
 with `stop_reason: agent_error`; final-check failures still produce the CSV and
 patch record, with unknown compiler phases left empty.
 
+For unattended continuation of an existing primary manifest, use the batch
+runner. It retains completed conditions, continues only unanswered transport
+interruptions, and visits other conditions when one reaches its retry limit.
+The manifest records progress and the shared transport amendment. Keep native
+tools and non-paper sources unchanged during collection.
+
+```sh
+python3 artifact/run_extension_batch.py COLLECTION_DIRECTORY \
+  --max-continuations 6 --max-hours 24 \
+  --export paper/data/figure-04-extension.csv
+```
+
+The time limit is checked between trajectories, allowing an active trajectory
+to finish within its original action/token budget. The complete matrix passes
+the existing release gate before CSV export and figure generation; an incomplete
+matrix does not replace paper data. This command does not rewrite manuscript
+claims or submit the paper.
+
 The collector emits one CSV and an adjacent provenance record per trajectory.
 A clean run with stable source/tool/model identities, a complete final oracle,
 and no infrastructure error is release-eligible whether the candidate passes
