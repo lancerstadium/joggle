@@ -26,7 +26,9 @@ of a compiler. For example, a fused operator needs a semantic definition, a
 legality analysis, a graph rewrite, and a target implementation. Changing its
 numeric format or layout requires these parts to agree again. Developers and
 code-generating agents must therefore coordinate several compiler roles to
-complete even a single feature.
+complete even a single feature. Recent kernel-generation benchmarks make
+correctness and performance central to this workflow [@ouyang2025kernelbench];
+cross-stage extensions additionally require agreement among compiler roles.
 
 This coordination becomes costly when compiler roles expose separate
 declaration and invocation mechanisms. Registries, build targets, and backend
@@ -761,33 +763,31 @@ Publication declarations contribute to $F_p$ and $L_p$; $R_p$ identifies that
 subset separately. Shared fixtures are excluded from source counts. A zone is a source package or build
 target with one public responsibility.
 
-Each paired patch implements the same behavior change. We count source and
-integration edits separately from tests and shared measurement infrastructure.
-Package-local implementation files share one ownership zone; compiler roles do
-not become separate zones merely because they occupy different files. This
-definition applies equally to graph-level mods and native baseline plugins.
-Absolute paired counts retain zero-cost registration and unchanged ownership
-boundaries.
+All files implementing one native package form one ownership zone, including
+baseline plugins. Counts exclude tests and shared measurement infrastructure.
 
-**Integration and maintenance.** All 24 package implementations pass their
-oracles; each of the 18 maintenance variants also has a failing parent control.
-For both features, native installation uses one source file in Joggle and three
-in each baseline, including entry-point and publication declarations. By
-contrast, all six maintenance changes touch one implementation file and one
-ownership zone per system, with no registration edits. The observed difference
-is therefore in package integration; subsequent changes remain package-local
-in all three systems.
+**Integration and maintenance.** Figure 7 separates initial package setup from
+subsequent edits. Native installation uses one source file per Joggle feature
+and three per baseline, including publication declarations. The low-bit package
+contains 69 lines, compared with 193 in MLIR and 122 in xDSL; the convolution
+package contains 77, 178, and 125 lines, respectively. Thus, direct mod publication
+reduces the source needed to connect these features to the compiler.
 
-<!-- FOOTPRINT-RESULTS FIGURE PLAN — One-column dense 2×2 grouped vertical-bar
-figure. The four panels show touched source files, changed source lines,
-ownership zones, and registry/build edits for matched package changes. Separate
-initial integration from maintenance and group changes by feature package.
-Fixed Joggle/MLIR/xDSL colors make paired comparisons visible; axes retain
-true zero while labeling raw counts. CSV:
-figure-05-footprint.csv. Raw columns:
-system,system_revision,task,family,patch_hash,source_files,source_added,
-source_deleted,test_files,test_added,test_deleted,zones,registrations,fanout,
-cross_zone_edges,oracle_passed. -->
+Once installed, all six maintenance changes touch one file and one ownership
+zone per system, without registration edits. Saturation, subtraction, and
+rounding have equal line counts; nibble order, activation bounds, and stride
+require fewer changed lines in the mod implementations. Counts describe the
+observed source patches, including formatting. All changed packages pass their
+oracles, and each maintenance parent fails the changed contract. Appendix E
+provides the complete footprints, package files, and worked input/output pairs.
+
+![Package integration and maintenance costs.](figures/figure-05-footprint.png)
+
+*Figure 7: Native package footprints. Rows: signed i4 and quantized convolution.
+Columns: integration files, integration source lines, and maintenance source
+lines. Lines count additions plus deletions. Each bar is one observed package
+patch, not a repeated timing estimate. J/M/X denote Joggle/MLIR/xDSL. Source:
+`data/package-footprint.csv`.*
 
 ### 4.4 Reactive Update Cost
 
@@ -824,7 +824,7 @@ cached bodies. Scalarization, model-wide storage planning, emission, native
 compilation, and binding remain inside the measured interval. Its matched
 rebuild uses the same pipeline with an empty body cache.
 
-**Turnaround and reuse.** Figure 7 reports absolute update latency and paired
+**Turnaround and reuse.** Figure 8 reports absolute update latency and paired
 rebuild/update speedup, separating cross-system turnaround from reuse within
 each system. Across nine edit sites, Joggle reduces executable-ready time on
 all three subjects. Median paired speedups are 2.48× for DenseNet-121, 1.49× for
@@ -847,7 +847,7 @@ compilation near 2.7 s. SqueezeNet and TinyYOLOv3 show the same pattern:
 preparation contracts, while emission and native compilation remain stable.
 The supplement reports all 27 edit/system combinations and phase medians.
 
-*Figure 7: Repeated model edits: ready time (top, log scale) and paired
+*Figure 8: Repeated model edits: ready time (top, log scale) and paired
 rebuild/update speedup (bottom). Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3.
 Ticks identify edited nodes and operators. Ten repetitions per edit; bars
 show medians, whiskers IQR, and × failed compilation.*
@@ -899,25 +899,15 @@ hatched base bars, solid optimized bars, and dotted amber TVM bars. Mark unsuppo
 TVM cases with ×, not zero-height bars. Report correct coverage in the
 caption. Bars start at parity; use compact wrapped labels and shared axes at
 the final column width. Enclose every panel in four thin spines with inward
-ticks on all sides; share colors, hatching, and the compact legend with Figure 9.
+ticks on all sides; share colors, hatching, and the compact legend with Figure 10.
 Source CSV: paper/data/figure-07-operators.csv.
 Model measurements have a separate companion display. Preserve every case and failed outcome.
 No generated pixels or illustrative numbers for data. -->
 
-*Figure 8: Operator latency / ORT (log scale). Bars span parity to median;
+*Figure 9: Operator latency / ORT (log scale). Bars span parity to median;
 whiskers reach p95 over 100 samples. Correct: Joggle/ORT 24/24;
 TVM/ONNX-MLIR 22/24. × marks invalid candidates. DW/PW: depthwise/pointwise;
 MM: matmul; B/R: bias/ReLU.*
-
-| Operator-suite measure | Base | Optimized | TVM | ONNX-MLIR |
-| --- | ---: | ---: | ---: | ---: |
-| Correct operators | 24/24 | 24/24 | 22/24 | 22/24 |
-| Faster than ORT | 4/24 | 4/24 | 7/22 | 7/22 |
-| Latency / ORT, all 24 | 9.27× | 5.21× | — | — |
-| Latency / ORT, common 22 | 8.95× | 5.23× | 6.66× | 3.18× |
-
-*Table: Operator summary. Geometric means use all 24 or the common 22 operators,
-as indicated. Per-operator values appear in the supplementary material.*
 
 On the 22 operators correct in every configuration, optimized Joggle achieves
 $1.27\times$ lower geometric mean latency than default TVM. It has lower
@@ -929,8 +919,8 @@ rather than reducing every operator to one suite-wide ratio.
 Joggle and ORT pass all 24 operators; TVM and ONNX-MLIR each pass 22.
 TVM cannot import QLinearConv or QLinearMatMul. ONNX-MLIR cannot lower
 QLinearConv, and its QLinearMatMul output fails the integer oracle.
-Table 2 reports the full and jointly correct populations
-separately; the supplement gives every operator's latency.
+Appendix A gives every operator's latency and distinguishes the full and
+jointly correct populations in the aggregate rows.
 
 The optimization pack reduces geometric mean operator latency by
 $1.78\times$ across all 24 cases. Rectangular and $256\times256$ matrix
@@ -939,7 +929,7 @@ convolution slows by $1.11\times$. The largest execution gains therefore come
 from matrix-product lowering, whereas the update gains arise from preparation
 reuse.
 
-Figure 9 extends the external comparison to all 15 models. Joggle passes the
+Figure 10 extends the external comparison to all 15 models. Joggle passes the
 numerical oracle on 14 models, including both EfficientNet quantization
 variants and both TinyYOLO models; SSD-MobileNet stops during preparation.
 ORT passes on 13 models, and TVM and ONNX-MLIR on 11 each. Correctness is checked
@@ -956,7 +946,7 @@ is marked ×, and a correct candidate without a valid ORT reference is marked
 with a dash. Absolute medians and p95 values for every correct candidate remain
 in the accompanying CSV.
 
-<!-- FIGURE 9 DATA — Single-column 3.33×2.25-inch paired bar plot, 5.5 pt labels, two rows by
+<!-- FIGURE 10 DATA — Single-column 3.33×2.25-inch paired bar plot, 5.5 pt labels, two rows by
 three columns. Five panels contain all 15 models grouped as dense CNNs,
 mobile CNNs, detectors, quantized models, and other models; the sixth gives
 the four-system common-set geometric means. Shared logarithmic latency/ORT
@@ -966,12 +956,12 @@ Whiskers extend from median to p95; the aggregate has no timing whisker.
 Four thin spines, inward major/minor ticks, compact labels, and one legend.
 Explicit × for failed candidates and a dash for correct candidates without a
 valid ORT denominator, never zero-valued bars. Aggregate only the eight models
-correct in all four systems. All panels share Figure 8's width and height.
+correct in all four systems. All panels share Figure 9's width and height.
 CSV: paper/data/figure-07-models.csv; per-model summaries:
 paper/data/figure-07-models-summary.csv; script:
 artifact/figures/figure_07_models.py. -->
 
-*Figure 9: Model latency / ORT; medians and p95 over 100 samples.
+*Figure 10: Model latency / ORT; medians and p95 over 100 samples.
 ×: invalid candidate; dash: invalid reference. Panel (f): eight jointly correct
 models. Coverage: Joggle 14/15, ORT 13/15, TVM/ONNX-MLIR 11/15.*
 
@@ -990,30 +980,27 @@ separately.
 
 ## 5. Related Work
 
-The related-work table aligns mechanisms with the three design axes. **Roles**
-covers the five compiler roles through one programmable surface. **Owner** and
-**Deps** capture capability organization.
+Table 2 compares programmable units and dependency mechanisms. Its two bands
+place compiler construction and scheduling alongside transformation and
+incremental-computation systems. Concrete mechanisms distinguish the units
+each system composes, references, and reuses.
 
-The final four columns cover reactive updates.
+| Dimension | MLIR [@lattner2021mlir; @mlirpass] | xDSL [@fehr2025xdsl] | TVM [@chen2018tvm; @feng2022tensorir] | Exo 2 [@ikarashi2025exo2] | **Joggle** |
+| --- | --- | --- | --- | --- | --- |
+| Programming | C++ / ODS | Python | Python / C++ | Python | **Typed jog calls** |
+| Composition | Dialects, passes | Dialects, passes | Tensor programs, schedules | Scheduling libraries | **Cross-stage mods** |
+| References | Operations, values | Operations, values | Tensor blocks | Cursors | **Typed graph handles** |
+| Dependency mechanism | Analysis preservation | SSA use-def links | Dataflow, schedules | Cursor forwarding | **Reads, effects, revisions** |
 
-Symbols: ✓ first-class; △ role-specific or coarser; × absent.
+| Dimension | Transform [@lucke2025transform] | egg [@willsey2021egg] | rustc [@rustcincremental] | Adapton [@hammer2014adapton] | Build systems [@mokhov2018build] |
+| --- | --- | --- | --- | --- | --- |
+| Programming | Transform IR | Rust rules | Rust queries | Host-language API | Task rules |
+| Composition | Transform operations | Rewrite rules | Query calls | Thunk calls | Build rules |
+| References | Payload handles | E-classes | Query keys | Thunks | Task keys |
+| Dependency mechanism | Handle effects | E-class rebuilding | Red-green query DAG | Demanded computation graph | Task dependency graph |
 
-| System | Roles | Calls | Owner | Deps | Reads | Effects | Reactive | Atomic |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| LLVM [@lattner2004llvm] | × | △ | △ | △ | △ | △ | × | × |
-| Nanopass [@keep2013nanopass] | × | ✓ | △ | × | × | △ | × | × |
-| MLIR [@lattner2021mlir; @mlirpass] | △ | △ | ✓ | △ | △ | △ | × | × |
-| MLIR Transform [@lucke2025transform] | × | ✓ | ✓ | △ | △ | ✓ | × | × |
-| xDSL [@fehr2025xdsl] | △ | △ | ✓ | △ | × | × | × | × |
-| Halide [@ragankelley2012halide] | × | ✓ | ✓ | △ | × | × | × | × |
-| TVM [@chen2018tvm] | △ | △ | △ | △ | × | × | × | × |
-| egg [@willsey2021egg] | × | ✓ | △ | × | △ | ✓ | △ | × |
-| Adapton [@hammer2014adapton] | × | ✓ | △ | ✓ | ✓ | ✓ | ✓ | △ |
-| Build systems [@mokhov2018build] | × | △ | ✓ | ✓ | △ | ✓ | ✓ | △ |
-| **Joggle** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-
-*Table 2: Coverage of unified extension, ownership, and reactive-update
-mechanisms. Columns follow the three design axes in Figure 1.*
+*Table 2: Programmable units and dependency mechanisms. The two bands share
+comparison dimensions; entries name mechanisms rather than capability scores.*
 
 ### 5.1 Extensible Compiler Infrastructures
 
@@ -1024,8 +1011,7 @@ across abstraction levels [@lattner2021mlir]. Its pass manager caches analyses
 at operation anchors and uses explicitly preserved analyses to control
 invalidation [@mlirpass]. xDSL retains compatibility with MLIR's SSA structure
 while moving compiler construction and rapid prototyping into Python
-[@fehr2025xdsl]. These systems demonstrate the value of common IR
-infrastructure and extensible operation sets.
+[@fehr2025xdsl].
 
 Joggle centers the typed compiler function together with the graph-level mod
 that owns and publishes it. Semantics, analysis,
@@ -1036,84 +1022,71 @@ dependencies independently of program containment.
 
 ### 5.2 Tensor Compilers
 
-Halide separates an image-processing algorithm from its schedule, allowing
-target-specific choices without changing functional meaning
-[@ragankelley2012halide]. TVM combines graph-level optimization, tensor
-programs, schedule search, and target code generation
-[@chen2018tvm]. Multi-level tensor compilers similarly use progressively lower
-representations to expose decisions at the operator, loop, memory, and target
-levels. Joggle supplies the programmable and organizational substrate for
-declaring, composing, converting, and executing these algorithms.
-
-Here, typed functions express target-specific optimization, while recorded
-dependencies and cached work support repeated compilation. Section 4 evaluates
-these dimensions through executable latency and model-edit completion time.
+Halide separates algorithms from schedules [@ragankelley2012halide]. TVM
+combines graph optimization, tensor programs, and target generation
+[@chen2018tvm]; TensorIR makes tensor computations first-class scheduling
+units [@feng2022tensorir]. Triton instead exposes tiled kernel computations
+[@tillet2019triton]. At model scale, ONNX-MLIR progressively lowers ONNX
+operations [@jin2020onnxmlir], while ONNX Runtime partitions graphs among
+execution providers [@ortarchitecture]. These systems expose different
+optimization boundaries. Typed compiler functions and mods supply a common
+extension boundary for the analyses, conversions, and emitters around them.
+Section 4 separately measures update turnaround and generated-code latency.
 
 ### 5.3 Programmable Transformations
 
 The Nanopass framework derives representation checks and traversal support from
 explicit source and target languages, encouraging many small passes
-[@keep2013nanopass]. MLIR's Transform dialect represents fine-grained
-transformation schedules as IR, maps handles into a separate payload IR, and
-uses effect interfaces to constrain transform execution
-[@lucke2025transform]. Rewrite systems make local rules concise and composable;
-`egg` combines equality saturation, rebuilding, and e-class analyses to manage
-many equivalent programs efficiently [@willsey2021egg]. These systems make
-transformation intent programmable at complementary granularities.
+[@keep2013nanopass]. Exo 2 composes scheduling libraries from actions,
+inspection, and cursor references [@ikarashi2025exo2]. MLIR's Transform
+dialect instead represents schedules as IR, with payload handles and explicit
+effects [@lucke2025transform]. At the rewrite level, `egg` combines equality
+saturation, rebuilding, and e-class analyses [@willsey2021egg].
 
-Joggle extends the programmable unit beyond transformation control. A compiler
-function may define semantics, query types, traverse control flow, invoke a
-native solver, rewrite a graph, convert a representation, or return an
-artifact. Typed calls compose these roles; mods own and publish them; observed
-reads and effects connect them to reactive execution. This boundary organizes
-the semantic definitions, conversions, and artifact generation surrounding
-specialized transformation languages and rewrite engines.
+Our programmable unit extends beyond transformation control: typed calls
+compose semantic definitions, analyses, rewrites, conversions, and emitters;
+mods own their publication. This broader boundary also changes agent tasks.
+KernelBench evaluates generated GPU kernels through correctness and execution
+speed [@ouyang2025kernelbench]. Our extension study spans six compiler-task
+families, including analysis, conversion, and emission, with native build-and-test feedback.
 
 ### 5.4 Incremental Computation
 
 Self-adjusting systems record dependencies and repair demanded computation
 after an input changes. Adapton formalizes this model with a demanded
-computation graph [@hammer2014adapton]. Build
-systems apply related ideas to tasks and artifacts; Build Systems à la Carte
-separates dependency discovery, scheduling, and rebuilding policies
-[@mokhov2018build]. Compiler pass managers also cache analyses and preserve
-them across transformations when their contracts allow it [@mlirpass].
+computation graph [@hammer2014adapton]. Build Systems à la Carte separates
+dependency discovery, scheduling, and rebuilding policies [@mokhov2018build].
+Within a compiler, rustc's red-green query graph reuses validated results
+[@rustcincremental]. LLVM ORC addresses a different boundary: on-demand
+materialization and symbol dependencies for JIT compilation [@llvmorc].
 
 Joggle specializes dependency tracking to mutable compiler graphs. A cached
 call records typed graph observations, while a mutating stage also records the
 scope it changed. Revisions and generations validate identity and state;
 upstream effect overlap selects later stages; and a transaction publishes the
-graph and fresh dependency records together. This combination connects
-fine-grained graph invalidation with an ordered, effectful compiler pipeline.
+graph and dependency records together. Thus, reuse follows observations and
+published effects within an ordered compiler pipeline, rather than requiring
+JIT code generation.
 
 ## 6. Discussion
 
-**Choosing extension boundaries.** A mod places the functions that implement a
-feature behind one public interface. Its boundary need not follow either a
-compiler stage or the subject program's containment hierarchy. For example,
-range analysis, lowering, and packing can remain together when a numeric format
-changes. Source fragments subdivide the implementation without creating new
-owners. The resulting dependency graph makes cross-package changes explicit;
-the package comparison measures how much source those changes touch.
+**Extension boundaries.** A mod groups a feature's functions behind one public
+interface independently of compiler stages. For a numeric-format change,
+analysis, lowering, and packing can share an owner while source fragments
+subdivide implementation. The package study shows that direct publication
+reduces integration code; subsequent edits remain local in all three systems.
 
-**Choosing reuse boundaries.** Within a retained graph, observations and effects
-determine stage selection: narrow reads preserve more calls, while each selected
-stage executes its complete body. Across imported source revisions, specialization
-signatures instead identify reusable prepared bodies. These two mechanisms
-reuse different units of work. The full update endpoint includes both the work
-they remove and the work they leave downstream. In particular, the measured
-reduction in preparation shifts more of the remaining cost to emission and
-native compilation, so phase reuse and absolute turnaround answer different
-performance questions.
+**Reuse boundaries.** Within a retained graph, observations and effects select
+stages; across imported revisions, specialization signatures select reusable
+prepared bodies. These are distinct reuse units. Removing preparation work
+shifts the remaining update cost toward emission and native compilation,
+identifying the next boundary for optimization.
 
-**Keeping the boundaries consistent.** Reuse is valid only while its observations
-describe the published graph and environment. Transactions therefore commit
-graph mutations and dependency records together; a failed stage restores the
-preceding state. Typed arguments and environment revisions include external
-inputs in call identity, while execution plans track compiler functions. This
-connects the three mechanisms: mods determine which implementation is visible,
-calls determine what it observes, and publication determines which state later
-calls can reuse.
+**Consistent publication.** Mods determine which implementation is visible;
+calls record what it observes; transactions publish the resulting graph and
+dependency records together. External inputs enter call identity through typed
+arguments and environment revisions. Consequently, extension, ownership, and
+reuse share an explicit publication boundary.
 
 ## 7. Conclusion
 
@@ -1405,3 +1378,78 @@ Joggle phase medians in seconds over 30 runs per model and policy. Prepare is a 
 | TinyYOLOv3 | update | 1.867 | 0.571 | 4.851 | 2.330 | 1.785 | 0.465 | 0.126 |
 
 <!-- UPDATE DATA END -->
+
+## Appendix E. Native Package Changes
+
+### E.1. Complete Footprints
+
+Each tuple reports touched package files, added plus deleted source lines, and
+entry-point/publication lines $(F,L,R)$. Every row has one ownership zone in
+each system. Integration starts from an absent package; maintenance starts
+from that feature's original admitted package. Cases and runtime probes are
+per system. Parent failures count positive fixtures that the original package
+does not satisfy under the changed contract; `—` denotes no parent comparison
+for initial integration. Counts describe these implementations, including
+their source formatting.
+
+| Feature / change | Joggle (F,L,R) | MLIR (F,L,R) | xDSL (F,L,R) | Cases | Runtime probes | Parent failures |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Low-bit / integrate | 1,69,0 | 3,193,100 | 3,122,49 | 6 | 1,029 | — |
+| Low-bit / symmetric saturation | 1,2,0 | 1,2,0 | 1,2,0 | 6 | 1,029 | 5 |
+| Low-bit / subtraction | 1,8,0 | 1,8,0 | 1,8,0 | 6 | 1,029 | 5 |
+| Low-bit / high-nibble-first | 1,2,0 | 1,4,0 | 1,4,0 | 6 | 1,029 | 4 |
+| Convolution / integrate | 1,77,0 | 3,178,100 | 3,125,49 | 6 | 165 | — |
+| Convolution / ties-away | 1,2,0 | 1,2,0 | 1,2,0 | 10 | 297 | 3 |
+| Convolution / ReLU6 | 1,4,0 | 1,7,0 | 1,8,0 | 16 | 462 | 9 |
+| Convolution / stride two | 1,7,0 | 1,10,0 | 1,10,0 | 11 | 297 | 4 |
+
+*Table A.13: Complete package footprints. All 24 changed packages pass their
+oracles. Parent-failure counts agree across the three systems. The source CSV
+retains added and deleted line counts separately.*
+
+### E.2. Native Installation Boundaries
+
+| System | Deployed source | Responsibility | Discovery / execution |
+| --- | --- | --- | --- |
+| Joggle | `module.jog` | Feature functions and public interface | Native mod installation; named function calls |
+| MLIR | `reference.cpp` | Analysis, transformation, emission | Called by registered passes |
+| MLIR | `plugin.cpp` | Pass adapters and plugin entry point | `mlirGetPassPluginInfo` |
+| MLIR | `CMakeLists.txt` | Shared-library build and installation | Installed pass plugin loaded by `mlir-opt` |
+| xDSL | `reference.py` | Analysis, transformation, emission | Called by pass and target adapters |
+| xDSL | `plugin.py` | Pass, target, and Universe definitions | Native pass/target discovery |
+| xDSL | `pyproject.toml` | Wheel metadata and Universe entry point | Installed wheel discovered by `xdsl-opt` |
+
+*Table A.14: The same file organization is used for both feature packages.
+All files of one feature share one ownership zone. No compiler-host source is
+modified for installation or maintenance.*
+
+### E.3. Worked Maintenance Inputs and Outputs
+
+The following rows use recorded fixture inputs and first-probe observations.
+All three changed implementations produce the shown results. Packed bytes are
+hexadecimal; convolution tensors use NHWC input and HWIO weights. Scalar
+convolution examples have a unit spatial kernel and zero bias. Their scale
+ratio is $r=s_{acc}/s_{out}$ and their output zero point is $z$.
+
+| Change / fixture | Input and new contract | Original package | Changed package |
+| --- | --- | --- | --- |
+| Symmetric / `negative-tail` | `a=[-8]`, `b=[-8]`; clamp to `[-7,7]` | Value `[-8]`; byte `08` | Value `[-7]`; byte `09` |
+| Subtraction / `odd-count` | `a=[-8,-1,0,3,7]`, `b=[1,1,-2,6,7]`; `qint4_sub(a,b)` | Subtraction remains unlowered; emission rejected | `[-8,-2,2,-3,0]`; bytes `e8 d2 00` |
+| Nibble order / `odd-count` | Same vectors; retain saturated addition; first lane in high nibble | `[-7,0,-2,7,7]`; bytes `09 7e 07` | Same values; bytes `90 e7 70` |
+| Ties-away / `half-tie-1` | `x=1`, `w=1`, `r=0.5`, `z=-4`; round half away from zero | `round_even(0.5)-4 = -4` | `round_away(0.5)-4 = -3` |
+| ReLU6 / `cap-12` | `x=12`, `w=1`, `r=2`, `s_out=0.5`, `z=-3`; cap real output at 6 | Quantized output `21` | Quantized cap `6/0.5-3 = 9`; output `9` |
+| Stride two / `stride2-0` | Input `X` and weights `W` below; bias `-4`, `r=0.5`, `z=-3` | Writes a `4×4` output; contracted output guard rejects it | `2×2` output `[[-3,-1],[-1,-3]]` |
+
+*Table A.15: Changed semantics and paired parent outcomes. Rejection denotes a
+recorded lowering/emission or output-extent failure, not a missing run.*
+
+For `stride2-0`, the batch and channel dimensions are one. The full spatial
+input and kernel are:
+
+```text
+X = [ -3 -7 -7 -6  0  2 ]     W = [ 1 2 -1 ]
+    [  2  0  6 -8 -4  2 ]         [ 3 0 -2 ]
+    [ -4  0 -8  3 -4 -5 ]
+    [  1 -3  0 -2  2  5 ]     stride = [2,2]
+    [  6 -6  4  7 -3 -2 ]     Y = [-3 -1; -1 -3]
+```

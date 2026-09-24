@@ -1,29 +1,20 @@
 \section{Discussion}
 \label{sec:discussion}
 
-\paragraph{Choosing extension boundaries.} A mod places the functions that implement a
-feature behind one public interface. Its boundary need not follow either a
-compiler stage or the subject program's containment hierarchy. For example,
-range analysis, lowering, and packing can remain together when a numeric format
-changes. Source fragments subdivide the implementation without creating new
-owners. The resulting dependency graph makes cross-package changes explicit;
-the package comparison measures how much source those changes touch.
+\paragraph{Extension boundaries.} A mod groups a feature's functions behind one
+public interface independently of compiler stages. For a numeric-format
+change, analysis, lowering, and packing can share an owner while source fragments
+subdivide implementation. The package study shows that direct publication
+reduces integration code; subsequent edits remain local in all three systems.
 
-\paragraph{Choosing reuse boundaries.} Within a retained graph, observations and effects
-determine stage selection: narrow reads preserve more calls, while each selected
-stage executes its complete body. Across imported source revisions, specialization
-signatures instead identify reusable prepared bodies. These two mechanisms
-reuse different units of work. The full update endpoint includes both the work
-they remove and the work they leave downstream. In particular, the measured
-reduction in preparation shifts more of the remaining cost to emission and
-native compilation, so phase reuse and absolute turnaround answer different
-performance questions.
+\paragraph{Reuse boundaries.} Within a retained graph, observations and effects
+select stages; across imported revisions, specialization signatures select
+reusable prepared bodies. These are distinct reuse units. Removing preparation
+work shifts the remaining update cost toward emission and native compilation,
+identifying the next boundary for optimization.
 
-\paragraph{Keeping the boundaries consistent.} Reuse is valid only while its observations
-describe the published graph and environment. Transactions therefore commit
-graph mutations and dependency records together; a failed stage restores the
-preceding state. Typed arguments and environment revisions include external
-inputs in call identity, while execution plans track compiler functions. This
-connects the three mechanisms: mods determine which implementation is visible,
-calls determine what it observes, and publication determines which state later
-calls can reuse.
+\paragraph{Consistent publication.} Mods determine which implementation is
+visible; calls record what it observes; transactions publish the resulting graph
+and dependency records together. External inputs enter call identity through
+typed arguments and environment revisions. Consequently, extension, ownership,
+and reuse share an explicit publication boundary.

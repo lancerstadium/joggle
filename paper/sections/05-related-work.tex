@@ -1,42 +1,42 @@
 \section{Related Work}
 \label{sec:related}
 
-Table~\ref{tab:related} aligns related mechanisms with the three design
-axes. \emph{Roles} covers the five compiler roles through one programmable
-surface. \emph{Owner} and \emph{Deps} capture capability organization.
-
-The final four columns cover reactive updates.
-
-Symbols: \checkmark{} first-class; $\triangle$ role-specific or coarser;
-$\times$ absent.
+Table~\ref{tab:related} compares programmable units and dependency mechanisms.
+Its two bands place compiler construction and scheduling alongside
+transformation and incremental-computation systems. Concrete mechanisms
+distinguish the units each system composes, references, and reuses.
 
 \begin{table*}[t]
-  \caption{Coverage of unified extension, ownership, and reactive-update
-    mechanisms. Columns follow the three design axes in
-    Figure~\ref{fig:thesis-map}.}
+  \caption{Programmable units and dependency mechanisms. The two bands share
+  comparison dimensions; entries name mechanisms rather than capability scores.}
   \label{tab:related}
-  \footnotesize
+  \normalsize
   \setlength{\tabcolsep}{4pt}
   \renewcommand{\arraystretch}{1.08}
-  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lcccccccc@{}}
+  \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.14\textwidth}*{5}{>{\raggedright\arraybackslash}X}@{}}
     \toprule
-    & \multicolumn{2}{c}{Extension} & \multicolumn{2}{c}{Ownership} & \multicolumn{4}{c}{Update execution} \\
-    \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(l){6-9}
-    System & Roles & Calls & Owner & Deps & Reads & Effects & Reactive & Atomic \\
+    & MLIR\newline\cite{lattner2021mlir,mlirpass}
+    & xDSL\newline\cite{fehr2025xdsl}
+    & TVM\newline\cite{chen2018tvm,feng2022tensorir}
+    & Exo 2\newline\cite{ikarashi2025exo2} & \textbf{Joggle} \\
     \midrule
-    LLVM~\cite{lattner2004llvm} & $\times$ & $\triangle$ & $\triangle$ & $\triangle$ & $\triangle$ & $\triangle$ & $\times$ & $\times$ \\
-    Nanopass~\cite{keep2013nanopass} & $\times$ & \checkmark & $\triangle$ & $\times$ & $\times$ & $\triangle$ & $\times$ & $\times$ \\
-    MLIR~\cite{lattner2021mlir,mlirpass} & $\triangle$ & $\triangle$ & \checkmark & $\triangle$ & $\triangle$ & $\triangle$ & $\times$ & $\times$ \\
-    MLIR Transform~\cite{lucke2025transform} & $\times$ & \checkmark & \checkmark & $\triangle$ & $\triangle$ & \checkmark & $\times$ & $\times$ \\
-    xDSL~\cite{fehr2025xdsl} & $\triangle$ & $\triangle$ & \checkmark & $\triangle$ & $\times$ & $\times$ & $\times$ & $\times$ \\
-    Halide~\cite{ragankelley2012halide} & $\times$ & \checkmark & \checkmark & $\triangle$ & $\times$ & $\times$ & $\times$ & $\times$ \\
-    TVM~\cite{chen2018tvm} & $\triangle$ & $\triangle$ & $\triangle$ & $\triangle$ & $\times$ & $\times$ & $\times$ & $\times$ \\
-    \texttt{egg}~\cite{willsey2021egg} & $\times$ & \checkmark & $\triangle$ & $\times$ & $\triangle$ & \checkmark & $\triangle$ & $\times$ \\
-    Adapton~\cite{hammer2014adapton} & $\times$ & \checkmark & $\triangle$ & \checkmark & \checkmark & \checkmark & \checkmark & $\triangle$ \\
-    Build systems~\cite{mokhov2018build} & $\times$ & $\triangle$ & \checkmark & \checkmark & $\triangle$ & \checkmark & \checkmark & $\triangle$ \\
-    \textbf{Joggle} & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+    Programming & C++ / ODS & Python & Python / C++ & Python & \textbf{Typed jog calls} \\
+    Composition & Dialects, passes & Dialects, passes & Tensor programs, schedules & Scheduling libraries & \textbf{Cross-stage mods} \\
+    References & Operations, values & Operations, values & Tensor blocks & Cursors & \textbf{Typed graph handles} \\
+    Dependency mechanism & Analysis preservation & SSA use-def links & Dataflow, schedules & Cursor forwarding & \textbf{Reads, effects, revisions} \\
+    \midrule
+    & Transform\newline\cite{lucke2025transform}
+    & \texttt{egg}\newline\cite{willsey2021egg}
+    & rustc\newline\cite{rustcincremental}
+    & Adapton\newline\cite{hammer2014adapton}
+    & Build systems\newline\cite{mokhov2018build} \\
+    \midrule
+    Programming & Transform IR & Rust rules & Rust queries & Host-language API & Task rules \\
+    Composition & Transform operations & Rewrite rules & Query calls & Thunk calls & Build rules \\
+    References & Payload handles & E-classes & Query keys & Thunks & Task keys \\
+    Dependency mechanism & Handle effects & E-class rebuilding & Red-green query DAG & Demanded computation graph & Task dependency graph \\
     \bottomrule
-  \end{tabular*}
+  \end{tabularx}
 \end{table*}
 
 \subsection{Extensible Compiler Infrastructures}
@@ -48,66 +48,59 @@ across abstraction levels~\cite{lattner2021mlir}. Its pass manager caches
 analyses at operation anchors and uses explicitly preserved analyses to control
 invalidation~\cite{mlirpass}. xDSL retains compatibility with MLIR's SSA
 structure while moving compiler construction and rapid prototyping into
-Python~\cite{fehr2025xdsl}. These systems demonstrate the value of common IR
-infrastructure and extensible operation sets.
+Python~\cite{fehr2025xdsl}.
 
 Joggle centers the typed compiler function together with the graph-level mod
-that owns and publishes it. Semantics, analysis,
-mutation, conversion, and artifact generation retain their distinct effects
-but share one declaration, resolution, and invocation model. The mod graph is
-orthogonal to blocks and operations, so capability ownership follows declared
-dependencies independently of program containment.
+that owns and publishes it. Semantics, analysis, mutation, conversion, and
+artifact generation retain their distinct effects but share one declaration,
+resolution, and invocation model. The mod graph is orthogonal to blocks and
+operations, so capability ownership follows declared dependencies independently
+of program containment.
 
 \subsection{Tensor Compilers}
 
-Halide separates an image-processing algorithm from its schedule, allowing
-target-specific choices without changing functional
-meaning~\cite{ragankelley2012halide}. TVM combines graph-level optimization, tensor
-programs, schedule search, and target code generation~\cite{chen2018tvm}.
-Multi-level tensor compilers similarly use progressively lower representations
-to expose decisions at the operator, loop, memory, and target levels. Joggle
-supplies the programmable and organizational substrate for declaring,
-composing, converting, and executing these algorithms.
-
-Here, typed functions express target-specific optimization, while recorded
-dependencies and cached work support repeated compilation. Section~\ref{sec:evaluation} evaluates
-these dimensions through executable latency and model-edit completion time.
+Halide separates algorithms from schedules~\cite{ragankelley2012halide}. TVM
+combines graph optimization, tensor programs, and target generation~\cite{chen2018tvm};
+TensorIR makes tensor computations first-class scheduling units~\cite{feng2022tensorir}.
+Triton instead exposes tiled kernel computations~\cite{tillet2019triton}.
+At model scale, ONNX-MLIR progressively lowers ONNX operations~\cite{jin2020onnxmlir},
+while ONNX Runtime partitions graphs among execution providers~\cite{ortarchitecture}.
+These systems expose different optimization boundaries. Typed compiler functions
+and mods supply a common extension boundary for the analyses, conversions, and
+emitters around them. Section~\ref{sec:evaluation} separately measures update
+turnaround and generated-code latency.
 
 \subsection{Programmable Transformations}
 
 The Nanopass framework derives representation checks and traversal support from
 explicit source and target languages, encouraging many small
-passes~\cite{keep2013nanopass}. MLIR's Transform dialect represents fine-grained
-transformation schedules as IR, maps handles into a separate payload IR, and
-uses effect interfaces to constrain transform
-execution~\cite{lucke2025transform}. Rewrite systems make local rules concise
-and composable; \texttt{egg} combines equality saturation, rebuilding, and
-e-class analyses to manage many equivalent programs
-efficiently~\cite{willsey2021egg}. These systems make transformation intent
-programmable at complementary granularities.
+passes~\cite{keep2013nanopass}. Exo 2 composes scheduling libraries from actions,
+inspection, and cursor references~\cite{ikarashi2025exo2}. MLIR's Transform
+dialect instead represents schedules as IR, with payload handles and explicit
+effects~\cite{lucke2025transform}. At the rewrite level, \texttt{egg} combines
+equality saturation, rebuilding, and e-class analyses~\cite{willsey2021egg}.
 
-Joggle extends the programmable unit beyond transformation control. A compiler
-function may define semantics, query types, traverse control flow, invoke a
-native solver, rewrite a graph, convert a representation, or return an
-artifact. Typed calls compose these roles; mods own and publish them; observed
-reads and effects connect them to reactive execution. This boundary organizes
-the semantic definitions, conversions, and artifact generation surrounding
-specialized transformation languages and rewrite engines.
+Our programmable unit extends beyond transformation control: typed calls
+compose semantic definitions, analyses, rewrites, conversions, and emitters;
+mods own their publication. This broader boundary also changes agent tasks.
+KernelBench evaluates generated GPU kernels through correctness and execution
+speed~\cite{ouyang2025kernelbench}. Our extension study spans six compiler-task
+families, including analysis, conversion, and emission, with native build-and-test feedback.
 
 \subsection{Incremental Computation}
 
 Self-adjusting systems record dependencies and repair demanded computation
 after an input changes. Adapton formalizes this model with a demanded
-computation graph~\cite{hammer2014adapton}. Build
-systems apply related ideas to tasks and artifacts; Build Systems {\`a} la Carte
-separates dependency discovery, scheduling, and rebuilding
-policies~\cite{mokhov2018build}. Compiler pass managers also cache analyses and
-preserve them across transformations when their contracts allow
-it~\cite{mlirpass}.
+computation graph~\cite{hammer2014adapton}. Build Systems à la Carte separates
+dependency discovery, scheduling, and rebuilding policies~\cite{mokhov2018build}.
+Within a compiler, rustc's red-green query graph reuses validated results~\cite{rustcincremental}.
+LLVM ORC addresses a different boundary: on-demand materialization and symbol
+dependencies for JIT compilation~\cite{llvmorc}.
 
 Joggle specializes dependency tracking to mutable compiler graphs. A cached
 call records typed graph observations, while a mutating stage also records the
 scope it changed. Revisions and generations validate identity and state;
 upstream effect overlap selects later stages; and a transaction publishes the
-graph and fresh dependency records together. This combination connects
-fine-grained graph invalidation with an ordered, effectful compiler pipeline.
+graph and dependency records together. Thus, reuse follows observations and
+published effects within an ordered compiler pipeline, rather than requiring
+JIT code generation.

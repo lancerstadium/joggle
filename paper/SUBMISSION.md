@@ -34,12 +34,12 @@ is a later, post-acceptance process with its own instructions.
 ## Current checks
 
 The main PDF has 13 pages. Technical content ends on page 12; page 13 contains
-references only. The separate supplement has ten pages. Table A.5's 12 paired
+references only. The separate supplement has twelve pages. Table A.5's 12 paired
 input/output examples occupy five portrait pages, with verbatim quoted task
 contracts and 8.5 pt DOT labels. Section C.4 uses portrait tables while retaining its diagram typography
 and display sizes. All supplement pages are portrait. Both entry points explicitly enable page numbers.
 
-The three measured figures use the author's requested compact review layout:
+The four measured figures use the author's requested compact review layout:
 single-column 3.33 × 2.25 in, two rows by three columns, 5.5 pt text, and
 single-row legends. Data, estimators, and scales are unchanged. This figure
 typography is below the CFP's explicit 10 pt requirement for figures and
@@ -60,6 +60,15 @@ pass 201 semantic fixtures and 16,011 runtime probes; all 18 parent controls
 fail the corresponding changed contract. Counts describe the observed
 implementations, not hunk-minimized patches. The main text reports the
 integration difference and the equal maintenance file/ownership counts.
+Figure 7 separates integration files, integration lines, and maintenance lines
+in a six-panel display. Appendix E adds complete footprints (A.13), native
+installation files (A.14), and six worked maintenance input/output pairs (A.15).
+The related-work table places ten systems/frameworks across two horizontal
+bands and names their composition and dependency mechanisms. The main PDF
+now cites 19 sources; eight new references cover Exo 2, TensorIR, Triton,
+ONNX-MLIR, KernelBench, rustc, LLVM ORC, and ONNX Runtime. Their primary
+papers or official documentation were opened during the reference check;
+final author review remains part of submission approval.
 The 72-condition Agent completion collection is still running and is not a
 completed result. Add its results and associated displays before finalizing
 the evaluation.

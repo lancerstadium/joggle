@@ -135,23 +135,38 @@ Publication declarations contribute to $F_p$ and $L_p$; $R_p$ identifies that
 subset separately. Shared fixtures are excluded from source counts. A zone is a source package or build
 target with one public responsibility.
 
-Each paired patch implements the same behavior change. We count source and
-integration edits separately from tests and shared measurement infrastructure.
-Package-local implementation files share one ownership zone; compiler roles do
-not become separate zones merely because they occupy different files. This
-definition applies equally to graph-level mods and native baseline plugins.
-Absolute paired counts retain zero-cost registration and unchanged ownership
-boundaries.
+All files implementing one native package form one ownership zone, including
+baseline plugins. Counts exclude tests and shared measurement infrastructure.
 
 \paragraph{Integration and maintenance.}
-All 24 package implementations pass their oracles; each of the 18 maintenance
-variants also has a failing parent control. For both features, native
-installation uses one source file in Joggle and three in each baseline,
-including entry-point and publication declarations. By contrast, all six
-maintenance changes touch one implementation file and one ownership zone per
-system, with no registration edits. The observed difference is therefore in
-package integration; subsequent changes remain package-local in all three
-systems.
+Figure~\ref{fig:package-footprint} separates initial package setup from
+subsequent edits. Native installation uses one source file per Joggle feature
+and three per baseline, including publication declarations. The low-bit package
+contains 69 lines, compared with 193 in MLIR and 122 in xDSL; the convolution
+package contains 77, 178, and 125 lines, respectively. Thus, direct mod publication
+reduces the source needed to connect these features to the compiler.
+
+Once installed, all six maintenance changes touch one file and one ownership
+zone per system, without registration edits. Saturation, subtraction, and
+rounding have equal line counts; nibble order, activation bounds, and stride
+require fewer changed lines in the mod implementations. Counts describe the
+observed source patches, including formatting. All changed packages pass their
+oracles, and each maintenance parent fails the changed contract. Appendix~E
+provides the complete footprints, package files, and worked input/output pairs.
+
+\begin{figure}[tp]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/figure-05-footprint.pdf}
+  \caption{Package footprints: integration files and lines (left, center),
+  maintenance lines (right). Lines count additions plus deletions per patch.
+  J/M/X: Joggle/MLIR/xDSL.}
+  \Description{Six boxed panels separate package integration from maintenance.
+  Joggle uses one integration file per feature versus three in MLIR and xDSL,
+  with fewer integration lines. All maintenance edits touch one file and one
+  ownership zone; three changes tie in line count and three use fewer lines
+  in the Joggle implementation.}
+  \label{fig:package-footprint}
+\end{figure}
 
 \subsection{Reactive Update Cost}
 \label{sec:eval-efficient}
@@ -262,26 +277,6 @@ denominator but contribute no latency ratio.
   \label{fig:performance}
 \end{figure}
 
-\begin{table}[t]
-  \caption{Operator summary. Geometric means use all 24 or the common 22
-  operators, as indicated. O--M denotes ONNX-MLIR. Per-operator values appear in
-  the supplementary material.}
-  \label{tab:operator-summary}
-  \centering
-  \footnotesize
-  \setlength{\tabcolsep}{3pt}
-  \begin{tabular}{@{}lrrrr@{}}
-    \toprule
-    Operator-suite measure & Base & Opt. & TVM & O--M \\
-    \midrule
-    Correct operators & 24/24 & 24/24 & 22/24 & 22/24 \\
-    Faster than ORT & 4/24 & 4/24 & 7/22 & 7/22 \\
-    Latency / ORT, all 24 & $9.27\times$ & $5.21\times$ & --- & --- \\
-    Latency / ORT, common 22 & $8.95\times$ & $5.23\times$ & $6.66\times$ & $3.18\times$ \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
 On the 22 operators correct in every configuration, optimized Joggle achieves
 $1.27\times$ lower geometric mean latency than default TVM. It has lower
 median latency on ten cases, including rectangular and square matrix products.
@@ -292,8 +287,8 @@ rather than reducing every operator to one suite-wide ratio.
 Joggle and ORT pass all 24 operators; TVM and ONNX-MLIR each pass 22.
 TVM cannot import QLinearConv or QLinearMatMul. ONNX-MLIR cannot lower
 QLinearConv, and its QLinearMatMul output fails the integer oracle.
-Table~\ref{tab:operator-summary} reports the full and jointly correct populations
-separately; the supplement gives every operator's latency.
+Appendix~A gives every operator's latency and distinguishes the full and
+jointly correct populations in the aggregate rows.
 
 The optimization pack reduces geometric mean operator latency by
 $1.78\times$ across all 24 cases. Rectangular and $256\times256$ matrix
