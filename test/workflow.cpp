@@ -878,9 +878,10 @@ int main(int argc, char** argv) {
         !flag(item(schedule_report, "stages", 0), "observed_whole_mod"));
   CHECK(schedule.run(env, reactive_scheduled, left_args, &schedule_report));
   CHECK(flag(schedule_report, "succeeded") && !flag(schedule_report, "cold") &&
-        number(schedule_report, "executed_stages") == 0 &&
-        number(schedule_report, "reused_stages") == 2 &&
-        field(field(schedule_report, "execution"), "steps").list()->empty());
+        number(schedule_report, "executed_stages") == 2 &&
+        number(schedule_report, "reused_stages") == 0);
+  // These stages publish the same function's revision into its metadata.
+  // The later write invalidates the earlier observation on every run.
   const auto replace_constant = [&](std::string_view function,
                                     std::int64_t value) {
     for (joggle::Op op : reactive_scheduled.find_fn(function).ops())
@@ -890,8 +891,8 @@ int main(int argc, char** argv) {
   };
   CHECK(replace_constant("right", 20));
   CHECK(schedule.run(env, reactive_scheduled, left_args, &schedule_report));
-  CHECK(number(schedule_report, "executed_stages") == 0 &&
-        number(schedule_report, "reused_stages") == 2);
+  CHECK(number(schedule_report, "executed_stages") == 2 &&
+        number(schedule_report, "reused_stages") == 0);
   CHECK(replace_constant("left", 10));
   CHECK(schedule.run(env, reactive_scheduled, left_args, &schedule_report));
   CHECK(number(schedule_report, "executed_stages") == 2 &&
@@ -928,6 +929,12 @@ int main(int argc, char** argv) {
         number(item(schedule_report, "stages", 0), "observed_collections") == 1 &&
         number(item(schedule_report, "stages", 0), "observed_operations") != 0 &&
         number(item(schedule_report, "stages", 0), "observed_values") != 0);
+  // The second stage adds metadata to operations observed by the first.
+  // One validation pass settles those post-state observations.
+  CHECK(cone_schedule.run(env, cone_scheduled, cone_args, &schedule_report));
+  CHECK(number(schedule_report, "executed_stages") == 1);
+  CHECK(cone_schedule.run(env, cone_scheduled, cone_args, &schedule_report));
+  CHECK(number(schedule_report, "executed_stages") == 0);
   const auto replace_named_constant = [&](std::string_view name,
                                            std::int64_t value) {
     for (joggle::Val candidate : cone_scheduled.find_fn("graph").vals())
@@ -1067,6 +1074,67 @@ int main(int argc, char** argv) {
                               &schedule_report));
   CHECK(joggle::print(reactive_scheduled) == before_failed_schedule);
   env.clear_diags();
+  // Writes may grow from empty or move to another function. Compare each
+  // incremental result with a complete execution on the same edited input.
+  constexpr std::string_view dynamic_source =
+      "mod dynamic.subject\n"
+      "fn flag() -> int { return 0 }\n"
+      "fn middle() -> int { return 0 }\n"
+      "fn other() -> int { return 0 }\n"
+      "fn result() -> int { return 0 }\n"
+      "fn other_result() -> int { return 0 }\n";
+  joggle::Mod dynamic;
+  CHECK(joggle::parse(env, dynamic_source, dynamic));
+  CHECK(dynamic.set(dynamic.find_fn("flag"), "route", joggle::Attr(std::int64_t{0})));
+  CHECK(dynamic.set(dynamic.find_fn("middle"), "value", joggle::Attr(std::int64_t{0})));
+  CHECK(dynamic.set(dynamic.find_fn("other"), "value", joggle::Attr(std::int64_t{0})));
+  const std::array<std::string_view, 3> dynamic_stages{
+      "script.schedule_dynamic_produce", "script.schedule_dynamic_consume",
+      "script.schedule_dynamic_other"};
+  joggle::ReactiveSchedule dynamic_schedule(
+      {std::string(dynamic_stages[0]), std::string(dynamic_stages[1]),
+       std::string(dynamic_stages[2])});
+  CHECK(dynamic_schedule.run(env, dynamic, {}, &schedule_report));
+  for (int route : {1, 2}) {
+    CHECK(dynamic.set(dynamic.find_fn("flag"), "route", joggle::Attr(std::int64_t{route})));
+    joggle::Mod full;
+    CHECK(joggle::parse(env, joggle::print(dynamic), full));
+    CHECK(joggle::run(env, dynamic_stages, full));
+    CHECK(dynamic_schedule.run(env, dynamic, {}, &schedule_report));
+    CHECK(joggle::print(dynamic) == joggle::print(full));
+    CHECK(number(schedule_report, "executed_stages") == 2);
+    CHECK(number(schedule_report, "reused_stages") == 1);
+    CHECK(dynamic_schedule.run(env, dynamic, {}, &schedule_report));
+    CHECK(number(schedule_report, "executed_stages") == 0);
+  }
+  CHECK(dynamic.set(dynamic.find_fn("flag"), "route", joggle::Attr(std::int64_t{1})));
+  CHECK(dynamic.set(dynamic.find_fn("middle"), "value", joggle::Attr(std::int64_t{0})));
+  CHECK(dynamic.set(dynamic.find_fn("flag"), "fail", joggle::Attr(true)));
+  const std::string dynamic_before_failure = joggle::print(dynamic);
+  CHECK(!dynamic_schedule.run(env, dynamic, {}, &schedule_report));
+  CHECK(joggle::print(dynamic) == dynamic_before_failure);
+  env.clear_diags();
+  CHECK(dynamic.set(dynamic.find_fn("flag"), "fail", joggle::Attr(false)));
+  CHECK(dynamic_schedule.run(env, dynamic, {}, &schedule_report));
+  CHECK(dynamic.find_fn("result").meta("value")->integer() == 7);
+
+  // A later writer must not rebase away an earlier consumer's observation.
+  joggle::Mod backward;
+  CHECK(joggle::parse(env, dynamic_source, backward));
+  CHECK(backward.set(backward.find_fn("flag"), "route", joggle::Attr(std::int64_t{0})));
+  CHECK(backward.set(backward.find_fn("middle"), "value", joggle::Attr(std::int64_t{0})));
+  joggle::ReactiveSchedule backward_schedule(
+      {"script.schedule_dynamic_consume", "script.schedule_dynamic_produce"});
+  CHECK(backward_schedule.run(env, backward));
+  CHECK(backward.set(backward.find_fn("flag"), "route", joggle::Attr(std::int64_t{1})));
+  CHECK(backward_schedule.run(env, backward));
+  CHECK(backward.find_fn("result").meta("value")->integer() == 0);
+  CHECK(backward_schedule.run(env, backward, {}, &schedule_report));
+  CHECK(backward.find_fn("result").meta("value")->integer() == 7);
+  CHECK(number(schedule_report, "executed_stages") == 1);
+  CHECK(backward_schedule.run(env, backward, {}, &schedule_report));
+  CHECK(number(schedule_report, "executed_stages") == 0);
+
   constexpr std::string_view local_client_source =
       "mod local.client\n"
       "use script\n"

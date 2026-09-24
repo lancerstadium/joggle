@@ -794,7 +794,8 @@ public:
                        Attr* report, std::span<const Attr> args,
                        RunTiming* timing,
                        Fn direct = {},
-                       std::vector<StageDependencyData>* dependencies = nullptr);
+                       std::vector<StageDependencyData>* dependencies = nullptr,
+                       const std::function<bool(std::size_t)>& select = {});
   static bool read(Env& env, Fn fn, const Mod& mod, Attr& result,
                    std::span<const Attr> args,
                    QueryData* dependencies = nullptr,
@@ -5751,7 +5752,8 @@ bool detail::Eval::sequence(
     Env& env, std::span<const std::string_view> functions, Mod& mod,
     Attr* report, std::span<const Attr> args,
     detail::RunTiming* timing, Fn direct,
-    std::vector<StageDependencyData>* dependencies) {
+    std::vector<StageDependencyData>* dependencies,
+    const std::function<bool(std::size_t)>& select) {
   env.clear_diags();
   if (report)
     *report = Attr{};
@@ -5912,6 +5914,11 @@ bool detail::Eval::sequence(
     }
     if (stage_dependencies) {
       eval.dependencies(stage_dependencies->inputs);
+      stage_dependencies->inputs.env = env.cache_id();
+      stage_dependencies->inputs.epoch = env.cache_epoch();
+      stage_dependencies->inputs.revision = mod.revision();
+      stage_dependencies->inputs.structure_revision =
+          mod.impl_->store.structure_revision;
       stage_dependencies->outputs.clear();
       const auto& current = mod.impl_->store.fns;
       const std::size_t common =
@@ -5970,7 +5977,10 @@ bool detail::Eval::sequence(
   if (timing)
     timing->steps.reserve(functions.size());
   bool reported = false;
-  for (const std::string_view function : functions) {
+  for (std::size_t index = 0; index < functions.size(); ++index) {
+    if (select && !select(index))
+      continue;
+    const std::string_view function = functions[index];
     Attr step;
     detail::RunStepTiming step_timing;
     StageDependencyData stage_dependencies;
@@ -6188,128 +6198,62 @@ bool ReactiveSchedule::run(Env& env, Mod& mod,
   };
 
   std::vector<bool> selected(impl_->stages.size(), false);
-  const auto selection_begin = std::chrono::steady_clock::now();
-  std::vector<detail::CacheMiss> misses(
-      impl_->stages.size(), detail::CacheMiss::none);
-  std::unordered_set<std::uint32_t> dirty_functions;
-  bool dirty_structure = false;
-  bool dirty_packages = false;
-  for (std::size_t index = 0; index < impl_->stages.size(); ++index) {
-    const Impl::Stage& stage = impl_->stages[index];
-    detail::CacheMiss miss = cold_miss == detail::CacheMiss::none
-                            ? invalidation(stage)
-                            : cold_miss;
-    if (miss == detail::CacheMiss::none) {
-      const detail::QueryData& input = stage.dependencies.inputs;
-      bool upstream = input.whole_revision &&
-                      (!dirty_functions.empty() || dirty_structure ||
-                       dirty_packages);
-      upstream = upstream || (input.structure && dirty_structure);
-      upstream = upstream || (input.packages && dirty_packages);
-      for (const detail::QueryFnData& dependency : input.dependencies)
-        upstream = upstream || dirty_functions.contains(dependency.id);
-      for (const detail::QueryCollectionData& dependency : input.collections)
-        upstream = upstream ||
-                   dirty_functions.contains(dependency.function);
-      for (const detail::QueryOpData& dependency : input.operations) {
-        const std::uint32_t block = dependency.data.blk;
-        if (block < mod.impl_->store.blks.size())
-          upstream = upstream || dirty_functions.contains(
-              mod.impl_->store.blks[block].data.fn);
-      }
-      for (const detail::QueryValData& dependency : input.values)
-        upstream = upstream || dirty_functions.contains(dependency.data.fn);
-      if (upstream)
-        miss = detail::CacheMiss::upstream;
-    }
-    misses[index] = miss;
-    selected[index] = miss != detail::CacheMiss::none;
-    if (!selected[index])
-      continue;
-    for (const std::uint32_t output : stage.dependencies.outputs)
-      dirty_functions.insert(output);
-    dirty_structure =
-        dirty_structure || stage.dependencies.output_structure;
-    dirty_packages = dirty_packages || stage.dependencies.output_packages;
-  }
-
   std::vector<std::size_t> selected_indices;
-  std::vector<std::string_view> selected_functions;
-  for (std::size_t index = 0; index < selected.size(); ++index) {
-    if (!selected[index])
-      continue;
-    selected_indices.push_back(index);
-    selected_functions.push_back(impl_->stages[index].function);
+  std::vector<std::string_view> functions;
+  std::vector<detail::CacheMiss> initial_misses;
+  selected_indices.reserve(impl_->stages.size());
+  functions.reserve(impl_->stages.size());
+  if (report)
+    initial_misses.reserve(impl_->stages.size());
+  const auto selection_begin = std::chrono::steady_clock::now();
+  for (const Impl::Stage& stage : impl_->stages) {
+    functions.push_back(stage.function);
+    if (report)
+      initial_misses.push_back(cold_miss == detail::CacheMiss::none
+                                   ? invalidation(stage) : cold_miss);
   }
   if (report) {
     report->selection = std::chrono::steady_clock::now() - selection_begin;
     report->cold = cold_miss != detail::CacheMiss::none;
-    report->executed_stages = selected_indices.size();
-    report->reused_stages = impl_->stages.size() - selected_indices.size();
-    for (std::size_t index = 0; index < selected.size(); ++index) {
-      report->stages[index].executed = selected[index];
-      report->stages[index].miss = misses[index];
-    }
   }
+
+  // Select immediately before execution, inside the shared transaction.
+  // Earlier stages may acquire writes absent from their previous footprint.
+  const auto select = [&](std::size_t index) {
+    const auto begin = std::chrono::steady_clock::now();
+    auto miss = cold_miss == detail::CacheMiss::none
+                    ? invalidation(impl_->stages[index]) : cold_miss;
+    if (report && miss != detail::CacheMiss::none &&
+        initial_misses[index] == detail::CacheMiss::none)
+      miss = detail::CacheMiss::upstream;
+    selected[index] = miss != detail::CacheMiss::none;
+    if (selected[index])
+      selected_indices.push_back(index);
+    if (report) {
+      report->stages[index].executed = selected[index];
+      report->stages[index].miss = miss;
+      report->executed_stages += selected[index] ? 1 : 0;
+      report->reused_stages += selected[index] ? 0 : 1;
+      report->selection += std::chrono::steady_clock::now() - begin;
+    }
+    return selected[index];
+  };
 
   std::vector<detail::StageDependencyData> captured;
   detail::RunTiming timing;
-  if (selected_functions.empty())
-    timing.succeeded = true;
-  if (!selected_functions.empty() &&
-      !detail::Eval::sequence(env, selected_functions, mod, nullptr, args,
-                              &timing, {}, &captured)) {
+  if (!detail::Eval::sequence(env, functions, mod, nullptr, args,
+                              &timing, {}, &captured, select)) {
     if (report)
       report->execution = std::move(timing);
     return false;
   }
-  if (captured.size() != selected_indices.size()) {
-    env.error("reactive schedule produced inconsistent dependency records");
-    return false;
-  }
-  for (std::size_t position = 0; position < selected_indices.size();
-       ++position)
+  for (std::size_t position = 0; position < selected_indices.size(); ++position)
     impl_->stages[selected_indices[position]].dependencies =
         std::move(captured[position]);
 
+  // Executed records describe each stage's verified post-state. Keep reused
+  // observations unchanged: later writes must remain visible on the next run.
   const detail::Store& store = mod.impl_->store;
-  for (Impl::Stage& stage : impl_->stages) {
-    detail::QueryData& input = stage.dependencies.inputs;
-    input.env = env.cache_id();
-    input.epoch = env.cache_epoch();
-    input.revision = store.revision;
-    input.structure_revision = store.structure_revision;
-    if (input.packages)
-      input.package_dependencies = store.uses;
-    for (detail::QueryFnData& dependency : input.dependencies) {
-      if (dependency.id >= store.fns.size() ||
-          !store.fns[dependency.id].live)
-        continue;
-      dependency.generation = store.fns[dependency.id].generation;
-      dependency.revision = store.fns[dependency.id].data.revision;
-    }
-    std::erase_if(input.collections,
-                  [&](detail::QueryCollectionData& dependency) {
-      if (!detail::live(store.fns, dependency.function,
-                        dependency.generation))
-        return true;
-      dependency.members = detail::collection_members(
-          store, dependency.function, dependency.kind);
-      return false;
-    });
-    std::erase_if(input.operations, [&](detail::QueryOpData& dependency) {
-      if (!detail::live(store.ops, dependency.id, dependency.generation))
-        return true;
-      dependency.data = store.ops[dependency.id].data;
-      return false;
-    });
-    std::erase_if(input.values, [&](detail::QueryValData& dependency) {
-      if (!detail::live(store.vals, dependency.id, dependency.generation))
-        return true;
-      dependency.data = store.vals[dependency.id].data;
-      return false;
-    });
-  }
   impl_->store = &store;
   impl_->environment = env.cache_id();
   impl_->epoch = env.cache_epoch();

@@ -1731,6 +1731,30 @@ fn schedule_consume(m: Mod, source: str, target: str) -> bool {
   return ir.set(m, input, "schedule.consume", ir.revision(input))
 }
 
+fn schedule_dynamic_produce(m: Mod) -> bool {
+  let flag = ir.find(m, "flag")
+  let route = ir.meta(flag, "route")
+  var changed = false
+  if route == 1 {
+    changed = ir.set(m, ir.find(m, "middle"), "value", 7)
+  }
+  if route == 2 {
+    changed = ir.set(m, ir.find(m, "other"), "value", 9)
+  }
+  assert(ir.meta(flag, "fail") != true, "dynamic producer failure")
+  return changed
+}
+
+fn schedule_dynamic_consume(m: Mod) -> bool {
+  return ir.set(m, ir.find(m, "result"), "value",
+                ir.meta(ir.find(m, "middle"), "value"))
+}
+
+fn schedule_dynamic_other(m: Mod) -> bool {
+  return ir.set(m, ir.find(m, "other_result"), "value",
+                ir.meta(ir.find(m, "other"), "value"))
+}
+
 fn schedule_fail(m: Mod, name: str) -> bool {
   let target = ir.find(m, name)
   assert(ir.live(target), "schedule target not found: " + name)
