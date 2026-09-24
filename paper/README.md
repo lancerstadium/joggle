@@ -477,126 +477,74 @@ report names the first invalid contract, such as an environment, structure,
 function, operation, or value change. Generation checks distinguish an edited
 entity from a new entity that later reuses the same slot.
 
-Mutating pipelines require one further step. After a successful run, a reactive
-schedule stores for each stage $s_i$ its call key $K_i$, observed inputs $D_i$,
-and output scope $W_i$. The schedule is bound to the subject store; its key
-names the environment and its epoch, the stage function, and the arguments.
-The output scope contains changed function identities and flags for structural
-or mod-dependency changes. On the next run, a stage is selected when its key or
-inputs are stale, or when an earlier selected stage may change something it
-observed:
+Mutating pipelines require one further step: selection must see the effects
+of earlier stages in the same run. Each stage retains its call key, observed
+inputs, and changed-function summary. Before executing a stage, the scheduler
+checks its key and observations against the current graph. A changed observation
+selects that stage; otherwise, its previous record is retained.
 
-$$
-\begin{aligned}
-Selected_i ={}& \neg Current(K_i,D_i) \\
-              & \lor \exists j<i:\ Selected_j \land Overlap(W_j,D_i).
-\end{aligned}
-$$
-
-The second term is an *upstream* miss. The inputs recorded for $s_i$ may still
-match at the start of a run, yet an earlier stage selected in the same run can
-change them. Propagating recorded output scopes restricts downstream selection
-to stages with overlapping observations instead of forcing all later stages
-to execute. A selected stage executes its complete function body. Thus, the
-observations determine which stages run, while the compiler's stage boundaries
-determine how much work each selection performs. Replacing the subject store
-starts a cold schedule.
+This check occurs inside the execution loop, not in a separate preselection
+pass. Consequently, a producer that acquires a new write can invalidate its
+consumer immediately, even if its previous write set was empty. An unchanged
+consumer remains reusable. The report distinguishes observations stale at entry
+from those invalidated by an earlier stage, termed upstream misses. Each selected
+stage executes its complete function body, so stage boundaries determine the
+amount of work repeated. A new subject store starts a cold schedule.
 
 ```text
-Algorithm 1: Recorded-scope scheduling
+Algorithm 1: Reactive stage execution
 Input: environment E, graph G, stages s[1..n], records R[1..n]
 Output: success; G and R updated only on success
 
-U <- {}; I <- []; R' <- R
-for i = 1..n:
-    (K_i, D_i, W_i) <- R[i]
-    if not Current(E, G, K_i, D_i) or Overlap(U, D_i):
-        I <- Append(I, i); U <- U union W_i
-if I = []: return true
 T <- BeginVerified(E, G)
 if T = failure: return false
-for i in I:
-    (ok, D'_i, W'_i) <- EvalVerified(E, s[i], G)
+R' <- R
+for i = 1..n:
+    if Current(E, G, R[i]): continue
+    (ok, D, W) <- EvalVerified(E, s[i], G)
     if not ok:
         Rollback(T)
         return false
-    R'[i] <- (Key(E, s[i]), D'_i, W'_i)
+    R'[i] <- (Key(E, s[i]), D, W)
 Commit(T)
-R <- Rebase(R', E, G)
+R <- R'
 return true
 ```
 
 `BeginVerified` starts the graph transaction and verifies its input;
-`EvalVerified` captures reads and effects and verifies the resulting graph.
-`Rebase` refreshes recorded observations against the committed graph.
+`EvalVerified` captures observations at the end of the stage and verifies its output.
+Here, the call key identifies the environment, function, and arguments; the
+record combines that key with the observed inputs and changed-function summary.
 
-Successful execution publishes graph changes and dependency records together.
-Failure restores graph mutations and revisions and discards tentative records.
+Successful execution publishes graph changes and new records together.
+Failure restores mutations and revisions and discards tentative records.
+Crucially, later stages do not refresh earlier or reused observations. A later
+write to an earlier stage's input therefore remains detectable on the next run;
+one invocation follows the given stage order rather than iterating to a fixed point.
 
-Figure 5 connects an API edit to stage selection. Changing convolution layout
-invalidates $s_1$'s recorded read. Its prior write scope, function $f$, overlaps
-the ReLU observed by $s_2$, producing an upstream miss even though that ReLU is
-initially unchanged. Stage $s_3$ observes a disjoint function $g$ and is reused.
-Selection thus follows recorded reads and write scopes, not graph reachability.
+Figure 5 connects an API edit to stage execution. Changing convolution
+layout invalidates the first stage's recorded read. If that stage updates the
+ReLU, the next stage detects the changed operation and executes. The stage
+observing the disjoint reduction retains its record. This example separates
+actual changes from potential reachability: a selected producer need not
+invalidate every consumer.
 
-<!-- FIGURE 5 PROMPT — Built-in image generation. Final prompt and correction:
-Use case: scientific-educational. Create replacement Joggle Figure 5, a compact portrait single-column EuroSys REACTIVE STAGE SELECTION mechanism diagram. Image 1 is only STYLE reference (new Figure4). Image2 is old reactive diagram to replace. Make a completely clean alignment and code-rich concrete example, palette pale blue/teal/lavender, coral ONLY changed/selected, gray diagonal hatch only reused. White background, thin charcoal frames, small DejaVu Sans Mono, tight crop, about 1250x1450. Three vertically stacked panels. This is a schematic example of the CURRENT recorded-write-scope selector, NOT a new dynamic-write algorithm. Distinguish old recorded W from freshly captured W'. Do not silently claim a changed write footprint is handled.
 
-Panel (a) "Edit and recorded reads".
-Top exact API expression in a narrow highlighted strip:
-ir.set(m, conv, "layout", "NHWC")
-Tiny side tag "NCHW -> NHWC".
-Below two disjoint function boxes. f occupies two thirds: x,w -> Conv -> Add -> ReLU -> y; b joins Add. g occupies one third: u -> Reduce -> v. Graph connector directions correct. Attach tiny numbered-neutral read records (no red number badges): under Conv "D1: Conv.layout = NCHW"; under ReLU "D2: ReLU"; under Reduce "D3: Reduce".
-A small source line "ir.meta(conv, \"layout\")" points with dashed READ arrow from Conv to D1. The new live graph has NHWC, while the RECORDED D1 still says NCHW. Do not conflate these.
-
-Panel (b) "Select from recorded effects".
-Compact aligned table, no paragraphs:
-stage | recorded reads | prior writes | decision
-s1 | Conv.layout | {f} | direct miss
-s2 | ReLU in f   | {f} | upstream miss
-s3 | Reduce in g | empty set | reuse
-Use small coral fill in selected s1/s2 cells; gray hatch s3. Along right or below, compact stage strip:
-[s1] -> [s2]    [s3, hatched]
-Above arrow s1 to s2 label "W1 overlaps D2".
-Under s1 label "stale read"; under s3 label "disjoint".
-Small formula "select_i = stale(K_i,D_i) OR overlap(dirty,D_i)"
-Footer tiny "dirty accumulates prior write scopes". No fake timing, no hit rate, no giant words.
-
-Panel (c) "Execute and publish".
-Show left input state G0 with tag "layout = NHWC" (the external edit is already committed).
-Then transactional enclosure containing s1 -> s2 -> diamond "verify".
-Success arrow to compact output box "G' + new records" with a miniature three-row table:
-s1 | D1' | W1'
-s2 | D2' | W2'
-s3 | retained | empty set
-Tiny note at table "observations rebased". This corresponds to current implementation; do not claim a proof of soundness.
-Failure dashed return arrow from verify back to G0 labelled "rollback". IMPORTANT the rollback destination is G0 with NHWC, NEVER the pre-edit NCHW state.
-A small hatched s3 symbol bypasses execution and joins the record-publication side. Bottom micro-legend solid arrow execute, dashed arrow observe/restore, coral selected, hatched reused. Keep dense, no prose paragraph, no repeated disconnected boxes, no black filled regions. Use code and tables for exact state, not decorative symbols.
-Correction: use exactly ir.meta(conv, "layout") with one pair of parentheses.
+<!-- FIGURE 5 PROMPT — Built-in image edit, synchronized with sequential validation:
+Edit this existing scientific figure, preserving portrait aspect, clean pale blue/teal/lavender/coral palette, aligned three compact panels, small monospace labels, white background and dense single-column layout. This is a precise mechanism correction, not decoration.
+(a) Keep graph f Conv->Add->ReLU and disjoint g Reduce, exact edit ir.set(m, conv, "layout", "NHWC"), read ir.meta(conv, "layout"), D1 Conv.layout=NCHW, D2 ReLU,D3 Reduce. Keep unchanged.
+(b) Change heading to "Validate and execute in order". Replace table columns with "stage | observation now | action"; rows "s1 | Conv changed | execute", "s2 | ReLU changed by s1 | execute", "s3 | Reduce unchanged | reuse". To right draw ordered s1 -> check D2 -> s2, and hatched s3 reuse. Tiny label over s1 arrow "actual edit". Replace bottom formula ribbon with exact text "check reads -> execute -> verify -> record" and tiny note "selection sees earlier writes". No prior-write-scope formula, no dirty union, no preselection.
+(c) Change heading to "Commit or restore". Keep G0 layout=NHWC and rollback to that state. Transaction contains s1 -> verify -> check D2 -> s2 -> verify -> commit arrow to G' and records. Compact small boxes not huge diamond. Show hatched s3 bypass. Published table columns "stage | observed state", rows "s1 | after s1", "s2 | after s2", "s3 | unchanged record". Tiny footer "later edits remain detectable". Absolutely remove phrase observations rebased. No global rebase. Main transaction semantics: failure at either verify restores input graph G0 and retains old records. Include short "failure: restore G0, keep records" below dashed rollback arrow. Avoid putting replay or fixed point claims. No fabricated performance numbers. All text legible with minimal padding, same image dimensions and visual weight as original.
 -->
 
-*Figure 5: Reactive stage selection. A stale observation selects $s_1$;
-overlapping effects select $s_2$; disjoint observations retain $s_3$.
-Verification gates joint publication; rollback preserves the committed external edit.*
+*Figure 5: Reactive updates. Each stage checks the graph produced by earlier
+stages. Changed observations trigger execution; unchanged records are retained.
+Failure restores the input graph and prior records.*
 
-Fine-grained observations reduce re-execution but add capture and validation
-work. For $K$ stages and a nonempty selected set $S$, scheduled
-graph-evaluation latency is approximately
-
-$$
-\begin{aligned}
-T_{select} &= \sum_{i=1}^{K} T_{validate}(K_i,D_i) + T_{propagate}, \\
-T_{inc} &= T_{select} + T_{transaction} + T_{verify}(G_0) \\
-        &\quad + \sum_{i \in S}\left[T_{eval}(s_i)+T_{capture}(s_i)
-                    +T_{verify}(G_i)\right] \\
-        &\quad + T_{commit}.
-\end{aligned}
-$$
-
-Here, $G_0$ is the input graph and $G_i$ is the graph after stage $s_i$.
-Every executed stage must produce a valid graph; verification can reuse a
-cached result for an unchanged graph and environment. An empty selection
-returns without opening a mutation transaction.
+Fine-grained observations reduce re-execution but add validation and capture
+work. Each invocation validates the input graph, checks stage observations in
+order, and verifies the result of every executed stage. Verification reuses a
+cached result when the graph and environment are unchanged.
 Reuse is beneficial when the saved stage work exceeds tracking and validation costs.
 Broad graph APIs remain correct but record broad dependencies; narrow APIs can
 preserve results across unrelated edits. External mutable state must enter
@@ -745,7 +693,7 @@ At top a small matrix X, with side note “24 operators / 15 models”. X fans o
 The four different flow topologies must be unmistakable: a repair LOOP, an independent-edit FAN-OUT, two paired VERTICAL TIMELINES, and parallel backend EXECUTION PATHS. This is not a capability comparison diagram and must not resemble a 3-column challenge-solution-benefit table. Keep balanced aligned quadrants but do not force every quadrant into one shared input/procedure/output template. Use small typography and compact layout. Render only the figure, without caption.
 -->
 
-*Figure 6: Experimental protocols. Package edits share one parent; update
+*Figure 6: Evaluation workflow. Package edits share one parent; update
 timing includes native compilation and binding. The reuse path denotes Joggle's
 prepared bodies. Correct outputs enter latency ratios; all outcomes enter coverage.*
 
@@ -831,13 +779,11 @@ provides the complete footprints, package files, and worked input/output pairs.
 
 ![Package integration and maintenance costs.](figures/figure-05-footprint.png)
 
-*Figure 7: Native package footprints. Rows: signed i4 and quantized convolution.
-Columns: integration files, integration source lines, and maintenance source
-lines. Lines count additions plus deletions. Each bar is one observed package
-patch, not a repeated timing estimate. J/M/X denote Joggle/MLIR/xDSL. Source:
-`data/package-footprint.csv`.*
+*Figure 7: Feature integration and maintenance. Panels show integration files,
+integration lines, and maintenance lines (left to right). Lines count additions
+plus deletions per patch. J/M/X: Joggle/MLIR/xDSL.*
 
-### 4.4 Reactive Update Cost
+### 4.4 Compilation Updates
 
 We next examine the compilation work triggered by a model edit. The measured
 endpoint is a bound replacement executable, covering the full path from the
@@ -897,8 +843,14 @@ compilation near 2.7 s. SqueezeNet and TinyYOLOv3 show the same pattern:
 preparation contracts, while emission and native compilation remain stable.
 The supplement reports all 27 edit/system combinations and phase medians.
 
-*Figure 8: Repeated model edits: ready time (top, log scale) and paired
-rebuild/update speedup (bottom). Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3.
+The phase breakdown explains both the gain and its remaining ceiling.
+Reusing prepared bodies removes repeated lowering work, but emission and native
+compilation still run for each executable. As preparation shrinks, those stages
+account for more of the update time. The result therefore motivates extending
+reuse to artifact construction, rather than further optimizing preparation alone.
+
+*Figure 8: Executable-ready updates. Top: ready time (log scale).
+Bottom: paired rebuild/update speedup. Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3.
 Ticks identify edited nodes and operators. Ten repetitions per edit; bars
 show medians, whiskers IQR, and × failed compilation.*
 
@@ -962,7 +914,7 @@ Source CSV: paper/data/figure-07-operators.csv.
 Model measurements have a separate companion display. Preserve every case and failed outcome.
 No generated pixels or illustrative numbers for data. -->
 
-*Figure 9: Operator latency / ORT (log scale). Bars span parity to median;
+*Figure 9: Operator execution. Latency is normalized to ORT (log scale). Bars span parity to median;
 whiskers reach p95 over 100 samples. Correct: Joggle/ORT 24/24;
 TVM/ONNX-MLIR 22/24. × marks invalid candidates. DW/PW: depthwise/pointwise;
 MM: matmul; B/R: bias/ReLU.*
@@ -1019,7 +971,8 @@ CSV: paper/data/figure-07-models.csv; per-model summaries:
 paper/data/figure-07-models-summary.csv; script:
 artifact/figures/figure_07_models.py. -->
 
-*Figure 10: Model latency / ORT; medians and p95 over 100 samples.
+*Figure 10: Model execution. Latency is normalized to ORT; medians and p95
+  use 100 samples.
 ×: invalid candidate; dash: invalid reference. Panel (f): eight jointly correct
 models. Coverage: Joggle 14/15, ORT 13/15, TVM/ONNX-MLIR 11/15.*
 

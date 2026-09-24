@@ -45,7 +45,7 @@ aggregating measurements.
 \begin{figure}[!tbp]
   \centering
   \includegraphics[width=\columnwidth]{figures/evaluation-workflow.png}
-  \caption{Experimental protocols. Package edits share one parent; update
+  \caption{Evaluation workflow. Package edits share one parent; update
   timing includes native compilation and binding. The reuse path denotes
   Joggle's prepared bodies. Correct outputs enter latency ratios; all outcomes
   enter coverage.}
@@ -128,8 +128,8 @@ provides the complete footprints, package files, and worked input/output pairs.
 \begin{figure}[tp]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-05-footprint.pdf}
-  \caption{Package footprints: integration files and lines (left, center),
-  maintenance lines (right). Lines count additions plus deletions per patch.
+  \caption{Feature integration and maintenance. Panels show integration files,
+  integration lines, and maintenance lines (left to right). Lines count additions plus deletions per patch.
   J/M/X: Joggle/MLIR/xDSL.}
   \Description{Six boxed panels separate package integration from maintenance.
   Joggle uses one integration file per feature versus three in MLIR and xDSL,
@@ -139,7 +139,7 @@ provides the complete footprints, package files, and worked input/output pairs.
   \label{fig:package-footprint}
 \end{figure}
 
-\subsection{Reactive Update Cost}
+\subsection{Compilation Updates}
 \label{sec:eval-efficient}
 
 We next examine the compilation work triggered by a model edit. The measured
@@ -201,11 +201,17 @@ Prepare time falls from 30.631\,s to 1.307\,s, reducing total lowering from
 while emission and native compilation remain stable. The supplement reports
 all 27 edit/system combinations and phase medians.
 
+The phase breakdown explains both the gain and its remaining ceiling.
+Reusing prepared bodies removes repeated lowering work, but emission and native
+compilation still run for each executable. As preparation shrinks, those stages
+account for more of the update time. The result therefore motivates extending
+reuse to artifact construction, rather than further optimizing preparation alone.
+
 \begin{figure}[tp]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-06-update.pdf}
-  \caption{Repeated model edits: ready time (top, log scale) and paired
-  rebuild/update speedup (bottom). Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3.
+  \caption{Executable-ready updates. Top: ready time (log scale).
+  Bottom: paired rebuild/update speedup. Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3.
   Ticks identify edited nodes and operators. Ten repetitions per edit; bars
   show medians, whiskers IQR, and $\times$ failed compilation.}
   \Description{Six boxed panels compare three systems at nine edit sites.
@@ -249,7 +255,7 @@ denominator but contribute no latency ratio.
 \begin{figure}[tp]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-07-performance.pdf}
-  \caption{Operator latency / ORT (log scale). Bars span parity to median;
+  \caption{Operator execution. Latency is normalized to ORT (log scale). Bars span parity to median;
   whiskers reach p95 over 100 samples. Correct: Joggle/ORT 24/24;
   TVM/ONNX-MLIR 22/24. $\times$ marks invalid candidates.
   DW/PW: depthwise/pointwise; MM: matmul; B/R: bias/ReLU.}
@@ -299,7 +305,8 @@ values for every correct candidate remain in the accompanying CSV.
 \begin{figure}[tp]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-07-models.pdf}
-  \caption{Model latency / ORT; medians and p95 over 100 samples.
+  \caption{Model execution. Latency is normalized to ORT; medians and p95
+  use 100 samples.
   $\times$: invalid candidate; dash: invalid reference. Panel (f): eight jointly
   correct models. Coverage: Joggle 14/15, ORT 13/15, TVM/ONNX-MLIR 11/15.}
   \Description{Six boxed panels compare Joggle, TVM, and ONNX-MLIR with ORT:

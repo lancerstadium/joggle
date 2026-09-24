@@ -118,9 +118,18 @@ are stored beside the figure descriptions in `README.md`. Figure 4 embeds
 complete input/output subject functions and the actual fusion replacement
 excerpt. Appendix C.7 supplies the full transformation helper and entry point.
 Figures 3 and 5 now include graph API syntax and named state records.
-Algorithm 1 uses explicit inputs, outputs, ordered selection, checked execution,
-rollback, and publication. This is a formatting pass over the current
-recorded-scope implementation, not a repair of its changing-write-scope defect.
+Algorithm 1 now validates and executes stages in order inside one transaction.
+Figure 5 depicts actual writes, stage-local observations, and retained records.
+The implementation removes historical-footprint preselection and final global
+rebasing. Regression coverage includes empty-to-nonempty writes, switched output
+functions, disjoint reuse, rollback, and late writes to earlier observations.
+The original reproducer now returns incremental=7, repeated=7, full=7; all nine
+unit suites pass against the rebuilt main library (core revision `8735b0f`).
+The broader non-model-zoo, non-install regression selection also passed all
+45 tests before the final report-only selection-cost refinement; the nine
+unit suites were rerun afterward. Frozen Agent binaries remain
+unchanged. Existing paper timing CSVs still identify their original measured
+revision; these correctness checks do not replace timing measurements.
 
 Appendix C.5 reproduces the printed GELU subject from the frozen compiler;
 C.6 reproduces one unmodified Agent candidate and its actual diagnostic.
@@ -135,22 +144,10 @@ input/output figure was checked against `paper-code-fusion-unit.json`.
 Three role-separated reviews inspected the same frozen revision `e721b39`.
 The following issues remain substantive submission gates, not layout work:
 
-- **Changing write scopes.** The current reactive scheduler preselects stages
-  from historical output scopes, then rebases retained observations. A local
-  reproducer linked against the measured `build-artifact-smoke/libjoggle.a`
-  confirms a missed update: producer A initially reads a false flag and writes
-  nothing; consumer B copies `middle.value` into `result.value`. Flipping the
-  flag makes A write `middle.value = 7`, but B is skipped. Incremental and
-  repeated incremental runs return `result.value = 0`; a full execution returns
-  `7`. Repair selection and observation publication, and add regressions for
-  expanding and switching write footprints before claiming general reuse
-  correctness. The frozen Agent binaries and source are unchanged during
-  collection.
 - **Mechanism evidence.** The production update study measures fresh imports
   with prepared-body reuse; it does not invoke `ReactiveSchedule`. Its measured
   speedups remain attributable to prepared-body reuse. The retained-store
-  scheduler needs a direct full-versus-reactive comparison after the
-  correctness repair. Keep these two reuse mechanisms distinct in the claims,
+  scheduler needs a direct full-versus-reactive comparison using the repaired scheduler. Keep these two reuse mechanisms distinct in the claims,
   figure labels, and results.
 - **Agent results.** Finish the full 72-condition population and report all
   outcomes. Successful-task costs use conditional populations; disclose their
@@ -164,7 +161,7 @@ The paper now accounts for input verification and verification after every
 executed stage, and states the native-C versus Python-driven invocation
 boundaries in the main execution section. Table 1 distinguishes composition
 units from the measured native feature packages. These edits address reporting
-issues; they do not resolve the scheduling defect or missing experiments above.
+issues; the remaining experimental work is listed above.
 
 Four preliminary trajectories are retained separately. The author approved
 shared JSON action templates and field-specific errors before recollecting

@@ -216,107 +216,80 @@ report names the first invalid contract, such as an environment, structure,
 function, operation, or value change. Generation checks distinguish an edited
 entity from a new entity that later reuses the same slot.
 
-Mutating pipelines require one further step. After a successful run, a reactive
-schedule stores for each stage $s_i$ its call key $K_i$, observed inputs $D_i$,
-and output scope $W_i$. The schedule is bound to the subject store; its key
-names the environment and its epoch, the stage function, and the arguments.
-The output scope contains changed function identities and flags for structural
-or mod-dependency changes. On the next run, a stage is selected when its key or
-inputs are stale, or when an earlier selected stage may change something it
-observed:
-\[
-  \begin{aligned}
-    \operatorname{Selected}_i ={}&
-      \neg \operatorname{Current}(K_i,D_i) \\
-      &\lor \exists j<i:\ \operatorname{Selected}_j \land
-      \operatorname{Overlap}(W_j,D_i).
-  \end{aligned}
-\]
-The second term is an \emph{upstream} miss. The inputs recorded for $s_i$ may
-still match at the start of a run, yet an earlier stage selected in the same run
-can change them. Propagating recorded output scopes restricts downstream
-selection to stages with overlapping observations instead of forcing all later
-stages to execute. A selected stage executes its complete function body. Thus,
-the observations determine which stages run, while the compiler's stage
-boundaries determine how much work each selection performs. Replacing the
-subject store starts a cold schedule.
+Mutating pipelines require one further step: selection must see the effects
+of earlier stages in the same run. Each stage retains its call key, observed
+inputs, and changed-function summary. Before executing a stage, the scheduler
+checks its key and observations against the current graph. A changed observation
+selects that stage; otherwise, its previous record is retained.
+
+This check occurs inside the execution loop, not in a separate preselection
+pass. Consequently, a producer that acquires a new write can invalidate its
+consumer immediately, even if its previous write set was empty. An unchanged
+consumer remains reusable. The report distinguishes observations stale at entry
+from those invalidated by an earlier stage, termed upstream misses. Each selected
+stage executes its complete function body, so stage boundaries determine the
+amount of work repeated. A new subject store starts a cold schedule.
 
 \begin{algorithm}[t]
-  \caption{Recorded-scope scheduling}
+  \caption{Reactive stage execution}
   \label{alg:reactive}
   \begin{algorithmic}[1]
     \Require Environment $E$, graph $G$, stages $s_{1:n}$, records $R_{1:n}$
     \Ensure Success; $G,R$ updated only on success
-    \State $U\gets\varnothing$; $I\gets[\,]$; $R'\gets R$
-    \For{$i=1,\ldots,n$}
-      \State $(K_i,D_i,W_i)\gets R_i$
-      \If{$\neg\Call{Current}{E,G,K_i,D_i}\lor\Call{Overlap}{U,D_i}$}
-        \State $I\gets\Call{Append}{I,i}$; $U\gets U\cup W_i$
-      \EndIf
-    \EndFor
-    \State \textbf{if} $I=[\,]$ \textbf{then} \Return true
     \State $T\gets\Call{BeginVerified}{E,G}$
     \State \textbf{if} $T=\bot$ \textbf{then} \Return false
-    \For{$i\in I$}
-      \State $(ok,D'_i,W'_i)\gets\Call{EvalVerified}{E,s_i,G}$
-      \If{$\neg ok$}
-        \State \Call{Rollback}{$T$}
-        \State \Return false
+    \State $R'\gets R$
+    \For{$i=1,\ldots,n$}
+      \If{$\neg\Call{Current}{E,G,R_i}$}
+        \State $(ok,D,W)\gets\Call{EvalVerified}{E,s_i,G}$
+        \If{$\neg ok$}
+          \State \Call{Rollback}{$T$}
+          \State \Return false
+        \EndIf
+        \State $R'_i\gets(\Call{Key}{E,s_i},D,W)$
       \EndIf
-      \State $R'_i\gets(\Call{Key}{E,s_i},D'_i,W'_i)$
     \EndFor
     \State \Call{Commit}{$T$}
-    \State $R\gets\Call{Rebase}{R',E,G}$
+    \State $R\gets R'$
     \State \Return true
   \end{algorithmic}
 \end{algorithm}
 
 \textsc{BeginVerified} starts the graph transaction and verifies its input;
-\textsc{EvalVerified} captures reads and effects and verifies the resulting graph.
-\textsc{Rebase} refreshes recorded observations against the committed graph.
+\textsc{EvalVerified} captures observations at the end of the stage and verifies its output.
+Here, the call key identifies the environment, function, and arguments; the
+record combines that key with the observed inputs and changed-function summary.
 
-Successful execution publishes graph changes and dependency records together.
-Failure restores graph mutations and revisions and discards tentative records.
+Successful execution publishes graph changes and new records together.
+Failure restores mutations and revisions and discards tentative records.
+Crucially, later stages do not refresh earlier or reused observations. A later
+write to an earlier stage's input therefore remains detectable on the next run;
+one invocation follows the given stage order rather than iterating to a fixed point.
 
-Figure~\ref{fig:reactive-mechanism} connects an API edit to stage selection.
-Changing convolution layout invalidates $s_1$'s recorded read. Its prior write
-scope, function $f$, overlaps the ReLU observed by $s_2$, producing an upstream
-miss even though that ReLU is initially unchanged. Stage $s_3$ observes a
-disjoint function $g$ and is reused. Selection thus follows recorded reads and
-write scopes, not graph reachability.
+Figure~\ref{fig:reactive-mechanism} connects an API edit to stage execution. Changing convolution
+layout invalidates the first stage's recorded read. If that stage updates the
+ReLU, the next stage detects the changed operation and executes. The stage
+observing the disjoint reduction retains its record. This example separates
+actual changes from potential reachability: a selected producer need not
+invalidate every consumer.
+
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/reactive-update.png}
-  \caption{Reactive stage selection. A stale observation selects $s_1$;
-  overlapping effects select $s_2$; disjoint observations retain $s_3$.
-  Verification gates joint publication; rollback preserves the committed external edit.}
+  \caption{Reactive updates. Each stage checks the graph produced by earlier
+  stages. Changed observations trigger execution; unchanged records are retained.
+  Failure restores the input graph and prior records.}
   \Description{A convolution metadata edit invalidates a recorded read;
-  overlapping write scopes select a later stage while a disjoint stage is
+  actual writes invalidate a later stage while a disjoint stage is
   retained. A transaction verifies the new graph before publishing records.}
   \label{fig:reactive-mechanism}
 \end{figure}
 
-Fine-grained observations reduce re-execution but add capture and validation
-work. For $K$ stages and a nonempty selected set $S$, scheduled
-graph-evaluation latency is approximately
-\[
-  \begin{aligned}
-    T_{\mathrm{select}}
-      &= \sum_{i=1}^{K} T_{\mathrm{validate}}(K_i,D_i)
-         + T_{\mathrm{propagate}}, \\
-    T_{\mathrm{inc}}
-      &= T_{\mathrm{select}} + T_{\mathrm{transaction}}
-         + T_{\mathrm{verify}}(G_0) \\
-      &\quad + \sum_{i\in S}\bigl[T_{\mathrm{eval}}(s_i)
-          + T_{\mathrm{capture}}(s_i) + T_{\mathrm{verify}}(G_i)\bigr] \\
-      &\quad + T_{\mathrm{commit}}.
-  \end{aligned}
-\]
-Here, $G_0$ is the input graph and $G_i$ is the graph after stage $s_i$.
-Every executed stage must produce a valid graph; verification can reuse a
-cached result for an unchanged graph and environment. An empty selection
-returns without opening a mutation transaction.
+Fine-grained observations reduce re-execution but add validation and capture
+work. Each invocation validates the input graph, checks stage observations in
+order, and verifies the result of every executed stage. Verification reuses a
+cached result when the graph and environment are unchanged.
 Reuse is beneficial when the saved stage work exceeds tracking and validation costs.
 Broad graph APIs remain correct but record broad dependencies; narrow APIs can
 preserve results across unrelated edits. External mutable state must enter
