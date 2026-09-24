@@ -679,8 +679,8 @@ Each selected task has a shared semantic contract and a tested native reference
 implementation in all three systems.
 
 Qwen3-8B and Qwen3-14B use the same agent harness at temperature zero with
-thinking disabled. Each receives a natural-language contract, public positive
-and negative fixtures, a native API card, and starter code. The agent can
+thinking disabled. Each receives a natural-language contract, public
+fixtures, a native API card, and starter code. The agent can
 inspect, replace, test, or submit its source in an isolated workspace, with
 30 actions and 32k generated tokens per trajectory. The design comprises
 72 runs: one per task, system, and model, without task demonstrations.
@@ -955,31 +955,29 @@ separately.
 
 ## 5. Related Work
 
-Table 2 places extension interfaces, ownership boundaries, and update mechanisms
-side by side. Its final rows connect these abstractions to the measured cost of
-integrating the two cross-stage packages in Section 4.3.
+Table 2 compares extension interfaces, feature boundaries, and update
+mechanisms. Alongside compilers, it includes systems for incremental
+computation. Joggle combines compiler-function composition with read-tracked
+updates; the package comparison quantifies cross-stage publication costs.
 
-| Dimension | MLIR [@lattner2021mlir; @mlirpass] | xDSL [@fehr2025xdsl] | TVM [@chen2018tvm; @feng2022tensorir] | Exo 2 [@ikarashi2025exo2] | Transform [@lucke2025transform] | egg [@willsey2021egg] | rustc [@rustcincremental] | Adapton [@hammer2014adapton] | **Joggle** |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **Interfaces** | | | | | | | | | |
-| Extension language | C++/ODS | Python | Py/C++ | Python | IR | Rust | Rust | Host | **jog** |
-| Programmable unit | Operation | Operation | Block | Schedule | Transform | Rewrite | Query | Thunk | **Function** |
-| **Ownership** | | | | | | | | | |
-| Composition unit | Dialect | Dialect | Program | Library | Sequence | Rule set | Query | Thunk | **mod** |
-| References | Values | Values | Blocks | Cursors | Handles | E-classes | Keys | Thunks | **Typed handles** |
-| **Updates** | | | | | | | | | |
-| Dependency carrier | Analysis | SSA links | Dataflow | Cursor | Handle | E-class | Query DAG | Demand DAG | **Read/effect** |
-| Change mechanism | Preserve | Use-def | Schedule | Forward | Effects | Rebuild | Red-green | Demand | **Revision** |
-| **Measured package integration** | | | | | | | | | |
-| Source files ↓ | 3 / 3 | 3 / 3 | — | — | — | — | — | — | **1 / 1** |
-| Source lines ↓ | 193 / 178 | 122 / 125 | — | — | — | — | — | — | **69 / 77** |
-| Registration code | ✓ | ✓ | — | — | — | — | — | — | **×** |
+| Dimension | MLIR [@lattner2021mlir] | xDSL [@fehr2025xdsl] | TVM [@chen2018tvm] | Exo 2 [@ikarashi2025exo2] | Transform [@lucke2025transform] | egg [@willsey2021egg] | egglog [@zhang2023egglog] | rustc [@rustcincremental] | Adapton [@hammer2014adapton] | PIE [@konat2018pie] | **Joggle** |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Extension notation | C++/ODS | Python | Py/C++ | Python | IR | Rust | Datalog | Rust | Host | PIE | **jog** |
+| Programmable unit | Op/pass | Op/pass | Block | Schedule | Transform | Rewrite | Rule | Query | Thunk | Task | **Function** |
+| Programmable transforms | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | **✓** |
+| Composition boundary | Dialect | Dialect | IRModule | Library | Sequence | Rule set | Rule set | Query | Thunk | Pipeline | **mod** |
+| Program references | SSA | SSA | Blocks | Cursors | Handles | E-classes | E-classes | Keys | Thunks | Values | **Typed** |
+| Dependency carrier | Analysis | SSA links | Dataflow | Cursor | Handle | E-class | Relation | Query DAG | Demand DAG | Task DAG | **Read/effect** |
+| Update mechanism | Preserve | Use-def | Schedule | Forward | Effects | Rebuild | Semi-naive | Red-green | Demand | Incremental | **Revision** |
+| Read-tracked invalidation | — | — | — | — | — | — | — | ✓ | ✓ | ✓ | **✓** |
+| No separate registration | × | × | — | — | — | — | — | — | — | — | **✓** |
+| Files / package ↓ | 3 | 3 | — | — | — | — | — | — | — | — | **1** |
+| Lines / package ↓ | 178–193 | 122–125 | — | — | — | — | — | — | — | — | **69–77** |
 
-*Table 2: Extension and update mechanisms, with package integration footprints.
-Numeric pairs report low-bit arithmetic / convolution fusion. ✓: separate
-registration code; ×: none; —: not measured. Source counts include publication
-declarations. The mechanism rows describe the cited abstraction; the numeric
-rows compare native packages implementing the same two features.*
+*Table 2: Extension and update mechanisms across eleven systems. ✓: supported;
+×: absent in the measured packages; —: not assessed. Read-tracked invalidation
+records dependencies during execution. File and line ranges cover the two
+cross-stage packages in Section 4.3, including publication declarations.*
 
 ### 5.1 Compiler Construction and Composition
 
@@ -1204,7 +1202,7 @@ the Python collector. Numerical checks follow the timed interval.*
 | Per-trajectory limits | 30 actions; 32,000 generated tokens |
 | Per-request limit | 4,096 generated tokens, capped by the remaining budget |
 | Context | Complete history; 131,072-token window |
-| Examples | Public positive and negative fixtures; no demonstrations |
+| Examples | Public fixtures; no task demonstrations |
 | Final oracle | Public and held-out fixtures |
 | Matched population | 12 tasks × 3 systems × 2 models; one run per condition |
 | Condition order | Shuffled once with seed 20260925 |
@@ -1257,9 +1255,10 @@ text overlap. Graphs show task-contract expectations. C.4 retains its diagram ty
 Files: figures/a5-*-input.dot and figures/a5-*-output.dot. Markdown records
 these instructions and the input/output values rather than raster images. -->
 
-Tables A.6–A.8 specify construction, verification, and print/parse round trips.
-Rejected inputs produce no output IR. Tensor types omit the `tensor<…>` wrapper;
-bare i8 or f32 denotes a rank-zero tensor. Axis indices are zero-based.
+Tables A.6–A.7 detail construction and verification; Table A.8 gives the fixture
+split for all 12 evaluated tasks. Rejected definition inputs produce no output
+IR. Tensor types omit the `tensor<…>` wrapper; bare i8 or f32 denotes a rank-zero
+tensor. Axis indices are zero-based.
 
 ### C.1. Parametric type definition
 
@@ -1302,23 +1301,29 @@ Width denotes logical bits, not ABI allocation size.*
 expanded. Scales are finite positive f64 values; zero points are signed i32 values.
 This task defines the operation; arithmetic lowering is evaluated separately.*
 
-### C.3. Layout-carrying operation definition
+### C.3. Fixture coverage
 
-| Case | Input type | Source | Destination | Permutation | Expected result / diagnostic |
-| --- | --- | --- | --- | --- | --- |
-| to-nhwc | 1×3×8×16×f32 | NCHW | NHWC | 0, 2, 3, 1 | 1×8×16×3×f32 |
-| to-nchw | 2×7×9×4×f16 | NHWC | NCHW | 0, 3, 1, 2 | 2×4×7×9×f16 |
-| identity-nchw | 2×3×4×5×f32 | NCHW | NCHW | 0, 1, 2, 3 | 2×3×4×5×f32 |
-| identity-nhwc | 2×4×5×3×f16 | NHWC | NHWC | 0, 1, 2, 3 | 2×4×5×3×f16 |
-| empty-axis | 1×3×0×16×f32 | NCHW | NHWC | 0, 2, 3, 1 | 1×0×16×3×f32 |
-| integer-element | 1×8×16×3×i8 | NHWC | NCHW | 0, 3, 1, 2 | 1×3×8×16×i8 |
-| wrong-rank | 3×8×16×f32 | NCHW | NHWC | — | rank-mismatch |
-| scalar-rank | f32 | NCHW | NHWC | — | rank-mismatch |
-| invalid-source | 1×3×8×16×f32 | CHWN | NHWC | — | invalid-layout |
-| invalid-destination | 1×3×8×16×f32 | NCHW | HWCN | — | invalid-layout |
+| Role | Task | Public | Held-out | Observable output |
+| --- | --- | ---: | ---: | --- |
+| Definition | `def-parametric-type` | 2 | 9 | Round-tripped type |
+| Definition | `def-quantized-op` | 2 | 11 | Result type and attributes |
+| Analysis | `ana-broadcast-shape` | 2 | 5 | Broadcast shape |
+| Analysis | `ana-numeric-range` | 2 | 8 | Closed interval |
+| Rewrite | `rew-add-zero` | 2 | 7 | Rewritten graph |
+| Rewrite | `rew-redundant-cast` | 2 | 8 | Rewritten graph |
+| Conversion | `con-gelu-expand` | 2 | 5 | Expanded graph and values |
+| Conversion | `con-quant-expand` | 2 | 8 | Expanded graph and values |
+| Emission | `emit-graph-manifest` | 1 | 7 | Manifest bytes |
+| Emission | `emit-kernel-wrapper` | 1 | 6 | Compiled C outputs |
+| Vertical | `vert-int4` | 2 | 4 | Packed bytes and range |
+| Vertical | `vert-fused-op` | 2 | 4 | Fused graph and values |
+| Total | 12 tasks | 22 | 82 | |
 
-*Table A.8: `def-layout-attribute`: complete inputs and expected outputs.
-The constructor infers the result shape and preserves the element type and both layout attributes.*
+*Table A.8: Fixture coverage of the matched task population. Counts are distinct
+fixtures per task, shared by all systems and models; final validation uses both
+sets. Public fixtures are the first positive and, where present, the first
+negative case. The two emission tasks have no negative cases. Full contracts
+and representative inputs and outputs appear in Table A.5.*
 
 ### C.4. Graph transformations and numerical checks
 

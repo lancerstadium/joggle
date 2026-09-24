@@ -162,6 +162,17 @@ page 12; the supplement has 13 portrait pages. The latest build has no
 overfull boxes or undefined references. Main pages 8 and 12 and supplement
 page 3 were rendered and visually checked after the prose edits.
 
+Table 2 now compares eleven systems in one horizontal header, with checkmarks
+for supported capabilities and package source ranges recomputed from
+`data/package-footprint.csv`. Its spacer-heading rows were removed. The added
+egglog and PIE columns use the existing primary-paper citations; dependency
+tracking was cross-checked against the rustc guide and Adapton description.
+Appendix C.3 now reports the actual 12-task fixture split (22 public, 82
+held-out), replacing the layout-definition task outside this collection.
+All twelve quoted contracts match `artifact/manifests/extension-specs.json`;
+the C.4 diagrams are unchanged. Main page 12 and supplement page 9 were
+rendered after these table revisions; neither table overlaps adjacent content.
+
 The Agent protocol table records request/context limits, condition order,
 and the wall-time boundary in Appendix C. Provider and operational details
 remain in the experimental records rather than manuscript prose.

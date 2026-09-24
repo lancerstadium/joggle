@@ -17,7 +17,7 @@ Action format & JSON object: \texttt{inspect}, \texttt{edit}, \texttt{test}, or 
 Per-trajectory limits & 30 actions; 32,000 generated tokens \\
 Per-request limit & 4,096 generated tokens, capped by the remaining budget \\
 Context & Complete history; 131,072-token window \\
-Examples & Public positive and negative fixtures; no demonstrations \\
+Examples & Public fixtures; no task demonstrations \\
 Final oracle & Public and held-out fixtures \\
 Matched population & 12 tasks $\times$ 3 systems $\times$ 2 models; one run per condition \\
 Condition order & Shuffled once with seed 20260925 \\
@@ -208,28 +208,42 @@ rank-mismatch & i8 & 1$\times$i8 & 1, 1, 1 & 0, 0, 0 & shape-mismatch \\
 \end{tabular*}
 \end{table}
 
-\subsection{Layout-Carrying Operation Definition}
+\subsection{Fixture Coverage}
 \begin{table}[H]
-\caption{\texttt{def-layout-attribute}: complete inputs and expected outputs.
-The constructor infers the result shape and preserves the element type and both layout attributes.}
-\label{tab:extension-layout}
+\caption{Fixture coverage of the matched task population. Counts are distinct
+fixtures per task, shared by all systems and models; final validation uses both
+sets. Public fixtures are the first positive and, where present, the first
+negative case. The two emission tasks have no negative cases.}
+\label{tab:extension-coverage}
 \centering
 \scriptsize
 \setlength{\tabcolsep}{3pt}
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}llllll@{}}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}llrrl@{}}
 \toprule
-Case & Input type & Source & Destination & Permutation & Expected result / diagnostic \\
+Role & Task & Public & Held-out & Observable output \\
 \midrule
-to-nhwc & 1$\times$3$\times$8$\times$16$\times$f32 & NCHW & NHWC & 0, 2, 3, 1 & 1$\times$8$\times$16$\times$3$\times$f32 \\
-to-nchw & 2$\times$7$\times$9$\times$4$\times$f16 & NHWC & NCHW & 0, 3, 1, 2 & 2$\times$4$\times$7$\times$9$\times$f16 \\
-identity-nchw & 2$\times$3$\times$4$\times$5$\times$f32 & NCHW & NCHW & 0, 1, 2, 3 & 2$\times$3$\times$4$\times$5$\times$f32 \\
-identity-nhwc & 2$\times$4$\times$5$\times$3$\times$f16 & NHWC & NHWC & 0, 1, 2, 3 & 2$\times$4$\times$5$\times$3$\times$f16 \\
-empty-axis & 1$\times$3$\times$0$\times$16$\times$f32 & NCHW & NHWC & 0, 2, 3, 1 & 1$\times$0$\times$16$\times$3$\times$f32 \\
-integer-element & 1$\times$8$\times$16$\times$3$\times$i8 & NHWC & NCHW & 0, 3, 1, 2 & 1$\times$3$\times$8$\times$16$\times$i8 \\
-wrong-rank & 3$\times$8$\times$16$\times$f32 & NCHW & NHWC & --- & rank-mismatch \\
-scalar-rank & f32 & NCHW & NHWC & --- & rank-mismatch \\
-invalid-source & 1$\times$3$\times$8$\times$16$\times$f32 & CHWN & NHWC & --- & invalid-layout \\
-invalid-destination & 1$\times$3$\times$8$\times$16$\times$f32 & NCHW & HWCN & --- & invalid-layout \\
+Definition & \texttt{def-parametric-type} & 2 & 9 & Round-tripped type \\
+ & \texttt{def-quantized-op} & 2 & 11 & Result type and attributes \\
+\addlinespace[2pt]
+Analysis & \texttt{ana-broadcast-shape} & 2 & 5 & Broadcast shape \\
+ & \texttt{ana-numeric-range} & 2 & 8 & Closed interval \\
+\addlinespace[2pt]
+Rewrite & \texttt{rew-add-zero} & 2 & 7 & Rewritten graph \\
+ & \texttt{rew-redundant-cast} & 2 & 8 & Rewritten graph \\
+\addlinespace[2pt]
+Conversion & \texttt{con-gelu-expand} & 2 & 5 & Expanded graph and values \\
+ & \texttt{con-quant-expand} & 2 & 8 & Expanded graph and values \\
+\addlinespace[2pt]
+Emission & \texttt{emit-graph-manifest} & 1 & 7 & Manifest bytes \\
+ & \texttt{emit-kernel-wrapper} & 1 & 6 & Compiled C outputs \\
+\addlinespace[2pt]
+Vertical & \texttt{vert-int4} & 2 & 4 & Packed bytes and range \\
+ & \texttt{vert-fused-op} & 2 & 4 & Fused graph and values \\
+\midrule
+Total & 12 tasks & 22 & 82 & \\
 \bottomrule
 \end{tabular*}
+\par\smallskip\raggedright
+Full contracts and representative inputs and outputs appear in
+Table~\ref{tab:agent-contracts}.
 \end{table}

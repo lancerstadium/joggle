@@ -1,25 +1,25 @@
 \section{Related Work}
 \label{sec:related}
 
-Table~\ref{tab:related} places extension interfaces, ownership boundaries, and
-update mechanisms side by side. Its final rows connect these abstractions to
-the measured cost of integrating the two cross-stage packages in
-Section~\ref{sec:eval-controllable}.
+Table~\ref{tab:related} compares extension interfaces, feature boundaries, and update
+mechanisms. Alongside compilers, it includes systems for incremental
+computation. Joggle combines compiler-function composition with read-tracked
+updates; the package comparison quantifies cross-stage publication costs.
 
 \begin{table*}[t]
-  \caption{Extension and update mechanisms, with package integration footprints.
-  Numeric pairs report low-bit arithmetic / convolution fusion.
-  $\checkmark$: separate registration code; $\times$: none;
-  ---: not measured. Source counts include publication declarations.}
+  \caption{Extension and update mechanisms across eleven systems. $\checkmark$: supported;
+$\times$: absent in the measured packages; ---: not assessed. Read-tracked invalidation
+records dependencies during execution. File and line ranges cover the two
+cross-stage packages in Section~\ref{sec:eval-controllable}, including publication declarations.}
   \label{tab:related}
-  \fontsize{8}{10}\selectfont
-  \setlength{\tabcolsep}{2.4pt}
-  \renewcommand{\arraystretch}{1.13}
+  \fontsize{7.2}{9}\selectfont
+  \setlength{\tabcolsep}{1.6pt}
+  \renewcommand{\arraystretch}{1.14}
   \definecolor{ComparisonBlue}{RGB}{0,82,128}
   \definecolor{ComparisonTint}{RGB}{239,248,251}
   \newcommand{\workref}[2]{\mbox{#1\textsuperscript{\cite{#2}}}}
-  \newcommand{\groupname}[1]{\multicolumn{10}{@{}l@{}}{\color{ComparisonBlue}\bfseries #1}\\[-1pt]}
-  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}l*{8}{c}>{\columncolor{ComparisonTint}\bfseries}c@{}}
+  \newcommand{\yes}{\textcolor{ComparisonBlue}{$\checkmark$}}
+  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}l*{10}{c}>{\columncolor{ComparisonTint}\bfseries}c@{}}
     \toprule
     & \workref{MLIR}{lattner2021mlir}
     & \workref{xDSL}{fehr2025xdsl}
@@ -27,31 +27,28 @@ Section~\ref{sec:eval-controllable}.
     & \workref{Exo 2}{ikarashi2025exo2}
     & \workref{Transform}{lucke2025transform}
     & \workref{egg}{willsey2021egg}
+    & \workref{egglog}{zhang2023egglog}
     & \workref{rustc}{rustcincremental}
     & \workref{Adapton}{hammer2014adapton}
+    & \workref{PIE}{konat2018pie}
     & \textcolor{ComparisonBlue}{Joggle} \\
     \midrule
-    \groupname{Interfaces}
-    Extension language & C++/ODS & Python & Py/C++ & Python & IR & Rust & Rust & Host & jog \\
-    Programmable unit & Operation & Operation & Block & Schedule & Transform & Rewrite & Query & Thunk & Function \\
-    \addlinespace[2pt]
-    \groupname{Ownership}
-    Composition unit & Dialect & Dialect & Program & Library & Sequence & Rule set & Query & Thunk & mod \\
-    References & Values & Values & Blocks & Cursors & Handles & E-classes & Keys & Thunks & Typed handles \\
-    \addlinespace[2pt]
-    \groupname{Updates}
-    Dependency carrier & Analysis & SSA links & Dataflow & Cursor & Handle & E-class & Query DAG & Demand DAG & Read/effect \\
-    Change mechanism & Preserve & Use-def & Schedule & Forward & Effects & Rebuild & Red-green & Demand & Revision \\
+    Extension notation & C++/ODS & Python & Py/C++ & Python & IR & Rust & Datalog & Rust & Host & PIE & jog \\
+    Programmable unit & Op/pass & Op/pass & Block & Schedule & Transform & Rewrite & Rule & Query & Thunk & Task & Function \\
+    Programmable transforms & \yes & \yes & \yes & \yes & \yes & \yes & \yes & --- & --- & --- & \yes \\
     \midrule
-    \groupname{Measured package integration (Section~\ref{sec:eval-controllable})}
-    Source files $\downarrow$ & 3 / 3 & 3 / 3 & --- & --- & --- & --- & --- & --- & 1 / 1 \\
-    Source lines $\downarrow$ & 193 / 178 & 122 / 125 & --- & --- & --- & --- & --- & --- & 69 / 77 \\
-    Registration code & $\checkmark$ & $\checkmark$ & --- & --- & --- & --- & --- & --- & $\times$ \\
+    Composition boundary & Dialect & Dialect & IRModule & Library & Sequence & Rule set & Rule set & Query & Thunk & Pipeline & mod \\
+    Program references & SSA & SSA & Blocks & Cursors & Handles & E-classes & E-classes & Keys & Thunks & Values & Typed \\
+    \midrule
+    Dependency carrier & Analysis & SSA links & Dataflow & Cursor & Handle & E-class & Relation & Query DAG & Demand DAG & Task DAG & Read/effect \\
+    Update mechanism & Preserve & Use-def & Schedule & Forward & Effects & Rebuild & Semi-naive & Red-green & Demand & Incremental & Revision \\
+    Read-tracked invalidation & --- & --- & --- & --- & --- & --- & --- & \yes & \yes & \yes & \yes \\
+    \midrule
+    No separate registration & $\times$ & $\times$ & --- & --- & --- & --- & --- & --- & --- & --- & \yes \\
+    Files / package $\downarrow$ & 3 & 3 & --- & --- & --- & --- & --- & --- & --- & --- & 1 \\
+    Lines / package $\downarrow$ & 178--193 & 122--125 & --- & --- & --- & --- & --- & --- & --- & --- & 69--77 \\
     \bottomrule
   \end{tabular*}
-  \par\vspace{2pt}\raggedright
-  The mechanism rows describe the cited abstraction; the numeric rows compare
-  native packages implementing the same two features.
 \end{table*}
 
 \subsection{Compiler Construction and Composition}

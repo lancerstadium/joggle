@@ -83,8 +83,8 @@ Each selected task has a shared semantic contract and a tested native reference
 implementation in all three systems.
 
 Qwen3-8B and Qwen3-14B use the same agent harness at temperature zero with
-thinking disabled. Each receives a natural-language contract, public positive
-and negative fixtures, a native API card, and starter code. The agent can
+thinking disabled. Each receives a natural-language contract, public
+fixtures, a native API card, and starter code. The agent can
 inspect, replace, test, or submit its source in an isolated workspace, with
 30 actions and 32k generated tokens per trajectory. The design comprises
 72 runs: one per task, system, and model, without task demonstrations.
