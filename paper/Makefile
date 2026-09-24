@@ -3,12 +3,30 @@
 # Authoring order: revise README.md, synchronize the TeX section, then build.
 all: sigconf.pdf supplement.pdf
 
-# Rebuild the four measured result figures without rerunning benchmarks.
-# All use the same compact single-column author-review layout.
-figures:
+# Data and plotting changes must reach the PDFs through the normal build.
+# Each renderer also refreshes its PNG preview and, where applicable, summaries.
+MEASURED_FIGURES = figures/figure-05-footprint.pdf figures/figure-06-update.pdf \
+	figures/figure-07-performance.pdf figures/figure-07-models.pdf
+PLOT_COMMON = ../artifact/figures/common.py
+
+figures: $(MEASURED_FIGURES)
+
+figures/figure-05-footprint.pdf: data/package-footprint.csv data/package-footprint.json \
+	../artifact/figures/figure_05_footprint.py $(PLOT_COMMON)
 	python3 ../artifact/figures/figure_05_footprint.py data/package-footprint.csv --packages --output figures/figure-05-footprint.pdf
+
+figures/figure-06-update.pdf: data/figure-06-update.csv data/figure-06-stages.csv \
+	data/figure-06-update.json render_update.py $(PLOT_COMMON)
 	python3 render_update.py
+
+figures/figure-07-performance.pdf: data/figure-07-operators.csv \
+	../artifact/figures/figure_07_performance.py $(PLOT_COMMON)
 	python3 ../artifact/figures/figure_07_performance.py data/figure-07-operators.csv --output figures/figure-07-performance.pdf --summary data/figure-07-operators-summary.csv
+
+figures/figure-07-models.pdf: data/figure-07-models.csv \
+	../artifact/figures/figure_07_models.py ../artifact/figures/figure_07_performance.py \
+	../artifact/merge_benchmark_rows.py ../artifact/validate_figure.py \
+	../artifact/manifests/benchmark-cases.json $(PLOT_COMMON)
 	python3 ../artifact/figures/figure_07_models.py data/figure-07-models.csv --output figures/figure-07-models.pdf --summary data/figure-07-models-summary.csv
 
 TASK_GRAPHS = $(patsubst %.dot,%.pdf,$(wildcard figures/task-*.dot))
