@@ -66,8 +66,9 @@ integration difference and the equal maintenance file/ownership counts.
 Figure 7 separates integration files, integration lines, and maintenance lines
 in a six-panel display. Appendix E adds complete footprints (A.13), native
 installation files (A.14), and six worked maintenance input/output pairs (A.15).
-The related-work table places nine systems/frameworks in one horizontal band,
-with grouped interface, ownership, and update rows. Its measured integration
+The related-work table places eleven systems/frameworks in one horizontal band,
+without interspersed category-title rows. Blue checkmarks mark supported
+capabilities, and a tinted column identifies Joggle. Its measured integration
 rows show source files, source lines, and separate registration code for the
 two native packages; other systems are marked unmeasured. Figure 6 uses four
 independent protocol vignettes, distinct from the author's 3v3 overview. The main PDF
@@ -84,7 +85,7 @@ official proceedings were opened during the reference check; source locators
 for the additions are recorded in `references.bib` comments. Final author
 review remains part of submission approval.
 The Agent study uses Qwen3-8B and Qwen3-14B for the 72-condition matrix.
-The primary collection is running in
+The primary collection is stored in
 `.cache/artifact/main-agents-explicit-20260925-x0f9ieig/`, frozen at `1d096c7`
 with action protocol `explicit-json-actions/v2`. Its manifest fixes all 72
 conditions and the original shuffled order. All 36 native references pass
@@ -95,7 +96,51 @@ before finalizing the evaluation; main result fields are still unfilled.
 After assembling `data/figure-04-extension.csv` and its provenance record,
 `make -C paper agent-figure` audits the complete matrix and renders the shared
 2-by-3 bar layout. Add the measured figure and result analysis to Section 4.2
-only after the population is complete.
+only after the population is complete. The first six conditions are complete;
+condition seven stopped on a read timeout before receiving its first response.
+The author approved a uniform transport-continuation rule: retain the timeout
+archive and resend only the unanswered request with unchanged remaining budget.
+The runner and trajectory validator implement this transport-only amendment;
+task/API sources and native binaries remain frozen.
+The transport amendment is committed as `dcb383e`; collection has resumed from
+condition seven in the original batch and order.
+No effective response or completed condition has been rerun.
+
+## First review: unresolved submission gates
+
+Three role-separated reviews inspected the same frozen revision `e721b39`.
+The following issues remain substantive submission gates, not layout work:
+
+- **Changing write scopes.** The current reactive scheduler preselects stages
+  from historical output scopes, then rebases retained observations. A local
+  reproducer linked against the measured `build-artifact-smoke/libjoggle.a`
+  confirms a missed update: producer A initially reads a false flag and writes
+  nothing; consumer B copies `middle.value` into `result.value`. Flipping the
+  flag makes A write `middle.value = 7`, but B is skipped. Incremental and
+  repeated incremental runs return `result.value = 0`; a full execution returns
+  `7`. Repair selection and observation publication, and add regressions for
+  expanding and switching write footprints before claiming general reuse
+  correctness. The frozen Agent binaries and source are unchanged during
+  collection.
+- **Mechanism evidence.** The production update study measures fresh imports
+  with prepared-body reuse; it does not invoke `ReactiveSchedule`. Its measured
+  speedups remain attributable to prepared-body reuse. The retained-store
+  scheduler needs a direct full-versus-reactive comparison after the
+  correctness repair. Keep these two reuse mechanisms distinct in the claims,
+  figure labels, and results.
+- **Agent results.** Finish the full 72-condition population and report all
+  outcomes. Successful-task costs use conditional populations; disclose their
+  denominators rather than interpreting them as paired costs on identical tasks.
+- **Final synchronization.** After collection, reconcile the stale package and
+  update status paragraphs in `artifact/PROTOCOL.md`, and match Figure 1's
+  endpoint labels to the reported measurements. Do not silently edit the
+  author-owned Figure 1.
+
+The paper now accounts for input verification and verification after every
+executed stage, and states the native-C versus Python-driven invocation
+boundaries in the main execution section. Table 2 distinguishes composition
+units from the measured native feature packages. These edits address reporting
+issues; they do not resolve the scheduling defect or missing experiments above.
 
 Four preliminary trajectories are retained separately. The author approved
 shared JSON action templates and field-specific errors before recollecting

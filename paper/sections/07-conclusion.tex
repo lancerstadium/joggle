@@ -1,12 +1,10 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-Joggle makes compiler capabilities programmable through one typed call model,
-organizes cross-stage features in graph-level mods, and directs updates using
-recorded dependencies. The resulting progressive IR separates feature
-ownership from program containment while retaining explicit mutation and
-publication rules. Native package comparisons show reduced integration
-footprints, and prepared-body reuse accelerates executable-ready updates by
-$1.46$--$2.49\times$ on the three measured models. Together, these results
-support a compiler organization in which composition, ownership, and update
-dependencies are first-class parts of an extension.
+Joggle organizes compiler capabilities through typed functions and graph-level
+mods. Its progressive IR separates feature ownership from program containment
+and records observations and effects at extension boundaries. Native package
+comparisons show reduced integration footprints, while prepared-body reuse
+accelerates executable-ready updates by $1.46$--$2.49\times$ on three models.
+These results connect shared compiler interfaces and explicit reuse boundaries
+to the practical costs of extending and updating a compiler.

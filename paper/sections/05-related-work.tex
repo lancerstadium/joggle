@@ -5,12 +5,13 @@ Table~\ref{tab:related} compares extension interfaces, feature boundaries, and u
 mechanisms. Alongside compilers, it includes systems for incremental
 computation. Joggle combines compiler-function composition with read-tracked
 updates; the package comparison quantifies cross-stage publication costs.
+The final four rows compare native plugins and mods as feature packages.
 
 \begin{table*}[t]
   \caption{Extension and update mechanisms across eleven systems. $\checkmark$: supported;
 $\times$: absent in the measured packages; ---: not assessed. Read-tracked invalidation
-records dependencies during execution. File and line ranges cover the two
-cross-stage packages in Section~\ref{sec:eval-controllable}, including publication declarations.}
+records dependencies during execution. Package counts cover both cross-stage
+features in Section~\ref{sec:eval-controllable}, including publication declarations.}
   \label{tab:related}
   \fontsize{7.2}{9}\selectfont
   \setlength{\tabcolsep}{1.6pt}
@@ -37,13 +38,14 @@ cross-stage packages in Section~\ref{sec:eval-controllable}, including publicati
     Programmable unit & Op/pass & Op/pass & Block & Schedule & Transform & Rewrite & Rule & Query & Thunk & Task & Function \\
     Programmable transforms & \yes & \yes & \yes & \yes & \yes & \yes & \yes & --- & --- & --- & \yes \\
     \midrule
-    Composition boundary & Dialect & Dialect & IRModule & Library & Sequence & Rule set & Rule set & Query & Thunk & Pipeline & mod \\
+    Composition unit & Dialect & Dialect & IRModule & Library & Sequence & Rule set & Rule set & Query & Thunk & Pipeline & mod \\
     Program references & SSA & SSA & Blocks & Cursors & Handles & E-classes & E-classes & Keys & Thunks & Values & Typed \\
     \midrule
     Dependency carrier & Analysis & SSA links & Dataflow & Cursor & Handle & E-class & Relation & Query DAG & Demand DAG & Task DAG & Read/effect \\
     Update mechanism & Preserve & Use-def & Schedule & Forward & Effects & Rebuild & Semi-naive & Red-green & Demand & Incremental & Revision \\
     Read-tracked invalidation & --- & --- & --- & --- & --- & --- & --- & \yes & \yes & \yes & \yes \\
     \midrule
+    Single-owner package & \yes & \yes & --- & --- & --- & --- & --- & --- & --- & --- & \yes \\
     No separate registration & $\times$ & $\times$ & --- & --- & --- & --- & --- & --- & --- & --- & \yes \\
     Files / package $\downarrow$ & 3 & 3 & --- & --- & --- & --- & --- & --- & --- & --- & 1 \\
     Lines / package $\downarrow$ & 178--193 & 122--125 & --- & --- & --- & --- & --- & --- & --- & --- & 69--77 \\

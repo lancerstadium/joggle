@@ -245,9 +245,13 @@ TVM Relax's default LLVM CPU pipeline without tuning, and ONNX-MLIR at
 entry signatures and the same byte-identical tensors. The operator comparison
 also includes Joggle without its optimization pack.
 
-Inputs remain resident during timing. Each backend uses its native invocation
-and output-storage policy; Appendix B lists these boundaries. Input loading,
-compilation, and reference evaluation are outside the execution interval.
+Inputs remain resident during timing. Joggle uses a native C call loop with
+caller-owned outputs; the baselines use Python-driven calls with their native
+output allocation. The measurements therefore compare deployed invocation
+paths, including call and allocation costs, rather than isolated kernel bodies.
+These costs matter most for short operators. Appendix B gives the per-backend
+boundaries. Input loading, compilation, and reference evaluation are outside
+the execution interval.
 
 We report median steady-state execution latency from 100 measurements after
 ten warm-ups. Figure~\ref{fig:performance} groups all 24 operators into six
@@ -323,8 +327,8 @@ values for every correct candidate remain in the accompanying CSV.
   \label{fig:model-performance}
 \end{figure}
 
-Together, these comparisons distinguish extension cost from generated-code
-quality. Prepared-body reuse reduces update turnaround, whereas matrix-product
+Together, these comparisons distinguish extension cost from deployed execution
+latency. Prepared-body reuse reduces update turnaround, whereas matrix-product
 lowering produces the largest operator gains. The model results extend the
 execution comparison to complete networks, with coverage and latency reported
 separately.

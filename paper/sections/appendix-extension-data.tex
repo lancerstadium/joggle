@@ -36,7 +36,9 @@ protocol; four preliminary trajectories using an implicit action format are
 retained separately in the artifact. Each request includes prior interactions
 and public-test feedback. Wall time covers the active action loop, including
 public tests and request retries, but excludes interrupted-run downtime and
-final held-out validation.
+final held-out validation. Archived transport interruptions resume with the
+same history and remaining budget; received answers are never regenerated.
+Token counts cover received responses; usage for unanswered requests is unknown.
 
 NSZ denotes \texttt{no\_signed\_zeros}, DQ dequantization, Q quantization,
 and RNE round-to-nearest, ties-to-even.

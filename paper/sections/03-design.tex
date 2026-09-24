@@ -261,11 +261,12 @@ subject store starts a cold schedule.
         \State $dirty \gets dirty \cup W_i$
       \EndIf
     \EndFor
-    \State begin transaction
+    \State \textbf{if} $selected=\varnothing$ \textbf{then return} success
+    \State begin transaction; verify input graph
     \For{each $s_i\in selected$ in schedule order}
-      \State execute $s_i$ and capture fresh $D_i,W_i$
+      \State execute $s_i$, verify graph, capture fresh $D_i,W_i$
     \EndFor
-    \State verify and commit graph
+    \State commit graph
     \State replace selected records and rebase retained records
     \State publish all records for the next run
   \end{algorithmic}
@@ -299,19 +300,26 @@ reachability from the edited node.
 \end{figure}
 
 Fine-grained observations reduce re-execution but add capture and validation
-work. For $K$ stages, scheduled graph-evaluation latency is approximately
+work. For $K$ stages and a nonempty selected set $S$, scheduled
+graph-evaluation latency is approximately
 \[
   \begin{aligned}
     T_{\mathrm{select}}
       &= \sum_{i=1}^{K} T_{\mathrm{validate}}(K_i,D_i)
          + T_{\mathrm{propagate}}, \\
     T_{\mathrm{inc}}
-      &= T_{\mathrm{select}}
-         + \sum_{s_i \in \mathrm{Selected}} T_{\mathrm{eval}}(s_i) \\
-      &\quad + T_{\mathrm{verify}}(G') + T_{\mathrm{commit}}.
+      &= T_{\mathrm{select}} + T_{\mathrm{transaction}}
+         + T_{\mathrm{verify}}(G_0) \\
+      &\quad + \sum_{i\in S}\bigl[T_{\mathrm{eval}}(s_i)
+          + T_{\mathrm{capture}}(s_i) + T_{\mathrm{verify}}(G_i)\bigr] \\
+      &\quad + T_{\mathrm{commit}}.
   \end{aligned}
 \]
-Reuse is beneficial when this cost is lower than executing the omitted stages.
+Here, $G_0$ is the input graph and $G_i$ is the graph after stage $s_i$.
+Every executed stage must produce a valid graph; verification can reuse a
+cached result for an unchanged graph and environment. An empty selection
+returns without opening a mutation transaction.
+Reuse is beneficial when the saved stage work exceeds tracking and validation costs.
 Broad graph APIs remain correct but record broad dependencies; narrow APIs can
 preserve results across unrelated edits. External mutable state must enter
 through typed arguments or an environment change before reuse. Native bindings

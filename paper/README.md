@@ -458,11 +458,12 @@ for each stage s[i] in schedule order:
         selected.add(s[i])
         dirty_outputs.add(s[i].outputs)
 
-begin transaction
+if selected is empty: return success
+begin transaction; verify input graph
 for each stage s[i] in selected:
     execute s[i]
+    verify resulting graph
     capture fresh inputs D[i] and outputs W[i]
-verify graph
 commit transaction
 replace records for selected stages
 rebase retained observations to the committed graph
@@ -500,18 +501,24 @@ overlapping effects select $s_2$; disjoint observations retain $s_3$.
 Verification gates joint publication; rollback preserves the committed external edit.*
 
 Fine-grained observations reduce re-execution but add capture and validation
-work. For $K$ stages, scheduled graph-evaluation latency is approximately
+work. For $K$ stages and a nonempty selected set $S$, scheduled
+graph-evaluation latency is approximately
 
 $$
 \begin{aligned}
 T_{select} &= \sum_{i=1}^{K} T_{validate}(K_i,D_i) + T_{propagate}, \\
-T_{inc} &= T_{select}
-        + \sum_{s_i \in Selected} T_{eval}(s_i) \\
-        &\quad + T_{verify}(G') + T_{commit}.
+T_{inc} &= T_{select} + T_{transaction} + T_{verify}(G_0) \\
+        &\quad + \sum_{i \in S}\left[T_{eval}(s_i)+T_{capture}(s_i)
+                    +T_{verify}(G_i)\right] \\
+        &\quad + T_{commit}.
 \end{aligned}
 $$
 
-Reuse is beneficial when this cost is lower than executing the omitted stages.
+Here, $G_0$ is the input graph and $G_i$ is the graph after stage $s_i$.
+Every executed stage must produce a valid graph; verification can reuse a
+cached result for an unchanged graph and environment. An empty selection
+returns without opening a mutation transaction.
+Reuse is beneficial when the saved stage work exceeds tracking and validation costs.
 Broad graph APIs remain correct but record broad dependencies; narrow APIs can
 preserve results across unrelated edits. External mutable state must enter
 through typed arguments or an environment change before reuse. Native bindings
@@ -847,9 +854,13 @@ TVM Relax's default LLVM CPU pipeline without tuning, and ONNX-MLIR at
 entry signatures and the same byte-identical tensors. The operator comparison
 also includes Joggle without its optimization pack.
 
-Inputs remain resident during timing. Each backend uses its native invocation
-and output-storage policy; Appendix B lists these boundaries. Input loading,
-compilation, and reference evaluation are outside the execution interval.
+Inputs remain resident during timing. Joggle uses a native C call loop with
+caller-owned outputs; the baselines use Python-driven calls with their native
+output allocation. The measurements therefore compare deployed invocation
+paths, including call and allocation costs, rather than isolated kernel bodies.
+These costs matter most for short operators. Appendix B gives the per-backend
+boundaries. Input loading, compilation, and reference evaluation are outside
+the execution interval.
 
 We report median steady-state execution latency from 100 measurements after
 ten warm-ups. The performance figure groups all 24 operators into six panels
@@ -947,8 +958,8 @@ subject_kind,subject,subject_hash,family,system,system_revision,variant,
 supported,reason,iteration,calls_per_sample,latency_ns,max_abs_error,
 max_rel_error,input_digest,output_digest,correct,seed. -->
 
-Together, these comparisons distinguish extension cost from generated-code
-quality. Prepared-body reuse reduces update turnaround, whereas matrix-product
+Together, these comparisons distinguish extension cost from deployed execution
+latency. Prepared-body reuse reduces update turnaround, whereas matrix-product
 lowering produces the largest operator gains. The model results extend the
 execution comparison to complete networks, with coverage and latency reported
 separately.
@@ -959,25 +970,27 @@ Table 2 compares extension interfaces, feature boundaries, and update
 mechanisms. Alongside compilers, it includes systems for incremental
 computation. Joggle combines compiler-function composition with read-tracked
 updates; the package comparison quantifies cross-stage publication costs.
+The final four rows compare native plugins and mods as feature packages.
 
 | Dimension | MLIR [@lattner2021mlir] | xDSL [@fehr2025xdsl] | TVM [@chen2018tvm] | Exo 2 [@ikarashi2025exo2] | Transform [@lucke2025transform] | egg [@willsey2021egg] | egglog [@zhang2023egglog] | rustc [@rustcincremental] | Adapton [@hammer2014adapton] | PIE [@konat2018pie] | **Joggle** |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Extension notation | C++/ODS | Python | Py/C++ | Python | IR | Rust | Datalog | Rust | Host | PIE | **jog** |
 | Programmable unit | Op/pass | Op/pass | Block | Schedule | Transform | Rewrite | Rule | Query | Thunk | Task | **Function** |
 | Programmable transforms | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | **✓** |
-| Composition boundary | Dialect | Dialect | IRModule | Library | Sequence | Rule set | Rule set | Query | Thunk | Pipeline | **mod** |
+| Composition unit | Dialect | Dialect | IRModule | Library | Sequence | Rule set | Rule set | Query | Thunk | Pipeline | **mod** |
 | Program references | SSA | SSA | Blocks | Cursors | Handles | E-classes | E-classes | Keys | Thunks | Values | **Typed** |
 | Dependency carrier | Analysis | SSA links | Dataflow | Cursor | Handle | E-class | Relation | Query DAG | Demand DAG | Task DAG | **Read/effect** |
 | Update mechanism | Preserve | Use-def | Schedule | Forward | Effects | Rebuild | Semi-naive | Red-green | Demand | Incremental | **Revision** |
 | Read-tracked invalidation | — | — | — | — | — | — | — | ✓ | ✓ | ✓ | **✓** |
+| Single-owner package | ✓ | ✓ | — | — | — | — | — | — | — | — | **✓** |
 | No separate registration | × | × | — | — | — | — | — | — | — | — | **✓** |
 | Files / package ↓ | 3 | 3 | — | — | — | — | — | — | — | — | **1** |
 | Lines / package ↓ | 178–193 | 122–125 | — | — | — | — | — | — | — | — | **69–77** |
 
 *Table 2: Extension and update mechanisms across eleven systems. ✓: supported;
 ×: absent in the measured packages; —: not assessed. Read-tracked invalidation
-records dependencies during execution. File and line ranges cover the two
-cross-stage packages in Section 4.3, including publication declarations.*
+records dependencies during execution. Package counts cover both cross-stage
+features in Section 4.3, including publication declarations.*
 
 ### 5.1 Compiler Construction and Composition
 
@@ -1088,15 +1101,13 @@ functions publish results while invalidating observations of replaced state.
 
 ## 7. Conclusion
 
-Joggle makes compiler capabilities programmable through one typed call model,
-organizes cross-stage features in graph-level mods, and directs updates using
-recorded dependencies. The resulting progressive IR separates feature
-ownership from program containment while retaining explicit mutation and
-publication rules. Native package comparisons show reduced integration
-footprints, and prepared-body reuse accelerates executable-ready updates by
-$1.46$--$2.49\times$ on the three measured models. Together, these results
-support a compiler organization in which composition, ownership, and update
-dependencies are first-class parts of an extension.
+Joggle organizes compiler capabilities through typed functions and graph-level
+mods. Its progressive IR separates feature ownership from program containment
+and records observations and effects at extension boundaries. Native package
+comparisons show reduced integration footprints, while prepared-body reuse
+accelerates executable-ready updates by $1.46$--$2.49\times$ on three models.
+These results connect shared compiler interfaces and explicit reuse boundaries
+to the practical costs of extending and updating a compiler.
 
 ## Appendix A. Operator Measurements
 
@@ -1216,6 +1227,9 @@ trajectories using an implicit action format are retained separately in the
 artifact. Each request includes prior interactions and public-test feedback.
 Wall time covers the active action loop, including public tests and request
 retries, but excludes interrupted-run downtime and final held-out validation.
+Archived transport interruptions resume with the same history and remaining
+budget; received answers are never regenerated. Token counts cover received
+responses; usage for unanswered requests is unknown.
 
 Table A.5 reproduces the semantic-contract field of each task prompt verbatim,
 in quotation marks and italics. The native API card and public fixtures accompany
