@@ -11,6 +11,9 @@ import os
 import subprocess
 import sys
 import tempfile
+from collections import Counter
+from itertools import product
+from statistics import mean
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -44,6 +47,30 @@ def validate_trajectory(path: Path, provider: dict, rows: list[dict[str, str]]) 
             raise SystemExit(f"{path}: {field} differs from trajectory")
     if data["model"]["digest"] != row["model_revision"] or data["model"]["name"] != row["model"]:
         raise SystemExit(f"{path}: model identity differs")
+    identity = hashlib.sha256(json.dumps(data["system_identity"], sort_keys=True).encode()).hexdigest()
+    if identity != row["system_revision"]:
+        raise SystemExit(f"{path}: native system identity differs")
+    for field in ("seed", "run", "wall_ms"):
+        if data[field] != int(row[field]):
+            raise SystemExit(f"{path}: {field} differs from trajectory")
+    responses = [event["response"] for event in data["events"] if event.get("response")]
+    for field, usage in (("completion_tokens", "eval_count"), ("prompt_tokens", "prompt_eval_count")):
+        if sum(response[usage] for response in responses) != int(row[field]):
+            raise SystemExit(f"{path}: {field} differs from provider usage")
+    calls = edits = 0
+    for event in data["events"]:
+        if not event.get("response"):
+            continue
+        try:
+            action = json.loads(event["response"]["message"]["content"])["action"]
+        except (ValueError, TypeError, KeyError):
+            continue
+        if action in ("inspect", "edit", "test"):
+            calls += 1
+            if action == "edit" and "edited" in event.get("feedback", {}):
+                edits += 1
+    if calls != int(row["tool_calls"]) or edits != int(row["edit_attempts"]):
+        raise SystemExit(f"{path}: tool counts differ from recorded actions")
     if sha256(trajectory.parent / "candidate.patch") != row["patch_sha256"]:
         raise SystemExit(f"{path}: patch digest differs")
     oracle_path = trajectory.parent / "final-oracle.json"
@@ -56,6 +83,92 @@ def validate_trajectory(path: Path, provider: dict, rows: list[dict[str, str]]) 
             or oracle["task_spec_sha256"] != row["task_spec_sha256"]
             or (row["passed"] == "true") != oracle["passed"]):
         raise SystemExit(f"{path}: final oracle does not support the measured result")
+
+
+def audited_assembly(path: Path) -> list[dict[str, str]]:
+    """Revalidate a complete export before plotting, including its raw trajectories."""
+    from validate_figure import extension, load
+    root = Path(__file__).resolve().parent
+    template = root / "templates/figure-04-extension.csv"
+    rows = load(path, template)
+    record = json.loads(path.with_suffix(".json").read_text())
+    if (record.get("schema") != "extension-agent-assembly/v1" or
+            record.get("output", {}).get("sha256") != sha256(path) or
+            record.get("rows") != len(rows)):
+        raise SystemExit(f"{path}: invalid assembly provenance")
+    contributed = []
+    for source in record.get("inputs", []):
+        csv_path, record_path = Path(source["path"]), Path(source["record"])
+        if source["sha256"] != sha256(csv_path) or source["record_sha256"] != sha256(record_path):
+            raise SystemExit(f"{path}: source hashes differ")
+        provider = json.loads(record_path.read_text())
+        if (provider.get("schema") != "agent-provider/v1" or provider.get("dirty") or
+                provider.get("release_eligible") is not True or
+                provider.get("output_sha256") != sha256(csv_path)):
+            raise SystemExit(f"{path}: invalid agent provider")
+        source_rows = load(csv_path, template)
+        validate_trajectory(csv_path, provider, source_rows)
+        contributed.extend(source_rows)
+    canonical = lambda items: Counter(json.dumps(row, sort_keys=True) for row in items)
+    if canonical(contributed) != canonical(rows):
+        raise SystemExit(f"{path}: assembled rows differ from source trajectories")
+    with (root / "manifests/extension-tasks.csv").open(newline="") as stream:
+        tasks = {row["task_id"]: row["family"] for row in csv.DictReader(stream)
+                 if row["footprint"] == "true"}
+    extension(rows, False, tasks, sha256(root / "manifests/extension-specs.json"))
+    return rows
+
+
+def summarize(rows: list[dict[str, str]]) -> list[dict]:
+    """Describe each family without turning an absent successful cost into zero."""
+    families = ("definition", "analysis", "rewrite", "conversion", "emission", "vertical")
+    systems = ("Joggle", "MLIR", "xDSL")
+    output = []
+    for model in sorted({row["model"] for row in rows}):
+        for system in systems:
+            for family in families:
+                group = [r for r in rows if (r["model"], r["system"], r["family"]) ==
+                         (model, system, family)]
+                if len(group) != 2 or len({r["task"] for r in group}) != 2:
+                    raise ValueError("summary requires two distinct tasks per family and system")
+                successes = [r for r in group if r["passed"] == "true"]
+                output.append({"model": model, "system": system, "family": family,
+                    "tasks": len(group), "successes": len(successes),
+                    "success_percent": 100 * len(successes) / len(group),
+                    "completion_tokens": mean(int(r["completion_tokens"]) for r in successes) if successes else None,
+                    "tool_calls": mean(int(r["tool_calls"]) for r in successes) if successes else None})
+    return output
+
+
+def success_intervals(rows: list[dict[str, str]]) -> list[dict]:
+    """Exact stratified task bootstrap: enumerate 4^6 paired resamples, no run resampling."""
+    families = ("definition", "analysis", "rewrite", "conversion", "emission", "vertical")
+    systems = ("Joggle", "MLIR", "xDSL")
+    result = []
+    for model in sorted({r["model"] for r in rows}):
+        indexed = {(r["family"], r["task"], r["system"]): int(r["passed"] == "true")
+                   for r in rows if r["model"] == model}
+        pairs = [sorted({task for f, task, _ in indexed if f == family}) for family in families]
+        if any(len(pair) != 2 for pair in pairs):
+            raise ValueError("stratified bootstrap requires two tasks in each family")
+        for system in systems:
+            samples = []
+            for choices in product(((0, 0), (0, 1), (1, 0), (1, 1)), repeat=6):
+                total = sum(indexed[family, pair[i], system]
+                            for family, pair, choice in zip(families, pairs, choices) for i in choice)
+                samples.append(total / 12)
+            samples.sort()
+            def percentile(q):
+                index = (len(samples) - 1) * q
+                lower = int(index)
+                upper = min(lower + 1, len(samples) - 1)
+                return samples[lower] + (samples[upper] - samples[lower]) * (index - lower)
+            result.append({"model": model, "system": system,
+                "success_rate": sum(indexed[family, task, system]
+                                    for family, pair in zip(families, pairs) for task in pair) / 12,
+                "ci95_low": percentile(0.025), "ci95_high": percentile(0.975),
+                "resamples": len(samples), "unit": "task within family; shared paired indices"})
+    return result
 
 
 def main() -> int:

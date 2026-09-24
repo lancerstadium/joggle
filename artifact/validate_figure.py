@@ -80,11 +80,18 @@ def extension(rows: list[dict[str, str]], partial: bool, tasks: dict[str, str], 
     groups: dict[tuple[str, str, str, int], list[dict[str, str]]] = defaultdict(list)
     condition_systems: dict[tuple[str, str, int], set[str]] = defaultdict(set)
     controls: dict[tuple[str, str, int, int], tuple[str, ...]] = {}
+    model_identities: dict[str, str] = {}
+    system_identities: dict[str, tuple[str, str]] = {}
     for line, row in enumerate(rows, start=2):
         if row["system"] not in SYSTEMS or tasks.get(row["task"]) != row["family"]:
             raise SystemExit(f"line {line}: system or task differs from the frozen contract")
         if not row["model"] or not row["model_revision"] or not row["system_revision"]:
             raise SystemExit(f"line {line}: model or revision is empty")
+        if model_identities.setdefault(row["model"], row["model_revision"]) != row["model_revision"]:
+            raise SystemExit(f"line {line}: model identity changes across tasks")
+        identity = (row["system_revision"], row["api_card_sha256"])
+        if system_identities.setdefault(row["system"], identity) != identity:
+            raise SystemExit(f"line {line}: native system or API card changes across tasks")
         demos = unsigned(row, "demo_count", line)
         demo_ids = row["demo_ids"].split(";") if row["demo_ids"] else []
         if demos not in DEMOS or len(demo_ids) != demos or len(set(demo_ids)) != demos:
@@ -100,6 +107,8 @@ def extension(rows: list[dict[str, str]], partial: bool, tasks: dict[str, str], 
             raise SystemExit(f"line {line}: action budget differs from the contract")
         if unsigned(row, "budget_tokens", line) != 32000:
             raise SystemExit(f"line {line}: token budget differs from the contract")
+        if int(row["completion_tokens"]) > 32000 or int(row["tool_calls"]) > 30:
+            raise SystemExit(f"line {line}: measured cost exceeds the frozen budget")
         if row["task_spec_sha256"] != spec_hash:
             raise SystemExit(f"line {line}: contract hash differs")
         for field in ("api_card_sha256", "trajectory_sha256", "patch_sha256"):

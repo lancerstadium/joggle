@@ -267,16 +267,34 @@ seed 1701, and run index zero. The assembler rejects missing or duplicate
 conditions, changed hashes, and infrastructure-invalid records. Semantic
 failures remain in the completion denominator.
 
+Render only the completed assembly, not individual provider files:
+
+```sh
+python3 artifact/figures/figure_04_extension.py \
+  .cache/artifact/figure-04-extension.csv \
+  --output .cache/artifact/figure-04-extension.pdf
+```
+
+The renderer rechecks all 72 conditions, native/model identities, provider
+usage, and final-oracle hashes. Its six panels show family success percentages,
+completion tokens, and tool calls for each model. Costs average successful
+tasks only; an empty success set is a dash, while an observed zero is a hollow
+circle at zero. Linear axes share limits within columns. The adjacent summary
+CSV retains both task and success counts, since conditional cost populations
+can differ across systems. The plot record also exports overall 95% task-bootstrap
+intervals by enumerating all 4,096 two-task-within-family resamples with paired
+indices across systems. These intervals describe task variation, not repeated
+model runs. Incomplete inputs produce no figure.
+
 ## Figure 5
 
 The ownership study uses complete native extension packages, independently of
-the single-file Agent tasks. Its revised measurement boundary and admission
-conditions are recorded in `PROTOCOL.md`. The existing Git-patch collector
-remains the measurement mechanism; reference-file sizes are not package
-footprints. The minimizer uses an isolated archive snapshot and private index
-below `.cache/artifact/minimization`, without creating another Git worktree or
-changing the live checkout. The baseline must fail and the candidate must pass
-the same oracle before hunk reduction begins.
+the single-file Agent tasks. Its measurement boundary and admission conditions
+are recorded in `PROTOCOL.md`. The current native-package collector measures
+the observed deployment and maintenance patches, including publication files;
+these counts are not hunk-minimized. The older Git-patch mode remains available
+for reproducing source-patch experiments. Its minimizer uses an isolated archive
+and private index, without changing the live checkout or creating a worktree.
 
 The low-bit and fused-convolution directories also contain native xDSL package
 manifests. Their wheels register a transform pass and C-emission target through
@@ -590,8 +608,8 @@ python3 artifact/figures/figure_07_models.py \
   --summary paper/data/figure-07-models-summary.csv
 ```
 
-Both plotting scripts use a 3.35 × 2.34 inch authoring canvas for six panels,
-with the same default 6 pt font and boxed three-column, two-row layout.
+Both plotting scripts use a 3.33 × 2.25 inch author-review canvas for six panels,
+with the same default 5.5 pt font and boxed three-column, two-row layout.
 The shared series encodings cover Joggle base/opt, TVM, and ONNX-MLIR;
 ORT supplies the reference line. A cross-system source may omit the base
 ablation, but it must retain the complete model population for every included
@@ -621,7 +639,7 @@ together when selecting a new measurement snapshot.
 
 The existing manuscript snapshot has the following model population:
 Five panels group all 15 models; the sixth shows the geometric means of the
-11 jointly correct models. Bars show medians and whiskers extend to p95;
+eight jointly correct models. Bars show medians and whiskers extend to p95;
 the aggregate has no timing whisker. Failure reasons remain in the summary
 CSV. Absolute milliseconds remain in the exported summary
 CSV and the main-text model discussion. Small authoring fonts are configurable; final submission typography

@@ -40,6 +40,7 @@ import minimize_patch
 import package_cases
 import run_package_task
 from collect_footprint import collect_packages
+from merge_agent_rows import summarize as agent_summary, success_intervals, validate_trajectory
 
 
 class BenchmarkOracleTests(unittest.TestCase):
@@ -192,7 +193,10 @@ class BenchmarkOracleTests(unittest.TestCase):
         extension(rows, False, tasks, "a"*64)
         for field, value in (("run", "1"), ("demo_count", "2"),
                              ("parsed", ""), ("reference_nll", "1.0"),
-                             ("seed", "1702"), ("stop_reason", "agent_error")):
+                             ("seed", "1702"), ("stop_reason", "agent_error"),
+                             ("model_revision", "different"), ("system_revision", "different"),
+                             ("api_card_sha256", "e"*64), ("completion_tokens", "32001"),
+                             ("tool_calls", "31")):
             changed = copy.deepcopy(rows)
             changed[0][field] = value
             with self.subTest(field=field), self.assertRaises(SystemExit):
@@ -202,6 +206,75 @@ class BenchmarkOracleTests(unittest.TestCase):
         failed = copy.deepcopy(rows)
         failed[0].update(parsed="", typed="", built="", passed="false", stop_reason="build")
         extension(failed, False, tasks, "a"*64)
+
+    def test_agent_summary_distinguishes_zero_success_and_missing_cost(self):
+        families = ("definition", "analysis", "rewrite", "conversion", "emission", "vertical")
+        rows = [dict(model=model, system=system, family=family, task=f"{family}-{task}",
+                     passed=str(system != "MLIR" and task == 0).lower(),
+                     completion_tokens=str(100 if task == 0 else 900), tool_calls="3")
+                for model in ("model-a", "model-b") for system in ("Joggle", "MLIR", "xDSL")
+                for family in families for task in range(2)]
+        summary = agent_summary(rows)
+        self.assertEqual(len(summary), 36)
+        for row in summary:
+            if row["system"] == "MLIR":
+                self.assertEqual(row["success_percent"], 0)
+                self.assertIsNone(row["completion_tokens"])
+                self.assertIsNone(row["tool_calls"])
+            else:
+                self.assertEqual(row["success_percent"], 50)
+                self.assertEqual(row["completion_tokens"], 100)
+                self.assertEqual(row["successes"], 1)
+        intervals = success_intervals(rows)
+        self.assertEqual(len(intervals), 6)
+        for row in intervals:
+            self.assertEqual(row["resamples"], 4096)
+            if row["system"] == "MLIR":
+                self.assertEqual((row["success_rate"], row["ci95_low"], row["ci95_high"]), (0, 0, 0))
+            else:
+                self.assertEqual(row["success_rate"], 0.5)
+                self.assertLess(row["ci95_low"], 0.5)
+                self.assertGreater(row["ci95_high"], 0.5)
+        with self.assertRaisesRegex(ValueError, "two distinct tasks"):
+            agent_summary(rows[:-1])
+
+    def test_agent_trajectory_binds_usage_and_native_identity(self):
+        digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            native = {"compiler": "frozen-build"}
+            row = dict(model="test-model", model_revision="frozen-model", system="Joggle",
+                       system_revision=hashlib.sha256(json.dumps(native, sort_keys=True).encode()).hexdigest(),
+                       task="test-task", task_spec_sha256="a"*64, api_card_sha256="b"*64,
+                       seed="1701", run="0", wall_ms="20", passed="false",
+                       completion_tokens="3", prompt_tokens="10")
+            row.update(tool_calls="1", edit_attempts="1")
+            patch_file = root / "candidate.patch"
+            patch_file.write_text("test fixture\n")
+            row["patch_sha256"] = digest(patch_file)
+            oracle = root / "final-oracle.json"
+            oracle.write_text(json.dumps({"complete_task": True, "task": "test-task",
+                "system": "Joggle", "task_spec_sha256": "a"*64, "passed": False,
+                "execution_isolation": {"kind": "macos-seatbelt"}}))
+            trajectory = root / "trajectory.json"
+            trajectory.write_text(json.dumps({"schema": "extension-agent-trajectory/v1",
+                "dirty": False, "identity_stable": True, "options": {"temperature": 0.0, "num_ctx": 32768},
+                "context_check": {"verified": True, "overflow": {"type": "exceed_context_size_error",
+                    "n_ctx": 32768, "n_prompt_tokens": 40000}}, "think": False,
+                "model": {"name": "test-model", "digest": "frozen-model"}, "system_identity": native,
+                "task": "test-task", "system": "Joggle", "task_spec_sha256": "a"*64,
+                "api_card_sha256": "b"*64, "seed": 1701, "run": 0, "wall_ms": 20,
+                "events": [{"response": {"eval_count": 3, "prompt_eval_count": 10,
+                    "message": {"content": '{"action":"edit"}'}}, "feedback": {"edited": False}}],
+                "final_oracle_sha256": digest(oracle)}))
+            provider = {"trajectory": str(trajectory), "trajectory_sha256": digest(trajectory)}
+            row["trajectory_sha256"] = digest(trajectory)
+            validate_trajectory(root / "result.csv", provider, [row])
+            for field, value in (("completion_tokens", "2"), ("prompt_tokens", "9"),
+                                 ("system_revision", "changed"), ("wall_ms", "19"), ("seed", "1"),
+                                 ("tool_calls", "0"), ("edit_attempts", "0")):
+                with self.subTest(field=field), self.assertRaises(SystemExit):
+                    validate_trajectory(root / "result.csv", provider, [row | {field: value}])
 
     def test_agent_context_preflight_requires_real_overflow_rejection(self):
         detail = {"code": 400, "type": "exceed_context_size_error", "message": "too long",
