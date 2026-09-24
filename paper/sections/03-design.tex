@@ -4,12 +4,10 @@
 \subsection{System Model}
 \label{sec:system-model}
 
-Joggle represents programs and compiler extensions with the same typed graph
-substrate. A \emph{subject mod} contains the program being inspected or
-changed, whereas an \emph{extension mod} contributes compiler functions. Both
-are ordinary mods: they use the same graph representation, type system,
-dependency rules, and loader. The distinction describes their role in one
-invocation, not two different runtime objects.
+Joggle uses one typed graph model for programs and compiler extensions.
+A \emph{subject mod} holds the program being inspected or transformed; an
+\emph{extension mod} supplies the compiler functions acting on it. These are roles
+within an invocation. Both use the same entity model, type system, and loader.
 
 The graph owned by a mod is
 \[
@@ -105,18 +103,18 @@ exchange graph handles and owned values through the same call interface.
   \label{fig:operator-extension}
 \end{figure}
 
-Joggle resolves a call from its qualified name, visible mods, explicit generic
-arguments, parameter types, and result context. The selected implementation may
-be a source body, an intrinsic, or a native binding. Caller syntax and the
-evaluator's result boundary remain identical across these implementations.
+To invoke a compiler function, Joggle resolves its qualified name, visible
+mods, explicit generic arguments, parameter types, and result context. The
+selected implementation may be a source body, an intrinsic, or a native
+binding. In each case, the caller uses the same syntax and receives results
+through the same evaluator boundary.
 
-Uniform calls retain distinct effect contracts. A query evaluates against a
-read-only mod and returns an \texttt{Attr}. A run applies one or more mutating
-functions within a transaction. An artifact call evaluates read-only over a
-prepared graph and returns text or bytes. Thus, \texttt{query}, \texttt{run},
-and \texttt{emit} share resolution and evaluation while preserving different
-publication rules. Read-only execution rejects mutation, and a run publishes
-only a verified graph.
+Effect contracts then determine how the resolved call accesses graph state.
+A query evaluates against a read-only mod and returns an \texttt{Attr}; a run applies
+mutating functions within a transaction. An artifact call reads a prepared
+graph and returns text or bytes. Thus, \texttt{query}, \texttt{run}, and \texttt{emit} share
+resolution and evaluation while enforcing their respective publication rules.
+Read-only execution rejects mutation, and a run publishes a verified graph.
 
 Compiler functions also compose through ordinary calls. A fusion function can
 invoke its legality analysis, and a conversion can query the fused operator's
@@ -152,22 +150,23 @@ signatures, unreadable fragments, and unresolved native bindings. It then loads
 source fragments in deterministic order. For a fixed mod graph and search-root
 order, this process yields a stable public function set.
 
-Visibility keeps this public set small. A public function can be resolved by a
-dependent mod, whereas a \texttt{local fn} remains inside its owner. Source
-fragments may split a large implementation without creating new dependency or
-lifecycle boundaries. A separate mod is appropriate when a capability needs an
-independent public surface, dependency set, owner, or installation lifecycle.
+Within the validated dependency closure, visibility determines which
+functions a dependent mod can call. Public functions cross this boundary,
+whereas a \texttt{local fn} remains inside its owner. Source fragments can therefore
+split a large implementation without creating new lifecycle boundaries.
+A separate mod establishes an independent public interface, dependency set,
+and installation lifecycle.
 
 Native code follows the same boundary. A body-less declaration names the typed
 contract, and a native library owned by that mod supplies its implementation.
 The binding is scoped to the owning mod and becomes available through the
 declared dependency graph.
 
-Lifecycle operations preserve the same closure. Installation stages a
-candidate, loads and verifies its dependencies, and publishes it only after
-validation succeeds. Upgrade additionally checks affected reverse dependencies.
-A failed operation leaves the installed graph unchanged. These rules make the
-mod the unit that evolves across installation and upgrade.
+The same dependency closure also governs installation and upgrade.
+Installation stages a candidate, loads and verifies its dependencies, and
+publishes it after validation succeeds. Upgrade additionally checks affected
+reverse dependencies. If either operation fails, the installed graph remains
+unchanged. The mod is therefore the unit of both composition and evolution.
 
 The mod graph is orthogonal to the containment structure inside a subject
 program. Blocks and operations describe program structure; \texttt{use} edges
@@ -391,8 +390,7 @@ execution plans, transaction journals, and counters remain private. This
 boundary keeps runtime machinery out of the extension API while allowing
 reports and profiles to evolve as structured data.
 
-Together, stable handles, hierarchical revisions, transactional mutation, and
-versioned execution plans make the higher-level design operational. Compiler
-functions can manipulate live graph entities, mods can evolve independently,
-and the evaluator can reuse work while preserving graph and dependency
-publication boundaries.
+The runtime gives each design mechanism an explicit contract.
+Handles identify the entities compiler functions observe and change; mod
+dependencies determine visible implementations; revisions and transactions
+establish when recorded observations remain reusable.

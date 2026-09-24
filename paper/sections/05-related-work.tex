@@ -69,11 +69,10 @@ to expose decisions at the operator, loop, memory, and target levels. Joggle
 supplies the programmable and organizational substrate for declaring,
 composing, converting, and executing these algorithms.
 
-This distinction separates two performance dimensions. Tensor compilers
-primarily optimize generated code. Joggle also reduces the compiler
-work repeated after a transformation, policy, or input changes.
-Section~\ref{sec:evaluation} measures generated artifacts and edit-to-result
-latency independently.
+Joggle addresses both generated-code performance and compiler turnaround.
+Typed functions express target-specific optimization, while recorded
+dependencies and cached work support repeated compilation. Section~\ref{sec:evaluation} evaluates
+these dimensions through executable latency and model-edit completion time.
 
 \subsection{Programmable Transformations}
 

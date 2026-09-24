@@ -1,29 +1,27 @@
 \section{Discussion}
 \label{sec:discussion}
 
-\paragraph{Composition follows capabilities.}
-Joggle retains functions, blocks, operations, values, and def--use relations
-for local compiler reasoning. A mod adds the cross-stage boundary: it binds a
-typed public surface to dependencies, source fragments, native bindings, and
-publication. This division lets a feature span semantic definitions,
-rewrites, conversions, and emitters while keeping one owner and one dependency
-closure. High-level operations and lowered helpers can coexist in the same
-graph as compiler functions progressively refine it.
+\paragraph{Ownership follows the feature.} A compiler's containment hierarchy describes
+the program, whereas a mod describes the feature that operates on it. Keeping
+these structures separate lets a numeric format or operator extension retain
+one public interface as its implementation spans analyses, rewrites, and
+emitters. Source fragments organize its internal code without introducing
+additional ownership boundaries. The mod graph then exposes the dependencies
+that loading and upgrade must validate.
 
-\paragraph{Precise observations bound updates.}
-Every cached call carries the observations that produced its result. A
-whole-graph traversal records a broad dependency; range and entity access
-record progressively narrower dependencies. After an edit, effect overlap
-selects the affected suffix and observation validation recovers reusable calls
-inside it. Miss reasons, observation counts, and executed-stage counts make
-this precision visible, while the update measurements quantify its payoff.
+\paragraph{Reuse follows the computation.} Stage selection depends on observed graph
+state and overlapping effects. Its granularity follows the compiler functions:
+narrow observations preserve more calls, while each selected stage executes
+its complete body. Across imported source revisions, the production update
+path reuses prepared function bodies through specialization signatures.
+These mechanisms act at different boundaries of the same workflow.
+The measured phase breakdown shows where reuse removes work and where emission
+and native compilation still determine turnaround.
 
-\paragraph{Publication unifies safety and reuse.}
-Queries execute under read effects, transformations publish a verified graph,
-and artifact calls return owned values through the same typed call boundary.
-A transaction publishes graph mutations, revisions, and dependency records as
-one state transition. External state enters through typed arguments or an
-environment revision, so every reusable observation names a published graph
-and environment. Predecoded execution plans remove repeated interpreter setup,
-and native mod bindings accelerate selected functions without changing their
-signatures or ownership rules.
+\paragraph{Publication preserves reusable state.} A cached result describes a specific
+verified graph, so dependency records and mutations share a publication
+boundary. Successful execution commits both; failed execution restores the
+preceding state. Typed arguments and environment revisions account for
+external inputs, while execution plans track the compiler functions themselves.
+This separation keeps ownership, graph effects, and evaluator state explicit
+without exposing private runtime structures to extension authors.

@@ -4,9 +4,10 @@
 \subsection{Methodology}
 \label{sec:eval-method}
 
-The evaluation maps each mechanism in Figure~\ref{fig:thesis-map} to an
-independently observable effect. Table~\ref{tab:evaluation} summarizes the
-subjects, controls, and primary measurements. Correctness gates latency aggregates.
+The evaluation examines three costs of compiler extension: completing a
+feature, modifying its implementation, and rebuilding an executable after
+an edit. A fourth comparison measures generated-code performance. Table~\ref{tab:evaluation}
+summarizes the subjects, controls, and primary measurements.
 
 \begin{table}[H]
   \caption{Evaluation matrix. Every comparison fixes revisions, inputs, and
@@ -309,7 +310,7 @@ values for every correct candidate remain in the accompanying CSV.
   \label{fig:model-performance}
 \end{figure}
 
-The execution measurements establish the cost and coverage of the emitted
-artifacts. Paired update measurements separately identify compilation work
-saved by reuse. These endpoints distinguish kernel performance from the
-turnaround of a compiler edit.
+The two performance experiments expose different optimization opportunities.
+Matrix-product lowering drives the largest operator gains, while prepared-body
+reuse reduces update turnaround. The phase breakdown identifies emission and
+native compilation as substantial remaining costs after preparation reuse.

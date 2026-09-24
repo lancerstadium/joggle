@@ -8,8 +8,8 @@ Figure~\ref{fig:workflow} follows a model from structure to device. Extension
 work enters at every level: an operator defines semantics, a graph pass changes
 connectivity, a system pass chooses order and storage, and a backend realizes
 the result for a platform. The interfaces at these levels evolved for
-different purposes. A feature that crosses them inherits every registration,
-calling, and invalidation convention.
+different purposes. A feature that crosses them must connect their
+registration, calling, and invalidation conventions.
 
 \begin{figure}[t]
   \centering
@@ -45,9 +45,10 @@ recorded dependencies drive their re-execution.
 \paragraph{Fragmented mechanisms.}
 Schemas define admissible programs. Analyses derive facts, passes rewrite
 graphs, converters bridge representations, and emitters produce artifacts.
-When each role has a separate declaration and invocation model, a feature
-cannot be inspected, generated, or composed as one typed program. Correctness
-depends on conventions outside the local definition.
+When each role has a separate declaration and invocation model, their
+composition requires adapters and conventions outside the local definition.
+A common syntax alone does not remove these boundaries; calls and values
+must compose as well.
 
 \paragraph{Scattered ownership.}
 Hierarchical IR assigns operations to regions, blocks, and functions.
@@ -56,8 +57,8 @@ build targets, pass pipelines, and backend tables. One semantic change
 therefore crosses several review and release boundaries.
 
 \paragraph{Coarse re-execution.}
-An ordered pipeline responds to a local edit by rerunning a suffix. The suffix
-is a coarse update unit: it includes stages that never observed the edited
+A driver that invalidates a pipeline suffix after a local edit selects a coarse
+update unit. That suffix can include stages that never observed the edited
 entity and stages unreachable from the preceding effects. Repeated
 decoding, traversal, conversion, and native compilation then dominate
 interactive turnaround.
@@ -81,7 +82,7 @@ declared dependencies, native bindings, and an independent lifecycle. This
 boundary must be orthogonal to program containment so that feature ownership
 survives graph lowering.
 
-\paragraph{R3: change-proportional execution.}
+\paragraph{R3: dependency-directed execution.}
 The runtime must identify what a call actually observed, propagate only
 effects that can reach later observations, and reuse decoded work across
 calls. Reuse becomes visible only when the graph and its dependency records

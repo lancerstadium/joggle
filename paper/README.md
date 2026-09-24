@@ -2,62 +2,68 @@
 
 ## Abstract
 
-Compiler extensions often span semantic definitions, analyses, transformations,
-conversions, and emitters. Separate interfaces scatter their implementation,
-while coarse invalidation repeats work after local edits. Joggle organizes
-these capabilities in a progressive intermediate representation. Typed compiler
-functions share a language, call model, and value model. Graph-level mods own
-cross-stage features independently of program containment. The evaluator uses
-recorded reads, published effects, and revisions to select affected calls;
-cached execution plans and prepared bodies preserve reusable work. Together,
-these mechanisms give an extension a common implementation interface, an
-explicit owner, and a dependency-directed update path. Across nine edit sites
-in three models, updates are $1.49$--$2.48\times$ faster than complete Joggle
-rebuilds, including emission, native compilation, and executable binding.
-Generated artifacts pass numerical checks on 24/24 operators and 14/15 models.
-On the eight models correct in all four compared systems, Joggle's geometric
-mean execution latency is $2.10\times$ lower than default TVM's. Joggle thus
-connects compiler programmability and feature ownership to reusable compilation
-within one graph representation.
+Rapid advances in AI bring frequent changes in model architectures, numeric
+formats, and hardware targets, placing growing demands on compiler
+extensibility. Supporting these changes requires features that span semantic
+definitions, analyses, transformations, conversions, and emitters. Their
+implementation is fragmented across programming interfaces and ownership
+boundaries, while local edits trigger coarse re-execution. We present Joggle,
+a compiler infrastructure built on a progressive intermediate representation.
+Typed compiler functions express these roles through one language, call model,
+and value model. Graph-level mods organize cross-stage features independently
+of program containment. Recorded observations and published effects drive
+reactive execution, with transactions preserving reusable graph state.
+Across nine edit sites in three models, prepared-body reuse accelerates
+executable-ready updates by $1.49$--$2.48\times$ over complete rebuilds.
+On eight models compiled correctly by all compared systems, Joggle achieves
+a $2.10\times$ geometric-mean execution speedup over default TVM.
+Together, these mechanisms provide a common programming model for evolving
+compiler capabilities alongside AI models and hardware.
 
 ## 1. Introduction
 
-A compiler extension is rarely one edit. Adding a numeric format, a fused
-operator, or a target mapping can require a semantic definition, legality
-analysis, graph rewrite, representation conversion, artifact emitter, and
-build registration. Modern infrastructures expose these tasks through
-different languages, object models, and ownership boundaries. The program is
-programmable; the path that changes its compiler remains fragmented.
+AI systems evolve through new operators, numeric formats, and hardware targets.
+Supporting these changes requires coordinated extensions across several parts
+of a compiler. For example, a fused operator needs a semantic definition, a
+legality analysis, a graph rewrite, and a target implementation. Changing its
+numeric format or layout requires these parts to agree again. Developers and
+code-generating agents must therefore coordinate several compiler roles to
+complete even a single feature.
 
-This mismatch matters for both developers and code-generating agents. A local
-feature is complete only when every cross-layer contract agrees. Its pieces
-may be scattered across an IR hierarchy, pass registry, build target,
-conversion library, and backend. A later edit must rediscover those pieces,
-and a staged driver may rerun an entire suffix even when most stages are
-unaffected. Three aspects determine the cost: how compiler functions are
-expressed, where the feature is owned, and which work must run again.
+This coordination becomes costly when compiler roles expose separate
+declaration and invocation mechanisms. Registries, build targets, and backend
+libraries can further divide ownership of the same feature. After an edit,
+an ordered pipeline may also rerun stages that never observed the changed
+state. Expression, ownership, and re-execution thus impose distinct costs on
+the same development task.
 
-Joggle treats compiler behavior as a typed program over the same graph that it
-transforms. A *compiler function* can define semantics, inspect a graph,
-rewrite it, convert representations, or emit an artifact through one language,
-call model, and value model. A graph-level *mod* owns the functions, native
-bindings, and dependencies that constitute a feature. During execution, Joggle
-records the graph state each call observes and the effects each stage publishes.
-Revisions, dependency indices, and cached execution plans then select the
-affected calls after an edit, while a transaction couples their records to the
-verified graph they describe.
+These costs reflect different relationships within the compiler. Program
+containment describes the code being compiled, whereas feature ownership spans
+the implementations acting on it. Similarly, two successive passes can inspect
+disjoint graph regions, so pipeline order alone does not determine their update
+dependencies. Addressing the three costs therefore requires explicit ownership
+and dependency boundaries alongside program structure.
 
-We call this a *progressive intermediate representation*. Compilation is not
-required to traverse a fixed ladder of mutually isolated IRs. Instead, typed
-compiler functions progressively refine a verified graph. Every published
-state remains a normal, inspectable mod, and each feature keeps an explicit
-owner across stages.
+Joggle follows this separation by expressing compiler behavior as typed
+functions over a shared graph model. A *compiler function* defines semantics,
+analyzes or transforms the graph, converts representations, or emits an
+artifact. To organize these functions, a graph-level *mod* groups a feature's
+implementations, native bindings, and declared dependencies. At execution time,
+recorded graph observations and published effects determine which calls
+require re-execution. Transactions publish graph changes and dependency records
+together, preserving the state on which reuse depends.
 
-Figure 1 states the paper's argument. Its rows move from development problem to
-Joggle mechanism to observable outcome. The evaluation follows the columns:
-extension completion, matched patch footprint, and model update cost. Separate
-operator and model experiments test the artifacts emitted through the common
-extension surface.
+As these functions execute, they progressively refine a typed graph without
+fixing its operator set. Semantic operations and lower-level helpers can
+coexist during refinement, and each published state remains a verified,
+inspectable mod. We call this a *progressive intermediate representation*.
+Its key distinction is that the owner of a feature remains separate from the
+program structure its functions change.
+
+Figure 1 brings these relationships together: three development costs lead to
+three mechanisms and corresponding evaluation endpoints. Extension completion,
+change footprint, and update cost assess the compiler-development workflow;
+operator and model execution assess the resulting artifacts.
 
 <!-- FIGURE 1 PROMPT — A dense two-column 3×3 systems-paper argument map. The
 columns are PROGRAMMABILITY, ORGANIZATION, and UPDATE; the rows are CHALLENGE,
@@ -84,28 +90,30 @@ decorative people. -->
 *Figure 1: Joggle maps three extension challenges to system mechanisms and
 measurable outcomes.*
 
-Joggle contributes three mechanisms.
+Together, these choices yield three complementary design mechanisms.
 
-**Unified compiler functions.** Semantics, analysis, transformation, conversion,
-and emission use typed calls over shared graph handles and values. Their effect
-contracts distinguish inspection, graph mutation, and artifact return.
+**Unified compiler functions.** Five compiler roles share typed calls over
+graph handles and owned values. Common resolution and composition rules let
+one role invoke another, while effect contracts distinguish inspection,
+mutation, and artifact return.
 
-**Graph-level feature ownership.** Mods group a feature's functions, native
-bindings, and dependencies across compilation stages. Visibility and publication
-follow the mod graph rather than the program's containment hierarchy.
+**Graph-level feature ownership.** A mod groups cross-stage functions and
+native bindings behind one public interface and declared dependency closure.
+Loading, visibility, and publication follow this boundary independently of
+containment within the subject program.
 
-**Dependency-directed updates.** Read records carry entity generations and
-revisions. The evaluator checks these records and propagates overlapping effects. A
-transaction publishes graph changes and their dependency records together.
+**Reactive execution.** The evaluator validates recorded observations
+and propagates overlapping effects to select affected stages. Entity generations
+and revisions identify stale observations; transactional publication keeps
+reusable records consistent with the verified graph.
 
-We evaluate these elements with held-out extension tasks, matched patches
-across Joggle, MLIR, and xDSL, controlled model edits across Joggle, TVM, and
-ONNX-MLIR, and executable artifacts against ONNX Runtime. Repeated model edits
-turn complete Joggle rebuilds into $1.49$--$2.48\times$ faster updates with
-identical output digests. Joggle passes 24/24 operators and 14/15 models. Its
-optimization pack improves operator latency by $1.78\times$; on the eight
-models supported by every system, Joggle is $2.10\times$ faster than default
-TVM.
+The evaluation pairs extension tasks and implementation patches across Joggle,
+MLIR, and xDSL. Model-edit comparisons use Joggle, TVM, and ONNX-MLIR; execution
+comparisons additionally include ONNX Runtime. Prepared-body reuse yields
+$1.49$--$2.48\times$ executable-ready speedups over complete Joggle rebuilds on
+three models, with identical output digests. The generated artifacts pass
+checks on all 24 operators and 14 of the 15 models. These experiments separate
+extension cost, compilation turnaround, and generated-code performance.
 
 ## 2. Why Compiler Extensions Resist Local Change
 
@@ -115,7 +123,7 @@ Figure 2 follows a model from structure to device. Extension work enters at
 every level: an operator defines semantics, a graph pass changes connectivity,
 a system pass chooses order and storage, and a backend realizes the result for
 a platform. The interfaces at these levels evolved for different purposes. A
-feature that crosses them inherits every registration, calling, and
+feature that crosses them must connect their registration, calling, and
 invalidation convention.
 
 <!-- FIGURE 2 PLAN — Single-column figure. Preserve the supplied overview
@@ -149,16 +157,17 @@ re-execution.
 *Fragmented mechanisms.* Schemas define admissible programs. Analyses derive
 facts, passes rewrite graphs, converters bridge representations, and emitters
 produce artifacts. When each role has a separate declaration and invocation
-model, a feature cannot be inspected, generated, or composed as one typed
-program. Correctness depends on conventions outside the local definition.
+model, their composition requires adapters and conventions outside the local
+definition. A common syntax alone does not remove these boundaries; calls and
+values must compose as well.
 
 *Scattered ownership.* Hierarchical IR assigns operations to regions, blocks,
 and functions. Cross-stage capability ownership instead emerges from
 directories, registries, build targets, pass pipelines, and backend tables. One
 semantic change therefore crosses several review and release boundaries.
 
-*Coarse re-execution.* An ordered pipeline responds to a local edit by rerunning
-a suffix. The suffix is a coarse update unit: it includes stages that never
+*Coarse re-execution.* A driver that invalidates a pipeline suffix after a local
+edit selects a coarse update unit. That suffix can include stages that never
 observed the edited entity and stages unreachable from the preceding effects.
 Repeated decoding, traversal, conversion, and native compilation then dominate
 turnaround.
@@ -182,7 +191,7 @@ owner, public and local functions, declared dependencies, native bindings, and
 an independent lifecycle. This boundary must be orthogonal to program
 containment so that feature ownership survives graph lowering.
 
-**R3 — Change-proportional execution.** The runtime must identify what a call
+**R3 — Dependency-directed execution.** The runtime must identify what a call
 actually observed, propagate only effects that can reach later observations,
 and reuse decoded work across calls. Reuse becomes visible only when the graph
 and its dependency records are published together.
@@ -195,12 +204,10 @@ resolution, ownership, dependency capture, and transactional execution.
 
 ### 3.1 System Model
 
-Joggle represents programs and compiler extensions with the same typed graph
-substrate. A *subject mod* contains the program being inspected or changed,
-whereas an *extension mod* contributes compiler functions. Both are ordinary
-mods: they use the same graph representation, type system, dependency rules,
-and loader. The distinction describes their role in one invocation, not two
-different runtime objects.
+Joggle uses one typed graph model for programs and compiler extensions.
+A *subject mod* holds the program being inspected or transformed; an
+*extension mod* supplies the compiler functions acting on it. These are roles
+within an invocation. Both use the same entity model, type system, and loader.
 
 The graph owned by a mod is
 
@@ -312,18 +319,18 @@ fake source code, cache-hit counts, or isolated output-type edits. -->
 roles. Fusion and conversion publish verified graphs; emission reads the
 prepared graph and returns an artifact without changing it.*
 
-Joggle resolves a call from its qualified name, visible mods, explicit generic
-arguments, parameter types, and result context. The selected implementation
-may be a source body, an intrinsic, or a native binding. Caller syntax and the
-evaluator's result boundary remain identical across these implementations.
+To invoke a compiler function, Joggle resolves its qualified name, visible
+mods, explicit generic arguments, parameter types, and result context. The
+selected implementation may be a source body, an intrinsic, or a native
+binding. In each case, the caller uses the same syntax and receives results
+through the same evaluator boundary.
 
-Uniform calls retain distinct effect contracts. A query evaluates against a
-read-only mod and returns an `Attr`. A run applies one or more mutating
-functions within a transaction. An artifact call evaluates read-only over a
-prepared graph and returns text or bytes. Thus, `query`, `run`, and `emit`
-share resolution and evaluation while preserving different publication rules.
-Read-only execution rejects mutation, and a run publishes only a verified
-graph.
+Effect contracts then determine how the resolved call accesses graph state.
+A query evaluates against a read-only mod and returns an `Attr`; a run applies
+mutating functions within a transaction. An artifact call reads a prepared
+graph and returns text or bytes. Thus, `query`, `run`, and `emit` share
+resolution and evaluation while enforcing their respective publication rules.
+Read-only execution rejects mutation, and a run publishes a verified graph.
 
 Compiler functions also compose through ordinary calls. A fusion function can
 invoke the legality analysis in Figure 4, and a conversion can query the fused
@@ -359,22 +366,23 @@ public signatures, unreadable fragments, and unresolved native bindings. It
 then loads source fragments in deterministic order. For a fixed mod graph and
 search-root order, this process yields a stable public function set.
 
-Visibility keeps this public set small. A public function can be resolved by a
-dependent mod, whereas a `local fn` remains inside its owner. Source fragments
-may split a large implementation without creating new dependency or lifecycle
-boundaries. A separate mod is appropriate when a capability needs an
-independent public surface, dependency set, owner, or installation lifecycle.
+Within the validated dependency closure, visibility determines which
+functions a dependent mod can call. Public functions cross this boundary,
+whereas a `local fn` remains inside its owner. Source fragments can therefore
+split a large implementation without creating new lifecycle boundaries.
+A separate mod establishes an independent public interface, dependency set,
+and installation lifecycle.
 
 Native code follows the same boundary. A body-less declaration names the typed
 contract, and a native library owned by that mod supplies its implementation.
 The binding is scoped to the owning mod and becomes available through the
 declared dependency graph.
 
-Lifecycle operations preserve the same closure. Installation stages a
-candidate, loads and verifies its dependencies, and publishes it only after
-validation succeeds. Upgrade additionally checks affected reverse
-dependencies. A failed operation leaves the installed graph unchanged. These
-rules make the mod the unit that evolves across installation and upgrade.
+The same dependency closure also governs installation and upgrade.
+Installation stages a candidate, loads and verifies its dependencies, and
+publishes it after validation succeeds. Upgrade additionally checks affected
+reverse dependencies. If either operation fails, the installed graph remains
+unchanged. The mod is therefore the unit of both composition and evolution.
 
 The mod graph is orthogonal to the containment structure inside a subject
 program. Blocks and operations describe program structure; `use` edges
@@ -604,19 +612,19 @@ plans, transaction journals, and counters remain private. This boundary keeps
 runtime machinery out of the extension API while allowing reports and profiles
 to evolve as structured data.
 
-Together, stable handles, hierarchical revisions, transactional mutation, and
-versioned execution plans make the higher-level design operational. Compiler
-functions can manipulate live graph entities, mods can evolve independently,
-and the evaluator can reuse work while preserving graph and dependency
-publication boundaries.
+The runtime gives each design mechanism an explicit contract.
+Handles identify the entities compiler functions observe and change; mod
+dependencies determine visible implementations; revisions and transactions
+establish when recorded observations remain reusable.
 
 ## 4. Evaluation
 
 ### 4.1 Methodology
 
-The evaluation maps each mechanism in Figure 1 to an independently observable
-effect. Table 1 summarizes the subjects, controls, and primary measurements.
-Correctness gates latency aggregates.
+The evaluation examines three costs of compiler extension: completing a
+feature, modifying its implementation, and rebuilding an executable after
+an edit. A fourth comparison measures generated-code performance. Table 1
+summarizes the subjects, controls, and primary measurements.
 
 | Property | Comparison | Primary evidence |
 | --- | --- | --- |
@@ -948,10 +956,10 @@ subject_kind,subject,subject_hash,family,system,system_revision,variant,
 supported,reason,iteration,calls_per_sample,latency_ns,max_abs_error,
 max_rel_error,input_digest,output_digest,correct,seed. -->
 
-The execution measurements establish the cost and coverage of the emitted
-artifacts. Paired update measurements separately identify compilation work
-saved by reuse. These endpoints distinguish kernel performance from the
-turnaround of a compiler edit.
+The two performance experiments expose different optimization opportunities.
+Matrix-product lowering drives the largest operator gains, while prepared-body
+reuse reduces update turnaround. The phase breakdown identifies emission and
+native compilation as substantial remaining costs after preparation reuse.
 
 ## 5. Related Work
 
@@ -1010,10 +1018,10 @@ representations to expose decisions at the operator, loop, memory, and target
 levels. Joggle supplies the programmable and organizational substrate for
 declaring, composing, converting, and executing these algorithms.
 
-This distinction separates two performance dimensions. Tensor compilers
-primarily optimize generated code. Joggle also reduces the compiler
-work repeated after a transformation, policy, or input changes. Section 4
-measures generated artifacts and edit-to-result latency independently.
+Joggle addresses both generated-code performance and compiler turnaround.
+Typed functions express target-specific optimization, while recorded
+dependencies and cached work support repeated compilation. Section 4 evaluates
+these dimensions through executable latency and model-edit completion time.
 
 ### 5.3 Programmable Transformations
 
@@ -1054,50 +1062,42 @@ fine-grained graph invalidation with an ordered, effectful compiler pipeline.
 
 ## 6. Discussion
 
-**Composition follows capabilities.** Joggle retains functions, blocks,
-operations, values, and def-use relations for local compiler reasoning. A mod
-adds the cross-stage boundary: it binds a typed public surface to dependencies,
-source fragments, native bindings, and publication. This division lets a
-feature span semantic definitions, rewrites, conversions, and emitters while
-keeping one owner and one dependency closure. High-level operations and lowered
-helpers can coexist in the same graph as compiler functions progressively
-refine it.
+**Ownership follows the feature.** A compiler's containment hierarchy describes
+the program, whereas a mod describes the feature that operates on it. Keeping
+these structures separate lets a numeric format or operator extension retain
+one public interface as its implementation spans analyses, rewrites, and
+emitters. Source fragments organize its internal code without introducing
+additional ownership boundaries. The mod graph then exposes the dependencies
+that loading and upgrade must validate.
 
-**Precise observations bound updates.** Every cached call carries
-the observations that produced its result. A whole-graph traversal records a
-broad dependency; range and entity access record progressively narrower
-dependencies. After an edit, effect overlap selects the affected suffix and
-observation validation recovers reusable calls inside it. Miss reasons,
-observation counts, and executed-stage counts make this precision visible,
-while the update measurements quantify its payoff.
+**Reuse follows the computation.** Stage selection depends on observed graph
+state and overlapping effects. Its granularity follows the compiler functions:
+narrow observations preserve more calls, while each selected stage executes
+its complete body. Across imported source revisions, the production update
+path reuses prepared function bodies through specialization signatures.
+These mechanisms act at different boundaries of the same workflow.
+The measured phase breakdown shows where reuse removes work and where emission
+and native compilation still determine turnaround.
 
-**Publication unifies safety and reuse.** Queries execute under read effects,
-transformations publish a verified graph, and artifact calls return owned
-values through the same typed call boundary. A transaction publishes graph
-mutations, revisions, and dependency records as one state transition. External
-state enters through typed arguments or an environment revision, so every
-reusable observation names a published graph and environment. Predecoded
-execution plans remove repeated interpreter setup, and native mod bindings
-accelerate selected functions without changing their signatures or ownership
-rules.
+**Publication preserves reusable state.** A cached result describes a specific
+verified graph, so dependency records and mutations share a publication
+boundary. Successful execution commits both; failed execution restores the
+preceding state. Typed arguments and environment revisions account for
+external inputs, while execution plans track the compiler functions themselves.
+This separation keeps ownership, graph effects, and evaluator state explicit
+without exposing private runtime structures to extension authors.
 
 ## 7. Conclusion
 
-Joggle makes compiler behavior part of the typed program. Compiler functions
-express semantics, analysis, transformation, conversion, and emission over one
-graph model. Mods give each cross-stage capability an explicit owner and
-dependency closure. Recorded reads, published effects, revisions, and stable
-entity generations turn a subsequent edit into a dependency-selected update,
-with transactions coupling reusable records to the verified graph.
-
-The implementation carries these abstractions through native artifact
-publication. Across repeated model edits, Joggle updates reach a replacement
-executable 1.49--2.48× faster than matched complete rebuilds and produce
-identical output digests. The generated artifacts pass 24/24 operator oracles
-and 14/15 model oracles; the optimization pack improves aggregate operator
-latency by 1.78×, and Joggle outperforms default TVM by 2.10× on the common
-model set. Joggle therefore connects extension semantics, feature ownership,
-and update execution in one compiler substrate.
+Joggle organizes compiler extension around typed functions, graph-level mods,
+and dependency-directed execution. A shared language, call model, and value
+model compose semantic definitions, analyses, transformations, conversions,
+and emitters. Mods preserve cross-stage ownership, while recorded observations
+and transactional publication support reuse over mutable graphs. Prepared-body
+reuse yields $1.49$--$2.48\times$ executable-ready speedups over complete
+rebuilds on the three repeated model subjects. The resulting design treats
+compiler extension as a program with explicit composition, ownership, and
+update dependencies.
 
 ## Appendix A. Operator Measurements
 

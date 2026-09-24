@@ -48,3 +48,14 @@ bibliography text, and ACM caption defaults are also below 10 pt. Resolve the
 typography and recheck pagination before upload.
 The two-column rule is explicit for the paper; the CFP gives no separate
 layout specification for the optional supplement.
+
+## Code and measurement alignment
+
+The repeated-update data in `data/figure-06-update.json` are pinned to revision
+`1dce55b815f2f63d75b8b799119e8febc8956523`, including prepared-body reuse.
+The current main-branch resident compiler does not yet contain that reuse path.
+Integrate and verify the measured implementation before packaging the artifact;
+do not relabel those measurements as results of the current main branch.
+The external-data integration check at
+`.cache/artifact/external-data-verified.qpfoeC/` is a separate single-repetition
+correctness run, not a replacement for the paper's repeated measurements.
