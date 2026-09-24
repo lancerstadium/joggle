@@ -690,20 +690,13 @@ plans, transaction journals, and counters remain private.
 ### 4.1 Methodology
 
 The evaluation follows a compiler feature from implementation to execution.
-We first assess extension completion, then measure the change footprint of
-implementations with the same behavior. Next, we measure the time from a model
-edit to a replacement executable. Finally, we compare the execution latency
-of generated code. Table 1 connects these four comparisons to the design goals.
-
-| Property | Comparison | Primary evidence |
-| --- | --- | --- |
-| Convenient | 3 systems; 12 eval tasks | completion, tokens |
-| Controllable | 3 systems; extension packages | files, lines, zones |
-| Efficient | 3 systems; 9 edit sites | update time, reuse |
-| End-to-end | 4 systems | correctness, latency |
-
-*Table 1: Evaluation matrix. Every comparison fixes revisions, inputs, and its
-correctness oracle before measurement.*
+We assess convenience through completion and token cost on twelve extension
+tasks. We then assess control through the files, lines, and integration zones
+changed by behaviorally equivalent feature packages. Next, nine model edit
+sites expose the cost of producing a replacement executable and the work
+saved by reuse. Finally, execution correctness and latency establish the
+end-to-end outcome. Together, these comparisons connect extension effort,
+change scope, and update cost to the performance of the resulting program.
 
 **Subjects and controls.** Extension and ownership comparisons use Joggle,
 MLIR, and xDSL. Each extension follows its system's native API at a pinned
@@ -1045,7 +1038,7 @@ separately.
 
 ## 5. Related Work
 
-Table 2 compares capabilities at the extension boundary. Shared typed calls
+Table 1 compares capabilities at the extension boundary. Shared typed calls
 evaluate all five compiler roles through one call and value model.
 Cross-stage packages group these roles under a feature
 owner. Read-tracked reuse discovers dependencies from executed reads, while
@@ -1065,7 +1058,7 @@ extension composition to incremental execution.
 | Transactional IR edits | ✓ | — | — | — | ✓ | — | — | — | — | — | **✓** |
 | Rollback scope | Conversion | — | — | — | Alternative | — | — | — | — | — | **Sequence** |
 
-*Table 2: Extension forms, composition, and reuse across eleven systems.
+*Table 1: Extension forms, composition, and reuse across eleven systems.
 ✓: supplied by the compared extension mechanism; —: not supplied by that
 mechanism. Cross-stage packages may use host-language libraries; shared role
 calls require a common compiler-evaluated call and value model, not merely a

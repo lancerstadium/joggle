@@ -5,30 +5,13 @@
 \label{sec:eval-method}
 
 The evaluation follows a compiler feature from implementation to execution.
-We first assess extension completion, then measure the change footprint of
-implementations with the same behavior. Next, we measure the time from a model
-edit to a replacement executable. Finally, we compare the execution latency
-of generated code. Table~\ref{tab:evaluation} connects these four comparisons to
-the design goals.
-
-\begin{table}[H]
-  \caption{Evaluation matrix. Every comparison fixes revisions, inputs, and
-  its correctness oracle before measurement.}
-  \label{tab:evaluation}
-  \footnotesize
-  \setlength{\tabcolsep}{4pt}
-  \renewcommand{\arraystretch}{1.08}
-  \begin{tabular}{@{}lll@{}}
-    \toprule
-    Property & Comparison & Primary evidence \\
-    \midrule
-    Convenient & 3 systems; 12 eval tasks & completion, tokens \\
-    Controllable & 3 systems; packages & files, lines, zones \\
-    Efficient & 3 systems; 9 edit sites & update time, reuse \\
-    End-to-end & 4 systems & correctness, latency \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+We assess convenience through completion and token cost on twelve extension
+tasks. We then assess control through the files, lines, and integration zones
+changed by behaviorally equivalent feature packages. Next, nine model edit
+sites expose the cost of producing a replacement executable and the work
+saved by reuse. Finally, execution correctness and latency establish the
+end-to-end outcome. Together, these comparisons connect extension effort,
+change scope, and update cost to the performance of the resulting program.
 
 \paragraph{Subjects and controls.}
 Extension and ownership comparisons use Joggle, MLIR, and xDSL. Each extension

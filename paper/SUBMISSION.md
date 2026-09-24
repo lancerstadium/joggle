@@ -68,7 +68,7 @@ in a six-panel display. Appendix E adds complete footprints (A.13), native
 installation files (A.14), and six worked maintenance input/output pairs (A.15).
 The related-work table places eleven systems/frameworks in one horizontal band,
 without interspersed category-title rows. Blue checkmarks mark supported
-capabilities, and a tinted column identifies Joggle. Table 2 now separates
+capabilities, and a tinted column identifies Joggle. Table 1 now separates
 positioning, extension form, and native mechanism capabilities; measured package
 costs remain in the evaluation rather than this literature comparison. Figure 6 uses four
 independent protocol vignettes, distinct from the author's 3v3 overview. The main PDF
@@ -162,7 +162,7 @@ The following issues remain substantive submission gates, not layout work:
 
 The paper now accounts for input verification and verification after every
 executed stage, and states the native-C versus Python-driven invocation
-boundaries in the main execution section. Table 2 distinguishes composition
+boundaries in the main execution section. Table 1 distinguishes composition
 units from the measured native feature packages. These edits address reporting
 issues; they do not resolve the scheduling defect or missing experiments above.
 
@@ -231,7 +231,7 @@ page 13; the supplement has 15 portrait pages. The latest build has no
 overfull boxes or undefined references. Main pages 8 and 12 and supplement
 page 3 were rendered and visually checked after the prose edits.
 
-Table 2 compares eleven systems in one horizontal header. Its binary rows
+Table 1 compares eleven systems in one horizontal header. Its binary rows
 concern shared compiler-evaluated role calls, cross-stage packages, read-tracked
 reuse, and transactional IR edits. Cross-stage host-language packages receive
 credit; using one host language alone does not establish one compiler call/value
