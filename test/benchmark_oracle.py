@@ -37,9 +37,84 @@ import run_extension_agent
 from merge_benchmark_rows import audited_input
 from merge_update_rows import production_rows, sha256 as file_sha256
 import minimize_patch
+import package_cases
+import run_package_task
+from collect_footprint import collect_packages
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_package_collector_rejects_failed_candidate_before_publication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            case = root / "lowbit-integrate-Joggle"
+            case.mkdir()
+            (case / "result.json").write_text(json.dumps({
+                "schema": "native-package-task/v1", "passed": False}))
+            with self.assertRaisesRegex(ValueError, "unvalidated candidate"):
+                collect_packages(root, root / "output.csv")
+            self.assertFalse((root / "output.csv").exists())
+
+    def test_package_changes_have_anchored_native_edits(self):
+        root = Path(__file__).resolve().parents[1]
+        manifest = json.loads((root / "artifact/manifests/package-changes.json").read_text())
+        for case in manifest["cases"]:
+            for system, suffix in (("Joggle", "jog"), ("MLIR", "cpp"), ("xDSL", "py")):
+                with self.subTest(case=case["id"], system=system):
+                    source = (root / "artifact/extensions" / case["feature"] / f"reference.{suffix}").read_text()
+                    changed = package_cases.candidate_source(source, system, case["id"])
+                    self.assertEqual(source == changed, case["kind"] == "integration")
+        with self.assertRaises(ValueError):
+            package_cases.candidate_source("changed upstream", "Joggle", "lowbit-symmetric")
+
+    def test_package_numeric_oracles_match_admitted_semantics(self):
+        from run_extension_task import qint4_reference, qconv_reference
+        root = Path(__file__).resolve().parents[1]
+        tasks = json.loads((root / "artifact/manifests/extension-specs.json").read_text())["tasks"]
+        for task in tasks:
+            if task["id"] not in ("vert-int4", "vert-fused-op"):
+                continue
+            for case in task["positive_cases"]:
+                with self.subTest(task=task["id"], case=case["id"]):
+                    if task["id"] == "vert-int4":
+                        actual = package_cases.lowbit_expected("lowbit-integrate", case["input"])
+                        reference = qint4_reference(case["input"])
+                        self.assertEqual(actual["values"], reference["values"])
+                        self.assertEqual(actual["bytes_hex"], reference["bytes_hex"])
+                    else:
+                        self.assertEqual(package_cases.qconv_expected("qconv-integrate", case["input"]),
+                                         np.asarray(qconv_reference(case["input"])["values"]).reshape(-1).tolist())
+
+    def test_package_variants_distinguish_arithmetic_and_layout(self):
+        request = {"lhs": [-8, 7, -1], "rhs": [-8, -8, 1]}
+        self.assertEqual(package_cases.lowbit_expected("lowbit-symmetric", request)["values"], [-7, -1, 0])
+        self.assertEqual(package_cases.lowbit_expected("lowbit-subtract", request)["values"], [0, 7, -2])
+        self.assertEqual(package_cases.lowbit_expected("lowbit-msb-first", request)["bytes_hex"], "8f 00")
+        q = {"x": [[[[1]]]], "w": [[[[1]]]], "bias": [0],
+             "scales": {"acc": 0.5, "out": 1.0}, "output_zero": -4}
+        self.assertEqual(package_cases.qconv_expected("qconv-integrate", q), [-4])
+        self.assertEqual(package_cases.qconv_expected("qconv-ties-away", q), [-3])
+        q.update(x=[[[[20]]]], max_value=6.0)
+        self.assertEqual(package_cases.qconv_expected("qconv-relu6", q), [2])
+        q.update(x=[[[[i+j*4] for i in range(4)] for j in range(4)]], strides=[2, 2])
+        q.pop("max_value")
+        q["scales"] = {"acc": 1.0, "out": 1.0}
+        self.assertEqual(package_cases.qconv_expected("qconv-stride2", q), [-4, -2, 4, 6])
+        expected = package_cases.graph("qconv-stride2", q, transformed=True)
+        self.assertEqual(expected["nodes"][0]["results"][0]["shape"], [1, 2, 2, 1])
+
+    @unittest.skipUnless(shutil.which("cc"), "native C compiler required")
+    def test_package_runtime_detects_parent_output_extent(self):
+        request = {"x": [[[[0], [0]], [[0], [0]]]], "w": [[[[0]]]], "bias": [0],
+                   "scales": {"acc": 1.0, "out": 1.0}, "strides": [2, 2]}
+        # Deliberately wrong: write all four stride-one output elements into
+        # a contract with one output element. The guarded driver must reject it.
+        source = "#include <stdint.h>\nint task_kernel(const int8_t*x,const int8_t*w,const int32_t*b,int8_t*y){for(int i=0;i<4;i++)y[i]=0;return 0;}"
+        with tempfile.TemporaryDirectory() as directory:
+            result = run_package_task.runtime("qconv-stride2", request, source, Path(directory), shutil.which("cc"))
+            self.assertFalse(result["passed"])
+            self.assertEqual(result["probes"], 33)
+            self.assertTrue(all(row["exit_code"] == 4 for row in result["runs"]))
+
     def test_patch_minimization_uses_private_snapshot_and_preserves_checkout(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

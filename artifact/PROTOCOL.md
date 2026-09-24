@@ -111,6 +111,16 @@ executable-success measurements.
 
 ## Figure 5 · change footprint
 
+The native package matrix is run through `run_package_task.py`; its shared
+case definitions and independent arithmetic oracles are in `package_cases.py`.
+For each maintenance case, run both the changed package and `--parent` with
+the same fixture bytes. Collect the complete 24-condition matrix with
+`collect_footprint.py --package-runs <directory> --output <csv>`.
+The package collector verifies all changed packages, failing positive parent
+controls, fixture and source hashes, and recomputed patch counts. These counts
+describe the observed implementations; they are not hunk-minimized estimates.
+The original Git-patch collector remains available through `--cases`.
+
 Amended 24 September 2026, with author approval, before collecting package
 footprints. Single-file Agent tasks remain the Figure 4 population; their file
 counts do not measure cross-stage package ownership. The Figure 5 unit is a

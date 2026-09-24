@@ -1,0 +1,190 @@
+{
+  "schema": "native-package-footprint/v1",
+  "matrix_complete": true,
+  "hunk_minimized": false,
+  "count_policy": "Observed source lines including publication scaffolding; excludes fixtures and shared measurement code; one feature package is one zone.",
+  "manifest_sha256": "143632b3ebf1556ca21aebaf6d5280f4f77c561b50be79c6b621e8b1d7f61a60",
+  "output_sha256": "f145f2a9d941b99eea6437122f4e76fa6c63e356eb88fa383c92fee138559e07",
+  "cases": [
+    {
+      "case": "lowbit-integrate",
+      "system": "Joggle",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/lowbit-integrate-Joggle/result.json",
+      "record_sha256": "9f77db913b2db2417a8fcf2cd5a4faa156e4391f3e425c94d1019a665c076369"
+    },
+    {
+      "case": "lowbit-integrate",
+      "system": "MLIR",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/lowbit-integrate-MLIR/result.json",
+      "record_sha256": "59797784a1918bc4a71bd3f30a2086f9c127a57e6d5f60753ec3c91b94058639"
+    },
+    {
+      "case": "lowbit-integrate",
+      "system": "xDSL",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/lowbit-integrate-xDSL/result.json",
+      "record_sha256": "35907052a10dc37a2ca185992f713229b07304f79e86428ff033709dab327f47"
+    },
+    {
+      "case": "lowbit-symmetric",
+      "system": "Joggle",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/lowbit-symmetric-Joggle/result.json",
+      "record_sha256": "356605f835f80e3ac86e92a85ebfd40b24f2980b4c631957a23002c127b05a6d",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-lowbit-symmetric-Joggle/result.json",
+      "parent_sha256": "d2fe44e09f710e844ba5f27143df2f1a9a267a60c2dfce02775ea7e2a03b0c80"
+    },
+    {
+      "case": "lowbit-symmetric",
+      "system": "MLIR",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/lowbit-symmetric-MLIR/result.json",
+      "record_sha256": "4f646ee9b270ae4ff9ffb8ad8529d586579186f5deeaf94fde661248264c9741",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-lowbit-symmetric-MLIR/result.json",
+      "parent_sha256": "cab42a2fea654b1fe2a0a060944d220d75c5c743c2c206d3fe44c6c107df62f2"
+    },
+    {
+      "case": "lowbit-symmetric",
+      "system": "xDSL",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/lowbit-symmetric-xDSL/result.json",
+      "record_sha256": "eb73d3e7280a85e2fb085d707b1604059c06cfe821a319415fb03d80518df7fa",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-lowbit-symmetric-xDSL/result.json",
+      "parent_sha256": "f4ae7068a157422b81a71b276c1bb141dbf27c0833b16e580ed5eee9b61d25e3"
+    },
+    {
+      "case": "lowbit-subtract",
+      "system": "Joggle",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/lowbit-subtract-Joggle/result.json",
+      "record_sha256": "fc624dc009d1e8fe356fc3538ed300ce169f9369b8205b06b640779e1064f4d0",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-lowbit-subtract-Joggle/result.json",
+      "parent_sha256": "308bc4fbf16d96dfde497bd362f4648982937f15a8de816581992ddd63e011a7"
+    },
+    {
+      "case": "lowbit-subtract",
+      "system": "MLIR",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/lowbit-subtract-MLIR/result.json",
+      "record_sha256": "76fcf99bbddfc295790858968c5a431a0b0418cb4c5c835e8c83c158b6df4bf6",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-lowbit-subtract-MLIR/result.json",
+      "parent_sha256": "55e63b8bf879c646fe75a74e9f1b9c6a16627892e5df81752548789626a94350"
+    },
+    {
+      "case": "lowbit-subtract",
+      "system": "xDSL",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/lowbit-subtract-xDSL/result.json",
+      "record_sha256": "4077bbc2672a42524c902d89553001f3b1a393a3580d0477580a2eae270a9d9d",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-lowbit-subtract-xDSL/result.json",
+      "parent_sha256": "9e206fb1e004ef6255c958c907b9c314560aa18ff1b831d00df82a7dd38b38d5"
+    },
+    {
+      "case": "lowbit-msb-first",
+      "system": "Joggle",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/lowbit-msb-first-Joggle/result.json",
+      "record_sha256": "2c64565b7518b6fa642586712e6e1eeab93f1906971f5d47ff74054eb7662faf",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-lowbit-msb-first-Joggle/result.json",
+      "parent_sha256": "31362330545eff5d3aa079f9b2f838db53404899fb09879396663597be181fcc"
+    },
+    {
+      "case": "lowbit-msb-first",
+      "system": "MLIR",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/lowbit-msb-first-MLIR/result.json",
+      "record_sha256": "c0162c9df35e5de7e40924dae80a3768f1400991290ca3ab4fd4ee2063d8dcd4",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-lowbit-msb-first-MLIR/result.json",
+      "parent_sha256": "15a2f8d8deef031e7e6d101ccf701e4554d15fc1e5bd6bbb2f569325e7dff815"
+    },
+    {
+      "case": "lowbit-msb-first",
+      "system": "xDSL",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/lowbit-msb-first-xDSL/result.json",
+      "record_sha256": "53818b6db5261c6d4d1c0a42944efefd3be22fb05ca65f2eca23e1e106a04b36",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-lowbit-msb-first-xDSL/result.json",
+      "parent_sha256": "6fbb8e24480541a5136418924b61f58319676b2423288d230bd4d8996ffa34de"
+    },
+    {
+      "case": "qconv-integrate",
+      "system": "Joggle",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/qconv-integrate-Joggle/result.json",
+      "record_sha256": "35535fbe2a2850581d15714fd271502a3df422cbe1ce165dc99755dcba806e1f"
+    },
+    {
+      "case": "qconv-integrate",
+      "system": "MLIR",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/qconv-integrate-MLIR/result.json",
+      "record_sha256": "e5da4dbd5be27aa838d594c7b3f24d7e8e36514c8c4c42380c475eefa9f91025"
+    },
+    {
+      "case": "qconv-integrate",
+      "system": "xDSL",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/qconv-integrate-xDSL/result.json",
+      "record_sha256": "7420a6f61198ebad103912151347d74cfe21dec02c862b5187f0345fbf83b591"
+    },
+    {
+      "case": "qconv-ties-away",
+      "system": "Joggle",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/qconv-ties-away-Joggle/result.json",
+      "record_sha256": "27dbe16482ce333a2335bcadbd6c8795b969577f250fef765f14ba9faa9355ce",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-qconv-ties-away-Joggle/result.json",
+      "parent_sha256": "4c48014e2f043ba54b02f3be7ef8b3bec8ccdd5addb490899615f59e88c70260"
+    },
+    {
+      "case": "qconv-ties-away",
+      "system": "MLIR",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/qconv-ties-away-MLIR/result.json",
+      "record_sha256": "2b2c3fc755667e0d7b47b8e0415244df4d3842ebc18c05fc41bb7da8597a0007",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-qconv-ties-away-MLIR/result.json",
+      "parent_sha256": "18fce5940bfe0411725bb942017e450248c34575f9ce729c5fab4e292796194d"
+    },
+    {
+      "case": "qconv-ties-away",
+      "system": "xDSL",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/qconv-ties-away-xDSL/result.json",
+      "record_sha256": "740475b7fddd208e179f905ea6792736d7f25e7cc4e9ec79f9c613ce566145a7",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-qconv-ties-away-xDSL/result.json",
+      "parent_sha256": "204fb733904234447ca96c0e78f03004c6ab9bb1171ddb1dd26ea5eca0c69e87"
+    },
+    {
+      "case": "qconv-relu6",
+      "system": "Joggle",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/qconv-relu6-Joggle/result.json",
+      "record_sha256": "6a2e2857ee0e1265aecca5a723e493c062a603823b374a048f13daa1c6f7369b",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-qconv-relu6-Joggle/result.json",
+      "parent_sha256": "2ee3cb020be1c3abb9f36069a1580e847e02ed8a7af99791a92750b06f9c8520"
+    },
+    {
+      "case": "qconv-relu6",
+      "system": "MLIR",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/qconv-relu6-MLIR/result.json",
+      "record_sha256": "c54a1f66a9c52a4e7de284e565edcdce39e86efe833f8c1c6532fd453f4fe71c",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-qconv-relu6-MLIR/result.json",
+      "parent_sha256": "60f3b127c65da99b0c1294be444df713ceac361999786e31a877efd08a4f8048"
+    },
+    {
+      "case": "qconv-relu6",
+      "system": "xDSL",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/qconv-relu6-xDSL/result.json",
+      "record_sha256": "986204addbc81e5c6f1f6d00afbc96b822203ec2b9fbe180f1d2c9d38e0440f1",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-qconv-relu6-xDSL/result.json",
+      "parent_sha256": "5bed15498b930e9aba6074e03382f2067b19e54a89d939115fc2a24d1c107409"
+    },
+    {
+      "case": "qconv-stride2",
+      "system": "Joggle",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/qconv-stride2-Joggle/result.json",
+      "record_sha256": "99c4daca633ea70d1812a19529808dbd74a6d4f7be5515ee6ea7efcfc5b00c97",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-qconv-stride2-Joggle/result.json",
+      "parent_sha256": "290b9afeeab5101a43c20a1f322938a63b26e20a445b1b7d90cc762396eb9177"
+    },
+    {
+      "case": "qconv-stride2",
+      "system": "MLIR",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/qconv-stride2-MLIR/result.json",
+      "record_sha256": "6fbb0075f546398faf96a520ae8638774efbaa8ea2e3b1f4fe419972e7133963",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-qconv-stride2-MLIR/result.json",
+      "parent_sha256": "f1fdee9c1f6e7f98d1b0afd004b0d50d40c66760858f6107a32b6ecaf58340b7"
+    },
+    {
+      "case": "qconv-stride2",
+      "system": "xDSL",
+      "record": ".cache/artifact/package-matrix-2gyYHQ/qconv-stride2-xDSL/result.json",
+      "record_sha256": "b26fd50b51043fd0a6e98e28781d3fc301ee081c5223dc3e64acc8667d983456",
+      "parent_record": ".cache/artifact/package-matrix-2gyYHQ/parent-qconv-stride2-xDSL/result.json",
+      "parent_sha256": "899f0d3ce7ee3f53b367b136fb61093e7823ff0b068a0a294ccb117644a9555c"
+    }
+  ]
+}

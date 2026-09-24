@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import difflib
 import fnmatch
 import hashlib
 import json
@@ -300,9 +301,105 @@ def collect(case: dict[str, str], root: Path) -> tuple[dict[str, object], dict[s
     return result, audit
 
 
+def collect_packages(root: Path, output: Path) -> None:
+    """Collect the complete native-package matrix, including parent controls.
+
+    These are observed implementation footprints, not minimal-patch estimates.
+    Publication scaffolding is included at integration and only when changed
+    during maintenance. No system receives an artificial extra ownership zone.
+    """
+    repo = Path(__file__).resolve().parent.parent
+    manifest = repo / "artifact/manifests/package-changes.json"
+    matrix = json.loads(manifest.read_text())
+    if output.exists() or output.with_suffix(".json").exists():
+        raise ValueError("refusing to replace an existing package result")
+    rows, audits = [], []
+    for contract in matrix["cases"]:
+        for system in matrix["systems"]:
+            label = contract["id"] + "-" + system
+            path = root / label / "result.json"
+            report = json.loads(path.read_text())
+            if (report.get("schema") != "native-package-task/v1" or report.get("error")
+                    or not report["passed"] or report["parent"] or report["system"] != system
+                    or report["contract"] != contract):
+                raise ValueError(f"unvalidated candidate: {label}")
+            for name, expected in report["hashes"].items():
+                if sha256_file(repo / name) != expected:
+                    raise ValueError(f"changed experiment input: {name}")
+            for name, key in (("fixtures.json", "fixtures_sha256"), ("change.patch", "patch_sha256")):
+                if sha256_file(path.parent / name) != report[key]:
+                    raise ValueError(f"changed run input: {label}/{name}")
+            fixtures = json.loads((path.parent / "fixtures.json").read_text())
+            if {c["id"] for c in fixtures} != {c["case"] for c in report["cases"]} or not all(c["passed"] for c in report["cases"]):
+                raise ValueError(f"incomplete cases: {label}")
+            parent_failures = 0
+            audit = {"case": contract["id"], "system": system, "record": str(path.relative_to(repo)),
+                     "record_sha256": sha256_file(path)}
+            if contract["kind"] == "maintenance":
+                parent_path = root / ("parent-"+label) / "result.json"
+                parent = json.loads(parent_path.read_text())
+                if (parent.get("error") or parent["passed"] or not parent["parent"]
+                        or parent["hashes"] != report["hashes"] or parent["system"] != system
+                        or parent["contract"] != contract
+                        or parent["fixtures_sha256"] != report["fixtures_sha256"]
+                        or sha256_file(parent_path.parent / "fixtures.json") != report["fixtures_sha256"]
+                        or {c["case"] for c in parent["cases"]} != {c["id"] for c in fixtures}
+                        or any(s["exit_code"] != 0 for s in parent["setup"])):
+                    raise ValueError(f"invalid paired parent: {label}")
+                positives = {c["id"] for c in fixtures if "error" not in c["expect"] and c["input"].get("conv_uses", 1) == 1}
+                parent_failures = sum(c["case"] in positives and not c["passed"] for c in parent["cases"])
+                if not parent_failures:
+                    raise ValueError(f"parent satisfies the changed contract: {label}")
+                for source in parent["sources"]:
+                    if source["before_sha256"] != source["after_sha256"] or sha256_file(parent_path.parent / "source" / source["deployed_path"]) != source["before_sha256"]:
+                        raise ValueError(f"modified parent source: {label}")
+                audit.update(parent_record=str(parent_path.relative_to(repo)), parent_sha256=sha256_file(parent_path))
+            files, added, deleted, publication = 0, 0, 0, 0
+            patches = []
+            for source in report["sources"]:
+                original = repo / source["source"]
+                target = path.parent / "source" / source["deployed_path"]
+                if sha256_file(original) != source["before_sha256"] or sha256_file(target) != source["after_sha256"]:
+                    raise ValueError(f"source hash mismatch: {label}")
+                before = "" if contract["kind"] == "integration" else original.read_text()
+                diff = list(difflib.unified_diff(before.splitlines(True), target.read_text().splitlines(True),
+                    fromfile="a/"+source["deployed_path"], tofile="b/"+source["deployed_path"]))
+                patches.extend(diff)
+                a = sum(line.startswith("+") and not line.startswith("+++") for line in diff)
+                d = sum(line.startswith("-") and not line.startswith("---") for line in diff)
+                if (a, d) != (source["added"], source["deleted"]):
+                    raise ValueError(f"line count mismatch: {label}")
+                files += bool(a+d)
+                added += a
+                deleted += d
+                if source["role"] != "implementation":
+                    publication += a+d
+            if "".join(patches) != (path.parent / "change.patch").read_text():
+                raise ValueError(f"patch mismatch: {label}")
+            rows.append(dict(task=contract["id"], kind=contract["kind"], system=system,
+                source_files=files, source_added=added, source_deleted=deleted,
+                publication_lines=publication, zones=int(files > 0),
+                semantic_cases=len(report["cases"]), runtime_probes=report["runtime_probes"],
+                parent_positive_failures=parent_failures, passed=True))
+            audits.append(audit)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("x", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=list(rows[0]), lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+    output.with_suffix(".json").write_text(json.dumps({
+        "schema": "native-package-footprint/v1", "matrix_complete": True,
+        "hunk_minimized": False, "count_policy": "Observed source lines including publication scaffolding; excludes fixtures and shared measurement code; one feature package is one zone.",
+        "manifest_sha256": sha256_file(manifest), "output_sha256": sha256_file(output),
+        "cases": audits}, indent=2)+"\n")
+    print(f"collected {len(rows)} validated package rows")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cases", type=Path, required=True)
+    inputs = parser.add_mutually_exclusive_group(required=True)
+    inputs.add_argument("--cases", type=Path)
+    inputs.add_argument("--package-runs", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--task-manifest",
@@ -310,6 +407,9 @@ def main() -> int:
         default=Path(__file__).resolve().parent / "manifests" / "extension-tasks.csv",
     )
     args = parser.parse_args()
+    if args.package_runs:
+        collect_packages(args.package_runs.resolve(), args.output.resolve())
+        return 0
     with args.cases.open(newline="", encoding="utf-8") as stream:
         reader = csv.DictReader(stream)
         if reader.fieldnames != CASE_COLUMNS:
