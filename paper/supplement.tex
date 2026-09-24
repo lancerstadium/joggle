@@ -5,7 +5,6 @@
 
 \usepackage{longtable}
 \usepackage{array}
-\usepackage{pdflscape}
 \usepackage[scaled=0.86]{DejaVuSansMono}
 
 % Keep appendix tables together, without stretch between float blocks.
@@ -34,7 +33,7 @@
 \vspace{6pt}
 
 \appendix
-\renewcommand{\thetable}{A\arabic{table}}
+\renewcommand{\thetable}{A.\arabic{table}}
 \setcounter{table}{0}
 \input{sections/appendix-operator-data}
 \clearpage

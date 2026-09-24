@@ -1134,7 +1134,7 @@ The main evaluation presents aggregate comparisons and their performance implica
 | Geometric mean, common 22 | — | 8.95 | 5.23 | 6.66 | 3.18 |
 | Correct operators | 24/24 | 24/24 | 24/24 | 22/24 | 22/24 |
 
-*Table A1: Operator execution measurements. Joggle revision `5a71fe55a3be`,
+*Table A.1: Operator execution measurements. Joggle revision `5a71fe55a3be`,
 Apple Clang 17.0.0 (`-O3 -DNDEBUG`), ONNX Runtime 1.26.0 CPU with full graph
 optimization, TVM revision `c7b458e946bc` (default LLVM), and ONNX-MLIR revision
 `4a13c34aa695` (`-O3`, no parallelism or fast math). All use one CPU thread.
@@ -1167,7 +1167,7 @@ warm-ups. × identifies a candidate without a numerically valid executable.
 | XCiT-Tiny | 43.016 | 46.548 | 2953.539 | 2975.516 | 2972.780 | 3007.537 | 318.047 | 321.317 |
 | Correct | 13/15 | | 14/15 | | 11/15 | | 11/15 | |
 
-*Table A2: Per-model median and p95 execution latency in milliseconds;
+*Table A.2: Per-model median and p95 execution latency in milliseconds;
 100 measured samples per valid executable after ten warm-ups.*
 
 | System | Backend or preparation failure | Numerical-oracle failure |
@@ -1177,7 +1177,7 @@ warm-ups. × identifies a candidate without a numerically valid executable.
 | TVM | EfficientNet-Lite4 int8; SSD-MobileNetV1; TinyYOLOv3; UltraFace | — |
 | ONNX-MLIR | EfficientNet-Lite4 int8; SqueezeNet-1.0 QDQ; SSD-MobileNetV1 | EfficientNet-Lite4 QDQ |
 
-*Table A3: Excluded model executions and the first terminal oracle phase.*
+*Table A.3: Excluded model executions and the first terminal oracle phase.*
 
 | System | Compiler path | Optimization | Timing policy |
 | --- | --- | --- | --- |
@@ -1186,51 +1186,49 @@ warm-ups. × identifies a candidate without a numerically valid executable.
 | TVM | Relax → LLVM | default CPU pipeline; no tuning | 1 thread |
 | ONNX-MLIR 0.4.2 | ONNX → LLVM | `-O3`; no fast math | no parallelism |
 
-*Table A4: Execution controls used for Tables A1 and A2.*
+*Table A.4: Execution controls used for Tables A.1 and A.2.*
 
 ## Appendix C. Extension Task Inputs and Outputs
 
-Table A5 records the natural-language contracts and representative observable
-inputs and outputs for the 12 tasks used by the Agent and footprint studies.
-The operative semantic constraints are preserved; only system-specific
-entry-point boilerplate is omitted. Every candidate is additionally checked on
-disjoint hidden cases.
+Table A.5 reproduces the semantic-contract field of each task prompt verbatim,
+in quotation marks and italics. The native API card and public fixtures accompany
+this field in the agent input. Representative input/output pairs are displayed
+separately from the instruction; final scoring also includes held-out cases.
 
-| Family | Task | Natural-language request | Positive input → output | Boundary / negative input → observation |
+| Family | Task | Task prompt (semantic contract) | Positive input → output | Boundary / negative input → observation |
 | --- | --- | --- | --- | --- |
-| Definition | `def-parametric-type` | Define signed `fx<W,F>`; require `2≤W≤32`, `0≤F<W`, and preserve both parameters through construction, printing, and reparsing. | `W=8,F=3` → `fx<8,3>`, 8 logical bits | `W=8,F=8` → `invalid-type-parameter`; no output IR |
-| Definition | `def-quantized-op` | Define `qadd` for equal-shape i8 tensors with finite positive scales and signed-i32 zero points. | two `4xi8` tensors → `4xi8` | `2x3xi8 + 3x2xi8` → `shape-mismatch` |
-| Analysis | `ana-broadcast-shape` | Analyze NumPy trailing-dimension broadcasting for nonnegative extents. | `[2,3,1]`, `[4]` → legal `[2,3,4]` | `[2,3]`, `[4,3]` → conflict axis 1 from end |
-| Analysis | `ana-numeric-range` | Propagate closed finite intervals through add, multiply, ReLU, and clamp. | `mul([-2,3],[-4,5])` → `[-12,15]` | `relu([2,-1])` → `invalid-interval` |
-| Rewrite | `rew-add-zero` | Remove typed add-by-zero; floating positive zero requires `no_signed_zeros`; retain negative zero and used constants. | f32 `x+0`, `[4]`, NSZ → `x` | f32 `x+0.001` → unchanged |
-| Rewrite | `rew-redundant-cast` | Remove identity casts and only lossless signed-widening or finite f32/f64 round trips. | `f32[4]→f32[4]` → eliminated | `i16→i8→i16` → retained |
-| Conversion | `con-gelu-expand` | Replace `gelu` with `0.5*x*(1+erf(x/sqrt(2)))`; preserve shape, floating type, and users. | `gelu`, f32[5] → primitive SSA graph containing `erf`, f32[5] | integer → `unsupported-element-type` |
-| Conversion | `con-quant-expand` | Lower i8 `qadd` through f32 dequantize, add, and ties-even saturating quantize. | fixed vector → `[-1,1,-3,127]` | negative scale → `invalid-scale` |
-| Emission | `emit-graph-manifest` | Emit deterministic schema-v1 JSON with stable node/value numbering, types, users, and sorted attributes. | `splat→add→relu` → `n0..n2`, `v0..v3` | repeated emission → byte-identical JSON |
-| Emission | `emit-kernel-wrapper` | Emit complete C99 `task_kernel` for ReLU or `2*x+1`, supporting in-place and zero-count calls. | ReLU `[-2,-0,1.5,4]` → `[+0,+0,1.5,4]` | zero count + null pointers → no access |
-| Vertical | `vert-int4` | Add signed qint4, saturate, and pack low nibble first; reject invalid literals before packing. | five values → `[-7,0,-2,7,7]`, bytes `09 7e 07` | literal 8 → `literal-out-of-range` |
-| Vertical | `vert-fused-op` | Add NHWC/HWIO i8 fused qconv+bias+requantize+ReLU; fuse only a single-use chain. | unit kernel → `[4]`, one fused node | shared convolution → original chain preserved |
+| Definition | `def-parametric-type` | *“Define a native signed fixed-point scalar fx<width,frac>; require 2 <= width <= 32 and 0 <= frac < width. Joggle declares a generic Ty constructor and exports verify(Mod)->bool to validate the imported fixture's parameter types; MLIR exports registerExtension(MLIRContext&) and xDSL exports register(context), installing a parsed, printed, verified extension.fx type. Native function arguments and returns use this type. Preserve both parameters through construction, printing and reparsing. Invalid parameters must fail with invalid-type-parameter and no output IR/JSON. A fixed observer reads round-tripped argument types; candidates do not return answer dictionaries. storage_bits denotes the logical width parameter, not a measured ABI allocation size.”* | `W=8,F=3` → `fx<8,3>`, 8 logical bits | `W=8,F=8` → `invalid-type-parameter`; no output IR |
+| Definition | `def-quantized-op` | *“Define qadd on equal-shape i8 tensors with finite positive input/output scales and signed i32 zero points; the result shape equals the operands and its element type is i8.”* | two `4xi8` tensors → `4xi8` | `2x3xi8 + 3x2xi8` → `shape-mismatch` |
+| Analysis | `ana-broadcast-shape` | *“Analyze NumPy-style trailing-dimension broadcast compatibility for non-negative extents, padding the shorter shape with leading ones. Each aligned pair is legal when equal or one; when one extent is one, select the other extent, including zero. Reject negative extents.”* | `[2,3,1]`, `[4]` → legal `[2,3,4]` | `[2,3]`, `[4,3]` → conflict axis 1 from end |
+| Analysis | `ana-numeric-range` | *“Propagate closed finite real intervals through add, multiply, ReLU, and clamp using endpoint arithmetic; multiplication evaluates all four endpoint products.”* | `mul([-2,3],[-4,5])` → `[-12,15]` | `relu([2,-1])` → `invalid-interval` |
+| Rewrite | `rew-add-zero` | *“Replace integer add(x, zero) or add(zero, x) by x when zero is a same-element-type scalar or splat constant and replacement preserves the result shape. For floating add with positive zero, require explicit no_signed_zeros semantics; otherwise preserve the operation. Leave negative-zero constants unchanged. Floating fixtures use finite inputs under round-to-nearest-ties-to-even with unobserved FP exceptions. Remove a matched constant only when it has no remaining uses.”* | f32 `x+0`, `[4]`, NSZ → `x` | f32 `x+0.001` → unchanged |
+| Rewrite | `rew-redundant-cast` | *“Remove identity casts and cancel cast(cast(x,A to B),B to A) only for lossless pairs: signed integer widening or finite f32 to f64 widening. Keep narrowing, float-integer, and shape-changing conversions. Types are i8/i16/i32/i64/f32/f64; floating casts use round-to-nearest-ties-to-even. Remove the inner cast only when it has no remaining users. Modify the subject's native SSA graph; cast_A_B calls identify element conversions and tensor result types specify shape.”* | `f32[4]→f32[4]` → eliminated | `i16→i8→i16` → retained |
+| Conversion | `con-gelu-expand` | *“Replace native SSA gelu calls with 0.5\*x\*(1+erf(x/sqrt(2))), using declared splat, mul, div, add, and erf targets. splat carries a numeric value attribute. Preserve shape, floating element type, and every output user. Operation ordering and equivalent parenthesizations are unrestricted. Reject other element types with unsupported-element-type and no output IR. Numerical tolerances are rtol=1e-5, atol=1e-6 for f32 and rtol=atol=1e-12 for f64.”* | `gelu`, f32[5] → primitive SSA graph containing `erf`, f32[5] | integer → `unsupported-element-type` |
+| Conversion | `con-quant-expand` | *“Convert native i8 tensor qadd calls into two dequantize calls, f32 add, and quantize. qadd carries lhs_scale, rhs_scale, output_scale and zeros=[lhs_zero,rhs_zero,output_zero]; the target dequantize/quantize calls carry scale and zero. Use f32 arithmetic, dequantize(q)=(q-zero)\*scale, and quantize(x)=clip(round_ties_even(x/scale)+zero,-128,127). Preserve tensor shape and all result users. Reject nonpositive scales with invalid-scale and no output IR. Target declarations are provided; no request dictionary is present in the native graph.”* | fixed vector → `[-1,1,-3,127]` | negative scale → `invalid-scale` |
+| Emission | `emit-graph-manifest` | *“Read the native typed SSA function subject and emit {schema_version:1, inputs, nodes, outputs}. Inputs are ordered {id,type} records; nodes are calls in block/topological order with {id,op,inputs,results,attrs}. Number nodes n0.. and values v0.., assigning parameter ids first and then call-result ids in result order. Each type is {element,shape}, using -1 for dynamic extents and [] for rank zero. Each result is {id,type}; inputs and outputs reference value ids, preserving repeated operands and return order. attrs is a lexicographically sorted array of [key,value] pairs from user operation attributes, excluding native callee bookkeeping. Preserve scalar and array attribute values. All fixture calls are reachable from returns; repeated emission must be byte-identical. Do not emit source names, parameter nodes, return nodes, declarations, or a request dictionary.”* | `splat→add→relu` → `n0..n2`, `v0..v3` | repeated emission → byte-identical JSON |
+| Emission | `emit-kernel-wrapper` | *“Read kernel from request metadata and emit JSON with exactly symbol=task_kernel and source containing a complete C99 translation unit. Export void task_kernel(const float\* input, float\* output, size_t count). Supported kernels are relu (x>0?x:+0, including negative zero mapped to positive zero) and 2\*x+1 (f32 multiply then f32 add, without contraction). Handle arbitrary count, exact in-place operation, and count=0 with null pointers; do not modify nonaliased inputs or access outside count elements. Runtime vectors are not provided to the emitter. The oracle compiles the emitted C with its recorded host compiler and fixed separate driver, then checks exact f32 bits, input preservation, and output guards in separate-buffer and in-place modes.”* | ReLU `[-2,-0,1.5,4]` → `[+0,+0,1.5,4]` | zero count + null pointers → no access |
+| Vertical | `vert-int4` | *“Add signed qint4 values in [-8,7], using two's-complement nibbles packed low nibble first. Provide range analysis, lower equal-length elementwise add through i8, saturate each sum to [-8,7], and emit packed bytes. For an odd element count, set the unused high nibble of the final byte to zero. The reported range is the representable qint4 type range, not the observed output range. Reject source literals outside [-8,7] before addition; do not truncate them into nibbles.”* | five values → `[-7,0,-2,7,7]`, bytes `09 7e 07` | literal 8 → `literal-out-of-range` |
+| Vertical | `vert-fused-op` | *“Add fused_qconv_relu for NHWC signed-i8 input and HWIO signed-i8 weights, with unit stride and dilation, no padding, and zero input/weight zero points. Compute valid cross-correlation with i32 accumulation and per-output-channel i32 bias; fixtures have no i32 overflow. Requantize each biased accumulator as round_ties_to_even(accumulator \* scales.acc / scales.out) + output_zero, then clamp to [max(-128, output_zero),127] to implement signed-i8 saturation and real-domain ReLU. Scales are finite and positive, and output_zero is in [-128,127]. Match the qconv -> bias -> requantize -> relu chain only when each intermediate result is single-use; preserve a shared chain. Emit one fused_qconv_relu manifest node for a matched chain and execute the fused semantics on runtime inputs.”* | unit kernel → `[4]`, one fused node | shared convolution → original chain preserved |
 
-*Table A5: Natural-language task inputs, observable outputs, and oracle-facing
+*Table A.5: Natural-language task inputs, observable outputs, and oracle-facing
 edge cases.*
 
-<!-- TABLE A5 GRAPH PROMPT — Use three columns: task and semantic constraints,
-input, expected output. Draw a paired DOT schematic for every one of the 12
-rows, not only GELU. Use the values in the table above and the frozen task
-specifications. Definition rows show construction and typed results; analysis
-rows show shapes or intervals; rewrites and conversions show graph changes;
-emission rows show the input graph and output artifact; vertical rows show
-qint4 packing and quantized fusion. Place boundary cases below each request,
-not in the output column. Use DejaVu Sans Mono at 10.5 pt, blue inputs, coral
-matched operations, teal outputs, and cream constants; labels and shapes
-remain meaningful in grayscale. Preserve the full GELU formula and quantized
-rounding/saturation semantics in the text under the diagrams. Keep every pair
-in its own row and separate figures from captions with positive vertical
-space. Graphs are contract illustrations, not measured Agent outputs.
-Use figures/a5-*-input.dot and figures/a5-*-output.dot; Markdown retains these
-instructions and the complete input/output values rather than raster images. -->
+<!-- TABLE A.5 GRAPH PROMPT — Portrait pages. For each task, place its name
+and identifier above a full-width quoted, italic semantic-contract prompt;
+place the paired input and expected-output DOT diagrams in two columns below.
+Keep each prompt attached to its input/output pair across page breaks. Boundary
+cases follow the prompt; observed values remain below the diagrams, outside the
+quoted instruction. Use the exact contract field in the artifact specification.
+Use DejaVu Sans Mono at 8.5 pt at native size, blue inputs, coral matched
+operations, teal outputs, and cream constants. Do not enlarge short graphs or
+shrink long graphs to fill their cells; fold graph layouts when needed.
+All 12 tasks have paired diagrams. Preserve GELU and quantized rounding and
+saturation semantics. Keep figures and their annotations separated without
+text overlap. Graphs show task-contract expectations. C.4 retains its diagram typography and display sizes.
+Files: figures/a5-*-input.dot and figures/a5-*-output.dot. Markdown records
+these instructions and the input/output values rather than raster images. -->
 
-Tables A6–A8 specify construction, verification, and print/parse round trips.
+Tables A.6–A.8 specify construction, verification, and print/parse round trips.
 Rejected inputs produce no output IR. Tensor types omit the `tensor<…>` wrapper;
 bare i8 or f32 denotes a rank-zero tensor. Axis indices are zero-based.
 
@@ -1250,7 +1248,7 @@ bare i8 or f32 denotes a rank-zero tensor. Axis indices are zero-based.
 | negative-width | -2 | 0 | — | — | invalid-type-parameter |
 | negative-fraction | 8 | -1 | — | — | invalid-type-parameter |
 
-*Table A6: `def-parametric-type`: complete inputs and expected outputs.
+*Table A.6: `def-parametric-type`: complete inputs and expected outputs.
 Width denotes logical bits, not ABI allocation size.*
 
 ### C.2. Quantized operation definition
@@ -1271,7 +1269,7 @@ Width denotes logical bits, not ABI allocation size.*
 | rhs-element | 4×i8 | 4×i16 | 1, 1, 1 | 0, 0, 0 | operand-type-mismatch |
 | rank-mismatch | i8 | 1×i8 | 1, 1, 1 | 0, 0, 0 | shape-mismatch |
 
-*Table A7: `def-quantized-op`: complete inputs and expected outputs, with defaults
+*Table A.7: `def-quantized-op`: complete inputs and expected outputs, with defaults
 expanded. Scales are finite positive f64 values; zero points are signed i32 values.
 This task defines the operation; arithmetic lowering is evaluated separately.*
 
@@ -1290,7 +1288,7 @@ This task defines the operation; arithmetic lowering is evaluated separately.*
 | invalid-source | 1×3×8×16×f32 | CHWN | NHWC | — | invalid-layout |
 | invalid-destination | 1×3×8×16×f32 | NCHW | HWCN | — | invalid-layout |
 
-*Table A8: `def-layout-attribute`: complete inputs and expected outputs.
+*Table A.8: `def-layout-attribute`: complete inputs and expected outputs.
 The constructor infers the result shape and preserves the element type and both layout attributes.*
 
 ### C.4. Graph transformations and numerical checks
@@ -1308,12 +1306,12 @@ reference expectations from the task contracts.
 | Expand quantized addition and preserve i8 saturation. | `qadd(a,b)`, scales 0.5, zeros 0 | Two dequantizations → f32 add → RNE quantization | `[-3,0,5,120]+[2,1,-8,120] → [-1,1,-3,127]`; negative scales are rejected. |
 | Fuse a single-use quantized convolution chain. | `qconv → bias → requantize → ReLU` | `fused_qconv_relu` | `x=[1,-2]`, `w=[2,-3]`, bias=1, scales 0.25/0.5: accumulator=9, RNE(4.5)=4, output `[4]`; shared convolution results retain the chain. |
 
-<!-- APPENDIX GRAPH TABLE — Five rows; natural-language request and checks at
-left, matched before/after DOT diagrams in adjacent columns. DejaVu Sans Mono;
-thin charcoal edges; pale input blue, matched coral, replacement teal.
-Files: task-{zero,cast,quant,fusion}-{before,after}.dot and
-agent-gelu-{before,after}.dot. Fit each diagram within its cell while preserving
-aspect ratio; no image-generation text. -->
+<!-- APPENDIX GRAPH TABLE — Portrait pages. Place each request and check in
+a full-width row, followed by paired before/after DOT diagrams in two columns.
+Preserve the existing C.4 diagram typography and 6.4 cm × 1.65 cm bounding boxes.
+DejaVu Sans Mono; thin charcoal edges; pale input blue, matched coral, replacement
+teal. Files: task-{zero,cast,quant,fusion}-{before,after}.dot and
+agent-gelu-{before,after}.dot. No image-generation text. -->
 
 The analysis and emission cases below complement the graph transformations.
 Outputs are the specified oracle expectations; byte strings are hexadecimal.
@@ -1328,7 +1326,7 @@ Outputs are the specified oracle expectations; byte strings are hexadecimal.
 | qint4 / odd count | `[-8,-1,0,3,7] + [1,1,-2,6,7]` | i8 sums `[-7,0,-2,9,14]`; saturate | `[-7,0,-2,7,7]`; bytes `09 7e 07` |
 | qint4 / negative tail | `[-8] + [-8]` | Saturate `-16` to `-8`; zero high nibble | `[-8]`; byte `08` |
 
-*Table A10: Worked analysis and artifact-output checks. Each row retains the
+*Table A.10: Worked analysis and artifact-output checks. Each row retains the
 semantic step between the task input and its expected output.*
 
 <!-- UPDATE DATA BEGIN -->

@@ -34,9 +34,10 @@ is a later, post-acceptance process with its own instructions.
 ## Current checks
 
 The main PDF has 13 pages. Technical content ends on page 12; page 13 contains
-references only. The separate supplement has eight pages, including
-three landscape pages for Table A5's 12 paired input/output examples. Both entry
-points explicitly enable page numbers.
+references only. The separate supplement has ten pages. Table A.5's 12 paired
+input/output examples occupy five portrait pages, with verbatim quoted task
+contracts and 8.5 pt DOT labels. Section C.4 uses portrait tables while retaining its diagram typography
+and display sizes. All supplement pages are portrait. Both entry points explicitly enable page numbers.
 
 The three measured figures use the author's requested compact review layout:
 single-column 3.33 × 2.25 in, two rows by three columns, 5.5 pt text, and

@@ -3,8 +3,8 @@ digraph G {
          nodesep=0.10, ranksep=0.13, splines=polyline];
   node [shape=box, style="rounded,filled", margin="0.04,0.025",
         width=0, height=0.26, penwidth=0.7, color="#4C6070", fillcolor="#F4F6F8",
-        fontname="DejaVu Sans Mono", fontsize=10.5];
+        fontname="DejaVu Sans Mono", fontsize=8.5];
   edge [arrowsize=0.5, penwidth=0.7, color="#4C6070",
-        fontname="DejaVu Sans Mono", fontsize=10.5];
+        fontname="DejaVu Sans Mono", fontsize=8.5];
   x [label="x: i8[4]",fillcolor="#E9F1FA"]; y [label="y: i8[4]",fillcolor="#E9F1FA"]; op [label="qadd",fillcolor="#FBEDE7"]; x -> op; y -> op;
 }

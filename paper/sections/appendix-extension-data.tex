@@ -1,4 +1,4 @@
-\begin{landscape}
+\clearpage
 \section{Extension Task Inputs and Outputs}
 \label{sec:extension-task-data}
 
@@ -7,9 +7,6 @@ and RNE round-to-nearest, ties-to-even.
 
 \begingroup
 \normalsize
-% Compensate for the supplement's 0.86-scaled mono font in this 10 pt table.
-\let\tasktexttt\texttt
-\renewcommand{\texttt}[1]{{\fontsize{11.63pt}{12pt}\selectfont\tasktexttt{#1}}}
 \setlength{\tabcolsep}{5pt}
 \renewcommand{\arraystretch}{1.0}
 \newcommand{\taskpair}[2]{%
@@ -18,110 +15,78 @@ and RNE round-to-nearest, ties-to-even.
   \includegraphics{figures/a5-#1.pdf}\par
   \vspace{3pt}\raggedright #2\strut
   \end{minipage}}
-\newcommand{\taskname}[2]{\textbf{#1}\par\texttt{#2}\par\vspace{2pt}}
-\newcommand{\boundary}[1]{\par\vspace{2pt}\textit{Boundary:} #1}
+\newcommand{\taskprompt}[4]{%
+  \multicolumn{2}{@{}p{\textwidth}@{}}{%
+    \textbf{#1}\quad\texttt{#2}\par
+    \vspace{2pt}{\itshape``#3''}\par
+    \vspace{2pt}\textit{Boundary:} #4}\tabularnewline*
+  \textbf{Input} & \textbf{Expected output}\tabularnewline*}
 
-\begin{longtable}{@{}>{\raggedright\arraybackslash}p{7.4cm}p{6.15cm}p{6.15cm}@{}}
-\caption{Task contracts and paired input/output diagrams. Blue: inputs;
-coral: matched operations; teal: results; cream: constants or packed bytes.
-Arrows show dataflow or the labeled construction step.}
+\begin{longtable}{@{}p{\dimexpr0.5\textwidth-5pt\relax}p{\dimexpr0.5\textwidth-5pt\relax}@{}}
+\caption{Task prompts and paired input/output diagrams. Quoted italic
+text reproduces the task's semantic contract. Blue: inputs; coral: matched
+operations; teal: results; cream: constants or packed bytes.}
 \label{tab:agent-contracts}\\
 \toprule
-Task and natural-language request & Input & Expected output \\
-\midrule
 \endfirsthead
-\multicolumn{3}{l}{\textit{Table~\ref{tab:agent-contracts} continued}}\\
+\multicolumn{2}{l}{\textit{Table~\ref{tab:agent-contracts} continued}}\\
 \toprule
-Task and natural-language request & Input & Expected output \\
-\midrule
 \endhead
 \midrule
-\multicolumn{3}{r}{\textit{continued on next page}}\\
+\multicolumn{2}{r}{\textit{continued on next page}}\\
 \endfoot
 \bottomrule
 \endlastfoot
 
-\taskname{Definition / parametric type}{def-parametric-type}
-Define signed \texttt{fx<W,F>} for $2\leq W\leq32$, $0\leq F<W$.
-Use it in native signatures; preserve $W,F$ through construction and print/parse.
-\boundary{$W=F=8$: reject with \texttt{invalid-type-parameter}.} &
+\taskprompt{Definition / parametric type}{def-parametric-type}{Define a native signed fixed-point scalar fx\textless{}width,frac\textgreater{}; require 2 \textless{}= width \textless{}= 32 and 0 \textless{}= frac \textless{} width. Joggle declares a generic Ty constructor and exports verify(Mod)-\textgreater{}bool to validate the imported fixture's parameter types; MLIR exports registerExtension(MLIRContext\&) and xDSL exports register(context), installing a parsed, printed, verified extension.fx type. Native function arguments and returns use this type. Preserve both parameters through construction, printing and reparsing. Invalid parameters must fail with invalid-type-parameter and no output IR/JSON. A fixed observer reads round-tripped argument types; candidates do not return answer dictionaries. storage\_bits denotes the logical width parameter, not a measured ABI allocation size.}{$W=F=8$: reject with \texttt{invalid-type-parameter}.}
 \taskpair{type-input}{Width 8 and fraction 3.} &
 \taskpair{type-output}{Round trip preserves both parameters. Width denotes
 logical bits, not ABI size.} \\[4pt]
 \midrule
 
-\taskname{Definition / quantized operation}{def-quantized-op}
-Define \texttt{qadd} on equal-shape i8 tensors, with finite positive scales and
-signed-i32 zero points. Preserve operand shape and element type.
-\boundary{\texttt{2x3xi8} plus \texttt{3x2xi8}: \texttt{shape-mismatch}.} &
+\taskprompt{Definition / quantized operation}{def-quantized-op}{Define qadd on equal-shape i8 tensors with finite positive input/output scales and signed i32 zero points; the result shape equals the operands and its element type is i8.}{\texttt{2x3xi8} plus \texttt{3x2xi8}: \texttt{shape-mismatch}.}
 \taskpair{qadd-input}{$x$: scale 0.5, zero 0.\par $y$: scale 0.25, zero $-3$.} &
 \taskpair{qadd-output}{Preserve shape, scales, and zero points through
 print/parse.} \\[4pt]
 \midrule
 
-\taskname{Analysis / shape broadcasting}{ana-broadcast-shape}
-Broadcast nonnegative extents by trailing dimension. Pad the shorter shape
-with ones. Each pair must agree or contain one; a one selects the other extent,
-including zero.
-\boundary{\texttt{[2,3]} and \texttt{[4,3]}: conflict at axis 1 from the end.} &
+\taskprompt{Analysis / shape broadcasting}{ana-broadcast-shape}{Analyze NumPy-style trailing-dimension broadcast compatibility for non-negative extents, padding the shorter shape with leading ones. Each aligned pair is legal when equal or one; when one extent is one, select the other extent, including zero. Reject negative extents.}{\texttt{[2,3]} and \texttt{[4,3]}: conflict at axis 1 from the end.}
 \taskpair{broadcast-input}{Rank-3 and rank-1 operands.} &
 \taskpair{broadcast-output}{Legal. Also, \texttt{[2,0]} with \texttt{[1]}
 gives \texttt{[2,0]}.} \\[4pt]
 \midrule
 
-\taskname{Analysis / numeric range}{ana-numeric-range}
-Propagate closed finite intervals through add, multiply, ReLU, and clamp.
-Multiplication considers all four endpoint products.
-\boundary{ReLU on \texttt{[2,-1]}: \texttt{invalid-interval}.} &
+\taskprompt{Analysis / numeric range}{ana-numeric-range}{Propagate closed finite real intervals through add, multiply, ReLU, and clamp using endpoint arithmetic; multiplication evaluates all four endpoint products.}{ReLU on \texttt{[2,-1]}: \texttt{invalid-interval}.}
 \taskpair{range-input}{Multiply intervals spanning zero.} &
 \taskpair{range-output}{Take the minimum and maximum of all four products.} \\[4pt]
 \midrule
 
-\taskname{Rewrite / neutral element}{rew-add-zero}
-Replace integer add-by-zero when shape and type are preserved. Floating
-positive zero additionally requires NSZ; retain negative zero. Erase a matched
-constant only if it has no remaining uses.
-\boundary{Adding \texttt{0.001} retains the operation.} &
+\taskprompt{Rewrite / neutral element}{rew-add-zero}{Replace integer add(x, zero) or add(zero, x) by x when zero is a same-element-type scalar or splat constant and replacement preserves the result shape. For floating add with positive zero, require explicit no\_signed\_zeros semantics; otherwise preserve the operation. Leave negative-zero constants unchanged. Floating fixtures use finite inputs under round-to-nearest-ties-to-even with unobserved FP exceptions. Remove a matched constant only when it has no remaining uses.}{Adding \texttt{0.001} retains the operation.}
 \taskpair{zero-input}{Positive zero; NSZ enabled; shape \texttt{[4]}.} &
 \taskpair{zero-output}{Redirect every result user to \texttt{x}; erase the
 matched add and any now-unused constant.} \\[7pt]
 \midrule
 
-\taskname{Rewrite / redundant cast}{rew-redundant-cast}
-Remove identity casts. Cancel round trips only for lossless signed-integer
-widening or finite f32-to-f64 widening. Retain narrowing, float--integer,
-and shape-changing casts.
-\boundary{\texttt{i16 -> i8 -> i16}: keep both casts.} &
+\taskprompt{Rewrite / redundant cast}{rew-redundant-cast}{Remove identity casts and cancel cast(cast(x,A to B),B to A) only for lossless pairs: signed integer widening or finite f32 to f64 widening. Keep narrowing, float-integer, and shape-changing conversions. Types are i8/i16/i32/i64/f32/f64; floating casts use round-to-nearest-ties-to-even. Remove the inner cast only when it has no remaining users. Modify the subject's native SSA graph; cast\_A\_B calls identify element conversions and tensor result types specify shape.}{\texttt{i16 -> i8 -> i16}: keep both casts.}
 \taskpair{cast-input}{The input and result have identical type and shape.} &
 \taskpair{cast-output}{Identity cast removed. Lossless \texttt{i8 -> i16 -> i8}
 also redirects users to the original value.} \\[7pt]
 \midrule
 
-\taskname{Conversion / GELU expansion}{con-gelu-expand}
-Replace native SSA \texttt{gelu} with $0.5x(1+\operatorname{erf}(x/\sqrt2))$
-using declared primitive targets. Preserve shape, floating element type,
-and every output user.
-\boundary{Integer input: \texttt{unsupported-element-type}; no output IR.} &
+\taskprompt{Conversion / GELU expansion}{con-gelu-expand}{Replace native SSA gelu calls with 0.5*x*(1+erf(x/sqrt(2))), using declared splat, mul, div, add, and erf targets. splat carries a numeric value attribute. Preserve shape, floating element type, and every output user. Operation ordering and equivalent parenthesizations are unrestricted. Reject other element types with unsupported-element-type and no output IR. Numerical tolerances are rtol=1e-5, atol=1e-6 for f32 and rtol=atol=1e-12 for f64.}{Integer input: \texttt{unsupported-element-type}; no output IR.}
 \taskpair{gelu-input}{A single GELU on f32\texttt{[5]}.} &
 \taskpair{gelu-output}{Final multiply: $0.5x(1+\operatorname{erf}(x/\sqrt2))$.
 Constants appear in consuming ops; no GELU remains.} \\[4pt]
 \midrule
 
-\taskname{Conversion / quantized addition}{con-quant-expand}
-Expand i8 \texttt{qadd} into two dequantizations, f32 add, and quantization
-with RNE and i8 saturation. Preserve shape and result users.
-\boundary{Negative scale: \texttt{invalid-scale}; no output IR.} &
+\taskprompt{Conversion / quantized addition}{con-quant-expand}{Convert native i8 tensor qadd calls into two dequantize calls, f32 add, and quantize. qadd carries lhs\_scale, rhs\_scale, output\_scale and zeros=[lhs\_zero,rhs\_zero,output\_zero]; the target dequantize/quantize calls carry scale and zero. Use f32 arithmetic, dequantize(q)=(q-zero)*scale, and quantize(x)=clip(round\_ties\_even(x/scale)+zero,-128,127). Preserve tensor shape and all result users. Reject nonpositive scales with invalid-scale and no output IR. Target declarations are provided; no request dictionary is present in the native graph.}{Negative scale: \texttt{invalid-scale}; no output IR.}
 \taskpair{quant-input}{\texttt{[-3,0,5,120]} plus \texttt{[2,1,-8,120]}.
 All scales 0.5; zero points 0.} &
 \taskpair{quant-output}{Result: \texttt{[-1,1,-3,127]}.
 The last lane saturates from 240 to 127.} \\[7pt]
 \midrule
 
-\taskname{Emission / graph manifest}{emit-graph-manifest}
-Emit deterministic schema-v1 JSON. Number nodes and values in stable order;
-preserve repeated operands, output order, types, and sorted user attributes.
-Omit declarations and source names.
-\boundary{Repeated emission must be byte-identical.} &
+\taskprompt{Emission / graph manifest}{emit-graph-manifest}{Read the native typed SSA function subject and emit \{schema\_version:1, inputs, nodes, outputs\}. Inputs are ordered \{id,type\} records; nodes are calls in block/topological order with \{id,op,inputs,results,attrs\}. Number nodes n0.. and values v0.., assigning parameter ids first and then call-result ids in result order. Each type is \{element,shape\}, using -1 for dynamic extents and [] for rank zero. Each result is \{id,type\}; inputs and outputs reference value ids, preserving repeated operands and return order. attrs is a lexicographically sorted array of [key,value] pairs from user operation attributes, excluding native callee bookkeeping. Preserve scalar and array attribute values. All fixture calls are reachable from returns; repeated emission must be byte-identical. Do not emit source names, parameter nodes, return nodes, declarations, or a request dictionary.}{Repeated emission must be byte-identical.}
 \taskpair{manifest-input}{All values have type f32\texttt{[2,3]}. The input
 receives identifier \texttt{v0}.} &
 \taskpair{manifest-output}{Schema 1; output \texttt{v3}. Node \texttt{n0}
@@ -129,31 +94,19 @@ stores \texttt{value=1.25}; \texttt{n1} reads \texttt{[v0,v1]};
 \texttt{n2} reads \texttt{[v2]}.} \\[4pt]
 \midrule
 
-\taskname{Emission / executable wrapper}{emit-kernel-wrapper}
-Emit a complete C99 translation unit exporting
-\texttt{task\_kernel(input,output,count)} for ReLU or $2x+1$.
-Support exact in-place execution; preserve guards and nonaliased inputs.
-\boundary{Zero count with null pointers: no memory access.} &
+\taskprompt{Emission / executable wrapper}{emit-kernel-wrapper}{Read kernel from request metadata and emit JSON with exactly symbol=task\_kernel and source containing a complete C99 translation unit. Export void task\_kernel(const float* input, float* output, size\_t count). Supported kernels are relu (x\textgreater{}0?x:+0, including negative zero mapped to positive zero) and 2*x+1 (f32 multiply then f32 add, without contraction). Handle arbitrary count, exact in-place operation, and count=0 with null pointers; do not modify nonaliased inputs or access outside count elements. Runtime vectors are not provided to the emitter. The oracle compiles the emitted C with its recorded host compiler and fixed separate driver, then checks exact f32 bits, input preservation, and output guards in separate-buffer and in-place modes.}{Zero count with null pointers: no memory access.}
 \taskpair{wrapper-input}{Negative, signed-zero, and positive input lanes.} &
 \taskpair{wrapper-output}{Run the compiled artifact; both nonpositive lanes
 produce positive zero.} \\[4pt]
 \midrule
 
-\taskname{Vertical / packed low-bit arithmetic}{vert-int4}
-Add signed qint4; saturate to $[-8,7]$ and pack two's-complement nibbles
-low-first. Zero the unused high nibble for odd counts. Reject out-of-range
-literals before addition.
-\boundary{Literal 8: \texttt{literal-out-of-range}.} &
+\taskprompt{Vertical / packed low-bit arithmetic}{vert-int4}{Add signed qint4 values in [-8,7], using two's-complement nibbles packed low nibble first. Provide range analysis, lower equal-length elementwise add through i8, saturate each sum to [-8,7], and emit packed bytes. For an odd element count, set the unused high nibble of the final byte to zero. The reported range is the representable qint4 type range, not the observed output range. Reject source literals outside [-8,7] before addition; do not truncate them into nibbles.}{Literal 8: \texttt{literal-out-of-range}.}
 \taskpair{int4-input}{Five lanes, including positive overflow.} &
 \taskpair{int4-output}{Sums 9 and 14 saturate to 7. Hex bytes are
 \texttt{09 7e 07}, with zero high padding.} \\[4pt]
 \midrule
 
-\taskname{Vertical / quantized fused operation}{vert-fused-op}
-Define NHWC/HWIO i8 \texttt{fused\_qconv\_relu} with valid unit-stride
-cross-correlation, i32 bias, RNE requantization, i8 saturation, and real-domain
-ReLU. Fuse single-use chains only.
-\boundary{Shared convolution output: no fusion.} &
+\taskprompt{Vertical / quantized fused operation}{vert-fused-op}{Add fused\_qconv\_relu for NHWC signed-i8 input and HWIO signed-i8 weights, with unit stride and dilation, no padding, and zero input/weight zero points. Compute valid cross-correlation with i32 accumulation and per-output-channel i32 bias; fixtures have no i32 overflow. Requantize each biased accumulator as round\_ties\_to\_even(accumulator * scales.acc / scales.out) + output\_zero, then clamp to [max(-128, output\_zero),127] to implement signed-i8 saturation and real-domain ReLU. Scales are finite and positive, and output\_zero is in [-128,127]. Match the qconv -\textgreater{} bias -\textgreater{} requantize -\textgreater{} relu chain only when each intermediate result is single-use; preserve a shared chain. Emit one fused\_qconv\_relu manifest node for a matched chain and execute the fused semantics on runtime inputs.}{Shared convolution output: no fusion.}
 \taskpair{fused-input}{Unit kernel: \texttt{x=[1,-2]}, \texttt{w=[2,-3]},
 bias 1. Scales: accumulator 0.25, output 0.5; output zero point 0.} &
 \taskpair{fused-output}{Accumulator $1(2)+(-2)(-3)+1=9$.
@@ -161,7 +114,6 @@ One fused node; output \texttt{[4]}.} \\[4pt]
 
 \end{longtable}
 \endgroup
-\end{landscape}
 
 \subsection{Parametric Type Definition}
 \begin{table}[H]
