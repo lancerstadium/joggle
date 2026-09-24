@@ -6,8 +6,7 @@
 
 The evaluation maps each mechanism in Figure~\ref{fig:thesis-map} to an
 independently observable effect. Table~\ref{tab:evaluation} summarizes the
-subjects, controls, and primary measurements. Only outputs that pass the
-relevant correctness oracle enter an aggregate.
+subjects, controls, and primary measurements. Correctness gates latency aggregates.
 
 \begin{table}[H]
   \caption{Evaluation matrix. Every comparison fixes revisions, inputs, and
@@ -22,7 +21,7 @@ relevant correctness oracle enter an aggregate.
     \midrule
     Convenient & 3 systems; 12 eval tasks & completion, tokens \\
     Controllable & 3 systems; 36 patches & files, lines, zones \\
-    Efficient & 3 systems; 13 models & update time, reuse \\
+    Efficient & 3 systems; 9 edit sites & update time, reuse \\
     End-to-end & 4 systems & correctness, latency \\
     \bottomrule
   \end{tabular}
@@ -40,9 +39,8 @@ End-to-end execution also includes ONNX Runtime.
 Compiler-extension tasks use build-and-test oracles; transformations use
 verification and canonical graph digests; executable artifacts use reference
 tensors with dtype-specific tolerances. Failed cases remain in coverage but do
-not enter latency ratios. The update experiment has two populations: one
-complete sweep over 13 models and 37 edit sites, and ten paired repetitions of
-three edit sites on each of DenseNet-121, SqueezeNet-1.1, and TinyYOLOv3. The
+not enter latency ratios. The repeated update experiment covers three edit sites on each of
+DenseNet-121, SqueezeNet-1.1, and TinyYOLOv3, with ten paired repetitions per site. The
 execution experiment uses ten warm-ups and 100 timed samples per artifact. We
 form ratios within an edit, model, or operator before aggregation. Every CSV row
 records correctness, subject and input digests, compiler identity, seed, and
@@ -207,17 +205,14 @@ pipeline with an empty body cache.
 \subsection{End-to-End Performance}
 \label{sec:eval-artifacts}
 
-The final experiment quantifies the performance and coverage of code emitted
-through the programmable infrastructure. One matrix contains 24 fixed operator graphs---four each for
-elementwise chains, reductions, matrix multiplication, convolution,
-quantization, and fusion---and the same 15 model subjects. We compare Joggle's
-optimized lowering path with a pinned single-thread ONNX Runtime CPU reference,
-TVM Relax's default LLVM CPU pipeline without tuning, and ONNX-MLIR's
-LLVM pipeline at \texttt{-O3}, with parallelism and fast math disabled. The operator
-study additionally measures Joggle's required lowering path without the
-optimization pack to isolate its effect.
-Each case uses byte-identical inputs; dtype-specific numerical oracles gate its timing results. Joggle fixes
-each entry signature from those inputs before either lowering pipeline begins.
+We measure the execution latency of 24 operator graphs and 15 models.
+The operator suite contains four cases in each of six families: elementwise
+chains, reductions, matrix multiplication, convolution, quantization, and
+fusion. External baselines are ONNX Runtime's single-thread CPU provider,
+TVM Relax's default LLVM CPU pipeline without tuning, and ONNX-MLIR at
+\texttt{-O3} with parallelism and fast math disabled. Joggle uses input-fixed
+entry signatures and the same byte-identical tensors. The operator comparison
+also includes Joggle without its optimization pack.
 
 We report median steady-state execution latency from 100 measurements after
 ten warm-ups. Figure~\ref{fig:performance} groups all 24 operators into six
@@ -261,25 +256,25 @@ denominator but contribute no latency ratio.
   \end{tabular}
 \end{table}
 
-Across the 22 jointly correct operators, Joggle's optimized path was $1.27\times$
-faster than default TVM; ONNX-MLIR was $1.64\times$ faster than Joggle.
-Joggle had lower median latency on ten operators against TVM and eight against
-ONNX-MLIR. Its rectangular and square matrix products outperformed TVM, whereas TVM favored several
-elementwise and reduction workloads. All three compiler configurations remained
-slower than ORT in aggregate.
+On the 22 operators correct in every configuration, optimized Joggle achieves
+$1.27\times$ lower geometric mean latency than default TVM. It has lower
+median latency on ten cases, including rectangular and square matrix products.
+ONNX-MLIR is $1.64\times$ faster than Joggle in aggregate; ORT is faster than
+all three compiler configurations. The family panels locate these differences
+rather than reducing every operator to one suite-wide ratio.
 
-Joggle and ORT passed all 24 operators, while each external compiler passed 22.
-TVM could not import QLinearConv or QLinearMatMul; ONNX-MLIR could not lower
-QLinearConv, and its QLinearMatMul output failed the integer oracle.
-The common-set aggregate therefore used the same 22 operators across all
-configurations, with complete per-operator measurements in the supplementary material.
+Joggle and ORT pass all 24 operators; TVM and ONNX-MLIR each pass 22.
+TVM cannot import QLinearConv or QLinearMatMul. ONNX-MLIR cannot lower
+QLinearConv, and its QLinearMatMul output fails the integer oracle.
+Table~\ref{tab:operator-summary} reports the full and jointly correct populations
+separately; the supplement gives every operator's latency.
 
-Within Joggle, the optimization pack reduced geometric mean latency by $1.78\times$
-over all 24 operators, with gains concentrated in matrix multiplication.
-Rectangular and $256\times256$ products improved by $21.67\times$ and $12.90\times$,
-respectively. Strided convolution slowed by $1.11\times$ relative to the base
-path. These results separate optimization gains, cross-system kernel
-performance, and the compiler update costs in Section~\ref{sec:eval-efficient}.
+Joggle's optimization pack reduces geometric mean operator latency by
+$1.78\times$ across all 24 cases. Rectangular and $256\times256$ matrix
+products improve by $21.67\times$ and $12.90\times$, respectively; strided
+convolution slows by $1.11\times$. The largest execution gains therefore come
+from matrix-product lowering, whereas the update gains arise from preparation
+reuse.
 
 Figure~\ref{fig:model-performance} extends the external comparison to all 15
 models. Joggle passes the numerical oracle on 14 models, ORT on 13, and TVM and
@@ -312,6 +307,7 @@ values for every correct candidate remain in the accompanying CSV.
   \label{fig:model-performance}
 \end{figure}
 
-Together, generation characterizes the extension surface, patch footprint its
-ownership boundary, the cross-system update study its responsiveness, and the
-combined operator/model matrix its generated performance.
+The execution measurements establish the cost and coverage of the emitted
+artifacts. Paired update measurements separately identify compilation work
+saved by reuse. These endpoints distinguish kernel performance from the
+turnaround of a compiler edit.

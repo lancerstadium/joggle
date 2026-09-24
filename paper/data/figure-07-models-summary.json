@@ -26,6 +26,6 @@
   "normalization": "each candidate latency divided by same-model ORT median",
   "paired_correct": 8,
   "population": 15,
-  "source_csv": "paper/data/figure-07-models.csv",
+  "source_csv": "data/figure-07-models.csv",
   "source_sha256": "1cfe11f01eba62d2a4f969b11e57864eb149fbdc702c9872237468885fe6c603"
 }

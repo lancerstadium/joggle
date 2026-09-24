@@ -62,11 +62,10 @@ entity and stages unreachable from the preceding effects. Repeated
 decoding, traversal, conversion, and native compilation then dominate
 interactive turnaround.
 
-These problems form a causal chain. Separate mechanisms scatter a feature;
-scattered features hide the dependencies that matter; hidden dependencies
-leave a stage or pipeline suffix as the smallest safe update unit. Joggle
-therefore treats interface, ownership, and update granularity as one design
-problem.
+These costs arise at different boundaries. The call interface determines how
+a feature is expressed; ownership determines where it is changed; dependencies
+determine what must execute again. Joggle represents all three explicitly so
+that a cross-stage feature can be composed, published, and updated as a unit.
 
 \subsection{Design Requirements}
 \label{sec:requirements}

@@ -128,7 +128,8 @@ shared convolution result $\rightarrow$ no match; original chain preserved \\
 \end{longtable}
 \end{landscape}
 
-\begin{table}[!htbp]
+\subsection{Parametric Type Definition}
+\begin{table}[H]
 \caption{\texttt{def-parametric-type}: complete inputs and expected outputs.
 Width denotes logical bits, not ABI allocation size.}
 \label{tab:extension-type}
@@ -154,7 +155,8 @@ negative-fraction & 8 & -1 & --- & --- & invalid-type-parameter \\
 \end{tabular*}
 \end{table}
 
-\begin{table}[!htbp]
+\subsection{Quantized Operation Definition}
+\begin{table}[H]
 \caption{\texttt{def-quantized-op}: complete inputs and expected outputs, with
 defaults expanded. Scales are finite positive f64 values; zero points are signed
 i32 values. This task defines the operation; arithmetic lowering is evaluated separately.}
@@ -183,7 +185,8 @@ rank-mismatch & i8 & 1$\times$i8 & 1, 1, 1 & 0, 0, 0 & shape-mismatch \\
 \end{tabular*}
 \end{table}
 
-\begin{table}[!htbp]
+\subsection{Layout-Carrying Operation Definition}
+\begin{table}[H]
 \caption{\texttt{def-layout-attribute}: complete inputs and expected outputs.
 The constructor infers the result shape and preserves the element type and both layout attributes.}
 \label{tab:extension-layout}

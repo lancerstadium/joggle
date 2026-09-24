@@ -2,24 +2,23 @@
 
 ## Abstract
 
-Extending a heterogeneous compiler requires coordinated changes to semantics,
-analyses, transformations, conversions, and emitters. Separate programming
-interfaces and ownership boundaries spread a feature across the compiler;
-coarse invalidation repeats work after local edits. Joggle brings these
-capabilities into a progressive intermediate representation. Typed compiler
-functions inspect, transform, convert, and emit through a shared language,
-call model, and value model. Graph-level mods own cross-stage features and
-their dependencies independently of program containment. The evaluator records
-observed state and published effects, uses revisions to select affected work,
-and commits dependency records with the verified graph. Cached execution plans
-and prepared function bodies carry reusable work across compilations. Across
-nine edit sites in three models, paired updates achieve median speedups of
-$1.49$--$2.48\times$ over complete Joggle rebuilds, including emission, native
-compilation, and executable binding. Generated artifacts pass 24/24 operator
-and 14/15 model oracles. The optimization pack improves aggregate operator
-latency by $1.78\times$; on the eight models supported by all compared systems,
-Joggle runs $2.10\times$ faster than default TVM. These results connect a
-programmable extension surface to reusable compilation and executable code.
+Compiler extensions often span semantic definitions, analyses, transformations,
+conversions, and emitters. Separate interfaces scatter their implementation,
+while coarse invalidation repeats work after local edits. Joggle organizes
+these capabilities in a progressive intermediate representation. Typed compiler
+functions share a language, call model, and value model. Graph-level mods own
+cross-stage features independently of program containment. The evaluator uses
+recorded reads, published effects, and revisions to select affected calls;
+cached execution plans and prepared bodies preserve reusable work. Together,
+these mechanisms give an extension a common implementation interface, an
+explicit owner, and a dependency-directed update path. Across nine edit sites
+in three models, updates are $1.49$--$2.48\times$ faster than complete Joggle
+rebuilds, including emission, native compilation, and executable binding.
+Generated artifacts pass numerical checks on 24/24 operators and 14/15 models.
+On the eight models correct in all four compared systems, Joggle's geometric
+mean execution latency is $2.10\times$ lower than default TVM's. Joggle thus
+connects compiler programmability and feature ownership to reusable compilation
+within one graph representation.
 
 ## 1. Introduction
 
@@ -34,11 +33,9 @@ This mismatch matters for both developers and code-generating agents. A local
 feature is complete only when every cross-layer contract agrees. Its pieces
 may be scattered across an IR hierarchy, pass registry, build target,
 conversion library, and backend. A later edit must rediscover those pieces,
-and a conventional staged driver may rebuild an entire suffix even when most
-stages neither read nor affect the change. The resulting costs are not three
-independent inconveniences: fragmented mechanisms diffuse ownership, diffuse
-ownership obscures dependencies, and obscured dependencies force coarse
-re-execution.
+and a staged driver may rerun an entire suffix even when most stages are
+unaffected. Three aspects determine the cost: how compiler functions are
+expressed, where the feature is owned, and which work must run again.
 
 Joggle treats compiler behavior as a typed program over the same graph that it
 transforms. A *compiler function* can define semantics, inspect a graph,
@@ -87,14 +84,19 @@ decorative people. -->
 *Figure 1: Joggle maps three extension challenges to system mechanisms and
 measurable outcomes.*
 
-The paper contributes three technical elements: (1) a typed representation in
-which program entities and compiler functions share a handle and value model,
-with separate semantics for inspection, verified mutation, conversion, and
-artifact return; (2) a mod graph that specifies function visibility, native
-bindings, dependencies, and publication independently of program containment;
-and (3) an update algorithm in which entity generations and revisions validate
-recorded reads, write overlap propagates affected work, and a transaction
-publishes the graph and dependency records together.
+Joggle contributes three mechanisms.
+
+**Unified compiler functions.** Semantics, analysis, transformation, conversion,
+and emission use typed calls over shared graph handles and values. Their effect
+contracts distinguish inspection, graph mutation, and artifact return.
+
+**Graph-level feature ownership.** Mods group a feature's functions, native
+bindings, and dependencies across compilation stages. Visibility and publication
+follow the mod graph rather than the program's containment hierarchy.
+
+**Dependency-directed updates.** Read records carry entity generations and
+revisions. The evaluator checks these records and propagates overlapping effects. A
+transaction publishes graph changes and their dependency records together.
 
 We evaluate these elements with held-out extension tasks, matched patches
 across Joggle, MLIR, and xDSL, controlled model edits across Joggle, TVM, and
@@ -161,11 +163,10 @@ observed the edited entity and stages unreachable from the preceding effects.
 Repeated decoding, traversal, conversion, and native compilation then dominate
 turnaround.
 
-These problems form a causal chain. Separate mechanisms scatter a feature;
-scattered features hide the dependencies that matter; hidden dependencies
-leave a stage or pipeline suffix as the smallest safe update unit. Joggle
-therefore treats interface, ownership, and update granularity as one design
-problem.
+These costs arise at different boundaries. The call interface determines how
+a feature is expressed; ownership determines where it is changed; dependencies
+determine what must execute again. Joggle represents all three explicitly so
+that a cross-stage feature can be composed, published, and updated as a unit.
 
 ### 2.3 Design Requirements
 
@@ -615,13 +616,13 @@ publication boundaries.
 
 The evaluation maps each mechanism in Figure 1 to an independently observable
 effect. Table 1 summarizes the subjects, controls, and primary measurements.
-Only outputs that pass the relevant correctness oracle enter an aggregate.
+Correctness gates latency aggregates.
 
 | Property | Comparison | Primary evidence |
 | --- | --- | --- |
 | Convenient | 3 systems; 12 eval tasks | completion, tokens |
 | Controllable | 3 systems; 36 patches | files, lines, zones |
-| Efficient | 3 systems; 13 models | update time, reuse |
+| Efficient | 3 systems; 9 edit sites | update time, reuse |
 | End-to-end | 4 systems | correctness, latency |
 
 *Table 1: Evaluation matrix. Every comparison fixes revisions, inputs, and its
@@ -637,10 +638,9 @@ uses the same fixed inputs. End-to-end execution also includes ONNX Runtime.
 **Correctness and measurement.** Compiler-extension tasks use build-and-test
 oracles; transformations use verification and canonical graph digests;
 executable artifacts use reference tensors with dtype-specific tolerances.
-Failed cases remain in coverage but do not enter latency ratios. The update
-experiment has two populations: one complete sweep over 13 models and 37 edit
-sites, and ten paired repetitions of three edit sites on each of DenseNet-121,
-SqueezeNet-1.1, and TinyYOLOv3. The execution experiment uses ten warm-ups and
+Failed cases remain in coverage but do not enter latency ratios. The repeated update
+experiment covers three edit sites on each of DenseNet-121, SqueezeNet-1.1,
+and TinyYOLOv3, with ten paired repetitions per site. The execution experiment uses ten warm-ups and
 100 timed samples per artifact. We form ratios within an edit, model, or
 operator before aggregation. Every CSV row records correctness, subject and
 input digests, compiler identity, seed, and timing boundary; run records
@@ -829,17 +829,14 @@ paper/data/figure-06-update.*; script: paper/render_update.py. -->
 
 ### 4.5 End-to-End Performance
 
-The final experiment quantifies the performance and coverage of code emitted
-through the programmable infrastructure. One matrix contains 24 fixed operator graphs---four each for
-elementwise chains, reductions, matrix multiplication, convolution,
-quantization, and fusion---and the same 15 model subjects. We compare Joggle's
-optimized lowering path with a pinned single-thread ONNX Runtime CPU reference,
-TVM Relax's default LLVM CPU pipeline without tuning, and ONNX-MLIR's
-LLVM pipeline at `-O3`, with parallelism and fast math disabled. The operator
-study additionally measures Joggle's required lowering path without the
-optimization pack to isolate its effect.
-Each case uses byte-identical inputs; dtype-specific numerical oracles gate its timing results. Joggle fixes
-each entry signature from those inputs before either lowering pipeline begins.
+We measure the execution latency of 24 operator graphs and 15 models.
+The operator suite contains four cases in each of six families: elementwise
+chains, reductions, matrix multiplication, convolution, quantization, and
+fusion. External baselines are ONNX Runtime's single-thread CPU provider,
+TVM Relax's default LLVM CPU pipeline without tuning, and ONNX-MLIR at
+`-O3` with parallelism and fast math disabled. Joggle uses input-fixed
+entry signatures and the same byte-identical tensors. The operator comparison
+also includes Joggle without its optimization pack.
 
 We report median steady-state execution latency from 100 measurements after
 ten warm-ups. The performance figure groups all 24 operators into six panels
@@ -880,25 +877,25 @@ TVM/ONNX-MLIR 22/24. × marks invalid candidates.*
 *Table: Operator summary. Geometric means use all 24 or the common 22 operators,
 as indicated. Per-operator values appear in the supplementary material.*
 
-Across the 22 jointly correct operators, Joggle's optimized path was 1.27×
-faster than default TVM; ONNX-MLIR was 1.64× faster than Joggle.
-Joggle had lower median latency on ten operators against TVM and eight against
-ONNX-MLIR. Its rectangular and square matrix products outperformed TVM, whereas TVM favored several
-elementwise and reduction workloads. All three compiler configurations remained
-slower than ORT in aggregate.
+On the 22 operators correct in every configuration, optimized Joggle achieves
+$1.27\times$ lower geometric mean latency than default TVM. It has lower
+median latency on ten cases, including rectangular and square matrix products.
+ONNX-MLIR is $1.64\times$ faster than Joggle in aggregate; ORT is faster than
+all three compiler configurations. The family panels locate these differences
+rather than reducing every operator to one suite-wide ratio.
 
-Joggle and ORT passed all 24 operators, while each external compiler passed 22.
-TVM could not import QLinearConv or QLinearMatMul; ONNX-MLIR could not lower
-QLinearConv, and its QLinearMatMul output failed the integer oracle.
-The common-set aggregate therefore used the same 22 operators across all
-configurations, with complete per-operator measurements in the supplementary material.
+Joggle and ORT pass all 24 operators; TVM and ONNX-MLIR each pass 22.
+TVM cannot import QLinearConv or QLinearMatMul. ONNX-MLIR cannot lower
+QLinearConv, and its QLinearMatMul output fails the integer oracle.
+Table 2 reports the full and jointly correct populations
+separately; the supplement gives every operator's latency.
 
-Within Joggle, the optimization pack reduced geometric mean latency by 1.78×
-over all 24 operators, with gains concentrated in matrix multiplication.
-Rectangular and 256×256 products improved by 21.67× and 12.90×, respectively.
-Strided convolution slowed by 1.11× relative to the base path. These results
-separate optimization gains, cross-system kernel performance, and the compiler
-update costs in Section 4.4.
+Joggle's optimization pack reduces geometric mean operator latency by
+$1.78\times$ across all 24 cases. Rectangular and $256\times256$ matrix
+products improve by $21.67\times$ and $12.90\times$, respectively; strided
+convolution slows by $1.11\times$. The largest execution gains therefore come
+from matrix-product lowering, whereas the update gains arise from preparation
+reuse.
 
 Figure 9 extends the external comparison to all 15 models. Joggle passes the
 numerical oracle on 14 models, ORT on 13, and TVM and ONNX-MLIR on 11 each.
@@ -943,9 +940,10 @@ subject_kind,subject,subject_hash,family,system,system_revision,variant,
 supported,reason,iteration,calls_per_sample,latency_ns,max_abs_error,
 max_rel_error,input_digest,output_digest,correct,seed. -->
 
-Together, generation characterizes the extension surface, patch footprint its
-ownership boundary, the cross-system update study its responsiveness, and the
-combined operator/model matrix its generated performance.
+The execution measurements establish the cost and coverage of the emitted
+artifacts. Paired update measurements separately identify compilation work
+saved by reuse. These endpoints distinguish kernel performance from the
+turnaround of a compiler edit.
 
 ## 5. Related Work
 
@@ -1142,26 +1140,27 @@ Geometric means use the indicated common population.*
 Median execution latency is in milliseconds, with 100 measurements after ten
 warm-ups. × identifies a candidate without a numerically valid executable.
 
-| Model | ORT | Joggle | TVM | ONNX-MLIR |
-| --- | ---: | ---: | ---: | ---: |
-| DenseNet-121 | 18.124 | 706.663 | 1801.893 | 774.156 |
-| EfficientNet-Lite4 int8 | 11.651 | 131.990 | × | × |
-| EfficientNet-Lite4 QDQ | × | 133.687 | 707.443 | × |
-| GoogLeNet | 12.390 | 266.846 | 945.052 | 612.744 |
-| MNIST | 0.048 | 0.205 | 0.203 | 0.336 |
-| MobileNetV2 | × | 86.007 | 181.238 | 23.114 |
-| ResNet-18 | 14.358 | 839.229 | 1129.282 | 908.751 |
-| ShuffleNet-v2 | 1.858 | 26.912 | 66.672 | 8.450 |
-| SqueezeNet-1.0 QDQ | 2.853 | 56.658 | 164.147 | × |
-| SqueezeNet-1.1 | 2.263 | 63.121 | 163.041 | 82.522 |
-| SSD-MobileNetV1 | 13.056 | × | × | × |
-| TinyYOLOv3 | 23.817 | 521.532 | × | 1393.870 |
-| TinyYOLOv2 | 19.982 | 499.543 | 2421.420 | 1825.879 |
-| UltraFace-RFB-320 | 3.414 | 20.767 | × | 12.112 |
-| XCiT-Tiny | 43.016 | 2953.539 | 2972.780 | 318.047 |
-| Correct | 13/15 | 14/15 | 11/15 | 11/15 |
+| Model | ORT p50 | p95 | Joggle p50 | p95 | TVM p50 | p95 | ONNX-MLIR p50 | p95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| DenseNet-121 | 18.124 | 20.897 | 706.663 | 715.691 | 1801.893 | 1826.480 | 774.156 | 776.251 |
+| EfficientNet-Lite4 int8 | 11.651 | 13.834 | 131.990 | 133.215 | × | × | × | × |
+| EfficientNet-Lite4 QDQ | × | × | 133.687 | 136.742 | 707.443 | 718.765 | × | × |
+| GoogLeNet | 12.390 | 13.356 | 266.846 | 269.242 | 945.052 | 969.546 | 612.744 | 734.218 |
+| MNIST | 0.048 | 0.050 | 0.205 | 0.240 | 0.203 | 0.217 | 0.336 | 0.489 |
+| MobileNetV2 | × | × | 86.007 | 86.539 | 181.238 | 182.083 | 23.114 | 23.969 |
+| ResNet-18 | 14.358 | 16.206 | 839.229 | 854.691 | 1129.282 | 1156.727 | 908.751 | 910.927 |
+| ShuffleNet-v2 | 1.858 | 1.936 | 26.912 | 27.141 | 66.672 | 67.064 | 8.450 | 8.667 |
+| SqueezeNet-1.0 QDQ | 2.853 | 3.027 | 56.658 | 57.737 | 164.147 | 165.738 | × | × |
+| SqueezeNet-1.1 | 2.263 | 2.437 | 63.121 | 63.634 | 163.041 | 163.570 | 82.522 | 82.958 |
+| SSD-MobileNetV1 | 13.056 | 14.254 | × | × | × | × | × | × |
+| TinyYOLOv3 | 23.817 | 25.145 | 521.532 | 528.014 | × | × | 1393.870 | 1410.922 |
+| TinyYOLOv2 | 19.982 | 21.762 | 499.543 | 503.273 | 2421.420 | 2466.986 | 1825.879 | 1955.957 |
+| UltraFace-RFB-320 | 3.414 | 3.778 | 20.767 | 21.067 | × | × | 12.112 | 12.845 |
+| XCiT-Tiny | 43.016 | 46.548 | 2953.539 | 2975.516 | 2972.780 | 3007.537 | 318.047 | 321.317 |
+| Correct | 13/15 | | 14/15 | | 11/15 | | 11/15 | |
 
-*Table A2: Per-model median execution latency in milliseconds.*
+*Table A2: Per-model median and p95 execution latency in milliseconds;
+100 measured samples per valid executable after ten warm-ups.*
 
 | System | Backend or preparation failure | Numerical-oracle failure |
 | --- | --- | --- |
@@ -1197,7 +1196,7 @@ disjoint hidden cases.
 | Analysis | `ana-numeric-range` | Propagate closed finite intervals through add, multiply, ReLU, and clamp. | `mul([-2,3],[-4,5])` → `[-12,15]` | `relu([2,-1])` → `invalid-interval` |
 | Rewrite | `rew-add-zero` | Remove typed add-by-zero; floating positive zero requires `no_signed_zeros`; retain negative zero and used constants. | f32 `x+0`, `[4]`, NSZ → `x` | f32 `x+0.001` → unchanged |
 | Rewrite | `rew-redundant-cast` | Remove identity casts and only lossless signed-widening or finite f32/f64 round trips. | `f32[4]→f32[4]` → eliminated | `i16→i8→i16` → retained |
-| Conversion | `con-gelu-expand` | Replace `gelu` with `0.5*x*(1+erf(x/sqrt(2)))`; preserve shape, floating type, and users. | ![SSA before GELU expansion](figures/agent-gelu-before.svg) | ![SSA after GELU expansion](figures/agent-gelu-after.svg) integer → `unsupported-element-type` |
+| Conversion | `con-gelu-expand` | Replace `gelu` with `0.5*x*(1+erf(x/sqrt(2)))`; preserve shape, floating type, and users. | `gelu`, f32[5] → primitive SSA graph containing `erf`, f32[5] | integer → `unsupported-element-type` |
 | Conversion | `con-quant-expand` | Lower i8 `qadd` through f32 dequantize, add, and ties-even saturating quantize. | fixed vector → `[-1,1,-3,127]` | negative scale → `invalid-scale` |
 | Emission | `emit-graph-manifest` | Emit deterministic schema-v1 JSON with stable node/value numbering, types, users, and sorted attributes. | `splat→add→relu` → `n0..n2`, `v0..v3` | repeated emission → byte-identical JSON |
 | Emission | `emit-kernel-wrapper` | Emit complete C99 `task_kernel` for ReLU or `2*x+1`, supporting in-place and zero-count calls. | ReLU `[-2,-0,1.5,4]` → `[+0,+0,1.5,4]` | zero count + null pointers → no access |
@@ -1205,10 +1204,13 @@ disjoint hidden cases.
 | Vertical | `vert-fused-op` | Add NHWC/HWIO i8 fused qconv+bias+requantize+ReLU; fuse only a single-use chain. | unit kernel → `[4]`, one fused node | shared convolution → original chain preserved |
 
 *Table A5: Natural-language task inputs, observable outputs, and oracle-facing
-edge cases. The GELU row embeds the actual before/after SSA structures rendered
-from Graphviz DOT with DejaVu Sans Mono labels.*
+edge cases.*
 
-Tables A3–A5 specify construction, verification, and print/parse round trips.
+<!-- TABLE A5 GRAPH PROMPT — Embed the before/after GELU SSA pair in the
+TeX table; use agent-gelu-before/after.dot with DejaVu Sans Mono labels.
+The Markdown manuscript records the graph contract without embedding images. -->
+
+Tables A6–A8 specify construction, verification, and print/parse round trips.
 Rejected inputs produce no output IR. Tensor types omit the `tensor<…>` wrapper;
 bare i8 or f32 denotes a rank-zero tensor. Axis indices are zero-based.
 
@@ -1292,6 +1294,22 @@ thin charcoal edges; pale input blue, matched coral, replacement teal.
 Files: task-{zero,cast,quant,fusion}-{before,after}.dot and
 agent-gelu-{before,after}.dot. Fit each diagram within its cell while preserving
 aspect ratio; no image-generation text. -->
+
+The analysis and emission cases below complement the graph transformations.
+Outputs are the specified oracle expectations; byte strings are hexadecimal.
+
+| Task / case | Input | Intermediate computation | Expected observable output |
+| --- | --- | --- | --- |
+| Broadcast / empty axis | `[2,0]`, `[1]` | Align `[2,0]` with `[1,1]` | legal; shape `[2,0]` |
+| Interval / mixed product | `[-2,3] × [-4,5]` | Endpoint products `[8,-10,-12,15]` | interval `[-12,15]` |
+| Interval / add then ReLU | `[-3,2] + [1,4]` | Sum `[-2,6]`, then clamp below at 0 | interval `[0,6]` |
+| Manifest / repeated edges | `add(arg,arg)`; return `[twice,arg,twice]` | `arg=v0`, `twice=v1`, node `n0` | inputs `[v0,v0]`; outputs `[v1,v0,v1]` |
+| Wrapper / affine | f32 `[-2,0,1.5,4]` | Separate f32 multiply by 2, then add 1 | `[-3,1,4,9]`; same result in-place |
+| qint4 / odd count | `[-8,-1,0,3,7] + [1,1,-2,6,7]` | i8 sums `[-7,0,-2,9,14]`; saturate | `[-7,0,-2,7,7]`; bytes `09 7e 07` |
+| qint4 / negative tail | `[-8] + [-8]` | Saturate `-16` to `-8`; zero high nibble | `[-8]`; byte `08` |
+
+*Table A10: Worked analysis and artifact-output checks. Each row retains the
+semantic step between the task input and its expected output.*
 
 <!-- UPDATE DATA BEGIN -->
 

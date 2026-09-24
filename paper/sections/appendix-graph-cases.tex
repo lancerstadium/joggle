@@ -52,4 +52,47 @@ RNE(4.5)$=4$. Shared convolution results retain the original chain. &
 \bottomrule
 \end{tabular}
 \end{table}
+
+\begin{table}[!htbp]
+\centering\scriptsize
+\caption{Worked analysis and artifact-output checks. Values are task-contract
+expectations; byte strings are hexadecimal.}
+\label{tab:worked-outputs}
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}p{3.1cm}p{5.1cm}p{5.4cm}p{5.8cm}@{}}
+\toprule
+Task / case & Input & Intermediate computation & Expected observable output \\
+\midrule
+Broadcast / empty axis &
+\texttt{[2,0]}, \texttt{[1]} &
+Align \texttt{[2,0]} with \texttt{[1,1]} &
+legal; shape \texttt{[2,0]} \\
+Interval / mixed product &
+\texttt{[-2,3]} $\times$ \texttt{[-4,5]} &
+Endpoint products \texttt{[8,-10,-12,15]} &
+interval \texttt{[-12,15]} \\
+Interval / add then ReLU &
+\texttt{[-3,2] + [1,4]} &
+Sum \texttt{[-2,6]}, then clamp below at 0 &
+interval \texttt{[0,6]} \\
+Manifest / repeated edges &
+\texttt{add(arg,arg)};\par return \texttt{[twice,arg,twice]} &
+\texttt{arg=v0}, \texttt{twice=v1}, node \texttt{n0} &
+inputs \texttt{[v0,v0]};\par outputs \texttt{[v1,v0,v1]} \\
+Wrapper / affine &
+f32 \texttt{[-2,0,1.5,4]} &
+Separate f32 multiply by 2, then add 1 &
+\texttt{[-3,1,4,9]}; same result in-place \\
+qint4 / odd count &
+\texttt{[-8,-1,0,3,7]} $+$ \texttt{[1,1,-2,6,7]} &
+i8 sums \texttt{[-7,0,-2,9,14]}; saturate &
+\texttt{[-7,0,-2,7,7]}; bytes \texttt{09 7e 07} \\
+qint4 / negative tail &
+\texttt{[-8] + [-8]} &
+Saturate $-16$ to $-8$; zero high nibble &
+\texttt{[-8]}; byte \texttt{08} \\
+\bottomrule
+\end{tabular}
+\end{table}
 \end{landscape}

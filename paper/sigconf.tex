@@ -46,24 +46,23 @@
 \title[Joggle]{Joggle: A Progressive IR for Malleable Compilation}
 
 \begin{abstract}
-Extending a heterogeneous compiler requires coordinated changes to semantics,
-analyses, transformations, conversions, and emitters. Separate programming
-interfaces and ownership boundaries spread a feature across the compiler;
-coarse invalidation repeats work after local edits. Joggle brings these
-capabilities into a progressive intermediate representation. Typed compiler
-functions inspect, transform, convert, and emit through a shared language,
-call model, and value model. Graph-level mods own cross-stage features and
-their dependencies independently of program containment. The evaluator records
-observed state and published effects, uses revisions to select affected work,
-and commits dependency records with the verified graph. Cached execution plans
-and prepared function bodies carry reusable work across compilations. Across
-nine edit sites in three models, paired updates achieve median speedups of
-$1.49$--$2.48\times$ over complete Joggle rebuilds, including emission, native
-compilation, and executable binding. Generated artifacts pass 24/24 operator
-and 14/15 model oracles. The optimization pack improves aggregate operator
-latency by $1.78\times$; on the eight models supported by all compared systems,
-Joggle runs $2.10\times$ faster than default TVM. These results connect a
-programmable extension surface to reusable compilation and executable code.
+Compiler extensions often span semantic definitions, analyses, transformations,
+conversions, and emitters. Separate interfaces scatter their implementation,
+while coarse invalidation repeats work after local edits. Joggle organizes
+these capabilities in a progressive intermediate representation. Typed compiler
+functions share a language, call model, and value model. Graph-level mods own
+cross-stage features independently of program containment. The evaluator uses
+recorded reads, published effects, and revisions to select affected calls;
+cached execution plans and prepared bodies preserve reusable work. Together,
+these mechanisms give an extension a common implementation interface, an
+explicit owner, and a dependency-directed update path. Across nine edit sites
+in three models, updates are $1.49$--$2.48\times$ faster than complete Joggle
+rebuilds, including emission, native compilation, and executable binding.
+Generated artifacts pass numerical checks on 24/24 operators and 14/15 models.
+On the eight models correct in all four compared systems, Joggle's geometric
+mean execution latency is $2.10\times$ lower than default TVM's. Joggle thus
+connects compiler programmability and feature ownership to reusable compilation
+within one graph representation.
 \end{abstract}
 
 \keywords{compilers, extensibility, metaprogramming, incremental compilation}
