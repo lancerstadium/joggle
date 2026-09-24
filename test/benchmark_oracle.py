@@ -1319,6 +1319,13 @@ int main(void) {
             argv = ["agent", "--provider", "siliconflow", "--model", model,
                     "--system", "Joggle", "--task", "ana-storage-cost", "--seed", "1701",
                     "--output", str(output), "--joggle", sys.executable, "--builtin-mods", directory]
+            actions = iter([
+                '{"action":"inspect","file":"candidate.jog"}',
+                '{"action":"edit","file":"candidate.jog","source":"invalid"}',
+                '["inspect"]',
+                '{"action":"edit"}',
+                '{"action":"finish"}',
+            ])
             def api(path, key, payload=None):
                 self.assertEqual(key, "test-credential")
                 if path == "models":
@@ -1330,7 +1337,7 @@ int main(void) {
                 self.assertEqual(payload["response_format"], {"type": "json_object"})
                 self.assertEqual(payload["max_tokens"], 4096)
                 return {"id": "test-response", "model": model, "system_fingerprint": "",
-                    "choices": [{"finish_reason": "stop", "message": {"content": '{"action":"finish"}'}}],
+                    "choices": [{"finish_reason": "stop", "message": {"content": next(actions)}}],
                     "usage": {"prompt_tokens": 100, "completion_tokens": 5}}
             def native(command, **kwargs):
                 out = Path(command[command.index("--output")+1])
@@ -1353,6 +1360,10 @@ int main(void) {
             self.assertTrue(metadata["release_eligible"])
             self.assertEqual(rows[0]["stop_reason"], "build")
             self.assertEqual(rows[0]["model_revision"], "hosted-alias:" + model)
+            self.assertEqual(rows[0]["completion_tokens"], "25")
+            self.assertEqual(rows[0]["prompt_tokens"], "500")
+            self.assertEqual(rows[0]["tool_calls"], "1")
+            self.assertEqual(rows[0]["edit_attempts"], "0")
             self.assertNotIn("test-credential", (output / "trajectory.json").read_text())
             validate_trajectory(output / "result.csv", metadata, rows)
             with self.assertRaises(SystemExit):

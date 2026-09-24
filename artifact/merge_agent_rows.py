@@ -89,7 +89,11 @@ def validate_trajectory(path: Path, provider: dict, rows: list[dict[str, str]]) 
         if not event.get("response"):
             continue
         try:
-            action = json.loads(response_content(event["response"], backend))["action"]
+            command = json.loads(response_content(event["response"], backend))
+            # Match the runner's schema gate: rejected JSON never invokes a tool.
+            if not isinstance(command, dict) or set(command) - {"action", "source"}:
+                continue
+            action = command["action"]
         except (ValueError, TypeError, KeyError):
             continue
         if action in ("inspect", "edit", "test"):
