@@ -289,6 +289,20 @@ environment stays unchanged. Package admission checks the installed entry
 points, transformed graph, emitted C, and runtime outputs. It is a prerequisite
 for the ownership comparison, not a change-footprint result.
 
+The same directories contain native MLIR CMake packages. Each builds and
+installs a pass plugin that `mlir-opt --load-pass-plugin=...` discovers.
+`study-lowbit-lower` / `study-qconv-fuse` transform the graph;
+`study-lowbit-c{output=...}` / `study-qconv-c{output=...}` emit the C artifact.
+The plugin resolves runtime symbols from its host, preserving one MLIR pass
+registry. Joggle packages install the corresponding Jog implementation as
+`module.jog` using `joggle mod install`. All three systems use the same
+semantic fixtures and independent executable checks.
+
+The complete ownership matrix is fixed in `manifests/package-changes.json`:
+two initial integrations and six independent maintenance changes, each paired
+across the three systems. `manifests/package-sources.csv` lists the exact
+implementation and publication files included in each package.
+
 ```sh
 python3 artifact/minimize_patch.py \
   --repo /path/to/system --base BASE --head CANDIDATE \

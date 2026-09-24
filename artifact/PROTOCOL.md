@@ -119,6 +119,12 @@ registration/build declarations. Start with signed low-bit arithmetic and
 quantized convolution fusion, using the admitted semantic references and
 independent numerical oracles as implementation seeds.
 
+`manifests/package-changes.json` fixes eight paired conditions: initial
+integration for each feature and three independent maintenance changes per
+feature. `manifests/package-sources.csv` fixes the deployable source boundary
+for all six system/feature packages. Each maintenance change starts from the
+original admitted package; later changes do not inherit earlier patches.
+
 Measure initial integration and subsequent behavior changes separately.
 Initial integration starts from an otherwise runnable host. Maintenance starts
 from its oracle-passing package. Both baseline frameworks use out-of-tree
@@ -151,6 +157,8 @@ base revision, final patch, minimization trace, oracle output, and policy by
 hash.
 
 - Case template: `templates/footprint-cases.csv`
+- Package contracts: `manifests/package-changes.json`
+- Package source boundary: `manifests/package-sources.csv`
 - Policy template: `templates/footprint-policy.json`
 - CSV: `templates/figure-05-footprint.csv`
 - Plot: `figures/figure_05_footprint.py`

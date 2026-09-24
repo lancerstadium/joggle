@@ -1,0 +1,15 @@
+feature,system,source,deployed_path,role
+vert-int4,Joggle,artifact/extensions/vert-int4/reference.jog,module.jog,implementation
+vert-int4,MLIR,artifact/extensions/vert-int4/reference.cpp,reference.cpp,implementation
+vert-int4,MLIR,artifact/extensions/vert-int4/plugin.cpp,plugin.cpp,entry-points
+vert-int4,MLIR,artifact/extensions/vert-int4/CMakeLists.txt,CMakeLists.txt,publication
+vert-int4,xDSL,artifact/extensions/vert-int4/reference.py,reference.py,implementation
+vert-int4,xDSL,artifact/extensions/vert-int4/plugin.py,plugin.py,entry-points
+vert-int4,xDSL,artifact/extensions/vert-int4/pyproject.toml,pyproject.toml,publication
+vert-fused-op,Joggle,artifact/extensions/vert-fused-op/reference.jog,module.jog,implementation
+vert-fused-op,MLIR,artifact/extensions/vert-fused-op/reference.cpp,reference.cpp,implementation
+vert-fused-op,MLIR,artifact/extensions/vert-fused-op/plugin.cpp,plugin.cpp,entry-points
+vert-fused-op,MLIR,artifact/extensions/vert-fused-op/CMakeLists.txt,CMakeLists.txt,publication
+vert-fused-op,xDSL,artifact/extensions/vert-fused-op/reference.py,reference.py,implementation
+vert-fused-op,xDSL,artifact/extensions/vert-fused-op/plugin.py,plugin.py,entry-points
+vert-fused-op,xDSL,artifact/extensions/vert-fused-op/pyproject.toml,pyproject.toml,publication

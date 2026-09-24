@@ -1,0 +1,69 @@
+{
+  "schema": "native-package-changes/v1",
+  "systems": ["Joggle", "MLIR", "xDSL"],
+  "selection": "Two complete features, each with initial integration and three independent behavior changes. Maintenance variants start from the admitted original package, not from one another.",
+  "source_manifest": "package-sources.csv",
+  "controls": {
+    "installation": "Use each system's native package discovery. Do not modify the compiler host.",
+    "regression": "Retain original fixtures wherever the new behavior leaves their contract unchanged. New positive fixtures must distinguish each changed package from its parent.",
+    "ownership": "A feature package is one ownership zone, including its local analysis, transformation, emission and publication declarations.",
+    "counts": "Count implementation and publication changes; report tests separately. Record initial integration separately from maintenance. Preserve equal and zero counts.",
+    "baseline": "Every maintenance comparison includes the admitted parent package under the changed oracle. At least one positive fixture must fail for the parent and pass for the changed package."
+  },
+  "cases": [
+    {
+      "id": "lowbit-integrate",
+      "feature": "vert-int4",
+      "kind": "integration",
+      "contract": "Install a signed-i4 package providing saturating addition, range analysis, widening through i8, and low-nibble-first packed C output. Use the full admitted vert-int4 fixture suite."
+    },
+    {
+      "id": "lowbit-symmetric",
+      "feature": "vert-int4",
+      "kind": "maintenance",
+      "contract": "Accept the original signed-i4 inputs [-8,7], but clamp arithmetic outputs to the symmetric interval [-7,7]. The lowered clamp metadata, reported output range, unpacked execution results and packed bytes must agree. Preserve input-literal validation, nibble order, zero-count behavior and odd-count padding.",
+      "required_probes": ["all 256 input pairs at each tested lane", "sums below -7", "sum exactly -7", "upper saturation", "empty and odd counts", "invalid input literal 8"]
+    },
+    {
+      "id": "lowbit-subtract",
+      "feature": "vert-int4",
+      "kind": "maintenance",
+      "contract": "Replace qint4_add with qint4_sub: compute lhs minus rhs and saturate to [-8,7]. Lower through signed i8 subtraction; retain the original packing ABI, range report, validation and buffer guards.",
+      "required_probes": ["all 256 input pairs at each tested lane", "positive and negative saturation", "equal operands", "empty and odd counts", "invalid literals"]
+    },
+    {
+      "id": "lowbit-msb-first",
+      "feature": "vert-int4",
+      "kind": "maintenance",
+      "contract": "Keep signed-i4 saturating addition and the unpacked output unchanged. Pack the first lane of each pair in the high nibble and the second in the low nibble. For an odd count, clear the unused low nibble of the last byte. Preserve validation and zero-count behavior.",
+      "required_probes": ["all 256 input pairs at each tested lane", "positive and negative nibbles", "even counts", "odd negative tail", "empty count"]
+    },
+    {
+      "id": "qconv-integrate",
+      "feature": "vert-fused-op",
+      "kind": "integration",
+      "contract": "Install the admitted NHWC/HWIO signed-i8 convolution, bias, requantization and ReLU fusion package. Preserve shared intermediate users and execute the full admitted vert-fused-op fixture suite."
+    },
+    {
+      "id": "qconv-ties-away",
+      "feature": "vert-fused-op",
+      "kind": "maintenance",
+      "contract": "Change requantization from nearest-ties-to-even to nearest-ties-away-from-zero. Keep accumulation, scale order, output zero point, signed-i8 saturation, ReLU and the public kernel ABI unchanged. The fused operation must preserve the selected rounding semantics.",
+      "required_probes": ["positive half ties", "negative half ties with negative output zero point", "non-ties", "saturation", "shared convolution output", "seeded runtime vectors"]
+    },
+    {
+      "id": "qconv-relu6",
+      "feature": "vert-fused-op",
+      "kind": "maintenance",
+      "contract": "Support bounded ReLU with an upper real value of six. Preserve the bound through fusion and clamp quantized outputs to [output_zero, min(127, round_ties_to_even(6/out_scale)+output_zero)]. Unbounded ReLU retains its original behavior. Keep the original rounding of convolution results, layout, ABI and single-use fusion condition.",
+      "required_probes": ["values below zero", "values inside the cap", "values above six", "nonzero output zero points", "unbounded regression cases", "shared convolution output"]
+    },
+    {
+      "id": "qconv-stride2",
+      "feature": "vert-fused-op",
+      "kind": "maintenance",
+      "contract": "Support spatial stride [2,2] for valid NHWC/HWIO convolution with unit dilation. For input H by W and kernel KH by KW, infer output dimensions floor((H-KH)/2)+1 and floor((W-KW)/2)+1. Preserve stride through fusion and use it for input indexing in emitted C. Missing stride metadata keeps the original [1,1] behavior.",
+      "required_probes": ["odd and even spatial extents", "multi-element kernels", "multiple channels", "multiple batches", "unit-stride regression cases", "shared convolution output"]
+    }
+  ]
+}
