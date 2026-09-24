@@ -54,14 +54,16 @@ definitions, analyses, transformations, conversions, and emitters. Their
 implementation is fragmented across programming interfaces and ownership
 boundaries, while local edits trigger coarse re-execution. We present Joggle,
 a compiler infrastructure built on a progressive intermediate representation.
-Typed compiler functions express these roles through one language, call model,
-and value model. Graph-level mods organize cross-stage features independently
-of program containment. Recorded observations and published effects drive
-reactive execution, with transactions preserving reusable graph state.
-Across nine edit sites in three models, prepared-body reuse accelerates
-executable-ready updates by $1.49$--$2.48\times$ over complete rebuilds.
-On eight models compiled correctly by all compared systems, Joggle achieves
-a $2.10\times$ geometric-mean execution speedup over default TVM.
+To unify extension programming, typed compiler functions express these roles
+through one language, call model, and value model. Building on this
+interface, graph-level mods group cross-stage features independently of program
+containment. At runtime, recorded observations and published effects guide
+reactive execution, while transactions keep reusable state consistent with the
+graph. In model-update experiments across nine edit sites in three models,
+prepared-body reuse provides $1.49$--$2.48\times$ executable-ready speedups
+over complete rebuilds. For generated-code performance, the resulting executables
+achieve a $2.10\times$ geometric-mean speedup over default TVM on eight models compiled
+correctly by all compared systems.
 Together, these mechanisms provide a common programming model for evolving
 compiler capabilities alongside AI models and hardware.
 \end{abstract}

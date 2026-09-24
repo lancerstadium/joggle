@@ -1,10 +1,10 @@
-\section{Joggle Design}
+\section{Design}
 \label{sec:design}
 
 \subsection{System Model}
 \label{sec:system-model}
 
-Joggle uses one typed graph model for programs and compiler extensions.
+Programs and compiler extensions share one typed graph model.
 A \emph{subject mod} holds the program being inspected or transformed; an
 \emph{extension mod} supplies the compiler functions acting on it. These are roles
 within an invocation. Both use the same entity model, type system, and loader.
@@ -30,7 +30,7 @@ returns $r$, records the observed graph state $D$, and publishes graph effects
 $W$. Read-only calls have $W=\varnothing$. Mutating calls produce $W$ only
 after the resulting graph passes verification.
 
-Joggle calls this representation progressive because each successful compiler
+This representation is progressive because each successful compiler
 function publishes another verified mod over the same entity model. A stage may
 retain semantic operations while introducing lower-level helpers, and a later
 stage may replace definitions it owns. Typed refinements express progress
@@ -47,7 +47,7 @@ transactional publication boundary.
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/system-architecture.png}
-  \caption{Joggle's two graph structures. Mods delimit compiler capabilities;
+  \caption{Two graph structures organize compilation. Mods delimit compiler capabilities;
   typed calls operate on the subject graph. Decoded plans, dependency records,
   and versioned entity stores support transactional publication. Entries are schematic.}
   \Description{Mod dependency and operator graphs connect to a shared typed
@@ -66,7 +66,7 @@ graph runtime that validates them.
 \subsection{Compiler Functions}
 \label{sec:compiler-functions}
 
-Joggle's metaprogramming interface is the typed compiler function. Operator
+The metaprogramming interface consists of typed compiler functions. Operator
 semantics, analyses, transformations, representation conversion, and artifact
 generation use this single programmable surface for definition and invocation.
 
@@ -103,7 +103,7 @@ exchange graph handles and owned values through the same call interface.
   \label{fig:operator-extension}
 \end{figure}
 
-To invoke a compiler function, Joggle resolves its qualified name, visible
+To invoke a compiler function, the environment resolves its qualified name, visible
 mods, explicit generic arguments, parameter types, and result context. The
 selected implementation may be a source body, an intrinsic, or a native
 binding. In each case, the caller uses the same syntax and receives results
@@ -129,7 +129,7 @@ that organize these functions.
 \subsection{Mods}
 \label{sec:mods}
 
-A mod is Joggle's unit of ownership and composition. We model it as
+A mod is the unit of ownership and composition. We model it as
 \[
   \mathcal{M} = (n, U, F_{\mathrm{pub}}, F_{\mathrm{local}}, G, N).
 \]
@@ -183,7 +183,7 @@ second, dynamic dependency graph to avoid re-executing unaffected work.
 \subsection{Incremental Evaluation}
 \label{sec:incremental}
 
-A local graph edit need not invalidate every compiler result. Joggle bases reuse
+A local graph edit need not invalidate every compiler result. Reuse depends
 on observed state rather than on the subject mod's whole revision alone. For a
 cached read-only call $c$, the evaluator stores
 \[
@@ -313,7 +313,7 @@ preserve results across unrelated edits. External mutable state must enter
 through typed arguments or an environment change before reuse. Native bindings
 exchange scalar or byte attributes and do not receive graph entities, so
 graph-dependent work remains in tracked compiler functions. These rules define
-the state over which Joggle can validate reuse.
+the state over which the evaluator can validate reuse.
 
 Incremental evaluation therefore depends on more than a result cache. It
 requires stable entity identity, revisions that reflect every published edit,

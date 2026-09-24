@@ -4,10 +4,12 @@
 \subsection{Methodology}
 \label{sec:eval-method}
 
-The evaluation examines three costs of compiler extension: completing a
-feature, modifying its implementation, and rebuilding an executable after
-an edit. A fourth comparison measures generated-code performance. Table~\ref{tab:evaluation}
-summarizes the subjects, controls, and primary measurements.
+The evaluation follows a compiler feature from implementation to execution.
+We first assess extension completion, then measure the change footprint of
+implementations with the same behavior. Next, we measure the time from a model
+edit to a replacement executable. Finally, we compare the execution latency
+of generated code. Table~\ref{tab:evaluation} connects these four comparisons to
+the design goals.
 
 \begin{table}[H]
   \caption{Evaluation matrix. Every comparison fixes revisions, inputs, and
@@ -70,7 +72,9 @@ denominator.
 \subsection{Agent Extension Completion}
 \label{sec:eval-convenient}
 
-The extension suite specifies 24 tasks, four in each of six families: type or
+To assess unified extension programming, the agent study measures completion
+across six compiler roles rather than operator definition alone. The extension
+suite specifies 24 tasks, four in each of six families: type or
 operation definition, analysis, rewrite, conversion, artifact generation, and
 a vertical feature combining these roles. Each task has one semantic
 specification and fixed positive and negative fixtures. Before collecting
@@ -105,8 +109,10 @@ token count and negative log likelihood.
 \subsection{Change Footprint and Ownership}
 \label{sec:eval-controllable}
 
-The footprint study reuses the 12-task execution set, two tasks from each
-family. Selection is fixed before patch metrics are collected. Each of the 36
+Completion measures whether an extension works; footprint measures where its
+implementation changes the compiler. The footprint study therefore reuses the
+12-task execution set, two tasks from each family. Selection is fixed before
+patch metrics are collected. Each of the 36
 implementations begins from a clean pinned snapshot, passes the common oracle,
 and is reduced to a hunk-level fixed point.
 
@@ -131,28 +137,61 @@ separate.
 \subsection{Reactive Update Cost}
 \label{sec:eval-efficient}
 
-Across nine edit sites, Joggle reduces the time to produce a replacement
-executable on all three repeated model subjects. Median paired speedups are
-$2.48\times$ for DenseNet-121, $1.49\times$ for SqueezeNet-1.1, and $1.88\times$
-for TinyYOLOv3. Each result covers three edits with ten paired repetitions.
-Every successful update matches its rebuild's output digest.
-Figure~\ref{fig:update-results} separates absolute turnaround from the speedup
-obtained through reuse.
+We next examine the compilation work triggered by a model edit. The measured
+endpoint is a bound replacement executable, covering the full path from the
+edited graph to runnable code.
+
+\paragraph{Update protocol.}
+Update-to-ready time starts immediately before applying the edit and includes
+import, specialization, lowering, emission, native compilation, and binding.
+Numerical validation follows this interval and gates the result:
+\[
+T_{\mathrm{validated}}=T_{\mathrm{ready}}+T_{\mathrm{validation}}.
+\]
+Reference outputs are generated outside both intervals; environment setup and
+the validated initial build are recorded separately. For system $s$ and edit
+$e$, we pair an update with a complete rebuild of the same edited model:
+
+\[
+S_{s,e}=\frac{T_{\mathrm{ready,full},s,e}}{T_{\mathrm{ready,update},s,e}}.
+\]
+
+Both paths use the same optimization policy, node replacement, input tensors,
+and tolerance. The update starts from a validated original model; the rebuild
+starts in a fresh worker. Native caches remain enabled. TVM retains its runtime
+and process caches; ONNX-MLIR invokes a fresh compiler process from a resident
+host.
+
+Joggle retains its environment, evaluator plans, and prepared function bodies.
+After import, it matches specialization signatures and materializes referenced
+cached bodies. Scalarization, model-wide storage planning, emission, native
+compilation, and binding remain inside the measured interval. Its matched
+rebuild uses the same pipeline with an empty body cache.
+
+\paragraph{Turnaround and reuse.}
+Figure~\ref{fig:update-results} reports absolute update latency and paired
+rebuild/update speedup, separating cross-system turnaround from reuse within
+each system. Across nine edit sites, Joggle reduces executable-ready time on
+all three subjects. Median paired speedups are $2.48\times$ for DenseNet-121,
+$1.49\times$ for SqueezeNet-1.1, and $1.88\times$ for TinyYOLOv3. Each model
+contributes three edits with ten paired repetitions; every successful update
+matches its rebuild's output digest.
 
 Absolute median update times are 19.991\,s, 1.704\,s, and 9.763\,s for Joggle.
 TVM completes DenseNet and SqueezeNet updates in 10.636\,s and 1.092\,s;
 ONNX-MLIR takes 10.950\,s, 2.032\,s, and 2.796\,s on the three models. Their
 paired rebuild/update speedups remain between $0.99\times$ and $1.00\times$.
-TVM's TinyYOLOv3 path fails before producing an executable. Thus the figure
-exposes two independent properties: the cost of each compiler pipeline and
-the work it reuses after an edit.
+TVM's TinyYOLOv3 path fails before producing an executable. Reuse therefore
+shortens the measured rebuild path, while external turnaround still depends on
+the cost of the complete compiler pipeline.
 
-Prepared-body reuse accounts for most of Joggle's gain. DenseNet's median
-Prepare time falls from 29.854\,s to 1.298\,s; total lowering falls from
+\paragraph{Cost breakdown.}
+Prepared-body reuse accounts for most of the update gain. DenseNet's median
+Prepare time falls from 29.854\,s to 1.298\,s, reducing total lowering from
 37.692\,s to 8.411\,s. Emission remains near 6.5\,s and native compilation near
 2.7\,s. SqueezeNet and TinyYOLOv3 show the same pattern: preparation contracts,
 while emission and native compilation remain stable. The supplement reports
-all 27 edit/system combinations and the phase medians.
+all 27 edit/system combinations and phase medians.
 
 \begin{figure}[tp]
   \centering
@@ -168,46 +207,11 @@ all 27 edit/system combinations and the phase medians.
   \label{fig:update-results}
 \end{figure}
 
-The production endpoint is a bound executable for the edited model.
-Update-to-ready time starts immediately before applying the edit and includes
-import, specialization, lowering, emission, native compilation, and binding.
-Numerical validation follows the interval and gates the result. We retain both
-intervals:
-\[
-T_{\mathrm{validated}}=T_{\mathrm{ready}}+T_{\mathrm{validation}}.
-\]
-Reference outputs are generated outside both intervals. We record environment
-setup and the validated initial build separately from the update.
-
-For system $s$ and edit $e$, the paired update speedup is
-
-\[
-S_{s,e}=\frac{T_{\mathrm{ready,full},s,e}}{T_{\mathrm{ready,update},s,e}}.
-\]
-
-The numerator is a complete rebuild of the same edited model under the same
-optimization policy. Absolute update latency compares turnaround across
-systems, while the paired ratio measures reuse within each system. We summarize
-these ratios after pairing by edit and repetition; speedups above one indicate
-reduced update work.
-
-Each case applies the same hash-bound node replacement, input tensors, and
-tolerance. The update path first compiles and validates the original model; the
-matched rebuild starts in a fresh worker. Both apply the edit inside the timed
-interval. Native caches remain enabled: TVM retains its runtime and process
-caches, while ONNX-MLIR invokes a fresh compiler process from a resident host.
-
-Joggle retains its environment, evaluator plans, and prepared function bodies.
-It matches specialization signatures after importing the edited graph and
-materializes only referenced cached bodies. The timed endpoint also charges
-scalarization, model-wide storage planning, emission, native compilation, and
-binding for the replacement executable. The matched rebuild uses the identical
-pipeline with an empty body cache.
-
 \subsection{End-to-End Performance}
 \label{sec:eval-artifacts}
 
-We measure the execution latency of 24 operator graphs and 15 models.
+The preceding experiments concern compiler development and update cost.
+We now evaluate the resulting executables on 24 operator graphs and 15 models.
 The operator suite contains four cases in each of six families: elementwise
 chains, reductions, matrix multiplication, convolution, quantization, and
 fusion. External baselines are ONNX Runtime's single-thread CPU provider,
@@ -272,7 +276,7 @@ QLinearConv, and its QLinearMatMul output fails the integer oracle.
 Table~\ref{tab:operator-summary} reports the full and jointly correct populations
 separately; the supplement gives every operator's latency.
 
-Joggle's optimization pack reduces geometric mean operator latency by
+The optimization pack reduces geometric mean operator latency by
 $1.78\times$ across all 24 cases. Rectangular and $256\times256$ matrix
 products improve by $21.67\times$ and $12.90\times$, respectively; strided
 convolution slows by $1.11\times$. The largest execution gains therefore come
@@ -280,11 +284,11 @@ from matrix-product lowering, whereas the update gains arise from preparation
 reuse.
 
 Figure~\ref{fig:model-performance} extends the external comparison to all 15
-models. Joggle passes the numerical oracle on 14 models, ORT on 13, and TVM and
-ONNX-MLIR on 11 each. Joggle executes both EfficientNet quantization variants
-and both TinyYOLO models; SSD-MobileNet stops during preparation. Correctness
-is checked against the unoptimized ONNX graph. ORT's optimized executions of
-MobileNetV2 and EfficientNet QDQ exceed the tolerance, so these two models have
+models. Joggle passes the numerical oracle on 14 models, including both
+EfficientNet quantization variants and both TinyYOLO models; SSD-MobileNet
+stops during preparation. ORT passes on 13 models, and TVM and ONNX-MLIR on 11
+each. Correctness is checked against the unoptimized ONNX graph. ORT's optimized
+executions of MobileNetV2 and EfficientNet QDQ exceed the tolerance, so these two models have
 no ORT-normalized ratio even where another system produces a correct executable.
 
 Eight models pass in all four systems. On this common set, geometric mean
@@ -310,7 +314,8 @@ values for every correct candidate remain in the accompanying CSV.
   \label{fig:model-performance}
 \end{figure}
 
-The two performance experiments expose different optimization opportunities.
-Matrix-product lowering drives the largest operator gains, while prepared-body
-reuse reduces update turnaround. The phase breakdown identifies emission and
-native compilation as substantial remaining costs after preparation reuse.
+Together, these comparisons distinguish extension cost from generated-code
+quality. Prepared-body reuse reduces update turnaround, whereas matrix-product
+lowering produces the largest operator gains. The model results extend the
+execution comparison to complete networks, with coverage and latency reported
+separately.

@@ -9,14 +9,16 @@ definitions, analyses, transformations, conversions, and emitters. Their
 implementation is fragmented across programming interfaces and ownership
 boundaries, while local edits trigger coarse re-execution. We present Joggle,
 a compiler infrastructure built on a progressive intermediate representation.
-Typed compiler functions express these roles through one language, call model,
-and value model. Graph-level mods organize cross-stage features independently
-of program containment. Recorded observations and published effects drive
-reactive execution, with transactions preserving reusable graph state.
-Across nine edit sites in three models, prepared-body reuse accelerates
-executable-ready updates by $1.49$--$2.48\times$ over complete rebuilds.
-On eight models compiled correctly by all compared systems, Joggle achieves
-a $2.10\times$ geometric-mean execution speedup over default TVM.
+To unify extension programming, typed compiler functions express these roles
+through one language, call model, and value model. Building on this
+interface, graph-level mods group cross-stage features independently of program
+containment. At runtime, recorded observations and published effects guide
+reactive execution, while transactions keep reusable state consistent with the
+graph. In model-update experiments across nine edit sites in three models,
+prepared-body reuse provides $1.49$--$2.48\times$ executable-ready speedups
+over complete rebuilds. For generated-code performance, the resulting executables
+achieve a $2.10\times$ geometric-mean speedup over default TVM on eight models compiled
+correctly by all compared systems.
 Together, these mechanisms provide a common programming model for evolving
 compiler capabilities alongside AI models and hardware.
 
@@ -110,7 +112,7 @@ reusable records consistent with the verified graph.
 The evaluation pairs extension tasks and implementation patches across Joggle,
 MLIR, and xDSL. Model-edit comparisons use Joggle, TVM, and ONNX-MLIR; execution
 comparisons additionally include ONNX Runtime. Prepared-body reuse yields
-$1.49$--$2.48\times$ executable-ready speedups over complete Joggle rebuilds on
+$1.49$--$2.48\times$ executable-ready speedups over complete rebuilds on
 three models, with identical output digests. The generated artifacts pass
 checks on all 24 operators and 14 of the 15 models. These experiments separate
 extension cost, compilation turnaround, and generated-code performance.
@@ -174,8 +176,8 @@ turnaround.
 
 These costs arise at different boundaries. The call interface determines how
 a feature is expressed; ownership determines where it is changed; dependencies
-determine what must execute again. Joggle represents all three explicitly so
-that a cross-stage feature can be composed, published, and updated as a unit.
+determine what must execute again. Making these boundaries explicit allows a
+cross-stage feature to be composed, published, and updated as a unit.
 
 ### 2.3 Design Requirements
 
@@ -200,11 +202,11 @@ Compiler functions realize R1; mods realize R2; the evaluator and graph runtime
 realize R3. Section 3 presents them in the order a call encounters them:
 resolution, ownership, dependency capture, and transactional execution.
 
-## 3. Joggle Design
+## 3. Design
 
 ### 3.1 System Model
 
-Joggle uses one typed graph model for programs and compiler extensions.
+Programs and compiler extensions share one typed graph model.
 A *subject mod* holds the program being inspected or transformed; an
 *extension mod* supplies the compiler functions acting on it. These are roles
 within an invocation. Both use the same entity model, type system, and loader.
@@ -234,7 +236,7 @@ returns $r$, records the observed graph state $D$, and publishes graph effects
 $W$. Read-only calls have $W=\varnothing$. Mutating calls produce $W$ only
 after the resulting graph passes verification.
 
-Joggle calls this representation progressive because each successful compiler
+This representation is progressive because each successful compiler
 function publishes another verified mod over the same entity model. A stage may
 retain semantic operations while introducing lower-level helpers, and a later
 stage may replace definitions it owns. Typed refinements express progress
@@ -265,7 +267,7 @@ graph and dependency records; failure restores G. No invented timing numbers,
 large title bands, decorative icons, paragraphs, or sequential query/run/emit.
 Use thin dependency arrows and tiny local annotations, not word-heavy cards. -->
 
-*Figure 3: Joggle's two graph structures. Mods delimit compiler capabilities;
+*Figure 3: Two graph structures organize compilation. Mods delimit compiler capabilities;
 typed calls operate on the subject graph. Decoded plans, dependency records,
 and versioned entity stores support transactional publication. Entries are schematic.*
 
@@ -276,7 +278,7 @@ dependencies and the graph runtime that validates them.
 
 ### 3.2 Compiler Functions
 
-Joggle's metaprogramming interface is the typed compiler function. Operator
+The metaprogramming interface consists of typed compiler functions. Operator
 semantics, analyses, transformations, representation conversion, and artifact
 generation use this single programmable surface for definition and invocation.
 
@@ -319,7 +321,7 @@ fake source code, cache-hit counts, or isolated output-type edits. -->
 roles. Fusion and conversion publish verified graphs; emission reads the
 prepared graph and returns an artifact without changing it.*
 
-To invoke a compiler function, Joggle resolves its qualified name, visible
+To invoke a compiler function, the environment resolves its qualified name, visible
 mods, explicit generic arguments, parameter types, and result context. The
 selected implementation may be a source body, an intrinsic, or a native
 binding. In each case, the caller uses the same syntax and receives results
@@ -344,7 +346,7 @@ that organize these functions.
 
 ### 3.3 Mods
 
-A mod is Joggle's unit of ownership and composition. We model it as
+A mod is the unit of ownership and composition. We model it as
 
 $$
 \mathcal{M} = (n, U, F_{pub}, F_{local}, G, N).
@@ -398,8 +400,8 @@ second, dynamic dependency graph to avoid re-executing unaffected work.
 
 ### 3.4 Incremental Evaluation
 
-A local graph edit need not invalidate every compiler result. Joggle bases
-reuse on observed state rather than on the subject mod's whole revision alone.
+A local graph edit need not invalidate every compiler result. Reuse depends
+on observed state rather than on the subject mod's whole revision alone.
 For a cached read-only call $c$, the evaluator stores
 
 $$
@@ -534,7 +536,7 @@ preserve results across unrelated edits. External mutable state must enter
 through typed arguments or an environment change before reuse. Native bindings
 exchange scalar or byte attributes and do not receive graph entities, so
 graph-dependent work remains in tracked compiler functions. These rules define
-the state over which Joggle can validate reuse.
+the state over which the evaluator can validate reuse.
 
 Incremental evaluation therefore depends on more than a result cache. It
 requires stable entity identity, revisions that reflect every published edit,
@@ -621,10 +623,11 @@ establish when recorded observations remain reusable.
 
 ### 4.1 Methodology
 
-The evaluation examines three costs of compiler extension: completing a
-feature, modifying its implementation, and rebuilding an executable after
-an edit. A fourth comparison measures generated-code performance. Table 1
-summarizes the subjects, controls, and primary measurements.
+The evaluation follows a compiler feature from implementation to execution.
+We first assess extension completion, then measure the change footprint of
+implementations with the same behavior. Next, we measure the time from a model
+edit to a replacement executable. Finally, we compare the execution latency
+of generated code. Table 1 connects these four comparisons to the design goals.
 
 | Property | Comparison | Primary evidence |
 | --- | --- | --- |
@@ -680,7 +683,9 @@ remain in coverage. Update shading denotes executed work.*
 
 ### 4.2 Agent Extension Completion
 
-The extension suite specifies 24 tasks, four in each of six families: type or
+To assess unified extension programming, the agent study measures completion
+across six compiler roles rather than operator definition alone. The extension
+suite specifies 24 tasks, four in each of six families: type or
 operation definition, analysis, rewrite, conversion, artifact generation, and
 a vertical feature combining these roles. Each task has one semantic
 specification and fixed positive and negative fixtures. Before collecting
@@ -726,8 +731,10 @@ reference_tokens,reference_bytes,reference_bpb. -->
 
 ### 4.3 Change Footprint and Ownership
 
-The footprint study reuses the 12-task execution set, two tasks from each
-family. Selection is fixed before patch metrics are collected. Each of the 36
+Completion measures whether an extension works; footprint measures where its
+implementation changes the compiler. The footprint study therefore reuses the
+12-task execution set, two tasks from each family. Selection is fixed before
+patch metrics are collected. Each of the 36
 implementations begins from a clean pinned snapshot, passes the common oracle,
 and is reduced to a hunk-level fixed point.
 
@@ -762,70 +769,66 @@ cross_zone_edges,oracle_passed. -->
 
 ### 4.4 Reactive Update Cost
 
-Across nine edit sites, Joggle reduces the time to produce a replacement
-executable on all three repeated model subjects. Median paired speedups are
-2.48× for DenseNet-121, 1.49× for SqueezeNet-1.1, and 1.88× for TinyYOLOv3.
-Each result covers three edits with ten paired repetitions. Every successful
-update matches its rebuild's output digest. Figure 7 separates absolute
-turnaround from the speedup obtained through reuse.
+We next examine the compilation work triggered by a model edit. The measured
+endpoint is a bound replacement executable, covering the full path from the
+edited graph to runnable code.
 
-Absolute median update times are 19.991 s, 1.704 s, and 9.763 s for Joggle.
-TVM completes DenseNet and SqueezeNet updates in 10.636 s and 1.092 s;
-ONNX-MLIR takes 10.950 s, 2.032 s, and 2.796 s on the three models. Their paired
-rebuild/update speedups remain between 0.99× and 1.00×. TVM's TinyYOLOv3 path
-fails before producing an executable. Thus the figure exposes two independent
-properties: the cost of each compiler pipeline and the work it reuses after
-an edit.
-
-Prepared-body reuse accounts for most of Joggle's gain. DenseNet's median
-Prepare time falls from 29.854 s to 1.298 s; total lowering falls from 37.692 s
-to 8.411 s. Emission remains near 6.5 s and native compilation near 2.7 s.
-SqueezeNet and TinyYOLOv3 show the same pattern: preparation contracts, while
-emission and native compilation remain stable. The supplement reports all 27
-edit/system combinations and the phase medians.
-
-*Figure 7: Repeated model edits: ready time (top, log scale) and paired
-rebuild/update speedup (bottom). Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3.
-Ticks identify edited nodes and operators. Ten repetitions per edit; bars
-show medians, whiskers IQR, and × failed compilation.*
-
-The production endpoint is a bound executable for the edited model.
-Update-to-ready time starts immediately before applying the edit and includes
-import, specialization, lowering, emission, native compilation, and binding.
-Numerical validation follows the interval and gates the result. We retain both
-intervals:
+**Update protocol.** Update-to-ready time starts immediately before applying
+the edit and includes import, specialization, lowering, emission, native
+compilation, and binding. Numerical validation follows this interval and gates
+the result:
 
 $$
 T_{validated}=T_{ready}+T_{validation}.
 $$
 
-Reference outputs are generated outside both intervals. We record environment
-setup and the validated initial build separately from the update.
-
-For system $s$ and edit $e$, the paired update speedup is
+Reference outputs are generated outside both intervals; environment setup and
+the validated initial build are recorded separately. For system $s$ and edit
+$e$, we pair an update with a complete rebuild of the same edited model:
 
 $$
 S_{s,e}=\frac{T_{ready,full,s,e}}{T_{ready,update,s,e}}.
 $$
 
-The numerator is a complete rebuild of the same edited model under the same
-optimization policy. Absolute update latency compares turnaround across
-systems, while the paired ratio measures reuse within each system. We summarize
-these ratios after pairing by edit and repetition; speedups above one indicate
-reduced update work.
-
-Each case applies the same hash-bound node replacement, input tensors, and
-tolerance. The update path first compiles and validates the original model; the
-matched rebuild starts in a fresh worker. Both apply the edit inside the timed
-interval. Native caches remain enabled: TVM retains its runtime and process
-caches, while ONNX-MLIR invokes a fresh compiler process from a resident host.
+Both paths use the same optimization policy, node replacement, input tensors,
+and tolerance. The update starts from a validated original model; the rebuild
+starts in a fresh worker. Native caches remain enabled. TVM retains its runtime
+and process caches; ONNX-MLIR invokes a fresh compiler process from a resident
+host.
 
 Joggle retains its environment, evaluator plans, and prepared function bodies.
-It matches specialization signatures after importing the edited graph and
-materializes only referenced cached bodies. The timed endpoint also charges
-scalarization, model-wide storage planning, emission, native compilation, and
-binding for the replacement executable. The matched rebuild uses the identical
-pipeline with an empty body cache.
+After import, it matches specialization signatures and materializes referenced
+cached bodies. Scalarization, model-wide storage planning, emission, native
+compilation, and binding remain inside the measured interval. Its matched
+rebuild uses the same pipeline with an empty body cache.
+
+**Turnaround and reuse.** Figure 7 reports absolute update latency and paired
+rebuild/update speedup, separating cross-system turnaround from reuse within
+each system. Across nine edit sites, Joggle reduces executable-ready time on
+all three subjects. Median paired speedups are 2.48× for DenseNet-121, 1.49× for
+SqueezeNet-1.1, and 1.88× for TinyYOLOv3. Each model contributes three edits
+with ten paired repetitions; every successful update matches its rebuild's
+output digest.
+
+Absolute median update times are 19.991 s, 1.704 s, and 9.763 s for Joggle.
+TVM completes DenseNet and SqueezeNet updates in 10.636 s and 1.092 s;
+ONNX-MLIR takes 10.950 s, 2.032 s, and 2.796 s on the three models. Their paired
+rebuild/update speedups remain between 0.99× and 1.00×. TVM's TinyYOLOv3 path
+fails before producing an executable. Reuse therefore shortens the measured
+rebuild path, while external turnaround still depends on the cost of the
+complete compiler pipeline.
+
+**Cost breakdown.** Prepared-body reuse accounts for most of the update gain.
+DenseNet's median Prepare time falls from 29.854 s to 1.298 s, reducing total
+lowering from 37.692 s to 8.411 s. Emission remains near 6.5 s and native
+compilation near 2.7 s. SqueezeNet and TinyYOLOv3 show the same pattern:
+preparation contracts, while emission and native compilation remain stable.
+The supplement reports all 27 edit/system combinations and phase medians.
+
+*Figure 7: Repeated model edits: ready time (top, log scale) and paired
+rebuild/update speedup (bottom). Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3.
+Ticks identify edited nodes and operators. Ten repetitions per edit; bars
+show medians, whiskers IQR, and × failed compilation.*
 
 <!-- UPDATE-RESULTS FIGURE — Single-column vertical bars, two rows by three columns,
 3.33×2.25 inches with 5.5 pt labels. Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3. Top:
@@ -841,7 +844,8 @@ paper/data/figure-06-update.*; script: paper/render_update.py. -->
 
 ### 4.5 End-to-End Performance
 
-We measure the execution latency of 24 operator graphs and 15 models.
+The preceding experiments concern compiler development and update cost.
+We now evaluate the resulting executables on 24 operator graphs and 15 models.
 The operator suite contains four cases in each of six families: elementwise
 chains, reductions, matrix multiplication, convolution, quantization, and
 fusion. External baselines are ONNX Runtime's single-thread CPU provider,
@@ -906,7 +910,7 @@ QLinearConv, and its QLinearMatMul output fails the integer oracle.
 Table 2 reports the full and jointly correct populations
 separately; the supplement gives every operator's latency.
 
-Joggle's optimization pack reduces geometric mean operator latency by
+The optimization pack reduces geometric mean operator latency by
 $1.78\times$ across all 24 cases. Rectangular and $256\times256$ matrix
 products improve by $21.67\times$ and $12.90\times$, respectively; strided
 convolution slows by $1.11\times$. The largest execution gains therefore come
@@ -914,10 +918,10 @@ from matrix-product lowering, whereas the update gains arise from preparation
 reuse.
 
 Figure 9 extends the external comparison to all 15 models. Joggle passes the
-numerical oracle on 14 models, ORT on 13, and TVM and ONNX-MLIR on 11 each.
-Joggle executes both EfficientNet quantization variants and both TinyYOLO
-models; SSD-MobileNet stops during preparation. Correctness is checked against
-the unoptimized ONNX graph. ORT's optimized executions of MobileNetV2 and
+numerical oracle on 14 models, including both EfficientNet quantization
+variants and both TinyYOLO models; SSD-MobileNet stops during preparation.
+ORT passes on 13 models, and TVM and ONNX-MLIR on 11 each. Correctness is checked
+against the unoptimized ONNX graph. ORT's optimized executions of MobileNetV2 and
 EfficientNet QDQ exceed the tolerance, so these two models have no ORT-normalized
 ratio even where another system produces a correct executable.
 
@@ -956,14 +960,15 @@ subject_kind,subject,subject_hash,family,system,system_revision,variant,
 supported,reason,iteration,calls_per_sample,latency_ns,max_abs_error,
 max_rel_error,input_digest,output_digest,correct,seed. -->
 
-The two performance experiments expose different optimization opportunities.
-Matrix-product lowering drives the largest operator gains, while prepared-body
-reuse reduces update turnaround. The phase breakdown identifies emission and
-native compilation as substantial remaining costs after preparation reuse.
+Together, these comparisons distinguish extension cost from generated-code
+quality. Prepared-body reuse reduces update turnaround, whereas matrix-product
+lowering produces the largest operator gains. The model results extend the
+execution comparison to complete networks, with coverage and latency reported
+separately.
 
 ## 5. Related Work
 
-The related-work table aligns mechanisms with Joggle's three design axes. **Roles**
+The related-work table aligns mechanisms with the three design axes. **Roles**
 covers the five compiler roles through one programmable surface. **Owner** and
 **Deps** capture capability organization.
 
@@ -1018,8 +1023,7 @@ representations to expose decisions at the operator, loop, memory, and target
 levels. Joggle supplies the programmable and organizational substrate for
 declaring, composing, converting, and executing these algorithms.
 
-Joggle addresses both generated-code performance and compiler turnaround.
-Typed functions express target-specific optimization, while recorded
+Here, typed functions express target-specific optimization, while recorded
 dependencies and cached work support repeated compilation. Section 4 evaluates
 these dimensions through executable latency and model-edit completion time.
 
