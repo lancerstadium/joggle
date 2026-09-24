@@ -1,0 +1,10 @@
+digraph G {
+  graph [bgcolor="transparent", margin=0, pad=0.025, rankdir=LR,
+         nodesep=0.10, ranksep=0.13, splines=polyline];
+  node [shape=box, style="rounded,filled", margin="0.04,0.025",
+        width=0, height=0.26, penwidth=0.7, color="#4C6070", fillcolor="#F4F6F8",
+        fontname="DejaVu Sans Mono", fontsize=10.5];
+  edge [arrowsize=0.5, penwidth=0.7, color="#4C6070",
+        fontname="DejaVu Sans Mono", fontsize=10.5];
+  args [label="W = 8\nF = 3",fillcolor="#E9F1FA"]; ty [label="fx<W,F>",fillcolor="#FBEDE7"]; args -> ty;
+}

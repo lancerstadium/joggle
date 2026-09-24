@@ -1,0 +1,20 @@
+digraph G {
+  graph [bgcolor="transparent", margin=0, pad=0.025, rankdir=LR,
+         nodesep=0.10, ranksep=0.13, splines=polyline];
+  node [shape=box, style="rounded,filled", margin="0.04,0.025",
+        width=0, height=0.26, penwidth=0.7, color="#4C6070", fillcolor="#F4F6F8",
+        fontname="DejaVu Sans Mono", fontsize=10.5];
+  edge [arrowsize=0.5, penwidth=0.7, color="#4C6070",
+        fontname="DejaVu Sans Mono", fontsize=10.5];
+  graph [rankdir=TB];
+  x [label="x",shape=ellipse,fillcolor="#E9F1FA",group="left"];
+  half [label="* 0.5",group="left"];
+  mul [label="mul",fillcolor="#E2F3EE",group="left"];
+  div [label="/ sqrt(2)",group="right"];
+  erf [label="erf",group="right"];
+  add [label="+ 1",group="right"];
+  {rank=same; x; div;} {rank=same; half; erf;} {rank=same; mul; add;}
+  x -> div; x -> half [weight=10]; half -> mul [weight=10];
+  div -> erf [weight=10]; erf -> add [weight=10]; add -> mul [constraint=false];
+  half -> erf [style=invis,weight=10]; mul -> add [style=invis,weight=10];
+}

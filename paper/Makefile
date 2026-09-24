@@ -11,6 +11,10 @@ figures:
 	python3 ../artifact/figures/figure_07_models.py data/figure-07-models.csv --output figures/figure-07-models.pdf --summary data/figure-07-models-summary.csv --font-size 5.5
 
 TASK_GRAPHS = $(patsubst %.dot,%.pdf,$(wildcard figures/task-*.dot))
+A5_GRAPHS = $(patsubst %.dot,%.pdf,$(wildcard figures/a5-*.dot))
+
+figures/a5-%.pdf: figures/a5-%.dot
+	dot -Tpdf $< -o $@
 
 figures/task-%.pdf: figures/task-%.dot
 	dot -Tpdf $< -o $@
@@ -38,7 +42,7 @@ sigconf.pdf: sigconf.tex references.bib \
 	figures/figure-06-update.pdf
 	latexmk -pdf -interaction=nonstopmode -halt-on-error sigconf.tex
 
-supplement.pdf: supplement.tex sections/appendix-operator-data.tex \
+supplement.pdf: supplement.tex $(A5_GRAPHS) sections/appendix-operator-data.tex \
 	sections/appendix-model-data.tex \
 	sections/appendix-update-data.tex \
 	sections/appendix-graph-cases.tex $(TASK_GRAPHS) \

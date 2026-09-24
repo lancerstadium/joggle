@@ -34,7 +34,8 @@ is a later, post-acceptance process with its own instructions.
 ## Current checks
 
 The main PDF has 13 pages; technical content ends on page 12 and page 13
-contains references only. The separate supplement has six pages. Both entry
+contains references only. The separate supplement has eight pages, including
+three landscape pages for Table A5's 12 paired input/output examples. Both entry
 points explicitly enable page numbers.
 
 The compact authoring figures are not yet submission-size compliant: their

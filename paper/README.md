@@ -1206,9 +1206,21 @@ disjoint hidden cases.
 *Table A5: Natural-language task inputs, observable outputs, and oracle-facing
 edge cases.*
 
-<!-- TABLE A5 GRAPH PROMPT — Embed the before/after GELU SSA pair in the
-TeX table; use agent-gelu-before/after.dot with DejaVu Sans Mono labels.
-The Markdown manuscript records the graph contract without embedding images. -->
+<!-- TABLE A5 GRAPH PROMPT — Use three columns: task and semantic constraints,
+input, expected output. Draw a paired DOT schematic for every one of the 12
+rows, not only GELU. Use the values in the table above and the frozen task
+specifications. Definition rows show construction and typed results; analysis
+rows show shapes or intervals; rewrites and conversions show graph changes;
+emission rows show the input graph and output artifact; vertical rows show
+qint4 packing and quantized fusion. Place boundary cases below each request,
+not in the output column. Use DejaVu Sans Mono at 10.5 pt, blue inputs, coral
+matched operations, teal outputs, and cream constants; labels and shapes
+remain meaningful in grayscale. Preserve the full GELU formula and quantized
+rounding/saturation semantics in the text under the diagrams. Keep every pair
+in its own row and separate figures from captions with positive vertical
+space. Graphs are contract illustrations, not measured Agent outputs.
+Use figures/a5-*-input.dot and figures/a5-*-output.dot; Markdown retains these
+instructions and the complete input/output values rather than raster images. -->
 
 Tables A6–A8 specify construction, verification, and print/parse round trips.
 Rejected inputs produce no output IR. Tensor types omit the `tensor<…>` wrapper;

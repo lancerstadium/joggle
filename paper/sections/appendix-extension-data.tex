@@ -2,130 +2,165 @@
 \section{Extension Task Inputs and Outputs}
 \label{sec:extension-task-data}
 
-Table~\ref{tab:agent-contracts} records the natural-language contracts and
-representative observable inputs and outputs for the 12 tasks used in the
-agent and footprint experiments.  Tables~\ref{tab:extension-type}--\ref{tab:extension-layout} specify construction,
-verification, and print/parse round trips. Rejected inputs produce no output IR.
-Tensor types omit the \texttt{tensor<\ldots{}>} wrapper; bare i8 or f32 denotes a
-rank-zero tensor. Axis indices are zero-based.
+NSZ denotes \texttt{no\_signed\_zeros}, DQ dequantization, Q quantization,
+and RNE round-to-nearest, ties-to-even.
 
-\scriptsize
-\setlength{\tabcolsep}{3pt}
-\renewcommand{\arraystretch}{1.12}
-\begin{longtable}{@{}p{1.2cm}p{2.5cm}p{6.8cm}p{5.0cm}p{4.5cm}@{}}
-\caption{Natural-language task contracts and representative observable inputs
-and outputs.  The table preserves the operative semantic constraints while
-omitting only system-specific entry-point boilerplate.  Every candidate is
-also checked on disjoint hidden cases.}
+\begingroup
+\normalsize
+% Compensate for the supplement's 0.86-scaled mono font in this 10 pt table.
+\let\tasktexttt\texttt
+\renewcommand{\texttt}[1]{{\fontsize{11.63pt}{12pt}\selectfont\tasktexttt{#1}}}
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.0}
+\newcommand{\taskpair}[2]{%
+  \begin{minipage}[t]{\linewidth}
+  \vspace{2pt}\centering
+  \includegraphics{figures/a5-#1.pdf}\par
+  \vspace{3pt}\raggedright #2\strut
+  \end{minipage}}
+\newcommand{\taskname}[2]{\textbf{#1}\par\texttt{#2}\par\vspace{2pt}}
+\newcommand{\boundary}[1]{\par\vspace{2pt}\textit{Boundary:} #1}
+
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{7.4cm}p{6.15cm}p{6.15cm}@{}}
+\caption{Task contracts and paired input/output diagrams. Blue: inputs;
+coral: matched operations; teal: results; cream: constants or packed bytes.
+Arrows show dataflow or the labeled construction step.}
 \label{tab:agent-contracts}\\
 \toprule
-Family & Task & Natural-language request & Positive input $\rightarrow$ output & Boundary or negative input $\rightarrow$ observation \\
+Task and natural-language request & Input & Expected output \\
 \midrule
 \endfirsthead
-\multicolumn{5}{l}{\textit{Table~\ref{tab:agent-contracts} continued}}\\
+\multicolumn{3}{l}{\textit{Table~\ref{tab:agent-contracts} continued}}\\
 \toprule
-Family & Task & Natural-language request & Positive input $\rightarrow$ output & Boundary or negative input $\rightarrow$ observation \\
+Task and natural-language request & Input & Expected output \\
 \midrule
 \endhead
 \midrule
-\multicolumn{5}{r}{\textit{continued on next page}}\\
+\multicolumn{3}{r}{\textit{continued on next page}}\\
 \endfoot
 \bottomrule
 \endlastfoot
 
-Definition & \texttt{def-parametric-type} &
-Define a signed fixed-point scalar \texttt{fx<W,F>}; require $2\leq W\leq32$
-and $0\leq F<W$.  Preserve both parameters through construction, printing,
-and reparsing; native function arguments and returns use the new type. &
-\texttt{type=fx, W=8, F=3} $\rightarrow$ \texttt{fx<8,3>}, logical width 8 &
-\texttt{W=8, F=8} $\rightarrow$ \texttt{invalid-type-parameter} during typing; no output IR \\
+\taskname{Definition / parametric type}{def-parametric-type}
+Define signed \texttt{fx<W,F>} for $2\leq W\leq32$, $0\leq F<W$.
+Use it in native signatures; preserve $W,F$ through construction and print/parse.
+\boundary{$W=F=8$: reject with \texttt{invalid-type-parameter}.} &
+\taskpair{type-input}{Width 8 and fraction 3.} &
+\taskpair{type-output}{Round trip preserves both parameters. Width denotes
+logical bits, not ABI size.} \\[4pt]
+\midrule
 
-Definition & \texttt{def-quantized-op} &
-Define \texttt{qadd} on equal-shape i8 tensors.  Input and output scales are
-finite and positive; zero points are signed i32.  The result preserves the
-operand shape and i8 element type. &
-two \texttt{tensor<4xi8>} operands, scales 0.5/0.25/0.5, zeros 0/$-3$/0
-$\rightarrow$ \texttt{tensor<4xi8>} &
-\texttt{2x3xi8} plus \texttt{3x2xi8} $\rightarrow$ \texttt{shape-mismatch} \\
+\taskname{Definition / quantized operation}{def-quantized-op}
+Define \texttt{qadd} on equal-shape i8 tensors, with finite positive scales and
+signed-i32 zero points. Preserve operand shape and element type.
+\boundary{\texttt{2x3xi8} plus \texttt{3x2xi8}: \texttt{shape-mismatch}.} &
+\taskpair{qadd-input}{$x$: scale 0.5, zero 0.\par $y$: scale 0.25, zero $-3$.} &
+\taskpair{qadd-output}{Preserve shape, scales, and zero points through
+print/parse.} \\[4pt]
+\midrule
 
-Analysis & \texttt{ana-broadcast-shape} &
-Analyze NumPy trailing-dimension broadcasting for nonnegative extents.  Pad
-the shorter shape with leading ones; aligned extents must be equal or one,
-and a one selects the other extent, including zero. &
-\texttt{[2,3,1]}, \texttt{[4]} $\rightarrow$ legal, \texttt{[2,3,4]} &
-\texttt{[2,3]}, \texttt{[4,3]} $\rightarrow$ illegal, conflict axis 1 from the end \\
+\taskname{Analysis / shape broadcasting}{ana-broadcast-shape}
+Broadcast nonnegative extents by trailing dimension. Pad the shorter shape
+with ones. Each pair must agree or contain one; a one selects the other extent,
+including zero.
+\boundary{\texttt{[2,3]} and \texttt{[4,3]}: conflict at axis 1 from the end.} &
+\taskpair{broadcast-input}{Rank-3 and rank-1 operands.} &
+\taskpair{broadcast-output}{Legal. Also, \texttt{[2,0]} with \texttt{[1]}
+gives \texttt{[2,0]}.} \\[4pt]
+\midrule
 
-Analysis & \texttt{ana-numeric-range} &
-Propagate closed finite intervals through add, multiply, ReLU, and clamp;
-multiplication evaluates all four endpoint products. &
-\texttt{mul([-2,3],[-4,5])} $\rightarrow$ \texttt{[-12,15]} &
-\texttt{relu([2,-1])} $\rightarrow$ \texttt{invalid-interval} \\
+\taskname{Analysis / numeric range}{ana-numeric-range}
+Propagate closed finite intervals through add, multiply, ReLU, and clamp.
+Multiplication considers all four endpoint products.
+\boundary{ReLU on \texttt{[2,-1]}: \texttt{invalid-interval}.} &
+\taskpair{range-input}{Multiply intervals spanning zero.} &
+\taskpair{range-output}{Take the minimum and maximum of all four products.} \\[4pt]
+\midrule
 
-Rewrite & \texttt{rew-add-zero} &
-Replace integer add-by-zero when type and shape are preserved.  Floating
-positive zero additionally requires \texttt{no\_signed\_zeros}; retain
-negative zero.  Remove a matched constant only when it has no remaining uses. &
-f32 \texttt{x+0}, shape \texttt{[4]}, \texttt{no\_signed\_zeros=true}
-$\rightarrow$ replace by \texttt{x} &
-f32 \texttt{x+0.001} $\rightarrow$ keep operation \\
+\taskname{Rewrite / neutral element}{rew-add-zero}
+Replace integer add-by-zero when shape and type are preserved. Floating
+positive zero additionally requires NSZ; retain negative zero. Erase a matched
+constant only if it has no remaining uses.
+\boundary{Adding \texttt{0.001} retains the operation.} &
+\taskpair{zero-input}{Positive zero; NSZ enabled; shape \texttt{[4]}.} &
+\taskpair{zero-output}{Redirect every result user to \texttt{x}; erase the
+matched add and any now-unused constant.} \\[7pt]
+\midrule
 
-Rewrite & \texttt{rew-redundant-cast} &
-Remove identity casts and cancel round trips only for lossless signed-integer
-widening or finite f32-to-f64 widening.  Keep narrowing, float--integer, and
-shape-changing conversions. &
-\texttt{f32[4] -> f32[4]} $\rightarrow$ eliminate cast &
-\texttt{i16[4] -> i8[4] -> i16[4]} $\rightarrow$ retain casts \\
+\taskname{Rewrite / redundant cast}{rew-redundant-cast}
+Remove identity casts. Cancel round trips only for lossless signed-integer
+widening or finite f32-to-f64 widening. Retain narrowing, float--integer,
+and shape-changing casts.
+\boundary{\texttt{i16 -> i8 -> i16}: keep both casts.} &
+\taskpair{cast-input}{The input and result have identical type and shape.} &
+\taskpair{cast-output}{Identity cast removed. Lossless \texttt{i8 -> i16 -> i8}
+also redirects users to the original value.} \\[7pt]
+\midrule
 
-Conversion & \texttt{con-gelu-expand} &
-Replace native SSA \texttt{gelu} by
-$0.5x(1+\operatorname{erf}(x/\sqrt{2}))$ using declared primitive targets.
-Preserve shape, floating element type, and every output user. &
-\makebox[\linewidth][c]{\includegraphics[width=0.92\linewidth]{figures/agent-gelu-before.pdf}}\par
-\texttt{gelu}, f32, shape \texttt{[5]} &
-\makebox[\linewidth][c]{\includegraphics[width=0.92\linewidth]{figures/agent-gelu-after.pdf}}\par
-no \texttt{gelu}; graph contains \texttt{erf}. Integer input
-$\rightarrow$ \texttt{unsupported-element-type}; no output IR \\
+\taskname{Conversion / GELU expansion}{con-gelu-expand}
+Replace native SSA \texttt{gelu} with $0.5x(1+\operatorname{erf}(x/\sqrt2))$
+using declared primitive targets. Preserve shape, floating element type,
+and every output user.
+\boundary{Integer input: \texttt{unsupported-element-type}; no output IR.} &
+\taskpair{gelu-input}{A single GELU on f32\texttt{[5]}.} &
+\taskpair{gelu-output}{Final multiply: $0.5x(1+\operatorname{erf}(x/\sqrt2))$.
+Constants appear in consuming ops; no GELU remains.} \\[4pt]
+\midrule
 
-Conversion & \texttt{con-quant-expand} &
-Convert i8 tensor \texttt{qadd} into two dequantizations, f32 add, and
-quantization with ties-to-even rounding and i8 saturation.  Preserve shape
-and result users. &
-\texttt{[-3,0,5,120]} plus \texttt{[2,1,-8,120]}, scale 0.5
-$\rightarrow$ \texttt{[-1,1,-3,127]} &
-negative scale $\rightarrow$ \texttt{invalid-scale}; no output IR \\
+\taskname{Conversion / quantized addition}{con-quant-expand}
+Expand i8 \texttt{qadd} into two dequantizations, f32 add, and quantization
+with RNE and i8 saturation. Preserve shape and result users.
+\boundary{Negative scale: \texttt{invalid-scale}; no output IR.} &
+\taskpair{quant-input}{\texttt{[-3,0,5,120]} plus \texttt{[2,1,-8,120]}.
+All scales 0.5; zero points 0.} &
+\taskpair{quant-output}{Result: \texttt{[-1,1,-3,127]}.
+The last lane saturates from 240 to 127.} \\[7pt]
+\midrule
 
-Emission & \texttt{emit-graph-manifest} &
-Emit deterministic schema-v1 JSON from a typed SSA function.  Number nodes
-and values in stable order; preserve repeated operands, output order, types,
-and sorted user attributes; omit declarations and source names. &
-\texttt{splat -> add -> relu} $\rightarrow$ nodes \texttt{n0..n2}, values
-\texttt{v0..v3}, output \texttt{v3} &
-Repeated emission $\rightarrow$ byte-identical JSON \\
+\taskname{Emission / graph manifest}{emit-graph-manifest}
+Emit deterministic schema-v1 JSON. Number nodes and values in stable order;
+preserve repeated operands, output order, types, and sorted user attributes.
+Omit declarations and source names.
+\boundary{Repeated emission must be byte-identical.} &
+\taskpair{manifest-input}{All values have type f32\texttt{[2,3]}. The input
+receives identifier \texttt{v0}.} &
+\taskpair{manifest-output}{Schema 1; output \texttt{v3}. Node \texttt{n0}
+stores \texttt{value=1.25}; \texttt{n1} reads \texttt{[v0,v1]};
+\texttt{n2} reads \texttt{[v2]}.} \\[4pt]
+\midrule
 
-Emission & \texttt{emit-kernel-wrapper} &
+\taskname{Emission / executable wrapper}{emit-kernel-wrapper}
 Emit a complete C99 translation unit exporting
-\texttt{task\_kernel(input,output,count)} for ReLU or $2x+1$.  Support exact
-in-place execution and zero count; do not touch guards or nonaliased inputs. &
-ReLU on \texttt{[-2,-0,1.5,4]} $\rightarrow$ \texttt{[+0,+0,1.5,4]} &
-\texttt{count=0}, null pointers $\rightarrow$ no access; compiled driver and guard oracle pass \\
+\texttt{task\_kernel(input,output,count)} for ReLU or $2x+1$.
+Support exact in-place execution; preserve guards and nonaliased inputs.
+\boundary{Zero count with null pointers: no memory access.} &
+\taskpair{wrapper-input}{Negative, signed-zero, and positive input lanes.} &
+\taskpair{wrapper-output}{Run the compiled artifact; both nonpositive lanes
+produce positive zero.} \\[4pt]
+\midrule
 
-Vertical & \texttt{vert-int4} &
-Add signed qint4 values, saturate to $[-8,7]$, and pack two's-complement
-nibbles low-first.  For odd counts, zero the unused high nibble.  Reject
-out-of-range source literals before addition. &
-\texttt{[-8,-1,0,3,7]} plus \texttt{[1,1,-2,6,7]}
-$\rightarrow$ \texttt{[-7,0,-2,7,7]}, bytes \texttt{09 7e 07} &
-literal 8 $\rightarrow$ \texttt{literal-out-of-range} \\
+\taskname{Vertical / packed low-bit arithmetic}{vert-int4}
+Add signed qint4; saturate to $[-8,7]$ and pack two's-complement nibbles
+low-first. Zero the unused high nibble for odd counts. Reject out-of-range
+literals before addition.
+\boundary{Literal 8: \texttt{literal-out-of-range}.} &
+\taskpair{int4-input}{Five lanes, including positive overflow.} &
+\taskpair{int4-output}{Sums 9 and 14 saturate to 7. Hex bytes are
+\texttt{09 7e 07}, with zero high padding.} \\[4pt]
+\midrule
 
-Vertical & \texttt{vert-fused-op} &
-Add NHWC/HWIO signed-i8 \texttt{fused\_qconv\_relu}: valid unit-stride
-cross-correlation, i32 bias, ties-to-even requantization, i8 saturation, and
-real-domain ReLU.  Fuse only a single-use qconv--bias--requantize--ReLU chain. &
-unit kernel with input \texttt{[1,-2]}, weights \texttt{[2,-3]}, bias 1
-$\rightarrow$ \texttt{[4]} and one fused manifest node &
-shared convolution result $\rightarrow$ no match; original chain preserved \\
+\taskname{Vertical / quantized fused operation}{vert-fused-op}
+Define NHWC/HWIO i8 \texttt{fused\_qconv\_relu} with valid unit-stride
+cross-correlation, i32 bias, RNE requantization, i8 saturation, and real-domain
+ReLU. Fuse single-use chains only.
+\boundary{Shared convolution output: no fusion.} &
+\taskpair{fused-input}{Unit kernel: \texttt{x=[1,-2]}, \texttt{w=[2,-3]},
+bias 1. Scales: accumulator 0.25, output 0.5; output zero point 0.} &
+\taskpair{fused-output}{Accumulator $1(2)+(-2)(-3)+1=9$.
+One fused node; output \texttt{[4]}.} \\[4pt]
 
 \end{longtable}
+\endgroup
 \end{landscape}
 
 \subsection{Parametric Type Definition}
