@@ -1,48 +1,29 @@
 \section{Discussion}
 \label{sec:discussion}
 
-\paragraph{Progressive structure.}
-Joggle programs retain functions, blocks, operations, values, and def--use
-relations. These structures express program semantics and support conventional
-local reasoning. Progression changes how stages relate: compiler functions
-refine a verified graph without requiring a global ladder of public IR classes.
-High-level operations and lower-level helpers may therefore coexist when a
-stage needs both.
+\paragraph{Composition follows capabilities.}
+Joggle retains functions, blocks, operations, values, and def--use relations
+for local compiler reasoning. A mod adds the cross-stage boundary: it binds a
+typed public surface to dependencies, source fragments, native bindings, and
+publication. This division lets a feature span semantic definitions,
+rewrites, conversions, and emitters while keeping one owner and one dependency
+closure. High-level operations and lowered helpers can coexist in the same
+graph as compiler functions progressively refine it.
 
-\paragraph{A mod is a capability boundary.}
-Directories split files, and hierarchical IR splits programs; neither
-necessarily identifies the owner of a compiler feature. A mod binds a public
-typed surface to dependencies, source fragments, native bindings, and lifecycle
-operations. Small implementations may remain in one source file. Separate mods
-become useful when capabilities require distinct owners, dependency closures,
-or release cycles.
+\paragraph{Precise observations bound updates.}
+Every cached call carries the observations that produced its result. A
+whole-graph traversal records a broad dependency; range and entity access
+record progressively narrower dependencies. After an edit, effect overlap
+selects the affected suffix and observation validation recovers reusable calls
+inside it. Miss reasons, observation counts, and executed-stage counts make
+this precision visible, while the update measurements quantify its payoff.
 
-\paragraph{Uniform calls preserve effects.}
-Uniform syntax coexists with explicit effect contracts. Query execution is
-read-only, runs publish a verified graph, and artifact calls return owned
-values. Native implementations use the same signatures and ownership boundary.
-Declarations, resolution, calls, and composition are uniform; effect checks
-remain explicit.
-
-\paragraph{Precision has a cost.}
-A compiler function gains reuse by reading the narrowest state needed for its
-result. Whole-graph traversal correctly creates a broad dependency; range and
-single-entity access create narrow ones. Narrow records add capture and
-validation work, so they help only when avoided execution is more expensive.
-Miss reasons, observation counts, and executed stage counts expose this
-trade-off directly.
-
-\paragraph{Publication bounds reuse.}
-Dependency records are valid only for the graph that produced them. Joggle
-therefore commits mutations, revisions, and new records after final
-verification, or restores the previous state and discards tentative records.
-State outside the graph must enter through typed arguments or an environment
-revision. A later run can then reuse only observations tied to a published
-graph and environment.
-
-\paragraph{Interpreted plans.}
-Predecoded plans cache checked interpreter work: dense value slots,
-control-flow targets, operand indices, and call-site information. They remove
-repeated setup while preserving interpreted execution. Typed mod bindings
-provide native acceleration for selected functions through the same call
-boundary.
+\paragraph{Publication unifies safety and reuse.}
+Queries execute under read effects, transformations publish a verified graph,
+and artifact calls return owned values through the same typed call boundary.
+A transaction publishes graph mutations, revisions, and dependency records as
+one state transition. External state enters through typed arguments or an
+environment revision, so every reusable observation names a published graph
+and environment. Predecoded execution plans remove repeated interpreter setup,
+and native mod bindings accelerate selected functions without changing their
+signatures or ownership rules.

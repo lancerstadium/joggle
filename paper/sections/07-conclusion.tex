@@ -1,15 +1,18 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-Joggle treats compiler extension as typed computation over a shared graph.
-Compiler functions provide one surface for semantics, analysis,
-transformation, conversion, and artifact generation. Mods make capabilities
-explicit units of ownership and composition alongside hierarchical program IR.
-Revisions, observed dependencies, effect propagation, transactions, and cached
-execution plans make repeated compilation change-proportional. Together, these
-mechanisms connect three properties that compiler infrastructures usually
-expose separately: a predictable way to write an extension, a controlled
-boundary in which it evolves, and selective work after it changes. The
-evaluation tests these properties through executable extension completion,
-paired patch footprint, and reactive update cost while measuring generated
-artifacts independently.
+Joggle makes compiler behavior part of the typed program. Compiler functions
+express semantics, analysis, transformation, conversion, and emission over one
+graph model. Mods give each cross-stage capability an explicit owner and
+dependency closure. Recorded reads, published effects, revisions, and stable
+entity generations turn a subsequent edit into a dependency-selected update,
+with transactions coupling reusable records to the verified graph.
+
+The implementation carries these abstractions through native artifact
+publication. Across repeated model edits, Joggle updates reach a replacement
+executable $1.48$--$2.47\times$ faster than matched complete rebuilds and
+produce identical output digests. The generated artifacts pass 24/24 operator
+oracles and 14/15 model oracles; the optimization pack improves aggregate
+operator latency by $1.78\times$, and Joggle outperforms default TVM by
+$2.10\times$ on the common model set. Joggle therefore connects extension
+semantics, feature ownership, and update execution in one compiler substrate.

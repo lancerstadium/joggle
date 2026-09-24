@@ -8,8 +8,8 @@ Figure~\ref{fig:workflow} follows a model from structure to device. Extension
 work enters at every level: an operator defines semantics, a graph pass changes
 connectivity, a system pass chooses order and storage, and a backend realizes
 the result for a platform. The interfaces at these levels evolved for
-different purposes. Their separation is useful, but a feature that crosses
-them inherits every registration, calling, and invalidation convention.
+different purposes. A feature that crosses them inherits every registration,
+calling, and invalidation convention.
 
 \begin{figure}[t]
   \centering
@@ -30,14 +30,14 @@ bind its implementation. A layout or numeric-format change must update the
 same contract in every role. None of these tasks is exceptional; their
 composition is the problem.
 
-Existing systems organize program structure effectively. LLVM supplies a
-shared typed representation for analysis and transformation~\cite{lattner2004llvm};
+LLVM supplies a shared typed representation for analysis and
+transformation~\cite{lattner2004llvm};
 MLIR extends that model across abstraction levels~\cite{lattner2021mlir};
 Halide separates algorithms from schedules~\cite{ragankelley2012halide}; and
 TVM combines graph and tensor optimization for heterogeneous
-targets~\cite{chen2018tvm}. Joggle addresses a different boundary: how the
-compiler capabilities that act on those structures are expressed, owned, and
-re-executed as one feature evolves.
+targets~\cite{chen2018tvm}. Joggle makes the compiler capabilities acting on
+these structures explicit: typed functions express them, mods own them, and
+recorded dependencies drive their re-execution.
 
 \subsection{Three Sources of Friction}
 \label{sec:friction}
@@ -50,18 +50,17 @@ cannot be inspected, generated, or composed as one typed program. Correctness
 depends on conventions outside the local definition.
 
 \paragraph{Scattered ownership.}
-Hierarchical IR organizes operations inside regions, blocks, and functions,
-but it does not by itself assign ownership to a cross-stage capability. That
-ownership is often reconstructed from directories, registries, build targets,
-pass pipelines, and backend tables. Consequently, one semantic change crosses
-several review and release boundaries.
+Hierarchical IR assigns operations to regions, blocks, and functions.
+Cross-stage capability ownership instead emerges from directories, registries,
+build targets, pass pipelines, and backend tables. One semantic change
+therefore crosses several review and release boundaries.
 
 \paragraph{Coarse re-execution.}
-An ordered pipeline can safely respond to a local edit by rerunning a suffix.
-Safety, however, does not imply precision. A stage may rerun even when it did
-not observe the edited entity; later stages may rerun even when an earlier
-stage publishes no relevant effect. Repeated decoding, traversal, conversion,
-and native compilation then dominate interactive turnaround.
+An ordered pipeline responds to a local edit by rerunning a suffix. The suffix
+is a coarse update unit: it includes stages that never observed the edited
+entity and stages unreachable from the preceding effects. Repeated
+decoding, traversal, conversion, and native compilation then dominate
+interactive turnaround.
 
 These problems form a causal chain. Separate mechanisms scatter a feature;
 scattered features hide the dependencies that matter; hidden dependencies
@@ -80,8 +79,8 @@ calls remain distinguishable through explicit effect contracts.
 \paragraph{R2: an explicit feature boundary.}
 A cross-stage capability needs a named owner, public and local functions,
 declared dependencies, native bindings, and an independent lifecycle. This
-boundary must be orthogonal to program containment so that lowering a graph
-does not dissolve feature ownership.
+boundary must be orthogonal to program containment so that feature ownership
+survives graph lowering.
 
 \paragraph{R3: change-proportional execution.}
 The runtime must identify what a call actually observed, propagate only

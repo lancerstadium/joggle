@@ -4,10 +4,9 @@
 A compiler extension is rarely one edit. Adding a numeric format, a fused
 operator, or a target mapping can require a semantic definition, legality
 analysis, graph rewrite, representation conversion, artifact emitter, and
-build registration. Modern infrastructures provide powerful mechanisms for
-each task, but expose them through different languages, object models, and
-ownership boundaries. The program is programmable; the path that changes its
-compiler remains fragmented.
+build registration. Modern infrastructures expose these tasks through
+different languages, object models, and ownership boundaries. The program is
+programmable; the path that changes its compiler remains fragmented.
 
 This mismatch matters for both developers and code-generating agents. A local
 feature is complete only when every cross-layer contract agrees. Its pieces
@@ -64,12 +63,11 @@ and (3) an update algorithm in which entity generations and revisions validate
 recorded reads, write overlap propagates affected work, and a transaction
 publishes the graph and dependency records together.
 
-We evaluate these contributions with held-out extension tasks, matched patches
+We evaluate these elements with held-out extension tasks, matched patches
 across Joggle, MLIR, and xDSL, controlled model edits across Joggle, TVM, and
-ONNX-MLIR, and executable artifacts against ONNX Runtime. On the current
-artifact matrix, Joggle passes 24/24 operators and 14/15 models. Its optimization
-pack reduces operator latency by $1.78\times$ over its required lowering path;
-on the eight models supported by all four systems, Joggle is $2.10\times$
-faster than default TVM. These execution results complement---rather than
-substitute for---the paper's primary evidence about extension, ownership, and
-update cost.
+ONNX-MLIR, and executable artifacts against ONNX Runtime. Repeated model edits
+turn complete Joggle rebuilds into $1.48$--$2.47\times$ faster updates with
+identical output digests. Joggle passes 24/24 operators and 14/15 models. Its
+optimization pack improves operator latency by $1.78\times$; on the eight
+models supported by every system, Joggle is $2.10\times$ faster than default
+TVM.

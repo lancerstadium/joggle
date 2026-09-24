@@ -46,23 +46,24 @@
 \title[Joggle]{Joggle: A Progressive IR for Malleable Compilation}
 
 \begin{abstract}
-A compiler feature can span semantics, analysis, graph transformation,
-conversion, artifact generation, and build registration. These roles commonly
-use separate interfaces and ownership boundaries; after an edit, a staged
-driver consequently has little information below the pass or pipeline level.
-Joggle represents both programs and compiler functions on one typed graph.
-Functions distinguish read-only inspection, verified mutation, conversion,
-and artifact return through their effect contracts. A graph-level \emph{mod}
-owns the functions, native bindings, and dependencies of a feature independently
-of program containment. During evaluation, Joggle records the graph state read
-by each call and the scope written by each stage. Stable entity generations,
-hierarchical revisions, and read--write overlap then determine which calls must
-run after an edit; a transaction publishes the new graph and its records
-together. We evaluate the representation, ownership model, and update algorithm
-through held-out extension tasks, matched cross-system patches, and controlled
-model edits. Separate operator and model experiments test the executable
-artifacts: Joggle passes 24/24 operators and 14/15 models; its optimization pack
-reduces operator latency by $1.78\times$, and its common-model geometric mean is
+Heterogeneous-compiler extensions are cross-cutting programs assembled from
+semantics, analyses, transformations, conversions, and emitters. These parts
+usually inhabit separate languages, registries, and ownership boundaries, so a
+local feature becomes a nonlocal patch and a local edit triggers coarse
+re-execution. Joggle represents the program and the compiler functions that
+change it on one typed graph. Effect contracts distinguish inspection,
+verified mutation, conversion, and artifact return. A graph-level \emph{mod}
+owns a feature's functions, native bindings, and dependencies independently of
+program containment. During execution, Joggle records each call's observed
+state and each stage's published effects. Entity generations and hierarchical
+revisions validate those observations; read--write overlap selects affected
+work; and a transaction publishes the graph and its dependency records
+together. We evaluate this design with held-out extension tasks, matched
+cross-system patches, controlled model edits, and executable artifacts.
+Repeated edits reduce Joggle's update-to-ready time by $1.48$--$2.47\times$
+relative to matched complete rebuilds while preserving output digests. Joggle
+also passes 24/24 operators and 14/15 models; its optimization pack improves
+operator latency by $1.78\times$, and its common-model geometric mean is
 $2.10\times$ faster than default TVM.
 \end{abstract}
 
