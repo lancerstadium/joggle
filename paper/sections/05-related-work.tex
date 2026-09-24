@@ -15,11 +15,13 @@ $\times$ absent.
     mechanisms. Columns follow the three design axes in
     Figure~\ref{fig:thesis-map}.}
   \label{tab:related}
-  \scriptsize
-  \setlength{\tabcolsep}{4.5pt}
+  \footnotesize
+  \setlength{\tabcolsep}{4pt}
   \renewcommand{\arraystretch}{1.08}
-  \begin{tabular}{@{}lcccccccc@{}}
+  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lcccccccc@{}}
     \toprule
+    & \multicolumn{2}{c}{Extension} & \multicolumn{2}{c}{Ownership} & \multicolumn{4}{c}{Update execution} \\
+    \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(l){6-9}
     System & Roles & Calls & Owner & Deps & Reads & Effects & Reactive & Atomic \\
     \midrule
     LLVM~\cite{lattner2004llvm} & $\times$ & $\triangle$ & $\triangle$ & $\triangle$ & $\triangle$ & $\triangle$ & $\times$ & $\times$ \\
@@ -34,7 +36,7 @@ $\times$ absent.
     Build systems~\cite{mokhov2018build} & $\times$ & $\triangle$ & \checkmark & \checkmark & $\triangle$ & \checkmark & \checkmark & $\triangle$ \\
     \textbf{Joggle} & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
     \bottomrule
-  \end{tabular}
+  \end{tabular*}
 \end{table*}
 
 \subsection{Extensible Compiler Infrastructures}

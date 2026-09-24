@@ -1,6 +1,6 @@
 {
   "complete": false,
-  "created_utc": "2026-09-22T17:20:22.853627+00:00",
+  "created_utc": "2026-09-24T03:36:26.006976+00:00",
   "inputs": [
     {
       "correctness_oracle": {
@@ -49,18 +49,31 @@
       "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/operators-tvm-1ec6b62.run.json",
       "record_sha256": "5975020e333d5d9d724733954da912a8c9e8c7016594e83f3ddbdadfa091d2bf",
       "sha256": "67886a9ee376394a32f3fed1387ee0f63102962cef5c9d8889a759294ec6cd29"
+    },
+    {
+      "correctness_oracle": {
+        "graph_optimization": "ORT_DISABLE_ALL",
+        "provider": "CPUExecutionProvider",
+        "runtime": "onnxruntime-1.26.0",
+        "schema": "onnx-graph-semantics/v1"
+      },
+      "path": "/Users/lancer/Documents/Item/joggle/paper/data/onnx-mlir-operators.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/paper/data/onnx-mlir-operators.run.json",
+      "record_sha256": "ac11d528718ba7d274c5e78beba1eb616e9967e48ca7bcbde53b4122d7b3864c",
+      "sha256": "bcb1524832b1b55ca224037d362be70bdffc458524062c64436216a1fef51bb1"
     }
   ],
   "output": {
     "path": "/Users/lancer/Documents/Item/joggle/paper/data/figure-07-operators.csv",
-    "sha256": "073a990a9c7bc54e78d07063a8ddbb9613edc088e1c1bf34d4e384dce67942fc"
+    "sha256": "7af412cf7e637a023208f53123571c42bad844a2da0a8c25a81b8e0c211d9b6e"
   },
-  "rows": 9402,
+  "rows": 11604,
   "schema": "performance-merge/v1",
   "variants": [
     "joggle-unoptimized",
     "joggle-optimized",
     "onnxruntime",
-    "tvm-relax-llvm"
+    "tvm-relax-llvm",
+    "onnx-mlir-llvm"
   ]
 }

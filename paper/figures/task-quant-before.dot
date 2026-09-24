@@ -1,0 +1,14 @@
+digraph G {
+  graph [bgcolor="transparent", margin=0.01, pad=0.03, rankdir=LR,
+         nodesep=0.12, ranksep=0.18, fontname="DejaVu Sans Mono"];
+  node [shape=box, style="rounded,filled", margin="0.06,0.035",
+        penwidth=0.65, color="#45627A", fillcolor="#F4F7FA",
+        fontname="DejaVu Sans Mono", fontsize=8];
+  edge [arrowsize=0.48, penwidth=0.65, color="#52616B",
+        fontname="DejaVu Sans Mono", fontsize=6];
+x [label="%a\ni8[4]",shape=ellipse,fillcolor="#E9F3FF"];
+y [label="%b\ni8[4]",shape=ellipse,fillcolor="#E9F3FF"];
+q [label="qadd\ns=0.5, z=0",fillcolor="#FFF0F0",color="#C74B50"];
+r [label="return\ni8[4]"];
+x -> q; y -> q; q -> r;
+}

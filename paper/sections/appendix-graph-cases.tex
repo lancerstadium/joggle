@@ -1,0 +1,55 @@
+\begin{landscape}
+\subsection{Graph Transformations and Numerical Checks}
+\label{sec:graph-cases}
+
+\begin{table}[!htbp]
+\centering\scriptsize
+\caption{Reference graph transformations and observable outputs for five
+extension tasks. Coral marks matched operations, teal the replacement, and
+blue typed inputs. Graphs and values show the task contracts' expected results.
+RNE denotes round-to-nearest, ties-to-even.}
+\label{tab:graph-cases}
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}m{6.0cm}m{6.7cm}m{6.7cm}@{}}
+\toprule
+Request and observable check & Before & After \\
+\midrule
+\textbf{Remove add-by-zero.}\par
+\texttt{rew-add-zero}\par
+f32[4], positive zero, \texttt{no\_signed\_zeros}. All users now read
+\texttt{\%x}; adding 0.001 retains the add. &
+\includegraphics[width=6.4cm,height=1.65cm,keepaspectratio]{figures/task-zero-before.pdf} &
+\includegraphics[width=6.4cm,height=1.65cm,keepaspectratio]{figures/task-zero-after.pdf} \\[5pt]
+\midrule
+\textbf{Cancel a lossless cast round trip.}\par
+\texttt{rew-redundant-cast}\par
+i8$\to$i16$\to$i8 preserves \texttt{[-128,-1,0,127]}.
+i16$\to$i8$\to$i16 retains both casts. &
+\includegraphics[width=6.4cm,height=1.65cm,keepaspectratio]{figures/task-cast-before.pdf} &
+\includegraphics[width=6.4cm,height=1.65cm,keepaspectratio]{figures/task-cast-after.pdf} \\[5pt]
+\midrule
+\textbf{Expand GELU.}\par
+\texttt{con-gelu-expand}\par
+$y=0.5x(1+\operatorname{erf}(x/\sqrt{2}))$. Preserve f32[5] and every
+output user; reject integer inputs. &
+\includegraphics[width=6.4cm,height=1.65cm,keepaspectratio]{figures/agent-gelu-before.pdf} &
+\includegraphics[width=6.4cm,height=1.65cm,keepaspectratio]{figures/agent-gelu-after.pdf} \\[5pt]
+\midrule
+\textbf{Expand quantized addition.}\par
+\texttt{con-quant-expand}\par
+\texttt{[-3,0,5,120]+[2,1,-8,120]} $\to$ \texttt{[-1,1,-3,127]};
+all scales 0.5 and zero points 0. Reject negative scales. &
+\includegraphics[width=6.4cm,height=1.65cm,keepaspectratio]{figures/task-quant-before.pdf} &
+\includegraphics[width=6.4cm,height=1.65cm,keepaspectratio]{figures/task-quant-after.pdf} \\[5pt]
+\midrule
+\textbf{Fuse a single-use quantized chain.}\par
+\texttt{vert-fused-op}\par
+\texttt{x=[1,-2], w=[2,-3]}, bias 1; accumulator 9, scales 0.25/0.5:
+RNE(4.5)$=4$. Shared convolution results retain the original chain. &
+\includegraphics[width=6.4cm,height=1.65cm,keepaspectratio]{figures/task-fusion-before.pdf} &
+\includegraphics[width=6.4cm,height=1.65cm,keepaspectratio]{figures/task-fusion-after.pdf} \\[5pt]
+\bottomrule
+\end{tabular}
+\end{table}
+\end{landscape}

@@ -3,6 +3,11 @@
 # Authoring order: revise README.md, synchronize the TeX section, then build.
 all: sigconf.pdf supplement.pdf
 
+TASK_GRAPHS = $(patsubst %.dot,%.pdf,$(wildcard figures/task-*.dot))
+
+figures/task-%.pdf: figures/task-%.dot
+	dot -Tpdf $< -o $@
+
 figures/agent-gelu-before.pdf: figures/agent-gelu-before.dot
 	dot -Tpdf $< -o $@
 
@@ -22,11 +27,14 @@ sigconf.pdf: sigconf.tex references.bib \
 	figures/figure-01-thesis-map.png figures/figure-02-workflow.png \
 	figures/figure-03-operator-extension.png figures/figure-07-performance.pdf \
 	figures/system-architecture.png figures/reactive-update.png \
-	figures/evaluation-workflow.png figures/figure-07-models.pdf
+	figures/evaluation-workflow.png figures/figure-07-models.pdf \
+	figures/figure-06-update.pdf
 	latexmk -pdf -interaction=nonstopmode -halt-on-error sigconf.tex
 
 supplement.pdf: supplement.tex sections/appendix-operator-data.tex \
 	sections/appendix-model-data.tex \
+	sections/appendix-update-data.tex \
+	sections/appendix-graph-cases.tex $(TASK_GRAPHS) \
 	sections/appendix-extension-data.tex figures/agent-gelu-before.pdf \
 	figures/agent-gelu-after.pdf
 	latexmk -pdf -interaction=nonstopmode -halt-on-error supplement.tex

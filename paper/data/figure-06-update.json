@@ -1,0 +1,179 @@
+{
+  "schema": "repeated-update-export/v1",
+  "models": [
+    "densenet-12",
+    "squeezenet1.1-7",
+    "tiny-yolov3-11"
+  ],
+  "edits_per_model": 3,
+  "paired_repetitions": 10,
+  "rows": 540,
+  "sources": [
+    {
+      "system": "joggle",
+      "csv_sha256": "7c1e21970f5d72de551019c33a7dd1415512eb9f9b147e8c4325c1c6db20d50c",
+      "samples_sha256": "b41e6961dec37055b2e83502b48613f3e89cd19a3811ea7a3e1ad8701db90c60",
+      "collection": {
+        "created_utc": "2026-09-24T02:45:43.497472+00:00",
+        "dirty": false,
+        "failures": 0,
+        "host": "macOS-15.7.3-arm64-arm-64bit-Mach-O",
+        "iterations": 10,
+        "missing_models": [
+          "efficientnet-lite4-11-int8",
+          "efficientnet-lite4-11-qdq",
+          "googlenet-12",
+          "mnist-8",
+          "mobilenetv2-7",
+          "resnet18-v1-7",
+          "shufflenet-v2-12",
+          "squeezenet1.0-13-qdq",
+          "ssd-mobilenetv1-12",
+          "tinyyolov2-8",
+          "ultraface-rfb-320",
+          "xcit-tiny-12-p8-224-opset17"
+        ],
+        "output_sha256": "7c1e21970f5d72de551019c33a7dd1415512eb9f9b147e8c4325c1c6db20d50c",
+        "partial": true,
+        "population_sha256": "dd567d18543a3214f127ace30f2ee5f32cb8b2e81ef6db158688b64f7b7fff6d",
+        "raw_sha256": "b41e6961dec37055b2e83502b48613f3e89cd19a3811ea7a3e1ad8701db90c60",
+        "release_eligible": false,
+        "revision": "1dce55b815f2f63d75b8b799119e8febc8956523",
+        "rows": 180,
+        "schema": "production-update-collection/v1",
+        "seed": 20260921,
+        "selected_models": [
+          "densenet-12",
+          "squeezenet1.1-7",
+          "tiny-yolov3-11"
+        ],
+        "sources": {
+          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/manifests/benchmark-cases.json": "2fa842e74a5cfcbf59217c4e1d85f7cf2fd11e09dc5ef429f8510965e0835d00",
+          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/manifests/production-node-edits.json": "dd567d18543a3214f127ace30f2ee5f32cb8b2e81ef6db158688b64f7b7fff6d",
+          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/run_baseline_benchmarks.py": "af455cacb15a3e06363a26149c1af974bca295bec687e30403f27c5fdda0ce75",
+          "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/inputs/index.json": "848044a73fcc1481328def6b4c33f843949e3a3a681a1372f632c813d958ce23"
+        },
+        "stable": true,
+        "timeouts_seconds": {
+          "case": 240.0,
+          "worker": {
+            "rebuild": 240.0,
+            "update": 480.0
+          }
+        }
+      }
+    },
+    {
+      "system": "tvm",
+      "csv_sha256": "9925ede4839dbb2f92e499f139a46043c18189e311c6ca6d608138142b67e200",
+      "samples_sha256": "f50904080a316044e89b5557133f66c09fd1b26d9f67ff1c42c13f5d96e28a07",
+      "collection": {
+        "created_utc": "2026-09-24T03:09:28.718316+00:00",
+        "dirty": false,
+        "failures": 60,
+        "host": "macOS-15.7.3-arm64-arm-64bit-Mach-O",
+        "iterations": 10,
+        "missing_models": [
+          "efficientnet-lite4-11-int8",
+          "efficientnet-lite4-11-qdq",
+          "googlenet-12",
+          "mnist-8",
+          "mobilenetv2-7",
+          "resnet18-v1-7",
+          "shufflenet-v2-12",
+          "squeezenet1.0-13-qdq",
+          "ssd-mobilenetv1-12",
+          "tinyyolov2-8",
+          "ultraface-rfb-320",
+          "xcit-tiny-12-p8-224-opset17"
+        ],
+        "output_sha256": "9925ede4839dbb2f92e499f139a46043c18189e311c6ca6d608138142b67e200",
+        "partial": true,
+        "population_sha256": "dd567d18543a3214f127ace30f2ee5f32cb8b2e81ef6db158688b64f7b7fff6d",
+        "raw_sha256": "f50904080a316044e89b5557133f66c09fd1b26d9f67ff1c42c13f5d96e28a07",
+        "release_eligible": false,
+        "revision": "1dce55b815f2f63d75b8b799119e8febc8956523",
+        "rows": 180,
+        "schema": "production-update-collection/v1",
+        "seed": 20260921,
+        "selected_models": [
+          "densenet-12",
+          "squeezenet1.1-7",
+          "tiny-yolov3-11"
+        ],
+        "sources": {
+          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/manifests/benchmark-cases.json": "2fa842e74a5cfcbf59217c4e1d85f7cf2fd11e09dc5ef429f8510965e0835d00",
+          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/manifests/production-node-edits.json": "dd567d18543a3214f127ace30f2ee5f32cb8b2e81ef6db158688b64f7b7fff6d",
+          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/run_baseline_benchmarks.py": "af455cacb15a3e06363a26149c1af974bca295bec687e30403f27c5fdda0ce75",
+          "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/inputs/index.json": "848044a73fcc1481328def6b4c33f843949e3a3a681a1372f632c813d958ce23"
+        },
+        "stable": true,
+        "timeouts_seconds": {
+          "case": 240.0,
+          "worker": {
+            "rebuild": 240.0,
+            "update": 480.0
+          }
+        }
+      }
+    },
+    {
+      "system": "onnx-mlir",
+      "csv_sha256": "8e18706ba1b922c62ec865f75587f4c2695caa9ee2ba69e00bbb752b9893e482",
+      "samples_sha256": "0111ae2c25080e6e1f6e9bbf86797b62346784a66d18b7c6ee88d6400cad8f77",
+      "collection": {
+        "created_utc": "2026-09-24T03:40:54.698675+00:00",
+        "dirty": false,
+        "failures": 0,
+        "host": "macOS-15.7.3-arm64-arm-64bit-Mach-O",
+        "iterations": 10,
+        "missing_models": [
+          "efficientnet-lite4-11-int8",
+          "efficientnet-lite4-11-qdq",
+          "googlenet-12",
+          "mnist-8",
+          "mobilenetv2-7",
+          "resnet18-v1-7",
+          "shufflenet-v2-12",
+          "squeezenet1.0-13-qdq",
+          "ssd-mobilenetv1-12",
+          "tinyyolov2-8",
+          "ultraface-rfb-320",
+          "xcit-tiny-12-p8-224-opset17"
+        ],
+        "output_sha256": "8e18706ba1b922c62ec865f75587f4c2695caa9ee2ba69e00bbb752b9893e482",
+        "partial": true,
+        "population_sha256": "dd567d18543a3214f127ace30f2ee5f32cb8b2e81ef6db158688b64f7b7fff6d",
+        "raw_sha256": "0111ae2c25080e6e1f6e9bbf86797b62346784a66d18b7c6ee88d6400cad8f77",
+        "release_eligible": false,
+        "revision": "1dce55b815f2f63d75b8b799119e8febc8956523",
+        "rows": 180,
+        "schema": "production-update-collection/v1",
+        "seed": 20260921,
+        "selected_models": [
+          "densenet-12",
+          "squeezenet1.1-7",
+          "tiny-yolov3-11"
+        ],
+        "sources": {
+          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/manifests/benchmark-cases.json": "2fa842e74a5cfcbf59217c4e1d85f7cf2fd11e09dc5ef429f8510965e0835d00",
+          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/manifests/production-node-edits.json": "dd567d18543a3214f127ace30f2ee5f32cb8b2e81ef6db158688b64f7b7fff6d",
+          "/Users/lancer/Documents/Item/joggle/.cache/artifact/payload-slot-fix/artifact/run_baseline_benchmarks.py": "af455cacb15a3e06363a26149c1af974bca295bec687e30403f27c5fdda0ce75",
+          "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/inputs/index.json": "848044a73fcc1481328def6b4c33f843949e3a3a681a1372f632c813d958ce23"
+        },
+        "stable": true,
+        "timeouts_seconds": {
+          "case": 240.0,
+          "worker": {
+            "rebuild": 240.0,
+            "update": 480.0
+          }
+        }
+      }
+    }
+  ],
+  "csv_sha256": "08585787a9e0b25c6b01d9daebe5705c8c0cb5ee2346f0d92fa42fa78b982efa",
+  "stages_sha256": "d82707d67fe1e24f90eba8ace1e5503efc2fc277a9918d14b9c66f63c8a49974",
+  "speedup_estimator": "median of within-edit paired rebuild/update ratios",
+  "whiskers": "25th to 75th percentile across ten paired repetitions"
+}

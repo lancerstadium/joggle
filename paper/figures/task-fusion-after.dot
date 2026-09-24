@@ -1,0 +1,15 @@
+digraph G {
+  graph [bgcolor="transparent", margin=0.01, pad=0.03, rankdir=LR,
+         nodesep=0.12, ranksep=0.18, fontname="DejaVu Sans Mono"];
+  node [shape=box, style="rounded,filled", margin="0.06,0.035",
+        penwidth=0.65, color="#45627A", fillcolor="#F4F7FA",
+        fontname="DejaVu Sans Mono", fontsize=8];
+  edge [arrowsize=0.48, penwidth=0.65, color="#52616B",
+        fontname="DejaVu Sans Mono", fontsize=6];
+x [label="x\nNHWC / i8",shape=ellipse,fillcolor="#E9F3FF"];
+w [label="w\nHWIO / i8",shape=ellipse,fillcolor="#E9F3FF"];
+b [label="bias / i32",fillcolor="#FFF7E8"];
+f [label="fused_qconv_relu\nunit stride / valid\nRNE + i8 saturation",fillcolor="#EAF9F7",color="#087E8B"];
+r [label="return\ni8"];
+x -> f; w -> f; b -> f; f -> r;
+}

@@ -2,25 +2,24 @@
 
 ## Abstract
 
-Heterogeneous-compiler extensions are cross-cutting programs assembled from
-semantics, analyses, transformations, conversions, and emitters. These parts
-usually inhabit separate languages, registries, and ownership boundaries, so a
-local feature becomes a nonlocal patch and a local edit triggers coarse
-re-execution. Joggle represents the program and the compiler functions that
-change it on one typed graph. Effect contracts distinguish inspection,
-verified mutation, conversion, and artifact return. A graph-level *mod* owns a
-feature's functions, native bindings, and dependencies independently of program
-containment. During execution, Joggle records each call's observed state and
-each stage's published effects. Entity generations and hierarchical revisions
-validate those observations; read--write overlap selects affected work; and a
-transaction publishes the graph and its dependency records together. We
-evaluate this design with held-out extension tasks, matched cross-system
-patches, controlled model edits, and executable artifacts. Repeated edits
-reduce Joggle's update-to-ready time by $1.48$--$2.47\times$ relative to matched
-complete rebuilds while preserving output digests. Joggle also passes 24/24
-operators and 14/15 models; its optimization pack improves operator latency by
-$1.78\times$, and its common-model geometric mean is $2.10\times$ faster than
-default TVM.
+Extending a heterogeneous compiler requires coordinated changes to semantics,
+analyses, transformations, conversions, and emitters. Separate programming
+interfaces and ownership boundaries spread a feature across the compiler;
+coarse invalidation repeats work after local edits. Joggle brings these
+capabilities into a progressive intermediate representation. Typed compiler
+functions inspect, transform, convert, and emit through a shared language,
+call model, and value model. Graph-level mods own cross-stage features and
+their dependencies independently of program containment. The evaluator records
+observed state and published effects, uses revisions to select affected work,
+and commits dependency records with the verified graph. Cached execution plans
+and prepared function bodies carry reusable work across compilations. Across
+nine edit sites in three models, paired updates achieve median speedups of
+$1.49$--$2.48\times$ over complete Joggle rebuilds, including emission, native
+compilation, and executable binding. Generated artifacts pass 24/24 operator
+and 14/15 model oracles. The optimization pack improves aggregate operator
+latency by $1.78\times$; on the eight models supported by all compared systems,
+Joggle runs $2.10\times$ faster than default TVM. These results connect a
+programmable extension surface to reusable compilation and executable code.
 
 ## 1. Introduction
 
@@ -100,7 +99,7 @@ publishes the graph and dependency records together.
 We evaluate these elements with held-out extension tasks, matched patches
 across Joggle, MLIR, and xDSL, controlled model edits across Joggle, TVM, and
 ONNX-MLIR, and executable artifacts against ONNX Runtime. Repeated model edits
-turn complete Joggle rebuilds into $1.48$--$2.47\times$ faster updates with
+turn complete Joggle rebuilds into $1.49$--$2.48\times$ faster updates with
 identical output digests. Joggle passes 24/24 operators and 14/15 models. Its
 optimization pack improves operator latency by $1.78\times$; on the eight
 models supported by every system, Joggle is $2.10\times$ faster than default
@@ -755,6 +754,32 @@ cross_zone_edges,oracle_passed. -->
 
 ### 4.4 Reactive Update Cost
 
+Across nine edit sites, Joggle reduces the time to produce a replacement
+executable on all three repeated model subjects. Median paired speedups are
+2.48× for DenseNet-121, 1.49× for SqueezeNet-1.1, and 1.88× for TinyYOLOv3.
+Each result covers three edits with ten paired repetitions. Every successful
+update matches its rebuild's output digest. Figure 7 separates absolute
+turnaround from the speedup obtained through reuse.
+
+Absolute median update times are 19.991 s, 1.704 s, and 9.763 s for Joggle.
+TVM completes DenseNet and SqueezeNet updates in 10.636 s and 1.092 s;
+ONNX-MLIR takes 10.950 s, 2.032 s, and 2.796 s on the three models. Their paired
+rebuild/update speedups remain between 0.99× and 1.00×. TVM's TinyYOLOv3 path
+fails before producing an executable. Thus the figure exposes two independent
+properties: the cost of each compiler pipeline and the work it reuses after
+an edit.
+
+Prepared-body reuse accounts for most of Joggle's gain. DenseNet's median
+Prepare time falls from 29.854 s to 1.298 s; total lowering falls from 37.692 s
+to 8.411 s. Emission remains near 6.5 s and native compilation near 2.7 s.
+SqueezeNet and TinyYOLOv3 show the same pattern: preparation contracts, while
+emission and native compilation remain stable. The supplement reports all 27
+edit/system combinations and the phase medians.
+
+*Figure 7: Repeated model edits: absolute ready time (top) and paired
+rebuild/update speedup (bottom). Ten repetitions per edit; bars show medians,
+whiskers IQR, and × failed compilation.*
+
 The production endpoint is a bound executable for the edited model.
 Update-to-ready time starts immediately before applying the edit and includes
 import, specialization, lowering, emission, native compilation, and binding.
@@ -768,15 +793,17 @@ $$
 Reference outputs are generated outside both intervals. We record environment
 setup and the validated initial build separately from the update.
 
-For system $s$ and edit $e$, the paired update ratio is
+For system $s$ and edit $e$, the paired update speedup is
 
 $$
-UpdateRatio_{s,e}=\frac{T_{ready,update,s,e}}{T_{ready,full,s,e}}.
+S_{s,e}=\frac{T_{ready,full,s,e}}{T_{ready,update,s,e}}.
 $$
 
-The denominator is a complete rebuild of the same edited model under the same
+The numerator is a complete rebuild of the same edited model under the same
 optimization policy. Absolute update latency compares turnaround across
-systems, while the ratio isolates reuse within each system.
+systems, while the paired ratio measures reuse within each system. We summarize
+these ratios after pairing by edit and repetition; speedups above one indicate
+reduced update work.
 
 Each case applies the same hash-bound node replacement, input tensors, and
 tolerance. The update path first compiles and validates the original model; the
@@ -791,14 +818,14 @@ scalarization, model-wide storage planning, emission, native compilation, and
 binding for the replacement executable. The matched rebuild uses the identical
 pipeline with an empty body cache.
 
-<!-- UPDATE-RESULTS FIGURE — Compact 3×2 vertical-bar small multiples using the
-same visual grammar as the operator and model execution figures. Models are
-grouped into classic CNNs, mobile CNNs, quantized/transformer, detection, YOLO,
-and small/common panels. Within each model, Joggle/TVM/ONNX-MLIR use fixed
-colors; hatched bars show rebuild and solid bars show update. Use logarithmic
-y axes, four-sided inward ticks, × for failed correctness, and a tiny
-rebuild/update label above each valid pair. The final panel includes the
-common-set geometric mean. Source: audited production update CSV only. -->
+<!-- UPDATE-RESULTS FIGURE — Single-column 3×2 vertical-bar panels at
+3.35×2.34 inches. Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3. Top:
+absolute ready time for three edit sites, grouped by system and policy; log
+axis, hatched rebuild and solid update. Bottom: paired rebuild/update speedup
+at the same edit sites; linear axis and parity at one. Teal Joggle, amber TVM,
+blue ONNX-MLIR; four-sided inward ticks, IQR whiskers, explicit × for
+unsupported cases. Ten paired repetitions per edit. CSV and provenance:
+paper/data/figure-06-update.*; script: paper/render_update.py. -->
 
 ### 4.5 End-to-End Performance
 
@@ -828,21 +855,20 @@ but contribute no latency ratio.
 artifact/figures/figure_07_performance.py. Compact single-column figure with
 six panels, two rows by three columns: elementwise, reduction, matmul,
 convolution, quantization, fusion.
-Every panel contains four operators and grouped base/optimized/TVM bars. Shared
+Every panel contains four operators and grouped base/optimized/TVM/ONNX-MLIR bars. Shared
 logarithmic y axis, one legend, ORT=1 dashed line, median-to-p95 whiskers,
 hatched base bars, solid optimized bars, and dotted amber TVM bars. Mark unsupported
 TVM cases with ×, not zero-height bars. Report correct coverage in the
 caption. Bars start at parity; use compact wrapped labels and shared axes at
 the final column width. Enclose every panel in four thin spines with inward
-ticks on all sides; share colors, hatching, and the compact legend with Figure 8.
+ticks on all sides; share colors, hatching, and the compact legend with Figure 9.
 Source CSV: paper/data/figure-07-operators.csv.
 Model measurements have a separate companion display. Preserve every case and failed outcome.
 No generated pixels or illustrative numbers for data. -->
 
-*Figure 7: Operator latency relative to ORT (log scale; lower is faster).
-Bars run from parity to the median; whiskers reach p95 over 100 samples.
-Joggle and ORT pass 24/24 cases; TVM passes 22/24. × marks unsupported
-QLinearConv and QLinearMatMul imports.*
+*Figure 8: Operator latency / ORT (log scale). Bars span parity to median;
+whiskers reach p95 over 100 samples. Correct: Joggle/ORT 24/24;
+TVM/ONNX-MLIR 22/24. × marks invalid candidates.*
 
 | Operator-suite measure | Base | Optimized | TVM | ONNX-MLIR |
 | --- | ---: | ---: | ---: | ---: |
@@ -874,7 +900,7 @@ Strided convolution slowed by 1.11× relative to the base path. These results
 separate optimization gains, cross-system kernel performance, and the compiler
 update costs in Section 4.4.
 
-Figure 8 extends the external comparison to all 15 models. Joggle passes the
+Figure 9 extends the external comparison to all 15 models. Joggle passes the
 numerical oracle on 14 models, ORT on 13, and TVM and ONNX-MLIR on 11 each.
 Joggle executes both EfficientNet quantization variants and both TinyYOLO
 models; SSD-MobileNet stops during preparation. Correctness is checked against
@@ -901,16 +927,14 @@ Whiskers extend from median to p95; the aggregate has no timing whisker.
 Four thin spines, inward major/minor ticks, compact labels, and one legend.
 Explicit × for failed candidates and a dash for correct candidates without a
 valid ORT denominator, never zero-valued bars. Aggregate only the eight models
-correct in all four systems. All panels share Figure 7's width and height.
+correct in all four systems. All panels share Figure 8's width and height.
 CSV: paper/data/figure-07-models.csv; per-model summaries:
 paper/data/figure-07-models-summary.csv; script:
 artifact/figures/figure_07_models.py. -->
 
-*Figure 8: Model execution by family. Bars show median latency / ORT;
-whiskers reach p95 over 100 samples. × marks failed candidates; a dash marks
-correct candidates without a valid ORT reference. Panel (f) aggregates the
-eight models correct in all four systems. Correct coverage is 14/15 for Joggle,
-13/15 for ORT, and 11/15 each for TVM and ONNX-MLIR.*
+*Figure 9: Model latency / ORT; medians and p95 over 100 samples.
+×: invalid candidate; dash: invalid reference. Panel (f): eight jointly correct
+models. Coverage: Joggle 14/15, ORT 13/15, TVM/ONNX-MLIR 11/15.*
 
 <!-- PERFORMANCE DATA — Separate operator and model displays form one
 end-to-end experiment. Each display has a source CSV and plotting script.
@@ -1062,7 +1086,7 @@ with transactions coupling reusable records to the verified graph.
 
 The implementation carries these abstractions through native artifact
 publication. Across repeated model edits, Joggle updates reach a replacement
-executable 1.48--2.47× faster than matched complete rebuilds and produce
+executable 1.49--2.48× faster than matched complete rebuilds and produce
 identical output digests. The generated artifacts pass 24/24 operator oracles
 and 14/15 model oracles; the optimization pack improves aggregate operator
 latency by 1.78×, and Joggle outperforms default TVM by 2.10× on the common
@@ -1113,9 +1137,53 @@ unrounded per-operator medians; values below one indicate lower latency than
 ORT. — denotes an unsupported operation; × denotes a failed numerical oracle.
 Geometric means use the indicated common population.*
 
-## Appendix B. Extension Task Inputs and Outputs
+## Appendix B. Model Measurements
 
-Table A2 records the natural-language contracts and representative observable
+Median execution latency is in milliseconds, with 100 measurements after ten
+warm-ups. × identifies a candidate without a numerically valid executable.
+
+| Model | ORT | Joggle | TVM | ONNX-MLIR |
+| --- | ---: | ---: | ---: | ---: |
+| DenseNet-121 | 18.124 | 706.663 | 1801.893 | 774.156 |
+| EfficientNet-Lite4 int8 | 11.651 | 131.990 | × | × |
+| EfficientNet-Lite4 QDQ | × | 133.687 | 707.443 | × |
+| GoogLeNet | 12.390 | 266.846 | 945.052 | 612.744 |
+| MNIST | 0.048 | 0.205 | 0.203 | 0.336 |
+| MobileNetV2 | × | 86.007 | 181.238 | 23.114 |
+| ResNet-18 | 14.358 | 839.229 | 1129.282 | 908.751 |
+| ShuffleNet-v2 | 1.858 | 26.912 | 66.672 | 8.450 |
+| SqueezeNet-1.0 QDQ | 2.853 | 56.658 | 164.147 | × |
+| SqueezeNet-1.1 | 2.263 | 63.121 | 163.041 | 82.522 |
+| SSD-MobileNetV1 | 13.056 | × | × | × |
+| TinyYOLOv3 | 23.817 | 521.532 | × | 1393.870 |
+| TinyYOLOv2 | 19.982 | 499.543 | 2421.420 | 1825.879 |
+| UltraFace-RFB-320 | 3.414 | 20.767 | × | 12.112 |
+| XCiT-Tiny | 43.016 | 2953.539 | 2972.780 | 318.047 |
+| Correct | 13/15 | 14/15 | 11/15 | 11/15 |
+
+*Table A2: Per-model median execution latency in milliseconds.*
+
+| System | Backend or preparation failure | Numerical-oracle failure |
+| --- | --- | --- |
+| Joggle | SSD-MobileNetV1 | — |
+| ORT | — | EfficientNet-Lite4 QDQ; MobileNetV2 |
+| TVM | EfficientNet-Lite4 int8; SSD-MobileNetV1; TinyYOLOv3; UltraFace | — |
+| ONNX-MLIR | EfficientNet-Lite4 int8; SqueezeNet-1.0 QDQ; SSD-MobileNetV1 | EfficientNet-Lite4 QDQ |
+
+*Table A3: Excluded model executions and the first terminal oracle phase.*
+
+| System | Compiler path | Optimization | Timing policy |
+| --- | --- | --- | --- |
+| Joggle | typed graph → C → native | `-O3 -DNDEBUG` | 1 thread; 10 warm-ups; 100 samples |
+| ORT 1.26 | CPU execution provider | full graph optimization | 1 thread; sequential execution |
+| TVM | Relax → LLVM | default CPU pipeline; no tuning | 1 thread |
+| ONNX-MLIR 0.4.2 | ONNX → LLVM | `-O3`; no fast math | no parallelism |
+
+*Table A4: Execution controls used for Tables A1 and A2.*
+
+## Appendix C. Extension Task Inputs and Outputs
+
+Table A5 records the natural-language contracts and representative observable
 inputs and outputs for the 12 tasks used by the Agent and footprint studies.
 The operative semantic constraints are preserved; only system-specific
 entry-point boilerplate is omitted. Every candidate is additionally checked on
@@ -1136,7 +1204,7 @@ disjoint hidden cases.
 | Vertical | `vert-int4` | Add signed qint4, saturate, and pack low nibble first; reject invalid literals before packing. | five values → `[-7,0,-2,7,7]`, bytes `09 7e 07` | literal 8 → `literal-out-of-range` |
 | Vertical | `vert-fused-op` | Add NHWC/HWIO i8 fused qconv+bias+requantize+ReLU; fuse only a single-use chain. | unit kernel → `[4]`, one fused node | shared convolution → original chain preserved |
 
-*Table A2: Natural-language task inputs, observable outputs, and oracle-facing
+*Table A5: Natural-language task inputs, observable outputs, and oracle-facing
 edge cases. The GELU row embeds the actual before/after SSA structures rendered
 from Graphviz DOT with DejaVu Sans Mono labels.*
 
@@ -1144,7 +1212,7 @@ Tables A3–A5 specify construction, verification, and print/parse round trips.
 Rejected inputs produce no output IR. Tensor types omit the `tensor<…>` wrapper;
 bare i8 or f32 denotes a rank-zero tensor. Axis indices are zero-based.
 
-### B.1. Parametric type definition
+### C.1. Parametric type definition
 
 | Case | Width | Fraction bits | Expected type | Logical bits | Expected diagnostic |
 | --- | ---: | ---: | --- | ---: | --- |
@@ -1160,10 +1228,10 @@ bare i8 or f32 denotes a rank-zero tensor. Axis indices are zero-based.
 | negative-width | -2 | 0 | — | — | invalid-type-parameter |
 | negative-fraction | 8 | -1 | — | — | invalid-type-parameter |
 
-*Table A3: `def-parametric-type`: complete inputs and expected outputs.
+*Table A6: `def-parametric-type`: complete inputs and expected outputs.
 Width denotes logical bits, not ABI allocation size.*
 
-### B.2. Quantized operation definition
+### C.2. Quantized operation definition
 
 | Case | LHS type | RHS type | Scales (L, R, out) | Zero points (L, R, out) | Expected result / diagnostic |
 | --- | --- | --- | --- | --- | --- |
@@ -1181,11 +1249,11 @@ Width denotes logical bits, not ABI allocation size.*
 | rhs-element | 4×i8 | 4×i16 | 1, 1, 1 | 0, 0, 0 | operand-type-mismatch |
 | rank-mismatch | i8 | 1×i8 | 1, 1, 1 | 0, 0, 0 | shape-mismatch |
 
-*Table A4: `def-quantized-op`: complete inputs and expected outputs, with defaults
+*Table A7: `def-quantized-op`: complete inputs and expected outputs, with defaults
 expanded. Scales are finite positive f64 values; zero points are signed i32 values.
 This task defines the operation; arithmetic lowering is evaluated separately.*
 
-### B.3. Layout-carrying operation definition
+### C.3. Layout-carrying operation definition
 
 | Case | Input type | Source | Destination | Permutation | Expected result / diagnostic |
 | --- | --- | --- | --- | --- | --- |
@@ -1200,5 +1268,76 @@ This task defines the operation; arithmetic lowering is evaluated separately.*
 | invalid-source | 1×3×8×16×f32 | CHWN | NHWC | — | invalid-layout |
 | invalid-destination | 1×3×8×16×f32 | NCHW | HWCN | — | invalid-layout |
 
-*Table A5: `def-layout-attribute`: complete inputs and expected outputs.
+*Table A8: `def-layout-attribute`: complete inputs and expected outputs.
 The constructor infers the result shape and preserves the element type and both layout attributes.*
+
+### C.4. Graph transformations and numerical checks
+
+The following examples connect the natural-language contracts to the expected
+graph changes and observable outputs. Teal identifies the replacement, coral
+the matched operations, and blue the typed inputs. Values and graph forms are
+reference expectations from the task contracts.
+
+| Request | Before | After | Observable result and boundary |
+| --- | --- | --- | --- |
+| Remove floating add-by-zero under `no_signed_zeros`. | `%x:f32[4] → add(%x,+0) → return` | `%x → return` | All users now read `%x`; `+0.001` retains the add. |
+| Cancel a lossless signed-integer cast round trip. | `i8[4] → i16[4] → i8[4]` | `i8[4] → return` | `[-128,-1,0,127]` is preserved; `i16→i8→i16` is retained. |
+| Expand GELU into floating-point primitives. | `gelu(%x:f32[5])` | `0.5*x*(1+erf(x/sqrt(2)))` | No `gelu` operation remains; `erf` is present; integer inputs are rejected. |
+| Expand quantized addition and preserve i8 saturation. | `qadd(a,b)`, scales 0.5, zeros 0 | Two dequantizations → f32 add → RNE quantization | `[-3,0,5,120]+[2,1,-8,120] → [-1,1,-3,127]`; negative scales are rejected. |
+| Fuse a single-use quantized convolution chain. | `qconv → bias → requantize → ReLU` | `fused_qconv_relu` | `x=[1,-2]`, `w=[2,-3]`, bias=1, scales 0.25/0.5: accumulator=9, RNE(4.5)=4, output `[4]`; shared convolution results retain the chain. |
+
+<!-- APPENDIX GRAPH TABLE — Five rows; natural-language request and checks at
+left, matched before/after DOT diagrams in adjacent columns. DejaVu Sans Mono;
+thin charcoal edges; pale input blue, matched coral, replacement teal.
+Files: task-{zero,cast,quant,fusion}-{before,after}.dot and
+agent-gelu-{before,after}.dot. Fit each diagram within its cell while preserving
+aspect ratio; no image-generation text. -->
+
+<!-- UPDATE DATA BEGIN -->
+
+## Appendix D. Repeated Model Updates
+
+Ten paired repetitions at each of nine edit sites. Times are seconds; brackets give the interquartile range. Speedup is the median of paired rebuild/update ratios. Each pass count covers ten rebuilds and ten updates.
+
+| Model | Edit node | System | Rebuild [Q1, Q3] | Update [Q1, Q3] | Speedup | Pass |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| DenseNet-121 | 5-add | Joggle | 49.851 [49.298, 51.216] | 20.041 [19.889, 20.224] | 2.47× | 20/20 |
+|  |  | TVM | 10.484 [10.377, 10.572] | 10.594 [10.467, 10.652] | 0.99× | 20/20 |
+|  |  | ONNX-MLIR | 10.857 [10.580, 11.049] | 10.757 [10.673, 11.250] | 1.00× | 20/20 |
+|  | 456-relu | Joggle | 49.325 [48.811, 53.012] | 19.950 [19.870, 22.194] | 2.49× | 20/20 |
+|  |  | TVM | 10.533 [10.496, 10.565] | 10.689 [10.638, 10.729] | 0.99× | 20/20 |
+|  |  | ONNX-MLIR | 10.987 [10.919, 11.033] | 11.004 [10.946, 11.077] | 1.00× | 20/20 |
+|  | 907-relu | Joggle | 49.231 [48.941, 49.644] | 19.939 [19.757, 20.338] | 2.48× | 20/20 |
+|  |  | TVM | 10.474 [10.353, 10.530] | 10.606 [10.588, 10.616] | 0.99× | 20/20 |
+|  |  | ONNX-MLIR | 10.809 [10.651, 11.024] | 10.868 [10.702, 10.998] | 1.00× | 20/20 |
+| SqueezeNet-1.1 | 1-relu | Joggle | 2.511 [2.500, 2.524] | 1.711 [1.690, 1.712] | 1.48× | 20/20 |
+|  |  | TVM | 1.085 [1.082, 1.086] | 1.084 [1.082, 1.112] | 1.00× | 20/20 |
+|  |  | ONNX-MLIR | 2.097 [2.002, 2.121] | 2.069 [1.978, 2.168] | 1.00× | 20/20 |
+|  | 34-relu | Joggle | 2.532 [2.527, 2.607] | 1.711 [1.698, 1.737] | 1.49× | 20/20 |
+|  |  | TVM | 1.094 [1.091, 1.096] | 1.097 [1.091, 1.107] | 1.00× | 20/20 |
+|  |  | ONNX-MLIR | 2.035 [1.979, 2.106] | 2.060 [1.998, 2.139] | 0.99× | 20/20 |
+|  | 63-relu | Joggle | 2.515 [2.507, 2.564] | 1.699 [1.693, 1.707] | 1.49× | 20/20 |
+|  |  | TVM | 1.078 [1.075, 1.081] | 1.089 [1.082, 1.104] | 0.99× | 20/20 |
+|  |  | ONNX-MLIR | 2.010 [1.964, 2.119] | 1.999 [1.964, 2.121] | 1.00× | 20/20 |
+| TinyYOLOv3 | 176-add | Joggle | 18.300 [18.238, 18.482] | 9.763 [9.722, 9.815] | 1.87× | 20/20 |
+|  |  | TVM | × | × | --- | 0/20 |
+|  |  | ONNX-MLIR | 2.798 [2.773, 2.805] | 2.776 [2.748, 2.813] | 1.00× | 20/20 |
+|  | 238-add | Joggle | 18.373 [18.254, 18.775] | 9.784 [9.699, 9.848] | 1.88× | 20/20 |
+|  |  | TVM | × | × | --- | 0/20 |
+|  |  | ONNX-MLIR | 2.772 [2.756, 2.807] | 2.808 [2.772, 2.841] | 0.99× | 20/20 |
+|  | 260-add | Joggle | 18.029 [17.946, 18.365] | 9.614 [9.493, 9.936] | 1.90× | 20/20 |
+|  |  | TVM | × | × | --- | 0/20 |
+|  |  | ONNX-MLIR | 2.799 [2.756, 2.844] | 2.797 [2.782, 2.861] | 0.99× | 20/20 |
+
+Joggle phase medians in seconds over 30 runs per model and policy. Prepare is a component of Lower; columns have separately computed medians. Decode includes input specialization; CC is native compilation.
+
+| Model | Policy | Decode | Parse | Lower | Prepare | Emit | CC | Bind |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| DenseNet-121 | rebuild | 1.649 | 0.521 | 37.692 | 29.854 | 6.598 | 2.683 | 0.128 |
+| DenseNet-121 | update | 1.660 | 0.531 | 8.411 | 1.298 | 6.475 | 2.692 | 0.127 |
+| SqueezeNet-1.1 | rebuild | 0.328 | 0.078 | 1.390 | 0.936 | 0.298 | 0.299 | 0.121 |
+| SqueezeNet-1.1 | update | 0.328 | 0.078 | 0.581 | 0.166 | 0.285 | 0.298 | 0.120 |
+| TinyYOLOv3 | rebuild | 1.873 | 0.565 | 13.418 | 10.780 | 1.799 | 0.461 | 0.127 |
+| TinyYOLOv3 | update | 1.867 | 0.571 | 4.851 | 2.330 | 1.785 | 0.465 | 0.126 |
+
+<!-- UPDATE DATA END -->

@@ -1,0 +1,56 @@
+\section{Repeated Model Updates}
+\label{sec:update-data}
+\begin{table}[!htbp]
+\centering\scriptsize
+\caption{Ten paired repetitions at each of nine edit sites. Times are seconds; brackets give the interquartile range. Speedup is the median of paired rebuild/update ratios. Each pass count covers ten rebuilds and ten updates.}
+\label{tab:update-sites}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lllrrrc@{}}
+\toprule Model & Edit node & System & Rebuild [Q1, Q3] & Update [Q1, Q3] & Speedup & Pass \\
+\midrule
+DenseNet-121 & 5-add & Joggle & 49.851 [49.298, 51.216] & 20.041 [19.889, 20.224] & $2.47\times$ & 20/20 \\
+ &  & TVM & 10.484 [10.377, 10.572] & 10.594 [10.467, 10.652] & $0.99\times$ & 20/20 \\
+ &  & ONNX-MLIR & 10.857 [10.580, 11.049] & 10.757 [10.673, 11.250] & $1.00\times$ & 20/20 \\
+ & 456-relu & Joggle & 49.325 [48.811, 53.012] & 19.950 [19.870, 22.194] & $2.49\times$ & 20/20 \\
+ &  & TVM & 10.533 [10.496, 10.565] & 10.689 [10.638, 10.729] & $0.99\times$ & 20/20 \\
+ &  & ONNX-MLIR & 10.987 [10.919, 11.033] & 11.004 [10.946, 11.077] & $1.00\times$ & 20/20 \\
+ & 907-relu & Joggle & 49.231 [48.941, 49.644] & 19.939 [19.757, 20.338] & $2.48\times$ & 20/20 \\
+ &  & TVM & 10.474 [10.353, 10.530] & 10.606 [10.588, 10.616] & $0.99\times$ & 20/20 \\
+ &  & ONNX-MLIR & 10.809 [10.651, 11.024] & 10.868 [10.702, 10.998] & $1.00\times$ & 20/20 \\
+\midrule
+SqueezeNet-1.1 & 1-relu & Joggle & 2.511 [2.500, 2.524] & 1.711 [1.690, 1.712] & $1.48\times$ & 20/20 \\
+ &  & TVM & 1.085 [1.082, 1.086] & 1.084 [1.082, 1.112] & $1.00\times$ & 20/20 \\
+ &  & ONNX-MLIR & 2.097 [2.002, 2.121] & 2.069 [1.978, 2.168] & $1.00\times$ & 20/20 \\
+ & 34-relu & Joggle & 2.532 [2.527, 2.607] & 1.711 [1.698, 1.737] & $1.49\times$ & 20/20 \\
+ &  & TVM & 1.094 [1.091, 1.096] & 1.097 [1.091, 1.107] & $1.00\times$ & 20/20 \\
+ &  & ONNX-MLIR & 2.035 [1.979, 2.106] & 2.060 [1.998, 2.139] & $0.99\times$ & 20/20 \\
+ & 63-relu & Joggle & 2.515 [2.507, 2.564] & 1.699 [1.693, 1.707] & $1.49\times$ & 20/20 \\
+ &  & TVM & 1.078 [1.075, 1.081] & 1.089 [1.082, 1.104] & $0.99\times$ & 20/20 \\
+ &  & ONNX-MLIR & 2.010 [1.964, 2.119] & 1.999 [1.964, 2.121] & $1.00\times$ & 20/20 \\
+\midrule
+TinyYOLOv3 & 176-add & Joggle & 18.300 [18.238, 18.482] & 9.763 [9.722, 9.815] & $1.87\times$ & 20/20 \\
+ &  & TVM & $\times$ & $\times$ & --- & 0/20 \\
+ &  & ONNX-MLIR & 2.798 [2.773, 2.805] & 2.776 [2.748, 2.813] & $1.00\times$ & 20/20 \\
+ & 238-add & Joggle & 18.373 [18.254, 18.775] & 9.784 [9.699, 9.848] & $1.88\times$ & 20/20 \\
+ &  & TVM & $\times$ & $\times$ & --- & 0/20 \\
+ &  & ONNX-MLIR & 2.772 [2.756, 2.807] & 2.808 [2.772, 2.841] & $0.99\times$ & 20/20 \\
+ & 260-add & Joggle & 18.029 [17.946, 18.365] & 9.614 [9.493, 9.936] & $1.90\times$ & 20/20 \\
+ &  & TVM & $\times$ & $\times$ & --- & 0/20 \\
+ &  & ONNX-MLIR & 2.799 [2.756, 2.844] & 2.797 [2.782, 2.861] & $0.99\times$ & 20/20 \\
+\bottomrule\end{tabular*}\end{table}
+\begin{table}[!htbp]
+\centering\scriptsize
+\caption{Joggle phase medians in seconds over 30 runs per model and policy. Prepare is a component of Lower; columns have separately computed medians. Decode includes input specialization; CC is native compilation.}
+\label{tab:update-phases}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}llrrrrrrr@{}}
+\toprule Model & Policy & Decode & Parse & Lower & Prepare & Emit & CC & Bind \\
+\midrule
+DenseNet-121 & rebuild & 1.649 & 0.521 & 37.692 & 29.854 & 6.598 & 2.683 & 0.128 \\
+ & update & 1.660 & 0.531 & 8.411 & 1.298 & 6.475 & 2.692 & 0.127 \\
+SqueezeNet-1.1 & rebuild & 0.328 & 0.078 & 1.390 & 0.936 & 0.298 & 0.299 & 0.121 \\
+ & update & 0.328 & 0.078 & 0.581 & 0.166 & 0.285 & 0.298 & 0.120 \\
+TinyYOLOv3 & rebuild & 1.873 & 0.565 & 13.418 & 10.780 & 1.799 & 0.461 & 0.127 \\
+ & update & 1.867 & 0.571 & 4.851 & 2.330 & 1.785 & 0.465 & 0.126 \\
+\bottomrule\end{tabular*}\end{table}

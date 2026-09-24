@@ -56,7 +56,7 @@ The oracle precedes metric aggregation in each branch. Successful cases
 provide paired measurements, while unsuccessful cases remain in the coverage
 denominator.
 
-\begin{figure}[t]
+\begin{figure}[!tbp]
   \centering
   \includegraphics[width=\columnwidth]{figures/evaluation-workflow.png}
   \caption{Four paired comparisons. Shared specifications, edited graphs,
@@ -132,6 +132,42 @@ separate.
 \subsection{Reactive Update Cost}
 \label{sec:eval-efficient}
 
+Across nine edit sites, Joggle reduces the time to produce a replacement
+executable on all three repeated model subjects. Median paired speedups are
+$2.48\times$ for DenseNet-121, $1.49\times$ for SqueezeNet-1.1, and $1.88\times$
+for TinyYOLOv3. Each result covers three edits with ten paired repetitions.
+Every successful update matches its rebuild's output digest.
+Figure~\ref{fig:update-results} separates absolute turnaround from the speedup
+obtained through reuse.
+
+Absolute median update times are 19.991\,s, 1.704\,s, and 9.763\,s for Joggle.
+TVM completes DenseNet and SqueezeNet updates in 10.636\,s and 1.092\,s;
+ONNX-MLIR takes 10.950\,s, 2.032\,s, and 2.796\,s on the three models. Their
+paired rebuild/update speedups remain between $0.99\times$ and $1.00\times$.
+TVM's TinyYOLOv3 path fails before producing an executable. Thus the figure
+exposes two independent properties: the cost of each compiler pipeline and
+the work it reuses after an edit.
+
+Prepared-body reuse accounts for most of Joggle's gain. DenseNet's median
+Prepare time falls from 29.854\,s to 1.298\,s; total lowering falls from
+37.692\,s to 8.411\,s. Emission remains near 6.5\,s and native compilation near
+2.7\,s. SqueezeNet and TinyYOLOv3 show the same pattern: preparation contracts,
+while emission and native compilation remain stable. The supplement reports
+all 27 edit/system combinations and the phase medians.
+
+\begin{figure}[!tbp]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/figure-06-update.pdf}
+  \caption{Repeated model edits: absolute ready time (top) and paired
+  rebuild/update speedup (bottom). Ten repetitions per edit; bars show medians,
+  whiskers IQR, and $\times$ failed compilation.}
+  \Description{Six boxed panels compare three systems at nine edit sites.
+  Top panels show absolute time on a logarithmic axis. Bottom panels show
+  paired reuse speedup on a linear axis. Joggle reuses preparation work;
+  baseline update times remain close to their rebuild times.}
+  \label{fig:update-results}
+\end{figure}
+
 The production endpoint is a bound executable for the edited model.
 Update-to-ready time starts immediately before applying the edit and includes
 import, specialization, lowering, emission, native compilation, and binding.
@@ -143,15 +179,17 @@ T_{\mathrm{validated}}=T_{\mathrm{ready}}+T_{\mathrm{validation}}.
 Reference outputs are generated outside both intervals. We record environment
 setup and the validated initial build separately from the update.
 
-For system $s$ and edit $e$, the paired update ratio is
+For system $s$ and edit $e$, the paired update speedup is
 
 \[
-\operatorname{UpdateRatio}_{s,e}=\frac{T_{\mathrm{ready,update},s,e}}{T_{\mathrm{ready,full},s,e}}.
+S_{s,e}=\frac{T_{\mathrm{ready,full},s,e}}{T_{\mathrm{ready,update},s,e}}.
 \]
 
-The denominator is a complete rebuild of the same edited model under the same
+The numerator is a complete rebuild of the same edited model under the same
 optimization policy. Absolute update latency compares turnaround across
-systems, while the ratio isolates reuse within each system.
+systems, while the paired ratio measures reuse within each system. We summarize
+these ratios after pairing by edit and repetition; speedups above one indicate
+reduced update work.
 
 Each case applies the same hash-bound node replacement, input tensors, and
 tolerance. The update path first compiles and validates the original model; the
@@ -191,15 +229,14 @@ confidence intervals. Figure~\ref{fig:model-performance} uses the same encoding.
 Cases that fail compilation or numerical validation remain in the coverage
 denominator but contribute no latency ratio.
 
-\begin{figure}[t]
+\begin{figure}[!tbp]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-07-performance.pdf}
-  \caption{Operator latency relative to ORT (log scale; lower is faster).
-  Bars run from parity to the median; whiskers reach p95 over 100 samples.
-  Joggle and ORT pass 24/24 cases; TVM passes 22/24. $\times$ marks unsupported
-  QLinearConv and QLinearMatMul imports.}
+  \caption{Operator latency / ORT (log scale). Bars span parity to median;
+  whiskers reach p95 over 100 samples. Correct: Joggle/ORT 24/24;
+  TVM/ONNX-MLIR 22/24. $\times$ marks invalid candidates.}
   \Description{Six aligned small multiples compare the base and optimized
-  Joggle paths and TVM on four operators per family, with a common logarithmic
+  Joggle paths, TVM, and ONNX-MLIR on four operators per family, with a common logarithmic
   scale and an ONNX Runtime reference line at one.}
   \label{fig:performance}
 \end{figure}
@@ -261,14 +298,12 @@ from coverage: a failed candidate is marked $\times$, and a correct candidate
 without a valid ORT reference is marked with a dash. Absolute medians and p95
 values for every correct candidate remain in the accompanying CSV.
 
-\begin{figure}[t]
+\begin{figure}[!tbp]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-07-models.pdf}
-  \caption{Model execution by family. Bars show median latency / ORT;
-  whiskers reach p95 over 100 samples. $\times$ marks failed candidates; a dash
-  marks correct candidates without a valid ORT reference. Panel (f) aggregates
-  the eight models correct in all four systems. Correct coverage is 14/15 for
-  Joggle, 13/15 for ORT, and 11/15 each for TVM and ONNX-MLIR.}
+  \caption{Model latency / ORT; medians and p95 over 100 samples.
+  $\times$: invalid candidate; dash: invalid reference. Panel (f): eight jointly
+  correct models. Coverage: Joggle 14/15, ORT 13/15, TVM/ONNX-MLIR 11/15.}
   \Description{Six boxed panels compare Joggle, TVM, and ONNX-MLIR with ORT:
   five model groups cover all 15 subjects and one gives common-set geometric
   means. Failed candidates and unavailable reference ratios have distinct
