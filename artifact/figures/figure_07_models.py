@@ -149,7 +149,7 @@ def main() -> int:
                            ("squeezenet1.0-13-qdq", "Sq\nQDQ")]),
             ("Other models", [("mnist-8", "MNIST"),
                               ("xcit-tiny-12-p8-224-opset17", "XCiT")]),
-            ("Aggregate", [("geomean", f"GeoMean\n{len(paired)}/{len(names)} correct")]),
+            ("Aggregate", [("geomean", f"GeoMean\n{len(paired)} common")]),
         ]
         finite = [float(row[key]) for row in summary if row["variant"] in variants
                   for key in ("latency_over_ort", "p95_over_ort_median") if row[key] != ""]

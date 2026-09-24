@@ -13,7 +13,7 @@ then give each cross-stage feature an explicit owner, while recorded
 dependencies direct reactive execution toward affected work. Across three
 models, prepared-body reuse accelerates executable-ready updates by
 $1.46$--$2.49\times$ over complete rebuilds. The generated executables also
-achieve a $2.10\times$ geometric-mean speedup over default TVM on eight models
+achieve a $2.03\times$ geometric-mean speedup over default TVM on eight models
 compiled correctly by all compared systems. Together, these mechanisms make
 compiler capabilities composable, independently organized, and reusable as
 AI workloads evolve.
@@ -107,7 +107,7 @@ one file per extension, compared with three in the matched MLIR and xDSL
 implementations. Prepared-body reuse accelerates executable-ready updates by
 $1.46$--$2.49\times$ over complete rebuilds on three models. On eight models
 compiled correctly by all four systems, the generated executables achieve a
-$2.10\times$ geometric-mean speedup over default TVM. Together, these
+$2.03\times$ geometric-mean speedup over default TVM. Together, these
 experiments examine both the cost of changing a compiler and the artifacts
 it produces.
 
@@ -682,18 +682,14 @@ agent outcomes, we select two tasks per family for a 12-task execution set.
 Admission requires a system-specific harness and an idiomatic reference patch
 that passes the shared oracle.
 
-The agent protocol uses Qwen3-8B and Qwen3-14B through SiliconFlow with the same
-coding-agent harness, temperature zero, and thinking disabled. Each request
-combines a natural-language semantic
-contract, public positive and negative examples, a native API card, and starter
-code. The agent can inspect or replace its source, invoke the public
-build-and-test oracle, and submit the result. Candidate programs execute in
-isolated workspaces. The output consists of the final source patch and complete
-tool trajectory; final scoring also checks fixtures withheld from tool feedback.
-Each trajectory may take at
-most 30 actions and emit at most 32k tokens. Each model--system--task condition
-runs once with the same sampling settings and no demonstrations. The paired design
-contains 72 trajectories: 12 tasks, three systems, and two models.
+Both Qwen3-8B and Qwen3-14B use the same coding-agent harness through
+SiliconFlow, at temperature zero with thinking disabled. Each request contains
+a natural-language contract, public positive and negative examples, a native
+API card, and starter code. The agent may inspect, replace, test, or submit its
+source in an isolated workspace. Each trajectory has a 30-action, 32k-token
+budget; final scoring checks public and held-out fixtures. We retain the final
+patch and complete trajectory. The matched design has 72 runs: 12 tasks, three
+systems, and two models, one run per condition without demonstrations.
 
 The primary endpoint is executable success within budget: the final workspace
 must build and pass the semantic oracle without manual repair. We macro-average
@@ -744,11 +740,8 @@ where $F_p$ counts touched package source files, $L_p$ counts added plus
 deleted source lines, $Z_p$ counts ownership zones, and $R_p$ counts
 changed entry-point and publication source lines under a frozen policy.
 Publication declarations contribute to $F_p$ and $L_p$; $R_p$ identifies that
-subset separately. Shared fixtures are excluded from source counts. A zone is a source package or build
-target with one public responsibility.
-
-All files implementing one native package form one ownership zone, including
-baseline plugins. Counts exclude tests and shared measurement infrastructure.
+subset. Each native feature package, including a baseline plugin, forms one
+ownership zone. Counts exclude tests, fixtures, and shared measurement code.
 
 **Integration and maintenance.** Figure 7 separates initial package setup from
 subsequent edits. Native installation uses one source file per Joggle feature
@@ -928,9 +921,9 @@ EfficientNet QDQ exceed the tolerance, so these two models have no ORT-normalize
 ratio even where another system produces a correct executable.
 
 Eight models pass in all four systems. On this common set, geometric mean
-latency relative to ORT is 24.83× for Joggle, 52.11× for TVM, and 23.84× for
-ONNX-MLIR. Thus Joggle runs 2.10× faster than default TVM, while ONNX-MLIR runs
-1.04× faster than Joggle; ORT has the lowest aggregate latency. The per-family
+latency relative to ORT is 25.67× for Joggle, 52.11× for TVM, and 23.84× for
+ONNX-MLIR. Thus Joggle runs 2.03× faster than default TVM, while ONNX-MLIR runs
+1.08× faster than Joggle; ORT has the lowest aggregate latency. The per-family
 panels separate this execution comparison from coverage: a failed candidate
 is marked ×, and a correct candidate without a valid ORT reference is marked
 with a dash. Absolute medians and p95 values for every correct candidate remain
@@ -1087,30 +1080,21 @@ specializations across newly imported program revisions.
 
 ## 6. Discussion
 
-**Integration and maintenance.** The package study separates the cost of
-introducing a feature from the cost of changing it. Direct mod publication
-reduces installation files and registration code; subsequent maintenance stays
-within one file in all three implementations. The organizational benefit is
-therefore an explicit cross-stage integration boundary. A package can still
-subdivide its implementation without distributing its public contract among
-compiler stages.
+**Integration and maintenance.** Direct mod publication reduces installation
+files and registration code; subsequent edits stay within one file in all
+three implementations. The benefit is a cross-stage integration boundary:
+packages can subdivide their implementation while retaining one public contract.
 
-**Dependency granularity and turnaround.** Reuse helps when its unit matches
-the change. Recorded observations select work within a retained graph, whereas
-specialization signatures identify reusable prepared bodies after import.
-The latter removes most preparation cost in the repeated-edit study. As a
-result, emission and native compilation account for a larger share of
-turnaround. Extending reuse to independently emitted artifacts is a concrete
-next step: their identities must include the relevant bodies, layouts, target
-settings, and dependencies.
+**Dependency granularity and turnaround.** Observations select work within a
+retained graph; specialization signatures identify reusable bodies after import.
+Removing most preparation cost exposes emission and native compilation as the
+next reuse boundary. Independently cached artifacts would need identities
+covering their bodies, layouts, target settings, and dependencies.
 
-**Composition with explicit effects.** A shared call interface makes compiler
-roles available to both developers and agents, but the semantic contract still
-determines whether an extension is correct. Typed arguments, read-only checks,
-and transactional mutation provide common enforcement points. In particular,
-publishing graph state and dependency records together connects extensibility
-to reuse: composed functions can publish new results while invalidating
-observations of the state they replace.
+**Composition with explicit effects.** Typed arguments, read-only checks, and
+transactions enforce extension contracts at a shared call boundary. Publishing
+graph state and dependency records together connects composition to reuse:
+functions publish results while invalidating observations of replaced state.
 
 ## 7. Conclusion
 
@@ -1175,21 +1159,21 @@ warm-ups. × identifies a candidate without a numerically valid executable.
 
 | Model | ORT p50 | p95 | Joggle p50 | p95 | TVM p50 | p95 | ONNX-MLIR p50 | p95 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| DenseNet-121 | 18.124 | 20.897 | 706.663 | 715.691 | 1801.893 | 1826.480 | 774.156 | 776.251 |
-| EfficientNet-Lite4 int8 | 11.651 | 13.834 | 131.990 | 133.215 | × | × | × | × |
-| EfficientNet-Lite4 QDQ | × | × | 133.687 | 136.742 | 707.443 | 718.765 | × | × |
-| GoogLeNet | 12.390 | 13.356 | 266.846 | 269.242 | 945.052 | 969.546 | 612.744 | 734.218 |
-| MNIST | 0.048 | 0.050 | 0.205 | 0.240 | 0.203 | 0.217 | 0.336 | 0.489 |
-| MobileNetV2 | × | × | 86.007 | 86.539 | 181.238 | 182.083 | 23.114 | 23.969 |
-| ResNet-18 | 14.358 | 16.206 | 839.229 | 854.691 | 1129.282 | 1156.727 | 908.751 | 910.927 |
-| ShuffleNet-v2 | 1.858 | 1.936 | 26.912 | 27.141 | 66.672 | 67.064 | 8.450 | 8.667 |
-| SqueezeNet-1.0 QDQ | 2.853 | 3.027 | 56.658 | 57.737 | 164.147 | 165.738 | × | × |
-| SqueezeNet-1.1 | 2.263 | 2.437 | 63.121 | 63.634 | 163.041 | 163.570 | 82.522 | 82.958 |
+| DenseNet-121 | 18.124 | 20.897 | 707.834 | 717.648 | 1801.893 | 1826.480 | 774.156 | 776.251 |
+| EfficientNet-Lite4 int8 | 11.651 | 13.834 | 148.570 | 168.688 | × | × | × | × |
+| EfficientNet-Lite4 QDQ | × | × | 133.400 | 135.056 | 707.443 | 718.765 | × | × |
+| GoogLeNet | 12.390 | 13.356 | 269.641 | 283.711 | 945.052 | 969.546 | 612.744 | 734.218 |
+| MNIST | 0.048 | 0.050 | 0.212 | 0.281 | 0.203 | 0.217 | 0.336 | 0.489 |
+| MobileNetV2 | × | × | 97.677 | 105.865 | 181.238 | 182.083 | 23.114 | 23.969 |
+| ResNet-18 | 14.358 | 16.206 | 843.252 | 857.060 | 1129.282 | 1156.727 | 908.751 | 910.927 |
+| ShuffleNet-v2 | 1.858 | 1.936 | 26.875 | 27.328 | 66.672 | 67.064 | 8.450 | 8.667 |
+| SqueezeNet-1.0 QDQ | 2.853 | 3.027 | 56.876 | 57.895 | 164.147 | 165.738 | × | × |
+| SqueezeNet-1.1 | 2.263 | 2.437 | 77.975 | 97.759 | 163.041 | 163.570 | 82.522 | 82.958 |
 | SSD-MobileNetV1 | 13.056 | 14.254 | × | × | × | × | × | × |
-| TinyYOLOv3 | 23.817 | 25.145 | 521.532 | 528.014 | × | × | 1393.870 | 1410.922 |
-| TinyYOLOv2 | 19.982 | 21.762 | 499.543 | 503.273 | 2421.420 | 2466.986 | 1825.879 | 1955.957 |
-| UltraFace-RFB-320 | 3.414 | 3.778 | 20.767 | 21.067 | × | × | 12.112 | 12.845 |
-| XCiT-Tiny | 43.016 | 46.548 | 2953.539 | 2975.516 | 2972.780 | 3007.537 | 318.047 | 321.317 |
+| TinyYOLOv3 | 23.817 | 25.145 | 532.262 | 647.713 | × | × | 1393.870 | 1410.922 |
+| TinyYOLOv2 | 19.982 | 21.762 | 502.028 | 510.865 | 2421.420 | 2466.986 | 1825.879 | 1955.957 |
+| UltraFace-RFB-320 | 3.414 | 3.778 | 20.823 | 21.128 | × | × | 12.112 | 12.845 |
+| XCiT-Tiny | 43.016 | 46.548 | 2957.785 | 3021.850 | 2972.780 | 3007.537 | 318.047 | 321.317 |
 | Correct | 13/15 | | 14/15 | | 11/15 | | 11/15 | |
 
 *Table A.2: Per-model median and p95 execution latency in milliseconds;

@@ -107,7 +107,7 @@ Joggle and ONNX-MLIR each pass all 180 trials; TVM passes 120 and rejects all
 60 TinyYOLOv3 trials because its ONNX frontend does not support `Loop`.
 The measured paired reuse range is now 1.46–2.49×. Abstract, introduction,
 evaluation, and conclusion are synchronized in MD and TeX. Figure 8 and both
-PDFs still require regeneration after the live execution timing finishes.
+PDFs were regenerated on 25 September after native execution timing finished.
 The external-data integration check at
 `.cache/artifact/external-data-verified.qpfoeC/` is a separate single-repetition
 correctness run, not a replacement for the paper's repeated measurements.
@@ -129,33 +129,42 @@ merge now includes both Joggle variants from integrated main `cc82ef114093`:
 and ONNX-MLIR records match the new runs' workload contracts, inputs, sampling,
 batches, thread controls, and numerical-oracle policy. The sole published
 operator CSV and its 120 summaries contain 11,604 rows across five
-configurations. Appendix A and Section 4.5 are synchronized in MD and TeX;
-the operator figure awaits regeneration after native timing finishes.
+configurations. Appendix A, Section 4.5, and the operator figure are synchronized.
 
-The current model merge still includes a Joggle run from `38a426d`; its
-integrated-main replacement is running. Revalidate the native packages after
-that run, before claiming complete main-branch data alignment. Keep external
-model results only where their recorded inputs, sampling protocol, and
-compiler configurations match the completed new run.
+The model merge now uses the completed integrated-main run in
+`.cache/artifact/main-execution-20260924-81YqJu/`. Its source is `cc82ef114093`,
+matching both operator variants; identity checks are stable and release eligible.
+Fourteen models pass; SSD-MobileNetV1 reaches the unchanged 600-second
+preparation timeout. All three external records pass the matched protocol and
+input checks. The 4,911-row export, 60 summaries, Figure 10, Appendix B, and
+the main text now agree: 2.03× geometric-mean speedup over default TVM on eight
+jointly correct models. The aggregate panel labels this set as “8 common.”
+
+The subsequent native-package rerun in
+`.cache/artifact/main-packages-20260924-a98ifw/` validates all 24 changed
+packages and 18 paired parent controls with the integrated compiler. Its CSV
+is byte-identical to the previous footprints; the published provenance now
+points to the new validation records. All timing and package queues have ended.
 
 The MD and TeX design sources now distinguish observation-based stage selection
 within a retained graph from prepared-body reuse across imported graphs.
-Rebuild and inspect the PDFs after the live timing collection; the current PDF
-predates this mechanism clarification.
-The subsequent source revision also adds the measured host configuration to
-the methodology and native invocation/output-storage boundaries to Table A.4.
-Check both the main paper and supplement when rebuilding.
+Both PDFs include this mechanism clarification, the measured host configuration,
+and the native invocation/output-storage boundaries in Table A.4. Repeated
+method and discussion text was condensed to keep technical content within
+12 pages, with references on pages 13–15. The 12-page supplement retains its
+portrait tables. The Agent protocol table's paragraph indentation was removed
+to fix overflow. Final logs contain no overfull boxes or undefined references;
+rendered pages 10 and 12 of the main paper and page 3 of the supplement were
+visually checked after the final rebuild.
 
 The current end-to-end exports were recomputed from individual timing rows:
 11,604 operator rows and 4,911 model rows. All exported medians, p95 values,
 correctness flags, and the text's geometric-mean ratios agree. This validates
-the existing export, not a new-main measurement. The update protocol now names
+the integrated-main exports. The update protocol names
 the actual operator substitutions and identifies the edited graph as the oracle
 subject.
 
-After the timing collection, correct the stale overview in `artifact/PROTOCOL.md`:
-its Figure 5 summary still says 12 tasks / 36 patch rows, although the amended
-package section and collected data use eight conditions / 24 package rows.
-The execution study uses five configurations for operators and four for
-models, not five for both. Do not edit `artifact/` while the live collection is
-checking source stability.
+The overview in `artifact/PROTOCOL.md` now matches the eight package conditions,
+24 changed packages, and 18 parent controls. It also distinguishes five operator
+configurations from four model configurations (18,000 possible valid timing
+rows before unsupported or incorrect outcomes).

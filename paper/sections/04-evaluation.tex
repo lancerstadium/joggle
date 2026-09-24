@@ -86,18 +86,14 @@ agent outcomes, we select two tasks per family for a 12-task execution set.
 Admission requires a system-specific harness and an idiomatic reference patch
 that passes the shared oracle.
 
-The agent protocol uses Qwen3-8B and Qwen3-14B through SiliconFlow with the same
-coding-agent harness, temperature zero, and thinking disabled. Each request
-combines a natural-language semantic
-contract, public positive and negative examples, a native API card, and starter
-code. The agent can inspect or replace its source, invoke the public
-build-and-test oracle, and submit the result. Candidate programs execute in
-isolated workspaces. The output consists of the final source patch and complete
-tool trajectory; final scoring also checks fixtures withheld from tool feedback.
-Each trajectory may take at
-most 30 actions and emit at most 32k tokens. Each model--system--task condition
-runs once with the same sampling settings and no demonstrations. The paired design
-contains 72 trajectories: 12 tasks, three systems, and two models.
+Both Qwen3-8B and Qwen3-14B use the same coding-agent harness through
+SiliconFlow, at temperature zero with thinking disabled. Each request contains
+a natural-language contract, public positive and negative examples, a native
+API card, and starter code. The agent may inspect, replace, test, or submit its
+source in an isolated workspace. Each trajectory has a 30-action, 32k-token
+budget; final scoring checks public and held-out fixtures. We retain the final
+patch and complete trajectory. The matched design has 72 runs: 12 tasks, three
+systems, and two models, one run per condition without demonstrations.
 
 The primary endpoint is executable success within budget: the final workspace
 must build and pass the semantic oracle without manual repair. We macro-average
@@ -135,11 +131,8 @@ where $F_p$ counts touched package source files, $L_p$ counts added plus
 deleted source lines, $Z_p$ counts ownership zones, and $R_p$ counts
 changed entry-point and publication source lines under a frozen policy.
 Publication declarations contribute to $F_p$ and $L_p$; $R_p$ identifies that
-subset separately. Shared fixtures are excluded from source counts. A zone is a source package or build
-target with one public responsibility.
-
-All files implementing one native package form one ownership zone, including
-baseline plugins. Counts exclude tests and shared measurement infrastructure.
+subset. Each native feature package, including a baseline plugin, forms one
+ownership zone. Counts exclude tests, fixtures, and shared measurement code.
 
 \paragraph{Integration and maintenance.}
 Figure~\ref{fig:package-footprint} separates initial package setup from
@@ -316,9 +309,9 @@ executions of MobileNetV2 and EfficientNet QDQ exceed the tolerance, so these tw
 no ORT-normalized ratio even where another system produces a correct executable.
 
 Eight models pass in all four systems. On this common set, geometric mean
-latency relative to ORT is $24.83\times$ for Joggle, $52.11\times$ for TVM, and
-$23.84\times$ for ONNX-MLIR. Thus Joggle runs $2.10\times$ faster than default
-TVM, while ONNX-MLIR runs $1.04\times$ faster than Joggle; ORT has the lowest
+latency relative to ORT is $25.67\times$ for Joggle, $52.11\times$ for TVM, and
+$23.84\times$ for ONNX-MLIR. Thus Joggle runs $2.03\times$ faster than default
+TVM, while ONNX-MLIR runs $1.08\times$ faster than Joggle; ORT has the lowest
 aggregate latency. The per-family panels separate this execution comparison
 from coverage: a failed candidate is marked $\times$, and a correct candidate
 without a valid ORT reference is marked with a dash. Absolute medians and p95

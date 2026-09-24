@@ -8,14 +8,15 @@ models. The populations below specify collection targets, not completed runs.
 | Figure | Claim | Compared systems | Independent unit | Primary endpoint |
 | --- | --- | --- | --- | --- |
 | 4 | Convenient extension | Joggle, MLIR, xDSL | 12 tasks; two per family | agent success within budget |
-| 5 | Controllable change | Joggle, MLIR, xDSL | 12 matched patches | files, lines, zones, declarations |
+| 5 | Controllable change | Joggle, MLIR, xDSL | 8 package conditions: 2 integrations and 6 maintenance edits | files, lines, zones, declarations |
 | 6 | Efficient update | Joggle, TVM, ONNX-MLIR | 9 edit sites in 3 complete models | edit-to-executable time and paired Full/Update |
 | 7 | End-to-end performance | Joggle base/opt, ONNX Runtime, TVM, ONNX-MLIR | 24 operators and 15 models | steady-state latency and correct coverage |
 
 Figure 4 collects 72 trajectories: 12 tasks × three systems × two models,
-one deterministic zero-shot run per condition. Figure 5 targets 36 matched
-patch rows on the same tasks. The five Figure 7 variants allow at most 19,500 valid
-timing rows (39 subjects x 5 variants x 100 repetitions), with unsupported or
+one zero-shot run per condition with matched sampling settings. Figure 5
+collects 24 changed packages and 18 maintenance-parent controls. Figure 7
+uses five configurations for operators and four for models, allowing at most
+18,000 valid timing rows ((24 × 5 + 15 × 4) × 100), with unsupported or
 incorrect cases recorded separately. Figure 6's manuscript dataset contains
 540 policy rows: nine edit sites × three systems × ten paired repetitions ×
 two policies. Its source, edit population, revisions, and cache configuration

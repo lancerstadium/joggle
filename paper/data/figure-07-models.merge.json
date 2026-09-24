@@ -8,10 +8,10 @@
         "runtime": "onnxruntime-1.26.0",
         "schema": "onnx-graph-semantics/v1"
       },
-      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-joggle-optimized-38a426d.csv",
-      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/models-joggle-optimized-38a426d.run.json",
-      "record_sha256": "89c2ad5cfcea94bfb7d8f8fb3a0e074919d7d37c0ea2d1d6a7c8e643063f6087",
-      "sha256": "ca2165e4de24b6208923e2ffcecef6a37b7a7326d171a8d826fdef907b210b73"
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/main-execution-20260924-81YqJu/models-joggle-optimized.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/main-execution-20260924-81YqJu/models-joggle-optimized.run.json",
+      "record_sha256": "0f0fd24cf7d0bff8b4a82b5fae6569389c3162c4028fc5906b1ec9b741445c2d",
+      "sha256": "a4e870b8e45354ac119bd1610b121a769e32f5c6e7b0f7533e29e83bebee4c3a"
     },
     {
       "correctness_oracle": {
@@ -51,8 +51,8 @@
     }
   ],
   "output": {
-    "path": "paper/data/figure-07-models.csv",
-    "sha256": "1cfe11f01eba62d2a4f969b11e57864eb149fbdc702c9872237468885fe6c603"
+    "path": "/Users/lancer/Documents/Item/joggle/paper/data/figure-07-models.csv",
+    "sha256": "6a303d34f51a8c71d71d1dbce48e336cc8069eb3395de23bd0cb334f214d22da"
   },
   "rows": 4911,
   "schema": "model-performance-merge/v1",
@@ -166,7 +166,7 @@
     "warmups": 10
   },
   "source_revisions": [
-    "38a426da11b74b090681cc6ee8e668aa02646371",
+    "cc82ef114093b6d90ca94df05b54a60084585e72",
     "ef22c69a900f69f903caad0e6a8b0a2fd00569ac",
     "1ec6b62ad26542a0230c77a9f9f1829df6e04a7f",
     "90e606b6f80cb8167769260049b277453f9b0c2f"

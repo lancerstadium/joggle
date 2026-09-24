@@ -8,6 +8,6 @@
   "aggregation": "none; one observed package patch per condition; no error bars",
   "scale": "linear, zero origin, matched limits within columns",
   "rows": 24,
-  "source": "paper/data/package-footprint.csv",
+  "source": "data/package-footprint.csv",
   "font_pt": 5.5
 }
