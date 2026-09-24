@@ -640,23 +640,30 @@ Figure 6 shows the paired design: shared feature specifications for extension
 and ownership, the same edited graph for updates, and identical tensors for
 execution. Each path checks correctness before aggregating measurements.
 
-<!-- FIGURE 6 PROMPT — evaluation-workflow.png. Original dense square
-single-column protocol schematic, fine black rules, white background, small
-serif math labels and monospace annotations. Independent source glyphs for
-specification, graph G, tensor X and revision/hash. Four compact rows:
-(a) native function/type specification → Joggle/MLIR/xDSL → budgeted code/oracle
-repair loop → pass/tokens; (b) feature patch hunks and package dependency
-boundaries → (F,L,Z,R); (c) same edited G forks into update/full compilation,
-replacement executables and output-tensor check → Tu and Tu/Tf;
-(d) same X forks into Joggle/ORT/TVM/ONNX-MLIR, numerical comparison →
-median/p95 and correct/total. Label extension and ownership rows
-Joggle/MLIR/xDSL; label update row Joggle/TVM/ONNX-MLIR. Success/failure branches
-both retain CSV records. This is a protocol, not numerical results. No
-fabricated bar charts, percentages, prose boxes, large headers or gradients. -->
+<!-- FIGURE 6 PROMPT — evaluation-workflow.png. Built-in image generation.
+Create a NEW original technical figure showing four compiler evaluation protocols. Borrow ONLY this palette: dark blue #0057B8, teal #12B5B0, purple #7928CA, amber #E6AD48. No reference layout is supplied or should be imitated.
 
-*Figure 6: Four paired comparisons. Shared specifications, edited graphs,
-and tensors align inputs; correctness gates measurements while failures
-remain in coverage. Update shading denotes executed work.*
+ORIGINAL LAYOUT: a compact 2-by-2 set of four experiment vignettes on a single pure white portrait canvas, aspect ratio 4:5. Small neutral black serif panel headings (a), (b), (c), (d). A very thin light-gray vertical divider and a short horizontal divider separate quadrants. NO panel boxes, NO colored panel fills, NO table grid, NO column headings, NO full-width header or footer, NO problem/solution rows, NO repeated rectangular card frames. Each vignette has its OWN scientifically meaningful internal topology with mostly TOP-TO-BOTTOM flow. Precise fine strokes, small black serif/math labels, compact monospace micro-annotations, tiny graph symbols. All forms 2D, flat, fully opaque, white background. No black filled regions, no shadows, no texture, no photographic decoration. Information-dense, almost no empty margins.
+
+TOP LEFT (a) "Extension completion":
+At top place three tiny unboxed system names "Joggle   MLIR   xDSL". Then a small quoted document “NL contract” beside a tiny code document “starter”. They converge on an agent represented ONLY by a small outlined hexagon with {} inside, not a big cartoon robot. Below, a compact triangular directed loop: “edit” -> “test” -> “feedback” -> “edit”. At the test node a rightward exit labelled “submit” leads to a final source-file symbol, then a small semantic-check diamond. Beneath it three aligned tiny outputs labelled “success”, “tokens”, “tool calls”, with checkmark, token-square, and wrench symbols respectively. Tiny side annotations “12 tasks”, “6 roles”, “fixed budget”. No invented outcomes or fake result rows.
+
+TOP RIGHT (b) "Package footprint":
+Two small input symbols at top: an operator graph labelled “low-bit” and a tiny conv->relu graph labelled “fusion”. Under them a small outline package symbol P. From P, visibly fork FOUR independent arrows: one to a tiny plus-marked package labelled “setup”, three to tiny amber-diff packages labelled “Δ1”, “Δ2”, “Δ3”. These are independent changes, not a chain. Each package output connects to a shared oracle diamond with a small checkmark. Below show a very compact four-column tally strip “F  L  Z  R” and directly below “files  lines  zones  publish”. Side annotation “Joggle / MLIR / xDSL”. Include a tiny two-line code diff + / −, no fabricated numeric measurements, no .cpp or .mlir filenames.
+
+BOTTOM LEFT (c) "Executable-ready update":
+At top “Joggle / TVM / ONNX-MLIR” in tiny type and a small four-node directed diamond DAG G with one amber node Δ.
+Fork the edited graph into TWO VERTICAL TRACKS, left labelled “update”, right “rebuild”. EACH track has a sequence of FIVE tiny rectangular stage glyphs labelled “decode”, “lower”, “emit”, “native”, “bind”. Draw small blue/teal accents along both paths; a small gray prepared-body icon joins ONLY the update track at “lower”, labelled “reuse”. Enclose neither track in a big box. Instead draw slim vertical timing brackets BESIDE the full tracks from decode through bind, labelled Tᵤ and Tᵣ. Each track ends in its own executable symbol. Both converge on an output-check diamond “yᵤ ≈ yᵣ”. Bottom output “Tᵣ / Tᵤ”. Tiny footnote “3 models · 9 sites · 10 pairs”. Do not omit native compile or binding. The reuse icon illustrates Joggle's prepared bodies, not a claim about all backends.
+
+BOTTOM RIGHT (d) "Generated-code execution":
+At top a small matrix X, with side note “24 operators / 15 models”. X fans out to FOUR short VERTICAL parallel paths, with narrow backend labels “Joggle”, “ORT”, “TVM”, “ONNX-MLIR” placed horizontally above the paths, do not rotate text. Each path ends in its own small output matrix Y. All four output matrices merge at a diamond “≈”. From the diamond branch downward: checkmark path to a stopwatch icon “latency”; BOTH check and cross paths to four little outlined squares “coverage”. Beneath, tiny micro-annotation “10 warm-ups / 100 samples”. A very small label under the Joggle path “base/opt: operators”. No data charts or made-up numerical results.
+
+The four different flow topologies must be unmistakable: a repair LOOP, an independent-edit FAN-OUT, two paired VERTICAL TIMELINES, and parallel backend EXECUTION PATHS. This is not a capability comparison diagram and must not resemble a 3-column challenge-solution-benefit table. Keep balanced aligned quadrants but do not force every quadrant into one shared input/procedure/output template. Use small typography and compact layout. Render only the figure, without caption.
+-->
+
+*Figure 6: Experimental protocols. Package edits share one parent; update
+timing includes native compilation and binding. The reuse path denotes Joggle's
+prepared bodies. Correct outputs enter latency ratios; all outcomes enter coverage.*
 
 ### 4.2 Agent Extension Completion
 
@@ -951,25 +958,31 @@ separately.
 
 ## 5. Related Work
 
-Table 2 compares compiler and incremental systems by their programmable
-units, composition boundaries, and dependency mechanisms.
+Table 2 places extension interfaces, ownership boundaries, and update mechanisms
+side by side. Its final rows connect these abstractions to the measured cost of
+integrating the two cross-stage packages in Section 4.3.
 
-| Dimension | MLIR [@lattner2021mlir; @mlirpass] | xDSL [@fehr2025xdsl] | TVM [@chen2018tvm; @feng2022tensorir] | Exo 2 [@ikarashi2025exo2] | **Joggle** |
-| --- | --- | --- | --- | --- | --- |
-| Programming | C++ / ODS | Python | Python / C++ | Python | **Typed jog calls** |
-| Composition | Dialects, passes | Dialects, passes | Tensor programs, schedules | Scheduling libraries | **Cross-stage mods** |
-| References | Operations, values | Operations, values | Tensor blocks | Cursors | **Typed graph handles** |
-| Dependency mechanism | Analysis preservation | SSA use-def links | Dataflow, schedules | Cursor forwarding | **Reads, effects, revisions** |
+| Dimension | MLIR [@lattner2021mlir; @mlirpass] | xDSL [@fehr2025xdsl] | TVM [@chen2018tvm; @feng2022tensorir] | Exo 2 [@ikarashi2025exo2] | Transform [@lucke2025transform] | egg [@willsey2021egg] | rustc [@rustcincremental] | Adapton [@hammer2014adapton] | **Joggle** |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **Interfaces** | | | | | | | | | |
+| Extension language | C++/ODS | Python | Py/C++ | Python | IR | Rust | Rust | Host | **jog** |
+| Programmable unit | Operation | Operation | Block | Schedule | Transform | Rewrite | Query | Thunk | **Function** |
+| **Ownership** | | | | | | | | | |
+| Composition unit | Dialect | Dialect | Program | Library | Sequence | Rule set | Query | Thunk | **mod** |
+| References | Values | Values | Blocks | Cursors | Handles | E-classes | Keys | Thunks | **Typed handles** |
+| **Updates** | | | | | | | | | |
+| Dependency carrier | Analysis | SSA links | Dataflow | Cursor | Handle | E-class | Query DAG | Demand DAG | **Read/effect** |
+| Change mechanism | Preserve | Use-def | Schedule | Forward | Effects | Rebuild | Red-green | Demand | **Revision** |
+| **Measured package integration** | | | | | | | | | |
+| Source files ↓ | 3 / 3 | 3 / 3 | — | — | — | — | — | — | **1 / 1** |
+| Source lines ↓ | 193 / 178 | 122 / 125 | — | — | — | — | — | — | **69 / 77** |
+| Registration code | ✓ | ✓ | — | — | — | — | — | — | **×** |
 
-| Dimension | Transform [@lucke2025transform] | egg [@willsey2021egg] | rustc [@rustcincremental] | Adapton [@hammer2014adapton] | Build systems [@mokhov2018build] |
-| --- | --- | --- | --- | --- | --- |
-| Programming | Transform IR | Rust rules | Rust queries | Host-language API | Task rules |
-| Composition | Transform operations | Rewrite rules | Query calls | Thunk calls | Build rules |
-| References | Payload handles | E-classes | Query keys | Thunks | Task keys |
-| Dependency mechanism | Handle effects | E-class rebuilding | Red-green query DAG | Demanded computation graph | Task dependency graph |
-
-*Table 2: Programmable units and dependency mechanisms. The two bands share
-comparison dimensions; entries name mechanisms rather than capability scores.*
+*Table 2: Extension and update mechanisms, with package integration footprints.
+Numeric pairs report low-bit arithmetic / convolution fusion. ✓: separate
+registration code; ×: none; —: not measured. Source counts include publication
+declarations. The mechanism rows describe the cited abstraction; the numeric
+rows compare native packages implementing the same two features.*
 
 ### 5.1 Compiler Construction and Composition
 

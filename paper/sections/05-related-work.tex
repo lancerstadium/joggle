@@ -1,40 +1,57 @@
 \section{Related Work}
 \label{sec:related}
 
-Table~\ref{tab:related} compares compiler and incremental systems by their
-programmable units, composition boundaries, and dependency mechanisms.
+Table~\ref{tab:related} places extension interfaces, ownership boundaries, and
+update mechanisms side by side. Its final rows connect these abstractions to
+the measured cost of integrating the two cross-stage packages in
+Section~\ref{sec:eval-controllable}.
 
 \begin{table*}[t]
-  \caption{Programmable units and dependency mechanisms. The two bands share
-  comparison dimensions; entries name mechanisms rather than capability scores.}
+  \caption{Extension and update mechanisms, with package integration footprints.
+  Numeric pairs report low-bit arithmetic / convolution fusion.
+  $\checkmark$: separate registration code; $\times$: none;
+  ---: not measured. Source counts include publication declarations.}
   \label{tab:related}
-  \normalsize
-  \setlength{\tabcolsep}{4pt}
-  \renewcommand{\arraystretch}{1.08}
-  \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.14\textwidth}*{5}{>{\raggedright\arraybackslash}X}@{}}
+  \fontsize{8}{10}\selectfont
+  \setlength{\tabcolsep}{2.4pt}
+  \renewcommand{\arraystretch}{1.13}
+  \definecolor{ComparisonBlue}{RGB}{0,82,128}
+  \definecolor{ComparisonTint}{RGB}{239,248,251}
+  \newcommand{\workref}[2]{\mbox{#1\textsuperscript{\cite{#2}}}}
+  \newcommand{\groupname}[1]{\multicolumn{10}{@{}l@{}}{\color{ComparisonBlue}\bfseries #1}\\[-1pt]}
+  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}l*{8}{c}>{\columncolor{ComparisonTint}\bfseries}c@{}}
     \toprule
-    & MLIR\newline\cite{lattner2021mlir,mlirpass}
-    & xDSL\newline\cite{fehr2025xdsl}
-    & TVM\newline\cite{chen2018tvm,feng2022tensorir}
-    & Exo 2\newline\cite{ikarashi2025exo2} & \textbf{Joggle} \\
+    & \workref{MLIR}{lattner2021mlir}
+    & \workref{xDSL}{fehr2025xdsl}
+    & \workref{TVM}{chen2018tvm}
+    & \workref{Exo 2}{ikarashi2025exo2}
+    & \workref{Transform}{lucke2025transform}
+    & \workref{egg}{willsey2021egg}
+    & \workref{rustc}{rustcincremental}
+    & \workref{Adapton}{hammer2014adapton}
+    & \textcolor{ComparisonBlue}{Joggle} \\
     \midrule
-    Programming & C++ / ODS & Python & Python / C++ & Python & \textbf{Typed jog calls} \\
-    Composition & Dialects, passes & Dialects, passes & Tensor programs, schedules & Scheduling libraries & \textbf{Cross-stage mods} \\
-    References & Operations, values & Operations, values & Tensor blocks & Cursors & \textbf{Typed graph handles} \\
-    Dependency mechanism & Analysis preservation & SSA use-def links & Dataflow, schedules & Cursor forwarding & \textbf{Reads, effects, revisions} \\
+    \groupname{Interfaces}
+    Extension language & C++/ODS & Python & Py/C++ & Python & IR & Rust & Rust & Host & jog \\
+    Programmable unit & Operation & Operation & Block & Schedule & Transform & Rewrite & Query & Thunk & Function \\
+    \addlinespace[2pt]
+    \groupname{Ownership}
+    Composition unit & Dialect & Dialect & Program & Library & Sequence & Rule set & Query & Thunk & mod \\
+    References & Values & Values & Blocks & Cursors & Handles & E-classes & Keys & Thunks & Typed handles \\
+    \addlinespace[2pt]
+    \groupname{Updates}
+    Dependency carrier & Analysis & SSA links & Dataflow & Cursor & Handle & E-class & Query DAG & Demand DAG & Read/effect \\
+    Change mechanism & Preserve & Use-def & Schedule & Forward & Effects & Rebuild & Red-green & Demand & Revision \\
     \midrule
-    & Transform\newline\cite{lucke2025transform}
-    & \texttt{egg}\newline\cite{willsey2021egg}
-    & rustc\newline\cite{rustcincremental}
-    & Adapton\newline\cite{hammer2014adapton}
-    & Build systems\newline\cite{mokhov2018build} \\
-    \midrule
-    Programming & Transform IR & Rust rules & Rust queries & Host-language API & Task rules \\
-    Composition & Transform operations & Rewrite rules & Query calls & Thunk calls & Build rules \\
-    References & Payload handles & E-classes & Query keys & Thunks & Task keys \\
-    Dependency mechanism & Handle effects & E-class rebuilding & Red-green query DAG & Demanded computation graph & Task dependency graph \\
+    \groupname{Measured package integration (Section~\ref{sec:eval-controllable})}
+    Source files $\downarrow$ & 3 / 3 & 3 / 3 & --- & --- & --- & --- & --- & --- & 1 / 1 \\
+    Source lines $\downarrow$ & 193 / 178 & 122 / 125 & --- & --- & --- & --- & --- & --- & 69 / 77 \\
+    Registration code & $\checkmark$ & $\checkmark$ & --- & --- & --- & --- & --- & --- & $\times$ \\
     \bottomrule
-  \end{tabularx}
+  \end{tabular*}
+  \par\vspace{2pt}\raggedright
+  The mechanism rows describe the cited abstraction; the numeric rows compare
+  native packages implementing the same two features.
 \end{table*}
 
 \subsection{Compiler Construction and Composition}

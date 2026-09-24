@@ -56,12 +56,14 @@ aggregating measurements.
 \begin{figure}[!tbp]
   \centering
   \includegraphics[width=\columnwidth]{figures/evaluation-workflow.png}
-  \caption{Four paired comparisons. Shared specifications, edited graphs,
-  and tensors align inputs; correctness gates measurements while failures
-  remain in coverage. Update shading denotes executed work.}
-  \Description{Four compact experiment lanes show agent repair, patch
-  footprint, paired update and full rerun, and numerical execution comparison.
-  Passing and failing cases are both retained in source records.}
+  \caption{Experimental protocols. Package edits share one parent; update
+  timing includes native compilation and binding. The reuse path denotes
+  Joggle's prepared bodies. Correct outputs enter latency ratios; all outcomes
+  enter coverage.}
+  \Description{Four independent panels depict an agent repair loop, package
+  edits branching from the same parent, paired vertical compilation timelines,
+  and parallel backend execution. Measurements retain both successful and
+  failed cases, with latency ratios formed only from correct outputs.}
   \label{fig:eval-workflow}
 \end{figure}
 

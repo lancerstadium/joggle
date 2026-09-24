@@ -63,8 +63,11 @@ integration difference and the equal maintenance file/ownership counts.
 Figure 7 separates integration files, integration lines, and maintenance lines
 in a six-panel display. Appendix E adds complete footprints (A.13), native
 installation files (A.14), and six worked maintenance input/output pairs (A.15).
-The related-work table places ten systems/frameworks across two horizontal
-bands and names their composition and dependency mechanisms. The main PDF
+The related-work table places nine systems/frameworks in one horizontal band,
+with grouped interface, ownership, and update rows. Its measured integration
+rows show source files, source lines, and separate registration code for the
+two native packages; other systems are marked unmeasured. Figure 6 uses four
+independent protocol vignettes, distinct from the author's 3v3 overview. The main PDF
 now cites 48 sources. The literature expansion covers IRDL, LMS, AnyDSL,
 Exo, Ansor, TASO, Mirage, PluS, egglog, self-adjusting computation, IncA,
 SWE-agent, Delite, Forge, Stratego, Lift, RISE/ELEVATE, guided equality
