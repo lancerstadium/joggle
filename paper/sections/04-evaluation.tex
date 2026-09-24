@@ -288,9 +288,9 @@ denominator but contribute no latency ratio.
 \end{figure}
 
 On the 22 operators correct in every configuration, optimized Joggle achieves
-$1.27\times$ lower geometric mean latency than default TVM. It has lower
+$1.35\times$ lower geometric mean latency than default TVM. It has lower
 median latency on ten cases, including rectangular and square matrix products.
-ONNX-MLIR is $1.64\times$ faster than Joggle in aggregate; ORT is faster than
+ONNX-MLIR is $1.55\times$ faster than Joggle in aggregate; ORT is faster than
 all three compiler configurations. The family panels locate these differences
 rather than reducing every operator to one suite-wide ratio.
 
@@ -301,9 +301,9 @@ Appendix~A gives every operator's latency and distinguishes the full and
 jointly correct populations in the aggregate rows.
 
 The optimization pack reduces geometric mean operator latency by
-$1.78\times$ across all 24 cases. Rectangular and $256\times256$ matrix
-products improve by $21.67\times$ and $12.90\times$, respectively; strided
-convolution slows by $1.11\times$. The largest execution gains therefore come
+$1.89\times$ across all 24 cases. Rectangular and $256\times256$ matrix
+products improve by $22.68\times$ and $12.85\times$, respectively; strided
+convolution slows by $1.09\times$. The largest execution gains therefore come
 from matrix-product lowering, whereas the update gains arise from preparation
 reuse.
 

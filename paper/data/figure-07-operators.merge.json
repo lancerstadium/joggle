@@ -1,6 +1,6 @@
 {
   "complete": false,
-  "created_utc": "2026-09-24T03:36:26.006976+00:00",
+  "created_utc": "2026-09-24T15:55:52.104082+00:00",
   "inputs": [
     {
       "correctness_oracle": {
@@ -9,10 +9,10 @@
         "runtime": "onnxruntime-1.26.0",
         "schema": "onnx-graph-semantics/v1"
       },
-      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/operators-base-5a71fe5.csv",
-      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/operators-base-5a71fe5.run.json",
-      "record_sha256": "f727bab8f5394a92bdc58d1d641676f7c3ec85bcec6c7e7e29a09f2656ced377",
-      "sha256": "f47a657873bb1bd695f4d9a74feecff0087b887130f4cf9d5bd0a0552c93e14b"
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/main-execution-20260924-81YqJu/operators-joggle-unoptimized.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/main-execution-20260924-81YqJu/operators-joggle-unoptimized.run.json",
+      "record_sha256": "0f28fa5bc30614e3243d90d63687c337fb2a3f1a33d1cfbd524e88218b36aa5f",
+      "sha256": "859b88149c9c5a95deb6bd887786629edb8ab065e10b7ed8204a9d78ec863542"
     },
     {
       "correctness_oracle": {
@@ -21,10 +21,10 @@
         "runtime": "onnxruntime-1.26.0",
         "schema": "onnx-graph-semantics/v1"
       },
-      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/operators-opt-5a71fe5.csv",
-      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/release-data/operators-opt-5a71fe5.run.json",
-      "record_sha256": "3c8f0f0e5dac562f8b6dbbd50c0ce55868c8f6adfd2d2af63bccbc81b9c76f67",
-      "sha256": "41cd906076600f6afbe45532ac2f82f59da4cd854df9c00716c6de15936a1759"
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/main-execution-20260924-81YqJu/operators-joggle-optimized.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/main-execution-20260924-81YqJu/operators-joggle-optimized.run.json",
+      "record_sha256": "a592687191656db47633a9485dcd54c7506d847dc17681a839f704435b236c07",
+      "sha256": "4183c02fcfb2efccfcdfa3dad6cac13c4dfce6bd38828ff199fd4bce77f963a3"
     },
     {
       "correctness_oracle": {
@@ -65,7 +65,7 @@
   ],
   "output": {
     "path": "/Users/lancer/Documents/Item/joggle/paper/data/figure-07-operators.csv",
-    "sha256": "7af412cf7e637a023208f53123571c42bad844a2da0a8c25a81b8e0c211d9b6e"
+    "sha256": "2c27eefd84de5f44564fe519f2b1a25109f8954a16f800e98eb400f1ca0edebe"
   },
   "rows": 11604,
   "schema": "performance-merge/v1",

@@ -123,13 +123,20 @@ false because this study uses the declared three-model edit population rather
 than the broader model manifest; the paper exporter validates the complete
 540-trial population explicitly.
 
-End-to-end and package measurements have separate source records. The current
-model merge includes a Joggle run from `38a426d`; the operator merge includes
-Joggle base and optimized runs from `5a71fe5`. These are not measurements of
-the newly integrated main. Recollect both Joggle operator variants and the
-model suite, and revalidate the native packages, before claiming complete
-main-branch data alignment. Keep the external results only where their
-recorded inputs, sampling protocol, and compiler configurations still match.
+End-to-end and package measurements have separate source records. The operator
+merge now includes both Joggle variants from integrated main `cc82ef114093`:
+24 correct cases and 2,400 measured samples per variant. The reused ORT, TVM,
+and ONNX-MLIR records match the new runs' workload contracts, inputs, sampling,
+batches, thread controls, and numerical-oracle policy. The sole published
+operator CSV and its 120 summaries contain 11,604 rows across five
+configurations. Appendix A and Section 4.5 are synchronized in MD and TeX;
+the operator figure awaits regeneration after native timing finishes.
+
+The current model merge still includes a Joggle run from `38a426d`; its
+integrated-main replacement is running. Revalidate the native packages after
+that run, before claiming complete main-branch data alignment. Keep external
+model results only where their recorded inputs, sampling protocol, and
+compiler configurations match the completed new run.
 
 The MD and TeX design sources now distinguish observation-based stage selection
 within a retained graph from prepared-body reuse across imported graphs.
