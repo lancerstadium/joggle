@@ -144,11 +144,12 @@ input/output figure was checked against `paper-code-fusion-unit.json`.
 Three role-separated reviews inspected the same frozen revision `e721b39`.
 The following issues remain substantive submission gates, not layout work:
 
-- **Mechanism evidence.** The production update study measures fresh imports
-  with prepared-body reuse; it does not invoke `ReactiveSchedule`. Its measured
-  speedups remain attributable to prepared-body reuse. The retained-store
-  scheduler needs a direct full-versus-reactive comparison using the repaired scheduler. Keep these two reuse mechanisms distinct in the claims,
-  figure labels, and results.
+- **Mechanism evidence — completed.** The repaired scheduler has a direct
+  full-versus-reactive metadata-propagation study: 15 models, 45 distinct edit
+  locations, 900 checked pairs, 1,800 rows. The affected-edit geometric-mean
+  speedup is 18.86×. Section 4.4 and Appendix D.1 distinguish this retained-graph
+  result from executable-ready prepared-body reuse. Input annotation provenance
+  and the measured revision accompany `paper/data/reactive-scheduler.csv`.
 - **Agent results.** Finish the full 72-condition population and report all
   outcomes. Successful-task costs use conditional populations; disclose their
   denominators rather than interpreting them as paired costs on identical tasks.

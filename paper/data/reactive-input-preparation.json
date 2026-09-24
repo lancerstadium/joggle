@@ -1,0 +1,112 @@
+{
+  "onnx_version": "1.23.0",
+  "method": "onnx.shape_inference.infer_shapes",
+  "strict_mode": false,
+  "models": [
+    {
+      "model": "mnist-8",
+      "source": "/Users/lancer/Documents/Item/joggle/.cache/onnx-zoo/mnist-8.onnx",
+      "source_sha256": "2f06e72de813a8635c9bc0397ac447a601bdbfa7df4bebc278723b958831c9bf",
+      "value_info_before": 11,
+      "value_info_after": 11
+    },
+    {
+      "model": "mobilenetv2-7",
+      "source": "/Users/lancer/Documents/Item/joggle/.cache/onnx-zoo/mobilenetv2-7.onnx",
+      "source_sha256": "c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f",
+      "value_info_before": 0,
+      "value_info_after": 154
+    },
+    {
+      "model": "squeezenet1.1-7",
+      "source": "/Users/lancer/Documents/Item/joggle/.cache/onnx-zoo/squeezenet1.1-7.onnx",
+      "source_sha256": "1eeff551a67ae8d565ca33b572fc4b66e3ef357b0eb2863bb9ff47a918cc4088",
+      "value_info_before": 0,
+      "value_info_after": 65
+    },
+    {
+      "model": "squeezenet1.0-13-qdq",
+      "source": "/Users/lancer/Documents/Item/joggle/.cache/onnx-zoo/squeezenet1.0-13-qdq.onnx",
+      "source_sha256": "4a567dd7542ef440890d57268fabf47211174c593d7a1837bd7f16a1067169e7",
+      "value_info_before": 68,
+      "value_info_after": 235
+    },
+    {
+      "model": "resnet18-v1-7",
+      "source": "/Users/lancer/Documents/Item/joggle/.cache/onnx-zoo/resnet18-v1-7.onnx",
+      "source_sha256": "4e8f8653e7a2222b3904cc3fe8e304cd8b339ce1d05fd24688162f86fb6df52c",
+      "value_info_before": 0,
+      "value_info_after": 68
+    },
+    {
+      "model": "tinyyolov2-8",
+      "source": "/Users/lancer/Documents/Item/joggle/.cache/onnx-zoo/tinyyolov2-8.onnx",
+      "source_sha256": "583fb7fdc948435ceac9fa82efc7708701efe8382a859a3dd46526b155f5f2ae",
+      "value_info_before": 0,
+      "value_info_after": 32
+    },
+    {
+      "model": "tiny-yolov3-11",
+      "source": "/Users/lancer/Documents/Item/joggle/.cache/onnx-zoo/tiny-yolov3-11.onnx",
+      "source_sha256": "f715cc2d99740d22d312777e20d9de2b2ecdc250155be8fd3752ce7e8b823521",
+      "value_info_before": 0,
+      "value_info_after": 280
+    },
+    {
+      "model": "ultraface-rfb-320",
+      "source": "/Users/lancer/Documents/Item/joggle/.cache/onnx-zoo/ultraface-rfb-320.onnx",
+      "source_sha256": "34cd7e60aeff28744c657de7a3dc64e872d506741de66987f3426f2b79f88017",
+      "value_info_before": 0,
+      "value_info_after": 240
+    },
+    {
+      "model": "ssd-mobilenetv1-12",
+      "source": "/Users/lancer/Documents/Item/joggle/.cache/onnx-zoo/ssd-mobilenetv1-12.onnx",
+      "source_sha256": "b8fba5e404077d4048d27fcd1667e85e27e192eb9bf51e696c46a3acd7d21058",
+      "value_info_before": 0,
+      "value_info_after": 371
+    },
+    {
+      "model": "shufflenet-v2-12",
+      "source": "/Users/lancer/Documents/Item/joggle/.cache/onnx-zoo/shufflenet-v2-12.onnx",
+      "source_sha256": "ea69821b4dd374ae2f33f9710dd1229ac263d0ee5b5a46ca3521f6483e1ba035",
+      "value_info_before": 0,
+      "value_info_after": 273
+    },
+    {
+      "model": "densenet-12",
+      "source": "/Users/lancer/Documents/Item/joggle/.cache/onnx-zoo/densenet-12.onnx",
+      "source_sha256": "0294e7e88e5b3360de9b0fdc321baf9e6ef18b7f058c4536caae3b9f18ed9ed5",
+      "value_info_before": 909,
+      "value_info_after": 909
+    },
+    {
+      "model": "googlenet-12",
+      "source": "/Users/lancer/Documents/Item/joggle/.cache/onnx-zoo/googlenet-12.onnx",
+      "source_sha256": "c99c507058eaf41de8723408fdda7db8325cb57f0a89f2ee07a716d6e963e14e",
+      "value_info_before": 142,
+      "value_info_after": 143
+    },
+    {
+      "model": "efficientnet-lite4-11-int8",
+      "source": "/Users/lancer/Documents/Item/joggle/.cache/onnx-zoo/efficientnet-lite4-11-int8.onnx",
+      "source_sha256": "2b3cbb5077262b20df565dacddecb3724c0976c35029a87e512d13aa4eff04a2",
+      "value_info_before": 0,
+      "value_info_after": 12
+    },
+    {
+      "model": "efficientnet-lite4-11-qdq",
+      "source": "/Users/lancer/Documents/Item/joggle/.cache/onnx-zoo/efficientnet-lite4-11-qdq.onnx",
+      "source_sha256": "6837d0b19625d4aff8266d7197a7f3775afd82a8c40f9fd0283d52db4955566f",
+      "value_info_before": 180,
+      "value_info_after": 664
+    },
+    {
+      "model": "xcit-tiny-12-p8-224-opset17",
+      "source": "/Users/lancer/Documents/Item/joggle/.cache/onnx-zoo/xcit-tiny-12-p8-224-opset17.onnx",
+      "source_sha256": "b5cffe4f64dbee8d1f9c74442a91611b74fd57925599ae46bccf1f7fa3e57093",
+      "value_info_before": 0,
+      "value_info_after": 1333
+    }
+  ]
+}

@@ -213,6 +213,18 @@ reuse to artifact construction, rather than further optimizing preparation alone
   \label{fig:update-results}
 \end{figure}
 
+\paragraph{Retained-graph scheduling.}
+To isolate dependency-directed execution, we also run five metadata-propagation
+stages on 15 retained model graphs, editing three distinct operations per model.
+Across 450 affected-edit pairs, reactive execution takes 0.148--52.608\,ms at
+the per-site median and reduces stage-processing time by $18.86\times$
+geometrically relative to full traversal. The affected regions span 1--668
+operations; hence an early edit need not be the most expensive in a branched
+graph. All 900 pairs, including unrelated edits, produce matching checked
+outputs; unrelated edits reuse all five stages. These measurements isolate
+scheduling and graph processing, while Figure~\ref{fig:update-results} includes
+artifact construction and native compilation.
+
 \subsection{End-to-End Performance}
 \label{sec:eval-artifacts}
 

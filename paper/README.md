@@ -266,6 +266,14 @@ Correction: remove output labels beneath the API examples; label the forward Val
 
 *Figure 3: Compilation architecture. Mod dependencies organize extensions; typed calls connect subject graphs, evaluator caches, and checked mutation.*
 
+<!-- FINAL STYLE EDIT (built-in image generation; target system-architecture.png;
+Figures 1 and 2 are style-only references, not layout templates):
+Use case: style-transfer, dense scientific mechanism figure for a single column.
+Input image 1 is the EDIT TARGET: preserve its scientific content, graph edges, exact code, exact labels, and portrait dimensions.
+Images 2 and 3 are STYLE REFERENCES ONLY: never copy their multi-column thesis layout, developer figures, or pipeline arrangement.
+Restyle target to the reference visual language: thin bright cyan/blue dashed outer grouping boundaries, very pale turquoise/blue/lilac flat fills, white inset tiles, compact bold sans-serif panel headings with teal/blue/lilac accent words, small DejaVu Sans Mono for code, thin black directed connectors, outlined graph/node/file/package symbols. No thick black enclosing boxes, no blue gradient title bars, no shadows, no sketch texture, no red numbered badges. Keep high information density and tight spacing. Small black (a),(b),(c) labels are fine. Use coral only for changed/deleted entities, blue for reads, teal for creation; distinguish reuse with fine hatch. Preserve all math, syntax, array dimensions, state relationships and directionality; do not invent data or mechanisms. Compact, elegant, publication-ready. Figure 3. Preserve four stacked panels: extension and subject, invocation, execution state, transaction. Headings may shorten to (a) Mods and graphs, (b) Typed calls, (c) Runtime state, (d) Checked mutation. All cache key fields and graph APIs must stay exact. Turn frame bands into subtle dashed group boxes, not heavy tables.
+-->
+
 The rest of the design develops these relationships in order. Section 3.2
 defines typed compiler functions; Section 3.3 gives them a mod-scoped
 composition boundary. Sections 3.4 and 3.5 then explain how observed
@@ -356,6 +364,14 @@ No fake performance numbers. No Rust code. No ellipses replacing actual subject 
 -->
 
 *Figure 4: Quantized convolution fusion. Complete subject functions surround the replacement excerpt. Fixture declarations are omitted; Appendix C.7 gives the full transformation.*
+
+<!-- FINAL STYLE EDIT (built-in image generation; target figure-03-operator-extension.png;
+Figures 1 and 2 are style-only references, not layout templates):
+Use case: style-transfer, dense scientific mechanism figure for a single column.
+Input image 1 is the EDIT TARGET: preserve its scientific content, graph edges, exact code, exact labels, and portrait dimensions.
+Images 2 and 3 are STYLE REFERENCES ONLY: never copy their multi-column thesis layout, developer figures, or pipeline arrangement.
+Restyle target to the reference visual language: thin bright cyan/blue dashed outer grouping boundaries, very pale turquoise/blue/lilac flat fills, white inset tiles, compact bold sans-serif panel headings with teal/blue/lilac accent words, small DejaVu Sans Mono for code, thin black directed connectors, outlined graph/node/file/package symbols. No thick black enclosing boxes, no blue gradient title bars, no shadows, no sketch texture, no red numbered badges. Keep high information density and tight spacing. Small black (a),(b),(c) labels are fine. Use coral only for changed/deleted entities, blue for reads, teal for creation; distinguish reuse with fine hatch. Preserve all math, syntax, array dimensions, state relationships and directionality; do not invent data or mechanisms. Compact, elegant, publication-ready. Figure 4. Preserve complete input and output subject code verbatim, all checked-edit code including its excerpt label, layout metadata, numerical example and fixture-declaration note. Keep three vertical steps with code left and graphs right. Do NOT replace any code with ellipses or change tensor shapes. Retain single-use guard, zero point, RNE(4.5)=4. Only restyle frames, typography hierarchy, and grouping.
+-->
 
 To invoke a compiler function, the environment resolves its qualified name, visible
 mods, explicit generic arguments, parameter types, and result context. The
@@ -533,6 +549,14 @@ Edit this existing scientific figure, preserving portrait aspect, clean pale blu
 -->
 
 *Figure 5: Reactive updates. Ordered checks expose upstream writes and retain unchanged records. Failure restores the input graph.*
+
+<!-- FINAL STYLE EDIT (built-in image generation; target reactive-update.png;
+Figures 1 and 2 are style-only references, not layout templates):
+Use case: style-transfer, dense scientific mechanism figure for a single column.
+Input image 1 is the EDIT TARGET: preserve its scientific content, graph edges, exact code, exact labels, and portrait dimensions.
+Images 2 and 3 are STYLE REFERENCES ONLY: never copy their multi-column thesis layout, developer figures, or pipeline arrangement.
+Restyle target to the reference visual language: thin bright cyan/blue dashed outer grouping boundaries, very pale turquoise/blue/lilac flat fills, white inset tiles, compact bold sans-serif panel headings with teal/blue/lilac accent words, small DejaVu Sans Mono for code, thin black directed connectors, outlined graph/node/file/package symbols. No thick black enclosing boxes, no blue gradient title bars, no shadows, no sketch texture, no red numbered badges. Keep high information density and tight spacing. Small black (a),(b),(c) labels are fine. Use coral only for changed/deleted entities, blue for reads, teal for creation; distinguish reuse with fine hatch. Preserve all math, syntax, array dimensions, state relationships and directionality; do not invent data or mechanisms. Compact, elegant, publication-ready. Figure 5. Preserve the corrected sequential mechanism exactly: check observations against current graph, execute and verify each selected stage, then retain per-stage records. DO NOT introduce prior-write-scope preselection or global record rebasing. Keep actual edit s1 -> check D2 -> s2; s3 reuse. Failure restores G0 with NHWC. Exact code ir.set(m, conv, "layout", "NHWC") and ir.meta(conv, "layout"). Keep three vertical panels, shorten headings to (a) Edited graph, (b) Ordered checks, (c) Commit or restore. No other semantic changes.
+-->
 
 Fine-grained observations reduce re-execution but add validation and capture
 work. Each invocation validates the input graph, checks stage observations in
@@ -837,6 +861,8 @@ Reusing prepared bodies removes repeated lowering work, but emission and native
 compilation still run for each executable. As preparation shrinks, those stages
 account for more of the update time. The result therefore motivates extending
 reuse to artifact construction, rather than further optimizing preparation alone.
+
+**Retained-graph scheduling.** To isolate dependency-directed execution, we also run five metadata-propagation stages on 15 retained model graphs, editing three distinct operations per model. Across 450 affected-edit pairs, reactive execution takes 0.148–52.608 ms at the per-site median and reduces stage-processing time by 18.86× geometrically relative to full traversal. The affected regions span 1–668 operations; hence an early edit need not be the most expensive in a branched graph. All 900 pairs, including unrelated edits, produce matching checked outputs; unrelated edits reuse all five stages. These measurements isolate scheduling and graph processing, while Figure 8 includes artifact construction and native compilation.
 
 *Figure 8: Executable-ready updates. Top: median ready time, IQR. Bottom: paired rebuild/update speedup. Ten repetitions per edit; crosses mark failed compilation.*
 
@@ -1556,6 +1582,52 @@ Joggle phase medians in seconds over 30 runs per model and policy. Prepare is a 
 | TinyYOLOv3 | rebuild | 1.884 | 0.570 | 13.462 | 10.834 | 1.822 | 0.474 | 0.255 |
 | TinyYOLOv3 | update | 1.944 | 0.572 | 4.885 | 2.357 | 1.787 | 0.471 | 0.257 |
 
+### D.1 Retained-Graph Scheduling
+
+Five metadata-propagation stages run on each retained graph. Standard ONNX shape inference supplies top-level value annotations without changing operators or tensors. Early, middle, and late select three distinct eligible operations in graph order, not three equal-sized dependency cones. Each site has three warm-ups and ten measured repetitions for affected and unrelated edits. Timing includes stage selection, execution, and in-call verification; import, initial preparation, and edit application precede timing. The final whole-mod check and output digest run outside the timed interval. Paired output checks cover derived metadata and the root type. This controlled mechanism study measures no native code generation or inference execution.
+
+Times below are medians in milliseconds. Each site shows its affected operation count (n), full traversal (F), and reactive update (U). Idle is the median across 30 unrelated updates; all five stages are reused. Total operations include graph support operations as well as model operators.
+
+| Model | Total ops | Early n / F / U | Middle n / F / U | Late n / F / U | Idle ms |
+|---|---:|---:|---:|---:|---:|
+| densenet-12 | 5516 | 668 / 161.797 / 52.608 | 335 / 166.545 / 26.520 | 1 / 160.577 / 0.210 | 1.868 |
+| efficientnet-lite4-11-int8 | 3679 | 122 / 104.327 / 9.638 | 116 / 100.127 / 9.519 | 1 / 99.985 / 0.185 | 0.662 |
+| efficientnet-lite4-11-qdq | 4318 | 356 / 126.856 / 28.406 | 181 / 127.579 / 15.456 | 1 / 125.720 / 0.189 | 0.994 |
+| googlenet-12 | 907 | 143 / 26.133 / 11.952 | 65 / 24.998 / 5.404 | 1 / 25.105 / 0.166 | 0.360 |
+| mnist-8 | 69 | 3 / 2.057 / 0.291 | 6 / 2.173 / 0.526 | 1 / 2.162 / 0.148 | 0.024 |
+| mobilenetv2-7 | 1655 | 155 / 46.081 / 12.229 | 78 / 46.002 / 6.346 | 1 / 45.421 / 0.176 | 0.450 |
+| resnet18-v1-7 | 643 | 69 / 18.082 / 5.801 | 30 / 17.790 / 2.454 | 1 / 17.875 / 0.154 | 0.178 |
+| shufflenet-v2-12 | 1843 | 229 / 52.591 / 19.050 | 115 / 52.263 / 9.626 | 1 / 51.507 / 0.167 | 0.615 |
+| squeezenet1.0-13-qdq | 1325 | 119 / 37.272 / 10.203 | 60 / 37.433 / 4.974 | 1 / 37.789 / 0.164 | 0.324 |
+| squeezenet1.1-7 | 412 | 66 / 11.646 / 5.656 | 33 / 11.495 / 2.758 | 1 / 11.525 / 0.161 | 0.191 |
+| ssd-mobilenetv1-12 | 13863 | 277 / 113.313 / 21.488 | 165 / 112.546 / 13.004 | 1 / 114.585 / 0.191 | 0.958 |
+| tiny-yolov3-11 | 1644 | 236 / 46.603 / 17.104 | 21 / 47.257 / 1.557 | 1 / 46.565 / 0.156 | 0.130 |
+| tinyyolov2-8 | 285 | 33 / 8.063 / 2.880 | 17 / 8.040 / 1.429 | 1 / 8.099 / 0.163 | 0.104 |
+| ultraface-rfb-320 | 1586 | 195 / 44.191 / 15.930 | 96 / 44.915 / 7.758 | 1 / 44.107 / 0.175 | 0.521 |
+| xcit-tiny-12-p8-224-opset17 | 3298 | 7 / 109.996 / 0.645 | 453 / 108.807 / 35.100 | 1 / 109.593 / 0.192 | 0.046 |
+
+Source: `data/reactive-scheduler.csv` (1,800 rows, 900 matched pairs); preparation provenance: `data/reactive-input-preparation.json`. Reproduce with `paper/measure_scheduler.py` using the artifact environment. The 18.86× geometric mean pools 450 paired affected-edit ratios with equal weight.
+
+Actual edit locations below use `operator@index` in the imported main function; the common `onnx.` prefix is omitted. Locations remain fixed across the ten repetitions.
+
+| Model | Early | Middle | Late |
+|---|---|---|---|
+| densenet-12 | `Conv@4605` | `Add@5060` | `Conv@5514` |
+| efficientnet-lite4-11-int8 | `Transpose@3556` | `QLinearConv@3562` | `Softmax@3677` |
+| efficientnet-lite4-11-qdq | `Transpose@3778` | `QuantizeLinear@4047` | `Softmax@4316` |
+| googlenet-12 | `Conv@763` | `Conv@834` | `Softmax@905` |
+| mnist-8 | `Reshape@56` | `Add@62` | `Add@67` |
+| mobilenetv2-7 | `Conv@1499` | `Conv@1576` | `Reshape@1653` |
+| resnet18-v1-7 | `Conv@573` | `Conv@607` | `Gemm@641` |
+| shufflenet-v2-12 | `Conv@1581` | `Constant@1711` | `Gemm@1841` |
+| squeezenet1.0-13-qdq | `QuantizeLinear@1153` | `MaxPool@1238` | `Reshape@1323` |
+| squeezenet1.1-7 | `Conv@345` | `Conv@378` | `Reshape@410` |
+| ssd-mobilenetv1-12 | `Cast@1857` | `Clip@2027` | `Cast@2217` |
+| tiny-yolov3-11 | `Conv@1348` | `Sub@1447` | `Identity@1626` |
+| tinyyolov2-8 | `Mul@251` | `LeakyRelu@267` | `Conv@283` |
+| ultraface-rfb-320 | `Conv@1343` | `Relu@1452` | `Concat@1584` |
+| xcit-tiny-12-p8-224-opset17 | `Identity@1963` | `Constant@2631` | `Gemm@3296` |
+
 <!-- UPDATE DATA END -->
 
 ## Appendix E. Native Package Changes
@@ -1582,7 +1654,7 @@ their source formatting.
 | Convolution / ReLU6 | 1,4,0 | 1,7,0 | 1,8,0 | 16 | 462 | 9 |
 | Convolution / stride two | 1,7,0 | 1,10,0 | 1,10,0 | 11 | 297 | 4 |
 
-*Table A.13: Complete package footprints. All 24 changed packages pass their
+*Table A.15: Complete package footprints. All 24 changed packages pass their
 oracles. Parent-failure counts agree across the three systems. The source CSV
 retains added and deleted line counts separately.*
 
@@ -1598,7 +1670,7 @@ retains added and deleted line counts separately.*
 | xDSL | `plugin.py` | Pass, target, and Universe definitions | Native pass/target discovery |
 | xDSL | `pyproject.toml` | Wheel metadata and Universe entry point | Installed wheel discovered by `xdsl-opt` |
 
-*Table A.14: The same file organization is used for both feature packages.
+*Table A.16: The same file organization is used for both feature packages.
 All files of one feature share one ownership zone. No compiler-host source is
 modified for installation or maintenance.*
 
@@ -1619,7 +1691,7 @@ ratio is $r=s_{acc}/s_{out}$ and their output zero point is $z$.
 | ReLU6 / `cap-12` | `x=12`, `w=1`, `r=2`, `s_out=0.5`, `z=-3`; cap real output at 6 | Quantized output `21` | Quantized cap `6/0.5-3 = 9`; output `9` |
 | Stride two / `stride2-0` | Input `X` and weights `W` below; bias `-4`, `r=0.5`, `z=-3` | Writes a `4×4` output; contracted output guard rejects it | `2×2` output `[[-3,-1],[-1,-3]]` |
 
-*Table A.15: Changed semantics and paired parent outcomes. Rejection denotes a
+*Table A.17: Changed semantics and paired parent outcomes. Rejection denotes a
 recorded lowering/emission or output-extent failure, not a missing run.*
 
 For `stride2-0`, the batch and channel dimensions are one. The full spatial

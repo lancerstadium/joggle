@@ -1,0 +1,726 @@
+{
+  "cmake": "cmake version 4.1.2",
+  "created_utc": "2026-09-24T19:49:26.690772+00:00",
+  "dirty": false,
+  "edit_classes": [
+    "operation_metadata"
+  ],
+  "expected_jobs": 90,
+  "inputs": [
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-int8-910b599a335f-late-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-int8-910b599a335f-late-5-operation_metadata-full.job.json",
+      "record_sha256": "f4e712244115ca71a428f84bc2595a86a5b4c82dac8f2ec1cf8a9d65fc1dcbc9",
+      "reused": false,
+      "sha256": "c07ff3eaab2b37c55a30b46a2cd5d53047b15fe81bf402b3f8da68aaf0e673b2"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mobilenetv2-7-8f78e569922a-early-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mobilenetv2-7-8f78e569922a-early-5-operation_metadata-full.job.json",
+      "record_sha256": "ba2d7b0fc060c125e5bba08cac17af7234270e6d9c497e7389e031fc6e67db59",
+      "reused": false,
+      "sha256": "cba11771467b3773637bc5ff2a45f3f831594a64594f4efd37016f5f83102863"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.0-13-qdq-64c397e74ed2-early-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.0-13-qdq-64c397e74ed2-early-5-operation_metadata-reactive.job.json",
+      "record_sha256": "6fbfc8ee42eb4603ebe94bbde44a2157966d4d954cc53b7f968a6a241750f5f5",
+      "reused": false,
+      "sha256": "6a8077167e21740bd5cd34b6500b664ffd031e847533bb4976f9f0a0239ec3b2"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mnist-8-2f06e72de813-late-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mnist-8-2f06e72de813-late-5-operation_metadata-full.job.json",
+      "record_sha256": "7e37494d85149d5b7920725f88ae1ac5c251582827e2c79a926f203897e9156f",
+      "reused": false,
+      "sha256": "137597000a9949f5c1f89d29d663ab96cfe3773c4d19749a6ed91a063ed40012"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mnist-8-2f06e72de813-middle-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mnist-8-2f06e72de813-middle-5-operation_metadata-reactive.job.json",
+      "record_sha256": "d9f7f1bc0bbdfabe2d0f7776ac4d2a633b034cf1a9ad0e970fc4c99b8470678c",
+      "reused": false,
+      "sha256": "3c4daecc7ce2033415497a0976849978c583f8a60e8c0b5c5b6dd611c9ddf6a4"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.1-7-098e8952d72d-late-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.1-7-098e8952d72d-late-5-operation_metadata-reactive.job.json",
+      "record_sha256": "71a093561cd48714a94bc79ef53d2139127c3f4113cd7de21fbcd23bb53db32b",
+      "reused": false,
+      "sha256": "34cf7389c8e0f320951a0bbae3b8e40578a6a5f11736e53bbe423690eef9a01e"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mobilenetv2-7-8f78e569922a-middle-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mobilenetv2-7-8f78e569922a-middle-5-operation_metadata-full.job.json",
+      "record_sha256": "9eb22b335a64044923d51171cac7804b548f3b4e49894b3ae64b13a14e5f8218",
+      "reused": false,
+      "sha256": "30273d194b97a4f57f251b7e9cc308131a53ffb38d43044b7368f8ef3d7d247b"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-qdq-1deb63f20317-early-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-qdq-1deb63f20317-early-5-operation_metadata-reactive.job.json",
+      "record_sha256": "05cb1151217a8f52e89acb6ace3eb5dd080d3c5e63e92c32594b82e5cc4d58e8",
+      "reused": false,
+      "sha256": "faa6caff694c7d360dce9b26c20d8cf475b8a2df50d170207472e4214a6f1908"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mnist-8-2f06e72de813-early-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mnist-8-2f06e72de813-early-5-operation_metadata-reactive.job.json",
+      "record_sha256": "ea92c1f900192c2659f63b14911b6a3a432cdd25ad6ac9a18c5efdb52d5f3286",
+      "reused": false,
+      "sha256": "c40c9bf8796588e95a8f50ce6777e6c894d98c67cf83b88ef64696404f87026d"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ssd-mobilenetv1-12-3d69b3dced4b-early-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ssd-mobilenetv1-12-3d69b3dced4b-early-5-operation_metadata-reactive.job.json",
+      "record_sha256": "8fb299f2f152ff4baf58bee5a611e88dde666be907471a0ba0be66c11fc323bc",
+      "reused": false,
+      "sha256": "a82227566f6b830cca5021e0bcc662c5a3e79da9bf4b29f8656316aebdfc2e36"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/xcit-tiny-12-p8-224-opset17-ea20107b2396-middle-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/xcit-tiny-12-p8-224-opset17-ea20107b2396-middle-5-operation_metadata-reactive.job.json",
+      "record_sha256": "ace764abcf2de412b8590ecfbf514bfe325037ddeeee3f62bb59541c519aa786",
+      "reused": false,
+      "sha256": "1a6c8ea6ccbbf131773e29ffa57404bb007954c3e422fa07bc680f9167733e1b"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ssd-mobilenetv1-12-3d69b3dced4b-middle-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ssd-mobilenetv1-12-3d69b3dced4b-middle-5-operation_metadata-reactive.job.json",
+      "record_sha256": "70e804b0af277ddf5ac9bc31dc94266f90130a44b6f873c0786f17c1bf862f80",
+      "reused": false,
+      "sha256": "1c4a760267ad82104fe8866b6dedbd12bff008611917bba862a931761e17ae49"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tinyyolov2-8-867df52f413a-middle-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tinyyolov2-8-867df52f413a-middle-5-operation_metadata-reactive.job.json",
+      "record_sha256": "0e9e177b0259e4a6b549a80f835109073a55b8e977f912108979568b53b537ef",
+      "reused": false,
+      "sha256": "20e537b59b6fd789007a100e1b07b83a239bebcf3407aa95351c357bf2a480c3"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tiny-yolov3-11-356de5227f42-early-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tiny-yolov3-11-356de5227f42-early-5-operation_metadata-full.job.json",
+      "record_sha256": "2131e136918fb89423f300da0d9a0a99cd02984b499c8a580ec17a5b8404cc88",
+      "reused": false,
+      "sha256": "8d9dfdba5e79bf6470e249ca946d4368a6e3f4f1553a0f99d40dd401e86bf826"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ssd-mobilenetv1-12-3d69b3dced4b-late-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ssd-mobilenetv1-12-3d69b3dced4b-late-5-operation_metadata-full.job.json",
+      "record_sha256": "6e44305e54f3fe64ef83d1654e20322ac62c82669a10aaa351a4b64a68844900",
+      "reused": false,
+      "sha256": "e52f4ae4d9cec8994c44803b0ed4db5b6621f074a007142dfe7735a95abd3434"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/xcit-tiny-12-p8-224-opset17-ea20107b2396-middle-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/xcit-tiny-12-p8-224-opset17-ea20107b2396-middle-5-operation_metadata-full.job.json",
+      "record_sha256": "584e01979198e80dd75b4f88a316c737482e1bbf8d853958432a29f6617e9b92",
+      "reused": false,
+      "sha256": "3bd4b1f8d9f20d33b653f0daf45d25902a1a55b46328baeca328802eec84dc34"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-int8-910b599a335f-early-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-int8-910b599a335f-early-5-operation_metadata-full.job.json",
+      "record_sha256": "05645b883e2d0405cf5cbd79dabb3632632f2255a84cd76fceeb3e804cecc9fa",
+      "reused": false,
+      "sha256": "78d6f079c23c4a07c78af85a3d00938481d17b1634805941ba7a1acc6562bbbb"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/densenet-12-0294e7e88e5b-late-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/densenet-12-0294e7e88e5b-late-5-operation_metadata-full.job.json",
+      "record_sha256": "fd58a61c438c36b5ab53300d0d8a83bdc68ad51145fbbfff939fb62106661d59",
+      "reused": false,
+      "sha256": "e4c88650f197b6366ddaaf89fe1673be685ac1eb175b8bf55f43e4f39569801d"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/googlenet-12-c34bfa71323d-early-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/googlenet-12-c34bfa71323d-early-5-operation_metadata-full.job.json",
+      "record_sha256": "71e411fc45be9399b761d360ae53b590b5a395cd0df4858ea122892d7a09d884",
+      "reused": false,
+      "sha256": "4d4f5ca03d822315aa2af4a3491a36e321aa51b04d8c11beff008d02fc61f54f"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/resnet18-v1-7-6548c77453ff-early-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/resnet18-v1-7-6548c77453ff-early-5-operation_metadata-full.job.json",
+      "record_sha256": "5bf0bed0dd7797ed63b17f66e41b1514541af66192120ac6094700c5e6a716a3",
+      "reused": false,
+      "sha256": "61b1f93942b38082908a46ca889adbfd2a7691068a7b829af4ab3a25edfe676f"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-int8-910b599a335f-middle-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-int8-910b599a335f-middle-5-operation_metadata-full.job.json",
+      "record_sha256": "4e12c27d99cc41e9af02f4789d2f8541c78e37222bffbd808a837a6b0bfe536b",
+      "reused": false,
+      "sha256": "cbdb2ee2afe5a6f9e809b8e9a5cb7a49d55209d00f9b30a56ec5b687a75d7cdf"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/googlenet-12-c34bfa71323d-late-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/googlenet-12-c34bfa71323d-late-5-operation_metadata-full.job.json",
+      "record_sha256": "bb3616901f8d4c46542caecca9fc29a575c8066a363ba08b5ca2f1f14cdca54e",
+      "reused": false,
+      "sha256": "d03a8cab941a21310ef52c1bbe29bdfd5962258657d55323e32106b7b55d4fe2"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/xcit-tiny-12-p8-224-opset17-ea20107b2396-late-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/xcit-tiny-12-p8-224-opset17-ea20107b2396-late-5-operation_metadata-reactive.job.json",
+      "record_sha256": "c46af738c3f0387fee8414670976aca41fdcbdfd1ad0f4e39b28daac9d4395d7",
+      "reused": false,
+      "sha256": "3e5a8f0f75a3aa889b368f08c66e7f532d53a7cac5fafb076f1674a4c20229aa"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tiny-yolov3-11-356de5227f42-middle-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tiny-yolov3-11-356de5227f42-middle-5-operation_metadata-reactive.job.json",
+      "record_sha256": "c66adf6048c1390f2bbc23bd68c0ad7670043f17a99f371d1c60806885baff19",
+      "reused": false,
+      "sha256": "6a8ec5411325dc6eca74ed952ccb17dffeee9a2d132e61237d4697f2f9d4cfa8"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mnist-8-2f06e72de813-middle-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mnist-8-2f06e72de813-middle-5-operation_metadata-full.job.json",
+      "record_sha256": "850d930e0039058a19a8c56d449abba0996cf9fba0b99b19a1e49256f7d25a64",
+      "reused": false,
+      "sha256": "024cd477ee1e8c4458c15d7d2234f13fc9452fb73e0fb2aca7a956ae707fec32"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tinyyolov2-8-867df52f413a-late-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tinyyolov2-8-867df52f413a-late-5-operation_metadata-full.job.json",
+      "record_sha256": "4e7b0f95720d0417451d6fb3513a16f9ac335cb02e94ab3deeba0b0919025fc2",
+      "reused": false,
+      "sha256": "25d10da47e3d3e6c65356f496f9602494c93c6e687a93459ce011b37adc02642"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/shufflenet-v2-12-2970f92c12a3-middle-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/shufflenet-v2-12-2970f92c12a3-middle-5-operation_metadata-reactive.job.json",
+      "record_sha256": "18e023923a3dbc96c23e330478cee79bffb7cde3f5f824814dc89712ce183cae",
+      "reused": false,
+      "sha256": "131ab8cdbbb7d19da97d480321ff249962a7350996b49ab8c515c42e914c033a"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mobilenetv2-7-8f78e569922a-middle-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mobilenetv2-7-8f78e569922a-middle-5-operation_metadata-reactive.job.json",
+      "record_sha256": "7abc6e421c422134c07a4874380e6069cb3b51e2a44055cb23f11189376e4bfa",
+      "reused": false,
+      "sha256": "531fa47794140c824f14160948e074181843b156a305b99f9e5ebd6076d32f48"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mnist-8-2f06e72de813-late-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mnist-8-2f06e72de813-late-5-operation_metadata-reactive.job.json",
+      "record_sha256": "cbcacfd23e0addfabeccf6377e236e5f9a0b1e8029caaf2fa5ace00d72b8fc31",
+      "reused": false,
+      "sha256": "7e8a6eefbaa2e607ee3946b2d3607cbc31fa443718f3cd22d8665bfa958c8e93"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-qdq-1deb63f20317-early-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-qdq-1deb63f20317-early-5-operation_metadata-full.job.json",
+      "record_sha256": "0d883d6827f7fd0976bb5d483ae67babaddfd13b9b8e3fc2ccc1f2b51d2881b9",
+      "reused": false,
+      "sha256": "953d292c72984579cb553bdcb5ee4d2031e240afb6c95456bb016ac0ede369a5"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/densenet-12-0294e7e88e5b-early-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/densenet-12-0294e7e88e5b-early-5-operation_metadata-full.job.json",
+      "record_sha256": "d160f267b069865b22513017d25fec5861dcb6bda4ba38ba34fe8e37ff5cfe47",
+      "reused": false,
+      "sha256": "8bf216f3c925869ce0ffd925d62a99c6e929e3eeb1d7e96dceb3c84efc8b6df6"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/xcit-tiny-12-p8-224-opset17-ea20107b2396-early-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/xcit-tiny-12-p8-224-opset17-ea20107b2396-early-5-operation_metadata-full.job.json",
+      "record_sha256": "df2299e355def4f4c06c3e134062fbb3ad0ae2f87cd7111093e1c4aa9de3d718",
+      "reused": false,
+      "sha256": "5f4d85b6b0fcdd1d0445b1e81b24a020eb303bfc3f0dd9d29c6062f1ee45c9e2"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/resnet18-v1-7-6548c77453ff-late-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/resnet18-v1-7-6548c77453ff-late-5-operation_metadata-reactive.job.json",
+      "record_sha256": "b3a0f2dcf464ede4cbdb3b51ae21967cea42068fd57e891a981a8ded0b0c990f",
+      "reused": false,
+      "sha256": "64e3d6b77e0b5eacb4c8a816a0211adca3d7779f92a8e3c95a44b30c1d316ae3"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tiny-yolov3-11-356de5227f42-early-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tiny-yolov3-11-356de5227f42-early-5-operation_metadata-reactive.job.json",
+      "record_sha256": "21b9ac71e1e6aa2959b3c1b9186e3bacc82657d64892a78a5dc01b5dd98b21e2",
+      "reused": false,
+      "sha256": "a762e6ef54a6fb566797980df858a572e9f54e53bebcbdbac302e4d2a80dffa8"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tiny-yolov3-11-356de5227f42-late-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tiny-yolov3-11-356de5227f42-late-5-operation_metadata-full.job.json",
+      "record_sha256": "6f101e4596436a67ca017abcc582afc978118869845e97c4e3ffc767a84579fd",
+      "reused": false,
+      "sha256": "145579e3cdd0d8dfe5212edbeff6df83ee2a65baeecd06b9d6975a31aca0c33d"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-int8-910b599a335f-late-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-int8-910b599a335f-late-5-operation_metadata-reactive.job.json",
+      "record_sha256": "38d08cf37ce1be9bc4554ebe5e8edd95ed53f2f3b2018f1567cce0d2b744c387",
+      "reused": false,
+      "sha256": "71d1d8162df394a718f91808e3c13cad668d5e9b09c4a10da63aa686e7a1690e"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ssd-mobilenetv1-12-3d69b3dced4b-middle-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ssd-mobilenetv1-12-3d69b3dced4b-middle-5-operation_metadata-full.job.json",
+      "record_sha256": "63282719ea907e3e257b091e92733b8826375274d446893898a39a98f45208c5",
+      "reused": false,
+      "sha256": "0ef6091fce3b8b21806cd0143089393120a82f21ec7061a2f49387a1d7d3170d"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/shufflenet-v2-12-2970f92c12a3-early-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/shufflenet-v2-12-2970f92c12a3-early-5-operation_metadata-reactive.job.json",
+      "record_sha256": "9e46a3e2d9b30be6019af70c2c099c613b9fe132cf2b3198a64b66d64ff89d09",
+      "reused": false,
+      "sha256": "8c38031bbd176e58fce51d02360355311b97a0015a3fa79f1b90e4329eea6b2e"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tiny-yolov3-11-356de5227f42-late-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tiny-yolov3-11-356de5227f42-late-5-operation_metadata-reactive.job.json",
+      "record_sha256": "c2d7c97313b1dcc041c07c8596ca3600725a13ecda3dc546c89f4a8ea0f89a0b",
+      "reused": false,
+      "sha256": "04a55fadf91ccc55f0d4fb8cf381282a2188133092dec1042f7bc1000f6ed5e4"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/googlenet-12-c34bfa71323d-late-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/googlenet-12-c34bfa71323d-late-5-operation_metadata-reactive.job.json",
+      "record_sha256": "f30dabc29c510d5e2215a3d8fc4aee7ceebc78054dcf3efa9e7b103c3cc08a1b",
+      "reused": false,
+      "sha256": "a456d7101ad7a74fdbb071a8b5a747c26390874a2f30f290c7bc06f37532429e"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/googlenet-12-c34bfa71323d-early-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/googlenet-12-c34bfa71323d-early-5-operation_metadata-reactive.job.json",
+      "record_sha256": "cb205f93baeab6815087002d520663c72150e4e14f83c93a9d1bb0764e3a9ac9",
+      "reused": false,
+      "sha256": "012ce0ab75ba0b9f7466762f456c679b05a092a2c5f3cd1f85ccc4e0c780de54"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ultraface-rfb-320-831ee8735645-middle-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ultraface-rfb-320-831ee8735645-middle-5-operation_metadata-full.job.json",
+      "record_sha256": "bc4127603bfdd8f426152a25e1418aed4e8541a5e6cc6ccc54d4c6ee9cd941ad",
+      "reused": false,
+      "sha256": "864f431524e0a2691532dc8dbdde4d33d3814f9119d7087265199c6cca836121"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ultraface-rfb-320-831ee8735645-late-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ultraface-rfb-320-831ee8735645-late-5-operation_metadata-reactive.job.json",
+      "record_sha256": "3490572819edcd72d59e0f5cebf9429b57065291717161537d8b30caf4290ad5",
+      "reused": false,
+      "sha256": "738f4760b029184b47dba187146072ffda3fb74f56b58cfb840b7e1bf9ff7dd2"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/shufflenet-v2-12-2970f92c12a3-early-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/shufflenet-v2-12-2970f92c12a3-early-5-operation_metadata-full.job.json",
+      "record_sha256": "df48a4810353a443a9c7cd39e8e38472ebc95eb10d1d1e026e07900396b0c6bf",
+      "reused": false,
+      "sha256": "56751d60b8042c582609ea1dec3f169407824576906b5d45723fdbc8a56f08bf"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/googlenet-12-c34bfa71323d-middle-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/googlenet-12-c34bfa71323d-middle-5-operation_metadata-full.job.json",
+      "record_sha256": "28e2d78bb8abcd73d9e6cb63d9ef0c148fb6b58e5661d6db19f6ae3af9ed72d4",
+      "reused": false,
+      "sha256": "3e0bf3ad5b68659707f622d933d89532df49ac73d865144580f96de91497545d"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-qdq-1deb63f20317-middle-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-qdq-1deb63f20317-middle-5-operation_metadata-full.job.json",
+      "record_sha256": "c67bedb7057da15819c292a8bc90684ffc72ac6d0c1f0368859b16d7917a6543",
+      "reused": false,
+      "sha256": "6acaa65f4f8b9b3a8a56c4fc86ef7d372499e3d797a4e4a01ae46a900ec46572"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/shufflenet-v2-12-2970f92c12a3-middle-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/shufflenet-v2-12-2970f92c12a3-middle-5-operation_metadata-full.job.json",
+      "record_sha256": "f41a72791d0ab0781395177f0db8d25e434cc2e5806c12a71ac1c6a41840d697",
+      "reused": false,
+      "sha256": "451fa07c93b6963590297b8e0fecbfffa438b2c09efafaa9ce2537f81201c926"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mnist-8-2f06e72de813-early-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mnist-8-2f06e72de813-early-5-operation_metadata-full.job.json",
+      "record_sha256": "a50f9837f4a1941122beed7a3fdc960c293673b77b4e13efd4c8034c2cc4be77",
+      "reused": false,
+      "sha256": "d655c401f5062358df70ad5f1ab2be086f798cfd0696163250e7698f0bb0567c"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mobilenetv2-7-8f78e569922a-late-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mobilenetv2-7-8f78e569922a-late-5-operation_metadata-full.job.json",
+      "record_sha256": "0059c69f6757319f647e3e8360a11badd5d9c48607c4df792fab45f116f56b2e",
+      "reused": false,
+      "sha256": "50ae19323269f77c18bc8f58f90043e487e73bbc1ead5a3105b6b81c13d1f0f1"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-int8-910b599a335f-early-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-int8-910b599a335f-early-5-operation_metadata-reactive.job.json",
+      "record_sha256": "70a92cca06140d8c840279b877b02458b56c8b163a78ff19d04c4adf97a16518",
+      "reused": false,
+      "sha256": "fb94210abee8663612767b62896153fe32f3343b0bd1b883fc4ffd3035b989b4"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ssd-mobilenetv1-12-3d69b3dced4b-late-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ssd-mobilenetv1-12-3d69b3dced4b-late-5-operation_metadata-reactive.job.json",
+      "record_sha256": "11b14fa07b64047de1f7c75df0fd686f5ac79d7397544a41da8b795c11cf2c23",
+      "reused": false,
+      "sha256": "0e5e011e871fdd4e62ae669a21e88315700a9708d60e89f76ac6698f616f6975"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mobilenetv2-7-8f78e569922a-late-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mobilenetv2-7-8f78e569922a-late-5-operation_metadata-reactive.job.json",
+      "record_sha256": "b278028bc20b57f7fe0f61a486af959beafe9705561167628c4a582befe6873d",
+      "reused": false,
+      "sha256": "da644b1310ca74e13bf955b06bea34f0d747da9efd4bf48ed9aed2963a98989f"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ultraface-rfb-320-831ee8735645-early-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ultraface-rfb-320-831ee8735645-early-5-operation_metadata-full.job.json",
+      "record_sha256": "9949035a67409018db3d9485d72c17777b869d4e4d4ff8086952fc18e3df50f0",
+      "reused": false,
+      "sha256": "83bede2693ce728a8e575839d85adf9981af1d44e0b9b5f169f3e794fdc8a212"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.0-13-qdq-64c397e74ed2-early-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.0-13-qdq-64c397e74ed2-early-5-operation_metadata-full.job.json",
+      "record_sha256": "e1f125bf34e388190a47f57cd07057dbbc8f6c946ca582b8d5e7a24ff656d7dd",
+      "reused": false,
+      "sha256": "28b4e3257b7c305636731550d8549307f678a58359509d1c86bea2d7e3db9553"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/shufflenet-v2-12-2970f92c12a3-late-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/shufflenet-v2-12-2970f92c12a3-late-5-operation_metadata-full.job.json",
+      "record_sha256": "80ab1f3a3ba6a2db28e5df4b30acb160a8b50e687eea74cf8e339545edc73ffa",
+      "reused": false,
+      "sha256": "edfd6113be17e98de22f6d185cf77b02debdbde3ec1945c4bd2f7e54a9c50f1a"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.1-7-098e8952d72d-middle-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.1-7-098e8952d72d-middle-5-operation_metadata-reactive.job.json",
+      "record_sha256": "2d2c6a5271d3b80a8dceeeabe80e6561754d71bc4a36ce673a68b18887c28bec",
+      "reused": false,
+      "sha256": "dc8d49334111ac4df42feaa63690466c9b87e710c9404ea96fe5f5fb5323018c"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ultraface-rfb-320-831ee8735645-early-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ultraface-rfb-320-831ee8735645-early-5-operation_metadata-reactive.job.json",
+      "record_sha256": "c0869b5d33bb584339e5496c527ecadcf06c885397509b206ff3ae8e3e2a2696",
+      "reused": false,
+      "sha256": "9129417391975ef6c6197bd96d54b32b64d2913121c588fcd7ec8f9f46268be5"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.1-7-098e8952d72d-early-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.1-7-098e8952d72d-early-5-operation_metadata-full.job.json",
+      "record_sha256": "3b7721539ac9a6b47d174482d52b769269266a9239c670efef914d5cd90db4fd",
+      "reused": false,
+      "sha256": "adcf88ce8191227aa1abea780825ab9b3834a30144f72aeb99bdd0f6a19fcb6a"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ultraface-rfb-320-831ee8735645-middle-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ultraface-rfb-320-831ee8735645-middle-5-operation_metadata-reactive.job.json",
+      "record_sha256": "1cc4052a8fdf8b23d37b138d69556fddfc714c98e3cf956de43caf4d509cc3b1",
+      "reused": false,
+      "sha256": "9bf6685b48c2a5592b67f46b7bfe5470d7d59d253aaca205772c606ed3999c53"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ultraface-rfb-320-831ee8735645-late-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ultraface-rfb-320-831ee8735645-late-5-operation_metadata-full.job.json",
+      "record_sha256": "1cc1f70436839c0c7605bf3851782c08f49a8f80106cc2796276588343d7da92",
+      "reused": false,
+      "sha256": "dbb8d6975f91c724ee4daa0d5cfd36fe67d2e9fe54cf321dea2140a88a7a3304"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/resnet18-v1-7-6548c77453ff-early-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/resnet18-v1-7-6548c77453ff-early-5-operation_metadata-reactive.job.json",
+      "record_sha256": "027e8913abc4a365393e7076d234d6c3aa20f9c89fe5575f99f9b1be9f4d3584",
+      "reused": false,
+      "sha256": "73fc68c7d74043eca883b381d7df8a64cdc18b18b5c0475e196792a0eabba04c"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.1-7-098e8952d72d-late-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.1-7-098e8952d72d-late-5-operation_metadata-full.job.json",
+      "record_sha256": "bb8edc4c422b6d2792f48334d7b16cbfec7a8ea5a6f6e8cee1e01926fff98726",
+      "reused": false,
+      "sha256": "4ab78b0436dd3a88dfe3b7e98354afbbde7dffc64a8362b05e973c131b815b0e"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tinyyolov2-8-867df52f413a-middle-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tinyyolov2-8-867df52f413a-middle-5-operation_metadata-full.job.json",
+      "record_sha256": "524e60a29da3c713eed154e65c473a83d0ebde3955a8696ce6e0092f74a5ef39",
+      "reused": false,
+      "sha256": "8db8d4af26480b89e14040344065c3cc5e344957e6d1d677b6139241166323d7"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/googlenet-12-c34bfa71323d-middle-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/googlenet-12-c34bfa71323d-middle-5-operation_metadata-reactive.job.json",
+      "record_sha256": "dee2fb0151a771c9a7710f9380ff42157fa3298accb0e700d019e6a585f0c769",
+      "reused": false,
+      "sha256": "41d3ec39bf3f066ccd9dfdb14e22c73c54de76dc7f0272af7b2ef37d03cb1771"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/densenet-12-0294e7e88e5b-middle-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/densenet-12-0294e7e88e5b-middle-5-operation_metadata-reactive.job.json",
+      "record_sha256": "1e4f4a79df31b03b2e5d909a27ef87e617285c92f36a11e6a93edb44497d828f",
+      "reused": false,
+      "sha256": "981dc8631920fcd94e883345b274e7c8188c87f54d96d1a7da891231e43b60cd"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.1-7-098e8952d72d-middle-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.1-7-098e8952d72d-middle-5-operation_metadata-full.job.json",
+      "record_sha256": "bf4adfd1cb895e0c5a92e025ec945cc8612974c8cf971aee4697353bad3d9d95",
+      "reused": false,
+      "sha256": "e8d34eb359dbf8c2951bb7006acd80019bf4f276067ca67de19cc73ae1811e65"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/resnet18-v1-7-6548c77453ff-late-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/resnet18-v1-7-6548c77453ff-late-5-operation_metadata-full.job.json",
+      "record_sha256": "35f6454d0adfb83a89ed37f15f7353cb84081f34f93ea1698a0c48259219ed7a",
+      "reused": false,
+      "sha256": "fc850423bc345b41957f522ac9603d05f1163ad356a9b6b52e05433b7132d771"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tiny-yolov3-11-356de5227f42-middle-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tiny-yolov3-11-356de5227f42-middle-5-operation_metadata-full.job.json",
+      "record_sha256": "9a7b064bbc8f5970e3237323495d994f13f7f782166d7fba65d67c2f38588a02",
+      "reused": false,
+      "sha256": "bcc4fc1584a24444ac52a6374e6d8de1a7d8c27c449e85d23dc369c64baa4059"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tinyyolov2-8-867df52f413a-early-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tinyyolov2-8-867df52f413a-early-5-operation_metadata-full.job.json",
+      "record_sha256": "2e136e22734315967c89a97f72c7b81460e1fd878b01cbc808d562a93443ee2a",
+      "reused": false,
+      "sha256": "26b1e25f3aa9287d4b4b7a43916977857d8bc2566ec332e30eb4ad7541b672b2"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/xcit-tiny-12-p8-224-opset17-ea20107b2396-early-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/xcit-tiny-12-p8-224-opset17-ea20107b2396-early-5-operation_metadata-reactive.job.json",
+      "record_sha256": "052e3e81de2fe5ce7acfa43c77f89630cd0f5f2f5862ce6ad3f7b8e1987793a2",
+      "reused": false,
+      "sha256": "68663364b6b3c279c6aa9f4fa250c06e8a27050d068de0dc94596a13235d702a"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/resnet18-v1-7-6548c77453ff-middle-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/resnet18-v1-7-6548c77453ff-middle-5-operation_metadata-reactive.job.json",
+      "record_sha256": "99b7db0ea65007961e68225910776798e13d402037cf4ddf2c81a8d6735cd0a0",
+      "reused": false,
+      "sha256": "3b9500c8dcadd26639372cd4ef0d4155cb9ce8b1dc893cf4354505b6bb152dbd"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.0-13-qdq-64c397e74ed2-late-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.0-13-qdq-64c397e74ed2-late-5-operation_metadata-reactive.job.json",
+      "record_sha256": "3dd4e57d4265ca81928d66cb83580d05395e05baf29ab46184f934c6487b302c",
+      "reused": false,
+      "sha256": "5c4ec8ec90463fa78bf745cb8c2c696450e875edbe2555e7cf69e1e4b40328ff"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/resnet18-v1-7-6548c77453ff-middle-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/resnet18-v1-7-6548c77453ff-middle-5-operation_metadata-full.job.json",
+      "record_sha256": "3c249584dadbc1bb7ac9292580cf648f8764d7c0845d195378ead84f71478a71",
+      "reused": false,
+      "sha256": "42642dfac16e60363cb5f7efdeb7d1adb2bede6f2dca11e0846ba6fa8add797d"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.0-13-qdq-64c397e74ed2-middle-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.0-13-qdq-64c397e74ed2-middle-5-operation_metadata-reactive.job.json",
+      "record_sha256": "a52c5e087d3199a0c121d0506e4e4fb9ed5453ddcbd4c40c9c68f153a3ccebe2",
+      "reused": false,
+      "sha256": "cfda57e6d9e38cd488e83bf1c9c48b530a9d1231f1f7f48bc80f5f4ac187b642"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-qdq-1deb63f20317-middle-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-qdq-1deb63f20317-middle-5-operation_metadata-reactive.job.json",
+      "record_sha256": "be7cb9aa477513e982ef6f958ebb5cbff060956ffe5c9371393adbd0c50eea3d",
+      "reused": false,
+      "sha256": "1a22b4b2b8ac81171c319dbc5535859fdc9d307a70e32f8ee134bcfe7dd7004b"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.0-13-qdq-64c397e74ed2-late-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.0-13-qdq-64c397e74ed2-late-5-operation_metadata-full.job.json",
+      "record_sha256": "4c9fe999815ceab3eeaa575c0ec5a53ba4a879fbe1e01e495f633935c69ec2ab",
+      "reused": false,
+      "sha256": "fbf5f6386287f7118bf5515ca7de24a62661c255af48441ab60ff6a4f498c229"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/xcit-tiny-12-p8-224-opset17-ea20107b2396-late-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/xcit-tiny-12-p8-224-opset17-ea20107b2396-late-5-operation_metadata-full.job.json",
+      "record_sha256": "7aa504c62af0e098cb36e6db0f3ee2a0f3efc82cb8facacbd8da54569bb17547",
+      "reused": false,
+      "sha256": "70ae4afd414f9c0836270a299d08c7be44e36f83eb88d48f84cdb03e40400c58"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tinyyolov2-8-867df52f413a-late-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tinyyolov2-8-867df52f413a-late-5-operation_metadata-reactive.job.json",
+      "record_sha256": "bfdddeacd4195c524b7ed38023ff066f800fbb648b81123507efb69440468d3c",
+      "reused": false,
+      "sha256": "b3dbda66e6a625802ae67923cbba48a1e7504dd5b061ac4e7b61dcdeaa9bd76d"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-qdq-1deb63f20317-late-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-qdq-1deb63f20317-late-5-operation_metadata-full.job.json",
+      "record_sha256": "143bb0f1d2d89a4544e7a7d5927b32936210ed0bb6114efbc68874341d5767c0",
+      "reused": false,
+      "sha256": "72e4079ff369a83d6a89f1131c1e9ae6010dd42cbf95c0a57626568cc4c9abe4"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/densenet-12-0294e7e88e5b-late-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/densenet-12-0294e7e88e5b-late-5-operation_metadata-reactive.job.json",
+      "record_sha256": "d97bfda98fbf72cc55b84f32ae4ea1c959778f93bd967189dc57e354244927f3",
+      "reused": false,
+      "sha256": "57f47db805e8968d056251a72231124a67086420bfedb4c59ed60f0d8193f90f"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-qdq-1deb63f20317-late-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-qdq-1deb63f20317-late-5-operation_metadata-reactive.job.json",
+      "record_sha256": "b6a6789447d54b03a39990910da5f16c68dc13b172709de3c962ca3b7a4aabe8",
+      "reused": false,
+      "sha256": "e81379f517db087a91c5b7f7b2ce7e5bf437849624d7c7a8571ab117642684bb"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mobilenetv2-7-8f78e569922a-early-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/mobilenetv2-7-8f78e569922a-early-5-operation_metadata-reactive.job.json",
+      "record_sha256": "db441492eb5b3fe66f4284d72bc4cd1a006a68266b89c06c14fc1af0a6df8595",
+      "reused": false,
+      "sha256": "ffb606f47ac234b896aa357da2e0cc5152588b9a35e6a44ee8448fdeb051d070"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.0-13-qdq-64c397e74ed2-middle-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.0-13-qdq-64c397e74ed2-middle-5-operation_metadata-full.job.json",
+      "record_sha256": "c9c89a8c1124eabfd93e748862da5a15b22afc4dedb958c247df9b03ff6026aa",
+      "reused": false,
+      "sha256": "02aae7d298a13135d3a297881a175c738552b652a8dabaf03d98021c170d7bad"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tinyyolov2-8-867df52f413a-early-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/tinyyolov2-8-867df52f413a-early-5-operation_metadata-reactive.job.json",
+      "record_sha256": "4007ce7d4dd31d3c45cd100022596a1e66420ad970a4eb58c5e8e6dd9b9464b6",
+      "reused": false,
+      "sha256": "d43b07b16d312893bc13ae67a9a8e8f4c449e12ead9c5736961bccad10ff39a8"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.1-7-098e8952d72d-early-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/squeezenet1.1-7-098e8952d72d-early-5-operation_metadata-reactive.job.json",
+      "record_sha256": "02e49a4d35153a5c0224b4dfe4ce654af043551f0c301536b264b05b83976026",
+      "reused": false,
+      "sha256": "15008207028eefb0a0c52db5ed254cb943f491aa591cdb2bde7fef468de1bada"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-int8-910b599a335f-middle-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/efficientnet-lite4-11-int8-910b599a335f-middle-5-operation_metadata-reactive.job.json",
+      "record_sha256": "b9f56df8b043e706658ef17016a31ab91c7daac2462f15e796f533449187dcbe",
+      "reused": false,
+      "sha256": "858c1cc56a23105d67998750ec42133e6ceb39c80f60822205a1a89ebce1e214"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/densenet-12-0294e7e88e5b-early-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/densenet-12-0294e7e88e5b-early-5-operation_metadata-reactive.job.json",
+      "record_sha256": "150d677565050fd0d814a081514af6eb5f25807a8577a23e7108c3bf76c280e0",
+      "reused": false,
+      "sha256": "a0d8603c705840dc528421a28861fb1a47befb77ce2ab3b6fcaf1b0fd24c2473"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/shufflenet-v2-12-2970f92c12a3-late-5-operation_metadata-reactive.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/shufflenet-v2-12-2970f92c12a3-late-5-operation_metadata-reactive.job.json",
+      "record_sha256": "e2b2148e57aad2eec7f449c7dbb814c6e331fc59e9ed61ce4959101939c49f8d",
+      "reused": false,
+      "sha256": "5471eac2c62b65b7f413950ae2a62c0b88bcaf25ac9bc860e9d1c96a640d7508"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ssd-mobilenetv1-12-3d69b3dced4b-early-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/ssd-mobilenetv1-12-3d69b3dced4b-early-5-operation_metadata-full.job.json",
+      "record_sha256": "649ec902b1fd5e4fcaac1df387829fe9852270414cecca5dd5d2aaed300478f7",
+      "reused": false,
+      "sha256": "ce82c94fd270e69c42dce39630f4c79d09ccf0e3a87c90eea67474c678e9219f"
+    },
+    {
+      "path": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/densenet-12-0294e7e88e5b-middle-5-operation_metadata-full.csv",
+      "record": "/Users/lancer/Documents/Item/joggle/.cache/artifact/reactive-shaped-20260925/measurement/densenet-12-0294e7e88e5b-middle-5-operation_metadata-full.job.json",
+      "record_sha256": "7f1ddd5f15898ef5614f6776fa0fb6832e214eb9e530768c13e00de84f19e5fc",
+      "reused": false,
+      "sha256": "63c06ded9ff719eca571f284442e81b2f2bc1ef97f94d528de9685184416decd"
+    }
+  ],
+  "iterations": 10,
+  "model_manifest": null,
+  "models": [
+    {
+      "name": "mnist-8",
+      "sha256": "2f06e72de813a8635c9bc0397ac447a601bdbfa7df4bebc278723b958831c9bf"
+    },
+    {
+      "name": "mobilenetv2-7",
+      "sha256": "8f78e569922a964ef0c303e08cf82f01d4891f97a2ac87fa6061f8a987924a5a"
+    },
+    {
+      "name": "squeezenet1.1-7",
+      "sha256": "098e8952d72d64cae5ede757aa8ade3d40ece99f33daa459a76ef2f138395382"
+    },
+    {
+      "name": "squeezenet1.0-13-qdq",
+      "sha256": "64c397e74ed2f541fa306ca8a1883a69d0a9c255f0c5236e8d1675251623cc97"
+    },
+    {
+      "name": "resnet18-v1-7",
+      "sha256": "6548c77453ff9f9a774c27ec031a574667f25204d28ba668870c346edb693f32"
+    },
+    {
+      "name": "tinyyolov2-8",
+      "sha256": "867df52f413aae895af9b80a5526d865a8648e90765647a28cda9c6f8d31062f"
+    },
+    {
+      "name": "tiny-yolov3-11",
+      "sha256": "356de5227f42a77ed270d2668b95804087109a567b84cc76b7442ca3517926c0"
+    },
+    {
+      "name": "ultraface-rfb-320",
+      "sha256": "831ee8735645145ec4833c5e26575ac448ede3083e1fe00c6c26bc4a727a4c0a"
+    },
+    {
+      "name": "ssd-mobilenetv1-12",
+      "sha256": "3d69b3dced4b3dc38f4348402bb75df145ab5f8bf11831f1af01b3459b31b017"
+    },
+    {
+      "name": "shufflenet-v2-12",
+      "sha256": "2970f92c12a3a9105acd03839fe3abe1db8888e293454f120028345af5457dcb"
+    },
+    {
+      "name": "densenet-12",
+      "sha256": "0294e7e88e5b3360de9b0fdc321baf9e6ef18b7f058c4536caae3b9f18ed9ed5"
+    },
+    {
+      "name": "googlenet-12",
+      "sha256": "c34bfa71323d77a72062f32fa8ec413067589c22fc2f5a7e68d5651165e61939"
+    },
+    {
+      "name": "efficientnet-lite4-11-int8",
+      "sha256": "910b599a335fdb006b4687e8fbbc9b898df9dafd51b64675e8627a1c639a47b9"
+    },
+    {
+      "name": "efficientnet-lite4-11-qdq",
+      "sha256": "1deb63f203172bf5412eebd780fa7b6777f973600d22aca7995a1e7839be1777"
+    },
+    {
+      "name": "xcit-tiny-12-p8-224-opset17",
+      "sha256": "ea20107b2396adf96ec569e5a1f1fb5443ee31299e5bc01a3d139a3a3564f3f7"
+    }
+  ],
+  "output_sha256": "6fd106d52bde8b837803e55ad18997a473c3c6092de5a829948aa1e7b0f020e9",
+  "platform": "macOS-15.7.3-arm64-arm-64bit-Mach-O",
+  "python": "3.14.0",
+  "revision": "da476ab0afe8d44c9b294c59b39ba82219f3522c",
+  "schema": "update-provider/v1",
+  "scopes": [
+    "affected",
+    "unrelated"
+  ],
+  "seed": 1701,
+  "sites": [
+    "early",
+    "middle",
+    "late"
+  ],
+  "stages": [
+    5
+  ],
+  "visited_ops_unit": "subject-operation-visits",
+  "warmups": 3,
+  "workload": "metadata-propagation/v1"
+}
