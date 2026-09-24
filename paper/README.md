@@ -628,7 +628,7 @@ of generated code. Table 1 connects these four comparisons to the design goals.
 | Property | Comparison | Primary evidence |
 | --- | --- | --- |
 | Convenient | 3 systems; 12 eval tasks | completion, tokens |
-| Controllable | 3 systems; 36 patches | files, lines, zones |
+| Controllable | 3 systems; extension packages | files, lines, zones |
 | Efficient | 3 systems; 9 edit sites | update time, reuse |
 | End-to-end | 4 systems | correctness, latency |
 
@@ -685,17 +685,18 @@ suite specifies 24 tasks, four in each of six families: type or
 operation definition, analysis, rewrite, conversion, artifact generation, and
 a vertical feature combining these roles. Each task has one semantic
 specification and fixed positive and negative fixtures. Before collecting
-agent outcomes, we select the same two tasks per family used by the footprint
-study for a 12-task execution set.
+agent outcomes, we select two tasks per family for a 12-task execution set.
 Admission requires a system-specific harness and an idiomatic reference patch
 that passes the shared oracle.
 
 The agent protocol uses two frozen small instruction models with the same
-deterministic coding-agent harness. For each system, the input contains the
-task's semantic contract, positive and
-negative examples, and a compact native API card. The agent works in an
-isolated source tree with the same inspect, edit, build, and test tools. Its
-output is the final source patch and complete tool trajectory. It may take at
+coding-agent harness. Each request combines a natural-language semantic
+contract, public positive and negative examples, a native API card, and starter
+code. The agent can inspect or replace its source, invoke the public
+build-and-test oracle, and submit the result. Candidate programs execute in
+isolated workspaces. The output consists of the final source patch and complete
+tool trajectory; final scoring also checks fixtures withheld from tool feedback.
+Each trajectory may take at
 most 30 actions and emit at most 32k tokens. Each model--system--task condition
 runs once with deterministic decoding and no demonstrations. The paired design
 contains 72 trajectories: 12 tasks, three systems, and two models.
@@ -704,20 +705,17 @@ The primary endpoint is executable success within budget: the final workspace
 must parse, type-check, build, and pass the semantic oracle without manual
 repair. We macro-average success over tasks and resample tasks within each
 family. For successful trajectories, secondary measures are completion tokens,
-tool calls, edit attempts, and wall time. Failed trajectories retain their
-first terminal phase---parse, type, build, semantic oracle, or budget. As a
-supplementary interface-predictability diagnostic, we score all 24
-oracle-passing reference patches and report paired conditional bits per UTF-8
-byte under each model. The prefix is the corresponding initial task and API
-prompt, and the continuation is a canonical edit action containing the native
-reference. Bits per byte is the reported measure; source records also retain
-token count and negative log likelihood.
+tool calls, edit attempts, and wall time. The record distinguishes the stopping
+condition from the final candidate outcome: exhausting a budget and submitting
+incorrect code are different events. Native build, execution, observation, and
+semantic failures are recorded at the boundary that detects them. The supplement
+pairs the natural-language contracts with input graphs and expected outputs.
 
 <!-- AGENT-RESULTS FIGURE PLAN — Compact 2×3 grouped vertical bars. Rows are the
 two frozen models; columns show task-macro executable success, completion
 tokens for successful tasks, and successful tool calls. Each panel uses the
-same six family positions and fixed Joggle/MLIR/xDSL colors. Failure phase and
-reference-solution bits per byte belong in the supplement. CSV:
+same six family positions and fixed Joggle/MLIR/xDSL colors. Stopping conditions
+and final candidate outcomes belong in the supplement. CSV:
 figure-04-extension.csv. Raw columns: model,
 model_revision,system,system_revision,task,family,run,seed,
 budget_actions,budget_tokens,wall_ms,prompt_tokens,completion_tokens,tool_calls,
@@ -727,12 +725,13 @@ reference_tokens,reference_bytes,reference_bpb. -->
 
 ### 4.3 Change Footprint and Ownership
 
-Completion measures whether an extension works; footprint measures where its
-implementation changes the compiler. The footprint study therefore reuses the
-12-task execution set, two tasks from each family. Selection is fixed before
-patch metrics are collected. Each of the 36
-implementations begins from a clean pinned snapshot, passes the common oracle,
-and is reduced to a hunk-level fixed point.
+Completion measures whether an extension works; ownership concerns how a
+feature is integrated and maintained. The comparison unit is therefore a
+complete extension package, including its implementation, public entry points,
+and build or registration declarations. Signed low-bit arithmetic and quantized
+convolution fusion connect analysis, transformation, and emission in each system.
+Initial integration and subsequent behavior changes are measured separately,
+so one-time package setup does not count as recurring maintenance.
 
 For patch $p$, the footprint is
 
@@ -746,18 +745,21 @@ changed build, registry, or pipeline declaration lines under a frozen policy.
 Test changes are reported in parallel. A zone is a source package or build
 target with one public responsibility.
 
-Every task reports all four coordinates, build and oracle status, dependency
-fan-out, and crossed ownership edges; in Joggle, these are declared `use`
-edges. Because a baseline may require zero registry or
-build edits, absolute paired counts are primary. We summarize the paired
-difference with a task-level bootstrap interval and report a ratio only when
-both counts are nonzero. Small rewrites and vertical features remain separate.
+Each paired patch implements the same behavior change. We count source and
+integration edits separately from tests and shared measurement infrastructure.
+Package-local implementation files share one ownership zone; compiler roles do
+not become separate zones merely because they occupy different files. This
+definition applies equally to graph-level mods and native baseline plugins.
+Absolute paired counts retain zero-cost registration and unchanged ownership
+boundaries. The accompanying dependency view identifies changes that reach
+beyond the feature's package.
 
 <!-- FOOTPRINT-RESULTS FIGURE PLAN — One-column dense 2×2 grouped vertical-bar
 figure. The four panels show touched source files, changed source lines,
-ownership zones, and registry/build edits for the same 12 tasks. Fixed
-Joggle/MLIR/xDSL colors and family separators make paired task comparisons
-visible; symmetric-log axes retain true zero while labeling raw counts. CSV:
+ownership zones, and registry/build edits for matched package changes. Separate
+initial integration from maintenance and group changes by feature package.
+Fixed Joggle/MLIR/xDSL colors make paired comparisons visible; axes retain
+true zero while labeling raw counts. CSV:
 figure-05-footprint.csv. Raw columns:
 system,system_revision,task,family,patch_hash,source_files,source_added,
 source_deleted,test_files,test_added,test_deleted,zones,registrations,fanout,

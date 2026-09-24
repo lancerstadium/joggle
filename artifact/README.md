@@ -244,35 +244,38 @@ Provider, oracle, and identity-check exceptions are retained in the trajectory
 with `stop_reason: agent_error`; final-check failures still produce the CSV and
 patch record, with unknown compiler phases left empty.
 
-The current collector emits integration records with `release_eligible: false`.
-It records successful native execution but does not infer a failed compiler's
-parse/type/build phase from its exit code. Unmeasured phase fields and reference
-likelihoods remain empty. These records cannot enter the release assembler.
-The full matrix additionally requires the remaining 7 native task harnesses,
-phase-specific instrumentation, and the frozen demonstration sets. The
-assembler consumes complete provider records:
+The collector emits one CSV and an adjacent provenance record per trajectory.
+A clean run with stable source/tool/model identities, a complete final oracle,
+and no infrastructure error is release-eligible whether the candidate passes
+or fails. `--allow-dirty` runs are integration checks and remain ineligible.
+The collector does not infer parsing or typing failures from diagnostic text;
+unobserved phase fields and reference likelihoods remain empty. Assemble the
+complete primary population with the existing release gate:
 
 ```sh
 python3 artifact/merge_agent_rows.py \
-  .cache/artifact/agent-model-a-joggle.csv \
-  .cache/artifact/agent-model-a-mlir.csv \
-  .cache/artifact/agent-model-a-xdsl.csv \
-  .cache/artifact/agent-model-b-joggle.csv \
-  .cache/artifact/agent-model-b-mlir.csv \
-  .cache/artifact/agent-model-b-xdsl.csv \
+  .cache/artifact/agent-primary/*/result.csv \
   --output .cache/artifact/figure-04-extension.csv
 ```
 
-Each provider CSV contains all 24 tasks, zero- and two-demonstration contexts,
-and ten seeded trajectories. Its adjacent `agent-provider/v1` record pins the
-model, system revision, API card, demonstrations, action/token budgets,
-workspace image, oracle commands, and complete trajectory hashes. The release
-matrix contains 2,880 rows and rejects a missing task, seed, or provider.
+Replace `agent-primary` with the designated collection directory; do not merge
+independent collections through a broad glob. Each provider CSV contains one condition.
+Its `agent-provider/v1` record binds the CSV to the complete trajectory and
+isolated final oracle. The primary matrix contains 72 rows: two pinned models,
+three systems, and the twelve preselected tasks, with zero demonstrations,
+seed 1701, and run index zero. The assembler rejects missing or duplicate
+conditions, changed hashes, and infrastructure-invalid records. Semantic
+failures remain in the completion denominator.
 
 ## Figure 5
 
-Each task starts from a passing candidate patch. Reduce it, pin the resulting
-revision and logs in the case file, then collect the frozen coordinates:
+The ownership study uses complete native extension packages, independently of
+the single-file Agent tasks. Its revised measurement boundary and admission
+conditions are recorded in `PROTOCOL.md`. The existing Git-patch collector
+remains the measurement mechanism; reference-file sizes are not package
+footprints. The minimizer below currently creates a temporary Git worktree and
+must not be run under the project's current single-worktree restriction.
+Package collection requires a workspace-safe minimization path first.
 
 ```sh
 python3 artifact/minimize_patch.py \

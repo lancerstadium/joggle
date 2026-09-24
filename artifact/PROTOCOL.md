@@ -111,11 +111,39 @@ executable-success measurements.
 
 ## Figure 5 · change footprint
 
-Twelve tasks are selected before implementation, two per extension family.
-Each system starts from a pinned clean revision. A passing patch is reduced to
-a hunk-level fixed point, then measured under a frozen ownership-zone policy.
-The four primary coordinates are changed implementation files, changed
-implementation lines, ownership zones, and registry/build declarations.
+Amended 24 September 2026, with author approval, before collecting package
+footprints. Single-file Agent tasks remain the Figure 4 population; their file
+counts do not measure cross-stage package ownership. The Figure 5 unit is a
+complete native extension package, including its public entry points and
+registration/build declarations. Start with signed low-bit arithmetic and
+quantized convolution fusion, using the admitted semantic references and
+independent numerical oracles as implementation seeds.
+
+Measure initial integration and subsequent behavior changes separately.
+Initial integration starts from an otherwise runnable host. Maintenance starts
+from its oracle-passing package. Both baseline frameworks use out-of-tree
+plugins; do not require in-tree compiler edits when native plugin APIs suffice.
+Package-local analysis, transformation, and emission files share one ownership
+zone. Apply the same zone rule to graph-level mods, MLIR plugins, and xDSL
+packages. Count changed implementation files, implementation lines, ownership
+zones, and registry/build declarations. Record tests separately; exclude shared
+measurement infrastructure from feature patches and report its setup once.
+
+Before measurement, freeze each matched behavior-change contract, its positive
+and negative fixtures, each package layout, and the ownership policy. A
+maintenance patch must pass the new oracle while its parent fails at least one
+new positive fixture. Preserve the old regression suite wherever the behavior
+contract is unchanged. Verify package discovery from a clean consumer, graph
+transformation, emitted-code execution, and the final source tree. Do not
+infer dependencies from directory depth or assign each compiler role a zone.
+
+Implementation status: the semantic references are admitted; native package
+integration and matched maintenance patches are not yet measured. No package
+row can be released from the single-file reference results. The current
+minimizer creates another Git worktree; replace that execution path with an
+isolated snapshot inside the existing repository before using it under the
+single-worktree restriction. Keep source/oracle/policy/patch hashes and the
+hunk-level fixed-point check.
 
 Counts come from Git diffs rather than author logs. The collector binds the
 base revision, final patch, minimization trace, oracle output, and policy by
