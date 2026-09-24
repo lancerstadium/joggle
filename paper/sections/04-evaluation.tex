@@ -20,9 +20,9 @@ relevant correctness oracle enter an aggregate.
     \toprule
     Property & Comparison & Primary evidence \\
     \midrule
-    Convenient & 3 systems; 24 tasks & completion, tokens \\
-    Controllable & 3 systems; 12 patches & files, lines, zones \\
-    Efficient & 3 systems; 15 models & update time, reuse \\
+    Convenient & 3 systems; 12 eval tasks & completion, tokens \\
+    Controllable & 3 systems; 36 patches & files, lines, zones \\
+    Efficient & 3 systems; 13 models & update time, reuse \\
     End-to-end & 4 systems & correctness, latency \\
     \bottomrule
   \end{tabular}
@@ -31,9 +31,9 @@ relevant correctness oracle enter an aggregate.
 \paragraph{Subjects and controls.}
 Extension and ownership comparisons use Joggle, MLIR, and xDSL. Each extension
 follows its system's native API at a pinned revision. The production update
-protocol instead targets Joggle, TVM, and ONNX-MLIR: its endpoint is an
-executable for the edited model, not an analysis summary. It shares the 15
-pinned ONNX subjects and fixed inputs with the end-to-end comparison.
+protocol targets Joggle, TVM, and ONNX-MLIR and measures the time to produce a
+bound executable for the edited model. It draws 13 editable
+subjects from the 15-model end-to-end corpus and uses the same fixed inputs.
 End-to-end execution also includes ONNX Runtime.
 
 \paragraph{Correctness and measurement.}
@@ -70,19 +70,24 @@ denominator.
 \subsection{Agent Extension Completion}
 \label{sec:eval-convenient}
 
-The extension protocol specifies 24 tasks, four in each of six families:
-type or operation definition, analysis, rewrite, conversion, artifact
-generation, and a vertical feature combining these roles. Each task has one
-semantic specification and fixed positive and negative fixtures. Admission to
-the trajectory matrix requires a system-specific harness and an idiomatic
-reference patch that passes the shared oracle.
+The extension suite specifies 24 tasks, four in each of six families: type or
+operation definition, analysis, rewrite, conversion, artifact generation, and
+a vertical feature combining these roles. Each task has one semantic
+specification and fixed positive and negative fixtures. Before collecting
+agent outcomes, we select the same two tasks per family used by the footprint
+study for a 12-task execution set.
+Admission requires a system-specific harness and an idiomatic reference patch
+that passes the shared oracle.
 
-The agent protocol uses two frozen small instruction models with the same deterministic coding-agent
-harness. For each system, the agent receives the semantic specification, a
-compact native API card, an isolated workspace, and the same inspect, edit,
-build, and test tools. It may take at most 30 actions and emit at most 32k
-tokens. Each model--system--task condition runs ten paired seeds with zero or
-two disjoint demonstrations. The full design contains 2,880 trajectory conditions.
+The agent protocol uses two frozen small instruction models with the same
+deterministic coding-agent harness. For each system, the input contains the
+task's semantic contract, positive and
+negative examples, and a compact native API card. The agent works in an
+isolated source tree with the same inspect, edit, build, and test tools. Its
+output is the final source patch and complete tool trajectory. It may take at
+most 30 actions and emit at most 32k tokens. Each model--system--task condition
+runs once with deterministic decoding and no demonstrations. The paired design
+contains 72 trajectories: 12 tasks, three systems, and two models.
 
 The primary endpoint is executable success within budget: the final workspace
 must parse, type-check, build, and pass the semantic oracle without manual
@@ -90,13 +95,17 @@ repair. We macro-average success over tasks and resample tasks within each
 family. For successful trajectories, secondary measures are completion tokens,
 tool calls, edit attempts, and wall time. Failed trajectories retain their
 first terminal phase---parse, type, build, semantic oracle, or budget. As a
-supplementary interface-predictability diagnostic, we also report the
-perplexity of each passing reference solution.
+supplementary interface-predictability diagnostic, we score all 24
+oracle-passing reference patches and report paired conditional bits per UTF-8
+byte under each model. The prefix is the corresponding initial task and API
+prompt, and the continuation is a canonical edit action containing the native
+reference. Bits per byte is the reported measure; source records also retain
+token count and negative log likelihood.
 
 \subsection{Change Footprint and Ownership}
 \label{sec:eval-controllable}
 
-The footprint study reuses 12 tasks from the extension suite, two from each
+The footprint study reuses the 12-task execution set, two tasks from each
 family. Selection is fixed before patch metrics are collected. Each of the 36
 implementations begins from a clean pinned snapshot, passes the common oracle,
 and is reduced to a hunk-level fixed point.
@@ -135,9 +144,8 @@ For system $s$ and edit $e$, the paired update ratio is
 \]
 
 The denominator is a complete rebuild of the same edited model under the same
-optimization policy. Absolute update latency permits cross-system comparison;
-the ratio quantifies reuse within one system. Both measurements are necessary:
-a small ratio alone does not establish a shorter development cycle.
+optimization policy. Absolute update latency compares turnaround across
+systems, while the ratio isolates reuse within each system.
 
 The protocol separates model-graph, optimization-policy, and compiler-source
 edits. Each case fixes the edit location and semantics, input tensors, and
@@ -187,7 +195,7 @@ denominator but contribute no latency ratio.
 \begin{table}[t]
   \caption{Operator summary. Geometric means use all 24 or the common 22
   operators, as indicated. O--M denotes ONNX-MLIR. Per-operator values appear in
-  Appendix~\ref{sec:operator-data}.}
+  the supplementary material.}
   \label{tab:operator-summary}
   \centering
   \footnotesize
@@ -215,7 +223,7 @@ Joggle and ORT passed all 24 operators, while each external compiler passed 22.
 TVM could not import QLinearConv or QLinearMatMul; ONNX-MLIR could not lower
 QLinearConv, and its QLinearMatMul output failed the integer oracle.
 The common-set aggregate therefore used the same 22 operators across all
-configurations, with complete per-operator measurements in Appendix~\ref{sec:operator-data}.
+configurations, with complete per-operator measurements in the supplementary material.
 
 Within Joggle, the optimization pack reduced geometric mean latency by $1.78\times$
 over all 24 operators, with gains concentrated in matrix multiplication.

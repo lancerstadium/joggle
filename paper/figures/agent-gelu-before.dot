@@ -1,0 +1,15 @@
+digraph G {
+  graph [bgcolor="transparent", margin=0.01, pad=0.02, rankdir=LR,
+         nodesep=0.13, ranksep=0.18, fontname="DejaVu Sans Mono"];
+  node [shape=box, style="rounded,filled", margin="0.045,0.025",
+        penwidth=0.7, color="#45627A", fillcolor="#F4F7FA",
+        fontname="DejaVu Sans Mono", fontsize=7];
+  edge [arrowsize=0.48, penwidth=0.65, color="#52616B",
+        fontname="DejaVu Sans Mono", fontsize=5.5];
+
+  x [label="%x\ntensor<5xf32>", shape=ellipse, fillcolor="#E9F3FF"];
+  gelu [label="%y = gelu(%x)", color="#C74B50", fillcolor="#FFF0F0"];
+  ret [label="return %y", fillcolor="#FFFFFF"];
+  x -> gelu [label=" f32[5]"];
+  gelu -> ret [label=" f32[5]"];
+}

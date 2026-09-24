@@ -1,0 +1,31 @@
+digraph G {
+  graph [bgcolor="transparent", margin=0.01, pad=0.02, rankdir=LR,
+         nodesep=0.08, ranksep=0.14, fontname="DejaVu Sans Mono"];
+  node [shape=box, style="rounded,filled", margin="0.035,0.018",
+        penwidth=0.65, color="#45627A", fillcolor="#F4F7FA",
+        fontname="DejaVu Sans Mono", fontsize=6.2];
+  edge [arrowsize=0.42, penwidth=0.58, color="#52616B",
+        fontname="DejaVu Sans Mono", fontsize=5];
+
+  x [label="%x\nf32[5]", shape=ellipse, fillcolor="#E9F3FF"];
+  c2 [label="splat\n√2", fillcolor="#FFF7E8"];
+  c1 [label="splat\n1.0", fillcolor="#FFF7E8"];
+  ch [label="splat\n0.5", fillcolor="#FFF7E8"];
+  div [label="div"];
+  erf [label="erf", color="#087E8B", fillcolor="#EAF9F7"];
+  add [label="add"];
+  mul0 [label="mul"];
+  mul1 [label="mul"];
+  ret [label="return", fillcolor="#FFFFFF"];
+
+  x -> div [label="x"];
+  c2 -> div;
+  div -> erf;
+  erf -> add;
+  c1 -> add;
+  x -> mul0 [label="x"];
+  add -> mul0;
+  mul0 -> mul1;
+  ch -> mul1;
+  mul1 -> ret [label=" f32[5]"];
+}

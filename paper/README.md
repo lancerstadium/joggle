@@ -639,9 +639,9 @@ Only outputs that pass the relevant correctness oracle enter an aggregate.
 
 | Property | Comparison | Primary evidence |
 | --- | --- | --- |
-| Convenient | 3 systems; 24 tasks | completion, tokens |
-| Controllable | 3 systems; 12 patches | files, lines, zones |
-| Efficient | 3 systems; 15 models | update time, reuse |
+| Convenient | 3 systems; 12 eval tasks | completion, tokens |
+| Controllable | 3 systems; 36 patches | files, lines, zones |
+| Efficient | 3 systems; 13 models | update time, reuse |
 | End-to-end | 4 systems | correctness, latency |
 
 *Table 1: Evaluation matrix. Every comparison fixes revisions, inputs, and its
@@ -649,10 +649,10 @@ correctness oracle before measurement.*
 
 **Subjects and controls.** Extension and ownership comparisons use Joggle,
 MLIR, and xDSL. Each extension follows its system's native API at a pinned
-revision. The production update protocol instead targets Joggle, TVM, and
-ONNX-MLIR: its endpoint is an executable for the edited model, not an analysis
-summary. It shares the 15 pinned ONNX subjects and fixed inputs with the
-end-to-end comparison. End-to-end execution also includes ONNX Runtime.
+revision. The production update protocol targets Joggle, TVM, and ONNX-MLIR
+and measures the time to produce a bound executable for the edited model. It
+draws 13 editable subjects from the 15-model end-to-end corpus and
+uses the same fixed inputs. End-to-end execution also includes ONNX Runtime.
 
 **Correctness and measurement.** Compiler-extension tasks use build-and-test
 oracles; graph transformations use verification and canonical structural
@@ -692,19 +692,24 @@ remain in coverage. Update shading denotes executed work.*
 
 ### 4.2 Agent Extension Completion
 
-The extension protocol specifies 24 tasks, four in each of six families:
-type or operation definition, analysis, rewrite, conversion, artifact
-generation, and a vertical feature combining these roles. Each task has one
-semantic specification and fixed positive and negative fixtures. Admission to
-the trajectory matrix requires a system-specific harness and an idiomatic
-reference patch that passes the shared oracle.
+The extension suite specifies 24 tasks, four in each of six families: type or
+operation definition, analysis, rewrite, conversion, artifact generation, and
+a vertical feature combining these roles. Each task has one semantic
+specification and fixed positive and negative fixtures. Before collecting
+agent outcomes, we select the same two tasks per family used by the footprint
+study for a 12-task execution set.
+Admission requires a system-specific harness and an idiomatic reference patch
+that passes the shared oracle.
 
-The agent protocol uses two frozen small instruction models with the same deterministic coding-agent
-harness. For each system, the agent receives the semantic specification, a
-compact native API card, an isolated workspace, and the same inspect, edit,
-build, and test tools. It may take at most 30 actions and emit at most 32k
-tokens. Each model--system--task condition runs ten paired seeds with zero or
-two disjoint demonstrations. The full design contains 2,880 trajectory conditions.
+The agent protocol uses two frozen small instruction models with the same
+deterministic coding-agent harness. For each system, the input contains the
+task's semantic contract, positive and
+negative examples, and a compact native API card. The agent works in an
+isolated source tree with the same inspect, edit, build, and test tools. Its
+output is the final source patch and complete tool trajectory. It may take at
+most 30 actions and emit at most 32k tokens. Each model--system--task condition
+runs once with deterministic decoding and no demonstrations. The paired design
+contains 72 trajectories: 12 tasks, three systems, and two models.
 
 The primary endpoint is executable success within budget: the final workspace
 must parse, type-check, build, and pass the semantic oracle without manual
@@ -712,24 +717,28 @@ repair. We macro-average success over tasks and resample tasks within each
 family. For successful trajectories, secondary measures are completion tokens,
 tool calls, edit attempts, and wall time. Failed trajectories retain their
 first terminal phase---parse, type, build, semantic oracle, or budget. As a
-supplementary interface-predictability diagnostic, we also report the
-perplexity of each passing reference solution.
+supplementary interface-predictability diagnostic, we score all 24
+oracle-passing reference patches and report paired conditional bits per UTF-8
+byte under each model. The prefix is the corresponding initial task and API
+prompt, and the continuation is a canonical edit action containing the native
+reference. Bits per byte is the reported measure; source records also retain
+token count and negative log likelihood.
 
-<!-- FIGURE 4 PLAN — Full-width, three compact panels fed by one CSV and one
-plotting script. (a) task-macro agent success at two demonstrations, grouped by
-family; (b) paired success change from zero to two demonstrations; (c) tokens
+<!-- AGENT-RESULTS FIGURE PLAN — Full-width, three compact panels fed by one CSV and one
+plotting script. (a) task-macro executable success grouped by family; (b)
+paired task-level success difference from Joggle to MLIR and xDSL; (c) tokens
 and tool calls among successful trajectories. Keep the two models in separate
-compact rows. Failure composition and reference-solution log-perplexity belong
+compact rows. Failure composition and reference-solution bits per byte belong
 in supplementary figures. CSV: figure-04-extension.csv. Raw columns: model,
 model_revision,system,system_revision,task,family,demo_count,demo_ids,run,seed,
 budget_actions,budget_tokens,wall_ms,prompt_tokens,completion_tokens,tool_calls,
 edit_attempts,files_touched,parsed,typed,built,passed,stop_reason,
 task_spec_sha256,api_card_sha256,trajectory_sha256,patch_sha256,reference_nll,
-reference_tokens. -->
+reference_tokens,reference_bytes,reference_bpb. -->
 
 ### 4.3 Change Footprint and Ownership
 
-The footprint study reuses 12 tasks from the extension suite, two from each
+The footprint study reuses the 12-task execution set, two tasks from each
 family. Selection is fixed before patch metrics are collected. Each of the 36
 implementations begins from a clean pinned snapshot, passes the common oracle,
 and is reduced to a hunk-level fixed point.
@@ -753,7 +762,7 @@ build edits, absolute paired counts are primary. We summarize the paired
 difference with a task-level bootstrap interval and report a ratio only when
 both counts are nonzero. Small rewrites and vertical features remain separate.
 
-<!-- FIGURE 5 PLAN — One-column dense paired-dot plot fed by one CSV and one
+<!-- FOOTPRINT-RESULTS FIGURE PLAN — One-column dense paired-dot plot fed by one CSV and one
 plotting script. Rows are the 12 feature changes grouped by family; four narrow
 columns show touched source files, changed source lines, ownership zones, and
 registry/build edits in a single-column 2-by-2 layout. Symmetric-log axes retain
@@ -778,9 +787,8 @@ UpdateRatio_{s,e}=\frac{T_{update,s,e}}{T_{full,s,e}}.
 $$
 
 The denominator is a complete rebuild of the same edited model under the same
-optimization policy. Absolute update latency permits cross-system comparison;
-the ratio quantifies reuse within one system. Both measurements are necessary:
-a small ratio alone does not establish a shorter development cycle.
+optimization policy. Absolute update latency compares turnaround across
+systems, while the ratio isolates reuse within each system.
 
 The protocol separates model-graph, optimization-policy, and compiler-source
 edits. Each case fixes the edit location and semantics, input tensors, and
@@ -789,13 +797,13 @@ invalidation recorded for each path. Coverage counts the cases that produce
 correct replacement executables. Stage timings explain the total cost rather
 than replacing it with an isolated propagation measurement.
 
-<!-- FIGURE 6 PROMPT — Production update results only. Compact aligned panels:
-absolute edit-to-executable latency by model and system; paired Update/Full
-ratios; breakdown of the same measured update paths. Separate graph, policy,
-and compiler-source edits. Shared model order, boxed axes, small inward ticks,
-and one legend. Use measured, numerically verified replacement executables;
-show unsupported coverage without assigning zero latency. Matched-stage
-diagnostic timings are not production update results. -->
+<!-- UPDATE-RESULTS FIGURE — Full width only because it contains all 13 editable
+models. Three aligned dense bar panels: (a) absolute update-to-ready seconds
+for Joggle, TVM, and ONNX-MLIR; (b) same-edit rebuild/update speedup extending
+from parity; (c) normalized stacked bars for Joggle's measured update stages,
+annotated with absolute totals. Panels share model order, boxed axes, inward
+ticks, and one legend. × denotes no correct executable and never stands for
+zero latency. Source: audited production update CSV only. -->
 
 ### 4.5 End-to-End Performance
 
@@ -849,7 +857,7 @@ QLinearConv and QLinearMatMul imports.*
 | Latency / ORT, common 22 | 8.95× | 5.23× | 6.66× | 3.18× |
 
 *Table: Operator summary. Geometric means use all 24 or the common 22 operators,
-as indicated. Per-operator values appear in Appendix A.*
+as indicated. Per-operator values appear in the supplementary material.*
 
 Across the 22 jointly correct operators, Joggle's optimized path was 1.27×
 faster than default TVM; ONNX-MLIR was 1.64× faster than Joggle.
@@ -862,7 +870,7 @@ Joggle and ORT passed all 24 operators, while each external compiler passed 22.
 TVM could not import QLinearConv or QLinearMatMul; ONNX-MLIR could not lower
 QLinearConv, and its QLinearMatMul output failed the integer oracle.
 The common-set aggregate therefore used the same 22 operators across all
-configurations, with complete per-operator measurements in Appendix A.
+configurations, with complete per-operator measurements in the supplementary material.
 
 Within Joggle, the optimization pack reduced geometric mean latency by 1.78×
 over all 24 operators, with gains concentrated in matrix multiplication.
@@ -1116,3 +1124,93 @@ Each passing entry uses ten warm-ups and 100 measured samples. Ratios divide
 unrounded per-operator medians; values below one indicate lower latency than
 ORT. — denotes an unsupported operation; × denotes a failed numerical oracle.
 Geometric means use the indicated common population.*
+
+## Appendix B. Extension Task Inputs and Outputs
+
+Table A2 records the natural-language contracts and representative observable
+inputs and outputs for the 12 tasks used by the Agent and footprint studies.
+The operative semantic constraints are preserved; only system-specific
+entry-point boilerplate is omitted. Every candidate is additionally checked on
+disjoint hidden cases.
+
+| Family | Task | Natural-language request | Positive input → output | Boundary / negative input → observation |
+| --- | --- | --- | --- | --- |
+| Definition | `def-parametric-type` | Define signed `fx<W,F>`; require `2≤W≤32`, `0≤F<W`, and preserve both parameters through construction, printing, and reparsing. | `W=8,F=3` → `fx<8,3>`, 8 logical bits | `W=8,F=8` → `invalid-type-parameter`; no output IR |
+| Definition | `def-quantized-op` | Define `qadd` for equal-shape i8 tensors with finite positive scales and signed-i32 zero points. | two `4xi8` tensors → `4xi8` | `2x3xi8 + 3x2xi8` → `shape-mismatch` |
+| Analysis | `ana-broadcast-shape` | Analyze NumPy trailing-dimension broadcasting for nonnegative extents. | `[2,3,1]`, `[4]` → legal `[2,3,4]` | `[2,3]`, `[4,3]` → conflict axis 1 from end |
+| Analysis | `ana-numeric-range` | Propagate closed finite intervals through add, multiply, ReLU, and clamp. | `mul([-2,3],[-4,5])` → `[-12,15]` | `relu([2,-1])` → `invalid-interval` |
+| Rewrite | `rew-add-zero` | Remove typed add-by-zero; floating positive zero requires `no_signed_zeros`; retain negative zero and used constants. | f32 `x+0`, `[4]`, NSZ → `x` | f32 `x+0.001` → unchanged |
+| Rewrite | `rew-redundant-cast` | Remove identity casts and only lossless signed-widening or finite f32/f64 round trips. | `f32[4]→f32[4]` → eliminated | `i16→i8→i16` → retained |
+| Conversion | `con-gelu-expand` | Replace `gelu` with `0.5*x*(1+erf(x/sqrt(2)))`; preserve shape, floating type, and users. | ![SSA before GELU expansion](figures/agent-gelu-before.svg) | ![SSA after GELU expansion](figures/agent-gelu-after.svg) integer → `unsupported-element-type` |
+| Conversion | `con-quant-expand` | Lower i8 `qadd` through f32 dequantize, add, and ties-even saturating quantize. | fixed vector → `[-1,1,-3,127]` | negative scale → `invalid-scale` |
+| Emission | `emit-graph-manifest` | Emit deterministic schema-v1 JSON with stable node/value numbering, types, users, and sorted attributes. | `splat→add→relu` → `n0..n2`, `v0..v3` | repeated emission → byte-identical JSON |
+| Emission | `emit-kernel-wrapper` | Emit complete C99 `task_kernel` for ReLU or `2*x+1`, supporting in-place and zero-count calls. | ReLU `[-2,-0,1.5,4]` → `[+0,+0,1.5,4]` | zero count + null pointers → no access |
+| Vertical | `vert-int4` | Add signed qint4, saturate, and pack low nibble first; reject invalid literals before packing. | five values → `[-7,0,-2,7,7]`, bytes `09 7e 07` | literal 8 → `literal-out-of-range` |
+| Vertical | `vert-fused-op` | Add NHWC/HWIO i8 fused qconv+bias+requantize+ReLU; fuse only a single-use chain. | unit kernel → `[4]`, one fused node | shared convolution → original chain preserved |
+
+*Table A2: Natural-language task inputs, observable outputs, and oracle-facing
+edge cases. The GELU row embeds the actual before/after SSA structures rendered
+from Graphviz DOT with DejaVu Sans Mono labels.*
+
+Tables A3–A5 specify construction, verification, and print/parse round trips.
+Rejected inputs produce no output IR. Tensor types omit the `tensor<…>` wrapper;
+bare i8 or f32 denotes a rank-zero tensor. Axis indices are zero-based.
+
+### B.1. Parametric type definition
+
+| Case | Width | Fraction bits | Expected type | Logical bits | Expected diagnostic |
+| --- | ---: | ---: | --- | ---: | --- |
+| fx8-3 | 8 | 3 | `fx<8,3>` | 8 | — |
+| fx16-7 | 16 | 7 | `fx<16,7>` | 16 | — |
+| minimum-integer | 2 | 0 | `fx<2,0>` | 2 | — |
+| minimum-fraction | 2 | 1 | `fx<2,1>` | 2 | — |
+| maximum-integer | 32 | 0 | `fx<32,0>` | 32 | — |
+| maximum-fraction | 32 | 31 | `fx<32,31>` | 32 | — |
+| fraction-overflow | 8 | 8 | — | — | invalid-type-parameter |
+| width-too-small | 1 | 0 | — | — | invalid-type-parameter |
+| width-too-large | 33 | 0 | — | — | invalid-type-parameter |
+| negative-width | -2 | 0 | — | — | invalid-type-parameter |
+| negative-fraction | 8 | -1 | — | — | invalid-type-parameter |
+
+*Table A3: `def-parametric-type`: complete inputs and expected outputs.
+Width denotes logical bits, not ABI allocation size.*
+
+### B.2. Quantized operation definition
+
+| Case | LHS type | RHS type | Scales (L, R, out) | Zero points (L, R, out) | Expected result / diagnostic |
+| --- | --- | --- | --- | --- | --- |
+| vector | 4×i8 | 4×i8 | 0.5, 0.25, 0.5 | 0, -3, 0 | 4×i8 |
+| matrix | 2×3×i8 | 2×3×i8 | 0.125, 0.125, 0.25 | 2, 2, 1 | 2×3×i8 |
+| scalar | i8 | i8 | 1, 1, 0.25 | 0, 0, 0 | i8 |
+| empty-axis | 0×3×i8 | 0×3×i8 | 1, 1, 0.5 | 0, 0, 0 | 0×3×i8 |
+| signed-zero-point-bounds | 1×2×3×i8 | 1×2×3×i8 | 0.0625, 2, 1 | −2³¹, 2³¹−1, −2³¹ | 1×2×3×i8 |
+| shape-mismatch | 2×3×i8 | 3×2×i8 | 1, 1, 0.5 | 0, 0, 0 | shape-mismatch |
+| zero-scale | 4×i8 | 4×i8 | 1, 1, 0 | 0, 0, 0 | invalid-scale |
+| lhs-zero-scale | 4×i8 | 4×i8 | 0, 1, 1 | 0, 0, 0 | invalid-scale |
+| rhs-negative-scale | 4×i8 | 4×i8 | 1, -0.25, 1 | 0, 0, 0 | invalid-scale |
+| negative-output-scale | 4×i8 | 4×i8 | 1, 1, -0.5 | 0, 0, 0 | invalid-scale |
+| lhs-element | 4×i16 | 4×i8 | 1, 1, 1 | 0, 0, 0 | operand-type-mismatch |
+| rhs-element | 4×i8 | 4×i16 | 1, 1, 1 | 0, 0, 0 | operand-type-mismatch |
+| rank-mismatch | i8 | 1×i8 | 1, 1, 1 | 0, 0, 0 | shape-mismatch |
+
+*Table A4: `def-quantized-op`: complete inputs and expected outputs, with defaults
+expanded. Scales are finite positive f64 values; zero points are signed i32 values.
+This task defines the operation; arithmetic lowering is evaluated separately.*
+
+### B.3. Layout-carrying operation definition
+
+| Case | Input type | Source | Destination | Permutation | Expected result / diagnostic |
+| --- | --- | --- | --- | --- | --- |
+| to-nhwc | 1×3×8×16×f32 | NCHW | NHWC | 0, 2, 3, 1 | 1×8×16×3×f32 |
+| to-nchw | 2×7×9×4×f16 | NHWC | NCHW | 0, 3, 1, 2 | 2×4×7×9×f16 |
+| identity-nchw | 2×3×4×5×f32 | NCHW | NCHW | 0, 1, 2, 3 | 2×3×4×5×f32 |
+| identity-nhwc | 2×4×5×3×f16 | NHWC | NHWC | 0, 1, 2, 3 | 2×4×5×3×f16 |
+| empty-axis | 1×3×0×16×f32 | NCHW | NHWC | 0, 2, 3, 1 | 1×0×16×3×f32 |
+| integer-element | 1×8×16×3×i8 | NHWC | NCHW | 0, 3, 1, 2 | 1×3×8×16×i8 |
+| wrong-rank | 3×8×16×f32 | NCHW | NHWC | — | rank-mismatch |
+| scalar-rank | f32 | NCHW | NHWC | — | rank-mismatch |
+| invalid-source | 1×3×8×16×f32 | CHWN | NHWC | — | invalid-layout |
+| invalid-destination | 1×3×8×16×f32 | NCHW | HWCN | — | invalid-layout |
+
+*Table A5: `def-layout-attribute`: complete inputs and expected outputs.
+The constructor infers the result shape and preserves the element type and both layout attributes.*
