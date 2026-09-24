@@ -1218,15 +1218,26 @@ the Python collector. Numerical checks follow the timed interval.*
 | Matched population | 12 tasks × 3 systems × 2 models; one run per condition |
 | Condition order | Shuffled once with seed 20260925 |
 
+All systems receive four explicit action templates:
+`{"action":"inspect"}`, `{"action":"edit","source":"<complete replacement source file>"}`,
+`{"action":"test"}`, and `{"action":"finish"}`. The candidate file is implicit;
+tests run all public fixtures. Error feedback names unrecognized fields.
+With author approval, this shared protocol replaced the implicit format after
+four initial trajectories produced 67 schema rejections in 104 responses.
+Those trajectories remain separate diagnostics; the full matched population
+is recollected with unchanged tasks, models, budgets, and scoring.
+
 The service exposes model aliases rather than immutable weight revisions.
 Each trajectory therefore records the requested and returned model identifiers,
 catalog entry, UTC timestamps, response identifiers, and token usage. The
 condition identifier 1701 is not sent as a sampling seed. Each request carries
-the complete conversation, including public-test feedback. Explicit HTTP
-429/502/503/504 responses receive at most two retries, after two and four
-seconds; transport timeouts stop collection for inspection. Candidate failures
-remain task outcomes. Wall time spans the action loop, including API requests
-and public tests, and excludes the final held-out oracle.
+the complete conversation, including public-test feedback. HTTP 429 retries
+wait 60/120 seconds; HTTP 502/503/504 retries wait 2/4 seconds. The longer
+quota wait was introduced after the first TPM rejection. An explicit 429 may
+resume the identical unserved request with its remaining budget; prior
+responses and the interruption record are retained. Transport timeouts stop
+collection. Wall time sums active action-loop intervals, including retries and
+public tests, but excludes recovery downtime and the final held-out oracle.
 
 Table A.5 reproduces the semantic-contract field of each task prompt verbatim,
 in quotation marks and italics. The native API card and public fixtures accompany

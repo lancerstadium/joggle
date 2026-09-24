@@ -91,28 +91,33 @@ with thinking disabled (46 input tokens and 10 output tokens in total); they
 are not task outcomes. The returned model identifiers match the requests;
 the provider returns an empty system fingerprint, not a weight revision.
 The credential is stored in the macOS Keychain, outside this repository.
-The hosted adapter and trajectory merger are committed in `a519175`. The
-native-oracle regression suite passes 65 tests with five optional-environment
-skips. Collection is running in
-`.cache/artifact/main-agents-siliconflow-20260925-otrf81w2/`: its manifest fixes
-all 72 conditions and their shuffled order before collecting outcomes. All
-36 native reference implementations pass under isolation before paid task
-requests. Preflight identified one environment issue: MLIR's CMake configuration
-needs read-only access to LLVM's source CMake modules as well as its build
-directory. The original failed preflight record and corrected toolchain scope
-are retained. Complete the matched population and its displays before
-finalizing the evaluation. Native performance timing has finished, so Agent
-native tests do not overlap those measurements. Protocol controls are
-synchronized in Section 4.2 and Appendix C; result fields remain unfilled
-until collection.
+The primary collection is running in
+`.cache/artifact/main-agents-explicit-20260925-x0f9ieig/`, frozen at `1d096c7`
+with action protocol `explicit-json-actions/v2`. Its manifest fixes all 72
+conditions and the original shuffled order. All 36 native references pass
+isolation checks; their task, source, and oracle records were revalidated
+before starting. Native performance timing has finished, so Agent tests do
+not overlap those measurements. Complete the matched population and displays
+before finalizing the evaluation; main result fields are still unfilled.
 
-The first completed trajectory exposed a postprocessing mismatch: the merger
-counted schema-rejected JSON as tool calls, while the runner correctly rejected
-those actions before invocation. Commit `df86756` corrects only the merger and
-its regression test; runner, prompts, task definitions, and native oracles are
-unchanged. The original unsuccessful trajectory is retained and passes the
-corrected audit without modifying its CSV, response history, or oracle result.
-The remaining conditions continue in the original fixed order.
+The four earlier trajectories in
+`.cache/artifact/main-agents-siliconflow-20260925-otrf81w2/` are retained as
+protocol diagnostics. All four are unsuccessful, with 67 schema-rejected
+responses among 104 returned responses. On 25 September the author approved
+explicit shared JSON action templates and field-specific errors, followed by
+recollection of the entire matrix, not selective replacement of failures.
+Task contracts, native API cards, models, budgets, fixtures, scoring, and
+condition order are unchanged. The primary assembler rejects the old action
+protocol; Appendix C records the amendment.
+
+The hosted adapter also corrects schema-rejected tool-call counting (`df86756`)
+and supports explicit HTTP 429 recovery (`741577a`). Quota retries wait 60/120
+seconds. A resumed run preserves returned responses and the candidate, retries
+only the identical unserved request, and uses the original remaining budget.
+The current 73-test regression suite passes 68 tests with five environment
+skips. Active wall time includes retry waits but excludes recovery downtime
+and final held-out validation. The original MLIR preflight environment error
+and its corrected read-only LLVM source/build scope remain in the diagnostics.
 
 The repeated-update data in `data/figure-06-update.json` now identify integrated
 main source revision `cc82ef114093b6d90ca94df05b54a60084585e72`, including
