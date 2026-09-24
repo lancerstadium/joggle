@@ -82,25 +82,26 @@ itself be a handle, an ordinary value, structured data, text, or bytes. Handles
 retain graph ownership and lifetime; ordinary values remain independent of
 graph storage.
 
-Figure~\ref{fig:operator-extension} follows the operator extension introduced
-in Section~\ref{sec:motivation}. The graph computes
-$y=\max(\operatorname{Conv}(x,w)+b,0)$. A legality function checks types,
-shapes, and intermediate uses; fusion replaces the matched operations with one
-semantic operation; conversion selects its target form. These graph states,
-$G_0$, $G_1$, and $G_2$, retain the same input/output contract. An emitter reads
-$G_2$ and returns the artifact. The extension's mod owns all five roles, which
-exchange graph handles and owned values through the same call interface.
+Figure~\ref{fig:operator-extension} makes this interface concrete with a quantized
+convolution extension. The input chains convolution, bias, requantization, and
+ReLU. A local helper checks layouts, intermediate users, and zero points before
+creating the fused call. It copies operation attributes, redirects result users,
+and erases the matched chain. The output preserves the function signature and
+quantization parameters. Its emitter then reads the fused operation's types and
+attributes to produce a kernel. All these roles exchange graph handles and
+owned values through the same call interface.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/figure-03-operator-extension.png}
-  \caption{A schematic fused-operator extension. One mod owns five compiler
-  roles. Fusion and conversion publish verified graphs; emission reads the
-  prepared graph and returns an artifact without changing it.}
-  \Description{The conv\_ext mod uses tensor and owns semantic definition,
-  analysis, transformation, conversion, and emission. Three graph rows show
-  convolution, bias addition, and ReLU fused and lowered to a target operation.
-  Emission reads the final graph and returns an artifact.}
+  \caption{Quantized convolution fusion. Complete input and output subject
+  functions surround the replacement excerpt. Guards, attribute transfer, and
+  def--use updates connect source syntax to graph edits. Operator declarations
+  come from the fixture; the complete transformation appears in Appendix C.7.}
+  \Description{Three vertically stacked panels show the input quantized
+  convolution chain, checked graph edits, and the resulting fused operation.
+  Code and graph nodes are aligned. Scales, layouts, result types, and the
+  observed output value four are retained across the transformation.}
   \label{fig:operator-extension}
 \end{figure}
 
@@ -117,15 +118,9 @@ graph and returns text or bytes. Thus, \texttt{query}, \texttt{run}, and \texttt
 resolution and evaluation while enforcing their respective publication rules.
 Read-only execution rejects mutation, and a run publishes a verified graph.
 
-Compiler functions also compose through ordinary calls. A fusion function can
-invoke its legality analysis, and a conversion can query the fused operator's
-semantic contract. These calls remain visible to type checking, diagnostics,
-and dependency capture. The typed call graph therefore defines composition
-directly.
-
-This function model unifies how compiler behavior is declared, resolved, and
-invoked. Mods then supply the namespace, visibility, and dependency boundaries
-that organize these functions.
+The example makes composition explicit: \texttt{transform} calls \texttt{fuse}
+through the same typed interface used for graph inspection. Mods supply the
+namespace, visibility, and dependency boundaries around these functions.
 
 \subsection{Mods}
 \label{sec:mods}
@@ -247,45 +242,48 @@ boundaries determine how much work each selection performs. Replacing the
 subject store starts a cold schedule.
 
 \begin{algorithm}[t]
-  \caption{Reactive stage selection and execution}
+  \caption{Recorded-scope scheduling}
   \label{alg:reactive}
   \begin{algorithmic}[1]
-    \State $dirty \gets \varnothing$; $selected \gets \varnothing$
-    \For{each stage $s_i$ in schedule order}
-      \State $miss \gets \operatorname{validate}(K_i,D_i)$
-      \If{$miss=\varnothing \land \operatorname{overlap}(dirty,D_i)$}
-        \State $miss \gets \mathrm{upstream}$
-      \EndIf
-      \If{$miss\neq\varnothing$}
-        \State $selected \gets selected \cup \{s_i\}$
-        \State $dirty \gets dirty \cup W_i$
+    \Require Environment $E$, graph $G$, stages $s_{1:n}$, records $R_{1:n}$
+    \Ensure Success; $G,R$ updated only on success
+    \State $U\gets\varnothing$; $I\gets[\,]$; $R'\gets R$
+    \For{$i=1,\ldots,n$}
+      \State $(K_i,D_i,W_i)\gets R_i$
+      \If{$\neg\Call{Current}{E,G,K_i,D_i}\lor\Call{Overlap}{U,D_i}$}
+        \State $I\gets\Call{Append}{I,i}$; $U\gets U\cup W_i$
       \EndIf
     \EndFor
-    \State \textbf{if} $selected=\varnothing$ \textbf{then return} success
-    \State begin transaction; verify input graph
-    \For{each $s_i\in selected$ in schedule order}
-      \State execute $s_i$, verify graph, capture fresh $D_i,W_i$
+    \State \textbf{if} $I=[\,]$ \textbf{then} \Return true
+    \State $T\gets\Call{BeginVerified}{E,G}$
+    \State \textbf{if} $T=\bot$ \textbf{then} \Return false
+    \For{$i\in I$}
+      \State $(ok,D'_i,W'_i)\gets\Call{EvalVerified}{E,s_i,G}$
+      \If{$\neg ok$}
+        \State \Call{Rollback}{$T$}
+        \State \Return false
+      \EndIf
+      \State $R'_i\gets(\Call{Key}{E,s_i},D'_i,W'_i)$
     \EndFor
-    \State commit graph
-    \State replace selected records and rebase retained records
-    \State publish all records for the next run
+    \State \Call{Commit}{$T$}
+    \State $R\gets\Call{Rebase}{R',E,G}$
+    \State \Return true
   \end{algorithmic}
 \end{algorithm}
 
-Dependency records are published only after all selected stages execute and the
-final graph verifies. Failure rolls back graph mutations and revision state; it
-also discards the tentative records. Consequently, the next run cannot reuse
-dependencies derived from an unpublished graph.
+\textsc{BeginVerified} starts the graph transaction and verifies its input;
+\textsc{EvalVerified} captures reads and effects and verifies the resulting graph.
+\textsc{Rebase} refreshes recorded observations against the committed graph.
 
-Figure~\ref{fig:reactive-mechanism} illustrates the distinction between a
-direct and an upstream miss. An external edit changes the convolution's layout
-metadata. Stage $s_1$ read that property, so its observation is stale. Stage
-$s_2$ read the ReLU operation: that observation remains current at selection
-time, but $s_1$ previously wrote to the containing function $f$. This output
-scope overlaps $s_2$'s input, so $s_2$ is selected as an upstream miss. Stage
-$s_3$ observed a reduction in a disjoint function $g$ and retains its result.
-Thus, stage selection follows recorded reads and write scopes, not merely
-reachability from the edited node.
+Successful execution publishes graph changes and dependency records together.
+Failure restores graph mutations and revisions and discards tentative records.
+
+Figure~\ref{fig:reactive-mechanism} connects an API edit to stage selection.
+Changing convolution layout invalidates $s_1$'s recorded read. Its prior write
+scope, function $f$, overlaps the ReLU observed by $s_2$, producing an upstream
+miss even though that ReLU is initially unchanged. Stage $s_3$ observes a
+disjoint function $g$ and is reused. Selection thus follows recorded reads and
+write scopes, not graph reachability.
 
 \begin{figure}[t]
   \centering

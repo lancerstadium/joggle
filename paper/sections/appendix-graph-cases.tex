@@ -48,6 +48,7 @@ RNE(4.5)$=4$. Shared convolution results retain the original chain.} \\*[2pt]
 \end{tabular}
 \end{table}
 
+
 \begin{table}[!htbp]
 \centering\scriptsize
 \caption{Worked analysis and artifact-output checks. Values are task-contract
@@ -90,3 +91,89 @@ Saturate $-16$ to $-8$; zero high nibble &
 \bottomrule
 \end{tabular}
 \end{table}
+
+\clearpage
+\subsection{Executable Extension and Observed Output}
+\label{sec:extension-code}
+
+The GELU reference implementation makes the graph-editing interface concrete.
+The following excerpt is the replacement body of \texttt{con-gelu-expand}.
+The enclosing function first rejects non-floating inputs; its local \texttt{splat}
+helper creates a typed constant and attaches its \texttt{value} attribute.
+
+\lstinputlisting[firstline=24,lastline=36,gobble=6]{../artifact/extensions/con-gelu-expand/reference.jog}
+
+For the \texttt{vector-f32} fixture, the input subject returns \texttt{gelu(x)}
+with \texttt{x: tensor<f32, [5]>}. The compiler prints the following subject
+after the reference transformation; unchanged operation declarations are omitted.
+
+\begin{lstlisting}
+fn subject(x: tensor<f32, [5]>) -> tensor<f32, [5]> {
+  [value: 0.5]
+  let gelu_constant10: tensor<f32, [5]> = splat()
+  [value: 1.0]
+  let gelu_constant11: tensor<f32, [5]> = splat()
+  [value: 1.4142135623730951]
+  let gelu_constant12: tensor<f32, [5]> = splat()
+  return mul(mul(gelu_constant10, x), add(gelu_constant11, erf(div(x, gelu_constant12))))
+}
+\end{lstlisting}
+
+The observer records three constants, two multiplies, division, \texttt{erf}, and
+addition, all with type f32[5]. All seven reference fixtures pass, including
+integer rejection; floating results satisfy the specified numerical tolerance.
+These are reference outputs, not Agent completions.
+
+\subsection{Recorded Agent Code and Diagnostic}
+\label{sec:agent-code}
+
+The \texttt{ana-numeric-range} contract asks: ``Propagate closed finite real
+intervals through add, multiply, ReLU, and clamp using endpoint arithmetic;
+multiplication evaluates all four endpoint products.'' In the recorded
+Qwen3-8B/Joggle trajectory, the final generated candidate was:
+
+\begin{lstlisting}
+mod extension
+use base
+use ir
+
+fn analyze(m: Mod) -> dict {
+  let subject = ir.find(m, "subject")
+  let calls = ir.ops(subject, ["call"])
+  let op = calls[0]
+  let value = ir.outs(op)[0]
+  let type = ir.type(value)
+  let dimensions = args(type)[1]
+  let element_type = args(type)[0]
+  let interval = base.interval(element_type, dimensions)
+  let mut result: dict = {}
+  result["interval"] = interval
+  return result
+}
+\end{lstlisting}
+
+The compiler returned \texttt{module.jog:14:11: error: expected '='} with empty stdout.
+The unmodified candidate exhausted 30 actions after 15 edits and 2,189 generated
+tokens. \texttt{let mut} is invalid; mutable bindings use \texttt{var}. Separately,
+the reference produces \texttt{\{"interval": [-12.0, 15.0]\}}
+for $[-2,3]\times[-4,5]$.
+
+\clearpage
+\subsection{Complete Fusion Transformation}
+\label{sec:fusion-code}
+
+Figure~4 uses this complete transformation entry point and its local helper
+from \texttt{vert-fused-op}. The subject supplies operator declarations;
+the extension imports graph access through \texttt{ir}. Layout, use-count,
+and zero-point checks precede mutation. Attribute copying retains the
+convolution layout and requantization parameters on the fused call.
+
+\lstinputlisting[firstline=1,lastline=39]{../artifact/extensions/vert-fused-op/reference.jog}
+
+For the unit-kernel case, the native oracle executes the emitted kernel with
+\texttt{x=[1,-2]}, \texttt{w=[2,-3]}, and bias~1. The accumulator is
+$1\cdot2+(-2)(-3)+1=9$. With accumulator scale~0.25, output scale~0.5,
+and zero point~0, ties-to-even rounding gives output~4. The complete reference
+passes all six fusion fixtures; a shared intermediate retains the original
+chain. The graph transformation and emitted-kernel checks use the same frozen
+compiler as the extension study.

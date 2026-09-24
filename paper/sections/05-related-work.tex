@@ -1,17 +1,19 @@
 \section{Related Work}
 \label{sec:related}
 
-Table~\ref{tab:related} follows the five compiler roles from definition to emission,
-then compares composition, rollback, and reuse boundaries. Checks identify
-extension interfaces for each system's program representation; Exo's emission
-interface uses instruction templates. The final four rows compare native plugins
-and mods as complete feature packages.
+Table~\ref{tab:related} compares capabilities at the extension boundary. Shared
+typed calls evaluate all five compiler roles through one call and value model.
+Cross-stage packages group these
+roles under a feature owner. Read-tracked reuse discovers dependencies from
+executed reads, while transactional edits restore graph state after failure.
+Their combination connects extension composition to incremental execution.
 
 \begin{table*}[t]
-  \caption{Extension coverage, composition, and reuse across eleven systems.
-$\checkmark$: supported; $\times$: absent in the measured packages; ---: not assessed.
-Read-tracked queries record dependencies during execution. Package counts cover both cross-stage
-features in Section~\ref{sec:eval-controllable}, including publication declarations.}
+  \caption{Extension forms, composition, and reuse across eleven systems.
+$\checkmark$: supplied by the compared extension mechanism; ---: not supplied by that mechanism.
+Cross-stage packages may use host-language libraries; shared role calls require a common
+compiler-evaluated call and value model, not merely a common host language.
+Eq.\ sat.: equality saturation; Incr.: incremental.}
   \label{tab:related}
   \fontsize{7.2}{9}\selectfont
   \setlength{\tabcolsep}{1.6pt}
@@ -34,21 +36,18 @@ features in Section~\ref{sec:eval-controllable}, including publication declarati
     & \workref{PIE}{konat2018pie}
     & \textcolor{ComparisonBlue}{Joggle} \\
     \midrule
-    Operator definitions & \yes & \yes & \yes & \yes & --- & \yes & \yes & --- & --- & --- & \yes \\
-    Inspection / analysis & \yes & \yes & \yes & \yes & \yes & \yes & \yes & --- & --- & --- & \yes \\
-    Composable transforms & \yes & \yes & \yes & \yes & \yes & \yes & \yes & --- & --- & --- & \yes \\
-    Conversion / lowering & \yes & \yes & \yes & \yes & \yes & --- & --- & --- & --- & --- & \yes \\
-    Emission hooks & \yes & \yes & \yes & \yes & --- & --- & --- & --- & --- & --- & \yes \\
-    \midrule
+    Primary focus & IR design & IR design & ML compile & Scheduling & Scheduling & Eq.\ sat. & Eq.\ sat. & Incr.\ compile & Incr.\ eval. & Pipelines & Compilation \\
+    Workload & SSA & SSA & Tensors & Kernels & Payload IR & Expressions & Expr./facts & Rust & General & Builds & Typed graphs \\
     Extension notation & C++/ODS & Python & Py/C++ & Python & IR/C++ & Rust & Datalog & Rust & Host & PIE & jog \\
-    Composition unit & Dialect & Dialect & IRModule & Library & Sequence & Rule set & Rule set & Query & Thunk & Pipeline & mod \\
-    Mutation rollback scope & Conversion & --- & --- & --- & Alternative & --- & --- & --- & --- & --- & Sequence \\
-    Read-tracked query reuse & --- & --- & --- & --- & --- & --- & --- & \yes & \yes & \yes & \yes \\
     \midrule
-    Single-owner package & \yes & \yes & --- & --- & --- & --- & --- & --- & --- & --- & \yes \\
-    No separate registration & $\times$ & $\times$ & --- & --- & --- & --- & --- & --- & --- & --- & \yes \\
-    Files / package $\downarrow$ & 3 & 3 & --- & --- & --- & --- & --- & --- & --- & --- & 1 \\
-    Lines / package $\downarrow$ & 178--193 & 122--125 & --- & --- & --- & --- & --- & --- & --- & --- & 69--77 \\
+    Extension form & Host API & Host API & API/DSL & Schedule & Schedule IR & Rules & Rules/facts & Query & Thunk & Task & Typed fn \\
+    Composition unit & Dialect & Dialect & IRModule & Library & Sequence & Rule set & Rule set & Query & Thunk & Pipeline & mod \\
+    \midrule
+    Shared typed role calls & --- & --- & --- & --- & --- & --- & --- & --- & --- & --- & \yes \\
+    Cross-stage packages & \yes & \yes & \yes & \yes & --- & --- & --- & --- & --- & --- & \yes \\
+    Read-tracked reuse & --- & --- & --- & --- & --- & --- & --- & \yes & \yes & \yes & \yes \\
+    Transactional IR edits & \yes & --- & --- & --- & \yes & --- & --- & --- & --- & --- & \yes \\
+    Rollback scope & Conversion & --- & --- & --- & Alternative & --- & --- & --- & --- & --- & Sequence \\
     \bottomrule
   \end{tabular*}
 \end{table*}
@@ -114,20 +113,16 @@ conversion, and emission through a shared call boundary with recorded graph read
 
 \subsection{Incremental Execution}
 
-Self-adjusting computation records dynamic dependencies and reuses prior
-work~\cite{acar2009selfadjusting}; Adapton adds demand-driven composition
-~\cite{hammer2014adapton}. Differential dataflow maintains computations with nested
-iteration~\cite{mcsherry2013differential}, and IncA incrementally maintains program
-analyses expressed as graph patterns~\cite{szabo2016inca}.
+Self-adjusting computation and Adapton reuse work through dynamic dependencies
+~\cite{acar2009selfadjusting,hammer2014adapton}. Differential dataflow handles nested
+iteration~\cite{mcsherry2013differential}; IncA maintains graph-pattern analyses
+~\cite{szabo2016inca}.
 
-Build and development systems make dependency granularity explicit. Shake
-discovers dependencies during execution~\cite{mitchell2012shake}; pluto records
-fine-grained requirements and builder dependencies~\cite{erdweg2015pluto}; PIE
-combines a typed language with persistent incremental pipelines~\cite{konat2018pie}.
-Build Systems à la Carte separates scheduling from rebuilding
-~\cite{mokhov2018build}, and rustc validates cached queries through a red-green
-dependency graph~\cite{rustcincremental}. LLVM ORC instead supports on-demand
-materialization and symbol dependencies in JIT compilation~\cite{llvmorc}.
+For build systems, Shake and pluto discover dependencies during execution
+~\cite{mitchell2012shake,erdweg2015pluto}, while PIE provides typed, persistent
+pipelines~\cite{konat2018pie}. Build Systems à la Carte separates scheduling from
+rebuilding~\cite{mokhov2018build}; rustc validates cached queries with red-green
+tracking~\cite{rustcincremental}. LLVM ORC materializes symbols on demand~\cite{llvmorc}.
 
 Our evaluator tracks graph refinement through typed observations,
 entity generations, revisions, and effects, published transactionally.

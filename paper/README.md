@@ -224,23 +224,45 @@ shared evaluator to the subject store. Execution plans cache function decoding,
 whereas dependency records track the graph state observed by a call. These
 caches serve different purposes and share a transactional publication boundary.
 
-<!-- FIGURE 3 PROMPT — system-architecture.png. Original compact single-column
-square compiler architecture, white background, fine charcoal rules, pale blue
-and amber nodes, small serif mathematics and monospace field annotations.
-Top left: tensor/fusion/target mod boundaries, use edges from dependents to
-tensor; legal/fuse/lower/emit function nodes. Top right: nested M/f/b0 subject
-graph x,w→Conv→Add→ReLU→y, b→Add, value circles and users(v) links.
-Middle: f:(H,A)→R and parallel query(R), run(RW), emit(R) entrances to one
-resolve/evaluate interface; a compact body/intrinsic/native bracket identifies
-implementation forms. Bottom: evaluator plan table, register slots and
-K/D/W records beside separate F/B/O/V entity-slot arrays, h=(S,i,g), revision
-scopes and a separate o0→v0→o1 def-use relation. Plan key includes store,
-function, generation and revision. Tiny annotations distinguish query (K,r,D)
-from stage (K,D,W) records and decode the store/slot/generation handle fields.
-Transaction: G→G′→verify ownership/types/uses, success publishes
-graph and dependency records; failure restores G. No invented timing numbers,
-large title bands, decorative icons, paragraphs, or sequential query/run/emit.
-Use thin dependency arrows and tiny local annotations, not word-heavy cards. -->
+<!-- FIGURE 3 PROMPT — Built-in image generation. Final prompt and correction:
+Use case: scientific-educational. Create a replacement for Joggle Figure 3, a dense but impeccably organized single-column EuroSys SYSTEM ARCHITECTURE diagram. Image 1 is STYLE reference (new code-rich Figure 4). Image 2 is the OLD architecture to replace, use its concepts, NOT its layout. Portrait near 1250x1500, white background, thin charcoal panel rules, pale blue/teal/lavender fills, small DejaVu Sans Mono code, crisp sharp accurate text. Four aligned horizontal bands, very little wasted space. No large overall title, no fake measurements, no decorative art. Explain organization clearly, not a random collection of internals.
+
+Band (a) "Extensions and subject"
+Two evenly balanced compartments separated by a vertical thin rule.
+LEFT "Extension mod". Code at top EXACTLY:
+mod extension
+use base
+use ir
+Below code, small import arrows from extension folder glyph to base and ir nodes. Two small signature strips labelled "entry signatures":
+fn transform(m: Mod) -> bool
+fn analyze(m: Mod) -> dict
+RIGHT "Subject mod". Code:
+mod fixture
+use tensor
+Below a clearly nested container Mod > Fn > Blk, containing small horizontal graph x,w -> qconv -> bias -> requantize -> relu -> y; b input joins bias. Use tiny node labels and compact shapes. Indicate an Op rectangle, Val circles, and an Attr tag on qconv. Arrows and nesting precise. Show Mod/Fn/Blk labels on containing borders, not giant texts. Tiny tag text "layout: NHWC".
+
+Band (b) "One invocation boundary"
+Three small aligned inlet boxes "query (read)" "run (mutate)" "emit (read)" lead into a common "resolve -> evaluate" central strip. Side inlet "source | intrinsic | native" points into evaluate.
+Below, two little exact source operations with arrows to next band:
+"ir.args(op)" tagged READ, and "ir.replace(m, old, result)" tagged WRITE.
+Along bottom of band tiny result labels "Attr" under query, "verified graph" under run, "text / bytes" under emit. No claim these three APIs have identical effects.
+
+Band (c) "Execution state"
+Two compartments:
+LEFT "Evaluator caches". Three stacked compact rows:
+"decoded body" with key "(store, fn, generation, revision)"
+"query" with record "(K, result, D)"
+"stage" with record "(K, D, W)"
+Tiny key underneath "K: environment, store, function, arguments".
+RIGHT "Typed graph store". Four small vertical slots labelled Fn, Blk, Op, Val. Connect Op -> Val -> Op along bottom, small reverse arc "users". Show handle "h = (store, slot, generation)" and revision tags "graph | structure | function". No arbitrary numeric revisions or fabricated pc opcodes. Thin READ line from store toward observed record D; thin WRITE line toward graph revision.
+
+Band (d) "Mutation transaction"
+A clean left-to-right flow within one band:
+"snapshot" -> "execute" -> diamond "verify" -> "commit"
+Under commit compact "(G', D', W')". Success labelled check mark. Failure dashed loop from verify back to snapshot labelled "rollback"; rollback restores input state. Tiny footer "ownership | types | def-use". Graph publication and records side by side, not duplicated giant tables.
+Maintain style of Image1, not its code transformation layout. Small labels, dense meaningful symbols, aligned panels, unambiguous edges. No marketing claim. No large blocks of narrative.
+Correction: remove output labels beneath the API examples; label the forward Val-to-user-Op edge users, with no backwards users arrow.
+-->
 
 *Figure 3: Two graph structures organize compilation. Mods delimit compiler capabilities;
 typed calls operate on the subject graph. Decoded plans, dependency records,
@@ -271,32 +293,74 @@ or `Attr`. The result $R$ may itself be a handle, an ordinary value, structured
 data, text, or bytes. Handles retain graph ownership and lifetime; ordinary
 values remain independent of graph storage.
 
-Figure 4 follows the operator extension introduced in Section 2. The graph
-computes $y=\max(\operatorname{Conv}(x,w)+b,0)$. A legality function checks
-types, shapes, and intermediate uses; fusion replaces the matched operations
-with one semantic operation; conversion selects its target form. These graph
-states, $G_0$, $G_1$, and $G_2$, retain the same input/output contract. An
-emitter reads $G_2$ and returns the artifact. The extension's mod owns all five
-roles, which exchange graph handles and owned values through the same call
-interface.
+Figure 4 makes this interface concrete with a quantized convolution extension.
+The input chains convolution, bias, requantization, and ReLU. A local helper
+checks layouts, intermediate users, and zero points before creating the fused
+call. It copies operation attributes, redirects result users, and erases the
+matched chain. The output preserves the function signature and quantization
+parameters. Its emitter then reads the fused operation's types and attributes
+to produce a kernel. All these roles exchange graph handles and owned values
+through the same call interface.
 
-<!-- FIGURE 4 PROMPT — Original compact single-column scientific diagram,
-3.35 inches wide and approximately 2.6 inches high. Top: one conv_ext mod
-containing Semantics/Analysis/Transform/Convert/Emit columns, with
-define/legal/fuse/lower/emit and contract/read/write/write/read beneath them;
-use tensor and a common typed-functions/graph-handles/owned-values rail.
-Bottom: three aligned graph states. G0: x,w→Conv; b→BiasAdd; Conv→BiasAdd→ReLU→y,
-with a single-use match boundary. G1: x,w,b→ConvBiasReLU→y. G2:
-x,w,b→target.conv_relu→y. Left arrows: fuse·verify and lower·verify.
-An emit(read) arrow connects the G2 graph to an artifact glyph. Semantic
-contract: y=max(Conv(x,w)+b,0). These are schematic operator and role names.
-Thin charcoal connectors, white background, pale teal/blue/lavender;
-coral only for the match boundary. Compact readable labels, no numeric callouts,
-fake source code, cache-hit counts, or isolated output-type edits. -->
+<!-- FIGURE 4 PROMPT — Built-in image generation; source-checked against
+artifact/extensions/vert-fused-op/reference.jog and
+.cache/artifact/paper-code-fusion-unit.json. Figure asset:
+paper/figures/figure-03-operator-extension.png.
+Use case: scientific-educational. Redesign the attached Joggle compiler figure into a NEW dense portrait single-column EuroSys mechanism diagram with REAL code built into the panels. Image 1 is palette reference only: preserve pale blue, teal, lavender, thin charcoal strokes, white background. Replace the layout entirely; no giant role-table. Produce one crisp high-resolution portrait image, about 1500x1800, tight crop, no outer title, no figure number, no decorative whitespace. Small DejaVu Sans Mono code with excellent accurate glyphs, restrained blue keywords, teal types, coral highlights only on changed lines. Dense yet aligned; three vertically stacked panels with small right-hand graph strips, connected by arrows. ALL text below must be copied faithfully; don't invent API calls, omit a return, change a number, or abbreviate identifiers. Short prose only.
 
-*Figure 4: A schematic fused-operator extension. One mod owns five compiler
-roles. Fusion and conversion publish verified graphs; emission reads the
-prepared graph and returns an artifact without changing it.*
+Top header rail contains "mod extension" "use base" "use ir", followed by tiny signature "fn transform(m: Mod) -> bool". Small legend: blue = read, teal = create, coral = replace / erase.
+Panel (a) "Input subject". Left 78% width is this COMPLETE subject function (line wrapping permitted, not missing code):
+fn subject(
+  x: tensor<i8, [1,1,1,2]>,
+  w: tensor<i8, [1,1,2,1]>,
+  b: tensor<i32, [1]>
+) -> tensor<i8, [1,1,1,1]> {
+  [layout: "NHWC", kernel_layout: "HWIO"]
+  let conv = qconv(x, w)
+  let biased = bias(conv, b)
+  [acc_scale: 0.25, out_scale: 0.5, output_zero: 0]
+  let quantized = requantize(biased)
+  [output_zero: 0]
+  let output = relu(quantized)
+  return output
+}
+Right-hand narrow strip has a vertical dataflow of four small nodes qconv -> bias -> requantize -> relu, with input x,w to qconv, b to bias, output y below relu. Dashed coral enclosure around four nodes, label "single-use". Clearly show b joins bias, not conv.
+
+Panel (b) "Checked graph edit". Small signature "local fn fuse(m: Mod, relu: Op) -> bool". Three compact guard chips: "NHWC / HWIO", "one user", "same zero point". Below show the following REAL replacement excerpt, marked "replacement excerpt" (not a complete standalone function):
+let old = ir.outs(relu)[0]
+let inputs = ir.args(conv) + [ir.args(bias)[1]]
+let result = ir.call(m, relu,
+  ir.find(m, "fused_qconv_relu"), inputs, ir.type(old))
+Between this code and next lines insert a narrow process box "copy attributes: conv + requantize" with a small metadata tag symbol. Then actual replacement lines:
+assert(ir.replace(m, old, result), "replace-failed")
+for op in [relu, quant, bias, conv] {
+  assert(ir.erase(m, op), "erase-failed")
+}
+Blue thin leaders from old to relu output; teal from result to a new fused node; coral short leaders for erased old nodes. Do NOT claim the excerpt includes the entire helper. A tiny right annotation "verify -> commit" is sufficient.
+
+Panel (c) "Output subject". Left 78% complete function, same input and output types:
+fn subject(
+  x: tensor<i8, [1,1,1,2]>,
+  w: tensor<i8, [1,1,2,1]>,
+  b: tensor<i32, [1]>
+) -> tensor<i8, [1,1,1,1]> {
+  [acc_scale: 0.25, kernel_layout: "HWIO",
+   layout: "NHWC", out_scale: 0.5, output_zero: 0]
+  let fused16: tensor<i8, [1,1,1,1]> =
+    fused_qconv_relu(x, w, b)
+  return fused16
+}
+Right narrow graph: x,w,b -> fused_qconv_relu -> y. Tiny document icon below labelled "kernel".
+At very bottom one small verification rail:
+"x=[1,-2]  w=[2,-3]  b=1  |  acc=9  |  RNE(4.5)=4  |  y=[4]"
+Tiny footnote "Subject functions complete; operator declarations supplied by fixture."
+No fake performance numbers. No Rust code. No ellipses replacing actual subject statements. No huge labels, no icons unrelated to code. The effect should be a carefully typeset dense academic code-and-graph transformation figure, not a presentation poster.
+-->
+
+*Figure 4: Quantized convolution fusion. Complete input and output subject
+functions surround the replacement excerpt. Guards, attribute transfer, and
+def-use updates connect source syntax to graph edits. Operator declarations
+come from the fixture; the complete transformation appears in Appendix C.7.*
 
 To invoke a compiler function, the environment resolves its qualified name, visible
 mods, explicit generic arguments, parameter types, and result context. The
@@ -311,15 +375,9 @@ graph and returns text or bytes. Thus, `query`, `run`, and `emit` share
 resolution and evaluation while enforcing their respective publication rules.
 Read-only execution rejects mutation, and a run publishes a verified graph.
 
-Compiler functions also compose through ordinary calls. A fusion function can
-invoke the legality analysis in Figure 4, and a conversion can query the fused
-operator's semantic contract. These calls remain visible to type checking,
-diagnostics, and dependency capture. The typed call graph therefore defines
-composition directly.
-
-This function model unifies how compiler behavior is declared, resolved, and
-invoked. Mods then supply the namespace, visibility, and dependency boundaries
-that organize these functions.
+The example makes composition explicit: `transform` calls `fuse` through the same
+typed interface used for graph inspection. Mods supply the namespace, visibility,
+and dependency boundaries around these functions.
 
 ### 3.3 Mods
 
@@ -445,56 +503,77 @@ determine how much work each selection performs. Replacing the subject store
 starts a cold schedule.
 
 ```text
-Algorithm 1: Reactive stage selection and execution
+Algorithm 1: Recorded-scope scheduling
+Input: environment E, graph G, stages s[1..n], records R[1..n]
+Output: success; G and R updated only on success
 
-dirty_outputs <- empty
-selected      <- empty
-
-for each stage s[i] in schedule order:
-    miss <- validate(s[i].key, s[i].inputs)
-    if miss is none and overlaps(dirty_outputs, s[i].inputs):
-        miss <- upstream
-    if miss is not none:
-        selected.add(s[i])
-        dirty_outputs.add(s[i].outputs)
-
-if selected is empty: return success
-begin transaction; verify input graph
-for each stage s[i] in selected:
-    execute s[i]
-    verify resulting graph
-    capture fresh inputs D[i] and outputs W[i]
-commit transaction
-replace records for selected stages
-rebase retained observations to the committed graph
-publish all records for the next run
+U <- {}; I <- []; R' <- R
+for i = 1..n:
+    (K_i, D_i, W_i) <- R[i]
+    if not Current(E, G, K_i, D_i) or Overlap(U, D_i):
+        I <- Append(I, i); U <- U union W_i
+if I = []: return true
+T <- BeginVerified(E, G)
+if T = failure: return false
+for i in I:
+    (ok, D'_i, W'_i) <- EvalVerified(E, s[i], G)
+    if not ok:
+        Rollback(T)
+        return false
+    R'[i] <- (Key(E, s[i]), D'_i, W'_i)
+Commit(T)
+R <- Rebase(R', E, G)
+return true
 ```
 
-Dependency records are published only after all selected stages execute and
-the final graph verifies. Failure rolls back graph mutations and revision
-state; it also discards the tentative records. Consequently, the next run
-cannot reuse dependencies derived from an unpublished graph.
+`BeginVerified` starts the graph transaction and verifies its input;
+`EvalVerified` captures reads and effects and verifies the resulting graph.
+`Rebase` refreshes recorded observations against the committed graph.
 
-Figure 5 illustrates the distinction between a direct and an upstream miss.
-An external edit changes the convolution's layout metadata. Stage $s_1$ read
-that property, so its observation is stale. Stage $s_2$ read the ReLU operation:
-that observation remains current at selection time, but $s_1$ previously wrote
-to the containing function $f$. This output scope overlaps $s_2$'s input, so
-$s_2$ is selected as an upstream miss. Stage $s_3$ observed a reduction in a
-disjoint function $g$ and retains its result. Thus, stage selection follows
-recorded reads and write scopes, not merely reachability from the edited node.
+Successful execution publishes graph changes and dependency records together.
+Failure restores graph mutations and revisions and discards tentative records.
 
-<!-- FIGURE 5 PROMPT — reactive-update.png. Dense square single-column
-mechanism diagram, fine black rules, small math annotations, pale blue graph
-nodes, amber selected stages and hatched retained records. Three tight bands:
-(a) f contains x,w→Conv→Add→ReLU→y and b→Add; disjoint g contains u→Reduce→v.
-External edit layout a→b at Conv; cached D1 records layout=a, D2 observes ReLU,
-D3 observes Reduce. (b) Record table s1/Conv.layout/f/stale,
-s2/ReLU/f/upstream, s3/Reduce/empty/reuse; selected_i=stale(Ki,Di) OR
-overlap(dirty,Di). Scope intersections explain selection. (c) s1→s2 within a
-transaction captures fresh D′/W′; verify G′ precedes joint publication;
-failure restores G, including the already committed external edit layout=b.
-Retained s3 records are rebased. No timings, large headings or prose boxes. -->
+Figure 5 connects an API edit to stage selection. Changing convolution layout
+invalidates $s_1$'s recorded read. Its prior write scope, function $f$, overlaps
+the ReLU observed by $s_2$, producing an upstream miss even though that ReLU is
+initially unchanged. Stage $s_3$ observes a disjoint function $g$ and is reused.
+Selection thus follows recorded reads and write scopes, not graph reachability.
+
+<!-- FIGURE 5 PROMPT — Built-in image generation. Final prompt and correction:
+Use case: scientific-educational. Create replacement Joggle Figure 5, a compact portrait single-column EuroSys REACTIVE STAGE SELECTION mechanism diagram. Image 1 is only STYLE reference (new Figure4). Image2 is old reactive diagram to replace. Make a completely clean alignment and code-rich concrete example, palette pale blue/teal/lavender, coral ONLY changed/selected, gray diagonal hatch only reused. White background, thin charcoal frames, small DejaVu Sans Mono, tight crop, about 1250x1450. Three vertically stacked panels. This is a schematic example of the CURRENT recorded-write-scope selector, NOT a new dynamic-write algorithm. Distinguish old recorded W from freshly captured W'. Do not silently claim a changed write footprint is handled.
+
+Panel (a) "Edit and recorded reads".
+Top exact API expression in a narrow highlighted strip:
+ir.set(m, conv, "layout", "NHWC")
+Tiny side tag "NCHW -> NHWC".
+Below two disjoint function boxes. f occupies two thirds: x,w -> Conv -> Add -> ReLU -> y; b joins Add. g occupies one third: u -> Reduce -> v. Graph connector directions correct. Attach tiny numbered-neutral read records (no red number badges): under Conv "D1: Conv.layout = NCHW"; under ReLU "D2: ReLU"; under Reduce "D3: Reduce".
+A small source line "ir.meta(conv, \"layout\")" points with dashed READ arrow from Conv to D1. The new live graph has NHWC, while the RECORDED D1 still says NCHW. Do not conflate these.
+
+Panel (b) "Select from recorded effects".
+Compact aligned table, no paragraphs:
+stage | recorded reads | prior writes | decision
+s1 | Conv.layout | {f} | direct miss
+s2 | ReLU in f   | {f} | upstream miss
+s3 | Reduce in g | empty set | reuse
+Use small coral fill in selected s1/s2 cells; gray hatch s3. Along right or below, compact stage strip:
+[s1] -> [s2]    [s3, hatched]
+Above arrow s1 to s2 label "W1 overlaps D2".
+Under s1 label "stale read"; under s3 label "disjoint".
+Small formula "select_i = stale(K_i,D_i) OR overlap(dirty,D_i)"
+Footer tiny "dirty accumulates prior write scopes". No fake timing, no hit rate, no giant words.
+
+Panel (c) "Execute and publish".
+Show left input state G0 with tag "layout = NHWC" (the external edit is already committed).
+Then transactional enclosure containing s1 -> s2 -> diamond "verify".
+Success arrow to compact output box "G' + new records" with a miniature three-row table:
+s1 | D1' | W1'
+s2 | D2' | W2'
+s3 | retained | empty set
+Tiny note at table "observations rebased". This corresponds to current implementation; do not claim a proof of soundness.
+Failure dashed return arrow from verify back to G0 labelled "rollback". IMPORTANT the rollback destination is G0 with NHWC, NEVER the pre-edit NCHW state.
+A small hatched s3 symbol bypasses execution and joins the record-publication side. Bottom micro-legend solid arrow execute, dashed arrow observe/restore, coral selected, hatched reused. Keep dense, no prose paragraph, no repeated disconnected boxes, no black filled regions. Use code and tables for exact state, not decorative symbols.
+Correction: use exactly ir.meta(conv, "layout") with one pair of parentheses.
+-->
 
 *Figure 5: Reactive stage selection. A stale observation selects $s_1$;
 overlapping effects select $s_2$; disjoint observations retain $s_3$.
@@ -966,32 +1045,31 @@ separately.
 
 ## 5. Related Work
 
-Table 2 follows the five compiler roles from definition to emission, then
-compares composition, rollback, and reuse boundaries. Checks identify extension
-interfaces for each system's program representation; Exo's emission interface
-uses instruction templates. The final four rows compare native plugins and
-mods as complete feature packages.
+Table 2 compares capabilities at the extension boundary. Shared typed calls
+evaluate all five compiler roles through one call and value model.
+Cross-stage packages group these roles under a feature
+owner. Read-tracked reuse discovers dependencies from executed reads, while
+transactional edits restore graph state after failure. Their combination connects
+extension composition to incremental execution.
 
 | Dimension | MLIR [@lattner2021mlir] | xDSL [@fehr2025xdsl] | TVM [@chen2018tvm] | Exo 2 [@ikarashi2025exo2] | Transform [@lucke2025transform] | egg [@willsey2021egg] | egglog [@zhang2023egglog] | rustc [@rustcincremental] | Adapton [@hammer2014adapton] | PIE [@konat2018pie] | **Joggle** |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Operator definitions | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | — | — | — | **✓** |
-| Inspection / analysis | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | **✓** |
-| Composable transforms | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | **✓** |
-| Conversion / lowering | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | — | — | **✓** |
-| Emission hooks | ✓ | ✓ | ✓ | ✓ | — | — | — | — | — | — | **✓** |
+| Primary focus | IR design | IR design | ML compile | Scheduling | Scheduling | Eq. sat. | Eq. sat. | Incr. compile | Incr. eval. | Pipelines | **Compilation** |
+| Workload | SSA | SSA | Tensors | Kernels | Payload IR | Expressions | Expr./facts | Rust | General | Builds | **Typed graphs** |
 | Extension notation | C++/ODS | Python | Py/C++ | Python | IR/C++ | Rust | Datalog | Rust | Host | PIE | **jog** |
+| Extension form | Host API | Host API | API/DSL | Schedule | Schedule IR | Rules | Rules/facts | Query | Thunk | Task | **Typed fn** |
 | Composition unit | Dialect | Dialect | IRModule | Library | Sequence | Rule set | Rule set | Query | Thunk | Pipeline | **mod** |
-| Mutation rollback scope | Conversion | — | — | — | Alternative | — | — | — | — | — | **Sequence** |
-| Read-tracked query reuse | — | — | — | — | — | — | — | ✓ | ✓ | ✓ | **✓** |
-| Single-owner package | ✓ | ✓ | — | — | — | — | — | — | — | — | **✓** |
-| No separate registration | × | × | — | — | — | — | — | — | — | — | **✓** |
-| Files / package ↓ | 3 | 3 | — | — | — | — | — | — | — | — | **1** |
-| Lines / package ↓ | 178–193 | 122–125 | — | — | — | — | — | — | — | — | **69–77** |
+| Shared typed role calls | — | — | — | — | — | — | — | — | — | — | **✓** |
+| Cross-stage packages | ✓ | ✓ | ✓ | ✓ | — | — | — | — | — | — | **✓** |
+| Read-tracked reuse | — | — | — | — | — | — | — | ✓ | ✓ | ✓ | **✓** |
+| Transactional IR edits | ✓ | — | — | — | ✓ | — | — | — | — | — | **✓** |
+| Rollback scope | Conversion | — | — | — | Alternative | — | — | — | — | — | **Sequence** |
 
-*Table 2: Extension coverage, composition, and reuse across eleven systems.
-✓: supported; ×: absent in the measured packages; —: not assessed.
-Read-tracked queries record dependencies during execution. Package counts cover both cross-stage
-features in Section 4.3, including publication declarations.*
+*Table 2: Extension forms, composition, and reuse across eleven systems.
+✓: supplied by the compared extension mechanism; —: not supplied by that
+mechanism. Cross-stage packages may use host-language libraries; shared role
+calls require a common compiler-evaluated call and value model, not merely a
+common host language. Eq. sat.: equality saturation; Incr.: incremental.*
 
 ### 5.1 Compiler Construction and Composition
 
@@ -1054,20 +1132,16 @@ conversion, and emission through a shared call boundary with recorded graph read
 
 ### 5.4 Incremental Execution
 
-Self-adjusting computation records dynamic dependencies and reuses prior
-work [@acar2009selfadjusting]; Adapton adds demand-driven composition
-[@hammer2014adapton]. Differential dataflow maintains computations with nested
-iteration [@mcsherry2013differential], and IncA incrementally maintains program
-analyses expressed as graph patterns [@szabo2016inca].
+Self-adjusting computation and Adapton reuse work through dynamic dependencies
+[@acar2009selfadjusting; @hammer2014adapton]. Differential dataflow handles nested
+iteration [@mcsherry2013differential]; IncA maintains graph-pattern analyses
+[@szabo2016inca].
 
-Build and development systems make dependency granularity explicit. Shake
-discovers dependencies during execution [@mitchell2012shake]; pluto records
-fine-grained requirements and builder dependencies [@erdweg2015pluto]; PIE
-combines a typed language with persistent incremental pipelines [@konat2018pie].
-Build Systems à la Carte separates scheduling from rebuilding
-[@mokhov2018build], and rustc validates cached queries through a red-green
-dependency graph [@rustcincremental]. LLVM ORC instead supports on-demand
-materialization and symbol dependencies in JIT compilation [@llvmorc].
+For build systems, Shake and pluto discover dependencies during execution
+[@mitchell2012shake; @erdweg2015pluto], while PIE provides typed, persistent
+pipelines [@konat2018pie]. Build Systems à la Carte separates scheduling from
+rebuilding [@mokhov2018build]; rustc validates cached queries with red-green
+tracking [@rustcincremental]. LLVM ORC materializes symbols on demand [@llvmorc].
 
 Our evaluator tracks graph refinement through typed observations,
 entity generations, revisions, and effects, published transactionally.
@@ -1368,6 +1442,146 @@ Outputs are the specified oracle expectations; byte strings are hexadecimal.
 
 *Table A.10: Worked analysis and artifact-output checks. Each row retains the
 semantic step between the task input and its expected output.*
+
+### C.5. Executable extension and observed output
+
+The GELU reference implementation makes the graph-editing interface concrete.
+The following excerpt is the replacement body of `con-gelu-expand`.
+The enclosing function first rejects non-floating inputs; its local `splat`
+helper creates a typed constant and attaches its `value` attribute.
+
+```jog
+let x = ir.args(op)[0]
+let type = ir.type(x)
+let half = splat(m, op, type, 0.5)
+let one = splat(m, op, type, 1.0)
+let root = splat(m, op, type, 1.4142135623730951)
+let scaled = ir.call(m, op, ir.find(m, "div"), [x, root], type)
+let error = ir.call(m, op, ir.find(m, "erf"), [scaled], type)
+let sum = ir.call(m, op, ir.find(m, "add"), [one, error], type)
+let hx = ir.call(m, op, ir.find(m, "mul"), [half, x], type)
+let result = ir.call(m, op, ir.find(m, "mul"), [hx, sum], type)
+ir.replace(m, ir.outs(op)[0], result)
+ir.erase(m, op)
+changed = true
+```
+
+For the `vector-f32` fixture, the input subject returns `gelu(x)` with
+`x: tensor<f32, [5]>`. The compiler prints the following subject after the
+reference transformation; unchanged operation declarations are omitted.
+
+```jog
+fn subject(x: tensor<f32, [5]>) -> tensor<f32, [5]> {
+  [value: 0.5]
+  let gelu_constant10: tensor<f32, [5]> = splat()
+  [value: 1.0]
+  let gelu_constant11: tensor<f32, [5]> = splat()
+  [value: 1.4142135623730951]
+  let gelu_constant12: tensor<f32, [5]> = splat()
+  return mul(mul(gelu_constant10, x), add(gelu_constant11, erf(div(x, gelu_constant12))))
+}
+```
+
+The observer records three constants, two multiplies, division, `erf`, and
+addition, all with type f32[5]. All seven reference fixtures pass, including
+integer rejection; floating results satisfy the specified numerical tolerance.
+These are reference outputs, not Agent completions.
+
+### C.6. Recorded Agent code and diagnostic
+
+The `ana-numeric-range` contract asks: *“Propagate closed finite real intervals
+through add, multiply, ReLU, and clamp using endpoint arithmetic;
+multiplication evaluates all four endpoint products.”* In the recorded
+Qwen3-8B/Joggle trajectory, the final generated candidate was:
+
+```jog
+mod extension
+use base
+use ir
+
+fn analyze(m: Mod) -> dict {
+  let subject = ir.find(m, "subject")
+  let calls = ir.ops(subject, ["call"])
+  let op = calls[0]
+  let value = ir.outs(op)[0]
+  let type = ir.type(value)
+  let dimensions = args(type)[1]
+  let element_type = args(type)[0]
+  let interval = base.interval(element_type, dimensions)
+  let mut result: dict = {}
+  result["interval"] = interval
+  return result
+}
+```
+
+The compiler returned `module.jog:14:11: error: expected '='` with empty stdout.
+The unmodified candidate exhausted 30 actions after 15 edits and 2,189 generated
+tokens. `let mut` is invalid; mutable bindings use `var`. Separately, the
+reference produces `{"interval": [-12.0, 15.0]}` for `[-2,3] * [-4,5]`.
+
+<!-- Code evidence: artifact/extensions/con-gelu-expand/reference.jog:24-36;
+.cache/artifact/paper-code-check-gelu.json and paper-code-check-range.json.
+Agent evidence: main-agents-explicit-20260925-x0f9ieig/
+03-Qwen3-8B-Joggle-ana-numeric-range/{candidate.jog,final-oracle.json,result.csv}.
+Reference execution outputs and Agent-generated candidates are distinct. -->
+
+### C.7. Complete fusion transformation
+
+Figure 4 uses this complete transformation entry point and its local helper
+from `vert-fused-op`. The subject supplies operator declarations; the extension
+imports graph access through `ir`. Layout, use-count, and zero-point checks
+precede mutation. Attribute copying retains the convolution layout and
+requantization parameters on the fused call.
+
+```jog
+mod extension
+use base
+use ir
+
+local fn fuse(m: Mod, relu: Op) -> bool {
+  if ir.callee(relu) != "relu" { return false }
+  let quant = ir.def(ir.args(relu)[0])
+  if !ir.live(quant) || ir.callee(quant) != "requantize" { return false }
+  let bias = ir.def(ir.args(quant)[0])
+  if !ir.live(bias) || ir.callee(bias) != "bias" { return false }
+  let conv = ir.def(ir.args(bias)[0])
+  if !ir.live(conv) || ir.callee(conv) != "qconv" { return false }
+  for op in [conv, bias, quant] {
+    if len(ir.users(ir.outs(op)[0])) != 1 { return false }
+  }
+  if str(ir.meta(conv, "layout")) != "NHWC" || str(ir.meta(conv, "kernel_layout")) != "HWIO" { return false }
+  if ir.meta(relu, "output_zero") != ir.meta(quant, "output_zero") { return false }
+  let old = ir.outs(relu)[0]
+  let inputs = ir.args(conv) + [ir.args(bias)[1]]
+  let result = ir.call(m, relu, ir.find(m, "fused_qconv_relu"), inputs, ir.type(old))
+  assert(ir.rename(m, result, "fused", ir.key(result)), "binding-failed")
+  for op in [conv, quant] {
+    let meta = ir.meta(op)
+    for key in keys(meta) {
+      assert(ir.set(m, ir.def(result), key, base.get(meta, key)), "attribute-write-failed")
+    }
+  }
+  assert(ir.replace(m, old, result), "replace-failed")
+  for op in [relu, quant, bias, conv] { assert(ir.erase(m, op), "erase-failed") }
+  return true
+}
+
+fn transform(m: Mod) -> bool {
+  var changed = false
+  for op in ir.ops(ir.find(m, "subject"), ["call"]) {
+    if fuse(m, op) { changed = true }
+  }
+  return changed
+}
+```
+
+For the unit-kernel case, the native oracle executes the emitted kernel with
+`x=[1,-2]`, `w=[2,-3]`, and bias 1. The accumulator is
+$1\cdot2+(-2)(-3)+1=9$. With accumulator scale 0.25, output scale 0.5,
+and zero point 0, ties-to-even rounding gives output 4. The complete reference
+passes all six fusion fixtures; a shared intermediate retains the original
+chain. The graph transformation and emitted-kernel checks use the same frozen
+compiler as the extension study.
 
 <!-- UPDATE DATA BEGIN -->
 

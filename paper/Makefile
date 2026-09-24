@@ -56,6 +56,7 @@ figures/agent-gelu-after.svg: figures/agent-gelu-after.dot
 	dot -Tsvg $< -o $@
 
 sigconf.pdf: sigconf.tex references.bib \
+	../artifact/extensions/vert-fused-op/reference.jog \
 	sections/01-introduction.tex sections/02-motivation.tex sections/03-design.tex \
 	sections/04-evaluation.tex sections/05-related-work.tex \
 	sections/06-discussion.tex sections/07-conclusion.tex \
@@ -67,6 +68,8 @@ sigconf.pdf: sigconf.tex references.bib \
 	latexmk -pdf -interaction=nonstopmode -halt-on-error sigconf.tex
 
 supplement.pdf: supplement.tex $(A5_GRAPHS) sections/appendix-operator-data.tex \
+	../artifact/extensions/con-gelu-expand/reference.jog \
+	../artifact/extensions/vert-fused-op/reference.jog \
 	sections/appendix-model-data.tex \
 	sections/appendix-update-data.tex \
 	sections/appendix-package-data.tex \

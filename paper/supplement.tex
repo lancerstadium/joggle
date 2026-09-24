@@ -6,6 +6,12 @@
 \usepackage{longtable}
 \usepackage{array}
 \usepackage[scaled=0.86]{DejaVuSansMono}
+\usepackage{listings}
+\lstset{basicstyle=\ttfamily\fontsize{7.4}{8.5}\selectfont,
+  columns=fullflexible,keepspaces=true,showstringspaces=false,
+  breaklines=true,aboveskip=4pt,belowskip=4pt,
+  morekeywords={fn,var,for,in,if,return,let,mod,use,local},
+  keywordstyle=\color{blue!65!black},stringstyle=\color{teal!70!black}}
 
 % Keep appendix tables together, without stretch between float blocks.
 \makeatletter

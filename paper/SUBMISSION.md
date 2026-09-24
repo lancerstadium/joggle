@@ -34,7 +34,7 @@ is a later, post-acceptance process with its own instructions.
 ## Current checks
 
 The main PDF has 14 pages. Technical content ends on page 12; pages 13--14 contain
-references only. The separate supplement has thirteen pages. Table A.5's 12 paired
+references only. The separate supplement has fifteen pages. Table A.5's 12 paired
 input/output examples occupy six portrait pages, with verbatim quoted task
 contracts and 8.5 pt DOT labels. Section C.4 uses portrait tables while retaining its diagram typography
 and display sizes. All supplement pages are portrait. Both entry points explicitly enable page numbers.
@@ -68,9 +68,9 @@ in a six-panel display. Appendix E adds complete footprints (A.13), native
 installation files (A.14), and six worked maintenance input/output pairs (A.15).
 The related-work table places eleven systems/frameworks in one horizontal band,
 without interspersed category-title rows. Blue checkmarks mark supported
-capabilities, and a tinted column identifies Joggle. Its measured integration
-rows show source files, source lines, and separate registration code for the
-two native packages; other systems are marked unmeasured. Figure 6 uses four
+capabilities, and a tinted column identifies Joggle. Table 2 now separates
+positioning, extension form, and native mechanism capabilities; measured package
+costs remain in the evaluation rather than this literature comparison. Figure 6 uses four
 independent protocol vignettes, distinct from the author's 3v3 overview. The main PDF
 now cites 47 sources. The literature expansion covers IRDL, LMS, AnyDSL,
 Exo, Ansor, TASO, Mirage, PluS, egglog, self-adjusting computation, IncA,
@@ -109,6 +109,28 @@ failure, not a scored model failure. No partial primary result is published.
 No effective response or completed condition has been rerun.
 
 ## First review: unresolved submission gates
+
+### Current presentation revision
+
+Figures 3, 4, and 5 were regenerated with the built-in image tool in a shared
+portrait, single-column style. Their complete prompts and targeted corrections
+are stored beside the figure descriptions in `README.md`. Figure 4 embeds
+complete input/output subject functions and the actual fusion replacement
+excerpt. Appendix C.7 supplies the full transformation helper and entry point.
+Figures 3 and 5 now include graph API syntax and named state records.
+Algorithm 1 uses explicit inputs, outputs, ordered selection, checked execution,
+rollback, and publication. This is a formatting pass over the current
+recorded-scope implementation, not a repair of its changing-write-scope defect.
+
+Appendix C.5 reproduces the printed GELU subject from the frozen compiler;
+C.6 reproduces one unmodified Agent candidate and its actual diagnostic.
+These two kinds of output are explicitly distinguished. Existing native oracles
+were rerun, without new measurement scripts: GELU 7/7, interval analysis 10/10,
+and fused convolution 6/6 fixtures passed. Records are
+`.cache/artifact/paper-code-check-{gelu,range,fusion}.json`; the unit-kernel
+input/output figure was checked against `paper-code-fusion-unit.json`.
+
+### Substantive gates
 
 Three role-separated reviews inspected the same frozen revision `e721b39`.
 The following issues remain substantive submission gates, not layout work:
@@ -205,13 +227,16 @@ Both PDFs include this mechanism clarification, the measured host configuration,
 and the native invocation/output-storage boundaries in Table A.4. Repeated
 method and discussion text was condensed to keep technical content within
 12 pages. The current main PDF has 14 pages, with references beginning on
-page 13; the supplement has 13 portrait pages. The latest build has no
+page 13; the supplement has 15 portrait pages. The latest build has no
 overfull boxes or undefined references. Main pages 8 and 12 and supplement
 page 3 were rendered and visually checked after the prose edits.
 
-Table 2 now compares eleven systems in one horizontal header, with checkmarks
-for supported capabilities and package source ranges recomputed from
-`data/package-footprint.csv`. Its spacer-heading rows were removed. The added
+Table 2 compares eleven systems in one horizontal header. Its binary rows
+concern shared compiler-evaluated role calls, cross-stage packages, read-tracked
+reuse, and transactional IR edits. Cross-stage host-language packages receive
+credit; using one host language alone does not establish one compiler call/value
+model. Rollback scopes distinguish conversion, alternatives, and sequences.
+The added
 egglog and PIE columns use the existing primary-paper citations; dependency
 tracking was cross-checked against the rustc guide and Adapton description.
 Appendix C.3 now reports the actual 12-task fixture split (22 public, 82
