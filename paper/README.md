@@ -2,25 +2,21 @@
 
 ## Abstract
 
-Rapid advances in AI bring frequent changes in model architectures, numeric
-formats, and hardware targets, placing growing demands on compiler
-extensibility. Supporting these changes requires features that span semantic
-definitions, analyses, transformations, conversions, and emitters. Their
-implementation is fragmented across programming interfaces and ownership
-boundaries, while local edits trigger coarse re-execution. We present Joggle,
-a compiler infrastructure built on a progressive intermediate representation.
-To unify extension programming, typed compiler functions express these roles
-through one language, call model, and value model. Building on this
-interface, graph-level mods group cross-stage features independently of program
-containment. At runtime, recorded observations and published effects guide
-reactive execution, while transactions keep reusable state consistent with the
-graph. In model-update experiments across nine edit sites in three models,
-prepared-body reuse provides $1.49$--$2.48\times$ executable-ready speedups
-over complete rebuilds. For generated-code performance, the resulting executables
-achieve a $2.10\times$ geometric-mean speedup over default TVM on eight models compiled
-correctly by all compared systems.
-Together, these mechanisms provide a common programming model for evolving
-compiler capabilities alongside AI models and hardware.
+Rapid advances in AI bring new operators, numeric formats, and hardware targets
+that compilers must support. Yet cross-stage extensions span fragmented
+interfaces and ownership boundaries, while local edits trigger broad
+recompilation. We present Joggle, a compiler infrastructure built on a
+progressive intermediate representation. To make extensions composable, typed
+compiler functions unify semantics, analysis, transformation, conversion, and
+emission through one language, call model, and value model. Graph-level mods
+then give each cross-stage feature an explicit owner, while recorded
+dependencies direct reactive execution toward affected work. Across three
+models, prepared-body reuse accelerates executable-ready updates by
+$1.49$--$2.48\times$ over complete rebuilds. The generated executables also
+achieve a $2.10\times$ geometric-mean speedup over default TVM on eight models
+compiled correctly by all compared systems. Together, these mechanisms make
+compiler capabilities composable, independently organized, and reusable as
+AI workloads evolve.
 
 ## 1. Introduction
 
