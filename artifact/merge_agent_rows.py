@@ -33,7 +33,9 @@ def validate_trajectory(path: Path, provider: dict, rows: list[dict[str, str]]) 
         raise SystemExit(f"{path}: trajectory digest differs")
     data = json.loads(trajectory.read_text())
     backend = data.get("provider", "ollama")
-    from run_extension_agent import HOSTED_OPTIONS, HOSTED_ENDPOINT, HOSTED_CONTEXT, response_content, response_usage
+    from run_extension_agent import HOSTED_OPTIONS, HOSTED_ENDPOINT, HOSTED_CONTEXT, response_content, response_usage, parse_action
+    if provider.get("action_protocol") != data.get("action_protocol"):
+        raise SystemExit(f"{path}: action protocol differs from trajectory")
     if (data.get("schema") != "extension-agent-trajectory/v1" or data.get("dirty")
             or data.get("identity_stable") is not True or data.get("infrastructure_error")
             or data.get("demonstrations") or data.get("think") is not False):
@@ -103,10 +105,7 @@ def validate_trajectory(path: Path, provider: dict, rows: list[dict[str, str]]) 
         if not event.get("response"):
             continue
         try:
-            command = json.loads(response_content(event["response"], backend))
-            # Match the runner's schema gate: rejected JSON never invokes a tool.
-            if not isinstance(command, dict) or set(command) - {"action", "source"}:
-                continue
+            command = parse_action(response_content(event["response"], backend))
             action = command["action"]
         except (ValueError, TypeError, KeyError):
             continue
@@ -133,6 +132,7 @@ def validate_trajectory(path: Path, provider: dict, rows: list[dict[str, str]]) 
 def audited_assembly(path: Path) -> list[dict[str, str]]:
     """Revalidate a complete export before plotting, including its raw trajectories."""
     from validate_figure import extension, load
+    from run_extension_agent import ACTION_PROTOCOL
     root = Path(__file__).resolve().parent
     template = root / "templates/figure-04-extension.csv"
     rows = load(path, template)
@@ -148,6 +148,7 @@ def audited_assembly(path: Path) -> list[dict[str, str]]:
             raise SystemExit(f"{path}: source hashes differ")
         provider = json.loads(record_path.read_text())
         if (provider.get("schema") != "agent-provider/v1" or provider.get("dirty") or
+                provider.get("action_protocol") != ACTION_PROTOCOL or
                 provider.get("release_eligible") is not True or
                 provider.get("output_sha256") != sha256(csv_path)):
             raise SystemExit(f"{path}: invalid agent provider")
@@ -217,6 +218,7 @@ def success_intervals(rows: list[dict[str, str]]) -> list[dict]:
 
 
 def main() -> int:
+    from run_extension_agent import ACTION_PROTOCOL
     parser = argparse.ArgumentParser()
     parser.add_argument("inputs", type=Path, nargs="+")
     parser.add_argument("--output", type=Path, required=True)
@@ -242,6 +244,7 @@ def main() -> int:
         provider = path.with_suffix(".json")
         payload = json.loads(provider.read_text(encoding="utf-8"))
         if (payload.get("schema") != "agent-provider/v1"
+                or payload.get("action_protocol") != ACTION_PROTOCOL
                 or payload.get("dirty")
                 or payload.get("release_eligible") is not True
                 or payload.get("output_sha256") != sha256(path)):

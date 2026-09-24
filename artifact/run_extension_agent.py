@@ -22,6 +22,19 @@ from run_extension_task import ROOT, SUPPORTED_TASKS, REWRITE_TASKS, DEFINITION_
 
 
 ACTIONS, TOKENS = 30, 32000
+ACTION_PROTOCOL = "explicit-json-actions/v2"
+ACTION_GUIDE = (
+    'Use exactly one of these JSON objects, without Markdown or other text:\n'
+    '{"action":"inspect"}\n'
+    '{"action":"edit","source":"<complete replacement source file>"}\n'
+    '{"action":"test"}\n'
+    '{"action":"finish"}\n'
+    'The single candidate file is managed for you; never supply file, path, filename, '
+    'fixture, or any other extra field. inspect returns that file. edit replaces the '
+    'whole file with the source string, not a patch. test automatically runs all '
+    'public fixtures; it accepts no fixture selector. finish submits the current '
+    'file. Only action and source are recognized keys; source is used only by edit. '
+)
 GENERATION_OPTIONS = {"temperature": 0.0, "num_ctx": 32768}
 HOSTED_ENDPOINT = "https://api.siliconflow.cn/v1"
 HOSTED_CONTEXT = 131072
@@ -135,6 +148,24 @@ def hosted_model(catalog: dict, model: str) -> dict:
 def response_content(response: dict, provider: str = "ollama") -> str:
     return (response["choices"][0]["message"]["content"] if provider == "siliconflow"
             else response["message"]["content"])
+
+
+def parse_action(content: str) -> dict:
+    """One shared schema gate for dispatch, feedback, and measurement replay."""
+    try:
+        action = json.loads(content)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"Invalid JSON: {error.msg}. Return one JSON object without Markdown.") from error
+    if not isinstance(action, dict):
+        raise ValueError('Expected a JSON object, for example {"action":"inspect"}; not an array or string.')
+    extra = set(action) - {"action", "source"}
+    if extra:
+        raise ValueError("Unexpected fields: " + ", ".join(sorted(extra)) +
+            '. Remove them. Allowed keys: action, source. The candidate file is implicit; '
+            'test takes no arguments: {"action":"test"}.')
+    if action.get("action") not in ("inspect", "edit", "test", "finish"):
+        raise ValueError('The action field must be inspect, edit, test, or finish.')
+    return action
 
 
 def check_context_policy(model: str) -> dict:
@@ -530,6 +561,7 @@ def main() -> int:
         "inspect (read your current file), edit (replace it with the source string), "
         "test (build and run public fixtures), or finish (submit the current file). "
         "You have 30 actions and 32000 generated tokens. Do not invent tools. "
+        + ACTION_GUIDE +
         "Use the supplied native API. Generalize the semantic contract; final scoring "
         "also includes fixtures not exposed by test. Return JSON only."},
         {"role": "user", "content": json.dumps({"system": args.system,
@@ -630,12 +662,8 @@ def main() -> int:
         content = response_content(response, args.provider)
         messages.append({"role": "assistant", "content": content})
         try:
-            action = json.loads(content)
-            if not isinstance(action, dict) or set(action) - {"action", "source"}:
-                raise ValueError("expected one JSON action with optional source")
+            action = parse_action(content)
             kind = action["action"]
-            if kind not in ("inspect", "edit", "test", "finish"):
-                raise ValueError("unknown action")
             if completion_tokens > TOKENS:
                 stop = "token_budget"
                 break
@@ -696,6 +724,7 @@ def main() -> int:
         tofile="candidate." + suffix))
     (root / "candidate.patch").write_text(patch_text)
     payload = {"schema": "extension-agent-trajectory/v1", "model": installed[0],
+        "action_protocol": ACTION_PROTOCOL,
         "provider": args.provider,
         "endpoint": HOSTED_ENDPOINT if args.provider == "siliconflow" else "http://127.0.0.1:11434/api",
         "created_utc": datetime.now(timezone.utc).isoformat(),
@@ -742,6 +771,7 @@ def main() -> int:
         writer.writeheader()
         writer.writerow(row)
     record = {"schema": "agent-provider/v1", "dirty": dirty, "output_sha256": digest(output),
+              "action_protocol": ACTION_PROTOCOL,
               "trajectory": str(trajectory), "trajectory_sha256": digest(trajectory),
               "reference_scoring": "not-collected", "complete_population": False,
               "release_eligible": bool(not dirty and identity_stable and final

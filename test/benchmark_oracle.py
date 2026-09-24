@@ -1383,6 +1383,19 @@ int main(void) {
         sleep.assert_called_once_with(60)
         self.assertEqual(result['_transport']['retries'][0]['wait_seconds'],60)
 
+    def test_agent_actions_publish_exact_forms_and_name_invalid_fields(self):
+        for action in ('inspect','test','finish'):
+            text='{"action":"'+action+'"}'
+            self.assertIn(text,run_extension_agent.ACTION_GUIDE)
+            self.assertEqual(run_extension_agent.parse_action(text)['action'],action)
+        self.assertEqual(run_extension_agent.parse_action('{"action":"edit","source":"pass"}')['source'],'pass')
+        for key in ('file','fixture','path'):
+            with self.subTest(key=key),self.assertRaisesRegex(ValueError,'Unexpected fields: '+key):
+                run_extension_agent.parse_action(json.dumps({'action':'test',key:'unneeded'}))
+        for value in ('[]','"inspect"','{}','{"action":"run"}','not json'):
+            with self.subTest(value=value),self.assertRaises(ValueError):
+                run_extension_agent.parse_action(value)
+
     def test_hosted_resume_preserves_budget_and_request(self):
         with tempfile.TemporaryDirectory() as directory:
             output=Path(directory)/'trajectory'; model='Qwen/Qwen3-8B'

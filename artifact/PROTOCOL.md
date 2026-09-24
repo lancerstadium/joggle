@@ -93,6 +93,30 @@ outcomes. Both models use temperature zero, thinking disabled, JSON-object
 responses, run index zero, and no demonstrations. This yields 72 trajectories.
 Two-demonstration diagnostics remain outside the primary dataset.
 
+The shared interaction protocol is `explicit-json-actions/v2`. Every system
+receives the same four exact action templates in its system instruction:
+
+```json
+{"action":"inspect"}
+{"action":"edit","source":"<complete replacement source file>"}
+{"action":"test"}
+{"action":"finish"}
+```
+
+Each line is one alternative request, not a multi-action response. The candidate
+file is implicit; `test` runs every public fixture. Feedback names unrecognized
+keys such as `file` or `fixture` and lists the accepted fields. These examples
+specify the tool interface, not solutions to compiler tasks. Dispatch and
+measurement replay use the same schema check. The primary assembler requires
+this protocol throughout and rejects records from the earlier implicit format.
+
+On 25 September, the author approved this common-interface correction after
+four initial trajectories repeatedly used undocumented fields. All four are
+retained as protocol diagnostics, including their unsuccessful outcomes and
+67 schema-rejected responses among 104 returned responses. The full 72-condition
+matrix is recollected under the revised protocol, with the original condition
+order, models, task contracts, API cards, budgets, fixtures, and oracles unchanged.
+
 The hosted protocol uses model IDs `Qwen/Qwen3-8B` and `Qwen/Qwen3-14B` at
 `https://api.siliconflow.cn/v1`, with complete conversation history and at most
 4,096 generated tokens per request (also bounded by the remaining trajectory
