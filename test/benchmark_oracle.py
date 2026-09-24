@@ -1249,6 +1249,7 @@ int main(void) {
                 return "a" * 40 if "rev-parse" in command else b""
             with patch.object(sys, "argv", argv), patch.object(sys, "platform", "darwin"), \
                     patch.object(run_extension_agent, "local_api", side_effect=api), \
+                    patch("run_baseline_benchmarks.git_state", return_value=("a"*40, False)), \
                     patch.object(run_extension_agent, "check_context_policy", return_value={"verified": True}), \
                     patch.object(run_extension_agent, "native_identity", return_value={}), \
                     patch.object(subprocess, "check_output", side_effect=git), \
@@ -1297,6 +1298,7 @@ int main(void) {
             final = {"passed": False, "setup": [], "cases": []}
             with patch.object(sys, "argv", argv), patch.object(sys, "platform", "darwin"), \
                     patch.object(run_extension_agent, "local_api", side_effect=api), \
+                    patch("run_baseline_benchmarks.git_state", return_value=("a"*40, False)), \
                     patch.object(run_extension_agent, "check_context_policy", return_value={"verified": True}), \
                     patch.object(run_extension_agent, "native_identity", return_value={}), \
                     patch.object(subprocess, "check_output", side_effect=git), \
@@ -1309,6 +1311,75 @@ int main(void) {
             with (output / "result.csv").open() as stream:
                 row = next(csv.DictReader(stream))
             self.assertEqual(row["stop_reason"], "context_budget")
+
+    def test_hosted_agent_uses_native_response_and_exports_auditable_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "trajectory"
+            model = "Qwen/Qwen3-8B"
+            argv = ["agent", "--provider", "siliconflow", "--model", model,
+                    "--system", "Joggle", "--task", "ana-storage-cost", "--seed", "1701",
+                    "--output", str(output), "--joggle", sys.executable, "--builtin-mods", directory]
+            def api(path, key, payload=None):
+                self.assertEqual(key, "test-credential")
+                if path == "models":
+                    return {"data": [{"id": model}]}
+                self.assertEqual(path, "chat/completions")
+                self.assertNotIn("seed", payload)
+                self.assertNotIn("options", payload)
+                self.assertFalse(payload["enable_thinking"])
+                self.assertEqual(payload["response_format"], {"type": "json_object"})
+                self.assertEqual(payload["max_tokens"], 4096)
+                return {"id": "test-response", "model": model, "system_fingerprint": "",
+                    "choices": [{"finish_reason": "stop", "message": {"content": '{"action":"finish"}'}}],
+                    "usage": {"prompt_tokens": 100, "completion_tokens": 5}}
+            def native(command, **kwargs):
+                out = Path(command[command.index("--output")+1])
+                out.write_text(json.dumps({"passed": False, "complete_task": True,
+                    "task": "ana-storage-cost", "system": "Joggle",
+                    "task_spec_sha256": run_extension_agent.digest(run_extension_agent.ROOT / "manifests/extension-specs.json"),
+                    "execution_isolation": {"kind": "macos-seatbelt"},
+                    "setup": [{"exit_code": 1}], "cases": []}))
+                return subprocess.CompletedProcess(command, 1, stdout="", stderr="")
+            with patch.object(sys, "argv", argv), patch.object(sys, "platform", "darwin"), \
+                    patch("run_baseline_benchmarks.git_state", return_value=("a"*40, False)), \
+                    patch.object(run_extension_agent, "hosted_key", return_value="test-credential"), \
+                    patch.object(run_extension_agent, "hosted_api", side_effect=api), \
+                    patch.object(run_extension_agent, "native_identity", return_value={"compiler": "test"}), \
+                    patch.object(subprocess, "run", side_effect=native):
+                self.assertEqual(run_extension_agent.main(), 0)
+            with (output / "result.csv").open() as stream:
+                rows = list(csv.DictReader(stream))
+            metadata = json.loads((output / "result.json").read_text())
+            self.assertTrue(metadata["release_eligible"])
+            self.assertEqual(rows[0]["stop_reason"], "build")
+            self.assertEqual(rows[0]["model_revision"], "hosted-alias:" + model)
+            self.assertNotIn("test-credential", (output / "trajectory.json").read_text())
+            validate_trajectory(output / "result.csv", metadata, rows)
+            with self.assertRaises(SystemExit):
+                validate_trajectory(output / "result.csv", metadata, [rows[0] | {"completion_tokens": "4"}])
+
+    def test_hosted_usage_and_catalog_validation(self):
+        response = {"model": "test-model", "choices": [{"finish_reason": "stop",
+            "message": {"content": "{}"}}], "usage": {"prompt_tokens": 100, "completion_tokens": 20}}
+        self.assertEqual(response_usage(response, "test-model", 128, 32, "siliconflow"), (100, 20))
+        for usage in ({"prompt_tokens": 100}, {"prompt_tokens": 100, "completion_tokens": 33},
+                      {"prompt_tokens": 109, "completion_tokens": 20},
+                      {"prompt_tokens": 100, "completion_tokens": 20, "completion_tokens_details": {"reasoning_tokens": 1}}):
+            with self.subTest(usage=usage), self.assertRaises(ValueError):
+                response_usage(response | {"usage": usage}, "test-model", 128, 32, "siliconflow")
+        with self.assertRaises(ValueError):
+            run_extension_agent.hosted_model({"data": []}, "test-model")
+        identity = run_extension_agent.hosted_model({"data": [{"id": "test-model"}]}, "test-model")
+        self.assertIsNone(identity["weight_revision"])
+
+    def test_agent_native_identity_does_not_depend_on_task_role(self):
+        args = argparse.Namespace(task="ana-storage-cost", cc=Path(sys.executable))
+        with patch.object(run_extension_agent, "backend_identity", side_effect=lambda args: {"compiler": "test"}), \
+                patch.object(subprocess, "check_output", return_value="compiler version"):
+            first = run_extension_agent.native_identity(args)
+            args.task = "emit-kernel-wrapper"
+            self.assertEqual(first, run_extension_agent.native_identity(args))
+            self.assertIn("host_compiler", first)
 
     def test_agent_usage_rejects_missing_or_out_of_budget_counts(self):
         response = {"done": True, "model": "test-model", "message": {"content": "{}"},

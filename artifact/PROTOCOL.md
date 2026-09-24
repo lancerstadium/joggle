@@ -82,18 +82,37 @@ models, edit sites, and systems provide workload coverage.
 ## Figure 4 · agent extension completion
 
 The suite has four tasks in each of six extension families: definition,
-analysis, rewrite, conversion, emission, and vertical extension. Two pinned
-small code models drive the same deterministic coding-agent harness. For each
+analysis, rewrite, conversion, emission, and vertical extension. Qwen3-8B and
+Qwen3-14B drive the same coding-agent harness through SiliconFlow. For each
 system, the agent receives the same semantic specification, a compact native
 API card, an isolated workspace, and inspect/edit/build/test tools. Each
 model/system/task condition uses one zero-shot run under a 30-action and
 32k-generated-token budget. The execution set is the 12 tasks marked
 `footprint: true` in `extension-specs.json`; no task is selected from agent
-outcomes. Both models use temperature zero, seed 1701, run index zero, no
-demonstrations, and a 32,768-token context. Context overflow terminates the run
-as budget exhaustion; the provider must reject overflow rather than truncate
-the conversation. This yields 72 trajectories. Two-demonstration diagnostics
-are supported by the runner but are excluded from this primary dataset.
+outcomes. Both models use temperature zero, thinking disabled, JSON-object
+responses, run index zero, and no demonstrations. This yields 72 trajectories.
+Two-demonstration diagnostics remain outside the primary dataset.
+
+The hosted protocol uses model IDs `Qwen/Qwen3-8B` and `Qwen/Qwen3-14B` at
+`https://api.siliconflow.cn/v1`, with complete conversation history and at most
+4,096 generated tokens per request (also bounded by the remaining trajectory
+budget). Both models have a 131,072-token service window; recorded prompt plus
+completion counts must fit that window. No history is dropped by the harness.
+The seed field is the condition identifier 1701; it is not sent as a provider
+sampling seed. Service errors are recorded separately from candidate failures.
+Only explicit HTTP 429/502/503/504 responses are retried, at most twice with
+2/4-second waits; ambiguous transport timeouts are not retried automatically.
+
+The CSV's `model_revision` is `hosted-alias:<model ID>`, not a weight digest.
+Trajectories retain catalog entries, returned model IDs, UTC timestamps,
+response/trace IDs, fingerprints when supplied, native responses and usage.
+An empty fingerprint remains empty. Local Ollama collection is a separate
+supported protocol, with its original 32,768-token overflow check; no local
+trajectories are included in the hosted study. Credentials are read from
+`SILICONFLOW_API_KEY` or macOS Keychain service `joggle-siliconflow-evaluation`
+(account `joggle`), never from a repository file. Isolated native tools receive
+a fresh environment without provider credentials. API contract:
+https://docs.siliconflow.cn/docs/api/chat-completions-post.
 
 Executable success within budget is primary. Successful trajectories report
 completion tokens, tool calls, edit attempts, and wall time. Unsuccessful runs

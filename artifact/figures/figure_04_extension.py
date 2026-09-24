@@ -67,6 +67,8 @@ def draw(summary: list[dict], output: Path, *, test_preview: bool = False) -> No
                 axis.set_axisbelow(True)
                 axis.grid(axis="y", color="#DDE2E8", linewidth=0.35)
             label = {"qwen3.5:9b": "Qwen 3.5 · 9B",
+                     "Qwen/Qwen3-8B": "Qwen 3 · 8B",
+                     "Qwen/Qwen3-14B": "Qwen 3 · 14B",
                      "qwen3:14b-q4_K_M": "Qwen 3 · 14B"}.get(model, model)
             axes[row_index, 0].set_ylabel(label, labelpad=1.2)
         handles, labels = axes[0, 0].get_legend_handles_labels()

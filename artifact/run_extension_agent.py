@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one pinned local-model extension trajectory with isolated native tools."""
+"""Run one recorded model trajectory with isolated native extension tools."""
 
 from __future__ import annotations
 
@@ -9,11 +9,13 @@ import csv
 import difflib
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 from run_extension_task import ROOT, SUPPORTED_TASKS, REWRITE_TASKS, DEFINITION_TASKS, IMPORT_TASKS, COMPOUND_TASKS, digest, case_completed
@@ -21,6 +23,10 @@ from run_extension_task import ROOT, SUPPORTED_TASKS, REWRITE_TASKS, DEFINITION_
 
 ACTIONS, TOKENS = 30, 32000
 GENERATION_OPTIONS = {"temperature": 0.0, "num_ctx": 32768}
+HOSTED_ENDPOINT = "https://api.siliconflow.cn/v1"
+HOSTED_CONTEXT = 131072
+HOSTED_OPTIONS = {"temperature": 0.0, "enable_thinking": False,
+                  "response_format": {"type": "json_object"}}
 SUFFIXES = {"Joggle": "jog", "MLIR": "cpp", "xDSL": "py"}
 CARD_NAMES = {"Joggle": "joggle", "MLIR": "mlir", "xDSL": "xdsl"}
 ACTION_SCHEMA = {"type": "object", "properties": {
@@ -72,6 +78,57 @@ def local_api(path: str, payload: dict | None = None) -> dict:
         raise RuntimeError(f"provider HTTP {failure.code}: {body.decode(errors='replace')[:6000]}") from failure
 
 
+def hosted_api(path: str, key: str, payload: dict | None = None) -> dict:
+    """Keep the native provider response and bounded HTTP retry history."""
+    request = urllib.request.Request(HOSTED_ENDPOINT + "/" + path,
+        data=json.dumps(payload).encode() if payload is not None else None,
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + key})
+    failures = []
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=180) as response:
+                result = json.load(response)
+                if not isinstance(result, dict):
+                    raise ValueError("provider response must be an object")
+                result["_transport"] = {
+                    "received_utc": datetime.now(timezone.utc).isoformat(),
+                    "trace_id": response.headers.get("x-siliconcloud-trace-id"),
+                    "retries": failures}
+                return result
+        except urllib.error.HTTPError as error:
+            # Never record request headers or retry an ambiguous transport timeout.
+            body = error.read().decode(errors="replace").replace(key, "[redacted]")[:6000]
+            failures.append({"status": error.code, "body": body})
+            if error.code not in (429, 502, 503, 504) or attempt == 2:
+                raise RuntimeError(f"provider HTTP errors: {json.dumps(failures)}") from error
+            time.sleep(2 ** (attempt + 1))
+    raise AssertionError("unreachable retry state")
+
+
+def hosted_key() -> str:
+    key = os.environ.get("SILICONFLOW_API_KEY", "").strip()
+    if not key:
+        key = subprocess.check_output([
+            "security", "find-generic-password", "-s", "joggle-siliconflow-evaluation",
+            "-a", "joggle", "-w"], text=True, stderr=subprocess.DEVNULL).strip()
+    if not key:
+        raise ValueError("SiliconFlow credential is unavailable")
+    return key
+
+
+def hosted_model(catalog: dict, model: str) -> dict:
+    matches = [item for item in catalog.get("data", []) if item.get("id") == model]
+    if len(matches) != 1:
+        raise ValueError("requested model must occur once in the provider catalog")
+    return {"name": model, "catalog_entry": matches[0],
+            "revision_kind": "hosted-alias", "weight_revision": None}
+
+
+def response_content(response: dict, provider: str = "ollama") -> str:
+    return (response["choices"][0]["message"]["content"] if provider == "siliconflow"
+            else response["message"]["content"])
+
+
 def check_context_policy(model: str) -> dict:
     """Verify that this provider rejects overflow instead of dropping history."""
     request = {"model": model, "stream": False, "think": False,
@@ -88,8 +145,26 @@ def check_context_policy(model: str) -> dict:
     raise ValueError("provider accepted an over-budget prompt; context policy is not enforced")
 
 
-def response_usage(response: dict, model: str, context: int, prediction: int) -> tuple[int, int]:
+def response_usage(response: dict, model: str, context: int, prediction: int,
+                   provider: str = "ollama") -> tuple[int, int]:
     """Reject missing usage and reported context rollover before accepting an action."""
+    if provider == "siliconflow":
+        if not isinstance(response, dict):
+            raise ValueError("hosted response must be an object")
+        choices = response.get("choices", [])
+        if (response.get("model") != model or len(choices) != 1
+                or choices[0].get("finish_reason") not in ("stop", "length")
+                or not isinstance(choices[0].get("message", {}).get("content"), str)):
+            raise ValueError("incomplete or mismatched hosted response")
+        usage = response.get("usage", {})
+        prompt, completion = usage.get("prompt_tokens"), usage.get("completion_tokens")
+        reasoning = usage.get("completion_tokens_details", {}).get("reasoning_tokens", 0)
+        if (type(prompt) is not int or type(completion) is not int or
+                not 0 < completion <= prediction or prompt <= 0 or
+                prompt + completion > context or reasoning != 0 or
+                choices[0]["message"].get("reasoning_content")):
+            raise ValueError("invalid hosted token counts or unexpected thinking")
+        return prompt, completion
     if (not isinstance(response, dict) or response.get("done") is not True or
             response.get("model") != model or
             not isinstance(response.get("message"), dict) or
@@ -237,10 +312,9 @@ def tool_feedback(report: dict) -> dict:
 
 def native_identity(args: argparse.Namespace) -> dict:
     identity = backend_identity(args)
-    if getattr(args, "task", None) in {"emit-kernel-wrapper", *COMPOUND_TASKS}:
-        compiler = args.cc.resolve(strict=True)
-        identity["host_compiler"] = {"path": str(compiler), "sha256": digest(compiler),
-                                     "version": subprocess.check_output([str(compiler), "--version"], text=True)}
+    compiler = args.cc.resolve(strict=True)
+    identity["host_compiler"] = {"path": str(compiler), "sha256": digest(compiler),
+                                 "version": subprocess.check_output([str(compiler), "--version"], text=True)}
     return identity
 
 
@@ -266,6 +340,7 @@ def backend_identity(args: argparse.Namespace) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--provider", choices=("ollama", "siliconflow"), default="ollama")
     parser.add_argument("--model", required=True)
     parser.add_argument("--system", choices=SUFFIXES, required=True)
     parser.add_argument("--task", choices=sorted(SUPPORTED_TASKS), required=True)
@@ -292,19 +367,26 @@ def main() -> int:
                 "xDSL": [args.xdsl_python]}[args.system]
     if any(path is None or not path.exists() for path in required):
         parser.error("missing native tool paths for the selected system")
-    revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-    dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT))
+    from run_baseline_benchmarks import git_state
+    revision, dirty = git_state(ROOT.parent)
     if dirty and not args.allow_dirty:
         parser.error("commit the harness before measurement or select --allow-dirty for integration")
-    tags = local_api("tags")["models"]
-    installed = [model for model in tags if args.model in (model["name"], model.get("model"))]
-    if len(installed) != 1:
-        parser.error("model must name one already installed local model")
-    model_revision = installed[0]["digest"]
+    if args.provider == "siliconflow":
+        key = hosted_key()
+        installed = [hosted_model(hosted_api("models", key), args.model)]
+        model_revision = "hosted-alias:" + args.model
+        server_version = None
+        context_check = {"policy": "full-history-provider-window", "window_tokens": HOSTED_CONTEXT}
+    else:
+        tags = local_api("tags")["models"]
+        installed = [model for model in tags if args.model in (model["name"], model.get("model"))]
+        if len(installed) != 1:
+            parser.error("model must name one already installed local model")
+        model_revision = installed[0]["digest"]
+        server_version = local_api("version")
+        context_check = check_context_policy(args.model)
     system_identity = native_identity(args)
     system_revision = hashlib.sha256(json.dumps(system_identity, sort_keys=True).encode()).hexdigest()
-    server_version = local_api("version")
-    context_check = check_context_policy(args.model)
     spec_path = ROOT / "manifests/extension-specs.json"
     spec = json.loads(spec_path.read_text())
     tasks = {task["id"]: task for task in spec["tasks"]}
@@ -365,7 +447,7 @@ def main() -> int:
     prompt_tokens = completion_tokens = edits = tool_calls = 0
     submitted = False
     stop = "action_budget"
-    options = dict(GENERATION_OPTIONS)
+    options = dict(HOSTED_OPTIONS if args.provider == "siliconflow" else GENERATION_OPTIONS)
     started = time.perf_counter()
 
     def oracle(name: str, public: bool) -> dict:
@@ -404,17 +486,24 @@ def main() -> int:
         if remaining <= 0:
             stop = "token_budget"
             break
+        prediction = min(4096, remaining)
         request = {"model": args.model, "messages": messages, "stream": False,
                    "truncate": False, "shift": False,
                    "think": False, "format": ACTION_SCHEMA,
                    "options": {**options, "seed": args.seed + action_index,
-                               "num_predict": min(4096, remaining)}}
+                               "num_predict": prediction}}
+        if args.provider == "siliconflow":
+            request = {"model": args.model, "messages": messages, "stream": False,
+                       **options, "max_tokens": prediction}
         response = None
         request_hash = hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
         try:
-            response = local_api("chat", request)
+            response = (hosted_api("chat/completions", key, request)
+                        if args.provider == "siliconflow" else local_api("chat", request))
             prompt_count, completion_count = response_usage(
-                response, args.model, options["num_ctx"], request["options"]["num_predict"])
+                response, args.model,
+                HOSTED_CONTEXT if args.provider == "siliconflow" else options["num_ctx"],
+                prediction, args.provider)
         except ContextLimitError as failure:
             events.append({"action_index": action_index, "request_sha256": request_hash,
                            "context_limit": failure.detail})
@@ -431,10 +520,12 @@ def main() -> int:
         events.append({"action_index": action_index, "response": response,
                        "request_sha256": request_hash,
                        "candidate_before_sha256": digest(candidate)})
-        content = response["message"]["content"]
+        content = response_content(response, args.provider)
         messages.append({"role": "assistant", "content": content})
         try:
             action = json.loads(content)
+            if not isinstance(action, dict) or set(action) - {"action", "source"}:
+                raise ValueError("expected one JSON action with optional source")
             kind = action["action"]
             if kind not in ("inspect", "edit", "test", "finish"):
                 raise ValueError("unknown action")
@@ -470,9 +561,14 @@ def main() -> int:
         stop = "token_budget"
     wall_ms = round((time.perf_counter() - started) * 1000)
     def identity_check() -> bool:
-        final_tags = local_api("tags")["models"]
-        return (any(model.get("name") == args.model and model.get("digest") == model_revision
-                    for model in final_tags) and local_api("version") == server_version and
+        if args.provider == "siliconflow":
+            # The catalog exposes aliases, not immutable weights. Record that boundary.
+            model_stable = hosted_model(hosted_api("models", key), args.model) == installed[0]
+        else:
+            final_tags = local_api("tags")["models"]
+            model_stable = (any(model.get("name") == args.model and model.get("digest") == model_revision
+                               for model in final_tags) and local_api("version") == server_version)
+        return (model_stable and git_state(ROOT.parent) == (revision, dirty) and
                 native_identity(args) == system_identity and
                 all(digest(ROOT / path) == value for path, value in source_identity.items()))
 
@@ -493,6 +589,10 @@ def main() -> int:
         tofile="candidate." + suffix))
     (root / "candidate.patch").write_text(patch_text)
     payload = {"schema": "extension-agent-trajectory/v1", "model": installed[0],
+        "provider": args.provider,
+        "endpoint": HOSTED_ENDPOINT if args.provider == "siliconflow" else "http://127.0.0.1:11434/api",
+        "created_utc": datetime.now(timezone.utc).isoformat(),
+        "seed_applied": args.provider == "ollama",
         "ollama_version": server_version, "system": args.system, "revision": revision,
         "system_identity": system_identity, "identity_stable": identity_stable,
         "source_identity": source_identity,
@@ -501,7 +601,9 @@ def main() -> int:
         "api_card_sha256": source_identity[str(card.relative_to(ROOT))], "seed": args.seed, "run": args.run,
         "options": options, "think": False,
         "context_check": context_check,
-        "context_policy": {"truncate": False, "shift": False, "overflow": "stop-budget"},
+        "context_policy": ({"history": "complete", "window_tokens": HOSTED_CONTEXT,
+                            "overflow": "provider-error"} if args.provider == "siliconflow" else
+                           {"truncate": False, "shift": False, "overflow": "stop-budget"}),
         "public_case_ids": public_ids,
         "demonstrations": demos, "messages": messages, "events": events,
         "submitted": submitted, "wall_ms": wall_ms, "final_check_errors": final_errors,

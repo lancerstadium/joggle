@@ -32,20 +32,36 @@ def validate_trajectory(path: Path, provider: dict, rows: list[dict[str, str]]) 
     if sha256(trajectory) != provider["trajectory_sha256"] or sha256(trajectory) != row["trajectory_sha256"]:
         raise SystemExit(f"{path}: trajectory digest differs")
     data = json.loads(trajectory.read_text())
+    backend = data.get("provider", "ollama")
+    from run_extension_agent import HOSTED_OPTIONS, HOSTED_ENDPOINT, HOSTED_CONTEXT, response_content, response_usage
     if (data.get("schema") != "extension-agent-trajectory/v1" or data.get("dirty")
             or data.get("identity_stable") is not True or data.get("infrastructure_error")
-            or data.get("options") != {"temperature": 0.0, "num_ctx": 32768}
-            or data.get("context_check", {}).get("verified") is not True
             or data.get("demonstrations") or data.get("think") is not False):
         raise SystemExit(f"{path}: trajectory violates the frozen execution protocol")
-    overflow = data["context_check"].get("overflow", {})
-    if (overflow.get("type") != "exceed_context_size_error" or overflow.get("n_ctx") != 32768
-            or type(overflow.get("n_prompt_tokens")) is not int or overflow["n_prompt_tokens"] <= 32768):
-        raise SystemExit(f"{path}: missing native context-budget check")
+    if backend == "siliconflow":
+        if (data.get("options") != HOSTED_OPTIONS or data.get("endpoint") != HOSTED_ENDPOINT
+                or data.get("seed_applied") is not False
+                or data.get("context_check") != {"policy": "full-history-provider-window", "window_tokens": HOSTED_CONTEXT}
+                or data.get("context_policy") != {"history": "complete", "window_tokens": HOSTED_CONTEXT, "overflow": "provider-error"}
+                or data["model"].get("revision_kind") != "hosted-alias"
+                or data["model"].get("weight_revision") is not None
+                or data["model"].get("catalog_entry", {}).get("id") != row["model"]):
+            raise SystemExit(f"{path}: invalid hosted protocol or model identity")
+        model_revision = "hosted-alias:" + row["model"]
+    elif backend == "ollama":
+        overflow = data.get("context_check", {}).get("overflow", {})
+        if (data.get("options") != {"temperature": 0.0, "num_ctx": 32768}
+                or data.get("context_check", {}).get("verified") is not True
+                or overflow.get("type") != "exceed_context_size_error" or overflow.get("n_ctx") != 32768
+                or type(overflow.get("n_prompt_tokens")) is not int or overflow["n_prompt_tokens"] <= 32768):
+            raise SystemExit(f"{path}: missing native context-budget check")
+        model_revision = data["model"]["digest"]
+    else:
+        raise SystemExit(f"{path}: unrecognized provider")
     for field in ("task", "system", "task_spec_sha256", "api_card_sha256"):
         if data[field] != row[field]:
             raise SystemExit(f"{path}: {field} differs from trajectory")
-    if data["model"]["digest"] != row["model_revision"] or data["model"]["name"] != row["model"]:
+    if model_revision != row["model_revision"] or data["model"]["name"] != row["model"]:
         raise SystemExit(f"{path}: model identity differs")
     identity = hashlib.sha256(json.dumps(data["system_identity"], sort_keys=True).encode()).hexdigest()
     if identity != row["system_revision"]:
@@ -54,15 +70,26 @@ def validate_trajectory(path: Path, provider: dict, rows: list[dict[str, str]]) 
         if data[field] != int(row[field]):
             raise SystemExit(f"{path}: {field} differs from trajectory")
     responses = [event["response"] for event in data["events"] if event.get("response")]
+    if backend == "siliconflow":
+        used = 0
+        for response in responses:
+            try:
+                _, completion = response_usage(response, row["model"], HOSTED_CONTEXT,
+                                               min(4096, 32000-used), backend)
+            except (ValueError, KeyError, TypeError) as failure:
+                raise SystemExit(f"{path}: invalid hosted response: {failure}") from failure
+            used += completion
     for field, usage in (("completion_tokens", "eval_count"), ("prompt_tokens", "prompt_eval_count")):
-        if sum(response[usage] for response in responses) != int(row[field]):
+        count = sum(response["usage"][field] if backend == "siliconflow" else response[usage]
+                    for response in responses)
+        if count != int(row[field]):
             raise SystemExit(f"{path}: {field} differs from provider usage")
     calls = edits = 0
     for event in data["events"]:
         if not event.get("response"):
             continue
         try:
-            action = json.loads(event["response"]["message"]["content"])["action"]
+            action = json.loads(response_content(event["response"], backend))["action"]
         except (ValueError, TypeError, KeyError):
             continue
         if action in ("inspect", "edit", "test"):
