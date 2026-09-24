@@ -93,3 +93,25 @@ integrated main before replacing those measurements.
 The external-data integration check at
 `.cache/artifact/external-data-verified.qpfoeC/` is a separate single-repetition
 correctness run, not a replacement for the paper's repeated measurements.
+
+The integrated-main repeat is running serially in
+`.cache/artifact/main-updates-20260924-H8DNhW/`: Joggle, TVM, then ONNX-MLIR;
+three models, nine edit sites, ten repetitions, and two policies per system
+(540 records). The measured source revision is
+`cc82ef114093b6d90ca94df05b54a60084585e72`. Paper-only revisions do not alter
+that source identity. Collectors, compiler binaries, and mods remain unchanged
+during collection. Replace the published update data only after the entire
+matched run finishes and its correctness and timing records are reconciled.
+
+End-to-end and package measurements have separate source records. The current
+model merge includes a Joggle run from `38a426d`; the operator merge includes
+Joggle base and optimized runs from `5a71fe5`. These are not measurements of
+the newly integrated main. Recollect both Joggle operator variants and the
+model suite, and revalidate the native packages, before claiming complete
+main-branch data alignment. Keep the external results only where their
+recorded inputs, sampling protocol, and compiler configurations still match.
+
+The MD and TeX design sources now distinguish observation-based stage selection
+within a retained graph from prepared-body reuse across imported graphs.
+Rebuild and inspect the PDFs after the live timing collection; the current PDF
+predates this mechanism clarification.

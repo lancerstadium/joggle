@@ -28,7 +28,7 @@ We present Joggle, a compiler infrastructure that makes these relationships
 explicit. Typed \emph{compiler functions} express behavior, graph-level \emph{mods} own
 cross-stage features, and recorded observations and effects direct updates.
 Functions progressively refine a typed graph while semantic operations and
-lower-level helpers coexist. Each successful mutation publishes a verified
+lower-level helpers coexist. Each successful mutating run publishes a verified
 state over the same entity model. This \emph{progressive intermediate
 representation} preserves a feature's ownership as its subject program changes
 form.
@@ -67,7 +67,8 @@ containment within the subject program.
 \paragraph{Reactive execution.} The evaluator validates recorded observations
 and propagates overlapping effects to select affected stages. Entity generations
 and revisions identify stale observations; transactional publication keeps
-reusable records consistent with the verified graph.
+reusable records consistent with the verified graph. Across imported revisions,
+content-based specialization keys identify reusable prepared bodies.
 
 The evaluation separates extension completion, package changes, and update
 latency from generated-code performance. Native package integration touches

@@ -47,7 +47,7 @@ We present Joggle, a compiler infrastructure that makes these relationships
 explicit. Typed *compiler functions* express behavior, graph-level *mods* own
 cross-stage features, and recorded observations and effects direct updates.
 Functions progressively refine a typed graph while semantic operations and
-lower-level helpers coexist. Each successful mutation publishes a verified
+lower-level helpers coexist. Each successful mutating run publishes a verified
 state over the same entity model. This *progressive intermediate
 representation* preserves a feature's ownership as its subject program changes
 form.
@@ -98,7 +98,8 @@ containment within the subject program.
 **Reactive execution.** The evaluator validates recorded observations
 and propagates overlapping effects to select affected stages. Entity generations
 and revisions identify stale observations; transactional publication keeps
-reusable records consistent with the verified graph.
+reusable records consistent with the verified graph. Across imported revisions,
+content-based specialization keys identify reusable prepared bodies.
 
 The evaluation separates extension completion, package changes, and update
 latency from generated-code performance. Native package integration touches
@@ -518,10 +519,19 @@ exchange scalar or byte attributes and do not receive graph entities, so
 graph-dependent work remains in tracked compiler functions. These rules define
 the state over which the evaluator can validate reuse.
 
-Incremental evaluation therefore depends on more than a result cache. It
-requires stable entity identity, revisions that reflect every published edit,
-and transactions that align graph state with dependency state. The graph
-runtime provides these mechanisms.
+**Reuse across imports.** Reimporting a model creates a new subject store.
+To carry reusable work across this boundary, the compilation driver retains
+prepared specializations under a fixed environment and pipeline. Keys combine
+function identity, content, and visible callee families with parameter/result
+types, generic types, and bound static values. The driver imports signatures before
+preparation, so matching does not revisit cached bodies. After selection, it
+batch-clones referenced bodies, reconnects their calls, and removes temporary
+declarations. It captures the next cache before scalarization and model-wide
+memory planning; later phases therefore operate on the new model rather than
+stale allocation decisions. Observations thus select stages in a retained
+graph, whereas specialization keys transfer prepared bodies across imported
+revisions. The graph runtime supports both through typed handles, revisions,
+and verified mutation.
 
 ### 3.5 Graph Runtime
 
@@ -582,22 +592,12 @@ reuse decoding and slot layout. Stable call sites additionally cache overload
 resolution under the current environment epoch and argument types. Reusable
 register windows reduce per-call allocation.
 
-These plans are an internal interpreted execution form. They remove repeated
-decoding and slot-allocation setup while preserving the language's control
-flow, failure propagation, and dynamic calls. A native implementation may
-accelerate a specific typed function through the same mod-scoped binding and
-graph API.
+Plans retain interpreted control flow, failure propagation, and dynamic calls.
+Native functions use the same mod-scoped binding and graph API.
 
 At the extension boundary, typed handles represent live graph identity and
 `Attr` represents owned, serializable values. Dependency records, execution
-plans, transaction journals, and counters remain private. This boundary keeps
-runtime machinery out of the extension API while allowing reports and profiles
-to evolve as structured data.
-
-The runtime gives each design mechanism an explicit contract.
-Handles identify the entities compiler functions observe and change; mod
-dependencies determine visible implementations; revisions and transactions
-establish when recorded observations remain reusable.
+plans, transaction journals, and counters remain private.
 
 ## 4. Evaluation
 
