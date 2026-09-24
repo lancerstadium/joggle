@@ -273,9 +273,21 @@ The ownership study uses complete native extension packages, independently of
 the single-file Agent tasks. Its revised measurement boundary and admission
 conditions are recorded in `PROTOCOL.md`. The existing Git-patch collector
 remains the measurement mechanism; reference-file sizes are not package
-footprints. The minimizer below currently creates a temporary Git worktree and
-must not be run under the project's current single-worktree restriction.
-Package collection requires a workspace-safe minimization path first.
+footprints. The minimizer uses an isolated archive snapshot and private index
+below `.cache/artifact/minimization`, without creating another Git worktree or
+changing the live checkout. The baseline must fail and the candidate must pass
+the same oracle before hunk reduction begins.
+
+The low-bit and fused-convolution directories also contain native xDSL package
+manifests. Their wheels register a transform pass and C-emission target through
+`xdsl.universe`, reusing each package's `reference.py` implementation. A clean
+consumer discovers `study-lowbit-lower` / `study-lowbit-c` and
+`study-qconv-fuse` / `study-qconv-c` through `xdsl-opt`; no driver edits or
+compiler-tree patches are needed. Build wheels from source copies in a scratch
+directory and install into a separate target directory so the frozen Agent
+environment stays unchanged. Package admission checks the installed entry
+points, transformed graph, emitted C, and runtime outputs. It is a prerequisite
+for the ownership comparison, not a change-footprint result.
 
 ```sh
 python3 artifact/minimize_patch.py \

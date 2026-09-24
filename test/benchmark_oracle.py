@@ -36,9 +36,69 @@ from run_extension_agent import public_case_ids, tool_feedback, response_usage, 
 import run_extension_agent
 from merge_benchmark_rows import audited_input
 from merge_update_rows import production_rows, sha256 as file_sha256
+import minimize_patch
 
 
 class BenchmarkOracleTests(unittest.TestCase):
+    def test_patch_minimization_uses_private_snapshot_and_preserves_checkout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            repo = root / "repo"
+            repo.mkdir()
+            def git(*args):
+                return subprocess.check_output(["git", "-C", str(repo), *args],
+                                               text=True, stderr=subprocess.PIPE).strip()
+            git("init", "-q")
+            git("config", "user.name", "Oracle Test")
+            git("config", "user.email", "oracle@example.invalid")
+            (repo / "feature.txt").write_text("old\n")
+            (repo / "obsolete.txt").write_text("remove me\n")
+            git("add", ".")
+            git("commit", "-qm", "base")
+            base = git("rev-parse", "HEAD")
+            (repo / "feature.txt").write_text("new\n")
+            (repo / "obsolete.txt").unlink()
+            (repo / "required.txt").write_text("required\n")
+            (repo / "unneeded.txt").write_text("optional\n")
+            git("add", "-A")
+            git("commit", "-qm", "candidate")
+            head = git("rev-parse", "HEAD")
+            # A user's staged and unstaged edits must survive the measurement.
+            (repo / "feature.txt").write_text("staged author edit\n")
+            git("add", "feature.txt")
+            (repo / "feature.txt").write_text("unstaged author edit\n")
+            index_hash = file_sha256(repo / ".git/index")
+            worktrees = git("worktree", "list", "--porcelain")
+            command = [sys.executable, "-c", "from pathlib import Path; import subprocess; "
+                "assert subprocess.run(['git','rev-parse','--show-toplevel'],capture_output=True).returncode != 0; "
+                "assert Path('feature.txt').read_text() == 'new\\n'; "
+                "assert Path('required.txt').read_text() == 'required\\n'; "
+                "assert not Path('obsolete.txt').exists()"]
+            args = ["minimize_patch.py", "--repo", str(repo), "--base", base, "--head", head,
+                    "--output-patch", str(root / "result.patch"),
+                    "--oracle-log", str(root / "oracle.log"), "--log", str(root / "trace.json"),
+                    "--scratch-root", str(repo / "scratch"), "--", *command]
+            with patch.object(sys, "argv", args):
+                self.assertEqual(minimize_patch.main(), 0)
+            result = (root / "result.patch").read_text()
+            self.assertIn("required.txt", result)
+            self.assertIn("obsolete.txt", result)
+            self.assertNotIn("unneeded.txt", result)
+            self.assertEqual((repo / "feature.txt").read_text(), "unstaged author edit\n")
+            self.assertEqual(file_sha256(repo / ".git/index"), index_hash)
+            self.assertEqual(git("rev-parse", "HEAD"), head)
+            self.assertEqual(git("worktree", "list", "--porcelain"), worktrees)
+            self.assertEqual(list((repo / "scratch").iterdir()), [])
+            record = json.loads((root / "trace.json").read_text())
+            self.assertEqual(record["workspace"], "isolated-archive/private-index")
+            self.assertEqual(record["trials"][0]["phase"], "baseline")
+            self.assertNotEqual(record["trials"][0]["returncode"], 0)
+            self.assertEqual(len(record["retained_hunks"]), 3)
+            # A non-discriminating oracle must not produce a publishable patch.
+            args[args.index("--") + 1:] = [sys.executable, "-c", "pass"]
+            with patch.object(sys, "argv", args), self.assertRaisesRegex(SystemExit, "baseline"):
+                minimize_patch.main()
+
     def test_extension_primary_matrix_requires_all_72_conditions(self):
         families = ("definition", "analysis", "rewrite", "conversion", "emission", "vertical")
         tasks = {f"{family}-{i}": family for family in families for i in range(2)}

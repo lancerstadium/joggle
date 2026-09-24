@@ -137,13 +137,14 @@ contract is unchanged. Verify package discovery from a clean consumer, graph
 transformation, emitted-code execution, and the final source tree. Do not
 infer dependencies from directory depth or assign each compiler role a zone.
 
-Implementation status: the semantic references are admitted; native package
-integration and matched maintenance patches are not yet measured. No package
-row can be released from the single-file reference results. The current
-minimizer creates another Git worktree; replace that execution path with an
-isolated snapshot inside the existing repository before using it under the
-single-worktree restriction. Keep source/oracle/policy/patch hashes and the
-hunk-level fixed-point check.
+Implementation status: the semantic references are admitted; matched package
+maintenance patches are not yet measured. No package footprint row can be
+released from the single-file reference results. The minimizer exports an
+isolated tracked-file snapshot below `.cache/artifact/minimization` and uses a
+private Git index. It does not create another worktree or change the author's
+checkout/index. It first requires the unmodified baseline to fail the oracle,
+then checks the original patch and each hunk deletion to a fixed point. Keep
+source/oracle/policy/patch hashes with the final passing check.
 
 Counts come from Git diffs rather than author logs. The collector binds the
 base revision, final patch, minimization trace, oracle output, and policy by

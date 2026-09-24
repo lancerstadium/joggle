@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "compiler-study-qconv"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["xdsl==0.71.0"]
+
+[project.entry-points."xdsl.universe"]
+study_qconv = "study_qconv.plugin:UNIVERSE"
+
+[tool.setuptools]
+packages = ["study_qconv"]
+package-dir = {study_qconv = "."}
+include-package-data = false
