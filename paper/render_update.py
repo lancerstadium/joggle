@@ -90,7 +90,7 @@ def audit(rows):
     return indexed
 
 
-def collect(directory):
+def source_export(directory):
     rows, stages, sources = [], [], []
     for system in SYSTEMS:
         path = directory / f"{system}.csv"
@@ -101,7 +101,11 @@ def collect(directory):
         if not metadata["stable"] or metadata["dirty"]:
             raise ValueError(f"unstable collector: {system}")
         rows.extend(read_csv(path))
-        sources.append({"system": system, "csv_sha256": digest(path),
+        sources.append({"system": system, "csv_path": str(path.resolve()),
+                        "samples_path": str(raw.resolve()),
+                        "record_path": str(path.with_suffix(".json").resolve()),
+                        "record_sha256": digest(path.with_suffix(".json")),
+                        "csv_sha256": digest(path),
                         "samples_sha256": digest(raw), "collection": metadata})
         if system == "joggle":
             for line in raw.read_text().splitlines():
@@ -120,16 +124,47 @@ def collect(directory):
             raise ValueError(f"mixed collection controls: {field}")
     audit(rows)
     rows.sort(key=lambda r: tuple(r[k] for k in ("case_id", "edit_id", "backend", "iteration", "policy")))
-    write_csv(DATA / "figure-06-update.csv", rows)
-    write_csv(DATA / "figure-06-stages.csv", stages)
     provenance = {"schema": "repeated-update-export/v1", "models": list(MODELS),
                   "edits_per_model": 3, "paired_repetitions": 10,
                   "rows": len(rows), "sources": sources,
-                  "csv_sha256": digest(DATA / "figure-06-update.csv"),
-                  "stages_sha256": digest(DATA / "figure-06-stages.csv"),
                   "speedup_estimator": "median of within-edit paired rebuild/update ratios",
                   "whiskers": "25th to 75th percentile across ten paired repetitions"}
+    return rows, stages, provenance
+
+
+def collect(directory):
+    rows, stages, provenance = source_export(directory)
+    write_csv(DATA / "figure-06-update.csv", rows)
+    write_csv(DATA / "figure-06-stages.csv", stages)
+    provenance.update(csv_sha256=digest(DATA / "figure-06-update.csv"),
+                      stages_sha256=digest(DATA / "figure-06-stages.csv"))
     (DATA / "figure-06-update.json").write_text(json.dumps(provenance, indent=2) + "\n")
+
+
+def audit_export(directory):
+    """Bind the paper export to original rows and phase records, without rerunning a compiler."""
+    provenance = json.loads((directory / "figure-06-update.json").read_text())
+    if provenance.get("schema") != "repeated-update-export/v1":
+        raise ValueError("unexpected repeated-update export schema")
+    for name, key in (("update", "csv_sha256"), ("stages", "stages_sha256")):
+        if digest(directory / f"figure-06-{name}.csv") != provenance[key]:
+            raise ValueError("source-data export checksum mismatch")
+    sources = provenance["sources"]
+    if {s["system"] for s in sources} != set(SYSTEMS) or len(sources) != len(SYSTEMS):
+        raise ValueError("incomplete update provenance")
+    parents = {Path(s["csv_path"]).parent for s in sources}
+    if len(parents) != 1:
+        raise ValueError("update source files must belong to one collected batch")
+    rows, stages, expected = source_export(parents.pop())
+    for key, value in expected.items():
+        if provenance.get(key) != value:
+            raise ValueError(f"update provenance differs from raw source: {key}")
+    canonical = lambda records: [{k: str(v) for k, v in row.items()} for row in records]
+    if read_csv(directory / "figure-06-update.csv") != canonical(rows):
+        raise ValueError("exported update rows differ from original measurements")
+    if read_csv(directory / "figure-06-stages.csv") != canonical(stages):
+        raise ValueError("exported phase rows differ from raw measurements")
+    return rows, provenance
 
 
 def stats(values):
@@ -162,7 +197,7 @@ def summarize(rows, indexed):
     return result
 
 
-def render(summary):
+def render(summary, output=None):
     font = PERFORMANCE_FONT_SIZE
     plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": font, "font.stretch": "condensed",
                          "pdf.fonttype": 42, "axes.linewidth": .45,
@@ -226,8 +261,10 @@ def render(summary):
                fontsize=font, columnspacing=.7, handlelength=1, handletextpad=.3,
                labelspacing=.2, bbox_to_anchor=(.53,1.02))
     fig.subplots_adjust(left=.10,right=.99,bottom=.15,top=.86,wspace=.14,hspace=.40)
-    for suffix in ("pdf", "png"):
-        fig.savefig(PAPER / f"figures/figure-06-update.{suffix}", dpi=400)
+    output = output or PAPER / "figures/figure-06-update.pdf"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    for suffix in (".pdf", ".png"):
+        fig.savefig(output.with_suffix(suffix), dpi=400)
     plt.close(fig)
 
 
@@ -288,19 +325,25 @@ def tables(summary):
 
 
 def main():
+    global DATA
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--collect", type=Path)
+    parser.add_argument("--data-dir", type=Path, default=DATA)
+    parser.add_argument("--output-dir", type=Path,
+                        help="render figures and summary here without rewriting manuscript files")
     args = parser.parse_args()
+    DATA = args.data_dir.resolve()
     if args.collect: collect(args.collect)
-    rows = read_csv(DATA / "figure-06-update.csv")
-    provenance = json.loads((DATA / "figure-06-update.json").read_text())
-    if digest(DATA / "figure-06-update.csv") != provenance["csv_sha256"] or digest(DATA / "figure-06-stages.csv") != provenance["stages_sha256"]:
-        raise ValueError("source-data export checksum mismatch")
+    rows, provenance = audit_export(DATA)
     summary = summarize(rows, audit(rows))
-    write_csv(DATA / "figure-06-update-summary.csv", summary)
-    render(summary)
-    tables(summary)
-    print("Rendered 540 measurements, 27 edit/system summaries, six panels, and two appendix tables.")
+    destination = args.output_dir or DATA
+    destination.mkdir(parents=True, exist_ok=True)
+    write_csv(destination / "figure-06-update-summary.csv", summary)
+    render(summary, args.output_dir / "figure-06-update.pdf" if args.output_dir else None)
+    if not args.output_dir:
+        tables(summary)
+    print("Rendered 540 measurements, 27 edit/system summaries, and six panels."
+          + (" Updated two appendix tables." if not args.output_dir else " Manuscript unchanged."))
 
 
 if __name__ == "__main__":
