@@ -30,8 +30,8 @@ tensors with dtype-specific tolerances. Failed cases remain in coverage but do
 not enter latency ratios. The repeated update experiment covers three edit sites on each of
 DenseNet-121, SqueezeNet-1.1, and TinyYOLOv3, with ten paired repetitions per site. The
 execution experiment uses ten warm-ups and 100 timed samples per artifact. We
-form ratios within an edit, model, or operator before aggregation. The supplement
-gives per-case measurements, input/output examples, and compiler configurations.
+form ratios within an edit, model, or operator before aggregation. The measurement
+record fixes per-case measurements, input/output examples, and compiler configurations.
 
 Figure~\ref{fig:eval-workflow} shows the paired design: shared feature
 specifications for extension and ownership, the same edited graph for updates,
@@ -40,7 +40,7 @@ aggregating measurements.
 
 \begin{figure}[!tbp]
   \centering
-  \includegraphics[width=\columnwidth]{figures/evaluation-workflow.png}
+  \includegraphics[width=\columnwidth]{figures/figure-06-evaluation-workflow.pdf}
   \caption{Evaluation workflow. Paired inputs and correctness checks connect extension tasks, package edits, executable-ready updates, and execution.}
   \Description{Four independent panels depict checked native extensions, package
   edits branching from the same parent, paired vertical compilation timelines,
@@ -60,7 +60,7 @@ Figure~\ref{fig:operator-extension} makes composition concrete: fusion replaces 
 convolution--bias--requantization--ReLU chain while preserving types and
 quantization attributes. Analysis and emission then consume the same graph
 handles through ordinary functions in one mod. The unit fixture produces
-accumulator 9 and output 4; Appendix C gives complete input/output examples.
+accumulator 9 and output 4; the checked contract fixes the complete input/output behavior.
 
 \paragraph{Implementation size.} Figure~\ref{fig:extension-size} compares the checked task-specific source files,
 counting nonempty physical lines, including imports and comments but excluding
@@ -70,8 +70,8 @@ Direct typed definitions reduce boilerplate in these tasks. Cross-stage
 implementations take 67/90/67 lines for low-bit support and 74/76/70 for
 fusion, in the same system order. xDSL is shorter in analysis, rewriting,
 conversion, and emission. Source brevity therefore varies by role; the shared
-interface combines concise definitions with direct cross-role composition. Appendix C lists source and byte counts;
-Section 4.3 includes complete-package integration.
+interface combines concise definitions with direct cross-role composition. The measurement
+record lists source and byte counts; Section 4.3 then measures complete-package integration.
 
 \begin{figure}[!tbp]
   \centering
@@ -84,8 +84,8 @@ Section 4.3 includes complete-package integration.
 \end{figure}
 
 An exploratory Qwen3-8B/14B collection yields 42 complete trajectories out of
-72 planned conditions, with no full-task completion. Appendix C reports
-actual candidates and diagnostics separately from the checked references.
+72 planned conditions, with no full-task completion. The checked reference
+implementations remain separate from these exploratory diagnostics.
 
 \subsection{Change Footprint and Ownership}
 \label{sec:eval-controllable}
@@ -125,8 +125,8 @@ reduces the source needed to connect these features to the compiler.
 All six maintenance changes touch one file and one ownership zone per system,
 without registration edits. Saturation, subtraction, and rounding tie in lines;
 nibble order, activation bounds, and stride use fewer lines in the mod
-implementations. Counts include patch formatting. Appendix E gives complete
-footprints and worked input/output pairs.
+implementations. Counts include patch formatting. The measurement record retains
+complete footprints and worked input/output pairs.
 
 \begin{figure}[tp]
   \centering
@@ -198,7 +198,7 @@ Prepared-body reuse accounts for most of the update gain. DenseNet's median
 Prepare time falls from 30.631\,s to 1.307\,s, reducing total lowering from
 38.617\,s to 8.539\,s. Emission remains near 6.5\,s and native compilation near
 2.7\,s. SqueezeNet and TinyYOLOv3 show the same pattern: preparation contracts,
-while emission and native compilation remain stable. The supplement reports
+while emission and native compilation remain stable. The measurement record reports
 all 27 edit/system combinations and phase medians.
 
 This breakdown identifies where further reuse would matter most.
@@ -247,8 +247,8 @@ Inputs remain resident during timing. Joggle uses a native C call loop with
 caller-owned outputs; the baselines use Python-driven calls with their native
 output allocation. The measurements therefore compare deployed invocation
 paths, including call and allocation costs, rather than isolated kernel bodies.
-These costs matter most for short operators. Appendix B gives the per-backend
-boundaries. Input loading, compilation, and reference evaluation are outside
+These costs matter most for short operators. The protocol fixes the per-backend
+call and allocation boundaries. Input loading, compilation, and reference evaluation are outside
 the execution interval.
 
 We report median steady-state execution latency from 100 measurements after
@@ -281,8 +281,8 @@ rather than reducing every operator to one suite-wide ratio.
 Joggle and ORT pass all 24 operators; TVM and ONNX-MLIR each pass 22.
 TVM cannot import QLinearConv or QLinearMatMul. ONNX-MLIR cannot lower
 QLinearConv, and its QLinearMatMul output fails the integer oracle.
-Appendix~A gives every operator's latency and distinguishes the full and
-jointly correct populations in the aggregate rows.
+The operator record gives every latency and distinguishes the full and
+jointly correct populations in its aggregate rows.
 
 The optimization pack reduces geometric mean operator latency by
 $1.89\times$ across all 24 cases. Rectangular and $256\times256$ matrix

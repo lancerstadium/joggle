@@ -1,4 +1,4 @@
-# Joggle: A Progressive IR for Malleable Compilation
+# Joggle: Malleable Compilation with a Progressive Intermediate Representation
 
 ## Abstract
 

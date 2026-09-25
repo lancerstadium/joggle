@@ -64,10 +64,10 @@ sigconf.pdf: sigconf.tex references.bib \
 	sections/01-introduction.tex sections/02-motivation.tex sections/03-design.tex \
 	sections/04-evaluation.tex sections/05-related-work.tex \
 	sections/06-discussion.tex sections/07-conclusion.tex \
-	figures/figure-01-thesis-map.png figures/figure-02-workflow.png \
-	figures/figure-03-operator-extension.png figures/figure-07-performance.pdf \
-	figures/system-architecture.png figures/reactive-update.png \
-	figures/evaluation-workflow.png figures/figure-07-models.pdf \
+	figures/figure-01-thesis-map.pdf figures/figure-02-workflow.pdf \
+	figures/figure-03-architecture.pdf figures/figure-04-operator-extension.pdf \
+	figures/figure-05-reactive-update.pdf figures/figure-07-performance.pdf \
+	figures/figure-06-evaluation-workflow.pdf figures/figure-07-models.pdf \
 	figures/figure-06-update.pdf figures/figure-05-footprint.pdf figures/extension-size.pdf
 	latexmk -pdf -interaction=nonstopmode -halt-on-error sigconf.tex
 

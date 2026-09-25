@@ -39,21 +39,6 @@ feedback~\cite{jimenez2024swebench,yang2024sweagent}, while KernelBench measures
 generated kernels~\cite{ouyang2025kernelbench}. Here, an extension can involve
 several compiler roles, making their composition part of the task itself.
 
-Figure~\ref{fig:thesis-map} summarizes the three mechanisms developed in this paper.
-
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=.94\textwidth]{figures/figure-01-thesis-map.png}
-  \caption{Three compiler-development problems and Joggle's corresponding
-    mechanisms: shared compiler functions, graph-level ownership, and
-    dependency-directed updates.}
-  \Description{A three-column argument map. Fragmented mechanisms map to
-    unified metaprogramming and convenient extension; scattered ownership maps
-    to a graph-level mod boundary and controlled change; coarse re-execution
-    maps to dependency-directed updates and efficient response.}
-  \label{fig:thesis-map}
-\end{figure*}
-
 \paragraph{Unified compiler functions.} Five compiler roles share typed calls over
 graph handles and owned values. Common resolution and composition rules let
 one role invoke another, while effect contracts distinguish inspection,

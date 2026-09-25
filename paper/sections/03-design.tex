@@ -46,7 +46,7 @@ transactional publication boundary.
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\columnwidth]{figures/system-architecture.png}
+  \includegraphics[width=\columnwidth]{figures/figure-03-architecture.pdf}
   \caption{Compilation architecture. Mod dependencies organize extensions; typed calls connect subject graphs, evaluator caches, and checked mutation.}
   \Description{Mod dependency and operator graphs connect to a shared typed
   call interface. Below, plan and dependency tables sit beside entity-slot
@@ -88,8 +88,8 @@ owned values through the same call interface.
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\columnwidth]{figures/figure-03-operator-extension.png}
-  \caption{Quantized convolution fusion. Complete subject functions surround the replacement excerpt. Fixture declarations are omitted; Appendix C.7 gives the full transformation.}
+  \includegraphics[width=\columnwidth]{figures/figure-04-operator-extension.pdf}
+  \caption{Quantized convolution fusion. Complete subject functions surround the replacement excerpt; the transformation preserves declared types, attributes, and users.}
   \Description{Three vertically stacked panels show the input quantized
   convolution chain, checked graph edits, and the resulting fused operation.
   Code and graph nodes are aligned. Scales, layouts, result types, and the
@@ -268,7 +268,7 @@ invalidate every consumer.
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\columnwidth]{figures/reactive-update.png}
+  \includegraphics[width=\columnwidth]{figures/figure-05-reactive-update.pdf}
   \caption{Reactive updates. Ordered checks expose upstream writes and retain unchanged records. Failure restores the input graph.}
   \Description{A convolution metadata edit invalidates a recorded read;
   actual writes invalidate a later stage while a disjoint stage is
