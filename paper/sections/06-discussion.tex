@@ -34,4 +34,5 @@ and provide the state model for future artifact reuse.
 They make invalidation visible to both the evaluator and the developer.
 That visibility is the practical link between a modular compiler interface and
 predictable update cost. The update path is therefore inspectable rather than
-implicit. This makes optimization progress easier to attribute.
+implicit. This makes optimization progress easier to attribute. It also keeps
+the cost model tied to observable state.
