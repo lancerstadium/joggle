@@ -15,7 +15,8 @@ these roles may use different interfaces and belong to separate registries,
 build targets, and backend libraries. Even after a local modification, a
 pipeline can repeat work unrelated to that change. The development cost thus
 depends on three boundaries: how capabilities compose, where a feature is
-owned, and what an edit invalidates.
+owned, and what an edit invalidates. Figure~\ref{fig:thesis-map} summarizes
+these boundaries and the mechanisms that address them.
 
 Our central observation is that the structure of a compiler extension differs
 from the structure of the program it transforms. A feature can span several IR
