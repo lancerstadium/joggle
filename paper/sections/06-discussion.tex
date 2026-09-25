@@ -6,15 +6,26 @@ placing cross-stage functions behind one public interface. Once installed,
 all three systems support single-file maintenance in the measured tasks.
 The distinction is the integration boundary, not the absence of internal
 structure: a mod can span source fragments while retaining one public contract.
+This gives a feature a stable unit for review and release: its semantic
+definition, rewrite, and target binding evolve together while the subject graph
+continues to change underneath.
 
 \paragraph{Reuse at two boundaries.} Observations preserve results across
 unrelated graph edits; specialization signatures transfer prepared bodies
 across imports. As preparation shrinks, emission and native compilation occupy
 a larger share of turnaround. Reusing those artifacts requires identities
 covering bodies, layouts, targets, and dependencies, alongside graph invalidation.
+The two boundaries answer different questions: observations decide whether a
+stage runs again, while specialization identities decide whether its prepared
+body remains valid. Keeping the questions separate makes a cache miss local and
+gives the evaluator a precise explanation for discarded work.
 
 \paragraph{Consistent publication.} Typed calls connect compiler roles;
 transactions keep their graph edits and dependency records consistent.
 Ownership determines the available capabilities, while recorded observations
 determine whether previous results remain valid. This link between composition
-and reuse is the design's organizing principle.
+and reuse is the design's organizing principle. Adding a role is an interface
+change, adding a mod is an ownership change, and changing a graph is a
+dependency change. Publishing each at one commit point lets the compiler
+explain an update in the same vocabulary used to implement it: which capability
+ran, which entity changed, and which result was retained.
