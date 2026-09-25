@@ -1,5 +1,28 @@
 # Evaluation protocol
 
+## Reporting status — 25 September 2026
+
+The manuscript reports native reference size for Convenient (12 tasks × three
+systems), complete-package footprint for Controllable, executable-ready updates
+for Efficient, and operator/model execution. `paper/Makefile` is the single
+entry point for the reported figures. `paper/data/extension-size.csv` counts
+nonempty physical source lines, including comments and imports, and UTF-8 bytes
+from all 36 admitted reference files. Shared drivers and build files are excluded.
+Recollect these counts with `python3 paper/render_extensions.py --collect
+.cache/artifact/main-agents-explicit-20260925-x0f9ieig/manifest.json`.
+
+Reference-size analysis was added after inspecting the incomplete Agent study.
+It measures these implementations, not Agent performance or development time.
+The original Agent endpoint below is retained: 42 complete trajectories, zero
+full-task completions; 25 unstarted, four interrupted, and one blocked condition.
+Appendix C reports those collection states and actual candidate diagnostics.
+The remaining 30 conditions are not counted as task failures. No collector is
+scheduled to resume, and no Agent advantage is inferred from this collection.
+
+The numbered figure names below are stable artifact identifiers from the
+original collection plan, not the current manuscript's automatic figure numbers.
+The original targets and scoring rules remain unchanged.
+
 Section 4 follows the three claims plus end-to-end evaluation. Each experiment
 has one assembled CSV and one plotting entry point. Repetitions estimate a
 subject; they do not increase the number of independent tasks, patches, or

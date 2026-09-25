@@ -4,14 +4,10 @@
 \subsection{Methodology}
 \label{sec:eval-method}
 
-The evaluation follows a compiler feature from implementation to execution.
-We examine cross-stage composition through twelve native extension tasks
-and their checked outputs. We then assess control through the files, lines, and integration zones
-changed by behaviorally equivalent feature packages. Next, nine model edit
-sites expose the cost of producing a replacement executable and the work
-saved by reuse. Finally, execution correctness and latency establish the
-end-to-end outcome. Together, these comparisons connect extension effort,
-change scope, and update cost to the performance of the resulting program.
+The evaluation follows a feature from implementation to execution: twelve
+native tasks measure extension size and composition; two packages expose
+integration and maintenance scope; nine model edit sites measure update cost;
+and operator/model execution measures the resulting artifacts.
 
 \paragraph{Subjects and controls.}
 Extension and ownership comparisons use Joggle, MLIR, and xDSL. Each extension
@@ -46,7 +42,7 @@ aggregating measurements.
   \centering
   \includegraphics[width=\columnwidth]{figures/evaluation-workflow.png}
   \caption{Evaluation workflow. Paired inputs and correctness checks connect extension tasks, package edits, executable-ready updates, and execution.}
-  \Description{Four independent panels depict an agent repair loop, package
+  \Description{Four independent panels depict checked native extensions, package
   edits branching from the same parent, paired vertical compilation timelines,
   and parallel backend execution. Measurements retain both successful and
   failed cases, with latency ratios formed only from correct outputs.}
@@ -56,50 +52,55 @@ aggregating measurements.
 \subsection{Cross-Stage Extensions}
 \label{sec:eval-convenient}
 
-We examine twelve native extensions spanning definition, analysis, rewrite,
-conversion, artifact generation, and cross-stage features. Two tasks per family
-share a semantic contract across Joggle, MLIR, and xDSL; all 36 reference
-implementations pass their task oracles. The comparison follows each contract
-through its entry points, graph edits, and observable outputs.
+Twelve tasks cover definition, analysis, rewrite, conversion, emission, and
+cross-stage features. Two tasks per family share a semantic contract across
+Joggle, MLIR, and xDSL; all 36 reference implementations pass their oracles.
 
-The quantized-convolution example makes the interface benefit concrete.
-A typed transformation replaces the single-use convolution--bias--requantization--ReLU chain, preserving tensor types and quantization attributes. An analysis
-function then reads the transformed graph and emits its kernel. In Joggle,
-both roles use ordinary functions, shared graph handles, and the same mod.
-For the unit fixture, the accumulator is 9 and requantization yields 4.
-GELU expansion similarly exposes a complete before/after program and checked
-numerical outputs. Figure~\ref{fig:operator-extension} and Appendix C connect these implementations
-to their contracts and outputs.
+Figure~\ref{fig:operator-extension} makes composition concrete: fusion replaces the single-use
+convolution--bias--requantization--ReLU chain while preserving types and
+quantization attributes. Analysis and emission then consume the same graph
+handles through ordinary functions in one mod. The unit fixture produces
+accumulator 9 and output 4; Appendix C gives complete input/output examples.
 
-This evidence establishes cross-stage composition through one language and
-value model. Section 4.3 separately measures the source footprint of integrating
-and changing complete packages.
+\paragraph{Implementation size.} Figure~\ref{fig:extension-size} compares the checked task-specific source files,
+counting nonempty physical lines, including imports and comments but excluding
+shared drivers and build files. Type definition takes 17 lines versus 52 in
+MLIR and 24 in xDSL; quantized-operation definition takes 37, 62, and 38.
+Direct typed definitions reduce boilerplate in these tasks. Cross-stage
+implementations remain comparable: low-bit support takes 67/90/67 lines,
+and fusion 74/76/70. xDSL is shorter in analysis, rewriting, conversion, and
+emission. The distinction is therefore concise definitions combined with
+one cross-role interface. Appendix C lists source and byte counts;
+Section 4.3 includes complete-package integration.
 
-We also collected agent trajectories using Qwen3-8B and Qwen3-14B with a
-shared edit--test loop. At the reporting cutoff, 42 of 72 planned trajectories
-have complete records; none completes its full task. Appendix C reports the
-observed code, diagnostics, and collection status, separating generated
-candidates from the checked native implementations.
+\begin{figure}[!tbp]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/extension-size.pdf}
+  \caption{Native extension size. Nonempty source lines for twelve checked tasks;
+  imports and comments included. One checked reference implementation per bar.}
+  \Description{Six grouped-bar panels compare Joggle, MLIR, and xDSL on two
+  tasks per compiler role. All panels use the same linear zero-origin scale.}
+  \label{fig:extension-size}
+\end{figure}
+
+An exploratory Qwen3-8B/14B collection yields 42 complete trajectories out of
+72 planned conditions, with no full-task completion. Appendix C reports
+actual candidates and diagnostics separately from the checked references.
 
 \subsection{Change Footprint and Ownership}
 \label{sec:eval-controllable}
 
-The preceding examples establish extension behavior; ownership concerns how a
-feature is integrated and maintained. The comparison unit is therefore a
-complete extension package, including its implementation, public entry points,
-and build or registration declarations. Signed low-bit arithmetic and quantized
-convolution fusion connect analysis, transformation, and emission in each system.
-Initial integration and subsequent behavior changes are measured separately,
-so one-time package setup does not count as recurring maintenance.
+Ownership concerns the complete package: implementation, public entry points,
+and build or registration declarations. We compare signed low-bit arithmetic
+and quantized convolution fusion, each spanning analysis, transformation, and
+emission. Separating installation from subsequent edits distinguishes initial
+integration cost from recurring maintenance.
 
-Each feature contributes an integration task and three independent maintenance
-tasks. The low-bit package changes its saturation interval, arithmetic
-operation, or nibble order. The convolution package changes requantization
-rounding, the activation bound, or spatial stride. Every maintenance task starts
-from the admitted original package. Its oracle checks both the changed behavior
-and preserved behavior, including packed-byte padding or shared graph users.
-Running the parent under the same oracle establishes that the task requires a
-semantic change.
+Each feature contributes one integration and three independent maintenance
+tasks. Low-bit edits change saturation, arithmetic, or nibble order; fusion
+edits change rounding, activation bounds, or stride. Every edit starts from
+the admitted parent. Oracles check changed and preserved behavior, including
+packed-byte padding and shared users; parent controls must fail the changed contract.
 
 For patch $p$, the footprint is
 \[
@@ -120,13 +121,11 @@ contains 69 lines, compared with 193 in MLIR and 122 in xDSL; the convolution
 package contains 77, 178, and 125 lines, respectively. Thus, direct mod publication
 reduces the source needed to connect these features to the compiler.
 
-Once installed, all six maintenance changes touch one file and one ownership
-zone per system, without registration edits. Saturation, subtraction, and
-rounding have equal line counts; nibble order, activation bounds, and stride
-require fewer changed lines in the mod implementations. Counts describe the
-observed source patches, including formatting. All changed packages pass their
-oracles, and each maintenance parent fails the changed contract. Appendix~E
-provides the complete footprints, package files, and worked input/output pairs.
+All six maintenance changes touch one file and one ownership zone per system,
+without registration edits. Saturation, subtraction, and rounding tie in lines;
+nibble order, activation bounds, and stride use fewer lines in the mod
+implementations. Counts include patch formatting. Appendix E gives complete
+footprints and worked input/output pairs.
 
 \begin{figure}[tp]
   \centering
@@ -165,11 +164,10 @@ $e$, we pair an update with a complete rebuild of the same edited model:
 S_{s,e}=\frac{T_{\mathrm{ready,full},s,e}}{T_{\mathrm{ready,update},s,e}}.
 \]
 
-Both paths use the same optimization policy, node replacement, input tensors,
-and tolerance. The update starts from a validated original model; the rebuild
-starts in a fresh worker. Native caches remain enabled. TVM retains its runtime
-and process caches; ONNX-MLIR invokes a fresh compiler process from a resident
-host.
+Both paths share optimization policy, edits, tensors, and tolerance. Updates
+start from a validated original model; rebuilds start in fresh workers.
+Native caches remain enabled. TVM retains runtime/process caches;
+ONNX-MLIR invokes a fresh compiler from a resident host.
 
 Joggle retains its environment, evaluator plans, and prepared function bodies.
 After import, it matches specialization signatures and materializes referenced

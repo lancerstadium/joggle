@@ -5,11 +5,15 @@ all: sigconf.pdf supplement.pdf
 
 # Data and plotting changes must reach the PDFs through the normal build.
 # Each renderer also refreshes its PNG preview and, where applicable, summaries.
-MEASURED_FIGURES = figures/figure-05-footprint.pdf figures/figure-06-update.pdf \
+MEASURED_FIGURES = figures/extension-size.pdf figures/figure-05-footprint.pdf figures/figure-06-update.pdf \
 	figures/figure-07-performance.pdf figures/figure-07-models.pdf
 PLOT_COMMON = ../artifact/figures/common.py
 
 figures: $(MEASURED_FIGURES)
+
+figures/extension-size.pdf: data/extension-size.csv data/extension-size.json \
+	render_extensions.py $(PLOT_COMMON) $(wildcard ../artifact/extensions/*/reference.*)
+	python3 render_extensions.py
 
 # Render only after the complete matched Agent matrix has been assembled.
 # Re-audit raw trajectories on every invocation; partial exports are rejected.
@@ -64,7 +68,7 @@ sigconf.pdf: sigconf.tex references.bib \
 	figures/figure-03-operator-extension.png figures/figure-07-performance.pdf \
 	figures/system-architecture.png figures/reactive-update.png \
 	figures/evaluation-workflow.png figures/figure-07-models.pdf \
-	figures/figure-06-update.pdf figures/figure-05-footprint.pdf
+	figures/figure-06-update.pdf figures/figure-05-footprint.pdf figures/extension-size.pdf
 	latexmk -pdf -interaction=nonstopmode -halt-on-error sigconf.tex
 
 supplement.pdf: supplement.tex $(A5_GRAPHS) sections/appendix-operator-data.tex \

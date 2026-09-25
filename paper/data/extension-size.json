@@ -1,0 +1,11 @@
+{
+  "metric": "nonempty physical source lines, including comments and imports",
+  "scope": "task-specific reference file; excludes shared drivers, fixtures and build files",
+  "population": "12 tasks x 3 systems; all admitted native references",
+  "interpretation": "observed implementation size, not development time or agent performance",
+  "analysis_status": "descriptive analysis added after agent collection was inspected",
+  "uncertainty": "none: literal source counts, one implementation per condition",
+  "format_sensitivity": "UTF-8 byte counts included as a separate descriptive measure",
+  "admission_manifest": ".cache/artifact/main-agents-explicit-20260925-x0f9ieig/manifest.json",
+  "csv_sha256": "f3d6537a9a610661168a21e7ae7d1c7959593e05bbff528aa5e8998b9f4d28b9"
+}

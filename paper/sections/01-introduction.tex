@@ -45,8 +45,8 @@ Figure~\ref{fig:thesis-map} summarizes the three mechanisms developed in this pa
   \centering
   \includegraphics[width=.94\textwidth]{figures/figure-01-thesis-map.png}
   \caption{Three compiler-development problems and Joggle's corresponding
-    mechanisms. Each column terminates in the quantity evaluated in
-    Section~\ref{sec:evaluation}.}
+    mechanisms: shared compiler functions, graph-level ownership, and
+    dependency-directed updates.}
   \Description{A three-column argument map. Fragmented mechanisms map to
     unified metaprogramming and convenient extension; scattered ownership maps
     to a graph-level mod boundary and controlled change; coarse re-execution
@@ -65,7 +65,7 @@ Loading, visibility, and publication follow this boundary independently of
 containment within the subject program.
 
 \paragraph{Reactive execution.} The evaluator validates recorded observations
-and propagates overlapping effects to select affected stages. Entity generations
+before each stage, accounting for effects published upstream. Entity generations
 and revisions identify stale observations; transactional publication keeps
 reusable records consistent with the verified graph. Across imported revisions,
 content-based specialization keys identify reusable prepared bodies.

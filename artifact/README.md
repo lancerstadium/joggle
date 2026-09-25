@@ -6,15 +6,21 @@ design is in [`PROTOCOL.md`](PROTOCOL.md). Raw measurements belong under
 
 ## Evidence layout
 
-| Figure | Input CSV | Plot |
+| Reported evidence | Input CSV under `paper/data/` | Renderer |
 | --- | --- | --- |
-| 4 · extension completion | `figure-04-extension.csv` | `figure_04_extension.py` |
-| 5 · change footprint | `figure-05-footprint.csv` | `figure_05_footprint.py` |
-| 6 · cross-system update | `figure-06-update.csv` | `figure_06_update.py` |
-| 7 · end-to-end performance | `figure-07-performance.csv` | `figure_07_performance.py` |
+| Native extension size | `extension-size.csv` | `paper/render_extensions.py` |
+| Change footprint | `package-footprint.csv` | `figure_05_footprint.py --packages` |
+| Cross-system update | `figure-06-update.csv` | `paper/render_update.py` |
+| Operator execution | `figure-07-operators.csv` | `figure_07_performance.py` |
+| Model execution | `figure-07-models.csv` | `figure_07_models.py` |
 
-The release path contains only the four claim-facing figures above. Figure 7
-combines operator and model results.
+Build all reported figures and both PDFs with `make -C paper`.
+There are four evaluation sections; execution has separate operator and model
+displays. Agent collection is stopped at 42 complete trajectories out of 72
+planned conditions, with no full-task completion. Its diagnostic CSV is
+`paper/data/agent-diagnostics.csv`; Appendix C separates those candidates from
+the checked reference programs used for source-size measurements. The numbered
+artifact headings below retain the original collection-plan identifiers.
 
 The model companion display accepts matched native runs from Joggle, ORT,
 TVM, and ONNX-MLIR through `figure_07_models.py --models`. The base-path

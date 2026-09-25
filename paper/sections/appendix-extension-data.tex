@@ -2,6 +2,39 @@
 \section{Extension Task Inputs and Outputs}
 \label{sec:extension-task-data}
 
+\noindent\textbf{Native implementation sizes.} The twelve task-specific reference files are measured after oracle admission.
+Nonempty physical lines include comments, imports, and embedded source strings;
+UTF-8 bytes retain whitespace. Shared drivers, fixtures, and build declarations
+are outside this measurement. Each cell describes one checked implementation.
+Source sizes are a descriptive addition following inspection of the Agent
+collection, rather than a replacement completion score. The CSV records the
+source file and its admission report for every implementation.
+
+\begin{center}
+\small
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+& \multicolumn{3}{c}{Nonempty lines} & \multicolumn{3}{c}{UTF-8 bytes} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+Task & Joggle & MLIR & xDSL & Joggle & MLIR & xDSL \\
+\midrule
+Parametric type & 17 & 52 & 24 & 517 & 2498 & 1011 \\
+Quantized operation & 37 & 62 & 38 & 1519 & 2819 & 1983 \\
+Broadcast shape & 43 & 33 & 21 & 975 & 1444 & 1059 \\
+Numeric range & 56 & 48 & 38 & 1553 & 2108 & 1725 \\
+Add-zero rewrite & 38 & 37 & 30 & 1327 & 1679 & 1407 \\
+Redundant cast & 47 & 48 & 34 & 1573 & 1931 & 1516 \\
+GELU expansion & 38 & 40 & 27 & 1459 & 1655 & 1233 \\
+Quantized expansion & 41 & 41 & 26 & 1569 & 1924 & 1403 \\
+Graph manifest & 68 & 66 & 33 & 1934 & 3168 & 1740 \\
+Kernel wrapper & 12 & 16 & 10 & 538 & 746 & 483 \\
+Signed low-bit & 67 & 90 & 67 & 3034 & 3958 & 3230 \\
+Quantized fusion & 74 & 76 & 70 & 3476 & 4151 & 3372 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
 \noindent\textbf{Observed agent trajectories.} We summarize the 42 complete records at the
 reporting cutoff: 14 Joggle, 13 MLIR, and 15 xDSL trajectories. The remaining
 30 conditions comprise 25 not successfully started, four interrupted prefixes,

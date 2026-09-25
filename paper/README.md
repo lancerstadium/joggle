@@ -82,8 +82,8 @@ and coral only for changed state. Use only the named Joggle constructs; omit
 source snippets, line numbers, numbered circles, red numeric labels, gradients, shadows, and
 decorative people. -->
 
-*Figure 1: Joggle maps three extension challenges to system mechanisms and
-measurable outcomes.*
+*Figure 1: Three compiler-development problems and Joggle's corresponding
+mechanisms: shared compiler functions, graph-level ownership, and dependency-directed updates.*
 
 **Unified compiler functions.** Five compiler roles share typed calls over
 graph handles and owned values. Common resolution and composition rules let
@@ -96,7 +96,7 @@ Loading, visibility, and publication follow this boundary independently of
 containment within the subject program.
 
 **Reactive execution.** The evaluator validates recorded observations
-and propagates overlapping effects to select affected stages. Entity generations
+before each stage, accounting for effects published upstream. Entity generations
 and revisions identify stale observations; transactional publication keeps
 reusable records consistent with the verified graph. Across imported revisions,
 content-based specialization keys identify reusable prepared bodies.
@@ -654,14 +654,10 @@ plans, transaction journals, and counters remain private.
 
 ### 4.1 Methodology
 
-The evaluation follows a compiler feature from implementation to execution.
-We examine cross-stage composition through twelve native extension tasks
-and their checked outputs. We then assess control through the files, lines, and integration zones
-changed by behaviorally equivalent feature packages. Next, nine model edit
-sites expose the cost of producing a replacement executable and the work
-saved by reuse. Finally, execution correctness and latency establish the
-end-to-end outcome. Together, these comparisons connect extension effort,
-change scope, and update cost to the performance of the resulting program.
+The evaluation follows a feature from implementation to execution: twelve
+native tasks measure extension size and composition; two packages expose
+integration and maintenance scope; nine model edit sites measure update cost;
+and operator/model execution measures the resulting artifacts.
 
 **Subjects and controls.** Extension and ownership comparisons use Joggle,
 MLIR, and xDSL. Each extension follows its system's native API at a pinned
@@ -694,8 +690,8 @@ Create a NEW original technical figure showing four compiler evaluation protocol
 
 ORIGINAL LAYOUT: a compact 2-by-2 set of four experiment vignettes on a single pure white portrait canvas, aspect ratio 4:5. Small neutral black serif panel headings (a), (b), (c), (d). A very thin light-gray vertical divider and a short horizontal divider separate quadrants. NO panel boxes, NO colored panel fills, NO table grid, NO column headings, NO full-width header or footer, NO problem/solution rows, NO repeated rectangular card frames. Each vignette has its OWN scientifically meaningful internal topology with mostly TOP-TO-BOTTOM flow. Precise fine strokes, small black serif/math labels, compact monospace micro-annotations, tiny graph symbols. All forms 2D, flat, fully opaque, white background. No black filled regions, no shadows, no texture, no photographic decoration. Information-dense, almost no empty margins.
 
-TOP LEFT (a) "Extension completion":
-At top place three tiny unboxed system names "Joggle   MLIR   xDSL". Then a small quoted document “NL contract” beside a tiny code document “starter”. They converge on an agent represented ONLY by a small outlined hexagon with {} inside, not a big cartoon robot. Below, a compact triangular directed loop: “edit” -> “test” -> “feedback” -> “edit”. At the test node a rightward exit labelled “submit” leads to a final source-file symbol, then a small semantic-check diamond. Beneath it three aligned tiny outputs labelled “success”, “tokens”, “tool calls”, with checkmark, token-square, and wrench symbols respectively. Tiny side annotations “12 tasks”, “6 roles”, “fixed budget”. No invented outcomes or fake result rows.
+TOP LEFT (a) "Native extensions":
+Three system names Joggle / MLIR / xDSL converge on one semantic contract, then branch into jog / C++ / Python reference-file symbols. These converge on verify + execute. Show the qconv -> bias -> requant -> relu chain replaced by fused, beside x=[1,-2], w=[2,-3], b=1, acc=9 -> y=4. Finish with a source-lines measuring glyph (schematic equal-height bars without a numeric axis) and “verified references”. Tiny side annotation “12 tasks / 6 roles”. No Agent loop, completion rate, or fabricated size results.
 
 TOP RIGHT (b) "Package footprint":
 Two small input symbols at top: an operator graph labelled “low-bit” and a tiny conv->relu graph labelled “fusion”. Under them a small outline package symbol P. From P, visibly fork FOUR independent arrows: one to a tiny plus-marked package labelled “setup”, three to tiny amber-diff packages labelled “Δ1”, “Δ2”, “Δ3”. These are independent changes, not a chain. Each package output connects to a shared oracle diamond with a small checkmark. Below show a very compact four-column tally strip “F  L  Z  R” and directly below “files  lines  zones  publish”. Side annotation “Joggle / MLIR / xDSL”. Include a tiny two-line code diff + / −, no fabricated numeric measurements, no .cpp or .mlir filenames.
@@ -707,38 +703,40 @@ Fork the edited graph into TWO VERTICAL TRACKS, left labelled “update”, righ
 BOTTOM RIGHT (d) "Generated-code execution":
 At top a small matrix X, with side note “24 operators / 15 models”. X fans out to FOUR short VERTICAL parallel paths, with narrow backend labels “Joggle”, “ORT”, “TVM”, “ONNX-MLIR” placed horizontally above the paths, do not rotate text. Each path ends in its own small output matrix Y. All four output matrices merge at a diamond “≈”. From the diamond branch downward: checkmark path to a stopwatch icon “latency”; BOTH check and cross paths to four little outlined squares “coverage”. Beneath, tiny micro-annotation “10 warm-ups / 100 samples”. A very small label under the Joggle path “base/opt: operators”. No data charts or made-up numerical results.
 
-The four different flow topologies must be unmistakable: a repair LOOP, an independent-edit FAN-OUT, two paired VERTICAL TIMELINES, and parallel backend EXECUTION PATHS. This is not a capability comparison diagram and must not resemble a 3-column challenge-solution-benefit table. Keep balanced aligned quadrants but do not force every quadrant into one shared input/procedure/output template. Use small typography and compact layout. Render only the figure, without caption.
+The four flow topologies are a checked-reference comparison, an independent-edit FAN-OUT, two paired VERTICAL TIMELINES, and parallel backend EXECUTION PATHS. This is not a capability comparison diagram and must not resemble a 3-column challenge-solution-benefit table. Keep balanced aligned quadrants, small typography, and compact layout. Render only the figure, without caption.
+Final correction pass: panel (b) must say low-bit and conv -> relu; branches setup / Δ1 / Δ2 / Δ3 are independent. Panel (c) must name TVM, not MLIR, and end in yu ≈ yr and Tr / Tu. Panel (d) must say 24 operators / 15 models and 10 warm-ups / 100 samples. White opaque background. Do not introduce new systems, populations, or result values.
 -->
 
 *Figure 6: Evaluation workflow. Paired inputs and correctness checks connect extension tasks, package edits, executable-ready updates, and execution.*
 
 ### 4.2 Cross-Stage Extensions
 
-We examine twelve native extensions spanning definition, analysis, rewrite,
-conversion, artifact generation, and cross-stage features. Two tasks per family
-share a semantic contract across Joggle, MLIR, and xDSL; all 36 reference
-implementations pass their task oracles. The comparison follows each contract
-through its entry points, graph edits, and observable outputs.
+Twelve tasks cover definition, analysis, rewrite, conversion, emission, and
+cross-stage features. Two tasks per family share a semantic contract across
+Joggle, MLIR, and xDSL; all 36 reference implementations pass their oracles.
 
-The quantized-convolution example makes the interface benefit concrete.
-A typed transformation replaces the single-use convolution--bias--requantization--
-ReLU chain, preserving tensor types and quantization attributes. An analysis
-function then reads the transformed graph and emits its kernel. In Joggle,
-both roles use ordinary functions, shared graph handles, and the same mod.
-For the unit fixture, the accumulator is 9 and requantization yields 4.
-GELU expansion similarly exposes a complete before/after program and checked
-numerical outputs. Figure 4 and Appendix C connect these implementations
-to their contracts and outputs.
+Figure 4 makes composition concrete: fusion replaces the single-use
+convolution--bias--requantization--ReLU chain while preserving types and
+quantization attributes. Analysis and emission then consume the same graph
+handles through ordinary functions in one mod. The unit fixture produces
+accumulator 9 and output 4; Appendix C gives complete input/output examples.
 
-This evidence establishes cross-stage composition through one language and
-value model. Section 4.3 separately measures the source footprint of integrating
-and changing complete packages.
+**Implementation size.** Figure 7 compares the checked task-specific source files,
+counting nonempty physical lines, including imports and comments but excluding
+shared drivers and build files. Type definition takes 17 lines versus 52 in
+MLIR and 24 in xDSL; quantized-operation definition takes 37, 62, and 38.
+Direct typed definitions reduce boilerplate in these tasks. Cross-stage
+implementations remain comparable: low-bit support takes 67/90/67 lines,
+and fusion 74/76/70. xDSL is shorter in analysis, rewriting, conversion, and
+emission. The distinction is therefore concise definitions combined with
+one cross-role interface. Appendix C lists source and byte counts;
+Section 4.3 includes complete-package integration.
 
-We also collected agent trajectories using Qwen3-8B and Qwen3-14B with a
-shared edit--test loop. At the reporting cutoff, 42 of 72 planned trajectories
-have complete records; none completes its full task. Appendix C reports the
-observed code, diagnostics, and collection status, separating generated
-candidates from the checked native implementations.
+*Figure 7: Native extension size. Nonempty source lines for twelve tasks, including imports and comments. One checked reference implementation per bar.*
+
+An exploratory Qwen3-8B/14B collection yields 42 complete trajectories out of
+72 planned conditions, with no full-task completion. Appendix C reports
+actual candidates and diagnostics separately from the checked references.
 
 <!-- AGENT DIAGNOSTICS: report observed trajectories, not a new success proxy.
 data/agent-diagnostics.csv preserves final outcomes, unchanged edits, protocol
@@ -748,22 +746,17 @@ are populated from failed or interrupted trajectories. -->
 
 ### 4.3 Change Footprint and Ownership
 
-The preceding examples establish extension behavior; ownership concerns how a
-feature is integrated and maintained. The comparison unit is therefore a
-complete extension package, including its implementation, public entry points,
-and build or registration declarations. Signed low-bit arithmetic and quantized
-convolution fusion connect analysis, transformation, and emission in each system.
-Initial integration and subsequent behavior changes are measured separately,
-so one-time package setup does not count as recurring maintenance.
+Ownership concerns the complete package: implementation, public entry points,
+and build or registration declarations. We compare signed low-bit arithmetic
+and quantized convolution fusion, each spanning analysis, transformation, and
+emission. Separating installation from subsequent edits distinguishes initial
+integration cost from recurring maintenance.
 
-Each feature contributes an integration task and three independent maintenance
-tasks. The low-bit package changes its saturation interval, arithmetic
-operation, or nibble order. The convolution package changes requantization
-rounding, the activation bound, or spatial stride. Every maintenance task starts
-from the admitted original package. Its oracle checks both the changed behavior
-and preserved behavior, including packed-byte padding or shared graph users.
-Running the parent under the same oracle establishes that the task requires a
-semantic change.
+Each feature contributes one integration and three independent maintenance
+tasks. Low-bit edits change saturation, arithmetic, or nibble order; fusion
+edits change rounding, activation bounds, or stride. Every edit starts from
+the admitted parent. Oracles check changed and preserved behavior, including
+packed-byte padding and shared users; parent controls must fail the changed contract.
 
 For patch $p$, the footprint is
 
@@ -778,24 +771,22 @@ Publication declarations contribute to $F_p$ and $L_p$; $R_p$ identifies that
 subset. Each native feature package, including a baseline plugin, forms one
 ownership zone. Counts exclude tests, fixtures, and shared measurement code.
 
-**Integration and maintenance.** Figure 7 separates initial package setup from
+**Integration and maintenance.** Figure 8 separates initial package setup from
 subsequent edits. Native installation uses one source file per Joggle feature
 and three per baseline, including publication declarations. The low-bit package
 contains 69 lines, compared with 193 in MLIR and 122 in xDSL; the convolution
 package contains 77, 178, and 125 lines, respectively. Thus, direct mod publication
 reduces the source needed to connect these features to the compiler.
 
-Once installed, all six maintenance changes touch one file and one ownership
-zone per system, without registration edits. Saturation, subtraction, and
-rounding have equal line counts; nibble order, activation bounds, and stride
-require fewer changed lines in the mod implementations. Counts describe the
-observed source patches, including formatting. All changed packages pass their
-oracles, and each maintenance parent fails the changed contract. Appendix E
-provides the complete footprints, package files, and worked input/output pairs.
+All six maintenance changes touch one file and one ownership zone per system,
+without registration edits. Saturation, subtraction, and rounding tie in lines;
+nibble order, activation bounds, and stride use fewer lines in the mod
+implementations. Counts include patch formatting. Appendix E gives complete
+footprints and worked input/output pairs.
 
 ![Package integration and maintenance costs.](figures/figure-05-footprint.png)
 
-*Figure 7: Feature integration and maintenance. Columns: integration files, integration lines, maintenance lines. Lines count additions plus deletions. J/M/X: Joggle/MLIR/xDSL.*
+*Figure 8: Feature integration and maintenance. Columns: integration files, integration lines, maintenance lines. Lines count additions plus deletions. J/M/X: Joggle/MLIR/xDSL.*
 
 ### 4.4 Compilation Updates
 
@@ -822,11 +813,10 @@ $$
 S_{s,e}=\frac{T_{ready,full,s,e}}{T_{ready,update,s,e}}.
 $$
 
-Both paths use the same optimization policy, node replacement, input tensors,
-and tolerance. The update starts from a validated original model; the rebuild
-starts in a fresh worker. Native caches remain enabled. TVM retains its runtime
-and process caches; ONNX-MLIR invokes a fresh compiler process from a resident
-host.
+Both paths share optimization policy, edits, tensors, and tolerance. Updates
+start from a validated original model; rebuilds start in fresh workers.
+Native caches remain enabled. TVM retains runtime/process caches;
+ONNX-MLIR invokes a fresh compiler from a resident host.
 
 Joggle retains its environment, evaluator plans, and prepared function bodies.
 After import, it matches specialization signatures and materializes referenced
@@ -834,7 +824,7 @@ cached bodies. Scalarization, model-wide storage planning, emission, native
 compilation, and binding remain inside the measured interval. Its matched
 rebuild uses the same pipeline with an empty body cache.
 
-**Turnaround and reuse.** Figure 8 reports absolute update latency and paired
+**Turnaround and reuse.** Figure 9 reports absolute update latency and paired
 rebuild/update speedup, separating cross-system turnaround from reuse within
 each system. Across nine edit sites, Joggle reduces executable-ready time on
 all three subjects. Median paired speedups are 2.49× for DenseNet-121, 1.46× for
@@ -863,16 +853,16 @@ compilation still run for each executable. As preparation shrinks, those stages
 account for more of the update time. The result therefore motivates extending
 reuse to artifact construction, rather than further optimizing preparation alone.
 
-**Retained-graph scheduling.** To isolate dependency-directed execution, we also run five metadata-propagation stages on 15 retained model graphs, editing three distinct operations per model. Across 450 affected-edit pairs, reactive execution takes 0.148–52.608 ms at the per-site median and reduces stage-processing time by 18.86× geometrically relative to full traversal. The affected regions span 1–668 operations; hence an early edit need not be the most expensive in a branched graph. All 900 pairs, including unrelated edits, produce matching checked outputs; unrelated edits reuse all five stages. These measurements isolate scheduling and graph processing, while Figure 8 includes artifact construction and native compilation.
+**Retained-graph scheduling.** To isolate dependency-directed execution, we also run five metadata-propagation stages on 15 retained model graphs, editing three distinct operations per model. Across 450 affected-edit pairs, reactive execution takes 0.148–52.608 ms at the per-site median and reduces stage-processing time by 18.86× geometrically relative to full traversal. The affected regions span 1–668 operations; hence an early edit need not be the most expensive in a branched graph. All 900 pairs, including unrelated edits, produce matching checked outputs; unrelated edits reuse all five stages. These measurements isolate scheduling and graph processing, while Figure 9 includes artifact construction and native compilation.
 
-*Figure 8: Executable-ready updates. Top: median ready time, IQR. Bottom: paired rebuild/update speedup. Ten repetitions per edit; crosses mark failed compilation.*
+*Figure 9: Executable-ready updates. Top: median ready time, IQR. Bottom: paired rebuild/update speedup. Ten repetitions per edit; crosses mark failed compilation.*
 
 <!-- UPDATE-RESULTS FIGURE — Single-column vertical bars, two rows by three columns,
 3.33×2.25 inches with 5.5 pt labels. Columns: DenseNet-121, SqueezeNet-1.1, TinyYOLOv3. Top:
 absolute ready time for three edit sites, grouped by system and policy; log
 axis, hatched rebuild and full-color update. Bottom: paired rebuild/update speedup
 at the same edit sites; linear axis and parity at one. Teal Joggle, amber TVM,
-blue ONNX-MLIR, with the same system hatches as Figures 8–9. Use lighter
+blue ONNX-MLIR, with the same system hatches as Figures 9–10. Use lighter
 hatched rebuild bars and full-color update bars. Tight axis-label padding,
 horizontal multiline edit labels, and compact row spacing enlarge the plot
 areas without changing the canvas. Four-sided inward ticks, IQR whiskers, explicit × for
@@ -922,12 +912,12 @@ hatched base bars, solid optimized bars, and dotted amber TVM bars. Mark unsuppo
 TVM cases with ×, not zero-height bars. Report correct coverage in the
 caption. Bars start at parity; use compact wrapped labels and shared axes at
 the final column width. Enclose every panel in four thin spines with inward
-ticks on all sides; share colors, hatching, and the compact legend with Figure 10.
+ticks on all sides; share colors, hatching, and the compact legend with Figure 11.
 Source CSV: paper/data/figure-07-operators.csv.
 Model measurements have a separate companion display. Preserve every case and failed outcome.
 No generated pixels or illustrative numbers for data. -->
 
-*Figure 9: Operator execution relative to ORT. Bars: median; whiskers: p95 (100 samples). Crosses: invalid. DW/PW: depthwise/pointwise; MM: matmul; B/R: bias/ReLU.*
+*Figure 10: Operator execution relative to ORT. Bars: median; whiskers: p95 (100 samples). Crosses: invalid. DW/PW: depthwise/pointwise; MM: matmul; B/R: bias/ReLU.*
 
 On the 22 operators correct in every configuration, optimized Joggle achieves
 $1.35\times$ lower geometric mean latency than default TVM. It has lower
@@ -949,7 +939,7 @@ convolution slows by $1.09\times$. The largest execution gains therefore come
 from matrix-product lowering, whereas the update gains arise from preparation
 reuse.
 
-Figure 10 extends the external comparison to all 15 models. Joggle passes the
+Figure 11 extends the external comparison to all 15 models. Joggle passes the
 numerical oracle on 14 models, including both EfficientNet quantization
 variants and both TinyYOLO models; SSD-MobileNet stops during preparation.
 ORT passes on 13 models, and TVM and ONNX-MLIR on 11 each. Correctness is checked
@@ -966,7 +956,7 @@ is marked ×, and a correct candidate without a valid ORT reference is marked
 with a dash. Absolute medians and p95 values for every correct candidate remain
 in the accompanying CSV.
 
-<!-- FIGURE 10 DATA — Single-column 3.33×2.25-inch paired bar plot, 5.5 pt labels, two rows by
+<!-- FIGURE 11 DATA — Single-column 3.33×2.25-inch paired bar plot, 5.5 pt labels, two rows by
 three columns. Five panels contain all 15 models grouped as dense CNNs,
 mobile CNNs, detectors, quantized models, and other models; the sixth gives
 the four-system common-set geometric means. Shared logarithmic latency/ORT
@@ -976,12 +966,12 @@ Whiskers extend from median to p95; the aggregate has no timing whisker.
 Four thin spines, inward major/minor ticks, compact labels, and one legend.
 Explicit × for failed candidates and a dash for correct candidates without a
 valid ORT denominator, never zero-valued bars. Aggregate only the eight models
-correct in all four systems. All panels share Figure 9's width and height.
+correct in all four systems. All panels share Figure 10's width and height.
 CSV: paper/data/figure-07-models.csv; per-model summaries:
 paper/data/figure-07-models-summary.csv; script:
 artifact/figures/figure_07_models.py. -->
 
-*Figure 10: Model execution relative to ORT. Bars: median; whiskers: p95 (100 samples). Crosses: invalid candidate; dash: invalid reference. Panel (f): eight jointly correct models.*
+*Figure 11: Model execution relative to ORT. Bars: median; whiskers: p95 (100 samples). Crosses: invalid candidate; dash: invalid reference. Panel (f): eight jointly correct models.*
 
 <!-- PERFORMANCE DATA — Separate operator and model displays form one
 end-to-end experiment. Each display has a source CSV and plotting script.
@@ -1221,6 +1211,29 @@ Joggle times calls in a native C loop; the other systems time invocations from
 the Python collector. Numerical checks follow the timed interval.*
 
 ## Appendix C. Extension Task Inputs and Outputs
+
+**Native implementation sizes.** The twelve task-specific reference files are measured after oracle admission.
+Nonempty physical lines include comments, imports, and embedded source strings;
+UTF-8 bytes retain whitespace. Shared drivers, fixtures, and build declarations
+are outside this measurement. Each cell describes one checked implementation.
+Source sizes are a descriptive addition following inspection of the Agent
+collection, rather than a replacement completion score. The CSV records the
+source file and its admission report for every implementation.
+
+| Task | Joggle lines | MLIR lines | xDSL lines | Joggle bytes | MLIR bytes | xDSL bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Parametric type | 17 | 52 | 24 | 517 | 2498 | 1011 |
+| Quantized operation | 37 | 62 | 38 | 1519 | 2819 | 1983 |
+| Broadcast shape | 43 | 33 | 21 | 975 | 1444 | 1059 |
+| Numeric range | 56 | 48 | 38 | 1553 | 2108 | 1725 |
+| Add-zero rewrite | 38 | 37 | 30 | 1327 | 1679 | 1407 |
+| Redundant cast | 47 | 48 | 34 | 1573 | 1931 | 1516 |
+| GELU expansion | 38 | 40 | 27 | 1459 | 1655 | 1233 |
+| Quantized expansion | 41 | 41 | 26 | 1569 | 1924 | 1403 |
+| Graph manifest | 68 | 66 | 33 | 1934 | 3168 | 1740 |
+| Kernel wrapper | 12 | 16 | 10 | 538 | 746 | 483 |
+| Signed low-bit | 67 | 90 | 67 | 3034 | 3958 | 3230 |
+| Quantized fusion | 74 | 76 | 70 | 3476 | 4151 | 3372 |
 
 **Observed agent trajectories.** We summarize the 42 complete records at the
 reporting cutoff: 14 Joggle, 13 MLIR, and 15 xDSL trajectories. The remaining
