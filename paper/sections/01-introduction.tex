@@ -42,18 +42,21 @@ several compiler roles, making their composition part of the task itself.
 \paragraph{Unified compiler functions.} Five compiler roles share typed calls over
 graph handles and owned values. Common resolution and composition rules let
 one role invoke another, while effect contracts distinguish inspection,
-mutation, and artifact return.
+mutation, and artifact return, keeping semantic and implementation roles visible
+in one source-level composition.
 
 \paragraph{Graph-level feature ownership.} A mod groups cross-stage functions and
 native bindings behind one public interface and declared dependency closure.
 Loading, visibility, and publication follow this boundary independently of
-containment within the subject program.
+containment within the subject program, naming the extension owner and its
+review boundary.
 
 \paragraph{Reactive execution.} The evaluator validates recorded observations
 before each stage, accounting for effects published upstream. Entity generations
 and revisions identify stale observations; transactional publication keeps
 reusable records consistent with the verified graph. Across imported revisions,
-content-based specialization keys identify reusable prepared bodies.
+content-based specialization keys identify reusable prepared bodies, enabling
+selective continuation through the same pipeline.
 
 The evaluation separates extension behavior, package changes, and update
 latency from generated-code performance. Native package integration touches
