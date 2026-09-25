@@ -2,6 +2,37 @@
 \section{Extension Task Inputs and Outputs}
 \label{sec:extension-task-data}
 
+\noindent\textbf{Observed agent trajectories.} We summarize the 42 complete records at the
+reporting cutoff: 14 Joggle, 13 MLIR, and 15 xDSL trajectories. The remaining
+30 conditions comprise 25 not successfully started, four interrupted prefixes,
+and one blocked trajectory. These are collection states, not task failures.
+No complete trajectory satisfies its full task contract. This descriptive
+analysis was added after inspecting the incomplete collection; it does not
+replace the planned task-completion endpoint with partial-credit scoring.
+
+Across the complete records, 34 trajectories exhaust the action budget.
+The 1,145 responses contain one action-protocol error and 412 unchanged-source
+edits. All recorded feedback appears in the subsequent conversation, and no
+response ends at its output-length limit. The final candidates satisfy eleven
+negative fixtures and no positive fixture. These observations locate the
+bottleneck in producing and repairing executable extensions, rather than
+decoding the action format.
+
+Representative records expose the distinction. In Joggle interval analysis,
+the candidate changes an immutable dictionary declaration to unsupported
+\texttt{let mut} syntax and repeats the resulting error (C.6). In xDSL graph-manifest
+emission, it returns \texttt{\{"count":0,"values":[]\}} instead of the required SSA graph.
+In Joggle parametric-type definition, five invalid-parameter fixtures are
+correctly rejected, while valid types fail at \texttt{base.get}. Thus negative-case
+acceptance and process completion are not substitutes for the requested output.
+
+The native reference programs in C.4, C.5, and C.7 supply the checked implementation
+examples. Agent candidates are reproduced separately with their actual
+diagnostics. Per-trajectory descriptive counts are in
+\texttt{agent-diagnostics.csv}, derived from the primary batch
+\texttt{main-agents-explicit-20260925-x0f9ieig}; only five task/model groups have complete
+records for all three systems at this cutoff.
+
 \noindent\textbf{Agent protocol.}\par\smallskip
 \begingroup
 \small

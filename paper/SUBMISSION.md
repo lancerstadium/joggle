@@ -150,9 +150,15 @@ The following issues remain substantive submission gates, not layout work:
   speedup is 18.86×. Section 4.4 and Appendix D.1 distinguish this retained-graph
   result from executable-ready prepared-body reuse. Input annotation provenance
   and the measured revision accompany `paper/data/reactive-scheduler.csv`.
-- **Agent results.** Finish the full 72-condition population and report all
-  outcomes. Successful-task costs use conditional populations; disclose their
-  denominators rather than interpreting them as paired costs on identical tasks.
+- **Agent reporting — revised after inspection.** The author requested a
+  behavior-grounded presentation rather than success-rate charts. Section 4.2
+  now analyzes checked native extensions and their cross-stage composition;
+  package costs remain solely in Section 4.3. Appendix C reports the 42 complete
+  trajectories, zero full-task completions, all 30 uncollected/interrupted states,
+  and post-hoc descriptive diagnostics. `data/agent-diagnostics.csv` contains
+  one row per complete trajectory. This is not a completed 72-condition study
+  or evidence of superior Agent performance. The batch remains stopped; its
+  original records and completion criterion are unchanged.
 - **Final synchronization.** After collection, reconcile the stale package and
   update status paragraphs in `artifact/PROTOCOL.md`, and match Figure 1's
   endpoint labels to the reported measurements. Do not silently edit the

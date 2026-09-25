@@ -101,7 +101,7 @@ and revisions identify stale observations; transactional publication keeps
 reusable records consistent with the verified graph. Across imported revisions,
 content-based specialization keys identify reusable prepared bodies.
 
-The evaluation separates extension completion, package changes, and update
+The evaluation separates extension behavior, package changes, and update
 latency from generated-code performance. Native package integration touches
 one file per extension, compared with three in the matched MLIR and xDSL
 implementations. Prepared-body reuse accelerates executable-ready updates by
@@ -655,8 +655,8 @@ plans, transaction journals, and counters remain private.
 ### 4.1 Methodology
 
 The evaluation follows a compiler feature from implementation to execution.
-We assess convenience through completion and token cost on twelve extension
-tasks. We then assess control through the files, lines, and integration zones
+We examine cross-stage composition through twelve native extension tasks
+and their checked outputs. We then assess control through the files, lines, and integration zones
 changed by behaviorally equivalent feature packages. Next, nine model edit
 sites expose the cost of producing a replacement executable and the work
 saved by reuse. Finally, execution correctness and latency establish the
@@ -712,42 +712,43 @@ The four different flow topologies must be unmistakable: a repair LOOP, an indep
 
 *Figure 6: Evaluation workflow. Paired inputs and correctness checks connect extension tasks, package edits, executable-ready updates, and execution.*
 
-### 4.2 Agent Extension Completion
+### 4.2 Cross-Stage Extensions
 
-To measure extension effort, we evaluate 12 tasks spanning definition,
-analysis, rewrite, conversion, artifact generation, and cross-stage features.
-Before collection, we select two tasks per family from a 24-task suite.
-Each selected task has a shared semantic contract and a tested native reference
-implementation in all three systems.
+We examine twelve native extensions spanning definition, analysis, rewrite,
+conversion, artifact generation, and cross-stage features. Two tasks per family
+share a semantic contract across Joggle, MLIR, and xDSL; all 36 reference
+implementations pass their task oracles. The comparison follows each contract
+through its entry points, graph edits, and observable outputs.
 
-Qwen3-8B and Qwen3-14B use the same agent harness at temperature zero with
-thinking disabled. Each receives a natural-language contract, public
-fixtures, a native API card, and starter code. The agent can
-inspect, replace, test, or submit its source in an isolated workspace, with
-30 actions and 32k generated tokens per trajectory. The design comprises
-72 runs: one per task, system, and model, without task demonstrations.
+The quantized-convolution example makes the interface benefit concrete.
+A typed transformation replaces the single-use convolution--bias--requantization--
+ReLU chain, preserving tensor types and quantization attributes. An analysis
+function then reads the transformed graph and emits its kernel. In Joggle,
+both roles use ordinary functions, shared graph handles, and the same mod.
+For the unit fixture, the accumulator is 9 and requantization yields 4.
+GELU expansion similarly exposes a complete before/after program and checked
+numerical outputs. Figure 4 and Appendix C connect these implementations
+to their contracts and outputs.
 
-Success requires the final workspace to build and pass public and held-out
-fixtures without manual repair. We average success across tasks and resample
-tasks within each family. Completion tokens and tool calls summarize cost
-among successful tasks; per-task records retain all outcomes. The supplement
-provides the protocol, quoted task contracts, and paired input/output graphs.
+This evidence establishes cross-stage composition through one language and
+value model. Section 4.3 separately measures the source footprint of integrating
+and changing complete packages.
 
-<!-- AGENT-RESULTS FIGURE PLAN — Compact 2×3 grouped vertical bars. Rows are the
-two selected models; columns show task-macro executable success, completion
-tokens for successful tasks, and successful tool calls. Each panel uses the
-same six family positions and fixed Joggle/MLIR/xDSL colors. Stopping conditions
-and final candidate outcomes belong in the supplement. CSV:
-figure-04-extension.csv. Raw columns: model,
-model_revision,system,system_revision,task,family,run,seed,
-budget_actions,budget_tokens,wall_ms,prompt_tokens,completion_tokens,tool_calls,
-edit_attempts,files_touched,parsed,typed,built,passed,stop_reason,
-task_spec_sha256,api_card_sha256,trajectory_sha256,patch_sha256,reference_nll,
-reference_tokens. -->
+We also collected agent trajectories using Qwen3-8B and Qwen3-14B with a
+shared edit--test loop. At the reporting cutoff, 42 of 72 planned trajectories
+have complete records; none completes its full task. Appendix C reports the
+observed code, diagnostics, and collection status, separating generated
+candidates from the checked native implementations.
+
+<!-- AGENT DIAGNOSTICS: report observed trajectories, not a new success proxy.
+data/agent-diagnostics.csv preserves final outcomes, unchanged edits, protocol
+errors, and observed positive/negative fixture counts for the 42 complete runs.
+The planned 72-condition success analysis is incomplete; no success-cost bars
+are populated from failed or interrupted trajectories. -->
 
 ### 4.3 Change Footprint and Ownership
 
-Completion measures whether an extension works; ownership concerns how a
+The preceding examples establish extension behavior; ownership concerns how a
 feature is integrated and maintained. The comparison unit is therefore a
 complete extension package, including its implementation, public entry points,
 and build or registration declarations. Signed low-bit arithmetic and quantized
@@ -1220,6 +1221,37 @@ Joggle times calls in a native C loop; the other systems time invocations from
 the Python collector. Numerical checks follow the timed interval.*
 
 ## Appendix C. Extension Task Inputs and Outputs
+
+**Observed agent trajectories.** We summarize the 42 complete records at the
+reporting cutoff: 14 Joggle, 13 MLIR, and 15 xDSL trajectories. The remaining
+30 conditions comprise 25 not successfully started, four interrupted prefixes,
+and one blocked trajectory. These are collection states, not task failures.
+No complete trajectory satisfies its full task contract. This descriptive
+analysis was added after inspecting the incomplete collection; it does not
+replace the planned task-completion endpoint with partial-credit scoring.
+
+Across the complete records, 34 trajectories exhaust the action budget.
+The 1,145 responses contain one action-protocol error and 412 unchanged-source
+edits. All recorded feedback appears in the subsequent conversation, and no
+response ends at its output-length limit. The final candidates satisfy eleven
+negative fixtures and no positive fixture. These observations locate the
+bottleneck in producing and repairing executable extensions, rather than
+decoding the action format.
+
+Representative records expose the distinction. In Joggle interval analysis,
+the candidate changes an immutable dictionary declaration to unsupported
+`let mut` syntax and repeats the resulting error (C.6). In xDSL graph-manifest
+emission, it returns `{"count":0,"values":[]}` instead of the required SSA graph.
+In Joggle parametric-type definition, five invalid-parameter fixtures are
+correctly rejected, while valid types fail at `base.get`. Thus negative-case
+acceptance and process completion are not substitutes for the requested output.
+
+The native reference programs in C.4, C.5, and C.7 supply the checked implementation
+examples. Agent candidates are reproduced separately with their actual
+diagnostics. Per-trajectory descriptive counts are in
+`data/agent-diagnostics.csv`, derived from the primary batch
+`main-agents-explicit-20260925-x0f9ieig`; only five task/model groups have complete
+records for all three systems at this cutoff.
 
 **Agent protocol.**
 
