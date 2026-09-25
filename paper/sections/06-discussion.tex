@@ -1,18 +1,20 @@
 \section{Discussion}
 \label{sec:discussion}
 
-\paragraph{Integration and maintenance.} Direct mod publication reduces installation
-files and registration code; subsequent edits stay within one file in all
-three implementations. The benefit is a cross-stage integration boundary:
-packages can subdivide their implementation while retaining one public contract.
+\paragraph{Ownership beyond containment.} Mods reduce integration work by
+placing cross-stage functions behind one public interface. Once installed,
+all three systems support single-file maintenance in the measured tasks.
+The distinction is the integration boundary, not the absence of internal
+structure: a mod can span source fragments while retaining one public contract.
 
-\paragraph{Dependency granularity and turnaround.} Observations select work within a
-retained graph; specialization signatures identify reusable bodies after import.
-Removing most preparation cost exposes emission and native compilation as the
-next reuse boundary. Independently cached artifacts would need identities
-covering their bodies, layouts, target settings, and dependencies.
+\paragraph{Reuse at two boundaries.} Observations preserve results across
+unrelated graph edits; specialization signatures transfer prepared bodies
+across imports. As preparation shrinks, emission and native compilation occupy
+a larger share of turnaround. Reusing those artifacts requires identities
+covering bodies, layouts, targets, and dependencies, alongside graph invalidation.
 
-\paragraph{Composition with explicit effects.} Typed arguments, read-only checks, and
-transactions enforce extension contracts at a shared call boundary. Publishing
-graph state and dependency records together connects composition to reuse:
-functions publish results while invalidating observations of replaced state.
+\paragraph{Consistent publication.} Typed calls connect compiler roles;
+transactions keep their graph edits and dependency records consistent.
+Ownership determines the available capabilities, while recorded observations
+determine whether previous results remain valid. This link between composition
+and reuse is the design's organizing principle.

@@ -81,6 +81,24 @@ at Figure 6 in `README.md`. Figure 7 is code-rendered, with six boxed panels,
 one-row legend, shared zero-origin scale, and no statistical error bars for
 literal source counts.
 
+## Prose review — final editorial pass
+
+The abstract now introduces the cross-stage development problem before the
+mechanisms and includes the measured package-integration benefit. The
+introduction distinguishes extension structure from subject-program structure;
+motivation connects the three requirements through consistent publication.
+Evaluation transitions separate implementation size, integration scope, and
+update/runtime gains. Related-work comparisons state the relationship between
+approaches. Discussion explains ownership, the two reuse boundaries, and
+publication; conclusion returns to the cost of evolving compiler capabilities.
+No measurements, bibliography entries, or comparison-table capabilities changed.
+
+The visible placeholder author row, anonymous running heads, and supplement's
+submission subtitle were removed. Anonymous class mode remains enabled, no
+author identity was added, and the generated self-citation block is suppressed.
+MD and TeX are synchronized; the main paper retains 12 technical pages and
+two reference pages. The supplement remains 16 pages.
+
 ## Before upload
 
 Official source: [EuroSys 2027 CFP](https://2027.eurosys.org/cfp.html),

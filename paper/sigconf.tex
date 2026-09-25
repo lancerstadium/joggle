@@ -15,12 +15,15 @@
 %%
 %% Anonymous two-column submission layout at the EuroSys minimum type size.
 \documentclass[sigconf,anonymous,10pt]{acmart}
-\settopmatter{printfolios=true}
+\settopmatter{printfolios=true,printacmref=false}
 
 %% Submission references may extend past the technical-content limit; leave
 %% their final columns unbalanced while the bibliography is still changing.
 \makeatletter
 \@ACM@balancefalse
+% Retain anonymous mode without a visible placeholder author row or running head.
+\let\@mkauthors\@empty
+\let\@shortauthors\@empty
 \makeatother
 
 \AtBeginDocument{%
@@ -49,21 +52,23 @@
 \title[Joggle]{Joggle: A Progressive IR for Malleable Compilation}
 
 \begin{abstract}
-Rapid advances in AI bring new operators, numeric formats, and hardware targets
-that compilers must support. Yet cross-stage extensions span fragmented
-interfaces and ownership boundaries, while local edits trigger broad
-recompilation. We present Joggle, a compiler infrastructure built on a
-progressive intermediate representation. To make extensions composable, typed
-compiler functions unify semantics, analysis, transformation, conversion, and
-emission through one language, call model, and value model. Graph-level mods
-then give each cross-stage feature an explicit owner, while recorded
-dependencies direct reactive execution toward affected work. Across three
-models, prepared-body reuse accelerates executable-ready updates by
-$1.46$--$2.49\times$ over complete rebuilds. The generated executables also
-achieve a $2.03\times$ geometric-mean speedup over default TVM on eight models
-compiled correctly by all compared systems. Together, these mechanisms make
-compiler capabilities composable, independently organized, and reusable as
-AI workloads evolve.
+As AI workloads evolve, compilers must accommodate new operators, numeric
+formats, and hardware targets. A single feature can span semantic definitions,
+graph transformations, and code generation, yet its implementation often crosses
+separate interfaces and ownership boundaries. Local edits can also trigger
+broad recompilation. We present Joggle, a compiler infrastructure that makes
+feature composition, ownership, and reuse explicit within a progressive
+intermediate representation (IR).
+Typed compiler functions unify semantics, analysis, transformation, conversion,
+and emission through one language, call model, and value model. Graph-level mods organize these functions across stages;
+recorded dependencies then direct reactive execution toward affected work.
+In two cross-stage packages, integration uses one source file rather than
+three in the matched MLIR and xDSL implementations. Across three models,
+prepared-body reuse accelerates executable-ready updates by
+$1.46$--$2.49\times$ over complete rebuilds. Generated executables achieve a
+$2.03\times$ geometric-mean speedup over default TVM on eight jointly correct
+models. Together, these results show how explicit extension boundaries connect
+compiler programmability to the cost of accommodating change.
 \end{abstract}
 
 \keywords{compilers, extensibility, metaprogramming, incremental compilation}

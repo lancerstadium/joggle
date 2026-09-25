@@ -66,6 +66,7 @@ explicit visibility and dependencies, independent of subject-program
 containment. Third, execution needs observed dependencies and effects so that
 updates follow changed state rather than stage order.
 
-The requirements meet at publication: a reusable result must refer to the
-same graph state as its dependency records. Section~\ref{sec:design} develops compiler
+These requirements meet at publication. Functions compose within an ownership
+boundary, but their results remain reusable only while the observed graph state
+is current. Graph changes and dependency records must therefore be published together. Section~\ref{sec:design} develops compiler
 functions, mods, and transactional evaluation around that invariant.

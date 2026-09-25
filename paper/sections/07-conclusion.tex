@@ -1,10 +1,9 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-Joggle organizes compiler capabilities through typed functions and graph-level
-mods. Its progressive IR separates feature ownership from program containment
-and records observations and effects at extension boundaries. Native package
-comparisons show reduced integration footprints, while prepared-body reuse
-accelerates executable-ready updates by $1.46$--$2.49\times$ on three models.
-These results connect shared compiler interfaces and explicit reuse boundaries
-to the practical costs of extending and updating a compiler.
+Joggle combines typed compiler functions, graph-level ownership, and
+dependency-directed reuse within a progressive IR. Native extensions use a
+common composition interface, and the measured packages require fewer
+integration files. Prepared-body reuse accelerates executable-ready updates
+by $1.46$--$2.49\times$. These results connect the organization of compiler
+capabilities to the cost of evolving them.

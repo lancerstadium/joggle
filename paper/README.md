@@ -2,21 +2,23 @@
 
 ## Abstract
 
-Rapid advances in AI bring new operators, numeric formats, and hardware targets
-that compilers must support. Yet cross-stage extensions span fragmented
-interfaces and ownership boundaries, while local edits trigger broad
-recompilation. We present Joggle, a compiler infrastructure built on a
-progressive intermediate representation. To make extensions composable, typed
-compiler functions unify semantics, analysis, transformation, conversion, and
-emission through one language, call model, and value model. Graph-level mods
-then give each cross-stage feature an explicit owner, while recorded
-dependencies direct reactive execution toward affected work. Across three
-models, prepared-body reuse accelerates executable-ready updates by
-$1.46$--$2.49\times$ over complete rebuilds. The generated executables also
-achieve a $2.03\times$ geometric-mean speedup over default TVM on eight models
-compiled correctly by all compared systems. Together, these mechanisms make
-compiler capabilities composable, independently organized, and reusable as
-AI workloads evolve.
+As AI workloads evolve, compilers must accommodate new operators, numeric
+formats, and hardware targets. A single feature can span semantic definitions,
+graph transformations, and code generation, yet its implementation often crosses
+separate interfaces and ownership boundaries. Local edits can also trigger
+broad recompilation. We present Joggle, a compiler infrastructure that makes
+feature composition, ownership, and reuse explicit within a progressive
+intermediate representation (IR).
+Typed compiler functions unify semantics, analysis, transformation, conversion,
+and emission through one language, call model, and value model. Graph-level mods organize these functions across stages;
+recorded dependencies then direct reactive execution toward affected work.
+In two cross-stage packages, integration uses one source file rather than
+three in the matched MLIR and xDSL implementations. Across three models,
+prepared-body reuse accelerates executable-ready updates by
+$1.46$--$2.49\times$ over complete rebuilds. Generated executables achieve a
+$2.03\times$ geometric-mean speedup over default TVM on eight jointly correct
+models. Together, these results show how explicit extension boundaries connect
+compiler programmability to the cost of accommodating change.
 
 ## 1. Introduction
 
@@ -36,12 +38,12 @@ pipeline can repeat work unrelated to that change. The development cost thus
 depends on three boundaries: how capabilities compose, where a feature is
 owned, and what an edit invalidates.
 
-Our central observation is that none of these boundaries is determined by
-program containment alone. A feature can span several IR levels, and adjacent
-passes can inspect disjoint graph regions. Consequently, organizing the
-subject program does not by itself organize the compiler capabilities acting
-on it. Ownership and execution dependencies need explicit representations
-alongside the program graph.
+Our central observation is that the structure of a compiler extension differs
+from the structure of the program it transforms. A feature can span several IR
+levels, while adjacent passes can inspect disjoint graph regions. Consequently,
+program containment alone cannot determine feature ownership or the work an
+edit invalidates. A compiler needs explicit representations of these relationships
+alongside its program graph.
 
 We present Joggle, a compiler infrastructure that makes these relationships
 explicit. Typed *compiler functions* express behavior, graph-level *mods* own
@@ -173,8 +175,9 @@ explicit visibility and dependencies, independent of subject-program
 containment. Third, execution needs observed dependencies and effects so that
 updates follow changed state rather than stage order.
 
-The requirements meet at publication: a reusable result must refer to the
-same graph state as its dependency records. Section 3 develops compiler
+These requirements meet at publication. Functions compose within an ownership
+boundary, but their results remain reusable only while the observed graph state
+is current. Graph changes and dependency records must therefore be published together. Section 3 develops compiler
 functions, mods, and transactional evaluation around that invariant.
 
 ## 3. Design
@@ -274,7 +277,7 @@ Images 2 and 3 are STYLE REFERENCES ONLY: never copy their multi-column thesis l
 Restyle target to the reference visual language: thin bright cyan/blue dashed outer grouping boundaries, very pale turquoise/blue/lilac flat fills, white inset tiles, compact bold sans-serif panel headings with teal/blue/lilac accent words, small DejaVu Sans Mono for code, thin black directed connectors, outlined graph/node/file/package symbols. No thick black enclosing boxes, no blue gradient title bars, no shadows, no sketch texture, no red numbered badges. Keep high information density and tight spacing. Small black (a),(b),(c) labels are fine. Use coral only for changed/deleted entities, blue for reads, teal for creation; distinguish reuse with fine hatch. Preserve all math, syntax, array dimensions, state relationships and directionality; do not invent data or mechanisms. Compact, elegant, publication-ready. Figure 3. Preserve four stacked panels: extension and subject, invocation, execution state, transaction. Headings may shorten to (a) Mods and graphs, (b) Typed calls, (c) Runtime state, (d) Checked mutation. All cache key fields and graph APIs must stay exact. Turn frame bands into subtle dashed group boxes, not heavy tables.
 -->
 
-The rest of the design develops these relationships in order. Section 3.2
+These relationships determine the design's structure. Section 3.2
 defines typed compiler functions; Section 3.3 gives them a mod-scoped
 composition boundary. Sections 3.4 and 3.5 then explain how observed
 dependencies and transactional graph storage support reuse.
@@ -386,7 +389,7 @@ graph and returns text or bytes. Thus, `query`, `run`, and `emit` share
 resolution and evaluation while enforcing their respective publication rules.
 Read-only execution rejects mutation, and a run publishes a verified graph.
 
-The example makes composition explicit: `transform` calls `fuse` through the same
+Thus, the fusion example uses function composition directly: `transform` calls `fuse` through the same
 typed interface used for graph inspection. Mods supply the namespace, visibility,
 and dependency boundaries around these functions.
 
@@ -726,10 +729,10 @@ counting nonempty physical lines, including imports and comments but excluding
 shared drivers and build files. Type definition takes 17 lines versus 52 in
 MLIR and 24 in xDSL; quantized-operation definition takes 37, 62, and 38.
 Direct typed definitions reduce boilerplate in these tasks. Cross-stage
-implementations remain comparable: low-bit support takes 67/90/67 lines,
-and fusion 74/76/70. xDSL is shorter in analysis, rewriting, conversion, and
-emission. The distinction is therefore concise definitions combined with
-one cross-role interface. Appendix C lists source and byte counts;
+implementations take 67/90/67 lines for low-bit support and 74/76/70 for
+fusion, in the same system order. xDSL is shorter in analysis, rewriting,
+conversion, and emission. Source brevity therefore varies by role; the shared
+interface combines concise definitions with direct cross-role composition. Appendix C lists source and byte counts;
 Section 4.3 includes complete-package integration.
 
 *Figure 7: Native extension size. Nonempty source lines for twelve tasks, including imports and comments. One checked reference implementation per bar.*
@@ -746,7 +749,8 @@ are populated from failed or interrupted trajectories. -->
 
 ### 4.3 Change Footprint and Ownership
 
-Ownership concerns the complete package: implementation, public entry points,
+Source size describes an extension's body; ownership concerns its complete
+package: implementation, public entry points,
 and build or registration declarations. We compare signed low-bit arithmetic
 and quantized convolution fusion, each spanning analysis, transformation, and
 emission. Separating installation from subsequent edits distinguishes initial
@@ -847,7 +851,7 @@ compilation near 2.7 s. SqueezeNet and TinyYOLOv3 show the same pattern:
 preparation contracts, while emission and native compilation remain stable.
 The supplement reports all 27 edit/system combinations and phase medians.
 
-The phase breakdown explains both the gain and its remaining ceiling.
+This breakdown identifies where further reuse would matter most.
 Reusing prepared bodies removes repeated lowering work, but emission and native
 compilation still run for each executable. As preparation shrinks, those stages
 account for more of the update time. The result therefore motivates extending
@@ -980,11 +984,10 @@ subject_kind,subject,subject_hash,family,system,system_revision,variant,
 supported,reason,iteration,calls_per_sample,latency_ns,max_abs_error,
 max_rel_error,input_digest,output_digest,correct,seed. -->
 
-Together, these comparisons distinguish extension cost from deployed execution
-latency. Prepared-body reuse reduces update turnaround, whereas matrix-product
-lowering produces the largest operator gains. The model results extend the
-execution comparison to complete networks, with coverage and latency reported
-separately.
+Taken together, the results separate two benefits: prepared-body reuse reduces
+compilation work after an edit, while matrix lowering improves generated code. The model comparison tests
+these execution gains at network scale. Keeping these
+measurements separate links each gain to the mechanism that produces it.
 
 ## 5. Related Work
 
@@ -1028,8 +1031,9 @@ Staging takes a complementary approach. LMS uses types to stage code
 evaluation [@leissa2018anydsl]. Delite shares parallel patterns, optimizations,
 and code generators across embedded DSLs [@sujeeth2014delite]; Forge generates
 DSL implementations from declarative specifications [@sujeeth2013forge].
-Our design instead combines a common invocation model over mutable graphs
-with mod-scoped ownership and dependency-directed execution.
+The complementary concern here is how these capabilities compose as a feature:
+we combine typed calls over mutable graphs with mod-scoped ownership and
+observed execution dependencies.
 
 ### 5.2 Tensor Optimization and Deployment
 
@@ -1052,8 +1056,9 @@ optimizations as graph schedules [@wu2025plus].
 Deployment introduces further boundaries. Glow separates graph optimization
 from address-only lowering [@rotem2019glow], ONNX-MLIR lowers model operations
 [@jin2020onnxmlir], and ONNX Runtime partitions graphs among execution providers
-[@ortarchitecture]. Our mod boundary follows the feature implementing these
-roles rather than a particular optimization level.
+[@ortarchitecture]. These systems organize optimization and deployment around program abstractions.
+The mod boundary instead groups the compiler functions implementing a feature
+across those levels.
 
 ### 5.3 Programmable Transformations
 
@@ -1086,37 +1091,39 @@ pipelines [@konat2018pie]. Build Systems à la Carte separates scheduling from
 rebuilding [@mokhov2018build]; rustc validates cached queries with red-green
 tracking [@rustcincremental]. LLVM ORC materializes symbols on demand [@llvmorc].
 
-Our evaluator tracks graph refinement through typed observations,
-entity generations, revisions, and effects, published transactionally.
-Prepared-body reuse transfers unchanged specializations across imported revisions.
+For mutable compiler graphs, reuse must additionally follow entity replacement
+and verified graph edits. Our evaluator combines typed observations with entity
+generations, revisions, and transactional publication; prepared-body signatures
+extend reuse across imported revisions.
 
 ## 6. Discussion
 
-**Integration and maintenance.** Direct mod publication reduces installation
-files and registration code; subsequent edits stay within one file in all
-three implementations. The benefit is a cross-stage integration boundary:
-packages can subdivide their implementation while retaining one public contract.
+**Ownership beyond containment.** Mods reduce integration work by
+placing cross-stage functions behind one public interface. Once installed,
+all three systems support single-file maintenance in the measured tasks.
+The distinction is the integration boundary, not the absence of internal
+structure: a mod can span source fragments while retaining one public contract.
 
-**Dependency granularity and turnaround.** Observations select work within a
-retained graph; specialization signatures identify reusable bodies after import.
-Removing most preparation cost exposes emission and native compilation as the
-next reuse boundary. Independently cached artifacts would need identities
-covering their bodies, layouts, target settings, and dependencies.
+**Reuse at two boundaries.** Observations preserve results across
+unrelated graph edits; specialization signatures transfer prepared bodies
+across imports. As preparation shrinks, emission and native compilation occupy
+a larger share of turnaround. Reusing those artifacts requires identities
+covering bodies, layouts, targets, and dependencies, alongside graph invalidation.
 
-**Composition with explicit effects.** Typed arguments, read-only checks, and
-transactions enforce extension contracts at a shared call boundary. Publishing
-graph state and dependency records together connects composition to reuse:
-functions publish results while invalidating observations of replaced state.
+**Consistent publication.** Typed calls connect compiler roles;
+transactions keep their graph edits and dependency records consistent.
+Ownership determines the available capabilities, while recorded observations
+determine whether previous results remain valid. This link between composition
+and reuse is the design's organizing principle.
 
 ## 7. Conclusion
 
-Joggle organizes compiler capabilities through typed functions and graph-level
-mods. Its progressive IR separates feature ownership from program containment
-and records observations and effects at extension boundaries. Native package
-comparisons show reduced integration footprints, while prepared-body reuse
-accelerates executable-ready updates by $1.46$--$2.49\times$ on three models.
-These results connect shared compiler interfaces and explicit reuse boundaries
-to the practical costs of extending and updating a compiler.
+Joggle combines typed compiler functions, graph-level ownership, and
+dependency-directed reuse within a progressive IR. Native extensions use a
+common composition interface, and the measured packages require fewer
+integration files. Prepared-body reuse accelerates executable-ready updates
+by $1.46$--$2.49\times$. These results connect the organization of compiler
+capabilities to the cost of evolving them.
 
 ## Appendix A. Operator Measurements
 

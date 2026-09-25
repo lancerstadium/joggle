@@ -66,8 +66,9 @@ Staging takes a complementary approach. LMS uses types to stage code
 evaluation~\cite{leissa2018anydsl}. Delite shares parallel patterns, optimizations,
 and code generators across embedded DSLs~\cite{sujeeth2014delite}; Forge generates
 DSL implementations from declarative specifications~\cite{sujeeth2013forge}.
-Our design instead combines a common invocation model over mutable graphs
-with mod-scoped ownership and dependency-directed execution.
+The complementary concern here is how these capabilities compose as a feature:
+we combine typed calls over mutable graphs with mod-scoped ownership and
+observed execution dependencies.
 
 \subsection{Tensor Optimization and Deployment}
 
@@ -90,8 +91,9 @@ optimizations as graph schedules~\cite{wu2025plus}.
 Deployment introduces further boundaries. Glow separates graph optimization
 from address-only lowering~\cite{rotem2019glow}, ONNX-MLIR lowers model operations
 ~\cite{jin2020onnxmlir}, and ONNX Runtime partitions graphs among execution providers
-~\cite{ortarchitecture}. Our mod boundary follows the feature implementing these
-roles rather than a particular optimization level.
+~\cite{ortarchitecture}. These systems organize optimization and deployment around program abstractions.
+The mod boundary instead groups the compiler functions implementing a feature
+across those levels.
 
 \subsection{Programmable Transformations}
 
@@ -124,6 +126,7 @@ pipelines~\cite{konat2018pie}. Build Systems à la Carte separates scheduling fr
 rebuilding~\cite{mokhov2018build}; rustc validates cached queries with red-green
 tracking~\cite{rustcincremental}. LLVM ORC materializes symbols on demand~\cite{llvmorc}.
 
-Our evaluator tracks graph refinement through typed observations,
-entity generations, revisions, and effects, published transactionally.
-Prepared-body reuse transfers unchanged specializations across imported revisions.
+For mutable compiler graphs, reuse must additionally follow entity replacement
+and verified graph edits. Our evaluator combines typed observations with entity
+generations, revisions, and transactional publication; prepared-body signatures
+extend reuse across imported revisions.

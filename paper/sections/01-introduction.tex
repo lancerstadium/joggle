@@ -17,12 +17,12 @@ pipeline can repeat work unrelated to that change. The development cost thus
 depends on three boundaries: how capabilities compose, where a feature is
 owned, and what an edit invalidates.
 
-Our central observation is that none of these boundaries is determined by
-program containment alone. A feature can span several IR levels, and adjacent
-passes can inspect disjoint graph regions. Consequently, organizing the
-subject program does not by itself organize the compiler capabilities acting
-on it. Ownership and execution dependencies need explicit representations
-alongside the program graph.
+Our central observation is that the structure of a compiler extension differs
+from the structure of the program it transforms. A feature can span several IR
+levels, while adjacent passes can inspect disjoint graph regions. Consequently,
+program containment alone cannot determine feature ownership or the work an
+edit invalidates. A compiler needs explicit representations of these relationships
+alongside its program graph.
 
 We present Joggle, a compiler infrastructure that makes these relationships
 explicit. Typed \emph{compiler functions} express behavior, graph-level \emph{mods} own

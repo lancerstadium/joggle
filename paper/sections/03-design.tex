@@ -54,11 +54,8 @@ transactional publication boundary.
   \label{fig:architecture}
 \end{figure}
 
-The rest of the design develops these relationships in order.
-Section~\ref{sec:compiler-functions} defines typed compiler functions;
-Section~\ref{sec:mods} gives them a mod-scoped composition boundary.
-Sections~\ref{sec:incremental} and~\ref{sec:graph-runtime} then explain how
-observed dependencies and transactional graph storage support reuse.
+The design first establishes typed calls and feature ownership, then develops
+reuse through observed dependencies and transactional graph storage.
 
 \subsection{Compiler Functions}
 \label{sec:compiler-functions}
@@ -113,7 +110,7 @@ graph and returns text or bytes. Thus, \texttt{query}, \texttt{run}, and \texttt
 resolution and evaluation while enforcing their respective publication rules.
 Read-only execution rejects mutation, and a run publishes a verified graph.
 
-The example makes composition explicit: \texttt{transform} calls \texttt{fuse}
+Thus, the fusion example uses function composition directly: \texttt{transform} calls \texttt{fuse}
 through the same typed interface used for graph inspection. Mods supply the
 namespace, visibility, and dependency boundaries around these functions.
 
@@ -124,7 +121,7 @@ Where compiler functions define behavior, mods define who owns and exposes it.
 A mod groups the functions of a feature with their graph and dependencies. We
 model this boundary as
 \[
-  \mathcal{M} = (n, U, F_{\mathrm{pub}}, F_{\mathrm{local}}, G, N).
+  \mathcal{M} = (n, U, F_{\mathrm{pub}}, F_{\mathrm{local}}, G, N),
 \]
 where $n$ is the mod name and $U$ is its declared \texttt{use} set.
 $F_{\mathrm{pub}}$ and $F_{\mathrm{local}}$ are its public and local

@@ -67,10 +67,10 @@ counting nonempty physical lines, including imports and comments but excluding
 shared drivers and build files. Type definition takes 17 lines versus 52 in
 MLIR and 24 in xDSL; quantized-operation definition takes 37, 62, and 38.
 Direct typed definitions reduce boilerplate in these tasks. Cross-stage
-implementations remain comparable: low-bit support takes 67/90/67 lines,
-and fusion 74/76/70. xDSL is shorter in analysis, rewriting, conversion, and
-emission. The distinction is therefore concise definitions combined with
-one cross-role interface. Appendix C lists source and byte counts;
+implementations take 67/90/67 lines for low-bit support and 74/76/70 for
+fusion, in the same system order. xDSL is shorter in analysis, rewriting,
+conversion, and emission. Source brevity therefore varies by role; the shared
+interface combines concise definitions with direct cross-role composition. Appendix C lists source and byte counts;
 Section 4.3 includes complete-package integration.
 
 \begin{figure}[!tbp]
@@ -90,7 +90,8 @@ actual candidates and diagnostics separately from the checked references.
 \subsection{Change Footprint and Ownership}
 \label{sec:eval-controllable}
 
-Ownership concerns the complete package: implementation, public entry points,
+Source size describes an extension's body; ownership concerns its complete
+package: implementation, public entry points,
 and build or registration declarations. We compare signed low-bit arithmetic
 and quantized convolution fusion, each spanning analysis, transformation, and
 emission. Separating installation from subsequent edits distinguishes initial
@@ -200,7 +201,7 @@ Prepare time falls from 30.631\,s to 1.307\,s, reducing total lowering from
 while emission and native compilation remain stable. The supplement reports
 all 27 edit/system combinations and phase medians.
 
-The phase breakdown explains both the gain and its remaining ceiling.
+This breakdown identifies where further reuse would matter most.
 Reusing prepared bodies removes repeated lowering work, but emission and native
 compilation still run for each executable. As preparation shrinks, those stages
 account for more of the update time. The result therefore motivates extending
@@ -319,8 +320,7 @@ values for every correct candidate remain in the accompanying CSV.
   \label{fig:model-performance}
 \end{figure}
 
-Together, these comparisons distinguish extension cost from deployed execution
-latency. Prepared-body reuse reduces update turnaround, whereas matrix-product
-lowering produces the largest operator gains. The model results extend the
-execution comparison to complete networks, with coverage and latency reported
-separately.
+Taken together, the results separate two benefits: prepared-body reuse reduces
+compilation work after an edit, while matrix lowering improves generated code. The model comparison tests
+these execution gains at network scale. Keeping these
+measurements separate links each gain to the mechanism that produces it.
