@@ -71,7 +71,7 @@ sigconf.pdf: sigconf.tex references.bib \
 	figures/figure-06-update.pdf figures/figure-05-footprint.pdf figures/extension-size.pdf
 	latexmk -pdf -interaction=nonstopmode -halt-on-error sigconf.tex
 
-supplement.pdf: supplement.tex $(A5_GRAPHS) sections/appendix-operator-data.tex \
+supplement.pdf: supplement.tex $(A5_GRAPHS) data/agent-output-summary.csv sections/appendix-operator-data.tex \
 	../artifact/extensions/con-gelu-expand/reference.jog \
 	../artifact/extensions/vert-fused-op/reference.jog \
 	sections/appendix-model-data.tex \

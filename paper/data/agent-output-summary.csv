@@ -1,0 +1,13 @@
+task,Joggle,MLIR,xDSL
+ana-broadcast-shape,unobserved,unobserved,n=1;negative=0;stop=budget
+ana-numeric-range,n=1;negative=0;stop=budget,n=1;negative=0;stop=execution,n=2;negative=0;stop=budget*2
+con-gelu-expand,n=1;negative=0;stop=budget,n=1;negative=0;stop=budget,n=1;negative=0;stop=budget
+con-quant-expand,unobserved,n=1;negative=0;stop=budget,n=2;negative=0;stop=semantic/budget
+def-parametric-type,n=1;negative=5;stop=budget,n=2;negative=0;stop=budget*2,n=1;negative=0;stop=budget
+def-quantized-op,n=1;negative=0;stop=budget,n=1;negative=0;stop=budget,n=1;negative=0;stop=budget
+emit-graph-manifest,n=1;negative=0;stop=budget,n=2;negative=0;stop=budget*2,n=1;negative=0;stop=semantic
+emit-kernel-wrapper,n=2;negative=0;stop=budget*2,unobserved,n=1;negative=0;stop=budget
+rew-add-zero,n=2;negative=0;stop=budget*2,n=1;negative=0;stop=budget,n=2;negative=4;stop=budget*2
+rew-redundant-cast,n=2;negative=0;stop=budget*2,n=1;negative=0;stop=budget,unobserved
+vert-fused-op,n=2;negative=0;stop=execution*2,n=2;negative=0;stop=budget*2,n=2;negative=2;stop=semantic*2
+vert-int4,n=1;negative=0;stop=budget,n=1;negative=0;stop=budget,n=1;negative=0;stop=semantic

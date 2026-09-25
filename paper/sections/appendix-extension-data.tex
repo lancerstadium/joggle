@@ -107,6 +107,37 @@ Token counts cover received responses; usage for unanswered requests is unknown.
 NSZ denotes \texttt{no\_signed\_zeros}, DQ dequantization, Q quantization,
 and RNE round-to-nearest, ties-to-even.
 
+\begin{table}[H]
+\caption{Observed agent answer states by facility. Each cell reports the
+number of observed conditions ($n$), negative fixtures passed ($-$), and the
+terminal state. Positive fixtures passed were zero for every cell. B: action
+budget; E: execution stop; S: semantic stop; ``--'': no trajectory at the
+reporting cutoff.}
+\label{tab:agent-output-summary}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.05}
+\begin{tabular}{@{}p{.22\textwidth}p{.24\textwidth}p{.24\textwidth}p{.24\textwidth}@{}}
+\toprule
+Task & Joggle & MLIR & xDSL \\
+\midrule
+\texttt{ana-broadcast} & -- & -- & $n=1$, $-=0$, B \\
+\texttt{ana-range} & $n=1$, $-=0$, B & $n=1$, $-=0$, E & $n=2$, $-=0$, B$\times$2 \\
+\texttt{con-gelu} & $n=1$, $-=0$, B & $n=1$, $-=0$, B & $n=1$, $-=0$, B \\
+\texttt{con-quant} & -- & $n=1$, $-=0$, B & $n=2$, $-=0$, S/B \\
+\texttt{def-type} & $n=1$, $-=5$, B & $n=2$, $-=0$, B$\times$2 & $n=1$, $-=0$, B \\
+\texttt{def-qop} & $n=1$, $-=0$, B & $n=1$, $-=0$, B & $n=1$, $-=0$, B \\
+\texttt{emit-manifest} & $n=1$, $-=0$, B & $n=2$, $-=0$, B$\times$2 & $n=1$, $-=0$, S \\
+\texttt{emit-wrapper} & $n=2$, $-=0$, B$\times$2 & -- & $n=1$, $-=0$, B \\
+\texttt{rew-zero} & $n=2$, $-=0$, B$\times$2 & $n=1$, $-=0$, B & $n=2$, $-=4$, B$\times$2 \\
+\texttt{rew-cast} & $n=2$, $-=0$, B$\times$2 & $n=1$, $-=0$, B & -- \\
+\texttt{vert-fused} & $n=2$, $-=0$, E$\times$2 & $n=2$, $-=0$, B$\times$2 & $n=2$, $-=2$, S$\times$2 \\
+\texttt{vert-int4} & $n=1$, $-=0$, B & $n=1$, $-=0$, B & $n=1$, $-=0$, S \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \begingroup
 \normalsize
 \setlength{\tabcolsep}{5pt}
