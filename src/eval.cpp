@@ -3523,7 +3523,8 @@ private:
 
     // Neither an iterable range nor a list is installed by replace_folded.
     // Evaluate these only when a scalar consumer actually needs their value.
-    const std::string_view result_type = op_outs(op).front().type().name();
+    const Ty output_type = op_outs(op).front().type();
+    const std::string_view result_type = output_type.name();
     if (result_type == "range" || result_type == "list")
       return std::nullopt;
 

@@ -215,6 +215,11 @@ local fn tensor_view(
          "c: tensor.view requires data and shape")
   let output = outputs[0]
   if len(ir.users(output)) == 0 {
+    // The alias is erased, but its producer may still contain observable
+    // checks or writes. Explicitly discard the retained source buffer.
+    if runtime_storage(m, inputs[0]) {
+      return pad(depth) + "(void)" + val(inputs[0]) + ";\n"
+    }
     return ""
   }
   let dimensions = bind_extents(m, op, output, inputs[1], true, depth, config)

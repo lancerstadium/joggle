@@ -12,6 +12,7 @@ README is tracked. The public reproduction entry point is
 | `legacy-builds/` | Preserved earlier build trees and their experiment outputs; not current executables |
 | `research/` | Earlier research-tool backups |
 | `site/`, `site-gems/`, `site-checks/` | Local website build, build dependencies, and browser previews |
+| `sanitize/` | Disposable AddressSanitizer/UndefinedBehaviorSanitizer validation build |
 
 ## Existing records
 
