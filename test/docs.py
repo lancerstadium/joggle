@@ -14,7 +14,9 @@ LINK = re.compile(r"\[[^]]+\]\(([^)]+)\)")
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
     docs = root / "docs"
-    documents = [root / "README.md", *sorted(docs.rglob("*.md"))]
+    documents = [root / "README.md", *sorted(docs.rglob("*.md")),
+                 root / "artifact/README.md", root / "artifact/PROTOCOL.md",
+                 *sorted((root / "artifact/docs").glob("*.md"))]
     failures: list[str] = []
     for document in documents:
         source = document.read_text(encoding="utf-8")

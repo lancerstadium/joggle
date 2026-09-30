@@ -13,6 +13,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  evidence:
+    name: Paper export validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install export dependencies
+        run: python3 -m pip install -r artifact/requirements.txt
+      - name: Validate reported datasets
+        run: |
+          python3 artifact/validate_extension_specs.py
+          python3 artifact/validate_benchmark_cases.py
+          python3 artifact/verify_exports.py
+
   build:
     name: ${{ matrix.os }}
     strategy:

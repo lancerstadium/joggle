@@ -27,8 +27,8 @@ TASK_LABELS = {
 }
 
 
-def package_plot(source: Path, output: Path) -> None:
-    """Show integration separately from maintenance; retain equal footprints."""
+def validate_packages(source: Path):
+    """Validate the reported package population without rendering a figure."""
     rows = read_rows(source, {"task", "kind", "system", "source_files", "source_added",
                              "source_deleted", "publication_lines", "zones", "passed"})
     record = json.loads(source.with_suffix(".json").read_text())
@@ -44,6 +44,12 @@ def package_plot(source: Path, output: Path) -> None:
     indexed = {(row["task"], row["system"]): row for row in rows}
     if len(rows) != len(expected) or set(indexed) != expected or not all(truth(r["passed"]) for r in rows):
         raise ValueError("require all 24 matched, correct native package implementations")
+    return rows, groups, indexed
+
+
+def package_plot(source: Path, output: Path) -> None:
+    """Show integration separately from maintenance; retain equal footprints."""
+    rows, groups, indexed = validate_packages(source)
     configure()
     style = {"font.size": PERFORMANCE_FONT_SIZE, "axes.labelsize": PERFORMANCE_FONT_SIZE,
              "axes.titlesize": PERFORMANCE_FONT_SIZE, "xtick.labelsize": PERFORMANCE_FONT_SIZE-0.5,

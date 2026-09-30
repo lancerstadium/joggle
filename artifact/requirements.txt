@@ -1,0 +1,3 @@
+# Export validation and data-figure rendering (Python 3.11+).
+numpy==2.4.4
+matplotlib==3.10.9
