@@ -29,4 +29,6 @@ machine-specific and are not part of an AE bundle.
 
 Before distributing raw records, select the datasets required by the protocol
 and review them for credentials, provider metadata and machine-local paths.
-This directory is not implicitly included by a Git commit or source archive.
+This working directory is not implicitly included by a Git commit or source
+archive. The selected reported records and inputs are separately frozen in
+`artifact/snapshot/` and can be restored with `python3 artifact/snapshot.py restore`.

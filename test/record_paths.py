@@ -1,5 +1,6 @@
 """Regression checks for the local evidence-directory migration."""
 from pathlib import Path
+import json
 import sys
 import tempfile
 import unittest
@@ -9,6 +10,19 @@ from record_paths import record_path
 
 
 class RecordPaths(unittest.TestCase):
+    def test_frozen_paths_rebase_before_lookup(self):
+        with tempfile.TemporaryDirectory(prefix="joggle-snapshot-paths-") as directory:
+            original = Path(directory) / "old"
+            root = Path(directory) / "checkout"
+            original.mkdir()
+            (original / "source.txt").touch()
+            index = root / "artifact/snapshot/index.json"
+            index.parent.mkdir(parents=True)
+            index.write_text(json.dumps({"recorded_root": str(original)}))
+            self.assertEqual(record_path(original / "source.txt", root), root / "source.txt")
+            self.assertEqual(record_path(original / ".cache/run.json", root),
+                             root / "local/cache/run.json")
+
     def test_retained_paths(self):
         with tempfile.TemporaryDirectory(prefix="joggle-record-paths-") as directory:
             root = Path(directory)

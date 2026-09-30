@@ -65,6 +65,11 @@ def main():
         records.append(record)
     check_file(DATA / "figure-06-stages.csv", records[1]["stages_sha256"])
     if args.raw:
+        scheduler = json.loads((DATA / "reactive-scheduler.json").read_text())
+        check_file(DATA / "reactive-scheduler.csv", scheduler["output_sha256"])
+        for entry in scheduler["inputs"]:
+            check_file(record_path(entry["path"]), entry["sha256"])
+            check_file(record_path(entry["record"]), entry["record_sha256"])
         for row in refs:
             report = json.loads(record_path(row["report"]).read_text())
             if not report.get("passed") or report["source_sha256"] != row["source_sha256"]:

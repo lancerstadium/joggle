@@ -58,8 +58,9 @@ programs are never presented as generated Agent output. No Agent advantage is cl
 - Original records are preserved under `local/cache/artifact/` after the
   30 September directory cleanup; historical `.cache/` paths map to
   `local/cache/`. No measurement contents were changed. Git tracks source,
-  contracts, exports, and renderers. These local raw records still need inclusion
-  in any separately distributed reproduction bundle.
+  contracts, exports, and renderers. Selected raw records and model/input
+  fixtures are now frozen as ordinary Git archive parts in `artifact/snapshot/`;
+  restore them with `python3 artifact/snapshot.py restore`.
 
 ## Review passes — 25 September
 

@@ -25,9 +25,10 @@ jobs:
         run: python3 -m pip install -r artifact/requirements.txt
       - name: Validate reported datasets
         run: |
+          python3 artifact/snapshot.py restore
           python3 artifact/validate_extension_specs.py
           python3 artifact/validate_benchmark_cases.py
-          python3 artifact/verify_exports.py
+          python3 artifact/verify_exports.py --raw
 
   build:
     name: ${{ matrix.os }}

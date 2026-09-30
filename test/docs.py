@@ -16,6 +16,7 @@ def main() -> int:
     docs = root / "docs"
     documents = [root / "README.md", *sorted(docs.rglob("*.md")),
                  root / "artifact/README.md", root / "artifact/PROTOCOL.md",
+                 root / "artifact/snapshot/README.md",
                  *sorted((root / "artifact/docs").glob("*.md"))]
     failures: list[str] = []
     for document in documents:

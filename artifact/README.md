@@ -6,6 +6,10 @@ design is in [`PROTOCOL.md`](PROTOCOL.md). Raw measurements belong under
 
 ## Start here
 
+For the frozen EuroSys inputs and original records, first run
+`python3 artifact/snapshot.py restore`. The archive is tracked directly in the
+repository; see [snapshot contents and restoration](snapshot/README.md).
+
 From the repository root, build and check the current source:
 
 ```sh
@@ -26,9 +30,10 @@ the retained local measurement files, run `python3 artifact/verify_exports.py --
 
 `build/` is the current executable tree. `local/legacy-builds/` contains retained
 historical outputs, not a second build entry point. Downloaded models, local
-Python environments and original raw records are excluded from Git; the
+Python environments and working copies of raw records are excluded from Git; the
 [local workspace map](../local/README.md) describes their locations. A source
-commit alone is not a bundle of those inputs. Optional ONNX/TFLite dependencies
+tag includes their selected frozen inputs in `artifact/snapshot/`, not the
+entire local workspace. Optional ONNX/TFLite dependencies
 and the full measurement commands are described below.
 
 ## Evidence layout
