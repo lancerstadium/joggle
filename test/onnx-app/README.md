@@ -37,11 +37,11 @@ network from the official ONNX Model Zoo but remains small enough for the
 scalar reference VM:
 
 ```sh
-cmake -DOUT=.cache/onnx-zoo -DMODELS=mnist-8 -DAPP=ON \
+cmake -DOUT=local/cache/onnx-zoo -DMODELS=mnist-8 -DAPP=ON \
   -P test/tools/fetch_onnx_zoo.cmake
 cmake -S . -B build-onnx-app -DCMAKE_BUILD_TYPE=Release \
   -DJOGGLE_BUILD_ONNX=ON \
-  -DJOGGLE_EXAMPLE_MNIST=.cache/onnx-zoo/app/mnist-8
+  -DJOGGLE_EXAMPLE_MNIST=local/cache/onnx-zoo/app/mnist-8
 cmake --build build-onnx-app
 ctest --test-dir build-onnx-app -R '^onnx-app-mnist$' --output-on-failure
 ```
@@ -51,11 +51,11 @@ ctest --test-dir build-onnx-app -R '^onnx-app-mnist$' --output-on-failure
 MobileNetV2 exercises the identical driver and pipeline at application scale:
 
 ```sh
-cmake -DOUT=.cache/onnx-zoo -DMODELS=mobilenetv2-7 -DAPP=ON \
+cmake -DOUT=local/cache/onnx-zoo -DMODELS=mobilenetv2-7 -DAPP=ON \
   -P test/tools/fetch_onnx_zoo.cmake
 cmake -S . -B build-onnx-app -DCMAKE_BUILD_TYPE=Release \
   -DJOGGLE_BUILD_ONNX=ON \
-  -DJOGGLE_EXAMPLE_MOBILENET=.cache/onnx-zoo/app/mobilenetv2-7
+  -DJOGGLE_EXAMPLE_MOBILENET=local/cache/onnx-zoo/app/mobilenetv2-7
 cmake --build build-onnx-app
 ctest --test-dir build-onnx-app -R '^onnx-app-mobilenet$' --output-on-failure
 ```

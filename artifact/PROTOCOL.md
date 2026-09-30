@@ -9,7 +9,7 @@ entry point for the reported figures. `paper/data/extension-size.csv` counts
 nonempty physical source lines, including comments and imports, and UTF-8 bytes
 from all 36 admitted reference files. Shared drivers and build files are excluded.
 Recollect these counts with `python3 paper/render_extensions.py --collect
-.cache/artifact/main-agents-explicit-20260925-x0f9ieig/manifest.json`.
+local/cache/artifact/main-agents-explicit-20260925-x0f9ieig/manifest.json`.
 
 Reference-size analysis was added after inspecting the incomplete Agent study.
 It measures these implementations, not Agent performance or development time.
@@ -256,12 +256,12 @@ contract. These equal counts are retained. The full eight-condition matrix
 remains open; the first paired rows are not a completed Figure 5 dataset.
 No package footprint row can be released from the single-file Agent reference
 results. Admission records are in
-`.cache/artifact/package-admission-uFSMwu/summary.json`; the first paired
+`local/cache/artifact/package-admission-uFSMwu/summary.json`; the first paired
 maintenance records and reversal checks are in
-`.cache/artifact/lowbit-symmetric-5oTpsX/`.
+`local/cache/artifact/lowbit-symmetric-5oTpsX/`.
 
 The minimizer exports an
-isolated tracked-file snapshot below `.cache/artifact/minimization` and uses a
+isolated tracked-file snapshot below `local/cache/artifact/minimization` and uses a
 private Git index. It does not create another worktree or change the author's
 checkout/index. It first requires the unmodified baseline to fail the oracle,
 then checks the original patch and each hunk deletion to a fixed point. Keep

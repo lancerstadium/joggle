@@ -6,6 +6,14 @@ are useful when diagnosing one failure.
 
 ## Fast paths
 
+The Pages workflow also renders the Jekyll site and checks every generated HTML
+page at 320, 390, 768, and 1440 px, in light or dark mode. The browser check covers
+viewport overflow, the mobile navigation toggle, search, and keyboard dismissal.
+Tables and code blocks scroll inside the article rather than widening the page.
+Run it on an existing site build with
+`NODE_PATH=local/site-test/node_modules node test/site.cjs local/site` after
+installing `playwright@1.62.1` into `local/site-test` and its Chromium browser.
+
 | Goal | Command | Covers |
 | --- | --- | --- |
 | everyday check | `ctest --test-dir build -LE model` | everything except pinned model corpora |

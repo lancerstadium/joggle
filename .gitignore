@@ -1,7 +1,6 @@
 /build*/
-/.cache/
-/.venv-fixtures/
-/.research/
+/local/*
+!/local/README.md
 /tmp/
 .DS_Store
 __pycache__/

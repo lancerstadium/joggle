@@ -25,6 +25,32 @@
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", syncToggle);
   syncToggle();
 
+  const navToggle = document.querySelector(".nav-toggle");
+  const sidebar = document.querySelector("#docs-navigation");
+  const setNavigation = (open) => {
+    navToggle?.setAttribute("aria-expanded", String(open));
+    sidebar?.classList.toggle("is-open", open);
+  };
+  root.classList.add("js");
+  navToggle?.addEventListener("click", () => {
+    setNavigation(navToggle.getAttribute("aria-expanded") !== "true");
+  });
+  sidebar?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      setNavigation(false);
+      navToggle?.focus();
+    }
+  });
+  document.querySelectorAll("main table").forEach((table) => {
+    const scroll = document.createElement("div");
+    scroll.className = "table-scroll";
+    scroll.tabIndex = 0;
+    scroll.setAttribute("role", "region");
+    scroll.setAttribute("aria-label", table.caption?.textContent || "Scrollable table");
+    table.before(scroll);
+    scroll.append(table);
+  });
+
   const navFilter = document.querySelector("#nav-filter");
   navFilter?.addEventListener("input", () => {
     const query = navFilter.value.trim().toLowerCase();
@@ -47,6 +73,7 @@
     if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
     if (event.target.matches("input, textarea, select")) return;
     event.preventDefault();
+    setNavigation(true);
     navFilter?.focus();
   });
 

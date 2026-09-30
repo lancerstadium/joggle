@@ -31,7 +31,7 @@ Agent collection. It counts nonempty physical lines including imports and
 comments, excluding shared drivers/build files. UTF-8 bytes accompany the counts.
 All 36 source files match their passing admission reports. Reproduce with
 `python3 paper/render_extensions.py --collect
-.cache/artifact/main-agents-explicit-20260925-x0f9ieig/manifest.json`.
+local/cache/artifact/main-agents-explicit-20260925-x0f9ieig/manifest.json`.
 The default invocation validates the exported counts and renders Figure 7.
 
 The Agent study has zero full-task completions among its 42 complete records.
@@ -55,8 +55,9 @@ programs are never presented as generated Agent output. No Agent advantage is cl
 - This final pass changes reporting, plotting, and figure assets, not compiler
   code or measured execution records. It does not relabel older binaries as
   a newly measured current build.
-- Original records remain at their recorded `.cache/artifact/` locations;
-  they were not moved or deleted during convergence. Git tracks source,
+- Original records are preserved under `local/cache/artifact/` after the
+  30 September directory cleanup; historical `.cache/` paths map to
+  `local/cache/`. No measurement contents were changed. Git tracks source,
   contracts, exports, and renderers. These local raw records still need inclusion
   in any separately distributed reproduction bundle.
 

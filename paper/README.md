@@ -313,7 +313,7 @@ through the same call interface.
 
 <!-- FIGURE 4 PROMPT — Built-in image generation; source-checked against
 artifact/extensions/vert-fused-op/reference.jog and
-.cache/artifact/paper-code-fusion-unit.json. Figure asset:
+local/cache/artifact/paper-code-fusion-unit.json. Figure asset:
 paper/figures/figure-03-operator-extension.png.
 Use case: scientific-educational. Redesign the attached Joggle compiler figure into a NEW dense portrait single-column EuroSys mechanism diagram with REAL code built into the panels. Image 1 is palette reference only: preserve pale blue, teal, lavender, thin charcoal strokes, white background. Replace the layout entirely; no giant role-table. Produce one crisp high-resolution portrait image, about 1500x1800, tight crop, no outer title, no figure number, no decorative whitespace. Small DejaVu Sans Mono code with excellent accurate glyphs, restrained blue keywords, teal types, coral highlights only on changed lines. Dense yet aligned; three vertically stacked panels with small right-hand graph strips, connected by arrows. ALL text below must be copied faithfully; don't invent API calls, omit a return, change a number, or abbreviate identifiers. Short prose only.
 
@@ -1524,7 +1524,7 @@ tokens. `let mut` is invalid; mutable bindings use `var`. Separately, the
 reference produces `{"interval": [-12.0, 15.0]}` for `[-2,3] * [-4,5]`.
 
 <!-- Code evidence: artifact/extensions/con-gelu-expand/reference.jog:24-36;
-.cache/artifact/paper-code-check-gelu.json and paper-code-check-range.json.
+local/cache/artifact/paper-code-check-gelu.json and paper-code-check-range.json.
 Agent evidence: main-agents-explicit-20260925-x0f9ieig/
 03-Qwen3-8B-Joggle-ana-numeric-range/{candidate.jog,final-oracle.json,result.csv}.
 Reference execution outputs and Agent-generated candidates are distinct. -->

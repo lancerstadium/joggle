@@ -13,7 +13,7 @@ int main(void) {
 
   const float power_input[6] = {-3, -2, -1, 0, 1, 2};
   const float exponent[1] = {2};
-  const float power_expected[6] = {43046721, 65536, 1, 0, 1, 65536};
+  const float power_expected[6] = {43046721.0f, 65536.0f, 1.0f, 0.0f, 1.0f, 65536.0f};
   float power_output[6] = {0};
   kernel_tensor_power(power_input, exponent, power_output);
   for (size_t i = 0; i < 6; ++i)

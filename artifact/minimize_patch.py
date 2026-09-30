@@ -136,7 +136,7 @@ def main() -> int:
     parser.add_argument("--oracle-timeout", type=float, default=1800.0)
     parser.add_argument("--scratch-root", type=Path,
                         default=Path(__file__).resolve().parents[1] /
-                        ".cache/artifact/minimization",
+                        "local/cache/artifact/minimization",
                         help="parent of isolated snapshots inside the main repository")
     parser.add_argument("oracle", nargs=argparse.REMAINDER)
     args = parser.parse_args()

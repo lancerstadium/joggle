@@ -11,6 +11,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 PAPER = ROOT / "paper"
+sys.path.insert(0, str(ROOT / "artifact"))
+from record_paths import record_path
 sys.path.insert(0, str(ROOT / "artifact/figures"))
 from common import COLORS, PERFORMANCE_SIZE, configure
 import matplotlib.pyplot as plt
@@ -32,8 +34,8 @@ def collect(manifest: Path) -> None:
     reports = json.loads(manifest.read_text())["admitted_references"]
     rows = []
     for report_path in reports:
-        report = json.loads(Path(report_path).read_text())
-        source = Path(report["source"])
+        report = json.loads(record_path(report_path).read_text())
+        source = record_path(report["source"])
         raw = source.read_bytes()
         digest = hashlib.sha256(raw).hexdigest()
         if not report.get("passed") or digest != report["source_sha256"]:
@@ -42,7 +44,7 @@ def collect(manifest: Path) -> None:
                          nonempty_lines=sum(bool(x.strip()) for x in raw.decode().splitlines()),
                          utf8_bytes=len(raw), source=str(source.relative_to(ROOT)),
                          source_sha256=digest, oracle_passed="true",
-                         report=str(Path(report_path).relative_to(ROOT))))
+                         report=str(record_path(report_path).relative_to(ROOT))))
     validate(rows)
     with CSV.open("w", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
@@ -67,7 +69,7 @@ def validate(rows):
     if len(rows) != 36 or set(indexed) != expected:
         raise ValueError("require the complete 12-task, three-system population")
     for row in rows:
-        raw = (ROOT / row["source"]).read_bytes()
+        raw = record_path(row["source"]).read_bytes()
         if (str(row["oracle_passed"]) != "true" or
                 hashlib.sha256(raw).hexdigest() != row["source_sha256"] or
                 int(row["nonempty_lines"]) != sum(bool(x.strip()) for x in raw.decode().splitlines()) or

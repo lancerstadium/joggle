@@ -15,14 +15,14 @@ def main():
     parser.add_argument("--prepare-only", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    work = root / ".cache/artifact/reactive-shaped-20260925"
+    work = root / "local/cache/artifact/reactive-shaped-20260925"
     inputs = work / "inputs"
     inputs.mkdir(parents=True, exist_ok=True)
     records, paths = [], []
     with (root / "artifact/manifests/reactive-models.csv").open() as stream:
         models = list(csv.DictReader(stream))
     for entry in models:
-        source = root / ".cache/onnx-zoo" / (entry["model"] + ".onnx")
+        source = root / "local/cache/onnx-zoo" / (entry["model"] + ".onnx")
         target = inputs / source.name
         model = onnx.load(source)
         before = len(model.graph.value_info)

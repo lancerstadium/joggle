@@ -35,7 +35,8 @@
       <main class="home-shell">{{ content }}</main>
     {% else %}
       <div class="docs-shell">
-        <aside class="sidebar" aria-label="Documentation navigation">
+        <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="docs-navigation">Browse documentation <span aria-hidden="true">⌄</span></button>
+        <aside id="docs-navigation" class="sidebar" aria-label="Documentation navigation">
           <label class="nav-search">
             <span class="sr-only">Filter documentation</span>
             <input id="nav-filter" type="search" placeholder="Filter docs…" autocomplete="off">

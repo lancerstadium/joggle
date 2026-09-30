@@ -200,9 +200,14 @@ in [test/README.md](test/README.md).
 | `examples/mods/` | runnable out-of-tree extensions |
 | `test/` | unit, CLI, integration, backend, docs, and tutorial gates |
 | `docs/` | project design, guides, and API reference |
+| `artifact/` | evaluation protocols, collectors, validators, and reproduction instructions |
 | `paper/` | separate manuscript workspace |
+| `local/` | visible, untracked models, raw records, environments, and historical build outputs |
 
-Generated files belong in a configured `build*` directory and are not tracked.
+Use `build/` for the current build and `local/cache/` for downloaded models and
+experiment outputs. Neither is tracked. See [local/README.md](local/README.md)
+for the location of retained records and [artifact/README.md](artifact/README.md)
+for the evaluation entry point.
 
 ## Documentation paths
 

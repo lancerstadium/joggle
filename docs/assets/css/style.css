@@ -223,6 +223,16 @@ blockquote p { margin: 0; }
 .path li { min-height: 130px; margin: 0; padding: 17px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); counter-increment: path; }
 .path li::before { display: block; margin-bottom: 12px; color: var(--soft); font-size: 11px; font-weight: 700; content: "0" counter(path); }
 
+.nav-toggle { display: none; }
+[hidden] { display: none !important; }
+article, .home-shell { min-width: 0; overflow-wrap: anywhere; }
+main img, main svg { max-width: 100%; height: auto; }
+pre { overflow-wrap: normal; }
+.table-scroll { max-width: 100%; overflow-x: auto; margin-bottom: 20px; }
+.table-scroll table { margin-bottom: 0; }
+.table-scroll:focus-visible, .nav-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.card, .path li { min-width: 0; overflow-wrap: anywhere; }
+
 @media (max-width: 1080px) {
   .docs-shell { grid-template-columns: 210px minmax(0, 1fr); gap: 42px; }
   .toc-shell { display: none; }
@@ -231,12 +241,15 @@ blockquote p { margin: 0; }
 @media (max-width: 760px) {
   .topbar { padding: 0 18px; }
   .docs-shell { display: block; width: min(calc(100% - 36px), 720px); }
-  .sidebar { position: static; width: 100%; height: auto; padding: 18px 0; border-right: 0; border-bottom: 1px solid var(--line); white-space: nowrap; overflow-x: auto; }
-  .nav-group { display: inline-block; margin: 0 20px 0 0 !important; vertical-align: top; }
-  .nav-label { display: none; }
-  .nav-search { display: none; }
-  .nav-group a { display: inline-block; }
-  .content { padding-top: 42px; }
+  .js .nav-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; margin: 16px 0 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font: inherit; cursor: pointer; }
+  .sidebar { position: static; width: 100%; height: auto; max-height: 65vh; padding: 18px 0; border-right: 0; border-bottom: 1px solid var(--line); overflow: auto; }
+  .js .sidebar { display: none; }
+  .js .sidebar.is-open { display: block; }
+  .nav-group { display: block; }
+  .nav-group a { display: block; }
+  .content { padding-top: 28px; }
+  pre { padding: 14px; }
+  th, td { padding: 9px; }
   .home-shell { padding-top: 38px; }
   .hero { padding-top: 44px; }
   .card-grid, .path { grid-template-columns: 1fr; }

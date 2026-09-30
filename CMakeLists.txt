@@ -578,6 +578,10 @@ if(JOGGLE_BUILD_TESTS)
       COMMAND ${JOGGLE_TEST_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/test/docs.py
               ${CMAKE_CURRENT_SOURCE_DIR}
     )
+    add_test(
+      NAME artifact-record-paths
+      COMMAND ${JOGGLE_TEST_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/test/record_paths.py
+    )
   endif()
   if(JOGGLE_TEST_C_COMPILER)
     joggle_script_test(tutorial-smoke tutorials.cmake
@@ -1096,5 +1100,5 @@ if(JOGGLE_BUILD_TESTS)
   # Pinned model tests receive their kind label at declaration time because the
   # configured corpus is data-driven; do not duplicate its names here.
   joggle_label(install install-consumer)
-  joggle_label(lint docs)
+  joggle_label(lint docs artifact-record-paths)
 endif()

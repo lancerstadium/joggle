@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from merge_update_rows import validate_provider
+from record_paths import record_path
 
 FIGURES = {
     4: ("figure-04-extension.csv", "figure_04_extension.py"),
@@ -59,11 +60,11 @@ def validate_record(figure: int, csv_path: Path) -> Path:
     if expected != sha256(csv_path):
         fail(f"Figure {figure}: CSV hash differs from provenance record")
     for item in record.get("inputs", {}).values() if isinstance(record.get("inputs"), dict) else record.get("inputs", []):
-        path = Path(item.get("path", ""))
+        path = record_path(item.get("path", ""))
         if item.get("sha256") != sha256(path):
             fail(f"Figure {figure}: input hash differs for {path}")
         if item.get("record"):
-            source_record = Path(item["record"])
+            source_record = record_path(item["record"])
             if item.get("record_sha256") != sha256(source_record):
                 fail(f"Figure {figure}: source record hash differs for {source_record}")
         if figure == 6:
@@ -88,7 +89,7 @@ def main() -> int:
     root = Path(__file__).resolve().parent
     parent = args.output_dir.resolve().parent
     parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix=f".{args.output_dir.name}.", dir=parent))
+    staging = Path(tempfile.mkdtemp(prefix=f"{args.output_dir.name}-staging-", dir=parent))
     inputs, records, outputs = [], [], []
     try:
         for figure, (csv_name, plot_name) in FIGURES.items():

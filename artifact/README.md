@@ -2,7 +2,7 @@
 
 This directory contains the executable evidence path for Section 4. The frozen
 design is in [`PROTOCOL.md`](PROTOCOL.md). Raw measurements belong under
-`.cache/artifact/`; Git tracks contracts, collectors, validators, and plots.
+`local/cache/artifact/`; Git tracks contracts, collectors, validators, and plots.
 
 ## Evidence layout
 
@@ -36,12 +36,12 @@ reference fails validation. Operator and model figures share one canvas size.
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 
-cmake -DOUT=.cache/onnx-zoo -P test/tools/fetch_onnx_zoo.cmake
+cmake -DOUT=local/cache/onnx-zoo -P test/tools/fetch_onnx_zoo.cmake
 python3 artifact/generate_benchmark_inputs.py \
-  --output .cache/artifact/benchmark-inputs
+  --output local/cache/artifact/benchmark-inputs
 python3 artifact/generate_operator_models.py \
-  --inputs .cache/artifact/benchmark-inputs \
-  --output .cache/artifact/operator-models \
+  --inputs local/cache/artifact/benchmark-inputs \
+  --output local/cache/artifact/operator-models \
   --verify-runtime
 ```
 
@@ -83,8 +83,8 @@ python3 artifact/run_extension_task.py \
   --task ana-broadcast-shape --system Joggle \
   --source artifact/extensions/ana-broadcast-shape/reference.jog \
   --joggle build/joggle --builtin-mods build/modules \
-  --build-root .cache/artifact/extension-tasks \
-  --output .cache/artifact/extension-reference-joggle.json
+  --build-root local/cache/artifact/extension-tasks \
+  --output local/cache/artifact/extension-reference-joggle.json
 ```
 
 For MLIR, pass `--system MLIR`, a `.cpp` source, and `--mlir-dir` pointing to
@@ -226,7 +226,7 @@ python3 artifact/run_extension_agent.py \
   --model qwen3.5:9b --system Joggle --task ana-fusion-match \
   --seed 1701 --run 0 \
   --joggle build/joggle --builtin-mods build/modules \
-  --output .cache/artifact/agent-joggle-fusion-1701
+  --output local/cache/artifact/agent-joggle-fusion-1701
 ```
 
 Native candidates run under macOS Seatbelt: toolchain files are read-only,
@@ -278,8 +278,8 @@ complete primary population with the existing release gate:
 
 ```sh
 python3 artifact/merge_agent_rows.py \
-  .cache/artifact/agent-primary/*/result.csv \
-  --output .cache/artifact/figure-04-extension.csv
+  local/cache/artifact/agent-primary/*/result.csv \
+  --output local/cache/artifact/figure-04-extension.csv
 ```
 
 Replace `agent-primary` with the designated collection directory; do not merge
@@ -295,8 +295,8 @@ Render only the completed assembly, not individual provider files:
 
 ```sh
 python3 artifact/figures/figure_04_extension.py \
-  .cache/artifact/figure-04-extension.csv \
-  --output .cache/artifact/figure-04-extension.pdf
+  local/cache/artifact/figure-04-extension.csv \
+  --output local/cache/artifact/figure-04-extension.pdf
 ```
 
 The renderer rechecks all 72 conditions, native/model identities, provider
@@ -348,14 +348,14 @@ implementation and publication files included in each package.
 ```sh
 python3 artifact/minimize_patch.py \
   --repo /path/to/system --base BASE --head CANDIDATE \
-  --output-patch .cache/artifact/task.patch \
-  --oracle-log .cache/artifact/task-oracle.log \
-  --log .cache/artifact/task-minimization.json \
+  --output-patch local/cache/artifact/task.patch \
+  --oracle-log local/cache/artifact/task-oracle.log \
+  --log local/cache/artifact/task-minimization.json \
   -- ./task-oracle
 
 python3 artifact/collect_footprint.py \
-  --cases .cache/artifact/footprint-cases.csv \
-  --output .cache/artifact/figure-05-footprint.csv
+  --cases local/cache/artifact/footprint-cases.csv \
+  --output local/cache/artifact/figure-05-footprint.csv
 ```
 
 ## Figure 6
@@ -416,9 +416,9 @@ mod, or collector sources still change the recorded experimental state.
 ```sh
 python3 artifact/run_baseline_benchmarks.py --group updates --backend joggle \
   --joggle-reuse prepared \
-  --inputs .cache/artifact/release-data/inputs --model-root .cache/onnx-zoo \
+  --inputs local/cache/artifact/release-data/inputs --model-root local/cache/onnx-zoo \
   --edit-manifest artifact/manifests/production-node-edits.json \
-  --iterations 10 --output .cache/artifact/production-updates-joggle.csv
+  --iterations 10 --output local/cache/artifact/production-updates-joggle.csv
 ```
 
 Select `--backend tvm` or `--backend onnx-mlir` with the same manifest and
@@ -486,16 +486,16 @@ planning, and emission remain in both.
 ```sh
 python3 artifact/run_joggle_benchmarks.py \
   --group operators --variant joggle-optimized \
-  --inputs .cache/artifact/benchmark-inputs \
-  --operator-models .cache/artifact/operator-models \
+  --inputs local/cache/artifact/benchmark-inputs \
+  --operator-models local/cache/artifact/operator-models \
   --joggle build/joggle --builtin-mods build/modules \
-  --output .cache/artifact/operators-joggle-opt.csv
+  --output local/cache/artifact/operators-joggle-opt.csv
 
 python3 artifact/run_baseline_benchmarks.py --backend onnxruntime \
   --group operators \
-  --inputs .cache/artifact/benchmark-inputs \
-  --operator-models .cache/artifact/operator-models \
-  --output .cache/artifact/operators-ort.csv
+  --inputs local/cache/artifact/benchmark-inputs \
+  --operator-models local/cache/artifact/operator-models \
+  --output local/cache/artifact/operators-ort.csv
 ```
 
 The same external-baseline collector also imports ONNX through TVM Relax and
@@ -504,10 +504,10 @@ compiles it with the default LLVM CPU pipeline:
 ```sh
 python3 artifact/run_baseline_benchmarks.py --backend tvm \
   --group operators \
-  --inputs .cache/artifact/benchmark-inputs \
-  --operator-models .cache/artifact/operator-models \
+  --inputs local/cache/artifact/benchmark-inputs \
+  --operator-models local/cache/artifact/operator-models \
   --target-json '{"kind":"llvm","num-cores":1}' \
-  --output .cache/artifact/operators-tvm.csv
+  --output local/cache/artifact/operators-tvm.csv
 ```
 
 Install TVM and ONNX Runtime in this collector's environment. For a source
@@ -526,9 +526,9 @@ ONNX-MLIR uses the same cases and oracle through its native C ABI:
 python3 artifact/run_baseline_benchmarks.py --backend onnx-mlir \
   --onnx-mlir /path/to/onnx-mlir/build/Release/bin/onnx-mlir \
   --group operators \
-  --inputs .cache/artifact/benchmark-inputs \
-  --operator-models .cache/artifact/operator-models \
-  --output .cache/artifact/operators-onnx-mlir.csv
+  --inputs local/cache/artifact/benchmark-inputs \
+  --operator-models local/cache/artifact/operator-models \
+  --output local/cache/artifact/operators-onnx-mlir.csv
 ```
 
 The adapter specializes input shapes to the fixed benchmark inputs and compiles
@@ -548,11 +548,11 @@ configurations. The workload manifest and its input hashes remain unchanged:
 
 ```sh
 python3 artifact/merge_benchmark_rows.py \
-  --operators .cache/artifact/operators-joggle-base.csv \
-    .cache/artifact/operators-joggle-opt.csv \
-    .cache/artifact/operators-ort.csv .cache/artifact/operators-tvm.csv \
+  --operators local/cache/artifact/operators-joggle-base.csv \
+    local/cache/artifact/operators-joggle-opt.csv \
+    local/cache/artifact/operators-ort.csv local/cache/artifact/operators-tvm.csv \
   --variants joggle-unoptimized joggle-optimized onnxruntime tvm-relax-llvm \
-  --allow-partial --output .cache/artifact/operators-cross-system.csv
+  --allow-partial --output local/cache/artifact/operators-cross-system.csv
 ```
 
 This operator-only export is partial relative to the full operator-and-model
@@ -564,23 +564,23 @@ the shared ORT reference. The model plot still requires matched base, optimized,
 and ORT runs.
 
 Repeat the Joggle command for `joggle-unoptimized`; repeat the variants
-with `--group models --model-root .cache/onnx-zoo`. Then assemble the one figure
+with `--group models --model-root local/cache/onnx-zoo`. Then assemble the one figure
 file:
 
 ```sh
 python3 artifact/merge_benchmark_rows.py \
   --operators \
-    .cache/artifact/operators-joggle-base.csv \
-    .cache/artifact/operators-joggle-opt.csv \
-    .cache/artifact/operators-ort.csv \
+    local/cache/artifact/operators-joggle-base.csv \
+    local/cache/artifact/operators-joggle-opt.csv \
+    local/cache/artifact/operators-ort.csv \
   --models \
-    .cache/artifact/models-joggle-base.csv \
-    .cache/artifact/models-joggle-opt.csv \
-    .cache/artifact/models-ort.csv \
-  --output .cache/artifact/figure-07-performance.csv
+    local/cache/artifact/models-joggle-base.csv \
+    local/cache/artifact/models-joggle-opt.csv \
+    local/cache/artifact/models-ort.csv \
+  --output local/cache/artifact/figure-07-performance.csv
 
 python3 artifact/validate_figure.py 7 \
-  .cache/artifact/figure-07-performance.csv
+  local/cache/artifact/figure-07-performance.csv
 ```
 
 The Joggle collector checkpoints complete cases. External baselines publish
@@ -606,9 +606,9 @@ plotted statistics alongside the PDF:
 
 ```sh
 python3 artifact/figures/figure_07_performance.py \
-  .cache/artifact/figure-07-performance.csv \
-  --output .cache/artifact/figure-07-performance.pdf \
-  --summary .cache/artifact/figure-07-summary.csv
+  local/cache/artifact/figure-07-performance.csv \
+  --output local/cache/artifact/figure-07-performance.pdf \
+  --summary local/cache/artifact/figure-07-summary.csv
 ```
 
 `merge_benchmark_rows.py --allow-partial` supports intermediate, hash-checked
@@ -680,15 +680,21 @@ CSV. Absolute milliseconds remain in the exported summary
 CSV and the main-text model discussion. Small authoring fonts are configurable; final submission typography
 must be checked against the venue's figure-text requirements.
 
-## Render and release
+## Full-collection release
+
+This gate targets the original four-figure collection protocol, including a
+complete Agent matrix. It is not the validator for the revised paper exports
+listed at the top of this README: those use their corresponding renderers and
+schemas. The stopped Agent collection does not satisfy this full-collection
+gate. Use `make -C paper figures` to regenerate the reported data figures.
 
 Individual validators and plots never execute Joggle. Once all four CSVs and
 their provenance records are present:
 
 ```sh
 python3 artifact/check_release.py \
-  --data-dir .cache/artifact/release-data \
-  --output-dir .cache/artifact/release
+  --data-dir local/cache/artifact/release-data \
+  --output-dir local/cache/artifact/release
 ```
 
 The command validates all pairings and correctness gates, verifies hashes,
